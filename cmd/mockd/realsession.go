@@ -1,0 +1,211 @@
+// realsession.go —— 让 mockd 读**真实会话**，界面显示的就是真数据。
+//
+// 只做最小可用：解 v4 日志、取 header、抽 user/assistant 消息的文本。
+// **不做 surface 投影、不做压缩遮蔽、不写任何文件**——`home/sessions` 全程只读。
+//
+// 格式（见 DSH-GO/AGENTS.md §4）：文件是 session.v4.jsonl.zstd，zstd **多帧**，
+// 第 1 帧只有一行 header，之后每帧多行事件。klauspost 的 Reader 会连续解到 EOF。
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/klauspost/compress/zstd"
+)
+
+// realSession 是一个从磁盘读出来的会话。
+type realSession struct {
+	ID        string
+	Cwd       string
+	UpdatedAt time.Time
+	Total     int       // 日志里的消息事件总数（截断前）
+	Messages  []message // 已按 tail 截断
+}
+
+// realStore 是全部真实会话的索引。
+type realStore struct {
+	byID  map[string]*realSession
+	order []string // 按 UpdatedAt 降序的 id
+	bad   int      // 解不开的文件数（跳过并计数，不中断）
+	files int      // 扫到的会话文件数
+}
+
+// sessionFile 是会话日志的固定文件名。
+const sessionFile = "session.v4.jsonl.zstd"
+
+// v4Header 是第 1 帧的那一行。只取我们需要的键。
+type v4Header struct {
+	Type      string `json:"type"`
+	Version   int    `json:"version"`
+	ID        string `json:"id"`
+	CreatedAt int64  `json:"createdAt"` // 毫秒
+	Cwd       string `json:"cwd"`
+}
+
+// v4Event 只解析到能拿消息文本为止。
+type v4Event struct {
+	Type string `json:"type"`
+	Seq  int    `json:"seq"`
+	Data struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"data"`
+}
+
+// text 把一条消息的 content 块拼成纯文本（只要 text 块）。
+func (e *v4Event) text() string {
+	if len(e.Data.Content) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, c := range e.Data.Content {
+		if c.Type == "text" && c.Text != "" {
+			if b.Len() > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(c.Text)
+		}
+	}
+	return b.String()
+}
+
+// loadRealSessions 扫 root 下所有 session.v4.jsonl.zstd，返回索引。
+//
+// tail 是每个会话最多保留多少条消息（从尾部取）；<=0 表示不限。
+// 坏文件跳过并计入 store.bad；一个都读不到时返回 error，调用方回落到假数据。
+func loadRealSessions(root string, tail int) (*realStore, error) {
+	st := &realStore{byID: map[string]*realSession{}}
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // 单个目录读不了不影响全局
+		}
+		if d.IsDir() || d.Name() != sessionFile {
+			return nil
+		}
+		st.files++
+		rs, err := decodeSession(path, tail)
+		if err != nil || rs == nil || rs.ID == "" {
+			st.bad++
+			return nil
+		}
+		st.byID[rs.ID] = rs
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(st.byID) == 0 {
+		return st, fmt.Errorf("%s 下没有可读会话（扫到 %d 个文件，坏了 %d 个）", root, st.files, st.bad)
+	}
+
+	st.order = make([]string, 0, len(st.byID))
+	for id := range st.byID {
+		st.order = append(st.order, id)
+	}
+	sort.Slice(st.order, func(i, j int) bool {
+		return st.byID[st.order[i]].UpdatedAt.After(st.byID[st.order[j]].UpdatedAt)
+	})
+	return st, nil
+}
+
+// decodeSession 解一个会话文件。zstd 多帧由 Reader 连续解到 EOF。
+func decodeSession(path string, tail int) (*realSession, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	dec, err := zstd.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	defer dec.Close()
+
+	var out bytes.Buffer
+	if _, err := out.ReadFrom(dec); err != nil && out.Len() == 0 {
+		return nil, err // 一帧都没解出来才算坏；尾部半帧忽略
+	}
+
+	rs := &realSession{}
+	if fi, err := os.Stat(path); err == nil {
+		rs.UpdatedAt = fi.ModTime()
+	}
+
+	for _, line := range strings.Split(out.String(), "\n") {
+		if line == "" {
+			continue
+		}
+		if rs.ID == "" {
+			var h v4Header
+			if err := json.Unmarshal([]byte(line), &h); err != nil || h.Type != "session" {
+				return nil, fmt.Errorf("首行不是合法 header: %s", trunc(line, 90))
+			}
+			rs.ID = h.ID
+			rs.Cwd = h.Cwd
+			continue
+		}
+		var e v4Event
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			continue // 坏行跳过，别让一条坏行废掉整个会话
+		}
+		var role string
+		switch e.Type {
+		case "user/message":
+			role = "user"
+		case "assistant/message":
+			role = "assistant"
+		default:
+			continue
+		}
+		txt := e.text()
+		if txt == "" {
+			continue
+		}
+		rs.Total++
+		rs.Messages = append(rs.Messages, message{Seq: e.Seq, Role: role, Text: txt})
+	}
+
+	if tail > 0 && len(rs.Messages) > tail {
+		rs.Messages = rs.Messages[len(rs.Messages)-tail:]
+	}
+	return rs, nil
+}
+
+func trunc(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}
+
+// firstUserLine 用第一条用户消息的首行当标题（没有就退到会话 id 前 8 位）。
+func firstUserLine(rs *realSession) string {
+	for _, m := range rs.Messages {
+		if m.Role != "user" {
+			continue
+		}
+		line := m.Text
+		if i := strings.IndexByte(line, '\n'); i >= 0 {
+			line = line[:i]
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		return trunc(line, 60)
+	}
+	if len(rs.ID) > 8 {
+		return "会话 " + rs.ID[:8]
+	}
+	return "会话 " + rs.ID
+}

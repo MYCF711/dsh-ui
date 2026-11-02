@@ -9,6 +9,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -45,6 +46,9 @@ type message struct {
 	Text  string `json:"text"`
 	SeqID string `json:"-"`
 }
+
+// realDB 非空时，session.list / session.load 走真实会话（-sessions 指定目录）。
+var realDB *realStore
 
 var (
 	mu       sync.Mutex
@@ -85,14 +89,32 @@ func fail(w http.ResponseWriter, code int, e errObj) {
 }
 
 func main() {
+	sessionsDir := flag.String("sessions", "", "真实会话根目录（空=用假数据）；只读，不会写回")
+	tailMsgs := flag.Int("tail", 200, "每个会话最多读多少条消息")
+	flag.Parse()
+
 	// /api/mux 比 /api/ 长，ServeMux 会优先精确匹配到它，不影响 13 个一元 method。
 	http.HandleFunc("/api/mux", muxHandler)
 	http.HandleFunc("/api/", route)
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]string{"ok": "mockd", "time": time.Now().Format(time.RFC3339)})
 	})
+	if *sessionsDir != "" {
+		st, err := loadRealSessions(*sessionsDir, *tailMsgs)
+		if err != nil {
+			log.Printf("WARN 读真实会话失败，回落到假数据: %v", err)
+		} else {
+			realDB = st
+			log.Printf("真实会话已载入: %d 个（扫到 %d 个文件，跳过 %d 个坏文件）", len(st.byID), st.files, st.bad)
+		}
+	}
+
 	addr := "127.0.0.1:7788"
-	log.Printf("mockd listening on http://%s (13 methods + /api/mux, fake data)", addr)
+	src := "fake data"
+	if realDB != nil {
+		src = fmt.Sprintf("%d real sessions", len(realDB.byID))
+	}
+	log.Printf("mockd listening on http://%s (13 methods + /api/mux, %s)", addr, src)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
@@ -281,6 +303,19 @@ func route(w http.ResponseWriter, r *http.Request) {
 
 	switch method {
 	case "session.list":
+		if realDB != nil {
+			out := make([]session, 0, len(realDB.order))
+			for _, id := range realDB.order {
+				rs := realDB.byID[id]
+				title := firstUserLine(rs)
+				out = append(out, session{
+					ID: rs.ID, Title: title, Cwd: rs.Cwd,
+					UpdatedAt: rs.UpdatedAt.Format(time.RFC3339), Mode: "default",
+				})
+			}
+			writeJSON(w, 200, envelope{Result: map[string]any{"sessions": out}})
+			return
+		}
 		writeJSON(w, 200, envelope{Result: map[string]any{"sessions": sessions}})
 
 	case "session.create":
@@ -295,6 +330,22 @@ func route(w http.ResponseWriter, r *http.Request) {
 			TailMessages int    `json:"tailMessages"`
 		}
 		_ = json.Unmarshal(body.Params, &p)
+		if realDB != nil {
+			rs, ok := realDB.byID[p.ID]
+			if !ok {
+				fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID, Hint: "先调 session.list 拿一个真实 id"})
+				return
+			}
+			msgs := rs.Messages
+			if p.TailMessages > 0 && len(msgs) > p.TailMessages {
+				msgs = msgs[len(msgs)-p.TailMessages:]
+			}
+			writeJSON(w, 200, envelope{Result: map[string]any{
+				"id": rs.ID, "title": firstUserLine(rs), "cwd": rs.Cwd, "mode": "default",
+				"messages": msgs, "truncated": len(msgs) < rs.Total, "total": rs.Total,
+			}})
+			return
+		}
 		h, ok := history[p.ID]
 		if !ok {
 			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID, Hint: "先调 session.list 拿一个真实 id"})

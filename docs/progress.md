@@ -74,3 +74,5 @@
 | 2026-11-03 12:05 | 三个坑：manifest 多列模块 / 权限 id 必须原样回 / busy 没人清 | 全部修掉，见 `docs/acp.md` |
 | 2026-11-03 06:25 | **真 ACP 打通**：界面 → mockd `-acp` → dshd → 真模型 → 流式回界面。实测问「只回答两个字：收到」→ 回 **收到**（不是 mock 的 Markdown 样板） | 端到端 |
 | 2026-11-03 06:22 | 踩到 PowerShell `Start-Process -ArgumentList` 不自动加引号：含空格路径被截断（`D:/DeepSeek Harness` → `D:/DeepSeek`），回落假数据且 ACP 没起 | 手动加引号后正常 |
+| 2026-11-03 06:32 | 修会话标题：懒解码下 `Messages` 为空 → 回落到 cwd 最后一段（"DSH-GO" / "长期记忆系统" / "GOkifu上下文压缩"） | 不再是「会话 session-xxxx」 |
+| 2026-11-03 06:34 | 界面连真 ACP 跑起来：**75.5 MB**，左栏真实标题，右侧真实内容 + Markdown | |

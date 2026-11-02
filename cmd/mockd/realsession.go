@@ -215,6 +215,16 @@ func firstUserLine(rs *realSession) string {
 		}
 		return trunc(line, 60)
 	}
+	// 懒解码下 Messages 是空的（索引期只解 header）——这时用 cwd 的最后一段当标题，
+	// 比 "会话 session-xxxx" 有信息量得多。
+	if rs.Cwd != "" {
+		parts := strings.Split(strings.ReplaceAll(rs.Cwd, "\\", "/"), "/")
+		for i := len(parts) - 1; i >= 0; i-- {
+			if p := strings.TrimSpace(parts[i]); p != "" {
+				return trunc(p, 60)
+			}
+		}
+	}
 	if len(rs.ID) > 8 {
 		return "会话 " + rs.ID[:8]
 	}

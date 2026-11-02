@@ -31,11 +31,23 @@ var (
 	btnSend = tree.ID(home, "send")
 )
 
+// cachedSession 是切换会话用的温缓存：切回来先显示它，再后台刷新。
+// 上限 5 个（约 3 MB/1000 条），超了就淘汰最久没碰的那个。
+type cachedSession struct {
+	msgs  []apiclient.Message
+	total int
+	title string
+	at    time.Time
+}
+
+const cacheLimit = 5
+
 type model struct {
 	view  flex.View
 	draft flex.Field
 	inv   app.Invalidator
 	cli   *apiclient.Client
+	cache map[string]*cachedSession
 
 	mu       sync.Mutex
 	sessions []apiclient.Session
@@ -87,26 +99,67 @@ func (m *model) refreshList() {
 func (m *model) openSession(id string) {
 	m.mu.Lock()
 	m.cur = id
-	m.loading = true
-	m.status = "加载 " + id + " …"
+	hit := false
+	if cs, ok := m.cache[id]; ok {
+		m.msgs = cs.msgs
+		m.status = fmt.Sprintf("%s · %d 条（总 %d）· 温缓存", cs.title, len(cs.msgs), cs.total)
+		m.loading = false
+		hit = true
+	} else {
+		m.msgs = nil
+		m.loading = true
+		m.status = "加载 " + id + " …"
+	}
 	m.mu.Unlock()
 	m.inv.Invalidate()
+	if hit {
+		// 有缓存就立刻可看，后台静默刷新
+		go m.refreshSession(id, true)
+		return
+	}
+	go m.refreshSession(id, false)
+}
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		r, err := m.cli.Load(ctx, id, tailCount)
-		if err != nil {
+// refreshSession 拉一次 session.load；quiet=true 时失败不覆盖状态栏。
+func (m *model) refreshSession(id string, quiet bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	r, err := m.cli.Load(ctx, id, tailCount)
+	if err != nil {
+		if !quiet {
 			m.setStatus("加载失败: " + err.Error())
-			return
 		}
-		m.mu.Lock()
+		return
+	}
+	m.mu.Lock()
+	m.cache[id] = &cachedSession{msgs: r.Messages, total: r.Total, title: r.Title, at: time.Now()}
+	m.evictLocked(id)
+	if m.cur == id { // 用户可能已经切走了
 		m.msgs = r.Messages
 		m.status = fmt.Sprintf("%s · %d 条（总 %d）", r.Title, len(r.Messages), r.Total)
 		m.loading = false
-		m.mu.Unlock()
-		m.inv.Invalidate()
-	}()
+	}
+	m.mu.Unlock()
+	m.inv.Invalidate()
+}
+
+// evictLocked 在持有 mu 时淘汰最旧的缓存，保护当前会话。
+func (m *model) evictLocked(keep string) {
+	for len(m.cache) > cacheLimit {
+		oldest, oldestID := time.Now(), ""
+		for id, cs := range m.cache {
+			if id == keep || id == m.cur {
+				continue
+			}
+			if cs.at.Before(oldest) {
+				oldest, oldestID = cs.at, id
+			}
+		}
+		if oldestID == "" {
+			return
+		}
+		delete(m.cache, oldestID)
+	}
 }
 
 func (m *model) send() {
@@ -219,7 +272,9 @@ func newConfig(m *model) app.Config {
 						})
 					})
 					f.Row().Gap(8).Items(flex.Center).Children(func() {
-						f.Field(&m.draft, draftID, "输入", "说点什么…（Enter 发送）").Grow(1)
+						if f.Field(&m.draft, draftID, "输入", "说点什么…（Enter 发送）").Grow(1).Submitted() {
+							m.send()
+						}
 						if f.Button(btnSend, "发送").Clicked() {
 							m.send()
 						}
@@ -242,7 +297,8 @@ func main() {
 	forceSession = *sess
 	tailCount = *tail
 
-	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true}
+	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
+		cache: map[string]*cachedSession{}}
 	m.refreshList()
 
 	var canvas ui.Canvas

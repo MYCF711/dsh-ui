@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 type errObj struct {
@@ -83,13 +85,146 @@ func fail(w http.ResponseWriter, code int, e errObj) {
 }
 
 func main() {
+	// /api/mux 比 /api/ 长，ServeMux 会优先精确匹配到它，不影响 13 个一元 method。
+	http.HandleFunc("/api/mux", muxHandler)
 	http.HandleFunc("/api/", route)
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]string{"ok": "mockd", "time": time.Now().Format(time.RFC3339)})
 	})
 	addr := "127.0.0.1:7788"
-	log.Printf("mockd listening on http://%s (13 methods, fake data)", addr)
+	log.Printf("mockd listening on http://%s (13 methods + /api/mux, fake data)", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
+}
+
+// ---------------------------------------------------------------------------
+// /api/mux —— Transport 契约的流（docs/api-contract.md §2）
+//
+// 假数据，只为把客户端的三条路走一遍：
+//   - 收到 sub 后每 200ms 推一条 ev；kind 在 user/message 与 assistant/message 间交替；
+//     seq 从客户端给的 sinceSeq 逐条 +1。
+//   - **第 7 条之后故意跳两个号**：先发 gap{fromSeq,toSeq}，再继续推更大的 seq，
+//     逼客户端把"补洞"那条路真的走一遍。
+//   - ping → pong。
+// ---------------------------------------------------------------------------
+
+// muxFrame 收发同构：客户端只填 t/topic/sinceSeq，服务端只填其余字段。
+type muxFrame struct {
+	T        string          `json:"t"`
+	Topic    string          `json:"topic,omitempty"`
+	SinceSeq int             `json:"sinceSeq,omitempty"`
+	Seq      int             `json:"seq,omitempty"`
+	Kind     string          `json:"kind,omitempty"`
+	Data     json.RawMessage `json:"data,omitempty"`
+	FromSeq  int             `json:"fromSeq,omitempty"`
+	ToSeq    int             `json:"toSeq,omitempty"`
+	Reason   string          `json:"reason,omitempty"`
+}
+
+const muxTick = 200 * time.Millisecond
+
+func muxHandler(w http.ResponseWriter, r *http.Request) {
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	if err != nil {
+		log.Printf("mux: accept: %v", err)
+		return
+	}
+	defer c.CloseNow()
+	ctx := r.Context()
+
+	// 读侧只把命令投进 chan，不自己写 —— 全程单写，避免并发写。
+	cmds := make(chan muxFrame, 8)
+	go func() {
+		defer close(cmds)
+		for {
+			_, data, err := c.Read(ctx)
+			if err != nil {
+				return
+			}
+			var f muxFrame
+			if json.Unmarshal(data, &f) != nil {
+				continue
+			}
+			select {
+			case cmds <- f:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	writeFrame := func(f muxFrame) bool {
+		b, err := json.Marshal(f)
+		if err != nil {
+			return false
+		}
+		return c.Write(ctx, websocket.MessageText, b) == nil
+	}
+
+	var (
+		topic  string
+		seq    int
+		n      int
+		subbed bool
+		gapped bool
+	)
+	ticker := time.NewTicker(muxTick)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case f, ok := <-cmds:
+			if !ok {
+				return // 对端断开
+			}
+			switch f.T {
+			case "sub":
+				if f.Topic == "" {
+					if !writeFrame(muxFrame{T: "gap", Reason: "sub 缺 topic"}) {
+						return
+					}
+					continue
+				}
+				topic, seq, n, subbed, gapped = f.Topic, f.SinceSeq, 0, true, false
+				log.Printf("mux: sub topic=%q sinceSeq=%d", topic, seq)
+			case "unsub":
+				subbed = false
+			case "ping":
+				if !writeFrame(muxFrame{T: "pong"}) {
+					return
+				}
+			}
+
+		case <-ticker.C:
+			if !subbed {
+				continue
+			}
+			n++
+			if n == 8 && !gapped {
+				from := seq + 1
+				to := from + 1
+				seq = to
+				gapped = true
+				if !writeFrame(muxFrame{T: "gap", Topic: topic, FromSeq: from, ToSeq: to, Reason: "mockd: 故意跳号，客户端应去 session.history 补洞"}) {
+					return
+				}
+				log.Printf("mux: 跳号 gap from=%d to=%d", from, to)
+			}
+			seq++
+			kind := "user/message"
+			if n%2 == 0 {
+				kind = "assistant/message"
+			}
+			data, _ := json.Marshal(map[string]string{
+				"text": fmt.Sprintf("第 %d 条假事件（topic=%s）", seq, topic),
+			})
+			if !writeFrame(muxFrame{T: "ev", Topic: topic, Seq: seq, Kind: kind, Data: data}) {
+				return
+			}
+		}
+	}
 }
 
 func route(w http.ResponseWriter, r *http.Request) {

@@ -70,7 +70,16 @@ func (m *model) refreshList() {
 		m.mu.Unlock()
 		m.inv.Invalidate()
 		if empty && len(ss) > 0 {
-			m.openSession(ss[0].ID)
+			id := ss[0].ID
+			for i := range ss {
+				if forceSession != "" && ss[i].ID == forceSession {
+					id = forceSession
+				}
+			}
+			if forceSession != "" && id != forceSession {
+				id = forceSession // mockd 里可能不在列表前部
+			}
+			m.openSession(id)
 		}
 	}()
 }
@@ -86,7 +95,7 @@ func (m *model) openSession(id string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		r, err := m.cli.Load(ctx, id, 200)
+		r, err := m.cli.Load(ctx, id, tailCount)
 		if err != nil {
 			m.setStatus("加载失败: " + err.Error())
 			return
@@ -128,7 +137,12 @@ func (m *model) send() {
 	}()
 }
 
-var theme = ui.DarkTheme()
+var (
+	theme        = ui.DarkTheme()
+	renderLimit  int    // 0 = 不限制
+	forceSession string // 非空则启动后直接打开
+	tailCount    int    // session.load 的 tailMessages
+)
 
 func newConfig(m *model) app.Config {
 	cfg := app.Config{Tree: &tree, Title: "dsh-ui", Width: 1180, Height: 800, Invalidator: &m.inv}
@@ -143,6 +157,10 @@ func newConfig(m *model) app.Config {
 		cur := m.cur
 		msgs := append([]apiclient.Message(nil), m.msgs...)
 		status := m.status
+		if renderLimit > 0 && len(msgs) > renderLimit {
+			status = fmt.Sprintf("%s（渲染末尾 %d / %d）", status, renderLimit, len(msgs))
+			msgs = msgs[len(msgs)-renderLimit:]
+		}
 		m.mu.Unlock()
 
 		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
@@ -216,7 +234,13 @@ func newConfig(m *model) app.Config {
 
 func main() {
 	addr := flag.String("addr", "http://127.0.0.1:7788", "Transport base URL")
+	limit := flag.Int("limit", 0, "只渲染最后 N 条消息（0 = 全部）；用于量视口虚拟化的收益")
+	sess := flag.String("session", "", "启动后直接打开这个会话 id")
+	tail := flag.Int("tail", 200, "session.load 拉多少条尾巴")
 	flag.Parse()
+	renderLimit = *limit
+	forceSession = *sess
+	tailCount = *tail
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true}
 	m.refreshList()

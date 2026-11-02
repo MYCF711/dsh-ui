@@ -49,10 +49,12 @@ var (
 	sessions = []session{
 		{ID: "s-001", Title: "界面线 spike 讨论", Cwd: "D:/DeepSeek Harness/default-workspace", UpdatedAt: "2026-11-03T05:40:00+08:00", Mode: "default"},
 		{ID: "s-002", Title: "UI 插件化架构方案讨论", Cwd: "D:/DeepSeek Harness/default-workspace", UpdatedAt: "2026-11-03T04:10:00+08:00", Mode: "default"},
+		{ID: "s-003", Title: "1000 条压力会话", Cwd: "D:/DeepSeek Harness/default-workspace", UpdatedAt: "2026-11-03T06:00:00+08:00", Mode: "default"},
 	}
 	history = map[string][]message{
 		"s-001": seedHistory("s-001", 40),
 		"s-002": seedHistory("s-002", 12),
+		"s-003": seedHistory("s-003", 1000),
 	}
 	busy  = map[string]bool{}
 	nextN = 100

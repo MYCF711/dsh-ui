@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -49,6 +50,12 @@ type model struct {
 	cli   *apiclient.Client
 	cache      map[string]*cachedSession
 	smokeFired bool
+
+	// 流式：当前订阅的取消函数 + 正在拼接的助手文本（delta 累积）
+	mux        *apiclient.Mux
+	subCancel  context.CancelFunc
+	streamText string
+	lastSeq    int
 
 	mu       sync.Mutex
 	sessions []apiclient.Session
@@ -113,6 +120,7 @@ func (m *model) openSession(id string) {
 	}
 	m.mu.Unlock()
 	m.inv.Invalidate()
+	m.subscribe(id)
 	if hit {
 		// 有缓存就立刻可看，后台静默刷新
 		go m.refreshSession(id, true)
@@ -150,6 +158,63 @@ func (m *model) refreshSession(id string, quiet bool) {
 		m.draft.SetText("smoke-" + time.Now().Format("150405"))
 		m.send()
 	}
+}
+
+// subscribe 订阅某个会话的流；切换会话时先取消旧订阅。
+func (m *model) subscribe(id string) {
+	m.mu.Lock()
+	if m.subCancel != nil {
+		m.subCancel()
+		m.subCancel = nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.subCancel = cancel
+	since := m.lastSeq
+	m.mu.Unlock()
+
+	go func() {
+		ch, err := m.mux.Subscribe(ctx, "session:"+id, since)
+		if err != nil {
+			return // 流不可用不致命：界面仍能靠 session.load 工作
+		}
+		for ev := range ch {
+			if ev.Kind == "gap" {
+				// 断号：按契约去补这一段，绝不整体刷新
+				m.refreshSession(id, true)
+				continue
+			}
+			m.applyEvent(id, ev)
+		}
+	}()
+}
+
+// applyEvent 把一个 ev 帧吃进 model：delta 累积，done 落成一条消息。
+func (m *model) applyEvent(id string, ev apiclient.Event) {
+	var d struct {
+		Delta string `json:"delta"`
+		Done  bool   `json:"done"`
+		Text  string `json:"text"`
+	}
+	_ = json.Unmarshal(ev.Data, &d)
+
+	m.mu.Lock()
+	if ev.Seq > m.lastSeq {
+		m.lastSeq = ev.Seq
+	}
+	if d.Delta != "" {
+		m.streamText += d.Delta
+	}
+	if d.Text != "" && d.Delta == "" {
+		m.streamText += d.Text
+	}
+	if d.Done {
+		if m.streamText != "" {
+			m.msgs = append(m.msgs, apiclient.Message{Seq: ev.Seq, Role: "assistant", Text: m.streamText})
+		}
+		m.streamText = ""
+	}
+	m.mu.Unlock()
+	m.inv.Invalidate()
 }
 
 // evictLocked 在持有 mu 时淘汰最旧的缓存，保护当前会话。
@@ -221,6 +286,7 @@ func newConfig(m *model) app.Config {
 		cur := m.cur
 		msgs := append([]apiclient.Message(nil), m.msgs...)
 		status := m.status
+		streamText := m.streamText
 		if renderLimit > 0 && len(msgs) > renderLimit {
 			status = fmt.Sprintf("%s（渲染末尾 %d / %d）", status, renderLimit, len(msgs))
 			msgs = msgs[len(msgs)-renderLimit:]
@@ -274,6 +340,15 @@ func newConfig(m *model) app.Config {
 							if len(msgs) == 0 {
 								f.Text("← 左边选一个会话").Muted()
 							}
+							if streamText != "" {
+								f.Column().Pad(8).Radius(6).Border(1, theme.Border).Children(func() {
+									f.Row().Gap(6).Items(flex.Center).Children(func() {
+										f.Text("助手").FontSize(11).Muted()
+										f.Spinner()
+									})
+									f.Wrap(streamText).FontSize(14)
+								})
+							}
 							for i := range msgs {
 								msg := msgs[i]
 								who := "你"
@@ -316,7 +391,7 @@ func main() {
 	smokeSend = *smoke
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
-		cache: map[string]*cachedSession{}}
+		cache: map[string]*cachedSession{}, mux: apiclient.NewMux(*addr)}
 	m.refreshList()
 
 	var canvas ui.Canvas

@@ -33,7 +33,8 @@ var emojis = "😀 🚀 ✅ ❌ 🔧 📦 🧪 ⚡ 🎯 🐛 — emoji 必须是
 func codeLines() []string {
 	out := []string{"package main", "", "import ("}
 	for i := 0; i < 54; i++ {
-		out = append(out, fmt.Sprintf("\t// 第 %02d 行：` func 很长的标识符名 %d(x int) string { return fmt.Sprint(x * %d) }", i+1, i, i+1))
+		// 每行刻意超过 110 个字符，用来触发横向溢出
+		out = append(out, fmt.Sprintf("\t// 第 %02d 行：` func 很长的标识符名 %d(x int) string { return fmt.Sprint(x * %d) } // 尾巴故意很长，验证横向平移 —— END_OF_LINE_%02d", i+1, i, i+1, i+1))
 	}
 	out = append(out, ")", "", "func main() {", "\tok := true", "}", "// ⬆ 共 60 行，验证等宽对齐与横向滚动")
 	return out
@@ -166,7 +167,7 @@ func newConfig(m *model) app.Config {
 func main() {
 	var canvas ui.Canvas
 	// 演示用：起始就横向偏 220px，一眼能看出内容确实被平移了
-	if err := app.RunCanvas(newConfig(&model{codeOv: mdlite.Overflow{OffsetX: 220}}), &canvas); err != nil {
+	if err := app.RunCanvas(newConfig(&model{codeOv: mdlite.Overflow{OffsetX: 0}}), &canvas); err != nil {
 		log.Fatal(err)
 	}
 }

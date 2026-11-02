@@ -336,6 +336,13 @@ func route(w http.ResponseWriter, r *http.Request) {
 				fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID, Hint: "先调 session.list 拿一个真实 id"})
 				return
 			}
+			// 索引期只解了 header；第一次 load 这个会话时才全量解并缓存
+			if len(rs.Messages) == 0 && rs.Path != "" {
+				if full, err := decodeSession(rs.Path, 0, false); err == nil {
+					realDB.byID[p.ID] = full
+					rs = full
+				}
+			}
 			msgs := rs.Messages
 			if p.TailMessages > 0 && len(msgs) > p.TailMessages {
 				msgs = msgs[len(msgs)-p.TailMessages:]

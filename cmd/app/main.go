@@ -364,6 +364,10 @@ func (m *model) send() {
 	}()
 }
 
+// markdownBudget 是"最近的多少条消息用 Markdown 渲染"，其余降级成纯文本。
+// 依据：真实会话 442 条、tail=200 时全量 Markdown 要 168.8 MB / 首排 4 s。
+const markdownBudget = 30
+
 var (
 	theme        = ui.DarkTheme()
 	renderLimit  int    // 0 = 不限制
@@ -477,8 +481,12 @@ func newConfig(m *model) app.Config {
 										})
 									} else if msg.Role == "user" {
 										f.Wrap(msg.Text).FontSize(14)
+									} else if i < len(msgs)-markdownBudget {
+										// LOD：老消息只画纯文本。真实会话里有 200 条长消息，
+										// 全上 Markdown 会让文档树常驻 + 首次排版 4 秒（实测 168.8 MB）。
+										f.Wrap(msg.Text).FontSize(13).Muted()
 									} else {
-										// 助手消息走 MarkdownView：先算高度占位，Draw 之后再画
+										// 最近的消息走 MarkdownView：先算高度占位，Draw 之后再画
 										mi := i
 										w := f.Bounds().Width - 300
 										if w < 200 {

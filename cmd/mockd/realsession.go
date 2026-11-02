@@ -9,6 +9,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -25,6 +26,7 @@ import (
 type realSession struct {
 	ID        string
 	Cwd       string
+	Path      string // 会话文件路径：list 只解 header，load 时再按它做全量解
 	UpdatedAt time.Time
 	Total     int       // 日志里的消息事件总数（截断前）
 	Messages  []message // 已按 tail 截断
@@ -94,7 +96,7 @@ func loadRealSessions(root string, tail int) (*realStore, error) {
 			return nil
 		}
 		st.files++
-		rs, err := decodeSession(path, tail)
+		rs, err := decodeSession(path, tail, true) // 索引期只解 header
 		if err != nil || rs == nil || rs.ID == "" {
 			st.bad++
 			return nil
@@ -120,7 +122,9 @@ func loadRealSessions(root string, tail int) (*realStore, error) {
 }
 
 // decodeSession 解一个会话文件。zstd 多帧由 Reader 连续解到 EOF。
-func decodeSession(path string, tail int) (*realSession, error) {
+// decodeSession 解一个会话文件。headerOnly 时只解前 4KB 明文（够 header 一行），
+// 用于启动期建索引——178 个文件全量解要 6 秒，只解 header 约 0.3 秒。
+func decodeSession(path string, tail int, headerOnly bool) (*realSession, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -132,11 +136,15 @@ func decodeSession(path string, tail int) (*realSession, error) {
 	defer dec.Close()
 
 	var out bytes.Buffer
-	if _, err := out.ReadFrom(dec); err != nil && out.Len() == 0 {
+	if headerOnly {
+		if _, err := io.CopyN(&out, dec, 4096); err != nil && out.Len() == 0 && err != io.EOF {
+			return nil, err
+		}
+	} else if _, err := out.ReadFrom(dec); err != nil && out.Len() == 0 {
 		return nil, err // 一帧都没解出来才算坏；尾部半帧忽略
 	}
 
-	rs := &realSession{}
+	rs := &realSession{Path: path}
 	if fi, err := os.Stat(path); err == nil {
 		rs.UpdatedAt = fi.ModTime()
 	}
@@ -152,6 +160,9 @@ func decodeSession(path string, tail int) (*realSession, error) {
 			}
 			rs.ID = h.ID
 			rs.Cwd = h.Cwd
+			if headerOnly {
+				return rs, nil // 索引只需要 id/cwd/mtime
+			}
 			continue
 		}
 		var e v4Event

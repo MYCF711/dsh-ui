@@ -56,7 +56,9 @@ func estHeight(text string, width float32) float32 {
 	if usable < 80 {
 		usable = 80
 	}
-	perLine := usable / fontSize
+	// 0.62 是实测反推的：第一版按 1.0 倍算，500 条里每条高估约 50%，
+	// 结果是每条消息下面拖一条大空白（见 docs/virt-overscan-before.png）。
+	perLine := usable / (fontSize * 0.62)
 	if perLine < 8 {
 		perLine = 8
 	}

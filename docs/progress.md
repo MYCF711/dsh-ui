@@ -98,3 +98,4 @@
 | 2026-11-03 12:15 | 三项交互用 `mouse_event` 补验：点击切换 ✅ / 流式中途切换 ✅ / 审批点「允许」✅（气泡消失）。**按钮命中区偏小**（第一次差 7px 没点到） | `docs/u1-approve-click2.png` |
 | 2026-11-03 12:50 | **`scripts/smoke-u1.ps1`**：一条命令跑完 7 项自动验收（mockd 起速 / 窗口起速 / 内存 / 线程 / 点击切换 / 切换后内存）。最新 **7 pass 0 fail**：`624 ms` · `304 ms` · `65.5 MB` · `34 线程` | 踩到两个坑：PowerShell 5.1 读 UTF-8 要 BOM；`Get-Process` 存在 ≠ 窗口出现（先报 51 ms，改成等 `MainWindowHandle` 后是 304 ms） |
 | 2026-11-03 13:30 | 写 `docs/u0-handoff.md`：界面线对宿主侧 U0 的完整要求（13 method 的语义、WS 帧形状、三条硬要求、三个我们踩过的坑、验收线） | 给写 `internal/transport/` 的人看 |
+| 2026-11-03 15:56 | 写 `docs/u0-list-fastpath.md`：宿主线 `session.list` 4.37s 的解法（我这边实测 6.1s→624ms）。含 `headerOnly` 实现、为什么是 64KB、判坏阈值、两条没做的边界 | 宿主线已经在做 U0 了（`AGENTS.md` 记了 4.37s） |

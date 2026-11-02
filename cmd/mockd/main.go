@@ -1,0 +1,203 @@
+// mockd —— Transport 契约的假宿主。
+//
+// 用途：在真宿主接上之前，让界面先能跑起来；同时验证 `testdata/api.snapshot.json`
+// 里的 13 个 method 形状是否够用。**它不碰会话日志，也不连 dshd。**
+//
+//	go run ./cmd/mockd            # 监听 127.0.0.1:7788
+//	curl -s -XPOST 127.0.0.1:7788/api/session.list -d '{"params":{}}'
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+)
+
+type errObj struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	Hint      string `json:"hint,omitempty"`
+	Retryable bool   `json:"retryable,omitempty"`
+}
+
+type envelope struct {
+	Result any     `json:"result,omitempty"`
+	Error  *errObj `json:"error,omitempty"`
+}
+
+type session struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Cwd       string `json:"cwd"`
+	UpdatedAt string `json:"updatedAt"`
+	Mode      string `json:"mode"`
+}
+
+type message struct {
+	Seq   int    `json:"seq"`
+	Role  string `json:"role"`
+	Text  string `json:"text"`
+	SeqID string `json:"-"`
+}
+
+var (
+	mu       sync.Mutex
+	sessions = []session{
+		{ID: "s-001", Title: "界面线 spike 讨论", Cwd: "D:/DeepSeek Harness/default-workspace", UpdatedAt: "2026-11-03T05:40:00+08:00", Mode: "default"},
+		{ID: "s-002", Title: "UI 插件化架构方案讨论", Cwd: "D:/DeepSeek Harness/default-workspace", UpdatedAt: "2026-11-03T04:10:00+08:00", Mode: "default"},
+	}
+	history = map[string][]message{
+		"s-001": seedHistory("s-001", 40),
+		"s-002": seedHistory("s-002", 12),
+	}
+	busy  = map[string]bool{}
+	nextN = 100
+)
+
+func seedHistory(id string, n int) []message {
+	out := make([]message, 0, n)
+	for i := 1; i <= n; i++ {
+		role := "user"
+		if i%2 == 0 {
+			role = "assistant"
+		}
+		out = append(out, message{Seq: i, Role: role, Text: fmt.Sprintf("第 %d 条：这里是中文与 English 混排的示例文本，用来验证滚动与虚拟化。", i)})
+	}
+	return out
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func fail(w http.ResponseWriter, code int, e errObj) {
+	writeJSON(w, code, envelope{Error: &e})
+}
+
+func main() {
+	http.HandleFunc("/api/", route)
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]string{"ok": "mockd", "time": time.Now().Format(time.RFC3339)})
+	})
+	addr := "127.0.0.1:7788"
+	log.Printf("mockd listening on http://%s (13 methods, fake data)", addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
+}
+
+func route(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		fail(w, 405, errObj{Code: "invalid_arg", Message: "只接受 POST", Hint: "用 POST /api/<method>，body 形如 {\"params\":{}}"})
+		return
+	}
+	method := strings.TrimPrefix(r.URL.Path, "/api/")
+	var body struct {
+		Params json.RawMessage `json:"params"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fail(w, 400, errObj{Code: "invalid_arg", Message: "body 不是合法 JSON", Hint: `形如 {"params":{}}`})
+		return
+	}
+	mu.Lock()
+	defer mu.Unlock()
+
+	switch method {
+	case "session.list":
+		writeJSON(w, 200, envelope{Result: map[string]any{"sessions": sessions}})
+
+	case "session.create":
+		nextN++
+		s := session{ID: fmt.Sprintf("s-%03d", nextN), Title: "新会话", Cwd: "", UpdatedAt: time.Now().Format(time.RFC3339), Mode: "default"}
+		sessions = append([]session{s}, sessions...)
+		writeJSON(w, 200, envelope{Result: map[string]any{"id": s.ID, "createdAt": s.UpdatedAt, "mode": s.Mode}})
+
+	case "session.load":
+		var p struct {
+			ID           string `json:"id"`
+			TailMessages int    `json:"tailMessages"`
+		}
+		_ = json.Unmarshal(body.Params, &p)
+		h, ok := history[p.ID]
+		if !ok {
+			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID, Hint: "先调 session.list 拿一个真实 id"})
+			return
+		}
+		tail := p.TailMessages
+		if tail <= 0 || tail > len(h) {
+			tail = len(h)
+		}
+		writeJSON(w, 200, envelope{Result: map[string]any{
+			"id": p.ID, "title": "假会话", "cwd": "D:/DeepSeek Harness/default-workspace", "mode": "default",
+			"messages": h[len(h)-tail:], "truncated": tail < len(h), "total": len(h),
+		}})
+
+	case "session.history":
+		var p struct {
+			ID     string `json:"id"`
+			Limit  int    `json:"limit"`
+		}
+		_ = json.Unmarshal(body.Params, &p)
+		h, ok := history[p.ID]
+		if !ok {
+			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID})
+			return
+		}
+		writeJSON(w, 200, envelope{Result: map[string]any{"messages": h, "nextBefore": nil}})
+
+	case "session.prompt":
+		var p struct {
+			ID   string `json:"id"`
+			Text string `json:"text"`
+		}
+		_ = json.Unmarshal(body.Params, &p)
+		if _, ok := history[p.ID]; !ok {
+			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID})
+			return
+		}
+		if strings.TrimSpace(p.Text) == "" {
+			fail(w, 400, errObj{Code: "invalid_arg", Message: "text 为空", Hint: "至少一个非空白字符"})
+			return
+		}
+		if busy[p.ID] {
+			fail(w, 409, errObj{Code: "busy", Message: "该会话有 turn 在跑", Retryable: true, Hint: "先 session.cancel，或等 turn 结束"})
+			return
+		}
+		busy[p.ID] = true
+		h := history[p.ID]
+		h = append(h, message{Seq: len(h) + 1, Role: "user", Text: p.Text})
+		history[p.ID] = h
+		nextN++
+		writeJSON(w, 200, envelope{Result: map[string]any{"turnId": fmt.Sprintf("t-%d", nextN), "accepted": true}})
+
+	case "session.cancel":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(body.Params, &p)
+		busy[p.ID] = false
+		writeJSON(w, 200, envelope{Result: map[string]any{"cancelled": true}})
+
+	case "workspace.list":
+		writeJSON(w, 200, envelope{Result: map[string]any{"roots": []map[string]any{
+			{"path": "D:/DeepSeek Harness/default-workspace", "name": "default-workspace", "isGit": false},
+			{"path": "D:/DeepSeek Harness/default-workspace/DSH-GO", "name": "DSH-GO", "isGit": true},
+			{"path": "D:/DeepSeek Harness/default-workspace/dsh-ui", "name": "dsh-ui", "isGit": true},
+		}}})
+
+	case "config.get":
+		writeJSON(w, 200, envelope{Result: map[string]any{"values": map[string]any{
+			"model": "deepseek-v4.1", "theme": "dark", "locale": "zh-CN",
+		}}})
+
+	case "session.delete", "session.fork", "fs.read", "fs.write", "config.set":
+		fail(w, 501, errObj{Code: "unsupported", Message: method + " 属于第二批，mockd 暂未实现", Hint: "见 docs/api-contract.md §3"})
+
+	default:
+		fail(w, 404, errObj{Code: "unsupported", Message: "未知 method: " + method, Hint: "13 个合法值见 docs/api-contract.md §3"})
+	}
+}

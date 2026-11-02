@@ -1,0 +1,241 @@
+{
+  "$schema": "dsh-ui/api-contract@1",
+  "version": 1,
+  "note": "自定契约，不复刻官方 {path,key} 信封；路径形状保持 /api/<method> 便于将来加兼容映射",
+  "envelope": {
+    "request": {
+      "params": "object"
+    },
+    "response": {
+      "result": "object"
+    },
+    "error": {
+      "code": "string",
+      "message": "string",
+      "hint": "string",
+      "retryable": "bool"
+    }
+  },
+  "errors": {
+    "not_found": "会话或路径不存在",
+    "busy": "该会话有 turn 在跑，retryable=true",
+    "invalid_arg": "参数不合法，hint 写清怎么改",
+    "unsupported": "该方法本版本未实现",
+    "internal": "宿主内部错误"
+  },
+  "stream": {
+    "path": "/api/mux",
+    "transport": "websocket",
+    "client_frames": [
+      {
+        "t": "sub",
+        "topic": "string",
+        "sinceSeq": "int?"
+      },
+      {
+        "t": "unsub",
+        "topic": "string"
+      },
+      {
+        "t": "ping"
+      }
+    ],
+    "server_frames": [
+      {
+        "t": "ev",
+        "topic": "string",
+        "seq": "int",
+        "kind": "string",
+        "data": "object"
+      },
+      {
+        "t": "gap",
+        "topic": "string",
+        "fromSeq": "int",
+        "toSeq": "int",
+        "reason": "需要重新拉 history"
+      },
+      {
+        "t": "pong"
+      }
+    ],
+    "topics": {
+      "session:<id>": "该会话的 v4 事件（62 种原始词汇，不另造）",
+      "turn:<id>": "助手流式增量：text-delta / reasoning-delta / tool-call-delta，带 revision/index"
+    },
+    "continuity": "seq 连续；断号发 gap 帧，客户端按 session.history 补洞，不整体刷新"
+  },
+  "methods": {
+    "session.list": {
+      "batch": 1,
+      "req": {
+        "cwd": "string?",
+        "limit": "int=50",
+        "cursor": "string?"
+      },
+      "resp": {
+        "sessions": [
+          {
+            "id": "string",
+            "title": "string",
+            "cwd": "string",
+            "updatedAt": "RFC3339",
+            "mode": "string"
+          }
+        ],
+        "next": "string?"
+      }
+    },
+    "session.create": {
+      "batch": 1,
+      "req": {
+        "cwd": "string?",
+        "mode": "string=default",
+        "title": "string?"
+      },
+      "resp": {
+        "id": "string",
+        "createdAt": "RFC3339",
+        "mode": "string"
+      }
+    },
+    "session.load": {
+      "batch": 1,
+      "req": {
+        "id": "string",
+        "tailMessages": "int=200"
+      },
+      "resp": {
+        "id": "string",
+        "title": "string",
+        "cwd": "string",
+        "mode": "string",
+        "messages": [
+          "Message"
+        ],
+        "truncated": "bool",
+        "total": "int"
+      }
+    },
+    "session.history": {
+      "batch": 1,
+      "req": {
+        "id": "string",
+        "beforeSeq": "int?",
+        "limit": "int=200"
+      },
+      "resp": {
+        "messages": [
+          "Message"
+        ],
+        "nextBefore": "int?"
+      }
+    },
+    "session.prompt": {
+      "batch": 1,
+      "req": {
+        "id": "string",
+        "text": "string",
+        "attachments": [
+          "{path,name,mime}"
+        ]
+      },
+      "resp": {
+        "turnId": "string",
+        "accepted": "bool"
+      }
+    },
+    "session.cancel": {
+      "batch": 1,
+      "req": {
+        "id": "string"
+      },
+      "resp": {
+        "cancelled": "bool"
+      }
+    },
+    "session.delete": {
+      "batch": 2,
+      "req": {
+        "id": "string"
+      },
+      "resp": {
+        "deleted": "bool"
+      }
+    },
+    "session.fork": {
+      "batch": 2,
+      "req": {
+        "id": "string",
+        "fromSeq": "int?"
+      },
+      "resp": {
+        "id": "string",
+        "parentSession": "string"
+      }
+    },
+    "workspace.list": {
+      "batch": 1,
+      "req": {},
+      "resp": {
+        "roots": [
+          {
+            "path": "string",
+            "name": "string",
+            "isGit": "bool"
+          }
+        ]
+      }
+    },
+    "fs.read": {
+      "batch": 2,
+      "req": {
+        "path": "string",
+        "maxBytes": "int=262144"
+      },
+      "resp": {
+        "path": "string",
+        "content": "string",
+        "truncated": "bool",
+        "size": "int"
+      }
+    },
+    "fs.write": {
+      "batch": 2,
+      "req": {
+        "path": "string",
+        "content": "string",
+        "createDirs": "bool=false"
+      },
+      "resp": {
+        "path": "string",
+        "bytes": "int"
+      }
+    },
+    "config.get": {
+      "batch": 1,
+      "req": {
+        "keys": [
+          "string"
+        ]
+      },
+      "resp": {
+        "values": "object"
+      }
+    },
+    "config.set": {
+      "batch": 2,
+      "req": {
+        "values": "object"
+      },
+      "resp": {
+        "ok": "bool"
+      }
+    }
+  },
+  "counts": {
+    "total": 13,
+    "batch1": 8,
+    "batch2": 5
+  }
+}

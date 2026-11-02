@@ -204,3 +204,52 @@ mdView.Paint(canvas, components.MarkdownPaint{Look: look, X: r.X, Y: r.Y})
 ```
 
 **结论：`flex` 的声明式布局 + `MarkdownView` 的命令式绘制可以共存**，`Box.Rect()`（`flex/box.go:30`）是桥。
+
+---
+
+## 语法高亮的坑（2026-11-03 10:30，实测）
+
+**只接 `MarkdownStyle.Highlight` 是不生效的。**
+
+```go
+style := components.MarkdownStyle{Highlight: mdlite.Highlight}   // ← 只做到这里，代码块还是全一个颜色
+```
+
+**根因**：`components.MarkdownLookFor(theme)` 不设 `MarkdownLook.Code` 数组，
+而源码注释写着 *"a class left transparent is drawn in Text"* ——
+**全透明 = 所有 class 都画成正文色**。
+
+**必须两处一起**：
+
+```go
+style := components.MarkdownStyle{Highlight: mdlite.Highlight}
+
+look := components.MarkdownLookFor(theme)
+look.Code[components.CodeComment]  = ui.RGB(0x6A9955)  // 灰绿
+look.Code[components.CodeString]   = ui.RGB(0xCE9178)  // 橙
+look.Code[components.CodeNumber]   = ui.RGB(0xB5CEA8)  // 浅绿
+look.Code[components.CodeKeyword]  = ui.RGB(0x569CD6)  // 蓝
+look.Code[components.CodeFunction] = ui.RGB(0xDCDCAA)  // 黄
+look.Code[components.CodeVariable] = ui.RGB(0x9CDCFE)  // 浅蓝
+```
+
+Viva 的文档没提这一条，**得看源码注释**。
+
+### 另一个限制：钩子是无状态的
+
+`Highlight(language, line, dst)` **逐行调用、没有跨行状态**。所以多行字符串/块注释
+只有带引号或前缀的那一行会被认出来：
+
+```go
+var s = `line1
+line2`      // ← line2 不会被涂成字符串色
+```
+
+要修得改 Viva 的钩子签名，不划算。
+
+### 还有一条：`Codes()` 的位置数据可用，但不能拿来叠画
+
+`MarkdownView.Codes()` 返回每个代码块的 `{X, Y, Width, Height}`，数据是对的（实测
+`{X:0 Y:31 Width:880 Height:80}`）。但**在它上面 `canvas.Fill` + 重画走不通**——
+`MarkdownView.Paint` 和你的绘制在同一个 canvas 上，**绘制顺序不受调用方控制**，
+你 Fill 之后它又画了一遍，结果是两层文字叠在一起（`docs/u1-codeblock.md` 有完整实测）。

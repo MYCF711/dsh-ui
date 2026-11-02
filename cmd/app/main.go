@@ -264,7 +264,12 @@ func newConfig(m *model) app.Config {
 				f.Column().Grow(1).FillHeight().Pad(12).Gap(8).Children(func() {
 					f.Text(status).FontSize(12).Muted()
 					f.Divider()
-					f.ScrollArea(msgScr).Grow(1).MinHeight(160).Gap(6).Children(func() {
+					// 每个会话用不同的 scroll id：否则切会话时滚动位置会串（viva flex/scroll.go:174）
+					scrID := msgScr
+					if cur != "" {
+						scrID = tree.ID(home, "msgs-"+cur)
+					}
+					f.ScrollArea(scrID).Grow(1).MinHeight(160).Gap(6).Children(func() {
 						f.Column().Gap(6).Children(func() {
 							if len(msgs) == 0 {
 								f.Text("← 左边选一个会话").Muted()

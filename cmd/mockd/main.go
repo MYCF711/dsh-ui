@@ -120,7 +120,10 @@ type muxFrame struct {
 	Reason   string          `json:"reason,omitempty"`
 }
 
-const muxTick = 200 * time.Millisecond
+const (
+	muxTick     = 200 * time.Millisecond // 背景假事件
+	muxTickChar = 60 * time.Millisecond  // 流式回答：一个字一帧
+)
 
 func muxHandler(w http.ResponseWriter, r *http.Request) {
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
@@ -170,6 +173,10 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(muxTick)
 	defer ticker.Stop()
 
+	// 字符流：60ms 一个字，推 session.prompt 登记的那条回答。
+	charTick := time.NewTicker(muxTickChar)
+	defer charTick.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -195,6 +202,35 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 				if !writeFrame(muxFrame{T: "pong"}) {
 					return
 				}
+			}
+
+		case <-charTick.C:
+			if !subbed {
+				continue
+			}
+			sid := strings.TrimPrefix(topic, "session:")
+			ch, ok, lineDone, allDone := popPendingChar(sid)
+			if !ok {
+				if allDone {
+					commitPending(sid)
+				}
+				continue
+			}
+			seq++
+			d, _ := json.Marshal(map[string]string{"delta": string(ch)})
+			if !writeFrame(muxFrame{T: "ev", Topic: topic, Seq: seq, Kind: "assistant/message", Data: d}) {
+				return
+			}
+			if lineDone {
+				seq++
+				dd, _ := json.Marshal(map[string]bool{"done": true})
+				if !writeFrame(muxFrame{T: "ev", Topic: topic, Seq: seq, Kind: "assistant/message", Data: dd}) {
+					return
+				}
+			}
+			if allDone {
+				full := commitPending(sid)
+				log.Printf("mux: 流式回答推完，已写入 history（%d 字符）", len([]rune(full)))
 			}
 
 		case <-ticker.C:
@@ -308,6 +344,7 @@ func route(w http.ResponseWriter, r *http.Request) {
 		h := history[p.ID]
 		h = append(h, message{Seq: len(h) + 1, Role: "user", Text: p.Text})
 		history[p.ID] = h
+		enqueueReplyLocked(p.ID, p.Text) // 流式回答排队，等 /api/mux 的订阅者来取
 		nextN++
 		writeJSON(w, 200, envelope{Result: map[string]any{"turnId": fmt.Sprintf("t-%d", nextN), "accepted": true}})
 

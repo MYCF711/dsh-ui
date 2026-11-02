@@ -7,3 +7,7 @@ spike/**/*.exe
 .viva/
 # 截图保留，但大文件排除
 *.tmp
+
+# dshd 的默认 home（`acp` 子命令 -home 默认 tmp/dshd-home）：
+# 它会在跑过的地方建会话，属于运行产物，不进仓库
+tmp/dshd-home/

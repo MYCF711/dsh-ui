@@ -72,3 +72,5 @@
 | 2026-11-03 10:40 | 四档曲线：40/100/200/400 → 72.2/77.3/80.8/86.8 MB | **亚线性**：10 倍消息只涨 14.6 MB |
 | 2026-11-03 12:05 | **接上真 dshd（ACP）**：initialize/session-new/session-prompt 全通，工具调用与审批帧都出来 | 真模型回答「2。」与「输出就是 hello-dsh-go。」 |
 | 2026-11-03 12:05 | 三个坑：manifest 多列模块 / 权限 id 必须原样回 / busy 没人清 | 全部修掉，见 `docs/acp.md` |
+| 2026-11-03 06:25 | **真 ACP 打通**：界面 → mockd `-acp` → dshd → 真模型 → 流式回界面。实测问「只回答两个字：收到」→ 回 **收到**（不是 mock 的 Markdown 样板） | 端到端 |
+| 2026-11-03 06:22 | 踩到 PowerShell `Start-Process -ArgumentList` 不自动加引号：含空格路径被截断（`D:/DeepSeek Harness` → `D:/DeepSeek`），回落假数据且 ACP 没起 | 手动加引号后正常 |

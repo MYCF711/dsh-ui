@@ -1,0 +1,77 @@
+# 只为 ACP 联调生成：只含 dshd.exe 里真实编译进去的模块
+# （原 dsh.toml 列了 30 个，但二进制只有这些；多列一个就 fail-loud）
+
+[profile]
+name = "acp-smoke"
+
+[[module]]
+id      = "tools"
+backend = "static"
+
+[[module]]
+id      = "exec"
+backend = "static"
+
+[[module]]
+id      = "fs"
+backend = "static"
+
+[[module]]
+id      = "search"
+backend = "static"
+
+[[module]]
+id      = "tool-read"
+backend = "static"
+
+[[module]]
+id      = "tool-write"
+backend = "static"
+
+[[module]]
+id      = "tool-edit"
+backend = "static"
+
+[[module]]
+id      = "tool-glob"
+backend = "static"
+
+[[module]]
+id      = "tool-grep"
+backend = "static"
+
+[[module]]
+id      = "history"
+backend = "static"
+
+[[module]]
+id      = "tool-history"
+backend = "static"
+
+[[module]]
+id      = "tool-wd"
+backend = "static"
+
+[[module]]
+id      = "tool-todo"
+backend = "static"
+
+[[module]]
+id      = "tool-present"
+backend = "static"
+
+[[module]]
+id      = "tool-ask"
+backend = "static"
+
+[[module]]
+id      = "tool-webfetch"
+backend = "static"
+
+[[module]]
+id      = "tool-websearch"
+backend = "static"
+
+[[module]]
+id      = "tool-readimage"
+backend = "static"

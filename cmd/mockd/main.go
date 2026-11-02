@@ -91,6 +91,9 @@ func fail(w http.ResponseWriter, code int, e errObj) {
 func main() {
 	sessionsDir := flag.String("sessions", "", "真实会话根目录（空=用假数据）；只读，不会写回")
 	tailMsgs := flag.Int("tail", 200, "每个会话最多读多少条消息")
+	acpExe := flag.String("acp", "", "dshd 可执行文件路径；给了就接真模型（否则用假回答）")
+	acpMani := flag.String("acp-manifest", "", "dshd 的 manifest（dsh.toml 列了没编译进去的模块时必须给精简版）")
+	acpDir := flag.String("acp-cwd", "D:/DeepSeek Harness/default-workspace/dsh-ui", "ACP 会话的工作目录")
 	flag.Parse()
 
 	// /api/mux 比 /api/ 长，ServeMux 会优先精确匹配到它，不影响 13 个一元 method。
@@ -109,8 +112,15 @@ func main() {
 		}
 	}
 
+	if *acpExe != "" {
+		startACP(*acpExe, *acpMani, *acpDir)
+	}
+
 	addr := "127.0.0.1:7788"
 	src := "fake data"
+	if acp != nil {
+		src = "ACP → dshd（真模型）"
+	}
 	if realDB != nil {
 		src = fmt.Sprintf("%d real sessions", len(realDB.byID))
 	}
@@ -224,6 +234,34 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 				if !writeFrame(muxFrame{T: "pong"}) {
 					return
 				}
+			}
+
+		case ev, ok := <-acpLive:
+			// 真模型的流：ACP 的 update 已经翻成 acpEvent，这里只负责编号 + 写帧。
+			// acpLive 为 nil 时这个 case 永远阻塞 —— 没开 -acp 就完全不影响。
+			if !ok || !subbed {
+				continue
+			}
+			seq++
+			data := map[string]any{}
+			switch ev.Kind {
+			case "assistant/message":
+				if ev.Done {
+					data["done"] = true
+				} else {
+					data["delta"] = ev.Delta
+				}
+			case "assistant/thought":
+				data["delta"] = ev.Delta
+			case "tool/call":
+				data["tool"] = ev.Tool
+				data["args"] = ev.Args
+			case "approval/asked":
+				data["tool"] = ev.Tool
+			}
+			b, _ := json.Marshal(data)
+			if !writeFrame(muxFrame{T: "ev", Topic: topic, Seq: seq, Kind: ev.Kind, Data: b}) {
+				return
 			}
 
 		case <-charTick.C:
@@ -386,8 +424,11 @@ func route(w http.ResponseWriter, r *http.Request) {
 			Text string `json:"text"`
 		}
 		_ = json.Unmarshal(body.Params, &p)
-		if _, ok := history[p.ID]; !ok {
-			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID})
+		// ACP 模式下可以往"真实会话"发消息，那些不在假的 history 表里
+		_, inFake := history[p.ID]
+		inReal := realDB != nil && realDB.byID[p.ID] != nil
+		if !inFake && !inReal {
+			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID, Hint: "先调 session.list 拿一个真实 id"})
 			return
 		}
 		if strings.TrimSpace(p.Text) == "" {
@@ -399,10 +440,16 @@ func route(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		busy[p.ID] = true
-		h := history[p.ID]
-		h = append(h, message{Seq: len(h) + 1, Role: "user", Text: p.Text})
-		history[p.ID] = h
-		enqueueReplyLocked(p.ID, p.Text) // 流式回答排队，等 /api/mux 的订阅者来取
+		if inFake {
+			h := history[p.ID]
+			h = append(h, message{Seq: len(h) + 1, Role: "user", Text: p.Text})
+			history[p.ID] = h
+		}
+		if acp != nil {
+			go runACPPrompt(p.ID, p.Text) // 真模型：流事件会塞进 acpLive；结束时自己清 busy
+		} else {
+			enqueueReplyLocked(p.ID, p.Text) // 假回答：排队等 /api/mux 的订阅者来取
+		}
 		nextN++
 		writeJSON(w, 200, envelope{Result: map[string]any{"turnId": fmt.Sprintf("t-%d", nextN), "accepted": true}})
 

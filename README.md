@@ -6,6 +6,46 @@
 
 ---
 
+## 现在到哪了（2026-11-03 深夜）
+
+| 阶段 | 状态 | 证据 |
+|---|---|---|
+| **spike E1/E2/E3** | ✅ 通过 | `docs/e1-result.md`、`docs/e2-result.md`、`docs/verdict.md` |
+| **U0 Transport 契约** | ✅ 13 个 method + `/api/mux` + 快照 | `testdata/api.snapshot.json`、`docs/api-contract.md` |
+| **U1 最小界面** | ✅ 能聊、能看历史、能续会话 | 见下 |
+
+U1 现在有的：真实会话列表（180 个）、Markdown 全要素（标题/粗体/列表/引用/代码块/表格）、
+工具调用卡片、审批气泡（先命令后模型自述）、逐字流式、会话切换记住滚动位置、视口虚拟化。
+
+**关键数字（实测）**：**72.5 MB / 单进程 / 0% 空闲 CPU / 698 ms 冷启动 / 4.02 MB 二进制**。
+对照：官方 DSH **1,603.8 MB / 9 进程 / 2.0% 空闲 CPU**。
+
+### 怎么跑
+
+```bash
+export PATH="/c/Program Files/Go/bin:$PATH"
+export GOPROXY=https://goproxy.cn,direct
+
+# 1) 只读真实会话（假回答）
+go run ./cmd/mockd -sessions "D:/DeepSeek Harness/home/sessions"
+
+# 2) 接真模型（走 dshd acp）
+go run ./cmd/mockd -sessions "D:/DeepSeek Harness/home/sessions"     -acp "../DSH-GO/dshd.exe" -acp-manifest tmp/dsh-acp.toml
+
+# 3) 界面
+go run ./cmd/app            # 或 go run ./cmd/app -tail 40 -demo
+```
+
+### 这不是终局
+
+| 现在的样子 | 该有的样子 |
+|---|---|
+| `mockd` 是过渡管（伪造 `/api` 再转发 ACP） | U0 的 `internal/transport` 直连真宿主 |
+| 续会话靠**复制副本**（每次点开重新复制） | home 只有一个 |
+| 没有搜索 / 过滤 / 侧栏折叠 / 多窗口 | U1 之后的活 |
+
+---
+
 ## 为什么单独一个仓库
 
 | 理由 | 展开 |

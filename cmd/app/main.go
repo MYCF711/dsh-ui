@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
@@ -73,6 +74,11 @@ type model struct {
 	mdText  []string
 	mdWidth []float32 // 上次 Layout 用的宽度
 	mdH     []float32 // 上次 Layout 的高度：文本和宽度都没变就不重新排版
+
+	// 代码块横向滚动的状态（key = 消息下标/代码块 Y 偏移）。
+	// MarkdownView 内部会把超宽行直接裁掉，拿不到滚动；这里用它的 Codes()
+	// 位置和原文重画一遍，套 mdlite.Overflow。
+	codeScroll map[string]*mdlite.Overflow
 
 	// 流式：当前订阅的取消函数 + 正在拼接的助手文本（delta 累积）
 	mux        *apiclient.Mux
@@ -425,6 +431,11 @@ func estimateMsgHeight(m apiclient.Message, width float32) float32 {
 // 依据：真实会话 442 条、tail=200 时全量 Markdown 要 168.8 MB / 首排 4 s。
 const markdownBudget = 30
 
+// newline 是换行符。写成常量而不是字面量 "\n"：这个仓库里已经有三次
+// 通过 heredoc / python 拼 Go 源码时把 "\n" 变成真换行，编译直接红。
+// 用一个名字，就再也不会踩。
+const newline = "\n"
+
 var (
 	theme        = ui.DarkTheme()
 	renderLimit  int    // 0 = 不限制
@@ -509,13 +520,13 @@ func newConfig(m *model) app.Config {
 					if cur != "" {
 						scrID = tree.ID(home, "msgs-"+cur)
 					}
-					f.ScrollArea(scrID).Grow(1).MinHeight(160).Gap(6).Follow(true).Children(func() {
+					f.ScrollArea(scrID).Width(f.Bounds().Width-278).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip().Children(func() {
 						f.Column().Gap(6).Children(func() {
 							if len(msgs) == 0 {
 								f.Text("← 左边选一个会话").Muted()
 							}
 							if streamText != "" {
-								f.Column().Pad(8).Radius(6).Border(1, theme.Border).Children(func() {
+								f.Column().FillWidth().Pad(8).Radius(6).Border(1, theme.Border).Children(func() {
 									f.Row().Gap(6).Items(flex.Center).Children(func() {
 										f.Text("助手").FontSize(11).Muted()
 										f.Spinner()
@@ -560,7 +571,7 @@ func newConfig(m *model) app.Config {
 								case "assistant":
 									who = "助手"
 								}
-								f.Column().Pad(8).Radius(6).Border(1, theme.Border).Children(func() {
+								f.Column().FillWidth().Pad(8).Radius(6).Border(1, theme.Border).Children(func() {
 									if who != "" {
 										f.Text(who).FontSize(11).Muted()
 									}
@@ -650,6 +661,46 @@ func newConfig(m *model) app.Config {
 				// 只裁到 r.Width 会溢出画到侧栏上（实测过一次）。
 				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: bounds.Width - r.X, Height: bounds.Height},
 			})
+
+			// 代码块横向滚动：MarkdownView 会把超宽行直接裁掉，没有滚动。
+			// 用 Codes() 拿到每块的位置和原文，重画一遍并套上 mdlite.Overflow。
+			for _, code := range m.mdViews[slot.idx].Codes() {
+				if code.Bounds.Width < 20 || code.Bounds.Height < 10 {
+					continue
+				}
+				cr := ui.Rect{
+					X:      r.X + code.Bounds.X,
+					Y:      r.Y + code.Bounds.Y,
+					Width:  code.Bounds.Width,
+					Height: code.Bounds.Height,
+				}
+				if cr.Y+cr.Height < bounds.Y || cr.Y > bounds.Y+bounds.Height {
+					continue // 不在视口里，不画也不建状态
+				}
+				key := fmt.Sprintf("%d/%.0f", slot.idx, code.Bounds.Y)
+				o := m.codeScroll[key]
+				if o == nil {
+					o = &mdlite.Overflow{}
+					m.codeScroll[key] = o
+				}
+				lines := strings.Split(code.Text, newline)
+				var cw float32
+				for _, ln := range lines {
+					if w := float32(len([]rune(ln))) * 7.9; w > cw {
+						cw = w
+					}
+				}
+				cw += 24
+				o.Draw(canvas, theme, cr, cw, cr.Height, tree.ID(home, "code-"+key), "代码块",
+					func(c ui.Rect) {
+						y := c.Y + 2
+						for _, ln := range lines {
+							canvas.Label(ln, ui.Rect{X: c.X + 6, Y: y, Width: c.Width, Height: 18},
+								ui.TextStyle{Size: 13, Mono: true, Color: theme.Foreground})
+							y += 18
+						}
+					})
+			}
 		}
 	}
 	return cfg
@@ -670,8 +721,10 @@ func main() {
 	demoTool  = *demo
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
-		cache: map[string]*cachedSession{}, mux: apiclient.NewMux(*addr),
-		scrollPos: map[string]float32{}}
+		cache:      map[string]*cachedSession{},
+		mux:        apiclient.NewMux(*addr),
+		scrollPos:  map[string]float32{},
+		codeScroll: map[string]*mdlite.Overflow{}}
 	m.refreshList()
 
 	var canvas ui.Canvas

@@ -21,3 +21,26 @@
 | 2026-11-03 06:10 | 修：会话项改 Row+Hit 左对齐、启动自动选第一个会话 | 40 条消息渲染正常 |
 | 2026-11-03 06:20 | mockd 加 s-003（1000 条）；app 加 `-limit` / `-session` / `-tail` 三个量测参数 | 可测三档 |
 | 2026-11-03 06:24 | 1000 条三档实测：全渲染 71.8 / 只渲染 60 → **60.8** / 只渲染 300 → 62.2 MB | **虚拟化收益 11.0 MB**，估算验证 |
+| 2026-11-03 05:36 | **U0 流**：`cmd/mockd` 加 `/api/mux`（WS，200ms 一条 ev，第 7 条后跳号发 gap）；新建 `internal/apiclient/mux.go`（`Mux.Subscribe` + 连续性检查 + gap 兜底 + 应用层 ping/pong） | `CGO_ENABLED=0 go build ./...` ✅ / `go vet` ✅ / **`go test -run TestMuxLive -v` PASS 3.45s：ev=10 gap=1 区间[108,109] 末 seq=112** |
+
+<details><summary>TestMuxLive 自测输出（2026-11-03 05:36）</summary>
+
+```
+--- 订阅 session:s-001  sinceSeq=100 ---
+  EV   seq=101 kind=user/message       data={"text":"第 101 条假事件（topic=session:s-001）"}
+  EV   seq=102 kind=assistant/message  data={"text":"第 102 条假事件（topic=session:s-001）"}
+  EV   seq=103 kind=user/message       data={"text":"第 103 条假事件（topic=session:s-001）"}
+  EV   seq=104 kind=assistant/message  data={"text":"第 104 条假事件（topic=session:s-001）"}
+  EV   seq=105 kind=user/message       data={"text":"第 105 条假事件（topic=session:s-001）"}
+  EV   seq=106 kind=assistant/message  data={"text":"第 106 条假事件（topic=session:s-001）"}
+  EV   seq=107 kind=user/message       data={"text":"第 107 条假事件（topic=session:s-001）"}
+  GAP  from=108 to=109 reason="mockd: 故意跳号，客户端应去 session.history 补洞"
+  EV   seq=110 kind=assistant/message  data={"text":"第 110 条假事件（topic=session:s-001）"}
+  EV   seq=111 kind=user/message       data={"text":"第 111 条假事件（topic=session:s-001）"}
+  EV   seq=112 kind=assistant/message  data={"text":"第 112 条假事件（topic=session:s-001）"}
+
+--- 小结：ev=10  gap=1  gap区间=[108,109]  最后 seq=112 ---
+--- PASS: TestMuxLive (3.45s)
+--- PASS: TestMuxBadBase (0.00s)
+```
+</details>

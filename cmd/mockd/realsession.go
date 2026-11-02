@@ -122,7 +122,7 @@ func loadRealSessions(root string, tail int) (*realStore, error) {
 }
 
 // decodeSession 解一个会话文件。zstd 多帧由 Reader 连续解到 EOF。
-// decodeSession 解一个会话文件。headerOnly 时只解前 4KB 明文（够 header 一行），
+// decodeSession 解一个会话文件。headerOnly 时只解前 64KB 明文（够 header + 第一条 user 消息），
 // 用于启动期建索引——178 个文件全量解要 6 秒，只解 header 约 0.3 秒。
 func decodeSession(path string, tail int, headerOnly bool) (*realSession, error) {
 	raw, err := os.ReadFile(path)
@@ -137,7 +137,7 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 
 	var out bytes.Buffer
 	if headerOnly {
-		if _, err := io.CopyN(&out, dec, 4096); err != nil && out.Len() == 0 && err != io.EOF {
+		if _, err := io.CopyN(&out, dec, 65536); err != nil && out.Len() == 0 && err != io.EOF {
 			return nil, err
 		}
 	} else if _, err := out.ReadFrom(dec); err != nil && out.Len() == 0 {
@@ -160,10 +160,7 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 			}
 			rs.ID = h.ID
 			rs.Cwd = h.Cwd
-			if headerOnly {
-				return rs, nil // 索引只需要 id/cwd/mtime
-			}
-			continue
+			continue // headerOnly 也继续读几行：标题比 cwd 有信息量
 		}
 		var e v4Event
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
@@ -184,6 +181,10 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 		}
 		rs.Total++
 		rs.Messages = append(rs.Messages, message{Seq: e.Seq, Role: role, Text: txt})
+		if headerOnly && role == "user" {
+			// 索引期拿到第一条就够做标题了，别为它把整个文件解完
+			return rs, nil
+		}
 	}
 
 	if tail > 0 && len(rs.Messages) > tail {

@@ -114,10 +114,10 @@ dshui -demo           # 额外插一条工具卡 + 一个审批气泡，用来�
 |---|---|---|
 | K1 | **续会话用的是副本** | `mockd` 把真实会话复制进 `tmp/dshd-home` 再 resume。**每次点开同一个会话都会重新复制**，上次聊的内容不会带过来。要真续，得 U0（`internal/transport`）直连真宿主，那时 home 只有一个 |
 | K2 | **`mockd` 是过渡管，不是终局** | 它把 ACP 的 update 翻译成 `/api/mux` 帧。终局是宿主直接吐 v4 原始事件，不经 ACP 绕路（`UIPLAN.md` 的 U0） |
-| K3 | **没有搜索 / 过滤** | 180 个会话只能靠滚动找。搜索要有索引，属于 U2 之后 |
+| K3 | ~~没有搜索 / 过滤~~ **已补**（2026-11-03 09:20） | 侧栏顶部有过滤框，按标题 + cwd 实时匹配。注意它是**内存里线性过滤**，不是索引——182 条够快，上千条要换做法 |
 | K4 | **没有侧栏折叠** | 左栏固定宽度。折叠是纯 UI 改动，但会牵动虚拟化的宽度估算（`estimateMsgHeight` 按固定宽度算），要一起改 |
 | K5 | **没有多窗口** | 一个进程一个窗口。多窗口要么多进程（每窗 80 MB 基线），要么一个进程多 View（Viva 的 `app.Config` 现在是单 Tree） |
-| K6 | **代码块不能横向滚动** | `flex` 没有 `Box.Offset`；`internal/mdlite/overflow.go` 已经做出横向滚动容器，但**还没接进 `cmd/app`** |
+| K6 | 代码块横向滚动**接了一半** | `internal/mdlite/overflow.go` 的容器已接进 `cmd/app`（见 `docs/u1-codeblock.md`），但**只有 `-demo` 注入的样例验过**；滚轮/拖拽交互还没接 |
 | K7 | **老消息降级成纯文本** | `markdownBudget = 30`：只有最近 30 条走 `MarkdownView`，更早的用 `f.Wrap`。原因是全上 Markdown 时 200 条要 168.8 MB / 首排 4 s（实测）。这是**有意取舍**，不是漏做 |
 | K8 | **没有语法高亮** | Viva 的 `MarkdownStyle.Highlight` 是留给调用方的钩子，我们没填。填了能让代码块有颜色，但要对每种语言写一遍 lexer |
 | K9 | **斜体看起来像加粗** | Viva 官方承认：比例字体还没有 italic face，斜体暂时画成更重一档（`docs/viva-scroll-and-text.md` 记了） |

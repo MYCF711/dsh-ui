@@ -119,7 +119,7 @@ dshui -demo           # 额外插一条工具卡 + 一个审批气泡，用来�
 | K5 | **没有多窗口** | 一个进程一个窗口。多窗口要么多进程（每窗 80 MB 基线），要么一个进程多 View（Viva 的 `app.Config` 现在是单 Tree） |
 | K6 | 代码块横向滚动**接了一半** | `internal/mdlite/overflow.go` 的容器已接进 `cmd/app`（见 `docs/u1-codeblock.md`），但**只有 `-demo` 注入的样例验过**；滚轮/拖拽交互还没接 |
 | K7 | **老消息降级成纯文本** | `markdownBudget = 30`：只有最近 30 条走 `MarkdownView`，更早的用 `f.Wrap`。原因是全上 Markdown 时 200 条要 168.8 MB / 首排 4 s（实测）。这是**有意取舍**，不是漏做 |
-| K8 | **没有语法高亮** | Viva 的 `MarkdownStyle.Highlight` 是留给调用方的钩子，我们没填。填了能让代码块有颜色，但要对每种语言写一遍 lexer |
+| K8 | ~~没有语法高亮~~ **已补**（2026-11-03 10:20） | `internal/mdlite/highlight.go` 逐行扫五类（注释/字符串/数字/关键字/函数调用），Go/Python/JS/TS/Bash/Rust 各有一张关键字表。**不是完整 lexer**：跨行字符串只认有引号那一行 |
 | K9 | **斜体看起来像加粗** | Viva 官方承认：比例字体还没有 italic face，斜体暂时画成更重一档（`docs/viva-scroll-and-text.md` 记了） |
 
 ---

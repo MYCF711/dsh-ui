@@ -88,3 +88,4 @@
 | 2026-11-03 10:30 | **修消息区溢出到侧栏**：`ScrollArea` 用 `Grow(1)` 时内容宽度算不出来，user 消息的 `f.Wrap` 直接画到 x=0。改成 `.Width(f.Bounds().Width-278)` 钉死 + `Clip()` | `u1-width.png`，界面终于对了 |
 | 2026-11-03 10:20 | 踩坑记录：`heredoc`/python 拼 Go 源码时 `"\n"` 被变成真换行**四次**了。现在源码里用 `const newline = "\n"` 一个名字，不再写字面量 | 编译红 4 次 |
 | 2026-11-03 11:50 | 超宽代码块：试了方案 A（`Codes()` 拿位置 + `Fill` 盖住 + `Overflow` 重画），**Fill 盖不住**（MarkdownView 绘制顺序不受调用方控制），两层文字重叠 → **回退**。实测结论：MarkdownView 对 129 字符的单行代码是**折行**不是硬切，清单 3.3 那条是误判 | `docs/u1-codeblock.md` + `u1-codeblock.png` |
+| 2026-11-03 09:58 | **纠正一个误判**：清单 3.3 说「60+ 字符单行代码块会被硬切」——实测**本来就折行**，内容不丢。`Codes()` 位置数据可用、但在 `MarkdownView.Paint` 上叠画走不通（绘制顺序不受控，Fill 盖不住） | 结论写进 `docs/u1-codeblock.md` |

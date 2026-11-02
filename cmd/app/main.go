@@ -673,7 +673,9 @@ func newConfig(m *model) app.Config {
 				Y:    r.Y,
 				// Clip 的右边界要到窗口边：Markdown 里的表格/代码块会比卡片宽，
 				// 只裁到 r.Width 会溢出画到侧栏上（实测过一次）。
-				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: bounds.Width - r.X - 8, Height: bounds.Height},
+				// 右边留 24px：窗口 padding 之外还有滚动条的位置，不留就会看见
+				// 内容画到窗口边线上（实测 1180×800 时右缘有竖排碎片）。
+				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: bounds.Width - r.X - 24, Height: bounds.Height},
 			})
 
 		}

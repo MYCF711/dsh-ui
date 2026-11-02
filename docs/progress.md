@@ -93,3 +93,5 @@
 | 2026-11-03 10:30 | **语法高亮**：`internal/mdlite/highlight.go` 通用词法高亮（关键字/字符串/注释/数字/函数名，Go/Py/JS/TS/Bash/Rust 关键字表），接进 `MarkdownStyle.Highlight` | 截图 `u1-highlight.png`，代码块有颜色 |
 | 2026-11-03 10:20 | **语法高亮**（K8）：`internal/mdlite/highlight.go` 手写逐行扫描（注释/字符串/数字/关键字/函数调用），6 条测试全绿。接进 `MarkdownStyle.Highlight` 后**不生效**——`MarkdownLookFor` 不设 `Code` 数组，所有 class 都被画成正文色；补了深色主题六个颜色才看得见 | 截图 `u1-highlight.png`：`func`/`int`/`string`/`return`/`nil` 蓝、函数名黄 |
 | 2026-11-03 11:00 | 最小尺寸实测（`SetWindowPos` 776×559）：布局没塌，但**右边缘有内容溢出**（新 bug B1） | `docs/u1-min-size.png` |
+| 2026-11-03 11:55 | **更正 B1**：右边缘的"溢出"是背景里的另一个窗口（`GetWindowRect` 算进了不可见边框），不是我们画的。只有 resize 后的底部残留是真的 | 这已是第二次把"没验证的观察"当 bug 记（第一次是清单 3.3） |
+| 2026-11-03 11:35 | **点击切换实测通过**：模拟鼠标点 4 次（1→2→3→回1），会话正确切换、内存 71.7 MB 不涨、CPU 0.34 s | `docs/u1-click.png` |

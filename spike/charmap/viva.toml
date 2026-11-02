@@ -1,0 +1,6 @@
+[app]
+name = "charmap"
+id = "dev.example.charmap"
+version = "0.1.0"
+executable = "charmap"
+package = "."

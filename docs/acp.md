@@ -91,3 +91,38 @@ dshd: manifest 指定的模块 "subagent" 没有编译进二进制；
 
 **要做成"续上那个会话"，得用 `session/load` 或 `session/resume`**，见
 `DSH-GO/AGENTS.md` 里 ACP 三方法的记录。这不在本次范围里。
+
+---
+
+## 续会话（session/resume）：代码写了，但**跑不通**——限制写在这里
+
+实测 2026-11-03 07:00：
+
+```
+ACP resume session-1710f716-… 失败（回落到新会话）：
+  session/resume: 恢复失败: 按 cwd 算出的位置没有
+    （tmp\dshd-home\sessions\--E-Documents-deepseek-harness-default-workspace--\…），
+  按 id 也没找到: 找不到会话 session-1710f716-…（在 tmp/dshd-home 下）
+```
+
+### 根因：**home 不是一个**
+
+| | 用的 home |
+|---|---|
+| mockd 读会话（`-sessions`） | `D:/DeepSeek Harness/home/sessions`（真实） |
+| dshd acp 子进程（`tmp/dsh-acp.toml` 起的） | **`tmp/dshd-home`**（隔离的测试 home） |
+
+所以 dshd 在自己那个空 home 里当然找不到真实会话，**按 id 按 cwd 都找不到**。
+
+### 三条可走的路（都不在本次范围）
+
+| 方案 | 代价 |
+|---|---|
+| 给 dshd 传 `--home "D:/DeepSeek Harness/home"` | **会写真实 home**，和正在运行的 DSH 抢会话文件（虽有 `.lock`，但风险不该由测试承担） |
+| resume 前把目标会话文件**复制**进 `tmp/dshd-home/sessions/<同结构>` | 要复刻 `projectKey` 目录算法；复制后是**副本**，聊完写进副本，真实历史不会变 |
+| **在宿主侧实现 `internal/transport`**（UIPLAN §4 的 U0） | 正道。界面直连真宿主，不走 ACP 绕路 |
+
+**结论**：现在的状态是「**能聊，但不能续真实会话**」。这不是 mockd 的 bug，是**绕道 ACP 的架构代价**。
+真要续，就得走第三条——那正是 `UIPLAN.md` 里 U0 应该在宿主侧做的原因。
+
+代码留着（`ACPClient.Resume` + `acpResumed` 缓存），换到真 home 之后就能用。

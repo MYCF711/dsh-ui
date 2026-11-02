@@ -222,6 +222,16 @@ func (c *ACPClient) NewSession(cwd string) (string, error) {
 }
 
 // Prompt 发一条消息，流式回调 update，直到 stopReason。
+// Resume 恢复一个已有会话（按 id；cwd 可选——id 全局唯一，按 id 就能找到日志）。
+func (c *ACPClient) Resume(sessionID, cwd string) error {
+	params := map[string]any{"sessionId": sessionID}
+	if cwd != "" {
+		params["cwd"] = cwd
+	}
+	_, err := c.call("session/resume", params, 30*time.Second)
+	return err
+}
+
 func (c *ACPClient) Prompt(sessionID, text string, onUpdate func(acpUpdate), timeout time.Duration) (string, error) {
 	c.onUpdate = onUpdate
 	// 权限请求：固定回 allow-once。不应答会永久挂起且无报错。

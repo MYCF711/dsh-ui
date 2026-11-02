@@ -21,6 +21,7 @@ type acpEvent struct {
 var (
 	acp       *ACPClient
 	acpSess   string
+	acpResumed = map[string]bool{} // 已经 resume 过的会话（避免每次 prompt 都 resume）
 	acpLive   chan acpEvent
 	acpCWD    string
 	acpPrompt bool
@@ -71,7 +72,36 @@ func runACPPrompt(sid, text string) {
 		})
 	}()
 
-	_, err := acp.Prompt(acpSess, text, func(u acpUpdate) {
+	// 点开的是历史会话（session-xxxx）时，先 resume 才能续写；acpSess 是启动时新建的那个。
+	tgt := acpSess
+	if sid != "" && sid != acpSess {
+		mu.Lock()
+		done := acpResumed[sid]
+		mu.Unlock()
+		if !done {
+			// 这个二进制的 resume 要求 cwd 也带上（源码已改成可选，但当前 dshd.exe 是旧的）。
+			// cwd 从索引里拿：会话文件头里有。
+			rcwd := ""
+			if realDB != nil {
+				if rs := realDB.byID[sid]; rs != nil {
+					rcwd = rs.Cwd
+				}
+			}
+			if err := acp.Resume(sid, rcwd); err != nil {
+				log.Printf("ACP resume %s 失败（回落到新会话）：%v", sid, err)
+			} else {
+				mu.Lock()
+				acpResumed[sid] = true
+				mu.Unlock()
+				log.Printf("ACP 已续上会话 %s", sid)
+			}
+		}
+		if acpResumed[sid] {
+			tgt = sid
+		}
+	}
+
+	_, err := acp.Prompt(tgt, text, func(u acpUpdate) {
 		ev := acpEvent{}
 		switch u.Kind {
 		case "agent_message_chunk":

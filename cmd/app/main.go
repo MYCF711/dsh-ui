@@ -124,6 +124,14 @@ func (m *model) openSession(id string) {
 	m.mu.Unlock()
 	m.saveScroll(prev)
 
+	// 切会话必须丢掉上一个会话的 Markdown 文档树，否则切三次就是三份 200 条的
+	// Layout 结果全常驻（实测 168.7 MB）
+	m.mdDocs = m.mdDocs[:0]
+	m.mdViews = m.mdViews[:0]
+	m.mdText = m.mdText[:0]
+	m.mdWidth = m.mdWidth[:0]
+	m.mdH = m.mdH[:0]
+
 	m.mu.Lock()
 	m.cur = id
 	m.pendingScroll = id

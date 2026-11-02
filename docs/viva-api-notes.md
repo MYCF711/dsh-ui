@@ -253,3 +253,24 @@ line2`      // ← line2 不会被涂成字符串色
 `{X:0 Y:31 Width:880 Height:80}`）。但**在它上面 `canvas.Fill` + 重画走不通**——
 `MarkdownView.Paint` 和你的绘制在同一个 canvas 上，**绘制顺序不受调用方控制**，
 你 Fill 之后它又画了一遍，结果是两层文字叠在一起（`docs/u1-codeblock.md` 有完整实测）。
+
+---
+
+## 窗口缩小时会留旧帧（2026-11-03 11:20，实测）
+
+**现象**：`SetWindowPos` 把窗口从 1180×800 缩到 776×559 后，**右边缘和底部残留着旧帧的内容**
+（`docs/u1-min-size3.png`）。
+
+**试过**：
+
+| 做法 | 结果 |
+|---|---|
+| 缩 `MarkdownPaint.Clip` 的右边界 | 没用（残留不是 Markdown 画的） |
+| `cfg.OnResize = func(ui.Size){ inv.Invalidate() }` | **没用** |
+
+**结论**：`Invalidate()` 是"按当前尺寸重画"，而残留是"更大的旧位图没被清"——
+**Viva 在 Windows 上没把 swapchain 缩到新尺寸**。
+
+Viva 的 Windows 侧自标 **Experimental**，resize 路径本来就不稳（E2 第 7 项也栽在这上面）。
+
+**过渡期做法**：别在运行中改窗口大小，改了就重开。真实使用中很少拖窗口，可以接受。

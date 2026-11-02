@@ -68,8 +68,20 @@
 | B1 | 窗口变窄后**消息内容溢出到窗口外**（右边缘竖排碎片） | `SetWindowPos` 到 776×559 后截图 | 中（不影响主流程，但难看） |
 | B2 | 侧栏列表项宽度依赖 `ScrollArea` 的显式宽度 | 不设就竖排成 2–3 字（已修，`Width(240)`） | 已修 |
 
-B1 的根因猜测：`MarkdownPaint.Clip` 的右边界用的是 `bounds.Width - r.X`，
-`bounds` 是每帧的窗口尺寸——理论上会跟着变。**得实测才知道是不是别的原因**，下一轮查。
+### B1 的追踪（三轮）
+
+| 试了什么 | 结果 |
+|---|---|
+| ① 把 `Clip` 右边界缩 8px | **没用**——溢出的不是 Markdown 绘制，是**旧帧残留** |
+| ② 加 `cfg.OnResize = func(ui.Size){ m.inv.Invalidate() }` | **还是没用**（`docs/u1-min-size3.png` 边缘和底部仍有旧内容） |
+| ③ 看截图：残留的是**上一帧（更大窗口时）的内容** | 结论：**窗口缩小时，Viva 没把 swapchain 缩到新尺寸**，旧内容留在边缘 |
+
+**这不是我们的代码能修的**：`Invalidate()` 触发的是"重画当前尺寸"，而残留是"更大的旧位图没被清"。
+Viva 的 Windows 侧自标 **Experimental**，resize 路径本来就不稳（`docs/e2-result.md` 里 E2 第 7 项也栽在这上面）。
+
+**当前状态**：**别在运行中改窗口大小**。改了就重开——这是过渡期可接受的代价，因为真实使用中很少拖窗口。
+
+值得记进 `docs/viva-api-notes.md`：**Windows 上缩窗口会留旧帧，`OnResize + Invalidate` 救不回来。**
 
 ---
 

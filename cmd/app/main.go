@@ -673,11 +673,13 @@ func newConfig(m *model) app.Config {
 				Y:    r.Y,
 				// Clip 的右边界要到窗口边：Markdown 里的表格/代码块会比卡片宽，
 				// 只裁到 r.Width 会溢出画到侧栏上（实测过一次）。
-				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: bounds.Width - r.X, Height: bounds.Height},
+				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: bounds.Width - r.X - 8, Height: bounds.Height},
 			})
 
 		}
 	}
+	// 窗口变了必须全屏重绘：Viva 只重画变化区域，缩小后旧帧会残留在边缘。
+	cfg.OnResize = func(ui.Size) { m.inv.Invalidate() }
 	return cfg
 }
 

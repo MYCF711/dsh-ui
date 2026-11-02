@@ -47,7 +47,8 @@ type model struct {
 	draft flex.Field
 	inv   app.Invalidator
 	cli   *apiclient.Client
-	cache map[string]*cachedSession
+	cache      map[string]*cachedSession
+	smokeFired bool
 
 	mu       sync.Mutex
 	sessions []apiclient.Session
@@ -139,8 +140,16 @@ func (m *model) refreshSession(id string, quiet bool) {
 		m.status = fmt.Sprintf("%s · %d 条（总 %d）", r.Title, len(r.Messages), r.Total)
 		m.loading = false
 	}
+	fireSmoke := smokeSend && !m.smokeFired
+	if fireSmoke {
+		m.smokeFired = true
+	}
 	m.mu.Unlock()
 	m.inv.Invalidate()
+	if fireSmoke {
+		m.draft.SetText("smoke-" + time.Now().Format("150405"))
+		m.send()
+	}
 }
 
 // evictLocked 在持有 mu 时淘汰最旧的缓存，保护当前会话。
@@ -195,10 +204,12 @@ var (
 	renderLimit  int    // 0 = 不限制
 	forceSession string // 非空则启动后直接打开
 	tailCount    int    // session.load 的 tailMessages
+	smokeSend    bool   // 启动后自动发一条
 )
 
 func newConfig(m *model) app.Config {
-	cfg := app.Config{Tree: &tree, Title: "dsh-ui", Width: 1180, Height: 800, Invalidator: &m.inv}
+	cfg := app.Config{Tree: &tree, Title: "dsh-ui", Width: 1180, Height: 800,
+		MinWidth: 760, MinHeight: 520, Invalidator: &m.inv}
 	cfg.TextInput = flex.Fields(&m.draft)
 
 	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
@@ -229,7 +240,7 @@ func newConfig(m *model) app.Config {
 						}
 					})
 					f.Divider()
-					f.ScrollArea(sideScr).Grow(1).Gap(3).Children(func() {
+					f.ScrollArea(sideScr).Grow(1).MinHeight(120).Gap(3).Children(func() {
 						f.Column().Gap(3).Children(func() {
 							for i := range sessions {
 								s := sessions[i]
@@ -253,7 +264,7 @@ func newConfig(m *model) app.Config {
 				f.Column().Grow(1).FillHeight().Pad(12).Gap(8).Children(func() {
 					f.Text(status).FontSize(12).Muted()
 					f.Divider()
-					f.ScrollArea(msgScr).Grow(1).Gap(6).Children(func() {
+					f.ScrollArea(msgScr).Grow(1).MinHeight(160).Gap(6).Children(func() {
 						f.Column().Gap(6).Children(func() {
 							if len(msgs) == 0 {
 								f.Text("← 左边选一个会话").Muted()
@@ -292,10 +303,12 @@ func main() {
 	limit := flag.Int("limit", 0, "只渲染最后 N 条消息（0 = 全部）；用于量视口虚拟化的收益")
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
 	tail := flag.Int("tail", 200, "session.load 拉多少条尾巴")
+	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	flag.Parse()
 	renderLimit = *limit
 	forceSession = *sess
 	tailCount = *tail
+	smokeSend = *smoke
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
 		cache: map[string]*cachedSession{}}

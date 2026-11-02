@@ -1,0 +1,9 @@
+# spike 产物
+build/
+dist/
+spike/**/build/
+spike/**/*.exe
+# Viva 工具链缓存
+.viva/
+# 截图保留，但大文件排除
+*.tmp

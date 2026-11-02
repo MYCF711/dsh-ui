@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
-	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
@@ -74,11 +73,6 @@ type model struct {
 	mdText  []string
 	mdWidth []float32 // 上次 Layout 用的宽度
 	mdH     []float32 // 上次 Layout 的高度：文本和宽度都没变就不重新排版
-
-	// 代码块横向滚动的状态（key = 消息下标/代码块 Y 偏移）。
-	// MarkdownView 内部会把超宽行直接裁掉，拿不到滚动；这里用它的 Codes()
-	// 位置和原文重画一遍，套 mdlite.Overflow。
-	codeScroll map[string]*mdlite.Overflow
 
 	// 流式：当前订阅的取消函数 + 正在拼接的助手文本（delta 累积）
 	mux        *apiclient.Mux
@@ -199,7 +193,9 @@ func (m *model) refreshSession(id string, quiet bool) {
 					Summary: "exit 0 · 3 files changed · 用了 12 ms"},
 				apiclient.Message{Seq: -3, Role: "tool", Tool: "read",
 					Args:    "internal/apiclient/mux.go",
-					Summary: "1.2 KB · 78 行 · 读完了"})
+					Summary: "1.2 KB · 78 行 · 读完了"},
+				// 带 129 字符单行代码的助手消息：验横向滚动（清单 3.3）
+				apiclient.Message{Seq: -4, Role: "assistant", Text: demoWideCode})
 		}
 		m.status = fmt.Sprintf("%s · %d 条（总 %d）", r.Title, len(r.Messages), r.Total)
 		m.loading = false
@@ -436,6 +432,15 @@ const markdownBudget = 30
 // 用一个名字，就再也不会踩。
 const newline = "\n"
 
+// demoWideCode 是一条围栏代码块里带 129 字符单行的消息，用来验横向滚动（清单 3.3）。
+const demoWideCode = "超宽代码块验证（这一行 129 个字符，卡片放不下）：\n\n" +
+	"```go\n" +
+	"func veryLongFunctionName(alpha int, beta string, gamma float64, delta []byte, epsilon map[string]any) (int, error) {\n" +
+	"	return alpha, nil\n" +
+	"}\n" +
+	"```\n\n" +
+	"上面那行应该能横向滚动，而不是被硬切。"
+
 var (
 	theme        = ui.DarkTheme()
 	renderLimit  int    // 0 = 不限制
@@ -662,45 +667,6 @@ func newConfig(m *model) app.Config {
 				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: bounds.Width - r.X, Height: bounds.Height},
 			})
 
-			// 代码块横向滚动：MarkdownView 会把超宽行直接裁掉，没有滚动。
-			// 用 Codes() 拿到每块的位置和原文，重画一遍并套上 mdlite.Overflow。
-			for _, code := range m.mdViews[slot.idx].Codes() {
-				if code.Bounds.Width < 20 || code.Bounds.Height < 10 {
-					continue
-				}
-				cr := ui.Rect{
-					X:      r.X + code.Bounds.X,
-					Y:      r.Y + code.Bounds.Y,
-					Width:  code.Bounds.Width,
-					Height: code.Bounds.Height,
-				}
-				if cr.Y+cr.Height < bounds.Y || cr.Y > bounds.Y+bounds.Height {
-					continue // 不在视口里，不画也不建状态
-				}
-				key := fmt.Sprintf("%d/%.0f", slot.idx, code.Bounds.Y)
-				o := m.codeScroll[key]
-				if o == nil {
-					o = &mdlite.Overflow{}
-					m.codeScroll[key] = o
-				}
-				lines := strings.Split(code.Text, newline)
-				var cw float32
-				for _, ln := range lines {
-					if w := float32(len([]rune(ln))) * 7.9; w > cw {
-						cw = w
-					}
-				}
-				cw += 24
-				o.Draw(canvas, theme, cr, cw, cr.Height, tree.ID(home, "code-"+key), "代码块",
-					func(c ui.Rect) {
-						y := c.Y + 2
-						for _, ln := range lines {
-							canvas.Label(ln, ui.Rect{X: c.X + 6, Y: y, Width: c.Width, Height: 18},
-								ui.TextStyle{Size: 13, Mono: true, Color: theme.Foreground})
-							y += 18
-						}
-					})
-			}
 		}
 	}
 	return cfg
@@ -724,7 +690,7 @@ func main() {
 		cache:      map[string]*cachedSession{},
 		mux:        apiclient.NewMux(*addr),
 		scrollPos:  map[string]float32{},
-		codeScroll: map[string]*mdlite.Overflow{}}
+}
 	m.refreshList()
 
 	var canvas ui.Canvas

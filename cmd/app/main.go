@@ -54,9 +54,15 @@ type model struct {
 	smokeFired bool
 
 	// 每条助手消息一份 Markdown 文档 + 视图（按消息下标复用，避免每帧重建）
+	// 每个会话的滚动位置（只存 float32，不存 *ScrollState —— viva 要求"要的时候再取"）
+	scrollPos     map[string]float32
+	pendingScroll string
+
 	mdDocs  []markdown.Document
 	mdViews []components.MarkdownView
 	mdText  []string
+	mdWidth []float32 // 上次 Layout 用的宽度
+	mdH     []float32 // 上次 Layout 的高度：文本和宽度都没变就不重新排版
 
 	// 流式：当前订阅的取消函数 + 正在拼接的助手文本（delta 累积）
 	mux        *apiclient.Mux
@@ -112,8 +118,15 @@ func (m *model) refreshList() {
 }
 
 func (m *model) openSession(id string) {
+	// 切走之前记下当前会话滚到哪了
+	m.mu.Lock()
+	prev := m.cur
+	m.mu.Unlock()
+	m.saveScroll(prev)
+
 	m.mu.Lock()
 	m.cur = id
+	m.pendingScroll = id
 	hit := false
 	if cs, ok := m.cache[id]; ok {
 		m.msgs = cs.msgs
@@ -152,6 +165,15 @@ func (m *model) refreshSession(id string, quiet bool) {
 	m.evictLocked(id)
 	if m.cur == id { // 用户可能已经切走了
 		m.msgs = r.Messages
+		if demoTool && len(m.msgs) > 0 {
+			m.msgs = append(m.msgs,
+				apiclient.Message{Seq: -2, Role: "tool", Tool: "bash",
+					Args:    "git status --short",
+					Summary: "exit 0 · 3 files changed · 用了 12 ms"},
+				apiclient.Message{Seq: -3, Role: "tool", Tool: "read",
+					Args:    "internal/apiclient/mux.go",
+					Summary: "1.2 KB · 78 行 · 读完了"})
+		}
 		m.status = fmt.Sprintf("%s · %d 条（总 %d）", r.Title, len(r.Messages), r.Total)
 		m.loading = false
 	}
@@ -173,12 +195,17 @@ func (m *model) layoutMarkdown(canvas *ui.Canvas, i int, text string, width floa
 		m.mdDocs = append(m.mdDocs, markdown.Document{})
 		m.mdViews = append(m.mdViews, components.MarkdownView{})
 		m.mdText = append(m.mdText, "")
+		m.mdWidth = append(m.mdWidth, -1)
+		m.mdH = append(m.mdH, 0)
 	}
-	if m.mdText[i] != text {
+	// MarkdownView.Layout 是昂贵的：只在文本或宽度变化时才重排（这是 111MB 那一版的教训）
+	if m.mdText[i] != text || m.mdWidth[i] != width {
 		m.mdText[i] = text
+		m.mdWidth[i] = width
 		m.mdDocs[i].Parse(text)
+		m.mdH[i] = m.mdViews[i].Layout(canvas, components.MarkdownStyle{Size: 14}, &m.mdDocs[i], width)
 	}
-	return m.mdViews[i].Layout(canvas, components.MarkdownStyle{Size: 14}, &m.mdDocs[i], width)
+	return m.mdH[i]
 }
 
 // mdSlot 记录一条助手消息占位用的 Slot，等布局完成后在它的位置画 Markdown。
@@ -201,6 +228,39 @@ func (m *model) newSession() {
 		m.refreshList()
 		m.openSession(id)
 	}()
+}
+
+// saveScroll 记下某个会话当前的滚动偏移。
+func (m *model) saveScroll(id string) {
+	if id == "" {
+		return
+	}
+	st := m.view.ScrollState(tree.ID(home, "msgs-"+id))
+	if st == nil {
+		return
+	}
+	m.mu.Lock()
+	if m.scrollPos == nil {
+		m.scrollPos = map[string]float32{}
+	}
+	m.scrollPos[id] = st.Offset
+	m.mu.Unlock()
+}
+
+// applyPendingScroll 在某次布局之后把记住的偏移恢复回去（只做一次）。
+func (m *model) applyPendingScroll() {
+	m.mu.Lock()
+	id := m.pendingScroll
+	m.pendingScroll = ""
+	off, ok := m.scrollPos[id]
+	m.mu.Unlock()
+	if !ok {
+		return
+	}
+	st := m.view.ScrollState(tree.ID(home, "msgs-"+id))
+	if st != nil {
+		st.ScrollTo(off)
+	}
 }
 
 // subscribe 订阅某个会话的流；切换会话时先取消旧订阅。
@@ -309,6 +369,7 @@ var (
 	renderLimit  int    // 0 = 不限制
 	forceSession string // 非空则启动后直接打开
 	tailCount    int    // session.load 的 tailMessages
+	demoTool     bool   // 在消息列表里插假的工具卡
 	smokeSend    bool   // 启动后自动发一条
 )
 
@@ -393,12 +454,28 @@ func newConfig(m *model) app.Config {
 							for i := range msgs {
 								msg := msgs[i]
 								who := "你"
-								if msg.Role != "user" {
+								switch msg.Role {
+								case "tool":
+									who = "" // 工具卡自己带标题，不套「助手」
+								case "assistant":
 									who = "助手"
 								}
 								f.Column().Pad(8).Radius(6).Border(1, theme.Border).Children(func() {
-									f.Text(who).FontSize(11).Muted()
-									if msg.Role == "user" {
+									if who != "" {
+										f.Text(who).FontSize(11).Muted()
+									}
+									if msg.Role == "tool" {
+										// 工具调用卡片：名字 + 参数 + 一行结果摘要（不再套「助手」标签）
+										f.Column().Pad(10).Radius(8).Background(theme.Muted).Children(func() {
+											f.Row().Gap(8).Items(flex.Center).Children(func() {
+												f.Text(msg.Tool).Mono().Bold().FontSize(13)
+												f.Text(msg.Args).Mono().Muted().FontSize(12).Ellipsis()
+											})
+											if msg.Summary != "" {
+												f.Text(msg.Summary).Muted().FontSize(12)
+											}
+										})
+									} else if msg.Role == "user" {
 										f.Wrap(msg.Text).FontSize(14)
 									} else {
 										// 助手消息走 MarkdownView：先算高度占位，Draw 之后再画
@@ -426,7 +503,8 @@ func newConfig(m *model) app.Config {
 			})
 		})
 
-		// Draw 之后布局已定，Slot 的 Rect 才是最终位置
+		// 布局已定：恢复待恢复的滚动位置，再画 Markdown
+		m.applyPendingScroll()
 		look := components.MarkdownLookFor(theme)
 		for _, slot := range mdSlots {
 			if slot.idx >= len(m.mdViews) {
@@ -453,14 +531,17 @@ func main() {
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
 	tail := flag.Int("tail", 200, "session.load 拉多少条尾巴")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
+	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
 	flag.Parse()
 	renderLimit = *limit
 	forceSession = *sess
 	tailCount = *tail
 	smokeSend = *smoke
+	demoTool  = *demo
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
-		cache: map[string]*cachedSession{}, mux: apiclient.NewMux(*addr)}
+		cache: map[string]*cachedSession{}, mux: apiclient.NewMux(*addr),
+		scrollPos: map[string]float32{}}
 	m.refreshList()
 
 	var canvas ui.Canvas

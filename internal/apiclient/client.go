@@ -25,8 +25,12 @@ type Session struct {
 // Message 对应 session.load 的 messages 一项（v1 先只有纯文本）。
 type Message struct {
 	Seq  int    `json:"seq"`
-	Role string `json:"role"`
+	Role string `json:"role"` // user / assistant / tool
 	Text string `json:"text"`
+	// role == "tool" 时这三个字段描述一次工具调用（契约 v1 先只给摘要）
+	Tool    string `json:"tool,omitempty"`
+	Args    string `json:"args,omitempty"`
+	Summary string `json:"summary,omitempty"`
 }
 
 // LoadResult 是 session.load 的返回。

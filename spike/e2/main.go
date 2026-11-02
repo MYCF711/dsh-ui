@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
@@ -20,8 +21,9 @@ var (
 )
 
 type model struct {
-	draft flex.Field
-	view  flex.View
+	draft  flex.Field
+	view   flex.View
+	codeOv mdlite.Overflow // 代码块的横向滚动状态
 }
 
 const cn = "这是一段中文与 English 混排的段落，用来验证断行、标点与字重。包含「引号」、（括号）、—— 破折号、……省略号，以及 100% 的数字与 v0.2.3 的版本号。换行应发生在 CJK 字符之间（kinsoku 规则），而不是把整个英文单词撑到下一行。"
@@ -45,6 +47,30 @@ func init() {
 	}
 }
 
+// monoCells 是一个字符串在等宽网格里占的格数（宽字符算 2）。
+func monoCells(s string) int {
+	n := 0
+	for _, r := range s {
+		switch {
+		case r < 0x1100:
+			n++
+		case r >= 0x1100 && r <= 0x115F,
+			r >= 0x2E80 && r <= 0xA4CF,
+			r >= 0xAC00 && r <= 0xD7A3,
+			r >= 0xF900 && r <= 0xFAFF,
+			r >= 0xFE30 && r <= 0xFE6F,
+			r >= 0xFF00 && r <= 0xFF60,
+			r >= 0xFFE0 && r <= 0xFFE6,
+			r >= 0x1F300 && r <= 0x1FAFF,
+			r >= 0x20000 && r <= 0x3FFFD:
+			n += 2
+		default:
+			n++
+		}
+	}
+	return n
+}
+
 func newConfig(m *model) app.Config {
 	theme := ui.LightTheme()
 	config := app.Config{Tree: &tree, Title: "E2 渲染矩阵", Width: 1100, Height: 860}
@@ -54,6 +80,7 @@ func newConfig(m *model) app.Config {
 	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.Background)
+		var codeSlot flex.Box
 		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
 			f.Column().Fill().Pad(16).Gap(8).Children(func() {
 				f.Text("E2 · 渲染矩阵（1 中文 · 2 代码 · 3 卡片 · 4 emoji · 5 IME · 6 长列表 · 7 缩放）").FontSize(16).Bold()
@@ -73,15 +100,9 @@ func newConfig(m *model) app.Config {
 					f.Field(&m.draft, draft, "Message", "点这里，然后用 Shift 切中文输入").Grow(1)
 				})
 
-				// 2 代码块
-				f.Text("② Go 代码块 60 行（等宽）").FontSize(13).Bold()
-				f.ScrollArea(codeS).Height(150).Children(func() {
-					f.Column().Gap(0).Children(func() {
-						for _, ln := range lines {
-							f.Text(ln).Mono().FontSize(12)
-						}
-					})
-				})
+				// 2 代码块：flex 只有纵向滚动，这里用 mdlite.Overflow 自己接管横向
+				f.Text("② Go 代码块 60 行（等宽，可横向滚动）").FontSize(13).Bold()
+				codeSlot = f.Slot().Height(150)
 
 				// 3 工具卡
 				f.Text("③ 工具调用卡片").FontSize(13).Bold()
@@ -104,6 +125,38 @@ func newConfig(m *model) app.Config {
 				})
 			})
 		})
+
+		// Draw 之后布局已定，Slot 的 Rect 才是最终位置
+		if r := codeSlot.Rect(); r.Width > 1 && r.Height > 1 {
+			cell, lineH := canvas.MonoCellSize(12, ui.MonoSystem)
+			if cell <= 0 {
+				cell = 7.2
+			}
+			if lineH <= 0 {
+				lineH = 16
+			}
+			maxCells := 0
+			for _, ln := range lines {
+				if c := monoCells(ln); c > maxCells {
+					maxCells = c
+				}
+			}
+			contentW := float32(maxCells)*cell + 20
+			contentH := float32(len(lines))*lineH + 10
+			m.codeOv.Draw(canvas, theme, r, contentW, contentH, codeS, "代码块", func(c ui.Rect) {
+				for i, ln := range lines {
+					y := c.Y + 5 + float32(i)*lineH
+					if y > r.Y+r.Height {
+						break
+					}
+					if y+lineH < r.Y {
+						continue
+					}
+					canvas.Label(ln, ui.Rect{X: c.X + 10, Y: y, Width: contentW, Height: lineH},
+						ui.TextStyle{Size: 12, Mono: true, Color: theme.Foreground})
+				}
+			})
+		}
 	}
 	_ = outer
 	_ = strings.TrimSpace

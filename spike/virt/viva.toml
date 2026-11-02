@@ -1,0 +1,6 @@
+[app]
+name = "virt"
+id = "dev.example.virt"
+version = "0.1.0"
+executable = "virt"
+package = "."

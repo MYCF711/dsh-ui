@@ -31,7 +31,10 @@ var (
 	sideScr = tree.ID(home, "side")
 	msgScr  = tree.ID(home, "msgs")
 	draftID = tree.ID(home, "draft")
-	btnSend = tree.ID(home, "send")
+	btnSend  = tree.ID(home, "send")
+	btnAllow = tree.ID(home, "allow")
+	btnDeny  = tree.ID(home, "deny")
+	btnAlways = tree.ID(home, "always")
 )
 
 // cachedSession 是切换会话用的温缓存：切回来先显示它，再后台刷新。
@@ -52,6 +55,9 @@ type model struct {
 	cli   *apiclient.Client
 	cache      map[string]*cachedSession
 	smokeFired bool
+
+	// 待审批的请求（v1 只支持一条；工具名 + 命令 + 模型自述）
+	approval *approvalReq
 
 	// 每条助手消息一份 Markdown 文档 + 视图（按消息下标复用，避免每帧重建）
 	// 每个会话的滚动位置（只存 float32，不存 *ScrollState —— viva 要求"要的时候再取"）
@@ -174,6 +180,9 @@ func (m *model) refreshSession(id string, quiet bool) {
 	if m.cur == id { // 用户可能已经切走了
 		m.msgs = r.Messages
 		if demoTool && len(m.msgs) > 0 {
+			// 注意：这里已经在 m.mu 内（refreshSession 的锁），不能再 Lock —— 会自死锁
+			m.approval = &approvalReq{Tool: "bash", Cmd: "git status --short",
+				Reason: "想看一下当前工作区有没有未提交的改动"}
 			m.msgs = append(m.msgs,
 				apiclient.Message{Seq: -2, Role: "tool", Tool: "bash",
 					Args:    "git status --short",
@@ -372,6 +381,13 @@ func (m *model) send() {
 	}()
 }
 
+// approvalReq 是一条待审批的工具调用。
+type approvalReq struct {
+	Tool   string
+	Cmd    string // 完整命令（不截断——用户要看的就是这个）
+	Reason string // 模型自述，界面必须标注"不可信"
+}
+
 // markdownBudget 是"最近的多少条消息用 Markdown 渲染"，其余降级成纯文本。
 // 依据：真实会话 442 条、tail=200 时全量 Markdown 要 168.8 MB / 首排 4 s。
 const markdownBudget = 30
@@ -400,6 +416,7 @@ func newConfig(m *model) app.Config {
 		msgs := append([]apiclient.Message(nil), m.msgs...)
 		status := m.status
 		streamText := m.streamText
+		approval := m.approval
 		if renderLimit > 0 && len(msgs) > renderLimit {
 			status = fmt.Sprintf("%s（渲染末尾 %d / %d）", status, renderLimit, len(msgs))
 			msgs = msgs[len(msgs)-renderLimit:]
@@ -507,6 +524,30 @@ func newConfig(m *model) app.Config {
 							}
 						})
 					})
+					if ap := approval; ap != nil {
+						// 审批气泡：先命令、后模型自述（且标注不可信）——对齐宿主线的审批框规矩
+						f.Column().Pad(12).Radius(8).Background(theme.Muted).Border(1, theme.Border).Gap(8).Children(func() {
+							f.Row().Gap(8).Items(flex.Center).Children(func() {
+								f.Text("需要审批").Bold().FontSize(13)
+								f.Text(ap.Tool).Mono().Muted().FontSize(12)
+								f.Spacer()
+							})
+							f.Text(ap.Cmd).Mono().FontSize(13)
+							if ap.Reason != "" {
+								f.Text("模型自述（不可信）：" + ap.Reason).Muted().FontSize(11)
+							}
+							f.Row().Gap(8).Justify(flex.End).Children(func() {
+								if f.Button(btnDeny, "拒绝").Outline().Small().Clicked() {
+									m.approval = nil
+									m.setStatus("已拒绝")
+								}
+								if f.Button(btnAllow, "允许").Small().Clicked() {
+									m.approval = nil
+									m.setStatus("已允许")
+								}
+							})
+						})
+					}
 					f.Row().Gap(8).Items(flex.Center).Children(func() {
 						if f.Field(&m.draft, draftID, "输入", "说点什么…（Enter 发送）").Grow(1).Submitted() {
 							m.send()
@@ -545,7 +586,7 @@ func main() {
 	addr := flag.String("addr", "http://127.0.0.1:7788", "Transport base URL")
 	limit := flag.Int("limit", 0, "只渲染最后 N 条消息（0 = 全部）；用于量视口虚拟化的收益")
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
-	tail := flag.Int("tail", 200, "session.load 拉多少条尾巴")
+	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
 	flag.Parse()

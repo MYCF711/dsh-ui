@@ -8,6 +8,8 @@ package main
 
 import (
 	"context"
+	"math"
+	"strings"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -388,6 +390,35 @@ type approvalReq struct {
 	Reason string // 模型自述，界面必须标注"不可信"
 }
 
+// estimateMsgHeight 估算一条消息的高度。系数 0.62 来自 docs/virt.md 的实测反推
+// （中英混排每行字数 ≈ 可用宽度 / (字号 × 0.62)）。视口外只靠它占位，不精确也没关系：
+// 固定高度盒子保证累计位置可预测，滚动不会漂移。
+func estimateMsgHeight(m apiclient.Message, width float32) float32 {
+	const lineH = 22.0
+	const gapPad = 28.0
+	if width < 120 {
+		width = 120
+	}
+	text := m.Text
+	if m.Role == "tool" {
+		return 70 // 工具卡是固定形状
+	}
+	perLine := width / (14 * 0.62)
+	if perLine < 8 {
+		perLine = 8
+	}
+	lines := 0
+	for _, para := range strings.Split(text, "\n") {
+		n := float64(len([]rune(para)))
+		l := int(math.Ceil(n / float64(perLine)))
+		if l < 1 {
+			l = 1
+		}
+		lines += l
+	}
+	return float32(float64(lines)*lineH + gapPad)
+}
+
 // markdownBudget 是"最近的多少条消息用 Markdown 渲染"，其余降级成纯文本。
 // 依据：真实会话 442 条、tail=200 时全量 Markdown 要 168.8 MB / 首排 4 s。
 const markdownBudget = 30
@@ -480,8 +511,36 @@ func newConfig(m *model) app.Config {
 									f.Wrap(streamText).FontSize(14)
 								})
 							}
+							// 视口虚拟化（docs/virt.md）：先算高度和累计位置，
+							// 视口外只放 Slot —— 不建 Text 就不生成 GPU 文本纹理。
+							w0 := f.Bounds().Width - 300
+							if w0 < 200 {
+								w0 = 200
+							}
+							heights := make([]float32, len(msgs))
+							offs := make([]float32, len(msgs))
+							var acc float32
+							for i := range msgs {
+								heights[i] = estimateMsgHeight(msgs[i], float32(w0))
+								offs[i] = acc
+								acc += heights[i] + 6
+							}
+							var vpOffset, vpHeight float32
+							if st := m.view.ScrollState(scrID); st != nil {
+								vpOffset = st.Offset
+							}
+							vpHeight = f.Bounds().Height - 220
+							if vpHeight < 240 {
+								vpHeight = 240
+							}
+							const overscan = 800.0
+
 							for i := range msgs {
 								msg := msgs[i]
+								if offs[i]+heights[i] < vpOffset-overscan || offs[i] > vpOffset+vpHeight+overscan {
+									f.Slot().Height(heights[i])
+									continue
+								}
 								who := "你"
 								switch msg.Role {
 								case "tool":

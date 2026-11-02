@@ -17,7 +17,9 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -50,6 +52,11 @@ type model struct {
 	cli   *apiclient.Client
 	cache      map[string]*cachedSession
 	smokeFired bool
+
+	// 每条助手消息一份 Markdown 文档 + 视图（按消息下标复用，避免每帧重建）
+	mdDocs  []markdown.Document
+	mdViews []components.MarkdownView
+	mdText  []string
 
 	// 流式：当前订阅的取消函数 + 正在拼接的助手文本（delta 累积）
 	mux        *apiclient.Mux
@@ -158,6 +165,26 @@ func (m *model) refreshSession(id string, quiet bool) {
 		m.draft.SetText("smoke-" + time.Now().Format("150405"))
 		m.send()
 	}
+}
+
+// layoutMarkdown 保证第 i 条消息的 Markdown 文档与视图就绪，返回高度。
+func (m *model) layoutMarkdown(canvas *ui.Canvas, i int, text string, width float32) float32 {
+	for len(m.mdDocs) <= i {
+		m.mdDocs = append(m.mdDocs, markdown.Document{})
+		m.mdViews = append(m.mdViews, components.MarkdownView{})
+		m.mdText = append(m.mdText, "")
+	}
+	if m.mdText[i] != text {
+		m.mdText[i] = text
+		m.mdDocs[i].Parse(text)
+	}
+	return m.mdViews[i].Layout(canvas, components.MarkdownStyle{Size: 14}, &m.mdDocs[i], width)
+}
+
+// mdSlot 记录一条助手消息占位用的 Slot，等布局完成后在它的位置画 Markdown。
+type mdSlot struct {
+	idx int
+	box flex.Box
 }
 
 // newSession 建一个会话并直接打开。
@@ -306,6 +333,7 @@ func newConfig(m *model) app.Config {
 		}
 		m.mu.Unlock()
 
+		var mdSlots []mdSlot
 		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
 			f.Row().Fill().Children(func() {
 
@@ -370,7 +398,18 @@ func newConfig(m *model) app.Config {
 								}
 								f.Column().Pad(8).Radius(6).Border(1, theme.Border).Children(func() {
 									f.Text(who).FontSize(11).Muted()
-									f.Wrap(msg.Text).FontSize(14)
+									if msg.Role == "user" {
+										f.Wrap(msg.Text).FontSize(14)
+									} else {
+										// 助手消息走 MarkdownView：先算高度占位，Draw 之后再画
+										mi := i
+										w := f.Bounds().Width - 300
+										if w < 200 {
+											w = 200
+										}
+										h := m.layoutMarkdown(canvas, mi, msg.Text, w)
+										mdSlots = append(mdSlots, mdSlot{idx: mi, box: f.Slot().Height(h)})
+									}
 								})
 							}
 						})
@@ -387,6 +426,23 @@ func newConfig(m *model) app.Config {
 			})
 		})
 
+		// Draw 之后布局已定，Slot 的 Rect 才是最终位置
+		look := components.MarkdownLookFor(theme)
+		for _, slot := range mdSlots {
+			if slot.idx >= len(m.mdViews) {
+				continue
+			}
+			r := slot.box.Rect()
+			if r.Width <= 0 || r.Height <= 0 {
+				continue
+			}
+			m.mdViews[slot.idx].Paint(canvas, components.MarkdownPaint{
+				Look: look,
+				X:    r.X,
+				Y:    r.Y,
+				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: r.Width, Height: bounds.Height},
+			})
+		}
 	}
 	return cfg
 }

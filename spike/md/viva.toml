@@ -1,0 +1,6 @@
+[app]
+name = "md"
+id = "dev.example.md"
+version = "0.1.0"
+executable = "md"
+package = "."

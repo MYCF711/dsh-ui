@@ -165,7 +165,8 @@ func newConfig(m *model) app.Config {
 
 func main() {
 	var canvas ui.Canvas
-	if err := app.RunCanvas(newConfig(&model{}), &canvas); err != nil {
+	// 演示用：起始就横向偏 220px，一眼能看出内容确实被平移了
+	if err := app.RunCanvas(newConfig(&model{codeOv: mdlite.Overflow{OffsetX: 220}}), &canvas); err != nil {
 		log.Fatal(err)
 	}
 }

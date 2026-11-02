@@ -106,7 +106,8 @@ func TestPromptProducesStream(t *testing.T) {
 	if deltas < 10 {
 		t.Fatalf("delta 帧只有 %d，要 >=10", deltas)
 	}
-	if !strings.Contains(got, "mock 流式回答") {
+	// 回答现在刻意是 Markdown（标题 + 列表 + 代码块），首句以 "### 收到：" 开头。
+	if !strings.Contains(got, "收到：") || !strings.Contains(got, "收尾一句普通文本") {
 		t.Fatalf("拼出的正文不像回答: %.200s", got)
 	}
 
@@ -134,7 +135,8 @@ func TestPromptProducesStream(t *testing.T) {
 	if last.Role != "assistant" {
 		t.Fatalf("末条应是 assistant，实际 %s", last.Role)
 	}
-	if !strings.Contains(last.Text, "mock 流式回答第 3 句") {
+	// 第 3 句是代码块 + 收尾段落；用它作为"三句都到齐"的凭证。
+	if !strings.Contains(last.Text, "收尾一句普通文本") || !strings.Contains(last.Text, "等宽代码块") {
 		t.Fatalf("末条正文不像完整回答: %.200s", last.Text)
 	}
 	if n := pendingLen(sid); n != 0 {

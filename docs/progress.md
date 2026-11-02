@@ -90,3 +90,4 @@
 | 2026-11-03 11:50 | 超宽代码块：试了方案 A（`Codes()` 拿位置 + `Fill` 盖住 + `Overflow` 重画），**Fill 盖不住**（MarkdownView 绘制顺序不受调用方控制），两层文字重叠 → **回退**。实测结论：MarkdownView 对 129 字符的单行代码是**折行**不是硬切，清单 3.3 那条是误判 | `docs/u1-codeblock.md` + `u1-codeblock.png` |
 | 2026-11-03 09:58 | **纠正一个误判**：清单 3.3 说「60+ 字符单行代码块会被硬切」——实测**本来就折行**，内容不丢。`Codes()` 位置数据可用、但在 `MarkdownView.Paint` 上叠画走不通（绘制顺序不受控，Fill 盖不住） | 结论写进 `docs/u1-codeblock.md` |
 | 2026-11-03 10:15 | U1 验收实测：mockd 冷启 **915 ms**、app 到窗口 **327 ms**、**69.5 MB / 38 线程 / CPU 0.17 s**、182 个会话里 **180 个标题是真实第一句话** | `docs/u1-acceptance-report.md` |
+| 2026-11-03 10:30 | **语法高亮**：`internal/mdlite/highlight.go` 通用词法高亮（关键字/字符串/注释/数字/函数名，Go/Py/JS/TS/Bash/Rust 关键字表），接进 `MarkdownStyle.Highlight` | 截图 `u1-highlight.png`，代码块有颜色 |

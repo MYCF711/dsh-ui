@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
@@ -226,7 +227,7 @@ func (m *model) layoutMarkdown(canvas *ui.Canvas, i int, text string, width floa
 		m.mdText[i] = text
 		m.mdWidth[i] = width
 		m.mdDocs[i].Parse(text)
-		m.mdH[i] = m.mdViews[i].Layout(canvas, components.MarkdownStyle{Size: 14}, &m.mdDocs[i], width)
+		m.mdH[i] = m.mdViews[i].Layout(canvas, components.MarkdownStyle{Size: 14, Highlight: mdlite.Highlight}, &m.mdDocs[i], width)
 	}
 	return m.mdH[i]
 }
@@ -650,6 +651,14 @@ func newConfig(m *model) app.Config {
 		// 布局已定：恢复待恢复的滚动位置，再画 Markdown
 		m.applyPendingScroll()
 		look := components.MarkdownLookFor(theme)
+		// MarkdownLookFor 不设 Code 数组（全透明 = 所有 class 都画成正文色），
+		// 所以 Highlight 返回了 class 也没颜色。这里补一套深色主题的语法色。
+		look.Code[components.CodeComment-1] = ui.RGB(0x6A, 0x99, 0x55)
+		look.Code[components.CodeString-1] = ui.RGB(0xCE, 0x91, 0x78)
+		look.Code[components.CodeNumber-1] = ui.RGB(0xB5, 0xCE, 0xA8)
+		look.Code[components.CodeKeyword-1] = ui.RGB(0x56, 0x9C, 0xD6)
+		look.Code[components.CodeFunction-1] = ui.RGB(0xDC, 0xDC, 0xAA)
+		look.Code[components.CodeVariable-1] = ui.RGB(0x9C, 0xDC, 0xFE)
 		for _, slot := range mdSlots {
 			if slot.idx >= len(m.mdViews) {
 				continue

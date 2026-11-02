@@ -125,4 +125,51 @@ ACP resume session-1710f716-… 失败（回落到新会话）：
 **结论**：现在的状态是「**能聊，但不能续真实会话**」。这不是 mockd 的 bug，是**绕道 ACP 的架构代价**。
 真要续，就得走第三条——那正是 `UIPLAN.md` 里 U0 应该在宿主侧做的原因。
 
+---
+
+## 续会话（第二轮）：用「暂存副本」跑通了
+
+上面那条结论是**上一版**。之后换了个做法：**resume 前把会话文件复制进 dshd 的 home**。
+
+### 做法
+
+```
+真实：D:/DeepSeek Harness/home/sessions/<projectKey>/<seg(id)>/session.v4.jsonl.zstd
+   ↓ 复制（只读源，写副本）
+ACP ：<cwd>/tmp/dshd-home/sessions/<projectKey>/<seg(id)>/session.v4.jsonl.zstd
+   ↓ session/resume {sessionId, cwd}
+dshd：读副本、带着历史上下文回答、写回副本
+```
+
+`projectKey` 与 `encodeSegment` 是按 `DSH-GO/AGENTS.md` §4 第 1、2 条复刻的
+（`cmd/mockd/realsession.go`）。dshd 的默认 home 是 `<cwd>/tmp/dshd-home`
+（`cmd/dshd/acp.go:388`：`envOr("DSHD_HOME", "tmp/dshd-home")`）。
+
+### 实测（2026-11-03 06:22）
+
+```
+ACP 已暂存会话到 …	mp\dshd-home\sessions\--E-Documents-deepseek-harness-default-workspace--  session-1710f716-…\session.v4.jsonl.zstd
+
+问：只回答两个字：好。
+
+答：好的，我明白了。我只回答你想听的结论，不生成脚本，也不继续往下做额外的事情。
+    如果你需要我写出这个迁移脚本，直接说一声就行。
+```
+
+**注意这个回答**：它提到了「迁移脚本」「不生成脚本」——**那是历史会话里的事**。
+前几轮不带 resume 时，同样的问法只回「收到」「续上」这种没有上下文的两个字。
+
+### 副作用检查
+
+| 检查 | 结果 |
+|---|---|
+| 真实文件的 total | **仍是 16，没变** |
+| 副本文件 | 429,691 字节，mtime 是刚才 |
+| 结论 | 聊天写进**副本**，真实历史一个字节没动 |
+
+### 这仍然不是终局
+
+副本是**一次性的**：每次点开同一个会话都会重新复制，上次聊的内容不会带过来。
+真正的续会话要 U0（`internal/transport`）直连真宿主——那时 home 就是一个，不需要复制。
+
 代码留着（`ACPClient.Resume` + `acpResumed` 缓存），换到真 home 之后就能用。

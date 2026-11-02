@@ -6,6 +6,7 @@ package main
 
 import (
 	"log"
+	"path/filepath"
 	"time"
 )
 
@@ -86,6 +87,13 @@ func runACPPrompt(sid, text string) {
 				if rs := realDB.byID[sid]; rs != nil {
 					rcwd = rs.Cwd
 				}
+			}
+			// 先把会话"摆"进 dshd 的 home（默认 <cwd>/tmp/dshd-home），否则它找不到。
+			// 是**复制品**：聊完写进副本，真实历史一个字节都不动。
+			if dst, serr := stageSession(sid, filepath.Join(acpCWD, "tmp", "dshd-home")); serr != nil {
+				log.Printf("ACP 暂存会话失败：%v", serr)
+			} else if dst != "" {
+				log.Printf("ACP 已暂存会话到 %s", dst)
 			}
 			if err := acp.Resume(sid, rcwd); err != nil {
 				log.Printf("ACP resume %s 失败（回落到新会话）：%v", sid, err)

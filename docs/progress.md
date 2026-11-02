@@ -78,3 +78,4 @@
 | 2026-11-03 06:34 | 界面连真 ACP 跑起来：**75.5 MB**，左栏真实标题，右侧真实内容 + Markdown | |
 | 2026-11-03 07:00 | 写 `session/resume` 续会话：客户端 + 缓存都有了，但**跑不通**——dshd 用的是 `tmp/dshd-home`，真实会话在 `D:/DeepSeek Harness/home` | 根因与三条出路写进 `docs/acp.md` |
 | 2026-11-03 06:58 | 顺带发现：`dshd.exe`（03:45）比 `internal/acp/server.go`（05:26）旧 —— 旧二进制要求 resume 必须带 cwd，源码已经改成可选 | 客户端补了 cwd 兜底 |
+| 2026-11-03 07:40 | **续会话跑通**：resume 前把会话复制进 dshd 的 home（复刻 `projectKey`/`encodeSegment`）。实测模型带着历史上下文回答（提到"迁移脚本"），真实文件 total 仍是 16 没变 | 写进 `docs/acp.md` |

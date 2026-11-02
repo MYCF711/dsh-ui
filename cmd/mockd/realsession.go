@@ -230,3 +230,96 @@ func firstUserLine(rs *realSession) string {
 	}
 	return "会话 " + rs.ID
 }
+
+// ---- 把真实会话"摆"进 ACP 的 home，让 session/resume 找得到 ----
+//
+// dshd 在自己那个 home 下按 <home>/sessions/<projectKey>/<encodeSegment(id)>/session.v4.jsonl.zstd
+// 找会话。真实会话在别的 home 里，所以续之前得先复制过去（复制品，不碰原文件）。
+
+// projectKey 复刻 DSH v4 的目录命名规则（AGENTS.md §4 第 1 条）。
+func projectKey(cwd string) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range cwd {
+		switch {
+		case r == '/' || r == '\\' || r == ':':
+			if !prevDash {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-':
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			fmt.Fprintf(&b, "~%04X", r)
+			prevDash = false
+		}
+	}
+	s := strings.TrimLeft(b.String(), "-")
+	if s == "" {
+		s = "root"
+	}
+	if len(s) > 251 {
+		s = s[:251]
+	}
+	return "--" + s + "--"
+}
+
+// encodeSegment 复刻会话 id 的目录命名规则（AGENTS.md §4 第 2 条）。
+func encodeSegment(id string) string {
+	if id == "." {
+		return "~002E"
+	}
+	if id == ".." {
+		return "~002E~002E"
+	}
+	var b strings.Builder
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			fmt.Fprintf(&b, "~%04X", r)
+		}
+	}
+	return b.String()
+}
+
+// stageSession 按 id 把真实会话复制进指定 home（复制品，不碰原文件）。
+func stageSession(sid, acpHome string) (string, error) {
+	if realDB == nil {
+		return "", nil
+	}
+	rs := realDB.byID[sid]
+	if rs == nil || rs.Path == "" {
+		return "", nil
+	}
+	return stageSessionForACP(rs.Path, rs.Cwd, sid, acpHome)
+}
+
+// stageSessionForACP 把一条真实会话复制进 ACP 的 home，返回落点路径。
+// 复制品，聊天写进去不回污染真实历史。
+func stageSessionForACP(src, cwd, id, acpHome string) (string, error) {
+	if src == "" || acpHome == "" {
+		return "", fmt.Errorf("缺 src 或 acpHome")
+	}
+	dst := filepath.Join(acpHome, "sessions", projectKey(cwd), encodeSegment(id), "session.v4.jsonl.zstd")
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return "", err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return "", err
+	}
+	return dst, nil
+}

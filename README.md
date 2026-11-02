@@ -36,6 +36,17 @@ go run ./cmd/mockd -sessions "D:/DeepSeek Harness/home/sessions"     -acp "../DS
 go run ./cmd/app            # 或 go run ./cmd/app -tail 40 -demo
 ```
 
+### 一条命令复跑验收
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-u1.ps1
+```
+
+7 项自动检查（mockd 起没起 / 窗口多快出来 / 内存 / 线程 / 点击切换 / 切换后内存），
+**最新一次 7 pass 0 fail**：`mockd 624 ms` · `窗口 304 ms` · `65.5 MB` · `34 线程`。
+
+滚动手感和"滚动位置回没回原位"它验不了——那必须人看。
+
 ### 这不是终局
 
 | 现在的样子 | 该有的样子 |

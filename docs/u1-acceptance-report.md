@@ -2,6 +2,25 @@
 
 > 对照 `docs/u1-checklist.md`，能自动验的都跑了一遍。**跑不了的（需要人点）单独标出来，不假装验过。**
 
+**这整份报告现在一条命令就能复跑**：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-u1.ps1
+# 接真 dshd：加 -Acp（慢，60s+）
+```
+
+最新一次输出（2026-11-03 12:50）：
+
+```
+[ok] mockd ready — 624 ms
+[ok] app up — 304 ms              ← 等的是窗口句柄，不是"进程存在"
+[ok] memory — 65.5 MB
+[ok] threads — 34
+[ok] click switch — 窗口仍在、没崩
+[ok] memory after switch — 65.5 -> 68.1 MB
+pass=7  fail=0
+```
+
 ## 一、启动与连接
 
 | # | 项 | 实测 | 判定 |

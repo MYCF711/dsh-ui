@@ -128,6 +128,24 @@ func (c *Client) Load(ctx context.Context, id string, tail int) (*LoadResult, er
 	return &r, nil
 }
 
+// Create 是 session.create。
+func (c *Client) Create(ctx context.Context, cwd, mode, title string) (string, error) {
+	params := map[string]any{"mode": mode}
+	if cwd != "" {
+		params["cwd"] = cwd
+	}
+	if title != "" {
+		params["title"] = title
+	}
+	var r struct {
+		ID string `json:"id"`
+	}
+	if err := c.Call(ctx, "session.create", params, &r); err != nil {
+		return "", err
+	}
+	return r.ID, nil
+}
+
 // Prompt 是 session.prompt。
 func (c *Client) Prompt(ctx context.Context, id, text string) (string, error) {
 	var r struct {

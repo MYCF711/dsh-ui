@@ -160,6 +160,22 @@ func (m *model) refreshSession(id string, quiet bool) {
 	}
 }
 
+// newSession 建一个会话并直接打开。
+func (m *model) newSession() {
+	m.setStatus("新建会话…")
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		id, err := m.cli.Create(ctx, "", "default", "")
+		if err != nil {
+			m.setStatus("新建失败: " + err.Error())
+			return
+		}
+		m.refreshList()
+		m.openSession(id)
+	}()
+}
+
 // subscribe 订阅某个会话的流；切换会话时先取消旧订阅。
 func (m *model) subscribe(id string) {
 	m.mu.Lock()
@@ -203,9 +219,6 @@ func (m *model) applyEvent(id string, ev apiclient.Event) {
 	}
 	if d.Delta != "" {
 		m.streamText += d.Delta
-	}
-	if d.Text != "" && d.Delta == "" {
-		m.streamText += d.Text
 	}
 	if d.Done {
 		if m.streamText != "" {
@@ -302,7 +315,7 @@ func newConfig(m *model) app.Config {
 						f.Text("会话").FontSize(13).Bold()
 						f.Spacer()
 						if f.Button(btnNew, "新建").Small().Clicked() {
-							m.refreshList()
+							m.newSession()
 						}
 					})
 					f.Divider()
@@ -335,7 +348,7 @@ func newConfig(m *model) app.Config {
 					if cur != "" {
 						scrID = tree.ID(home, "msgs-"+cur)
 					}
-					f.ScrollArea(scrID).Grow(1).MinHeight(160).Gap(6).Children(func() {
+					f.ScrollArea(scrID).Grow(1).MinHeight(160).Gap(6).Follow(true).Children(func() {
 						f.Column().Gap(6).Children(func() {
 							if len(msgs) == 0 {
 								f.Text("← 左边选一个会话").Muted()

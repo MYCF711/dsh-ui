@@ -34,6 +34,7 @@ var (
 	msgScr  = tree.ID(home, "msgs")
 	draftID = tree.ID(home, "draft")
 	btnSend  = tree.ID(home, "send")
+	searchID = tree.ID(home, "search")
 	btnAllow = tree.ID(home, "allow")
 	btnDeny  = tree.ID(home, "deny")
 	btnAlways = tree.ID(home, "always")
@@ -51,8 +52,9 @@ type cachedSession struct {
 const cacheLimit = 5
 
 type model struct {
-	view  flex.View
-	draft flex.Field
+	view   flex.View
+	draft  flex.Field
+	search flex.Field // 侧栏过滤（按标题 + cwd 匹配）
 	inv   app.Invalidator
 	cli   *apiclient.Client
 	cache      map[string]*cachedSession
@@ -466,20 +468,30 @@ func newConfig(m *model) app.Config {
 						if f.Button(btnNew, "新建").Small().Clicked() {
 							m.newSession()
 						}
+						f.Field(&m.search, searchID, "搜索", "过滤会话…").Small().Grow(1)
 					})
 					f.Divider()
-					f.ScrollArea(sideScr).Grow(1).MinHeight(120).Gap(3).Children(func() {
+					f.ScrollArea(sideScr).Width(240).Grow(1).MinHeight(120).Gap(3).Children(func() {
 						f.Column().Gap(3).Children(func() {
+							q := strings.ToLower(strings.TrimSpace(m.search.Text()))
+							shown := 0
 							for i := range sessions {
 								s := sessions[i]
+								if q != "" && !strings.Contains(strings.ToLower(s.Title+" "+s.Cwd), q) {
+									continue
+								}
+								shown++
 								id := tree.ID(home, "s-"+s.ID)
 								mark := "   "
 								if s.ID == cur {
 									mark = "●  "
 								}
-								if f.Row().Width(228).PadX(8).PadY(6).Radius(5).
-									Hit(id, s.Title).Children(func() {
-									f.Text(mark + s.Title).FontSize(13)
+								// Hit 的标签留空：只当点击区用。
+								// 传 s.Title 会让它自己也渲染一遍标签，和下面那行 Text 打架，
+								// 结果是宽度算不出来、标题竖排成两三个字（实测踩过）。
+								if f.Row().Width(236).PadX(8).PadY(6).Radius(5).
+									Hit(id, "").Children(func() {
+									f.Text(mark + s.Title).FontSize(13).Ellipsis()
 								}).Clicked() {
 									m.openSession(s.ID)
 								}
@@ -634,7 +646,9 @@ func newConfig(m *model) app.Config {
 				Look: look,
 				X:    r.X,
 				Y:    r.Y,
-				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: r.Width, Height: bounds.Height},
+				// Clip 的右边界要到窗口边：Markdown 里的表格/代码块会比卡片宽，
+				// 只裁到 r.Width 会溢出画到侧栏上（实测过一次）。
+				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: bounds.Width - r.X, Height: bounds.Height},
 			})
 		}
 	}

@@ -176,3 +176,31 @@ return ui.EventResult{Handled: true, Repaint: true, Focus: draftID, FocusVisible
    不要在 goroutine 里直接改 model（`Paint` 只读 state 的约定会被破坏）。`Invalidator` 零值时可用、且不拥有任何 goroutine（`app/invalidator.go:8-13`）。
 
 5. **启动自动聚焦目前没有官方 API**（Q4）。先用「一次性标志 + 第一个输入事件」的写法顶上，并在 `docs/` 里记成已知缺口；不要把 `EventResult.Focus` 硬塞进 `Paint`——`Paint` 没有返回值。
+
+---
+
+## 实测补充（2026-11-03 08:10，由父代理验证）
+
+`components.MarkdownView` + `markdown.Document` **在本机真机跑通**（`spike/md`，4.02 MB exe）：
+
+| 元素 | 结果 |
+|---|---|
+| 标题（`###`） | ✅ 放大 + 加粗 |
+| 粗体 / 斜体 / 行内代码 / 链接 | ✅ 行内代码带底色，链接蓝色 |
+| 无序列表 | ✅ 项目符号 |
+| 引用（`>`） | ✅ 左侧竖线 |
+| 围栏代码块 | ✅ 等宽 + 背景 + 圆角 |
+| 表格 | ✅ 表头加粗 + 行线 |
+| **未闭合的 `**`** | ✅ 原样显示（流式关键） |
+
+集成方式（在 `flex` 里）：
+```go
+w := f.Bounds().Width - 300
+h := mdView.Layout(canvas, markdownStyle, &doc, w)
+slot = f.Slot().Height(h)      // 占位，拿 Rect
+// Draw 返回之后：
+r := slot.Rect()
+mdView.Paint(canvas, components.MarkdownPaint{Look: look, X: r.X, Y: r.Y})
+```
+
+**结论：`flex` 的声明式布局 + `MarkdownView` 的命令式绘制可以共存**，`Box.Rect()`（`flex/box.go:30`）是桥。

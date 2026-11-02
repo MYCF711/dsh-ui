@@ -30,11 +30,13 @@ func replyLines(userText string) []string {
 	if len(short) > 24 {
 		short = append(short[:24], '…')
 	}
-	out := make([]string, 0, 3)
-	for i := 1; i <= 3; i++ {
-		out = append(out, fmt.Sprintf("收到「%s」，这是 mock 流式回答第 %d 句。", string(short), i))
+	// 三句刻意用 Markdown，验证界面：行内样式 / 列表 / 代码块。
+	// 流式推送时 MarkdownView 会边收边重排——未闭合的标记应原样显示。
+	return []string{
+		fmt.Sprintf("### 收到：%s\n\n这是**加粗**、*斜体*、`行内代码` 与 [链接](https://example.com) 的混排验证。", string(short)),
+		"- 列表项一：中文与 English 混排\n- 列表项二\n- 列表项三",
+		"```go\nfunc main() {\n\tfmt.Println(\"等宽代码块\")\n}\n```\n\n收尾一句普通文本。",
 	}
-	return out
 }
 
 // enqueueReplyLocked 登记一条待推送回答。**调用方必须已持有 mu。**

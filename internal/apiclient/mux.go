@@ -559,6 +559,20 @@ func (s *Stream) Messages() []Message {
 	return out
 }
 
+// MergeMessages 把 fresh 并进 keep：**keep 里已有的不删**，同 (Seq,Role) 的更新。
+//
+// 用途是"刷新不能吞历史"。`session.load` 给的是**尾巴**（tail），而界面手里
+// 可能已经有更完整的一份——直接 `msgs = r.Messages` 会把尾巴之前的内容整段吃掉。
+// 实测症状：切走再切回后，界面「共 2 条（总 2）」而宿主是 4 条，第一轮问答没了。
+func MergeMessages(keep, fresh []Message) []Message {
+	out := make([]Message, len(keep))
+	copy(out, keep)
+	for _, m := range fresh {
+		out = upsertMsg(out, m)
+	}
+	return out
+}
+
 // Merge 把流状态并进消息列表：同 seq 同角色**更新**，绝不重复追加。
 //
 // 为什么按 seq 去重：断线重连、同帧重放、以及"先流式落了一条、随后

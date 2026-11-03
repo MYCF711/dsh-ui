@@ -341,7 +341,18 @@ func (m *model) refreshSession(id string, quiet bool) {
 		usageTotal: r.UsageTotal, contextTokens: r.ContextTokens, model: r.Model, at: time.Now()}
 	m.evictLocked(id)
 	if m.cur == id { // 用户可能已经切走了
-		m.msgs = r.Messages
+		// **覆盖前先比条数**：`session.load` 给的是尾巴（`-tail` 默认 40 条），
+		// 而界面手里可能已经有更完整的一份（切走期间推来的、或上一轮 load 的）。
+		// 无条件替换会把尾巴之前的历史整段吃掉——实测切走后给 A 发新消息、
+		// 切回来时界面「共 2 条（总 2）」而宿主是 4 条。
+		//
+		// 规则：新快照**不比手里少**才允许整份替换；少了就合并（保留旧的、
+		// 按 seq 去重并入新的）。这样"刷新"永远不会让屏幕上少东西。
+		if len(r.Messages) >= len(m.msgs) {
+			m.msgs = r.Messages
+		} else {
+			m.msgs = apiclient.MergeMessages(m.msgs, r.Messages)
+		}
 		m.usage = r.Usage
 		// H1/H4/H5：真宿主给的字段原样带进快照；mockd 不给时是零值，
 		// 状态栏/顶栏据此整段不画。H1 的两个量是两件事，各自独立存。

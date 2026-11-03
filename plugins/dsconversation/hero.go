@@ -135,7 +135,14 @@ func (p *Plugin) drawHero(f *flex.Frame, env *pluginapi.Env) {
 			p.heroBoxes.Headline = f.Row().FillWidth().Items(flex.Center).Justify(flex.Center).
 				Gap(heroHeadlineGapX).Children(func() {
 				// 品牌标记：官方 34px 宽的鲸鱼，纯填充，颜色 label-primary。
-				p.heroBoxes.Mark = f.Icon(dsbrand.FishIcon()).Width(heroFishWidth).Height(heroFishHeight).
+				// 品牌标记：优先用注入的（ui.brand），没有就退回包级默认。
+				// **两个分支是同一个 FishIcon**，所以注入与否画出来一模一样——
+				// 这里要的是可替换，不是换一种画法。
+				brandIcon, brandW := dsbrand.FishIcon(), float32(heroFishWidth)
+				if p.brand != nil {
+					brandIcon, brandW = p.brand.Icon, p.brand.Width
+				}
+				p.heroBoxes.Mark = f.Icon(brandIcon).Width(brandW).Height(brandW * dsbrand.FishViewBoxH / dsbrand.FishViewBoxW).
 					Color(t.LabelPrimary)
 
 				p.heroBoxes.TitleGroup = f.Row().Items(flex.Center).Gap(heroTitleGapX).Children(func() {

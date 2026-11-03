@@ -13,6 +13,7 @@
 package dsconversation
 
 import (
+	"github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	"math"
 	"strings"
 
@@ -49,6 +50,10 @@ var dbgOnce = true
 type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
+
+	// brand 是注入来的品牌面（`ui.brand`）。nil = 没有 ds-brand 或它没提供，
+	// 这时退回包级默认 `dsbrand.Default()`——**画法只有一份**，不是两套实现。
+	brand *dsbrand.Brand
 
 	// Markdown 文档与视图按消息下标复用：只有文本或宽度变了才重排。
 	// 每帧重建是 111 MB 那一版的教训。
@@ -151,6 +156,12 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 		// 所以不 fail，只留一行警告，免得"为什么这次截图里没有 exit 0 徽标"
 		// 让人去猜。
 		ctx.Logf("警告：没有 %s（ds-tool 未装配），工具卡走兜底渲染器", dstool.ServiceKey)
+	}
+	// 品牌面：有就注入、没有就用包级默认（同一个 FishIcon，只多一层可替换）。
+	if svc, ok := ctx.Inject(dsbrand.ServiceKey).(dsbrand.Service); ok && svc.Get != nil {
+		if b, ok := svc.Get(); ok {
+			p.brand = &b
+		}
 	}
 	return nil
 }

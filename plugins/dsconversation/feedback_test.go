@@ -115,9 +115,9 @@ func TestFeedbackSeedsFromConfigOnce(t *testing.T) {
 func TestFeedbackIgnoresForeignAndInvalidEntries(t *testing.T) {
 	cfg := newFakeConfig(map[string]string{
 		"feedback.good.1": feedbackUp,
-		"feedback.bad.1":  "maybe",  // 不是我们写的两个合法值
-		"theme":           "light",  // 别的键
-		"feedback.tomb.1": "",       // 撤回墓碑
+		"feedback.bad.1":  "maybe",   // 不是我们写的两个合法值
+		"theme":           "light",   // 别的键
+		"feedback.tomb.1": "",        // 撤回墓碑
 		"feedback.":       "garbage", // 前缀对但内容不是记录
 	})
 	p := &Plugin{}

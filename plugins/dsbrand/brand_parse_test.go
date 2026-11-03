@@ -1,4 +1,4 @@
-package dsconversation
+package dsbrand
 
 import (
 	"math"
@@ -14,11 +14,11 @@ import (
 // 这条断言的意义：以后谁"顺手美化"这个字符串、或者从别处复制了近似形状，
 // 这里会立刻红——首屏 logo 是品牌面，不能靠肉眼看着像。
 func TestFishLogoPathIsOfficialBytes(t *testing.T) {
-	if got := len(fishLogoPath); got != 3448 {
-		t.Fatalf("fishLogoPath 长度 = %d，官方原文是 3448", got)
+	if got := len(FishLogoPath); got != 3448 {
+		t.Fatalf("FishLogoPath 长度 = %d，官方原文是 3448", got)
 	}
-	if fishLogoPath[0] != 'M' {
-		t.Fatalf("路径必须以 M 开头，实际 %q", fishLogoPath[:1])
+	if FishLogoPath[0] != 'M' {
+		t.Fatalf("路径必须以 M 开头，实际 %q", FishLogoPath[:1])
 	}
 }
 
@@ -44,7 +44,7 @@ func TestFishViewBox(t *testing.T) {
 // 这个数字是"解析器真的把整条路径吃完了"的证据：少一条就是截断，
 // 多一条就是把坐标当成了命令。
 func TestParseFishPathCommandCounts(t *testing.T) {
-	commands, ok := parseSVGPath(fishLogoPath)
+	commands, ok := parseSVGPath(FishLogoPath)
 	if !ok {
 		t.Fatal("官方路径解析失败")
 	}
@@ -73,7 +73,7 @@ func TestParseFishPathCommandCounts(t *testing.T) {
 // 坐标错位（比如把 C 的 6 个参数当成 2 个点）会让图形炸到画布外，
 // 而它照样"能画"——所以要看值域。
 func TestParseFishPathGeometry(t *testing.T) {
-	commands, ok := parseSVGPath(fishLogoPath)
+	commands, ok := parseSVGPath(FishLogoPath)
 	if !ok {
 		t.Fatal("解析失败")
 	}

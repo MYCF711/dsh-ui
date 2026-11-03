@@ -19,6 +19,7 @@ type Plugin struct {
 	theme *pluginapi.Theme
 	// field 是值类型：用 &p.field 取地址。写成 *flex.Field 又忘了 new，
 	// Fields() 就会返回一个 nil 元素，flex.Fields(...) 里直接 panic（踩过）。
+	prims pluginapi.Primitives
 	field flex.Field
 }
 
@@ -36,6 +37,7 @@ func (*Plugin) Requires() []string {
 // Register 实现 pluginapi.Plugin。
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
+	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	return nil
 }
 
@@ -55,18 +57,22 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // 高度靠内边距撑（不要写死 Height，见 docs/plugin-api.md §7 坑 1）。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
-	f.Row().FillWidth().Gap(8).Items(flex.End).Children(func() {
-		f.Column().Grow(1).Radius(t.Radii.LG).Background(t.InputMajor).
-			Border(1, t.BorderL2).PadX(12).PadY(8).Children(func() {
-			field := f.Field(&p.field, env.Tree.ID(env.Feat, "composer"), "输入", "说点什么…（Enter 发送）").
-				FillWidth().FontSize(t.Fonts.Body)
-			if field.Submitted() {
+	// 一个大圆角面板把输入框和发送键包在一起（官方 composer 就是这样一整块）。
+	f.Column().WidthPercent(100).Radius(t.Radii.LG).
+		Border(1, t.BorderL2).Background(t.InputMajor).
+		PadX(12).PadY(10).Gap(6).Children(func() {
+		field := f.Field(&p.field, env.Tree.ID(env.Feat, "composer"), "输入", "说点什么…（Enter 发送）").
+			FillWidth().FontSize(t.Fonts.Body)
+		if field.Submitted() {
+			p.submit(env)
+		}
+		// 底部一行：左边留给以后的模型/权限 chip（宿主还没这几个字段），右边发送。
+		f.Row().WidthPercent(100).Items(flex.Center).Children(func() {
+			f.Spacer()
+			if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "send"), "↑", true) {
 				p.submit(env)
 			}
 		})
-		if f.Button(env.Tree.ID(env.Feat, "send"), "发送").Clicked() {
-			p.submit(env)
-		}
 	})
 }
 

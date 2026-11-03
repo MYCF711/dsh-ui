@@ -85,7 +85,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	f.Row().FillWidth().Height(40).Items(flex.Center).Gap(8).Children(func() {
-		if f.Button(env.Tree.ID(env.Feat, "new"), "新会话").Small().Clicked() {
+		if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "new"), "+", false) {
 			if env.Act.NewSession != nil {
 				env.Act.NewSession()
 			}
@@ -176,15 +176,11 @@ func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Sess
 	}
 	id := env.Tree.ID(env.Feat, "s-"+s.ID)
 
-	row := p.prims.ListRow(f, id, active, 34, func() {
-		f.Column().Grow(1).Gap(1).Children(func() {
-			f.Text(title).FontSize(t.Fonts.Secondary).Ellipsis().
-				Color(cond(active, t.LabelPrimary, t.LabelSecondary))
-			f.Text(relativeTime(s.UpdatedAt)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-		})
-		if active {
-			p.prims.Dot(f, t.Link, 6)
-		}
+	// 单行：标题在左、相对时间在右（官方侧栏就是一行，两行会把列表撑到看不了几屏）
+	row := p.prims.ListRow(f, id, active, 30, func() {
+		f.Text(title).FontSize(t.Fonts.Secondary).Ellipsis().Grow(1).
+			Color(cond(active, t.LabelPrimary, t.LabelSecondary))
+		f.Text(relativeTime(s.UpdatedAt)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 	})
 	if row.Clicked() && env.Act.OpenSession != nil {
 		env.Act.OpenSession(s.ID)

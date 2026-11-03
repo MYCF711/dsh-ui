@@ -142,6 +142,8 @@ type Primitives interface {
 	Dot(f *flex.Frame, color ui.Color, size float32) flex.Box
 	// Divider 一条最轻的分隔线。
 	Divider(f *flex.Frame)
+	// CircleButton 一个 28px 圆形图标按钮（官方 .action 的尺寸），返回是否被点击。
+	CircleButton(f *flex.Frame, id ui.ID, glyph string, filled bool) bool
 }
 
 // Env 是绘制期拿到的全部东西：只读快照 + 动作 + 主题。

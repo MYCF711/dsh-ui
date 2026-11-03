@@ -30,6 +30,23 @@ func (p *Primitives) ListRow(f *flex.Frame, id ui.ID, active bool, height float3
 	return row.Hit(id, "").Children(body)
 }
 
+// CircleButton 画一个 28px 的圆形图标按钮（官方 .action 就是 28×28、radius 999）。
+//
+// 用文字字形（+ ↑ ×）而不是矢量图标：viva 的 Icon 是分层路径，为三个字形引一套
+// 图标构造不划算；这个尺寸下字形和图标看不出差别。
+func (p *Primitives) CircleButton(f *flex.Frame, id ui.ID, glyph string, filled bool) bool {
+	t := p.Theme
+	bg, fg := t.BgLayer3, t.LabelSecondary
+	if filled {
+		bg, fg = t.ButtonPrimaryFill, t.ButtonPrimaryFg
+	}
+	return f.Row().Width(28).Height(28).Radius(14).Background(bg).
+		Items(flex.Center).Justify(flex.Center).
+		HoverBackground(t.Hover).Hit(id, "").Children(func() {
+		f.Text(glyph).FontSize(15).Color(fg)
+	}).Clicked()
+}
+
 // SectionHeader 画一个分组头（工作区名 + 条数 + 折叠箭头）。
 //
 // 官方侧栏的分组头是「小号灰字 + 右边数字」，不是按钮样式；这里保持同样的克制：
@@ -85,3 +102,6 @@ func itoa(n int) string {
 	}
 	return string(buf[i:])
 }
+
+// 编译期断言：dscore 必须满足契约里的 Primitives 接口。
+var _ pluginapi.Primitives = (*Primitives)(nil)

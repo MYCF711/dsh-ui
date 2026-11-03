@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdecl"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
@@ -68,12 +70,17 @@ type rightbarSessionState struct {
 const cacheLimit = 5
 
 type model struct {
-	view       flex.View
-	draft      flex.Field
-	search     flex.Field // 侧栏过滤（按标题 + cwd 匹配）
-	inv        app.Invalidator
-	cli        *apiclient.Client
-	cache      map[string]*cachedSession
+	view   flex.View
+	draft  flex.Field
+	search flex.Field // 侧栏过滤（按标题 + cwd 匹配）
+	inv    app.Invalidator
+	cli    *apiclient.Client
+	cache  map[string]*cachedSession
+	// cwd 是当前会话的工作目录（来自 session.load.cwd）。插件拼文件路径要用它，
+	// 空串表示不知道——那时它们不该拼。
+	cwd string
+	// fsNames 是工作区根目录的一层名字（workspace.list 的结果），壳后台刷新。
+	fsNames    []string
 	smokeFired bool
 
 	// 待审批的请求（v1 只支持一条；工具名 + 命令 + 模型自述）
@@ -204,6 +211,19 @@ func (m *model) refreshList() {
 		m.mu.Lock()
 		uiConfig = cfg
 		m.mu.Unlock()
+		// 工作区根目录（一层）：侧栏文件列表用它。失败就算了，不打扰用户。
+		if ents, lerr := m.cli.WorkspaceList(ctx); lerr == nil {
+			names := make([]string, 0, len(ents))
+			for _, e := range ents {
+				if !e.IsDir {
+					names = append(names, e.Name)
+				}
+			}
+			sort.Strings(names)
+			m.mu.Lock()
+			m.fsNames = names
+			m.mu.Unlock()
+		}
 	}()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -365,6 +385,8 @@ func (m *model) refreshSession(id string, quiet bool) {
 		m.usageTotal = r.UsageTotal
 		m.contextTokens = r.ContextTokens
 		m.modelName = r.Model
+		// 工作目录：插件拼文件路径的前提（workspace.list 只给 name）。
+		m.cwd = r.Cwd
 		// 水位基线：epoch 用来核对世代，lastSeq 是宿主那边已经到哪了。
 		if r.JournalEpoch > 0 {
 			m.epochs[id] = r.JournalEpoch
@@ -1265,6 +1287,8 @@ func newConfig(m *model) app.Config {
 				ShowRightbar:  showRightbar,
 				// 连不上时状态栏那颗绿点必须变红说「已断开」，而不是继续「就绪」。
 				Disconnected: wsDown,
+				// 当前会话的工作目录：插件拼文件路径的前提，空串=不知道。
+				CWD: m.cwd,
 			},
 			Act:       m.actions,
 			Tree:      &tree,
@@ -1643,6 +1667,24 @@ func main() {
 					m.setStatus("保存设置失败: " + err.Error())
 				}
 			}()
+		},
+		// 工作区根目录（一层）+ 读文件。**都是同步的**：插件在 draw 里调，
+		// 让它等 HTTP 会阻塞首帧。所以列目录读缓存、读文件**由插件自己看情况调**
+		// （它知道自己在画什么，比壳更该决定要不要阻塞）。
+		FSList: func() []string {
+			m.mu.Lock()
+			names := m.fsNames
+			m.mu.Unlock()
+			return names
+		},
+		FSRead: func(path string) (string, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			c, err := m.cli.FSRead(ctx, path)
+			if err != nil {
+				return "", err
+			}
+			return c.Content, nil
 		},
 		OpenSession: m.openSession,
 		NewSession:  m.newSession,

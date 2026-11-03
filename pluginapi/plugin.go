@@ -238,6 +238,12 @@ type Snapshot struct {
 	// 但 turn 照样在跑——那时按 Esc 应该能停（实测踩过：只判 Stream 就停不了）。
 	Busy     bool
 	Approval *Approval
+	// CWD 是当前会话的工作目录（绝对路径，Windows 风格）。
+	//
+	// **空串 = 不知道**（老宿主没这个字段）。插件拼文件路径时必须以它为前提：
+	// 空着就别拼，否则拼出来的 `/name` 会被 `fs.read` 当"文件不存在"。
+	// 多会话可能属于不同工作区，所以它跟着 `Cur` 变，不是全局常量。
+	CWD string
 	// Disconnected 表示 WS 订阅当前连不上宿主（壳在重连）。
 	//
 	// 为什么单独一个字段而不是让插件去读 Status 里的字：状态栏那颗绿点写「就绪」
@@ -405,6 +411,18 @@ type Actions struct {
 	//
 	// 壳异步落盘、失败只写状态栏——插件不等待、不重试。
 	ConfigSet func(kv map[string]string)
+
+	// FSList 列当前工作区**根目录**（宿主 `workspace.list`）。
+	//
+	// **只列一层**：宿主回的是 `{name,isDir,size}`，没有 path、也没有"列子目录"
+	// 的入参。所以拿它做不出完整文件树——要进子目录得宿主先补 `path` 入参。
+	// nil = 壳没接。
+	FSList func() []string
+	// FSRead 读一个文件（**绝对路径**，Windows 风格）。
+	//
+	// 路径怎么来：`Snapshot.CWD` + "/" + `FSList` 的名字。宿主不做工作区内限制，
+	// **调用方自己判**——别拿用户输入直接拼。
+	FSRead func(path string) (string, error)
 
 	// Approve 回一次审批（H13 的 `session.approve`）。
 	//

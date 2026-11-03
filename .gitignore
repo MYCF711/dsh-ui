@@ -19,3 +19,8 @@ tmp/*~
 tmp/official*
 tmp/crop-*
 tmp/dsh-client-ui-*
+mockd.exe
+app.exe
+tmp/*.json
+tmp/*.err
+tmp/dumplog/

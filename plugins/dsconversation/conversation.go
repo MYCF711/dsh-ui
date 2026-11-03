@@ -267,7 +267,9 @@ func (p *Plugin) drawView(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewSp
 	case "table":
 		p.drawTable(f, env, v)
 	case "plain":
-		f.Text(v.Body).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary).MaxLines(12)
+		// 纯文本工具结果只给一眼：12 行会把一条工具卡撑满半屏（实测过），
+		// 想看全文应该点开或去 artifacts，而不是在消息流里翻。
+		f.Text(v.Body).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary).MaxLines(6)
 	case "card", "":
 		p.drawCard(f, env, v)
 	default:

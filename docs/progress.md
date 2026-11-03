@@ -106,3 +106,4 @@
 | 2026-11-03 12:47 | 新增 `cmd/mockd/view_test.go` 6 条：三种 Kind、行宽必须等于列数、未知工具给通用卡片但空结果必须 nil、错误走 Badge。**没有写「未知工具必须 nil」**——实测通用卡片更好用，取舍写进测试注释 | `go test ./cmd/mockd/` 全绿 |
 | 2026-11-03 12:48 | 截图脚本改成 `PrintWindow` 直取窗口像素：`ImageGrab` 截的是屏幕，窗口被盖住时截到的是**别人的窗口**（踩了一次，截成 DSH 主窗口还以为是渲染坏了） | `scripts/shot.py` |
 | 2026-11-03 12:47 | **查出「每个真实会话只显示 1 条消息」的根因**：懒索引（headerOnly）解到第一条 user 消息就返回，`Messages` 里有 1 条；load 处用 `len(Messages)==0` 判断「要不要全量解」，于是永远不会全量解。加 `realSession.Full` 标记后：**1 条 → 120 条**，其中 **109 条工具调用**，全部带 `view`（card/plain）。这是界面看起来「空」的真正原因，不是渲染问题 | `docs/p4-toolcards.png` |
+| 2026-11-03 12:50 | **真实会话里的工具调用通了**：`mockd` 现在解 `tool/call` + `tool/result`（`callId` 配对），并按工具名生成 `ViewSpec`（bash→card，ls/glob/grep→table，read/write/edit→plain），界面三个渲染器第一次有真数据可画。同时修掉一个藏了很久的 bug：`session.load` 用 `len(Messages)==0` 判断要不要全量解，而索引期已经存了 1 条 → **真实会话永远只显示第一条消息、总数恒为 1**；改成 `Full` 标记后同一会话从 1 条变成 **836 条** | `docs/p4-tools.png`；`bash` 卡带 命令/输出 + `ok` 徽标 |

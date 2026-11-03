@@ -421,12 +421,21 @@ type muxSub struct {
 // 目的只有一个——**别让用户在切回来时才发现流早就断了**。
 func (m *model) runSubscription(ctx context.Context, id string, since int) {
 	backoff := time.Second
+	authNotified := false // 凭据失效只提示一次，别刷屏
 	for {
 		if ctx.Err() != nil {
 			return
 		}
 		ch, err := m.mux.Subscribe(ctx, "session:"+id, since)
 		if err != nil {
+			// 401 = 凭据失效（宿主重启换了 launch token，cookie 在它内存里）。
+			// 这不是"网络抖一下"，重试一万次都好不了——必须让用户看见，
+			// 否则界面永远静默地连不上，而用户以为只是"有点慢"。
+			if isAuthErr(err) && !authNotified {
+				authNotified = true
+				log.Printf("mux 订阅被拒（凭据失效）：%v", err)
+				m.setStatus("宿主凭据已失效（多半是重启过）：请用新的 launch token 重新连接")
+			}
 			log.Printf("mux 订阅失败（%v），%s 后重试 session:%s", err, backoff, id)
 			select {
 			case <-ctx.Done():
@@ -518,6 +527,18 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 		}
 		log.Printf("mux 连接断开 session:%s，带水位 %d 重连", id, since)
 	}
+}
+
+// isAuthErr 判断一条错误是不是"凭据失效"。
+//
+// coder/websocket 在握手被拒时返回的错误里带 HTTP 状态码（`got 401`）；
+// 这里只认 401/403——别的 4xx 是路径/参数问题，重试同样没用但原因不同。
+func isAuthErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "got 401") || strings.Contains(msg, "got 403")
 }
 
 // lastSeqOfLocked 取某会话已收到的最大 seq（没有就是 0）。

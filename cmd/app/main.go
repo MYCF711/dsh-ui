@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,21 +42,6 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
-var (
-	tree = ui.Tree{}
-	home = tree.Feature("home")
-
-	btnNew    = tree.ID(home, "new")
-	sideScr   = tree.ID(home, "side")
-	msgScr    = tree.ID(home, "msgs")
-	draftID   = tree.ID(home, "draft")
-	btnSend   = tree.ID(home, "send")
-	searchID  = tree.ID(home, "search")
-	btnAllow  = tree.ID(home, "allow")
-	btnDeny   = tree.ID(home, "deny")
-	btnAlways = tree.ID(home, "always")
-)
-
 // cachedSession 是切换会话用的温缓存：切回来先显示它，再后台刷新。
 // 上限 5 个（约 3 MB/1000 条），超了就淘汰最久没碰的那个。
 type cachedSession struct {
@@ -71,7 +57,7 @@ type cachedSession struct {
 	at            time.Time
 }
 
-// rightbarSessionState 把用户选择留在各自会话里；explicit=false 时只是由轨迹推导的临时状态。
+// rightbarSessionState 把用户选择留在各自会话里；explicit=false 时使用壳的显式默认值。
 type rightbarSessionState struct {
 	open     bool
 	explicit bool
@@ -134,12 +120,14 @@ type model struct {
 	prims   pluginapi.Primitives
 	side    *dssidebar.Plugin
 	actions pluginapi.Actions
+	chrome  frameChrome
 
-	mu       sync.Mutex
-	sessions []apiclient.Session
-	cur      string
-	msgs     []apiclient.Message
-	usage    apiclient.Usage
+	mu           sync.Mutex
+	chromeLayout frameChromeLayout // 由 Paint 写入，原生截图报告在 mu 下读取。
+	sessions     []apiclient.Session
+	cur          string
+	msgs         []apiclient.Message
+	usage        apiclient.Usage
 	// 宿主 §12 H1/H4/H5：累计用量、当前上下文、模型名、审批策略。
 	// 零值/空串 = 不知道，界面据此整段不画（绝不拿 0 或 mode 冒充）。
 	usageTotal    apiclient.Usage
@@ -163,21 +151,12 @@ func (m *model) setStatus(s string) {
 	m.inv.Invalidate()
 }
 
-func hasToolTrajectory(msgs []apiclient.Message) bool {
-	for i := range msgs {
-		if msgs[i].Role == "tool" {
-			return true
-		}
-	}
-	return false
-}
-
-// syncRightbarLocked 按当前会话轨迹推导默认开合；用户明确开过或关过后不被刷新覆盖。
+// syncRightbarLocked 默认收起右栏；工具历史不自动抢占正文，用户明确选择后按会话记忆。
 // 调用方必须持有 m.mu。
 func (m *model) syncRightbarLocked() {
 	state := m.rightbarSessions[m.cur]
 	if !state.explicit {
-		state.open = m.rightbarDefault || hasToolTrajectory(m.msgs)
+		state.open = m.rightbarDefault
 		if m.cur != "" {
 			if m.rightbarSessions == nil {
 				m.rightbarSessions = map[string]rightbarSessionState{}
@@ -1091,14 +1070,15 @@ var streamDebug = 3
 var (
 	winTitle     string
 	shotPath     string
-	theme        ui.Theme // 由 dscore 的令牌算出来，启动时赋值（见 main）
-	renderLimit  int      // 0 = 不限制
-	forceSession string   // 非空则启动后直接打开
-	tailCount    int      // session.load 的 tailMessages
-	wsDown       bool     // WS 订阅当前连不上（状态栏据此把绿点换成「已断开」）
-	demoTool     bool     // 在消息列表里插假的工具卡
-	smokeSend    bool     // 启动后自动发一条
-	promptText   string   // -prompt 覆盖 smoke 文本
+	theme        ui.Theme          // 由 dscore 的令牌算出来，启动时赋值（见 main）
+	renderLimit  int               // 0 = 不限制
+	forceSession string            // 非空则启动后直接打开
+	tailCount    int               // session.load 的 tailMessages
+	wsDown       bool              // WS 订阅当前连不上（状态栏据此把绿点换成「已断开」）
+	uiConfig     map[string]string // 宿主 config.get 的缓存（插件同步读，壳后台刷新）
+	demoTool     bool              // 在消息列表里插假的工具卡
+	smokeSend    bool              // 启动后自动发一条
+	promptText   string            // -prompt 覆盖 smoke 文本
 )
 
 // drawSlot 把一个槽位上的插件按序画出来。
@@ -1152,11 +1132,29 @@ func newConfig(m *model) app.Config {
 			fields = append(fields, withFields.Fields()...)
 		}
 	}
-	cfg.TextInput = flex.Fields(fields...)
+	configureFrameWindow(&cfg, runtime.GOOS == "windows", theme)
+	cfg.TextInput = m.chrome.wrapTextInput(flex.Fields(fields...))
+	m.chrome.newSession = m.newSession
+	m.chrome.toggleRightbar = m.toggleRightbar
 
 	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
+		if runtime.GOOS == "windows" {
+			if id, ok := canvas.ClickTarget(); ok {
+				if err := m.chrome.handleClick(id); err != nil {
+					m.setStatus("菜单动作失败: " + err.Error())
+				}
+			}
+		}
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.Background)
+		contentBounds := bounds
+		if runtime.GOOS == "windows" {
+			chromeLayout := m.chrome.paintCaption(canvas, theme, size)
+			contentBounds = chromeLayout.Content
+			m.mu.Lock()
+			m.chromeLayout = chromeLayout
+			m.mu.Unlock()
+		}
 
 		m.mu.Lock()
 		sessions := append([]apiclient.Session(nil), m.sessions...)
@@ -1188,7 +1186,8 @@ func newConfig(m *model) app.Config {
 		// 每帧按**这一帧的** bounds 重算：buildGeometry 是纯函数，没有可残留的
 		// 缓存，所以 resize 之后不会沿用上一帧的列宽（真机三档见 tmp/v4b-shots）。
 		hasRightbar := showRightbar && m.kernel.Has(pluginapi.SlotRightbar)
-		geom := buildGeometry(bounds.Width, bounds.Height, m.side.Width(), hasRightbar,
+		m.chrome.rightbarOpen = showRightbar
+		geom := buildGeometry(contentBounds.Width, contentBounds.Height, m.side.Width(), hasRightbar,
 			m.kernel.Has(pluginapi.SlotShellBottom))
 		mainWidth := geom.MainWidth
 
@@ -1252,7 +1251,7 @@ func newConfig(m *model) app.Config {
 			Tree:      &tree,
 			Feat:      home,
 			Canvas:    canvas,
-			Bounds:    bounds,
+			Bounds:    contentBounds,
 			MainWidth: mainWidth,
 			// viva 要求滚动状态"要的时候再取"，所以传函数而不是指针。
 			Scroll: m.view.ScrollState,
@@ -1263,7 +1262,7 @@ func newConfig(m *model) app.Config {
 		// 与上面 env.MainWidth 用的是**同一份**求解结果，不允许两处各算一遍。
 		env.Geometry = geom
 
-		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
+		m.view.Draw(canvas, theme, contentBounds, func(f *flex.Frame) {
 			// 壳只画一个槽：三栏怎么切、底栏多高、右栏占多少，全在 plugins/dsshell 里。
 			drawSlot(f, m.kernel, pluginapi.SlotShellRoot, env)
 		})
@@ -1278,6 +1277,9 @@ func newConfig(m *model) app.Config {
 			if painter.AfterDraw != nil {
 				painter.AfterDraw(canvas, env)
 			}
+		}
+		if runtime.GOOS == "windows" {
+			m.chrome.paintPopup(canvas, theme, size)
 		}
 	}
 	// 窗口变了必须全屏重绘：Viva 只重画变化区域，缩小后旧帧会残留在边缘。
@@ -1302,6 +1304,12 @@ func newConfig(m *model) app.Config {
 	cfg.OnKey = func(ev ui.KeyEvent) ui.EventResult {
 		if ev.Release {
 			return ui.EventResult{}
+		}
+		if runtime.GOOS == "windows" {
+			if result := m.chrome.handleKey(ev); result.Handled {
+				m.inv.Invalidate()
+				return result
+			}
 		}
 		if m.kernel.HandleKey(ev) {
 			// **必须显式 Invalidate**：viva 的 EventResult.Repaint 不足以让
@@ -1487,13 +1495,18 @@ func main() {
 	// 只有真在同一个进程里切，才能验出"切走时流没断、切回来内容还在"。
 	switchSeq := flag.String("switch", "", "调试：启动后按顺序切换会话（逗号分隔 id）")
 	switchEvery := flag.Int("switch-every", 3, "调试：-switch 每隔多少秒切一个")
-	rightbarOn := flag.Bool("rightbar", false, "无工具轨迹时是否展开右栏（有真实轨迹会自动展开）")
+	rightbarOn := flag.Bool("rightbar", false, "启动时是否默认展开右栏；工具历史不会自动展开，用户选择按会话记忆")
 	token := flag.String("token", "", "宿主 launch token：给了就先 /connect 换 cookie（真宿主 dshd serve 必须给）")
 	searchAtStart := flag.String("search", "", "调试：启动就把会话内搜索打开，并带上这个词（截搜索态用）")
 	shotWait := flag.Int("shot-wait", 4, "无头抓图前等多少秒（流式/发送类验证要给大一点）")
 	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
+	chromeReport := flag.String("chrome-report", "", "与 -shot 同用：把真实 Paint 的 caption/菜单几何写成 JSON")
+	chromeProbe := flag.Bool("chrome-probe", false, "与 -shot 同用：点击本进程窗口控制并断言 OS 状态，最后从关闭钮退出")
 	winSize := flag.String("size", "", "调试：窗口初始尺寸 WxH（如 1600x900）；空 = 1180x800。验证几何在不同宽度下是否成立")
 	flag.Parse()
+	if (*chromeProbe || *chromeReport != "") && *shot == "" {
+		log.Fatal("-chrome-probe / -chrome-report 必须与 -shot 同用")
+	}
 	if *winSize != "" {
 		w, h, ok := parseWinSize(*winSize)
 		if !ok {
@@ -1585,6 +1598,33 @@ func main() {
 	m.prims = m.kernel.MustGet(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	theme = dscore.VivaTheme(m.theme)
 	m.actions = pluginapi.Actions{
+		// 宿主 ui-config.json 的读写。ConfigGet 给的是**缓存**（插件要同步返回），
+		// ConfigSet 异步写、失败只报状态栏——插件不等待也不重试。
+		ConfigGet: func() map[string]string {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			return m.uiConfig
+		},
+		ConfigSet: func(kv map[string]string) {
+			if len(kv) == 0 {
+				return
+			}
+			m.mu.Lock()
+			if m.uiConfig == nil {
+				m.uiConfig = map[string]string{}
+			}
+			for k, v := range kv {
+				m.uiConfig[k] = v
+			}
+			m.mu.Unlock()
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := m.cli.ConfigSet(ctx, kv); err != nil {
+					m.setStatus("保存设置失败: " + err.Error())
+				}
+			}()
+		},
 		OpenSession: m.openSession,
 		NewSession:  m.newSession,
 		Send:        m.sendText,
@@ -1654,7 +1694,7 @@ func main() {
 	}
 
 	if shotPath != "" {
-		startShot(shotPath, time.Duration(*shotWait)*time.Second)
+		startShot(m, shotPath, time.Duration(*shotWait)*time.Second, *chromeReport, *chromeProbe)
 	}
 
 	var canvas ui.Canvas

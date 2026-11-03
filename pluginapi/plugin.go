@@ -395,6 +395,17 @@ type Actions struct {
 	// 但请把它当**空转接口**：不要因为它存在就假设有人在用。
 	SetDraft func(text string)
 
+	// ConfigGet 取宿主的 UI 配置（`config.get`，纯 key/value，宿主不解释）。
+	//
+	// **同步返回的是壳缓存的那份**：壳在启动与每次 ConfigSet 之后刷新。
+	// 所以插件在 Register / 首帧读到的可能是空 map——**必须按"可能没有"来写**，
+	// 不要假设某个键一定在。nil = 壳没接（旧的 mockd），同样按"没有配置"处理。
+	ConfigGet func() map[string]string
+	// ConfigSet 写若干键（**合并**语义：只覆盖你给的键）。
+	//
+	// 壳异步落盘、失败只写状态栏——插件不等待、不重试。
+	ConfigSet func(kv map[string]string)
+
 	// Approve 回一次审批（H13 的 `session.approve`）。
 	//
 	//	requestID ← Approval.RequestID，optionID ← Approval.Options[].OptionID

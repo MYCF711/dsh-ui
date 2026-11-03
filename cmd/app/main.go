@@ -29,6 +29,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dstopbar"
@@ -1238,6 +1239,10 @@ func parseKeys(seq string) []ui.Key {
 			out = append(out, ui.KeyDown)
 		case "up":
 			out = append(out, ui.KeyUp)
+		case "f1":
+			out = append(out, ui.KeyF1)
+		case "f12":
+			out = append(out, ui.KeyF12)
 		case "home":
 			out = append(out, ui.KeyHome)
 		case "end":

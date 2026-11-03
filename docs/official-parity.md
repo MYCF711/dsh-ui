@@ -117,3 +117,48 @@
 `sidebar-files` / `sidebar-terminal`（宿主有 `fs.read`/`fs.write`，但没有目录列举与终端会话）。
 
 **这解释了"为什么差得很远"的一半**：59 个官方部件里，相当一部分依赖宿主提供的能力面，界面单方面补不出来。
+
+## 53 个缺口按「谁挡着」分类
+
+分三类，只有第一类我能**现在动手**。
+
+### A. 界面自己就能做（不依赖宿主新 API）—— 8 个
+
+| 部件 | 为什么现在能做 |
+|---|---|
+| `shortcuts` | 纯 UI：一个键位说明面板，键位是界面自己定的 |
+| `theme` | `dscore` 已有 `Dark()`，加亮色/跟随系统就行 |
+| `message-feedback` | 消息下方的 👍/👎，本地记录即可（不承诺上报） |
+| `trajectory` | **我们已有**（`dsrightbar`），只差官方那种分组/折叠层级 |
+| `tool` | 工具卡的独立插件化（现在写在 `dsconversation` 里） |
+| `commands` | 命令面板，动作走现成的 `Actions` |
+| `layout` | 三栏求解已有（`dsshell`），差的是可拖拽分栏 |
+| `brand-official` | 官方鲸鱼 logo 已转（`brand_path.go`），差的是品牌包扩展点 |
+
+### B. 宿主已有能力面，界面没接 —— 6 个
+
+| 部件 | 宿主已有什么 | 缺什么 |
+|---|---|---|
+| `sidebar-files` | `fs.read` / `fs.write` / `workspace.list` | **目录列举**（`workspace.list` 只给顶层） |
+| `sidebar-documentpreview` | `fs.read` | 只需要渲染 |
+| `reference` | — | 需要 `@` 文件引用的语法约定 |
+| `deliverables` | `fs.write` | 需要"哪些是交付物"的约定 |
+| `jobs` | 后台任务概念已有 | 需要 `jobs.list`/`jobs.output` 的跨线方法 |
+| `schedule` | 无 | 需要定时任务的存储与方法 |
+
+### C. 必须宿主先加跨线契约 —— 39 个（含 11 个设置类）
+
+`settings*`(11) · `model-selection` · `permission-presets` · `attachment` · `plugin-manager` ·
+`plugin-market` · `settings-plugin-inventory` · `sidebar-terminal` · `sidebar-browser` ·
+`sidebar-right` · `subagent` · `skill` · `agent-preset` · `goal` · `plan` · `user-questions` ·
+`workflow-run` · `secret-mask` · `open-in-app` · `entry-customization` · `directory-picker-*` ·
+`input-trigger` · `deepseek-model-label-1017` · `renderer` · `workspace` · `session` · `cordis` ·
+`approval`(我们已有简化版) · `chat`
+
+**结论**：真正能靠界面补齐的是 **A 类 8 个 + B 类 6 个**；C 类 39 个必须先有宿主契约——
+这也解释了为什么"看起来差得远"却一时补不上：**大头在宿主那一侧**。
+
+### 我这一轮选哪个动手
+
+**`shortcuts`**（A 类第一个）：纯 UI、零依赖、用户能立刻感知（现在按 F12 收起 ds-demo 这类提示散落在各处，
+没有一个地方能查"我还能按什么键"）。做完要能说清每个快捷键**真实绑定在哪里**，不编。

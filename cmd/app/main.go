@@ -439,7 +439,10 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 			continue
 		}
 		backoff = time.Second
-		log.Printf("mux 已订阅 session:%s since=%d", id, since)
+		m.mu.Lock()
+		ep := m.epochs[id]
+		m.mu.Unlock()
+		log.Printf("mux 已订阅 session:%s since=%d epoch=%d", id, since, ep)
 
 		for ev := range ch {
 			if ev.Kind == "gap" {

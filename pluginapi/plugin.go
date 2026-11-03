@@ -39,6 +39,23 @@ const (
 	KeyPrimitives = "ui.primitives"
 )
 
+// Source 提供一批插件。
+//
+// 为什么要它：壳不该知道"装了哪些插件"。文件系统扫描、配置读取、外部 module、
+// 甚至测试替身，都实现这个接口——装配起来时是一次性的 []Plugin，
+// 装配之后没有任何区别。第三方插件因此不需要改壳的代码。
+type Source interface {
+	// Plugins 返回这一源能提供的全部插件。返回错误 = 这个源失败了：
+	// 内置源的失败是致命的，外部源的失败按调用方策略决定是警告还是退出。
+	Plugins() ([]Plugin, error)
+}
+
+// SourceFunc 让一个函数满足 Source。
+type SourceFunc func() ([]Plugin, error)
+
+// Plugins 实现 Source。
+func (f SourceFunc) Plugins() ([]Plugin, error) { return f() }
+
 // Plugin 是一个界面插件。字段形状刻意和宿主线的 kernel.Module 对齐。
 type Plugin interface {
 	// ID 全局唯一、kebab-case、稳定（写进日志和依赖表）。
@@ -184,12 +201,26 @@ type Env struct {
 	// Has 判断某个槽位有没有插件挂东西。框架插件靠它决定"这一列画不画"——
 	// 没有侧栏插件时不该留一条空栏。
 	Has func(Slot) bool
+	// Geometry 是本帧三栏的几何（壳算好，框架插件照着摆）。
+	// 为什么壳算：它已经知道侧栏插件要的宽度、右栏开合、白名单里有没有这些部件。
+	// 框架插件拿到的是"结果"，不是"猜"。
+	Geometry Geometry
 	// MainWidth 是主区那一列的内容宽度（壳按 窗口 - 侧栏 - 右栏 算好）。
 	// 插件要按像素定宽时只能用它：槽位里 f.Bounds() 给的是整窗宽（实测 1180）。
 	MainWidth float32
 	// Bounds 是这一帧的整窗尺寸。AfterDraw 拿到的 canvas 没有尺寸接口，
 	// 要在覆画时算裁剪区就用这个。
 	Bounds ui.Rect
+}
+
+// Geometry 是一帧的三栏几何（像素，已扣掉 padding 之前的外框宽）。
+type Geometry struct {
+	Width        float32 // 整窗
+	Height       float32
+	SidebarWidth float32 // 0 = 没有侧栏
+	RightWidth   float32 // 0 = 没有右栏
+	MainWidth    float32 // 剩下的全部给中栏
+	BottomHeight float32 // 0 = 没有底部整行
 }
 
 // Snapshot 是一帧的数据快照，壳在锁内拷好再传进来，插件里不用加锁。

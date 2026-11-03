@@ -83,7 +83,11 @@ func (p *Plugin) drawSidebar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pl
 		!env.Has(pluginapi.SlotSidebarFooter) {
 		return
 	}
-	f.Column().Width(p.SidebarWidth).FillHeight().Pad(12).Gap(8).
+	sw := env.Geometry.SidebarWidth
+	if sw <= 0 {
+		sw = p.SidebarWidth
+	}
+	f.Column().Width(sw).FillHeight().Pad(12).Gap(8).
 		Background(p.theme.SidebarFill).Children(func() {
 		drawSlot(pluginapi.SlotSidebarHeader)
 		p.prims.Divider(f)
@@ -99,8 +103,11 @@ func (p *Plugin) drawSidebar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pl
 
 // drawMain 中栏：宽度必须钉死（百分比在槽位里按整窗解析，内容会跑到窗口外）。
 func (p *Plugin) drawMain(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
-	w := env.MainWidth
-	if w < 400 && env.MainWidth > 0 {
+	w := env.Geometry.MainWidth
+	if w <= 0 {
+		w = env.MainWidth
+	}
+	if w < 400 {
 		w = 400 // 官方为保中栏，宁可挤别的
 	}
 	f.Column().Width(w).Grow(1).FillHeight().Pad(12).Gap(8).Children(func() {
@@ -117,12 +124,9 @@ func (p *Plugin) drawRightbar(f *flex.Frame, env *pluginapi.Env, drawSlot func(p
 	if !env.Data.ShowRightbar || !env.Has(pluginapi.SlotRightbar) {
 		return
 	}
-	w := p.RightbarWidth
+	w := env.Geometry.RightWidth
 	if w <= 0 {
 		w = env.Bounds.Width * 0.45 // 官方：首次打开占视口 45%
-	}
-	if env.MainWidth > 0 && env.Bounds.Width-w-env.MainWidth-p.SidebarWidth < 0 {
-		w = 300 // 官方：先压到 300
 	}
 	f.Column().Width(w).FillHeight().Pad(12).Gap(8).
 		Background(p.theme.SidebarFill).Children(func() {
@@ -137,7 +141,10 @@ func (p *Plugin) drawBottom(f *flex.Frame, env *pluginapi.Env, drawSlot func(plu
 	if !env.Has(pluginapi.SlotShellBottom) {
 		return
 	}
-	const h = 24.0
+	h := env.Geometry.BottomHeight
+	if h <= 0 {
+		h = 24
+	}
 	f.Row().FillWidth().Height(h)
 	f.Row().Absolute().Left(0).Bottom(0).Width(env.Bounds.Width).Height(h).
 		Children(func() {

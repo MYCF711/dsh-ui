@@ -16,19 +16,20 @@ import (
 	"sync"
 	"time"
 
-	hello "example.com/dsh-hello"
+	_ "example.com/dsh-hello"
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
-	"github.com/MYCF711/dsh-ui/plugins/dscomposer"
+	"github.com/MYCF711/dsh-ui/internal/uiplugins"
+	_ "github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/MYCF711/dsh-ui/plugins/dsdemo"
-	"github.com/MYCF711/dsh-ui/plugins/dsrightbar"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
-	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
-	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
+	_ "github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
@@ -554,6 +555,16 @@ func newConfig(m *model) app.Config {
 			Scroll: m.view.ScrollState,
 		}
 		env.Has = func(slot pluginapi.Slot) bool { return m.kernel.Has(slot) }
+		// 三栏几何由壳算：它知道侧栏要的宽度、右栏开不开、白名单里有没有底部整行。
+		// 框架插件照着摆，不再自己猜（猜错过：白名单里漏掉 shell，部件就上下堆叠）。
+		env.Geometry = pluginapi.Geometry{
+			Width:        bounds.Width,
+			Height:       bounds.Height,
+			SidebarWidth: m.side.Width(),
+			RightWidth:   geomRightWidth(bounds.Width, m.side.Width(), hasRightbar),
+			MainWidth:    mainWidth,
+			BottomHeight: condF(m.kernel.Has(pluginapi.SlotShellBottom), 24, 0),
+		}
 
 		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
 			// 壳只画一个槽：三栏怎么切、底栏多高、右栏占多少，全在 plugins/dsshell 里。
@@ -606,6 +617,59 @@ func parseKeys(seq string) []ui.Key {
 	return out
 }
 
+// fixedFirst 返回必须常驻的结构性插件。
+//
+// 白名单模式下列没列它们也要装：ds-core 是所有插件的 Requires，ds-shell 负责切三栏。
+// 这一步直接在壳里实例化，因为白名单可能把它们漏掉，而它们是地基不是部件。
+func fixedFirst(configPath string) []pluginapi.Plugin {
+	// 无论哪个模式都要带上：skip 把它们从注册表结果里排掉了（壳自己注入实例）。
+	// 全装模式下漏掉 ds-core，所有需要 ui.theme 的插件都会装配失败（实测）。
+	return []pluginapi.Plugin{&dscore.Plugin{Dark: true}, &dsshell.Plugin{}}
+}
+
+// geomRightWidth 算右栏宽度：官方首次打开占视口 45%，扣完中栏最小 400 还不够就压到 300。
+func geomRightWidth(total, sidebar float32, has bool) float32 {
+	if !has {
+		return 0
+	}
+	w := total * 0.45
+	if total-w-sidebar < 400 {
+		w = total - sidebar - 400
+	}
+	if w < 300 {
+		w = 300
+	}
+	return w
+}
+
+// condF 是三目（Go 没有，写个小函数比每处写 if 清楚）。
+func condF(ok bool, a, b float32) float32 {
+	if ok {
+		return a
+	}
+	return b
+}
+
+// orderPlugins 把框架插件排到最前。
+//
+// 装配顺序本身由 Requires 拓扑排序决定，但 ds-shell 与别的部件之间**没有依赖关系**
+// （它只是画槽位，不许 Requires 那些部件），所以白名单里它可能排在后面。
+// 排在后面时，部件会先占满整个窗口，框架再切三栏就晚了。
+func orderPlugins(ps []pluginapi.Plugin) []pluginapi.Plugin {
+	out := make([]pluginapi.Plugin, 0, len(ps))
+	for _, p := range ps {
+		if p.ID() == "ds-shell" {
+			out = append(out, p)
+		}
+	}
+	for _, p := range ps {
+		if p.ID() != "ds-shell" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // itoaLocal 只给状态文字用（壳里没有别的地方需要它）。
 func itoaLocal(n int) string {
 	if n == 0 {
@@ -622,6 +686,7 @@ func itoaLocal(n int) string {
 }
 
 func main() {
+	pluginConfig := flag.String("plugins", "", "插件配置文件（JSON 白名单；空=全装）")
 	addr := flag.String("addr", "http://127.0.0.1:7788", "Transport base URL")
 	limit := flag.Int("limit", 0, "只渲染最后 N 条消息（0 = 全部）；用于量视口虚拟化的收益")
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
@@ -669,23 +734,32 @@ func main() {
 	// 装插件：先根本依赖（ds-core：设计令牌 + 基础组件），再依赖它的部件。
 	// 装配器按 Requires 排序；ds-sidebar 少一个键就直接报错，不会静默少画一块。
 	m.side = &dssidebar.Plugin{CollapseAll: *collapseAll}
+	// ds-core（令牌 + 图元）与 ds-shell（三栏）是结构性的：它们不在白名单里也要装，
+	// 否则其余部件没有令牌可 Inject、或者各自独占整个窗口。
+	// 这两条不许被 ui-plugins.json 关掉——配置管的是"装哪些部件"，不是"要不要有地基"。
 	m.kernel = uikernel.New("dsh-ui")
-	if err := m.kernel.Load(
-		&dscore.Plugin{Dark: true}, // L2 根本依赖插件：令牌 + 基础组件
-		&dsshell.Plugin{},          // L3 框架：三栏几何 + 底栏整行
-		m.side,                     // L4 左栏会话列表
-		&dsconversation.Plugin{
-			ExpandAllThinking: *expandThink,
-			SearchOpen:        *searchAtStart != "",
-			SearchQuery:       *searchAtStart,
-		}, // 主区消息流 + 工具卡 + 审批
-		&dscomposer.Plugin{},  // 输入区
-		&dsstatusbar.Plugin{}, // 底部状态栏
-		&dstopbar.Plugin{},    // 主区顶部条
-		&dsrightbar.Plugin{},  // 右栏工具轨迹
-		&hello.Plugin{},       // L5 第三方插件样例（仓库外，走公开契约包）
-		&dsdemo.Plugin{},      // 最小插件样例（plugins/dsdemo，挂 shell.overlay）
-	); err != nil {
+
+	// 插件从哪来：**壳不认识任何具体插件**。
+	// 内置的自己在 init 里 pluginapi.Register 报到（blank import 即接入）；
+	// 装哪些可以由 <home>/ui-plugins.json 限量（白名单 / enabled:false）。
+	// 需要壳注入运行期状态的少数几个（侧栏实例、搜索开关）在这里补。
+	plugins, err := uiplugins.Load(*pluginConfig, pluginapi.Builtin(), func(id string) bool {
+		// 这两个实例由壳自己 append（壳要读它们的 Fields/Width/搜索开关）。
+		return id == "ds-sidebar" || id == "ds-conversation" || id == "ds-core" || id == "ds-shell"
+	})
+	if err != nil {
+		log.Fatalf("插件来源加载失败: %v", err)
+	}
+	plugins = append(plugins, m.side, &dsconversation.Plugin{
+		ExpandAllThinking: *expandThink,
+		SearchOpen:        *searchAtStart != "",
+		SearchQuery:       *searchAtStart,
+	})
+	// 白名单模式下，cs-shell 必须永远是第一个：它负责切三栏。
+	// 少了它，其余部件会各自独占整个窗口（实测：白名单里漏掉 ds-shell，
+	// 侧栏和消息流就上下堆在一起了）。
+	plugins = append(plugins, fixedFirst(*pluginConfig)...)
+	if err := m.kernel.Load(orderPlugins(plugins)...); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}
 	m.theme = m.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)

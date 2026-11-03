@@ -9,6 +9,8 @@ package pluginapi
 import pub "github.com/MYCF711/dsh-ui/pluginapi"
 
 type (
+	Source     = pub.Source
+	SourceFunc = pub.SourceFunc
 	Plugin     = pub.Plugin
 	Fields     = pub.Fields
 	KeyHandler = pub.KeyHandler
@@ -18,6 +20,7 @@ type (
 	Painter    = pub.Painter
 	Primitives = pub.Primitives
 	Env        = pub.Env
+	Geometry   = pub.Geometry
 	Snapshot   = pub.Snapshot
 	Usage      = pub.Usage
 	Approval   = pub.Approval
@@ -43,4 +46,11 @@ const (
 	SlotMainComposer  = pub.SlotMainComposer
 	SlotRightbar      = pub.SlotRightbar
 	SlotStatusbar     = pub.SlotStatusbar
+)
+
+// Builtin / Register 是注册表函数，别名层透传。
+var (
+	Builtin    = pub.Builtin
+	Register   = pub.Register
+	Registered = pub.Registered
 )

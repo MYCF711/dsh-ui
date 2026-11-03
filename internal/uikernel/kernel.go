@@ -170,6 +170,18 @@ func (k *Kernel) install(p pluginapi.Plugin) error {
 	return nil
 }
 
+// LoadSource 从一个来源装插件；来源失败就原样返回错误（由壳决定是警告还是退出）。
+func (k *Kernel) LoadSource(src pluginapi.Source) error {
+	if src == nil {
+		return nil
+	}
+	plugins, err := src.Plugins()
+	if err != nil {
+		return err
+	}
+	return k.Load(plugins...)
+}
+
 // Get 取一个能力；没提供过返回 nil。
 func (k *Kernel) Get(key string) any { return k.values[key] }
 

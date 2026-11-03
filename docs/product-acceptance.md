@@ -61,34 +61,25 @@
    首次订阅收到 seq 1..5，切回变成 `since=5 epoch=1`。
    **教训**：一个"客户端看起来的低效"可能整条链路的起点就在对面——查之前先确认对面到底推了什么。
 
-## 二·六、`-race` 未跑（环境缺失，不是跳过）
+## 二·六、`-race` —— **已跑，两仓全绿**（2026-11-03 20:15）
 
-`AGENTS.md` §5 要求"有 C 工具链时另跑 `go test ./... -race`"。本机**没有 gcc**
-（`which gcc` 空、`where gcc` 空、`/c/mingw64`、`/c/msys64`、`/c/TDM-GCC-64` 都不存在），
-而 `-race` 需要 cgo，所以**这一项本轮没有执行，是未验证状态**。
+`AGENTS.md` §5.4 要求"有 C 工具链时跑 `bash scripts/race.sh`"。早先本机没有 gcc，
+GitHub 又不可达（choco/winget 都卡在下载），这一项一直挂着"未验证"。
 
-影响面：mux 的读循环、带水位重连、多会话订阅池、`FillGap` 都是并发代码，
-没有 race 检测就等于没验过数据竞争。**要真验需要装 mingw64 或换一台有 C 工具链的机器。**
+后来发现**工具链已经在本机了**：`/c/toolchains/mingw64/bin/gcc.exe`（MinGW-w64 GCC
+16.2.0 UCRT）。宿主仓的 `scripts/race.sh` 还留了一条关键经验：**必须放在没有空格的
+路径**下——放在 `D:/DeepSeek Harness/...` 里时链接器会把 `D:/DeepSeek` 当整个路径，
+报 `cannot find D:/DeepSeek: Permission denied`。
 
-**2026-11-03 尝试安装（失败）**：本机有 choco 与 winget，两者都能装 mingw，但**下载源都在
-GitHub**，而本机直连 GitHub **超时**（`curl -r 0-2000000` 15 秒无响应）、三个常见加速镜像
-（ghfast/ghproxy/mirror.ghproxy）**全部失败**、也没有 HTTP 代理；清华的 msys2 路径是网页不是
-目录索引、USTC 超时。所以包管理器卡在下载阶段，**本轮没能装上**。
-已杀掉卡住的 choco/winget 进程，不留半成品。
-
-好消息是命令已经准备好了，gcc 一到位就能跑：
+实测结果：
 
 ```bash
-cd D:/DeepSeek Harness/default-workspace/dsh-ui
-export PATH="/c/Program Files/Go/bin:/c/ProgramData/chocolatey/lib/mingw/tools/install/mingw64/bin:$PATH"
-CGO_ENABLED=1 go test -race ./internal/apiclient/ ./plugins/dscomposer/   # 界面并发面
-cd ../DSH-GO && CGO_ENABLED=1 go test -race ./internal/transport/ ./cmd/dshd/   # 宿主并发面
+cd dsh-ui && CGO_ENABLED=1 PATH="/c/toolchains/mingw64/bin:$PATH"   go test -race ./internal/... ./plugins/...        # 10 包全 ok，零 DATA RACE
+cd DSH-GO && bash scripts/race.sh                    # 39 包 ok，合计 OK=1 FAIL=0
 ```
 
-**兜底（不能替代 race，但抓的是另一类错）**：加了两个逻辑断言测试 ——
-`TestFillGapConcurrentGoroutinesSafe`（8 个 goroutine 并行补互不重叠的缺口，
-断言每个 seq 恰好被应用一次：不重复、不漏）与 `TestFillGapStopsWhenHostHasNoMore`
-（宿主提前没帧时必须退出不死循环）。race detector 抓内存竞争，这两个抓顺序/重复/死循环。
+覆盖到的并发面：mux 读循环 / 带水位重连 / 多会话订阅池 / `FillGap` 分批补洞 /
+插件内核装配 / 插件配置解析 / 宿主 transport 与 dshd。
 
 ## 三、仍然缺的（不假装有）
 

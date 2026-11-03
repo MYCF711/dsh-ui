@@ -102,3 +102,6 @@
 | 2026-11-03 16:26 | 宿主线把 `session.list` 做到 **0.23 s 且标题还在**（`ReadHeader` + `ReadSummary` 两步），比我给的"解 64KB 一次拿完"更干净。更新 `u0-list-fastpath.md` 记下对比与他们的一个真 bug（`firstText(整帧)` → 全退占位符，旧断言 `Title != ""` 恰好被占位符骗过） | 我的方案只在"不想改两处读函数"时更省事 |
 | 2026-11-03 12:25 | **界面线的架构落地：插件内核 + 根本依赖插件**。新增 `internal/pluginapi`（契约，零实现）、`internal/uikernel`（作用域 / 能力表 / 拓扑装配，缺依赖即报错）、`plugins/dscore`（照抄官方 `--dsw-*` 令牌 + 基础组件）、`plugins/dssidebar`（**第一个**移植的部件：按 cwd 工作区分组、可折叠、搜索、相对时间、选中态）。壳只做三件事：装插件、给槽位、递快照 | `docs/p1-sidebar.png`；装配日志 `[ds-core ds-sidebar]`；**65.6 MB** |
 | 2026-11-03 12:35 | **五个插件全部落地并跑起来**：`ds-core`（根）、`ds-sidebar`、`ds-conversation`（消息流/工具卡/审批，含 AfterDraw 两阶段绘制）、`ds-composer`、`ds-statusbar`。主区宽度必须钉死（`Width(mainW)`），否则插件里百分比按整窗解析、气泡被推到窗口外；状态栏必须「占位行 + 绝对定位」两步，否则被 Grow(1) 的主体挤成 0 高 | `docs/p3-plugins.png`；**68.2 MB** |
+| 2026-11-03 12:46 | **`ds-topbar` 落地 + 工具卡吃到真数据**：`cmd/mockd` 补上 `tool/call` / `tool/result` 解码（callId 配对）与 `tvToolView` 声明器，界面侧 card/table/plain 三个渲染器第一次画在真实会话上（该会话 4044 条消息 / 3020 次工具调用）。顶栏显示标题·工作区·模式 | `docs/p5-tools.png`；**68.6 MB** |
+| 2026-11-03 12:47 | 新增 `cmd/mockd/view_test.go` 6 条：三种 Kind、行宽必须等于列数、未知工具给通用卡片但空结果必须 nil、错误走 Badge。**没有写「未知工具必须 nil」**——实测通用卡片更好用，取舍写进测试注释 | `go test ./cmd/mockd/` 全绿 |
+| 2026-11-03 12:48 | 截图脚本改成 `PrintWindow` 直取窗口像素：`ImageGrab` 截的是屏幕，窗口被盖住时截到的是**别人的窗口**（踩了一次，截成 DSH 主窗口还以为是渲染坏了） | `scripts/shot.py` |

@@ -267,9 +267,12 @@ func (p *Plugin) drawView(f *flex.Frame, v *apiclient.ViewSpec) {
 func (p *Plugin) drawCard(f *flex.Frame, v *apiclient.ViewSpec) {
 	t := p.theme
 	for _, fv := range v.Fields {
-		f.Row().Gap(8).Children(func() {
+		f.Row().FillWidth().Gap(8).Children(func() {
 			f.Text(fv.Key).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			f.Text(fv.Value).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelSecondary).Ellipsis()
+			// Value 必须 Grow(1)：不撑满的话 Ellipsis 没有可省略的边界，
+			// 长命令会直接画到窗口外（实测：bash 的 command 被切在右边缘）。
+			f.Text(fv.Value).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelSecondary).
+				Grow(1).Ellipsis()
 		})
 	}
 }

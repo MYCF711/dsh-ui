@@ -30,6 +30,11 @@ type realSession struct {
 	UpdatedAt time.Time
 	Total     int       // 日志里的消息事件总数（截断前）
 	Messages  []message // 已按 tail 截断
+	// Full 表示这次是把整个文件解完的结果。
+	// 索引期只解到第一条 user 消息（快），所以 Messages 非空**不等于**解全了。
+	// 踩过的坑：load 里用 len(Messages)==0 判断要不要全量解，
+	// 结果永远命中"已有 1 条"，真实会话只显示第一条消息、总数永远 1。
+	Full      bool
 }
 
 // realStore 是全部真实会话的索引。
@@ -196,10 +201,13 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 			txt := tvJoinBlocks(e.Data.Message.Content)
 			rs.Total++
 			rs.Messages = append(rs.Messages, message{
-				Seq:  e.Seq,
-				Role: "tool",
-				Text: tvOneLine(txt, 120),
-				View: tvToolView(call.name, call.arguments, txt, e.Data.Message.IsError),
+				Seq:     e.Seq,
+				Role:    "tool",
+				Text:    tvOneLine(txt, 120),
+				Tool:    call.name,                        // 工具名（界面的卡片标题）
+				Args:    tvOneLine(call.arguments, 110),   // 参数压一行，给折叠态看
+				Summary: tvOneLine(txt, 120),
+				View:    tvToolView(call.name, call.arguments, txt, e.Data.Message.IsError),
 			})
 			continue
 		}
@@ -220,7 +228,9 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 		rs.Total++
 		rs.Messages = append(rs.Messages, message{Seq: e.Seq, Role: role, Text: txt})
 		if headerOnly && role == "user" {
-			// 索引期拿到第一条就够做标题了，别为它把整个文件解完
+			// 索引期拿到第一条就够做标题了，别为它把整个文件解完。
+			// 这里必须留个记号：Messages 有 1 条，但**没解完**。
+			rs.Full = false
 			return rs, nil
 		}
 	}
@@ -228,6 +238,7 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 	if tail > 0 && len(rs.Messages) > tail {
 		rs.Messages = rs.Messages[len(rs.Messages)-tail:]
 	}
+	rs.Full = !headerOnly
 	return rs, nil
 }
 

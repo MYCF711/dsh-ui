@@ -417,6 +417,7 @@ const demoWideCode = "超宽代码块验证（这一行 129 个字符，卡片�
 	"上面那行应该能横向滚动，而不是被硬切。"
 
 var (
+	winTitle string
 	theme        ui.Theme // 由 dscore 的令牌算出来，启动时赋值（见 main）
 	renderLimit  int    // 0 = 不限制
 	forceSession string // 非空则启动后直接打开
@@ -436,7 +437,7 @@ func drawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *plugi
 }
 
 func newConfig(m *model) app.Config {
-	cfg := app.Config{Tree: &tree, Title: "dsh-ui", Width: 1180, Height: 800,
+	cfg := app.Config{Tree: &tree, Title: winTitle, Width: 1180, Height: 800,
 		MinWidth: 760, MinHeight: 520, Invalidator: &m.inv}
 	// 插件的输入框也要登记，否则收不到键盘（viva 只把登记过的 Field 当输入焦点候选）。
 	// 走一次统一的聚合：以后再加插件不用改这里。
@@ -565,12 +566,14 @@ func main() {
 	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
+	title := flag.String("title", "dsh-ui", "窗口标题（并行跑多个实例时用来区分）")
 	flag.Parse()
 	renderLimit = *limit
 	forceSession = *sess
 	tailCount = *tail
 	smokeSend = *smoke
 	demoTool  = *demo
+	winTitle  = *title
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
 		cache:      map[string]*cachedSession{},

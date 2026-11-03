@@ -401,8 +401,9 @@ func route(w http.ResponseWriter, r *http.Request) {
 				fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID, Hint: "先调 session.list 拿一个真实 id"})
 				return
 			}
-			// 索引期只解了 header；第一次 load 这个会话时才全量解并缓存
-			if len(rs.Messages) == 0 && rs.Path != "" {
+			// 索引期只解到第一条 user 消息；第一次 load 这个会话时才全量解并缓存。
+			// 判断条件必须是 Full，不能是 len(Messages)==0（见 realSession.Full 的注释）。
+			if !rs.Full && rs.Path != "" {
 				if full, err := decodeSession(rs.Path, 0, false); err == nil {
 					realDB.byID[p.ID] = full
 					rs = full

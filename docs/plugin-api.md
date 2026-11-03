@@ -117,10 +117,10 @@ var (
 |---|---|---|---|
 | ✅ 已移植 | 设计令牌 + 基础组件 | `ds-core` | `dsh-client-ui-primitives`（打包内） |
 | ✅ 已移植 | 左栏会话列表（工作区分组 + 折叠 + 搜索 + 相对时间） | `ds-sidebar` | `dsh-client-ui-session` + `dsh-client-ui-layout` 的 280px 列 |
-| ⏳ 下一步 | 主区消息流（Markdown / 工具卡 / 审批） | `ds-conversation` | `dsh-client-ui-chat` `dsh-client-ui-conversation` `dsh-client-ui-approval` |
-| ⏳ 下一步 | 输入区 | `ds-composer` | `dsh-client-ui-chat` 的 composer |
-| ⏳ 下一步 | 底部状态栏 | `ds-statusbar` | `dsh-client-ui-layout` 的状态行 |
-| ⏳ 之后 | 主区头部（标题 / 模型 / 权限） | `ds-topbar` | `dsh-client-ui-layout` `dsh-client-ui-model-selection` `dsh-client-ui-permission-presets` |
+| ✅ 已移植 | 主区消息流（Markdown / 工具卡 / 审批） | `ds-conversation` | `dsh-client-ui-chat` `dsh-client-ui-conversation` `dsh-client-ui-approval` |
+| ✅ 已移植 | 输入区 | `ds-composer` | `dsh-client-ui-chat` 的 composer |
+| ✅ 已移植 | 底部状态栏 | `ds-statusbar` | `dsh-client-ui-layout` 的状态行 |
+| ✅ 已移植 | 主区顶部条（标题 / 工作区 / 模式） | `ds-topbar` | `dsh-client-ui-layout` 顶栏 + `model-selection` + `permission-presets` |
 | ⏳ 之后 | 右栏轨迹 / 任务板 | `ds-rightbar` | `dsh-client-ui-plan` `dsh-client-ui-goal` |
 
 依赖分层（官方 `client.js` 的 `require` 实测）：
@@ -142,6 +142,10 @@ var (
    窗口都起不来——现象是「进程秒退、日志里一串 nil pointer」。
 3. **`HoverBackground` 只在悬停时着色**，非悬停的行是透明的（这是对的）。
    排查「行不显示」时不要拿它当可见性证据，先用 `Background` 验一遍布局。
+
+4. **多个代理并行写同一个库会互相踩**：两个代理同时改 `cmd/mockd` 的同一批文件时，
+   会出现「刚写的文件被删、对面写的文件语法坏掉」的来回，实测代价十几分钟。
+   **并行只适合一人一个插件目录**；同一个文件（尤其 `cmd/*/main.go`）必须串行。
 
 ## 8. 验收
 

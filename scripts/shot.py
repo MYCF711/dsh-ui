@@ -74,15 +74,16 @@ def find_window(title, timeout=15.0):
             buf = ctypes.create_unicode_buffer(n + 1)
             user32.GetWindowTextW(hwnd, buf, n + 1)
             if needle in buf.value.lower():
-                hit.append(hwnd)
+                pid = wt.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                hit.append((pid.value, hwnd))
             return True
 
         user32.EnumWindows(cb, 0)
         if hit:
-            hwnd = hit[0]
-            pid = wt.DWORD()
-            user32.GetWindowThreadProcessId(wt.HWND(hwnd), ctypes.byref(pid))
-            return hwnd, pid.value
+            # 同名窗口可能存在多个（旧的没退干净）：取 pid 最大的那个 = 最晚起的。
+            hit.sort()
+            return hit[-1][1], hit[-1][0]
         time.sleep(0.12)
     return None, None
 

@@ -105,3 +105,4 @@
 | 2026-11-03 12:46 | **`ds-topbar` 落地 + 工具卡吃到真数据**：`cmd/mockd` 补上 `tool/call` / `tool/result` 解码（callId 配对）与 `tvToolView` 声明器，界面侧 card/table/plain 三个渲染器第一次画在真实会话上（该会话 4044 条消息 / 3020 次工具调用）。顶栏显示标题·工作区·模式 | `docs/p5-tools.png`；**68.6 MB** |
 | 2026-11-03 12:47 | 新增 `cmd/mockd/view_test.go` 6 条：三种 Kind、行宽必须等于列数、未知工具给通用卡片但空结果必须 nil、错误走 Badge。**没有写「未知工具必须 nil」**——实测通用卡片更好用，取舍写进测试注释 | `go test ./cmd/mockd/` 全绿 |
 | 2026-11-03 12:48 | 截图脚本改成 `PrintWindow` 直取窗口像素：`ImageGrab` 截的是屏幕，窗口被盖住时截到的是**别人的窗口**（踩了一次，截成 DSH 主窗口还以为是渲染坏了） | `scripts/shot.py` |
+| 2026-11-03 12:47 | **查出「每个真实会话只显示 1 条消息」的根因**：懒索引（headerOnly）解到第一条 user 消息就返回，`Messages` 里有 1 条；load 处用 `len(Messages)==0` 判断「要不要全量解」，于是永远不会全量解。加 `realSession.Full` 标记后：**1 条 → 120 条**，其中 **109 条工具调用**，全部带 `view`（card/plain）。这是界面看起来「空」的真正原因，不是渲染问题 | `docs/p4-toolcards.png` |

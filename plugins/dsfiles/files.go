@@ -31,6 +31,8 @@ const maxShown = 8
 type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
+	// read 是每帧从 env.Act 刷新的读文件函数（Open 走测试开关时用最近一次的值）。
+	read func(string) (string, error)
 
 	curDir  string // 当前目录（相对于 CWD；空 = 根）
 	sel     string // 当前预览的文件名（空 = 没选）
@@ -79,6 +81,7 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 		dir += "/" + p.curDir
 	}
 	names := env.Act.FSList(dir)
+	p.read = env.Act.FSRead
 	t := p.theme
 
 	// 首次问某个目录返回空是**正常的**（壳在后台拉），不是"这个目录没东西"。
@@ -132,7 +135,7 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 				}
 				p.sel = ""
 			} else {
-				p.open(env, e.Name)
+				p.open(env, env.Data.CWD, e.Name)
 			}
 		}
 		if more > 0 {
@@ -141,15 +144,30 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
+// Open 是**给壳的测试开关用的**公开入口：无头截图没法点鼠标，
+// 所以壳用 `-open-file` 直接调它来验预览。产品路径不走这里（走 drawList 的点击）。
+//
+// 它要求先有 CWD——没有就什么都不做（和 drawList 的判断一致）。
+func (p *Plugin) Open(cwd, name string) {
+	p.open(nil, cwd, name)
+}
+
 // open 读一个文件。失败把原因原样记下来（预览里显示），不吞。
-func (p *Plugin) open(env *pluginapi.Env, name string) {
+func (p *Plugin) open(env *pluginapi.Env, cwd, name string) {
+	if cwd == "" {
+		return
+	}
 	p.sel = name
 	p.content, p.err = "", ""
-	if env.Act.FSRead == nil {
+	read := p.read
+	if env != nil {
+		read = env.Act.FSRead
+	}
+	if read == nil {
 		p.err = "壳没接 fs.read"
 		return
 	}
-	body, err := env.Act.FSRead(env.Data.CWD + "/" + name)
+	body, err := read(cwd + "/" + name)
 	if err != nil {
 		p.err = err.Error()
 		return

@@ -31,7 +31,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdecl"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
-	_ "github.com/MYCF711/dsh-ui/plugins/dsfiles"
+	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
@@ -1541,6 +1541,7 @@ func main() {
 	addr := flag.String("addr", "http://127.0.0.1:7788", "Transport base URL")
 	limit := flag.Int("limit", 0, "只渲染最后 N 条消息（0 = 全部）；用于量视口虚拟化的收益")
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
+	openFile := flag.String("open-file", "", "无头截图用：启动后直接打开这个文件名的预览（走 dsfiles.Open，不模拟鼠标）")
 	themeName := flag.String("theme", "dark", "主题：dark / light（light 用 dscore.Light()，与官方浅色令牌同源）")
 	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
@@ -1771,6 +1772,22 @@ func main() {
 		}(*switchSeq, time.Duration(*switchEvery)*time.Second)
 	}
 
+	// **只给无头截图用**：-shot 没法注入鼠标，所以这里直接调插件的公开入口。
+	// 产品路径不走它（用户点是 drawList 里的点击）。
+	if *openFile != "" {
+		go func(name string) {
+			time.Sleep(time.Duration(*keysAfter) * time.Second)
+			for _, pl := range m.kernel.Plugins() {
+				if f, ok := pl.(*dsfiles.Plugin); ok {
+					f.Open(m.cwd, name)
+					m.inv.Invalidate()
+					log.Printf("已打开预览: %s", name)
+					return
+				}
+			}
+			log.Printf("-open-file 给了 %q，但没找到 ds-files 插件", name)
+		}(*openFile)
+	}
 	if *keysSeq != "" {
 		go func(seq string) {
 			time.Sleep(time.Duration(*keysAfter) * time.Second) // 等会话列表/消息/审批帧到位

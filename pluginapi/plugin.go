@@ -238,6 +238,12 @@ type Snapshot struct {
 	// 但 turn 照样在跑——那时按 Esc 应该能停（实测踩过：只判 Stream 就停不了）。
 	Busy     bool
 	Approval *Approval
+	// Disconnected 表示 WS 订阅当前连不上宿主（壳在重连）。
+	//
+	// 为什么单独一个字段而不是让插件去读 Status 里的字：状态栏那颗绿点写「就绪」
+	// 是**连接层**的断言，不该靠人肉匹配中文字符串来判断。默认 false = 正常，
+	// 所以没接这个字段的插件行为不变。
+	Disconnected bool
 	// Usage 是当前会话的 token 用量（壳从 session.load 拿到的合计）。
 	// Usage.Known() 为 false 时插件不许显示任何 token 数字。
 	//

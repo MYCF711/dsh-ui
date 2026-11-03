@@ -548,6 +548,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 			// 因为它描述的是连接层而不是这一轮 turn。
 			m.mu.Lock()
 			m.status = "连不上宿主，重试中…"
+			wsDown = true
 			m.mu.Unlock()
 			m.inv.Invalidate()
 			select {
@@ -1013,6 +1014,7 @@ var (
 	renderLimit  int      // 0 = 不限制
 	forceSession string   // 非空则启动后直接打开
 	tailCount    int      // session.load 的 tailMessages
+	wsDown       bool     // WS 订阅当前连不上（状态栏据此把绿点换成「已断开」）
 	demoTool     bool     // 在消息列表里插假的工具卡
 	smokeSend    bool     // 启动后自动发一条
 	promptText   string   // -prompt 覆盖 smoke 文本
@@ -1162,6 +1164,8 @@ func newConfig(m *model) app.Config {
 				Approval:      approvalView,
 				Busy:          busy,
 				ShowRightbar:  showRightbar,
+				// 连不上时状态栏那颗绿点必须变红说「已断开」，而不是继续「就绪」。
+				Disconnected: wsDown,
 			},
 			Act:       m.actions,
 			Tree:      &tree,

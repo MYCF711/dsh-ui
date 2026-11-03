@@ -83,9 +83,14 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		}
 	}
 
-	// 状态点：待审批时是警告色，否则就绪。
+	// 状态点：**连不上宿主时不能说"就绪"**——那是连接层的断言，
+	// 绿点亮着而连接早断了，比卡住更误导（用户在等一个不会来的回复）。
+	// 优先级：断线 > 待审批 > 就绪。
 	dotColor, dotLabel := t.Success, "就绪"
-	if env.Data.Approval != nil {
+	switch {
+	case env.Data.Disconnected:
+		dotColor, dotLabel = t.Error, "已断开"
+	case env.Data.Approval != nil:
 		dotColor, dotLabel = t.Warn, "待审批"
 	}
 

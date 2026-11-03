@@ -138,3 +138,47 @@ config.get / set
 - [ ] 仓库决定：推 `MYCF711/dsh-ui` 或删掉目录
 
 **没做到这三份文档 = 没做完。**
+
+---
+
+## 8. 分层搭建：像搭高塔，一层只依赖它下面那层
+
+> 用户 2026-11-03 定调：**「像搭建高塔一样，一层层搭，能并行开工就并行；模板是重构 DSH 的 GUI，
+> 但外观几乎原生；每个部件都插件化，第三方插件直接接入预留的接口就加进去了。」**
+
+这条线的目标是**机制**：官方那 55 个 `dsh-client-ui-*` 是它的粒度，我们抄的是**层与接口**，
+不是逐像素复刻每一个面板。外观照官方令牌与组件规格（`--dsw-*` 令牌、28px 圆形图标按钮、
+`radius sm/md/lg/xl`、气泡 20px、行 36px…），因为这些是「看起来像原生」的全部依据。
+
+### 各层（下面的层不知道上面有谁）
+
+| 层 | 是什么 | 代码 | 依赖方向 | 能不能并行 |
+|---|---|---|---|---|
+| **L0 壳** | 开窗、装配、每帧递一份快照、按槽位排布 | `cmd/app` | 只调 L1 | 不可（关键路径） |
+| **L1 运行时** | 服务键、生命周期、依赖拓扑、按键转发、槽位收集 | `internal/pluginapi` + `internal/uikernel` | 不依赖任何插件 | 不可（关键路径） |
+| **L2 根本依赖插件** | 官方设计令牌 + 基础图元（圆钮/行/徽标/分隔线/chip/气泡/代码块） | `plugins/dscore` | 只依赖 L1 | 不可（其他都等它） |
+| **L3 框架插件** | `shell` 槽：三栏几何（侧栏 280 / 中栏 ≥400 / 右栏首次 45%）、`shell.bottom` 整行、`shell.overlay` | `plugins/dsshell`（待建） | 依赖 L2 | 与 L4 并行 |
+| **L4 部件插件** | 官方一个包 → 我们一个插件，挂在 L3 的槽上 | `plugins/ds*` | 依赖 L2（+L3 的槽名） | **全部并行** |
+| **L5 第三方插件** | 外部作者只要 `Requires(ui.theme, ui.primitives)` + 声明 `Slot` 就接得进来 | 仓库外 | 只依赖 L1 契约 | — |
+
+### 槽位（L3 提供、L4/L5 消费）
+
+| 槽位 | 谁在用 | 说明 |
+|---|---|---|
+| `shell.leading` | 空 | 窗口左上角（macOS 红绿灯旁）；Windows 暂无 |
+| `shell.bottom` | `ds-statusbar` | 横跨三列的整行；**占用方自己声明高度**，空着不占位 |
+| `shell.overlay` | 空 | 覆盖整个框架的浮层（弹窗/菜单） |
+| `sidebar.header` / `sidebar.list` / `sidebar.footer` | `ds-sidebar` | 左栏三段 |
+| `main.header` / `main.body` / `main.composer` | `ds-topbar` / `ds-conversation` / `ds-composer` | 中栏三段 |
+| `rightbar` | `ds-rightbar` | 右栏（无占用方时整列不占位） |
+| `main:<panelID>` | — | 多面板（keyed）：官方 `main` 是 keyed slot，不同面板共用一个位置 |
+
+### 并行单元（互不依赖，可同时开工）
+
+L4 里每个部件只依赖 L2 的图元和 L3 的槽名，**彼此之间没有任何依赖**，所以可以真并行：
+`ds-sidebar`、`ds-conversation`、`ds-composer`、`ds-statusbar`、`ds-topbar`、`ds-rightbar`。
+合并规则：一人一个插件目录 + 不改 `cmd/app`；需要新图元就加进 `dscore`（一人一处，冲突最小）。
+
+### 当前进度（对应上面的层）
+
+- L0 ✅ / L1 ✅ / L2 ✅（令牌 + 5 个图元 + 圆钮）/ L3 ⏳（三栏硬编码在壳里，还没抽成插件）/ L4 六个 ✅ / L5 ⏳（契约已够，缺文档与样例）

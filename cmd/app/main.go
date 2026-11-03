@@ -968,6 +968,10 @@ func parseKeys(seq string) []ui.Key {
 			out = append(out, ui.KeyEnd)
 		case "esc":
 			out = append(out, ui.KeyEscape)
+		case "enter":
+			// 审批条可见时 Enter = 允许（dscomposer 的 HandleKey 只在可见时接管）。
+			// 加它不是为了别的：验「允许之后宿主真的执行工具」必须有办法按下允许。
+			out = append(out, ui.KeyEnter)
 		}
 	}
 	return out
@@ -1052,9 +1056,12 @@ func main() {
 	cookie := flag.String("cookie", "", "调试：直接用这条会话 cookie（形如 dshd_session=…），跳过 /connect。token 一次性时用来与 curl 共用同一个宿主")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
 	title := flag.String("title", "dsh-ui", "窗口标题（并行跑多个实例时用来区分）")
-	keysSeq := flag.String("keys", "", "调试：启动后依次注入按键（down,up,home,end,esc），走的是插件的 HandleKey，用来验证键盘路由")
+	keysSeq := flag.String("keys", "", "调试：启动后依次注入按键（down,up,home,end,esc,enter），走的是插件的 HandleKey，用来验证键盘路由")
 	expandThink := flag.Bool("expand-think", false, "调试：把思考块默认展开（截展开态用）")
 	collapseAll := flag.Bool("collapse", false, "调试：启动时把所有工作区分组收起（截折叠态用）")
+	// -keys-after：按键在启动后多少秒注入。审批这类场景要等模型先响应完
+	// （真宿主上从 prompt 到 approval/request 大约 3–5 秒），2.5 秒会按早了。
+	keysAfter := flag.Int("keys-after", 3, "调试：-keys 在启动后多少秒开始注入")
 	rightbarOn := flag.Bool("rightbar", true, "启动时是否展开右栏（-rightbar=false 收起来）")
 	token := flag.String("token", "", "宿主 launch token：给了就先 /connect 换 cookie（真宿主 dshd serve 必须给）")
 	searchAtStart := flag.String("search", "", "调试：启动就把会话内搜索打开，并带上这个词（截搜索态用）")
@@ -1188,7 +1195,7 @@ func main() {
 
 	if *keysSeq != "" {
 		go func(seq string) {
-			time.Sleep(2500 * time.Millisecond) // 等会话列表和消息都到位
+			time.Sleep(time.Duration(*keysAfter) * time.Second) // 等会话列表/消息/审批帧到位
 			for _, name := range parseKeys(seq) {
 				ok := m.kernel.HandleKey(ui.KeyEvent{Key: name})
 				log.Printf("key %v handled=%v", name, ok)

@@ -34,6 +34,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsschedule"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
@@ -88,8 +89,15 @@ type model struct {
 	// fsPending 记录哪些目录正在拉，避免同一目录每帧都发一次请求。
 	fsPending map[string]bool
 	// schedules 是定时任务的缓存（宿主 <home>/state/schedules/ 的投影）。
-	schedules  []pluginapi.ScheduleItem
-	smokeFired bool
+	schedules []pluginapi.ScheduleItem
+	// jobs 是后台任务的缓存（宿主 loopRunner.jobs 的投影）。
+	//
+	// **它靠轮询刷新**：宿主那边是子进程推上来的一份快照，不会主动通知界面。
+	// 所以壳每隔一会儿问一次（见 refreshJobs 的调用点），而不是等事件。
+	jobs []pluginapi.Job
+	// jobsPending 防重入：刷新在途时不再发第二次请求（每帧都可能问）。
+	jobsPending bool
+	smokeFired  bool
 
 	// 待审批的请求（v1 只支持一条；工具名 + 命令 + 模型自述）
 	approval *approvalReq
@@ -243,6 +251,20 @@ func (m *model) refreshList() {
 			m.schedules = items
 			m.mu.Unlock()
 		}
+		// 后台任务是**轮询**的：宿主那边的数据靠子进程推上来，不会主动通知界面。
+		// 5 秒一次——够快让用户看到起止，又不会把宿主问烦。只有内容变了才重绘。
+		go func() {
+			t := time.NewTicker(5 * time.Second)
+			defer t.Stop()
+			for range t.C {
+				m.mu.Lock()
+				pending := m.jobsPending
+				m.mu.Unlock()
+				if !pending {
+					m.refreshJobs()
+				}
+			}
+		}()
 	}()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -495,6 +517,50 @@ func (m *model) newSession() {
 
 		m.openSession(id)
 	}()
+}
+
+// refreshJobs 拉一次后台任务清单，**只有内容真变了才重绘**。
+//
+// 为什么这么小心：这是个轮询（宿主不会主动通知），每 5 秒一次；
+// 无脑 Invalidate 会让界面每秒重画一次，而 99% 的时候清单没变。
+func (m *model) refreshJobs() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	list, err := m.cli.JobsList(ctx)
+
+	m.mu.Lock()
+	m.jobsPending = false
+	if err != nil {
+		m.mu.Unlock()
+		return // 拉失败就留着上一次的，别把界面清空
+	}
+	out := make([]pluginapi.Job, 0, len(list))
+	for _, j := range list {
+		out = append(out, pluginapi.Job{
+			ID: j.ID, Command: j.Command, Done: j.Done,
+			ExitCode: j.ExitCode, Bytes: j.Bytes,
+		})
+	}
+	changed := !sameJobs(m.jobs, out)
+	m.jobs = out
+	m.mu.Unlock()
+
+	if changed {
+		m.inv.Invalidate()
+	}
+}
+
+// sameJobs 比两份清单是否一致（只比界面会显示的那几个字段）。
+func sameJobs(a, b []pluginapi.Job) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].ID != b[i].ID || a[i].Done != b[i].Done || a[i].ExitCode != b[i].ExitCode || a[i].Bytes != b[i].Bytes {
+			return false
+		}
+	}
+	return true
 }
 
 // loadDir 后台拉一个目录，成功后写缓存并重绘。
@@ -1773,6 +1839,21 @@ func main() {
 			m.mu.Lock()
 			defer m.mu.Unlock()
 			return m.schedules
+		},
+		// 后台任务：同步返回缓存。**首次问会触发一次后台拉取**——
+		// 否则插件第一帧永远拿不到东西，而它自己没法申请刷新。
+		JobsList: func() []pluginapi.Job {
+			m.mu.Lock()
+			jobs := m.jobs
+			pending := m.jobsPending
+			if !pending {
+				m.jobsPending = true
+			}
+			m.mu.Unlock()
+			if !pending {
+				go m.refreshJobs()
+			}
+			return jobs
 		},
 		FSRead: func(path string) (string, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

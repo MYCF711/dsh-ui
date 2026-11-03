@@ -83,6 +83,12 @@ type KeyHandler interface {
 	HandleKey(ev ui.KeyEvent) bool
 }
 
+// ScrollHandler 让拥有内部横滚视口的部件先处理自己的手势；返回 Handled=false
+// 时壳继续走 View.Wheel，因此代码块的普通纵向滚动仍归消息区。
+type ScrollHandler interface {
+	HandleScroll(ev ui.ScrollEvent) ui.EventResult
+}
+
 // Panels 是「会画东西的插件」的可选接口。
 // 一个插件可以不实现它（纯服务提供者，比如 ds-core）。
 type Panels interface {
@@ -223,6 +229,31 @@ type Geometry struct {
 	BottomHeight float32 // 0 = 没有底部整行
 }
 
+// Job 是后台任务的一行。
+//
+// **它是一份快照，不是活句柄**：宿主那边的数据由子进程推上来，
+// 这里拿到的是"上一次推的时候"的样子。所以：
+//   - Done 为 false **不代表此刻还在跑**（可能刚结束，还没推）
+//   - 不提供 kill/输出——`jobs.output` 宿主那边还是 nil（需要请求-应答通道）
+type Job struct {
+	ID       string
+	Command  string
+	Done     bool
+	ExitCode int
+	Bytes    int
+}
+
+// ScheduleItem 是定时任务的一行。
+type ScheduleItem struct {
+	ID       string
+	Title    string
+	Kind     string
+	NextAt   string
+	EverySec int
+	DailyAt  string
+	WeeklyAt string
+}
+
 // Snapshot 是一帧的数据快照，壳在锁内拷好再传进来，插件里不用加锁。
 // FSEntry 是 FSList 的一项。
 //
@@ -288,6 +319,14 @@ type Snapshot struct {
 	// 的地方（dsrightbar 的「更早的还有 N 次未显示」）用的是它自己算出来的 hidden
 	// 计数。留着是因为将来做视口虚拟化时它是对的位置，但现在**别以为有人在维护它**。
 	Truncated bool
+
+	// MessageMeta 按 MessageKey(session,msg,index) 保留 load 原始 time/stopped。
+	// 缺 key 或零值都代表未知，消息区不得补 0 时间或虚构 stopped。
+	MessageMeta map[string]MessageMetadata
+	// TurnEvents 保留已到达的 turn/error 与显式 stopped/interrupted 终局。
+	TurnEvents []TurnEvent
+	// Outgoing 是当前会话尚未与 durable user event 对账的本地发送及失败草稿。
+	Outgoing []OutgoingMessage
 }
 
 // Usage 是 token 用量的界面视图。
@@ -391,10 +430,19 @@ type Actions struct {
 	Notify func(msg string)
 	// Copy 把文本放进系统剪贴板（插件不 import app，剪贴板归壳管）。
 	Copy func(text string)
+	// CopyResult 与 Copy 使用同一个真实 OS 动作，但把失败返回给需要原位反馈的
+	// CodeBlock；壳同时更新状态栏，调用方不得把 error 当成功。
+	CopyResult func(text string) error
+	// OpenExternal 只打开明确的 http/https/mailto 目的地。
+	OpenExternal func(destination string) error
+	// OpenFile 只打开显式 file: 链接指向的文档；普通字符串不得在这里猜成路径。
+	OpenFile func(destination string) error
 	// ToggleRightbar 收起/展开右栏（官方也能收）。
 	ToggleRightbar func()
 	// Retry 重发上一条用户消息。
 	Retry func()
+	// RetrySend 按本地发送 key 重试同一份失败草稿，不另取最后一条消息冒充。
+	RetrySend func(key string)
 	// Send 把这段文字发出去。输入框由哪个插件画，文字就由哪个插件给——
 	// 壳不再持有草稿，所以不用 SetDraft 回灌。
 	Send func(text string)
@@ -433,6 +481,21 @@ type Actions struct {
 	// 路径怎么来：`Snapshot.CWD` + "/" + `FSList` 的名字。宿主不做工作区内限制，
 	// **调用方自己判**——别拿用户输入直接拼。
 	FSRead func(path string) (string, error)
+
+	// ScheduleList 列定时任务（宿主 `schedule.list`）。
+	//
+	// **同步返回壳缓存**：壳启动后拉一次、之后每次 `schedule.*` 变更再拉。
+	// nil = 壳没接（老宿主）。
+	ScheduleList func() []ScheduleItem
+
+	// JobsList 列后台任务（宿主 `jobs.list`）。
+	//
+	// **同步返回壳缓存**，和 ScheduleList 一样。区别在于数据新鲜度：
+	// schedule 是磁盘文件、壳每次问都能拿最新；jobs 是**子进程推上来的快照**
+	// （`@@JOBS@@` 行），所以刚起的任务可能要等下一次推送才出现——
+	// 插件画的时候不该把"这一帧没有"理解成"没有后台任务"。
+	// nil = 壳没接（老宿主）。
+	JobsList func() []Job
 
 	// Approve 回一次审批（H13 的 `session.approve`）。
 	//

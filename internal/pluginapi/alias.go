@@ -9,22 +9,24 @@ package pluginapi
 import pub "github.com/MYCF711/dsh-ui/pluginapi"
 
 type (
-	Source     = pub.Source
-	SourceFunc = pub.SourceFunc
-	Plugin     = pub.Plugin
-	Fields     = pub.Fields
-	KeyHandler = pub.KeyHandler
-	Panels     = pub.Panels
-	Context    = pub.Context
-	Slot       = pub.Slot
-	FSEntry    = pub.FSEntry
-	Painter    = pub.Painter
-	Primitives = pub.Primitives
-	Env        = pub.Env
-	Geometry   = pub.Geometry
-	Snapshot   = pub.Snapshot
-	Usage      = pub.Usage
-	Approval   = pub.Approval
+	Source       = pub.Source
+	SourceFunc   = pub.SourceFunc
+	Plugin       = pub.Plugin
+	Fields       = pub.Fields
+	KeyHandler   = pub.KeyHandler
+	Panels       = pub.Panels
+	Context      = pub.Context
+	Slot         = pub.Slot
+	FSEntry      = pub.FSEntry
+	ScheduleItem = pub.ScheduleItem
+	Job          = pub.Job
+	Painter      = pub.Painter
+	Primitives   = pub.Primitives
+	Env          = pub.Env
+	Geometry     = pub.Geometry
+	Snapshot     = pub.Snapshot
+	Usage        = pub.Usage
+	Approval     = pub.Approval
 	// ApprovalOption 是审批帧里 data.options 的一项（H13）。
 	// 纯别名，不在这里加任何东西——两份定义会漂移。
 	ApprovalOption = pub.ApprovalOption

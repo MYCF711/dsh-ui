@@ -507,3 +507,196 @@ func route(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, errObj{Code: "unsupported", Message: "未知 method: " + method, Hint: "13 个合法值见 docs/api-contract.md §3"})
 	}
 }
+
+// ── 工具结果的显示声明（假宿主里的 ViewSpec 镜像）──────────────────────
+//
+// 宿主的真身是 spi.ViewSpec（DSH-GO/internal/spi/tool.go:103）：工具不渲染自己，
+// 只声明 Kind（card / table / plain）和内容，界面按 Kind 选渲染器。
+// 一条铁律：只显示参数与结果里真的有的东西；推不出来就返回 nil，界面退回纯文本。
+
+const tvNL = "\n"
+
+// tvCall 是解码期暂存的一次工具调用（tool/call 先来，tool/result 用 callId 配对）。
+type tvCall struct {
+	name      string
+	arguments string
+}
+
+// tvJoinBlocks 把 content 里的 text 块拼成纯文本。
+func tvJoinBlocks(blocks []block) string {
+	var b strings.Builder
+	for _, c := range blocks {
+		if c.Type != "text" || c.Text == "" {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString(tvNL)
+		}
+		b.WriteString(c.Text)
+	}
+	return b.String()
+}
+
+// tvToolView 把一次工具调用压成界面能直接画的声明。
+func tvToolView(name, args, result string, isError bool) *viewSpec {
+	if name == "" {
+		return nil
+	}
+	badge := "ok"
+	if isError {
+		badge = "error"
+	}
+	params := tvParseArgs(args)
+
+	switch {
+	case tvIsShell(name):
+		v := &viewSpec{Kind: "card", Title: name, Badge: badge}
+		if cmd := tvFirstParam(params, "command", "cmd", "script", "commandLine"); cmd != "" {
+			v.Fields = append(v.Fields, viewField{Key: "命令", Value: tvOneLine(cmd, 160)})
+		} else if args != "" {
+			v.Fields = append(v.Fields, viewField{Key: "参数", Value: tvOneLine(args, 160)})
+		}
+		if first := tvFirstLine(result); first != "" {
+			v.Fields = append(v.Fields, viewField{Key: "输出", Value: tvOneLine(first, 160)})
+		}
+		if len(v.Fields) == 0 {
+			return nil
+		}
+		return v
+
+	case tvIsList(name):
+		rows := tvRows(result, 8)
+		if len(rows) == 0 {
+			return nil
+		}
+		return &viewSpec{Kind: "table", Title: name, Badge: badge,
+			Columns: []string{"结果"}, Rows: rows}
+
+	case tvIsRead(name):
+		if strings.TrimSpace(result) == "" {
+			return nil
+		}
+		return &viewSpec{Kind: "plain", Title: name, Badge: badge,
+			Body: tvTrunc(result, 1200)}
+	}
+
+	v := &viewSpec{Kind: "card", Title: name, Badge: badge}
+	if q := tvFirstParam(params, "file_path", "path", "pattern", "query", "url", "prompt", "task"); q != "" {
+		v.Fields = append(v.Fields, viewField{Key: "参数", Value: tvOneLine(q, 160)})
+	}
+	if first := tvFirstLine(result); first != "" {
+		v.Fields = append(v.Fields, viewField{Key: "结果", Value: tvOneLine(first, 160)})
+	}
+	if len(v.Fields) == 0 {
+		return nil
+	}
+	return v
+}
+
+func tvParseArgs(args string) map[string]any {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(args), &m); err != nil {
+		return nil
+	}
+	return m
+}
+
+func tvFirstParam(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k].(string); ok && strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func tvIsShell(name string) bool {
+	switch tvBase(name) {
+	case "bash", "powershell", "shell", "exec", "run", "job_run":
+		return true
+	}
+	return false
+}
+
+func tvIsList(name string) bool {
+	switch tvBase(name) {
+	case "ls", "glob", "find", "grep", "list", "search":
+		return true
+	}
+	return false
+}
+
+func tvIsRead(name string) bool {
+	switch tvBase(name) {
+	case "read", "write", "edit", "view", "cat":
+		return true
+	}
+	return false
+}
+
+func tvBase(name string) string {
+	if i := strings.LastIndex(name, "__"); i >= 0 && i+2 < len(name) {
+		return name[i+2:]
+	}
+	return name
+}
+
+func tvRows(result string, limit int) [][]string {
+	var lines []string
+	for _, line := range strings.Split(result, tvNL) {
+		if t := strings.TrimSpace(line); t != "" {
+			lines = append(lines, t)
+		}
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	rows := make([][]string, 0, limit+1)
+	for i := 0; i < len(lines) && i < limit; i++ {
+		rows = append(rows, []string{tvTrunc(lines[i], 100)})
+	}
+	if len(lines) > limit {
+		rows = append(rows, []string{"… 另有 " + tvItoa(len(lines)-limit) + " 行"})
+	}
+	return rows
+}
+
+func tvOneLine(s string, max int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	return tvTrunc(s, max)
+}
+
+func tvFirstLine(s string) string {
+	for _, line := range strings.Split(s, tvNL) {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
+func tvTrunc(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "…"
+}
+
+func tvItoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var buf [12]byte
+	i := len(buf)
+	for n > 0 && i > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(buf[i:])
+}

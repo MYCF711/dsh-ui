@@ -22,6 +22,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
+	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
@@ -588,6 +589,7 @@ func main() {
 		&dsconversation.Plugin{},   // 主区消息流 + 工具卡 + 审批
 		&dscomposer.Plugin{},       // 输入区
 		&dsstatusbar.Plugin{},      // 底部状态栏
+		&dstopbar.Plugin{},         // 主区顶部条
 	); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}

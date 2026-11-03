@@ -164,7 +164,7 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 		rs.UpdatedAt = fi.ModTime()
 	}
 
-	calls := make(map[string]toolCall)
+	calls := make(map[string]tvCall)
 	for _, line := range strings.Split(out.String(), "\n") {
 		if line == "" {
 			continue
@@ -185,7 +185,7 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 		// 工具调用本身不是消息：先记下来，等 tool/result 用 callId 配对。
 		if e.Type == "tool/call" {
 			if e.Data.CallID != "" {
-				calls[e.Data.CallID] = toolCall{name: e.Data.Name, arguments: e.Data.Arguments}
+				calls[e.Data.CallID] = tvCall{name: e.Data.Name, arguments: e.Data.Arguments}
 			}
 			continue
 		}
@@ -193,13 +193,13 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 		// 工具结果：role=tool，文本在 data.message.content 里。
 		if e.Type == "tool/result" && e.Data.Message != nil && !headerOnly {
 			call := calls[e.Data.Message.ToolCallID]
-			txt := joinBlocks(e.Data.Message.Content)
+			txt := tvJoinBlocks(e.Data.Message.Content)
 			rs.Total++
 			rs.Messages = append(rs.Messages, message{
 				Seq:  e.Seq,
 				Role: "tool",
-				Text: oneLine(txt, 120),
-				View: toolView(call.name, call.arguments, txt, e.Data.Message.IsError),
+				Text: tvOneLine(txt, 120),
+				View: tvToolView(call.name, call.arguments, txt, e.Data.Message.IsError),
 			})
 			continue
 		}
@@ -362,3 +362,5 @@ func stageSessionForACP(src, cwd, id, acpHome string) (string, error) {
 	}
 	return dst, nil
 }
+
+// MARKER_TEST_REALSESSION

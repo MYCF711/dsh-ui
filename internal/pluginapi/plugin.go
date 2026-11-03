@@ -171,9 +171,28 @@ type Snapshot struct {
 	Total    int
 	Stream   string
 	Approval *Approval
+	// Usage 是当前会话的 token 用量（壳从 session.load 拿到的合计）。
+	// Usage.Known() 为 false 时插件不许显示任何 token 数字。
+	Usage Usage
 	// Truncated 表示这次只渲染了末尾一段（视口虚拟化 / -limit）。
 	Truncated bool
 }
+
+// Usage 是 token 用量的界面视图。
+//
+// 不动 apiclient 的类型是为了让契约包保持"只认 wire 形状"；
+// 这一份是给插件用的，多一个 Known() 让"没有数据"和"数据是 0"能分开。
+type Usage struct {
+	InputTokens     int64
+	OutputTokens    int64
+	TotalTokens     int64
+	CacheReadTokens int64
+	TokPerSec       float64
+	HasRate         bool
+}
+
+// Known 表示宿主真的给过 usage；false 时界面不该画任何 token 数字。
+func (u Usage) Known() bool { return u.TotalTokens > 0 || u.InputTokens > 0 || u.OutputTokens > 0 }
 
 // Approval 是待审批的一次工具调用。
 type Approval struct {

@@ -29,7 +29,11 @@ type Plugin struct {
 	prims pluginapi.Primitives
 
 	search  flex.Field
-	collapsed map[string]bool
+	// CollapseAll 是调试开关：Register 时把所有分组置为收起。
+	// 只为"无头截图验证折叠态"存在，正常运行一直是 false。
+	CollapseAll bool
+	collapsed   map[string]bool
+	collapseAll bool
 	width     float32
 }
 
@@ -49,6 +53,9 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	p.collapsed = map[string]bool{}
+	if p.CollapseAll {
+		p.collapseAll = true
+	}
 	p.width = 280 // 官方 cols.sidebar = 280（不含分隔线）
 	return nil
 }
@@ -109,7 +116,7 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 			}
 			for _, key := range order {
 				sessions := groups[key]
-				open := !p.collapsed[key]
+				open := !p.collapsed[key] && !p.collapseAll
 				gid := env.Tree.ID(env.Feat, "g-"+key)
 				if p.prims.SectionHeader(f, gid, displayWorkspace(key), len(sessions), open).Clicked() {
 					p.collapsed[key] = open // 点一下翻转

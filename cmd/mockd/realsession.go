@@ -30,6 +30,8 @@ type realSession struct {
 	UpdatedAt time.Time
 	Total     int       // 日志里的消息事件总数（截断前）
 	Messages  []message // 已按 tail 截断
+	// Usage 是整段会话的用量合计；零值表示这份日志里没有 usage。
+	Usage usageInfo
 	// Full 表示这次是把整个文件解完的结果。
 	// 索引期只解到第一条 user 消息（快），所以 Messages 非空**不等于**解全了。
 	// 踩过的坑：load 里用 len(Messages)==0 判断要不要全量解，
@@ -61,6 +63,9 @@ type v4Header struct {
 type v4Event struct {
 	Type string `json:"type"`
 	Seq  int    `json:"seq"`
+	// Time 是事件墙钟时间（epoch 毫秒）。算 token 速率只能靠它——
+	// 宿主给的 usage 里没有耗时。
+	Time int64 `json:"time"`
 	Data struct {
 		Content []block `json:"content"`
 
@@ -68,6 +73,14 @@ type v4Event struct {
 		CallID    string `json:"callId"`
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
+
+		// assistant/message 的用量（真实日志四个字段都在）
+		Usage struct {
+			InputTokens     int64 `json:"inputTokens"`
+			OutputTokens    int64 `json:"outputTokens"`
+			TotalTokens     int64 `json:"totalTokens"`
+			CacheReadTokens int64 `json:"cacheReadTokens"`
+		} `json:"usage"`
 
 		// tool/result：消息体在 data.message 里，不在 data 自己身上
 		Message *struct {
@@ -170,6 +183,7 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 	}
 
 	calls := make(map[string]tvCall)
+	var lastAssistantTime int64 // 上一条 assistant/message 的墙钟时间（毫秒）
 	for _, line := range strings.Split(out.String(), "\n") {
 		if line == "" {
 			continue
@@ -221,12 +235,47 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 		default:
 			continue
 		}
+		// usage 必须在"文本为空就跳过"之前处理：助手调工具的那一轮
+		// 只有 tool-call 块、没有 text 块，但它的 usage 是真的（踩过：
+		// 把这段放到 txt=="" 判断后面，整段会话的 token 合计永远是 0）。
+		var msgUsage *usageInfo
+		if role == "assistant" && e.Data.Usage.OutputTokens > 0 {
+			u := usageInfo{
+				InputTokens:     e.Data.Usage.InputTokens,
+				OutputTokens:    e.Data.Usage.OutputTokens,
+				TotalTokens:     e.Data.Usage.TotalTokens,
+				CacheReadTokens: e.Data.Usage.CacheReadTokens,
+			}
+			// 速率 = 这段回复的 outputTokens ÷ 它距上一条 assistant/message 的墙钟秒数。
+			// 为什么不用 user→assistant：助手调工具的那几轮之间没有 user 消息，
+			// 分母会变成几分钟，算出来是 1.3 tok/s 这种假数字（实测踩过）。
+			// 区间外的样本直接丢掉：<200ms 是时钟精度问题，>120s 是用户走开了。
+			if lastAssistantTime > 0 {
+				if secs := float64(e.Time-lastAssistantTime) / 1000; secs >= 0.2 && secs <= 120 {
+					u.TokPerSec = float64(u.OutputTokens) / secs
+					u.HasRate = true
+				}
+			}
+			lastAssistantTime = e.Time
+			msgUsage = &u
+			// 累计：input/output 相加有意义（每次都真的发了 / 生成了这么多）。
+			rs.Usage.InputTokens += u.InputTokens
+			rs.Usage.OutputTokens += u.OutputTokens
+			rs.Usage.CacheReadTokens += u.CacheReadTokens
+			// 总量：**不能相加**。totalTokens 是"这一次请求的上下文有多大"，
+			// 相加以后会得到 13 亿这种没有意义的数（实测）。取最后一次 = 当前上下文大小。
+			rs.Usage.TotalTokens = u.TotalTokens
+			if u.HasRate {
+				rs.Usage.TokPerSec = u.TokPerSec
+				rs.Usage.HasRate = true
+			}
+		}
 		txt := e.text()
 		if txt == "" {
 			continue
 		}
 		rs.Total++
-		rs.Messages = append(rs.Messages, message{Seq: e.Seq, Role: role, Text: txt})
+		rs.Messages = append(rs.Messages, message{Seq: e.Seq, Role: role, Text: txt, Usage: msgUsage})
 		if headerOnly && role == "user" {
 			// 索引期拿到第一条就够做标题了，别为它把整个文件解完。
 			// 这里必须留个记号：Messages 有 1 条，但**没解完**。

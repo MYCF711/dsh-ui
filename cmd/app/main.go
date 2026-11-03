@@ -53,6 +53,7 @@ type cachedSession struct {
 	msgs  []apiclient.Message
 	total int
 	title string
+	usage apiclient.Usage
 	at    time.Time
 }
 
@@ -100,6 +101,7 @@ type model struct {
 	sessions []apiclient.Session
 	cur      string
 	msgs     []apiclient.Message
+	usage    apiclient.Usage
 	status   string
 	loading  bool
 }
@@ -164,7 +166,8 @@ func (m *model) openSession(id string) {
 	hit := false
 	if cs, ok := m.cache[id]; ok {
 		m.msgs = cs.msgs
-		m.status = fmt.Sprintf("%s · %d 条（总 %d）· 温缓存", cs.title, len(cs.msgs), cs.total)
+		m.usage = cs.usage
+		m.status = fmt.Sprintf("温缓存 · %d 条（总 %d）", len(cs.msgs), cs.total)
 		m.loading = false
 		hit = true
 	} else {
@@ -195,10 +198,11 @@ func (m *model) refreshSession(id string, quiet bool) {
 		return
 	}
 	m.mu.Lock()
-	m.cache[id] = &cachedSession{msgs: r.Messages, total: r.Total, title: r.Title, at: time.Now()}
+	m.cache[id] = &cachedSession{msgs: r.Messages, total: r.Total, title: r.Title, usage: r.Usage, at: time.Now()}
 	m.evictLocked(id)
 	if m.cur == id { // 用户可能已经切走了
 		m.msgs = r.Messages
+		m.usage = r.Usage
 		if demoTool && len(m.msgs) > 0 {
 			// 注意：这里已经在 m.mu 内（refreshSession 的锁），不能再 Lock —— 会自死锁
 			m.approval = &approvalReq{Tool: "bash", Cmd: "git status --short",
@@ -213,7 +217,7 @@ func (m *model) refreshSession(id string, quiet bool) {
 				// 带 129 字符单行代码的助手消息：验横向滚动（清单 3.3）
 				apiclient.Message{Seq: -4, Role: "assistant", Text: demoWideCode})
 		}
-		m.status = fmt.Sprintf("%s · %d 条（总 %d）", r.Title, len(r.Messages), r.Total)
+		m.status = fmt.Sprintf("已连接 · %d 条（总 %d）", len(r.Messages), r.Total)
 		m.loading = false
 	}
 	fireSmoke := smokeSend && !m.smokeFired
@@ -462,6 +466,7 @@ func newConfig(m *model) app.Config {
 		status := m.status
 		streamText := m.streamText
 		approval := m.approval
+		usage := m.usage
 		if renderLimit > 0 && len(msgs) > renderLimit {
 			status = fmt.Sprintf("%s（渲染末尾 %d / %d）", status, renderLimit, len(msgs))
 			msgs = msgs[len(msgs)-renderLimit:]
@@ -489,6 +494,14 @@ func newConfig(m *model) app.Config {
 			Data: pluginapi.Snapshot{
 				Sessions: sessions, Cur: cur, Status: status,
 				Msgs: msgs, Total: len(msgs), Stream: streamText,
+				Usage: pluginapi.Usage{
+					InputTokens:     usage.InputTokens,
+					OutputTokens:    usage.OutputTokens,
+					TotalTokens:     usage.TotalTokens,
+					CacheReadTokens: usage.CacheReadTokens,
+					TokPerSec:       usage.TokPerSec,
+					HasRate:         usage.HasRate,
+				},
 				Approval: approvalView,
 			},
 			Act:    m.actions,
@@ -586,6 +599,7 @@ func main() {
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
 	title := flag.String("title", "dsh-ui", "窗口标题（并行跑多个实例时用来区分）")
+	collapseAll := flag.Bool("collapse", false, "调试：启动时把所有工作区分组收起（截折叠态用）")
 	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
 	flag.Parse()
 	renderLimit = *limit
@@ -605,7 +619,7 @@ func main() {
 
 	// 装插件：先根本依赖（ds-core：设计令牌 + 基础组件），再依赖它的部件。
 	// 装配器按 Requires 排序；ds-sidebar 少一个键就直接报错，不会静默少画一块。
-	m.side = &dssidebar.Plugin{}
+	m.side = &dssidebar.Plugin{CollapseAll: *collapseAll}
 	m.kernel = uikernel.New("dsh-ui")
 	if err := m.kernel.Load(
 		&dscore.Plugin{Dark: true}, // 根本依赖插件：令牌 + 基础组件

@@ -35,6 +35,8 @@ type Message struct {
 	// View 是工具对这块结果的显示声明（形状逐字对齐宿主 spi.ViewSpec）。
 	// 界面按 Kind 选渲染器；不认识就退化成 Text——不认识 == 没声明。
 	View *ViewSpec `json:"view,omitempty"`
+	// Usage 只在这一条是 assistant/message 时有值。
+	Usage *Usage `json:"usage,omitempty"`
 }
 
 // ViewKind 是 ViewSpec 的渲染种类。
@@ -63,6 +65,19 @@ type ViewField struct {
 	Value string `json:"value"`
 }
 
+// Usage 是一次或一段会话的 token 用量（宿主 spi 里对应 usage 事件）。
+//
+// TokPerSec 是我们自己算的：一段 assistant/message 的 outputTokens 除以
+// 「上一条 user/message 到这一条的墙钟时间」。宿主不提供速率，只有时间戳。
+type Usage struct {
+	InputTokens     int64   `json:"inputTokens"`
+	OutputTokens    int64   `json:"outputTokens"`
+	TotalTokens     int64   `json:"totalTokens"`
+	CacheReadTokens int64   `json:"cacheReadTokens"`
+	TokPerSec       float64 `json:"tokPerSec,omitempty"` // 0 = 算不出来（缺时间戳）
+	HasRate         bool    `json:"hasRate,omitempty"`
+}
+
 // LoadResult 是 session.load 的返回。
 type LoadResult struct {
 	ID        string    `json:"id"`
@@ -72,6 +87,9 @@ type LoadResult struct {
 	Messages  []Message `json:"messages"`
 	Truncated bool      `json:"truncated"`
 	Total     int       `json:"total"`
+	// Usage 是整段会话的用量合计（所有 assistant/message 的 usage 相加）。
+	// 没有 usage 的会话这里是零值——界面要据此不显示，而不是显示 0。
+	Usage Usage `json:"usage"`
 }
 
 // APIError 是契约里的 error 对象。

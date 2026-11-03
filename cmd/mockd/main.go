@@ -49,9 +49,21 @@ type message struct {
 	Tool    string `json:"tool,omitempty"`
 	Args    string `json:"args,omitempty"`
 	Summary string `json:"summary,omitempty"`
+	// Usage 只在这一条是 assistant/message 时有值（宿主给的 usage 原样 + 我们算的速率）。
+	Usage *usageInfo `json:"usage,omitempty"`
 	// View 让工具自己声明这块结果怎么显示（形状见 viewSpec）。
 	// 界面对 View 零容忍：Kind 不认识就退化成 Text——不认识 == 没声明。
 	View *viewSpec `json:"view,omitempty"`
+}
+
+// usageInfo 是 token 用量。TokPerSec 是我们自己算的（宿主只给用量，不给耗时）。
+type usageInfo struct {
+	InputTokens     int64   `json:"inputTokens"`
+	OutputTokens    int64   `json:"outputTokens"`
+	TotalTokens     int64   `json:"totalTokens"`
+	CacheReadTokens int64   `json:"cacheReadTokens"`
+	TokPerSec       float64 `json:"tokPerSec,omitempty"`
+	HasRate         bool    `json:"hasRate,omitempty"`
 }
 
 // viewSpec 的形状逐字对齐宿主线的 spi.ViewSpec（DSH-GO/internal/spi/tool.go:103）：
@@ -416,6 +428,7 @@ func route(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 200, envelope{Result: map[string]any{
 				"id": rs.ID, "title": firstUserLine(rs), "cwd": rs.Cwd, "mode": "default",
 				"messages": msgs, "truncated": len(msgs) < rs.Total, "total": rs.Total,
+				"usage": rs.Usage,
 			}})
 			return
 		}

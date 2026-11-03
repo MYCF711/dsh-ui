@@ -20,8 +20,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -273,42 +275,83 @@ type Chunk struct {
 	Tool  string
 	Args  string
 	Full  bool
+
+	// 内容身份来自 data，而不是 Event.Seq。result 仅供 Stream 区分 tool/result
+	// 与 tool/call；二者都可能以完整块到达，但完整工具块不等于 turn 结束。
+	V4Seq     *int64
+	MessageID string
+	TurnID    string
+	Turn      *int64
+	Step      *int64
+	CallID    string
+	role      string
+	result    bool
 }
 
 // packet 是 ev 帧 data 的联合形状。三种都真出现过：
 //
 //	{"delta":"…"} / {"done":true}                    增量流（mockd 逐字推、ACP）
 //	{"content":[…]} / {"message":{"content":[…]}}    v4 原始事件（真宿主 follow 原样推）
-//	{"tool":"bash","args":"…"}                       工具调用
+//	{"tool":"bash","args":"…"}                       工具调用（也兼容 v4 name/arguments）
 //
 // 只认一种的后果实测过：真宿主推的是 content 块，只读 delta 就等于
 // **整条流一个字都没进界面**，而屏幕上看起来只是"没反应"。
 type packet struct {
-	Delta   string        `json:"delta"`
-	Text    string        `json:"text"`
-	Done    bool          `json:"done"`
-	Tool    string        `json:"tool"`
-	Args    string        `json:"args"`
-	Content []packetBlock `json:"content"`
+	Delta     string        `json:"delta"`
+	Text      string        `json:"text"`
+	Done      bool          `json:"done"`
+	Tool      string        `json:"tool"`
+	Args      string        `json:"args"`
+	Name      string        `json:"name"`
+	Arguments string        `json:"arguments"`
+	Content   []packetBlock `json:"content"`
+
+	// data 内的内容身份。v4 seq=0 是合法值，所以数值字段都必须用指针。
+	Seq        *int64 `json:"seq"`
+	V4Seq      *int64 `json:"v4Seq"`
+	MessageID  string `json:"messageId"`
+	ID         string `json:"id"`
+	TurnID     string `json:"turnId"`
+	Turn       *int64 `json:"turn"`
+	Step       *int64 `json:"step"`
+	CallID     string `json:"callId"`
+	ToolCallID string `json:"toolCallId"`
+
 	// Role 用来区分"这条 content 是工具结果"还是普通正文。
 	// 宿主的 tool/result 帧长这样：
 	//   {"message":{"content":[{"type":"text","text":"[exit 0] …"}],
 	//               "role":"tool","toolCallId":"call_…"}}
 	// 不读 role 的话，工具输出会被当成 assistant 正文流进气泡里——
 	// 界面上看到的是"回答里混着命令输出"，而不是一张工具卡。
-	Role    string `json:"role"`
-	Message *struct {
-		Content []packetBlock `json:"content"`
-		Role    string        `json:"role"`
-	} `json:"message"`
+	Role    string         `json:"role"`
+	Message *packetMessage `json:"message"`
+}
+
+type packetMessage struct {
+	Content    []packetBlock `json:"content"`
+	Role       string        `json:"role"`
+	Seq        *int64        `json:"seq"`
+	V4Seq      *int64        `json:"v4Seq"`
+	MessageID  string        `json:"messageId"`
+	ID         string        `json:"id"`
+	TurnID     string        `json:"turnId"`
+	Turn       *int64        `json:"turn"`
+	Step       *int64        `json:"step"`
+	ToolCallID string        `json:"toolCallId"`
+	Source     struct {
+		CallID string `json:"callId"`
+	} `json:"source"`
 }
 
 // packetBlock 是 v4 content 数组里的一块。tool-call 块的字段名按 v4 原样。
 type packetBlock struct {
-	Type      string `json:"type"`
-	Text      string `json:"text"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
+	Type       string `json:"type"`
+	Text       string `json:"text"`
+	Name       string `json:"name"`
+	Arguments  string `json:"arguments"`
+	ID         string `json:"id"`
+	CallID     string `json:"callId"`
+	ToolCallID string `json:"toolCallId"`
 }
 
 // blocks 取 content 块：顶层优先，其次 message.content（两种落法都见过）。
@@ -332,6 +375,70 @@ func firstText(vals ...string) string {
 	return ""
 }
 
+func firstInt64(vals ...*int64) *int64 {
+	for _, v := range vals {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
+}
+
+// decorate 把帧级身份补到每个块；块级 callId（v4 tool-call.id）优先。
+// 所有值只做读取和复制，不把 Transport seq 或生成的字符串填进真值字段。
+func (p packet) decorate(out []Chunk) []Chunk {
+	for i := range out {
+		if out[i].V4Seq == nil && p.Message != nil {
+			out[i].V4Seq = firstInt64(p.V4Seq, p.Seq, p.Message.V4Seq, p.Message.Seq)
+		} else if out[i].V4Seq == nil {
+			out[i].V4Seq = firstInt64(p.V4Seq, p.Seq)
+		}
+		if out[i].MessageID == "" {
+			if p.Message != nil {
+				out[i].MessageID = firstText(p.MessageID, p.ID, p.Message.MessageID, p.Message.ID)
+			} else {
+				out[i].MessageID = firstText(p.MessageID, p.ID)
+			}
+		}
+		if out[i].TurnID == "" {
+			out[i].TurnID = p.TurnID
+			if out[i].TurnID == "" && p.Message != nil {
+				out[i].TurnID = p.Message.TurnID
+			}
+		}
+		if out[i].Turn == nil && p.Message != nil {
+			out[i].Turn = firstInt64(p.Turn, p.Message.Turn)
+		} else if out[i].Turn == nil {
+			out[i].Turn = p.Turn
+		}
+		if out[i].Step == nil && p.Message != nil {
+			out[i].Step = firstInt64(p.Step, p.Message.Step)
+		} else if out[i].Step == nil {
+			out[i].Step = p.Step
+		}
+		if out[i].CallID == "" {
+			out[i].CallID = firstText(p.CallID, p.ToolCallID)
+			if out[i].CallID == "" && p.Message != nil {
+				out[i].CallID = firstText(p.Message.ToolCallID, p.Message.Source.CallID)
+			}
+		}
+		if out[i].role == "" {
+			out[i].role = p.Role
+			if out[i].role == "" && p.Message != nil {
+				out[i].role = p.Message.Role
+			}
+		}
+	}
+	return out
+}
+
+func chunksWithRole(out []Chunk, role string) []Chunk {
+	for i := range out {
+		out[i].role = role
+	}
+	return out
+}
+
 // Chunks 把一帧拆成若干段内容，块顺序保持 v4 原样。不认识的帧返回 nil。
 func (e Event) Chunks() []Chunk {
 	var p packet
@@ -344,21 +451,25 @@ func (e Event) Chunks() []Chunk {
 		// ACP 桥（mockd -acp）把同一个 v4 块叫 assistant/thought。
 		// 两条到达路径，同一种内容，都当思考；这**不是**新造事件名。
 		if s := firstText(p.Delta, p.Text); s != "" {
-			return []Chunk{{Block: BlockReasoning, Text: s}}
+			return p.decorate([]Chunk{{Block: BlockReasoning, Text: s}})
 		}
 		return nil
 
 	case "assistant/text":
 		if s := firstText(p.Delta, p.Text); s != "" {
-			return []Chunk{{Block: BlockText, Text: s}}
+			return p.decorate([]Chunk{{Block: BlockText, Text: s}})
 		}
 		return nil
 
 	case "tool/call":
-		if p.Tool != "" || p.Args != "" {
-			return []Chunk{{Block: BlockTool, Tool: p.Tool, Args: p.Args}}
+		tool, args := firstText(p.Tool, p.Name), firstText(p.Args, p.Arguments)
+		if tool != "" || args != "" {
+			return p.decorate([]Chunk{{Block: BlockTool, Tool: tool, Args: args}})
 		}
 		return nil
+
+	case "user/message":
+		return chunksWithRole(p.chunks(), "user")
 
 	case "assistant/message":
 		return p.chunks()
@@ -378,7 +489,8 @@ func (p packet) isToolResult() bool {
 }
 
 // chunks 把数据包拆成块；没有块就退回增量形状。
-func (p packet) chunks() []Chunk {
+func (p packet) chunks() (out []Chunk) {
+	defer func() { out = p.decorate(out) }()
 	if p.isToolResult() {
 		// 工具结果整条进来（一条 text 块），交给 Stream 记成 role=="tool" 的消息，
 		// 不要拆成正文增量——那是"命令输出混进回答里"的来源。
@@ -389,7 +501,7 @@ func (p packet) chunks() []Chunk {
 			}
 		}
 		if b.Len() > 0 {
-			return []Chunk{{Block: BlockTool, Text: b.String(), Full: true}}
+			return []Chunk{{Block: BlockTool, Text: b.String(), Full: true, result: true}}
 		}
 		return nil
 	}
@@ -406,7 +518,10 @@ func (p packet) chunks() []Chunk {
 					out = append(out, Chunk{Block: BlockText, Text: b.Text, Full: true})
 				}
 			case "tool-call":
-				out = append(out, Chunk{Block: BlockTool, Tool: b.Name, Args: b.Arguments, Full: true})
+				out = append(out, Chunk{
+					Block: BlockTool, Tool: b.Name, Args: b.Arguments, Full: true,
+					CallID: firstText(b.CallID, b.ToolCallID, b.ID),
+				})
 			}
 		}
 		return out
@@ -438,30 +553,102 @@ func (e Event) End() bool {
 	return false
 }
 
-// Stream 归约一次助手回合的流式增量。
-//
-// 为什么需要它：流上是**帧**，消息流是**条**。reasoning 与 text 会交错到达，
-// 而一条消息往往由几十条增量帧拼成。这里把增量攒成两条消息的原料：
-// 思考一条（Role=thinking）、正文一条（Role=assistant），
-// **两条都用这一段的第一帧 seq** —— 同一段的增量落在同一条上。
-//
-// 为什么不用每帧自己的 seq：真实语料里 reasoning:text ≈ 8:1，
-// 一帧一条消息的话，一屏全是思考碎片，正文被挤到看不见的地方。
+// contentMeta 是 data 里的真值；它绝不包含 Transport Event.Seq。
+type contentMeta struct {
+	v4Seq     *int64
+	messageID string
+	turnID    string
+	turn      *int64
+	step      *int64
+}
+
+func metaOf(c Chunk) contentMeta {
+	return contentMeta{v4Seq: c.V4Seq, messageID: c.MessageID, turnID: c.TurnID, turn: c.Turn, step: c.Step}
+}
+
+func (m contentMeta) identified() bool {
+	return m.v4Seq != nil || m.messageID != "" || m.turnID != "" || m.turn != nil
+}
+
+func (m contentMeta) seq() int {
+	if m.v4Seq == nil {
+		return 0
+	}
+	v := int(*m.v4Seq)
+	if int64(v) != *m.v4Seq { // 保留 V4Seq 原始值；旧 int 字段无法容纳时不截断。
+		return 0
+	}
+	return v
+}
+
+func stepKey(step *int64) string {
+	if step == nil {
+		return "unknown"
+	}
+	return strconv.FormatInt(*step, 10)
+}
+
+// baseKey 的优先级是 v4 seq → messageId → turnId/turn(+step) → 调用方明确给出的
+// 局部 fallback。turn+step 是复合作用域，不把单独的 turn 当成一条消息的全局 ID。
+func (m contentMeta) baseKey(fallback string) string {
+	switch {
+	case m.v4Seq != nil:
+		return "v4:" + strconv.FormatInt(*m.v4Seq, 10)
+	case m.messageID != "":
+		return "message:" + strconv.Quote(m.messageID)
+	case m.turnID != "":
+		return "turn-id:" + strconv.Quote(m.turnID) + ":step:" + stepKey(m.step)
+	case m.turn != nil:
+		return "turn:" + strconv.FormatInt(*m.turn, 10) + ":step:" + stepKey(m.step)
+	default:
+		return fallback
+	}
+}
+
+func contentKey(meta contentMeta, role, fallback string) string {
+	return meta.baseKey(fallback) + "\x00" + role
+}
+
+func fillContentFields(m *Message, meta contentMeta) {
+	m.Seq = meta.seq()
+	m.V4Seq = meta.v4Seq
+	m.MessageID = meta.messageID
+	m.TurnID = meta.turnID
+	m.Turn = meta.turn
+	m.Step = meta.step
+}
+
+// Stream 归约一次助手回合的流式增量。Event.Seq 始终只归 Mux 水位/gap/replay；
+// 这里使用的序号与身份全部来自 Event.Data。
 type Stream struct {
-	seq      int
-	thinking strings.Builder
-	text     strings.Builder
-	done     bool
+	seq           int
+	content       contentMeta
+	hasTextMeta   bool
+	hasContent    bool
+	thinking      strings.Builder
+	text          strings.Builder
+	textRole      string
+	done          bool
+	seenReplay    map[string]struct{}
+	streamID      uint64
+	generation    uint64
+	nextToolLocal int
+
 	// tools 是这一段里真发生过的工具调用/结果，按发生顺序。
-	//
-	// 为什么必须在这里攒：工具卡要有 Tool/Args/结果三样才画得出来，
-	// 而这三样分散在 tool/call 和 tool/result 两帧里。早先 case BlockTool
-	// 是空的（"暂时不落消息"），于是**实时跑的工具完全不出现在右栏轨迹里**，
-	// 只有下次 session.load 才带回来——用户看到的是"我明明跑了工具，轨迹是空的"。
 	tools []Message
 }
 
-// Seq 是本段消息的 seq（0 = 还没有内容）。
+var nextStreamScope atomic.Uint64
+
+func (s *Stream) scope() string {
+	if s.streamID == 0 {
+		s.streamID = nextStreamScope.Add(1)
+	}
+	return "stream:" + strconv.FormatUint(s.streamID, 10) + ":generation:" + strconv.FormatUint(s.generation, 10)
+}
+
+// Seq 是本段内容的 v4 seq；未知或真实值为零时都返回 0。需要区分二者时看
+// Messages()[].V4Seq。它不再是 Transport 水位。
 func (s *Stream) Seq() int { return s.seq }
 
 // ToolMessages 是这一段里发生过的工具消息（role=="tool"），按发生顺序返回副本。
@@ -481,57 +668,186 @@ func (s *Stream) Text() string { return s.text.String() }
 func (s *Stream) Done() bool { return s.done }
 
 // Reset 清空，准备下一段（**已经落进 msgs 的消息不受影响**）。
+// tools 与局部序号也必须清：否则下一轮同 Tool+Args 会继承上一轮结果。
 func (s *Stream) Reset() {
 	s.seq = 0
+	s.content = contentMeta{}
+	s.hasTextMeta = false
+	s.hasContent = false
 	s.thinking.Reset()
 	s.text.Reset()
+	s.textRole = ""
 	s.done = false
+	s.seenReplay = nil
+	s.tools = nil
+	s.nextToolLocal = 0
+	s.generation++
+}
+
+func (s *Stream) message(role, text string) Message {
+	m := Message{Role: role, Text: text}
+	fillContentFields(&m, s.content)
+	m.identity = contentKey(s.content, role, s.scope())
+	return m
+}
+
+func (s *Stream) toolScope(meta contentMeta) string {
+	// 无 callId 的配对永远再套 Stream+Reset 代次；即使 turnId 相同，也不把
+	// 这个局部配对规则提升成可跨轮、可跨进程使用的身份。
+	return s.scope() + ":" + meta.baseKey("unscoped")
+}
+
+func (s *Stream) newTool(c Chunk) Message {
+	meta := metaOf(c)
+	m := Message{Role: "tool", Tool: c.Tool, Args: c.Args, CallID: c.CallID}
+	fillContentFields(&m, meta)
+	m.identity = contentKey(meta, "tool", s.scope())
+	m.toolScope = s.toolScope(meta)
+	if c.CallID != "" {
+		m.toolIdentity = "call:" + strconv.Quote(c.CallID)
+	} else {
+		m.toolIdentity = m.toolScope + ":local:" + strconv.Itoa(s.nextToolLocal)
+		s.nextToolLocal++
+	}
+	if c.result {
+		m.Summary = c.Text
+	}
+	return m
+}
+
+func (s *Stream) updateToolMeta(m *Message, c Chunk) {
+	meta := metaOf(c)
+	// result 的 v4/message 身份对应 load 的 tool/result 投影，优先于 call；
+	// result 先到时，后来的 call 不得反过来擦掉这个结果身份。
+	strong := meta.v4Seq != nil || meta.messageID != ""
+	currentStrong := m.V4Seq != nil || m.MessageID != ""
+	if (c.result && (strong || !currentStrong)) || (!c.result && (m.Summary == "" || !currentStrong)) {
+		m.Seq = meta.seq()
+		m.V4Seq = meta.v4Seq
+		m.MessageID = meta.messageID
+		m.identity = contentKey(meta, "tool", s.scope())
+	}
+	if meta.turnID != "" || m.TurnID == "" {
+		m.TurnID = meta.turnID
+	}
+	if meta.turn != nil || m.Turn == nil {
+		m.Turn = meta.turn
+	}
+	if meta.step != nil || m.Step == nil {
+		m.Step = meta.step
+	}
+	if c.CallID != "" {
+		m.CallID = c.CallID
+	}
+}
+
+func (s *Stream) applyTool(c Chunk) {
+	if !c.result {
+		if c.CallID != "" {
+			for i := range s.tools {
+				if s.tools[i].CallID == c.CallID {
+					s.tools[i].Tool, s.tools[i].Args = c.Tool, c.Args
+					s.updateToolMeta(&s.tools[i], c)
+					return
+				}
+			}
+		}
+		s.tools = append(s.tools, s.newTool(c))
+		return
+	}
+
+	if c.CallID != "" {
+		for i := range s.tools {
+			if s.tools[i].CallID == c.CallID {
+				s.tools[i].Summary = c.Text
+				s.updateToolMeta(&s.tools[i], c)
+				return
+			}
+		}
+		// result 先到也保留；后续同 callId 的 call 会补 Tool/Args。
+		s.tools = append(s.tools, s.newTool(c))
+		return
+	}
+
+	scope := s.toolScope(metaOf(c))
+	for i := len(s.tools) - 1; i >= 0; i-- {
+		m := &s.tools[i]
+		if m.CallID == "" && m.Summary == "" && (m.Tool != "" || m.Args != "") && m.toolScope == scope {
+			m.Summary = c.Text
+			s.updateToolMeta(m, c)
+			return
+		}
+	}
+	// 无 callId 且结果先到/turn 不同：没有安全配对依据，独立保留结果，
+	// 绝不挂到“最近一条”或另一轮调用上。
+	s.tools = append(s.tools, s.newTool(c))
+}
+
+func replayKey(ev Event, chunks []Chunk) string {
+	if len(chunks) == 0 {
+		return ""
+	}
+	allFull := true
+	for _, c := range chunks {
+		allFull = allFull && c.Full
+	}
+	// v4 seq 是事件身份；messageId 只对完整消息做重放短路，不能误杀同 ID 的增量。
+	if chunks[0].V4Seq == nil && !(allFull && chunks[0].MessageID != "") {
+		return ""
+	}
+	identity := ""
+	if chunks[0].V4Seq != nil {
+		identity = "v4:" + strconv.FormatInt(*chunks[0].V4Seq, 10)
+	} else {
+		identity = "message:" + strconv.Quote(chunks[0].MessageID)
+	}
+	return ev.Kind + "\x00" + identity + "\x00" + string(ev.Data)
 }
 
 // Apply 吃一帧，返回状态是否变了（调用方只在变了时重绘）。
 func (s *Stream) Apply(ev Event) bool {
 	chunks := ev.Chunks()
+	if key := replayKey(ev, chunks); key != "" {
+		if _, seen := s.seenReplay[key]; seen {
+			return false
+		}
+		if s.seenReplay == nil {
+			s.seenReplay = make(map[string]struct{})
+		}
+		s.seenReplay[key] = struct{}{}
+	}
 	changed := false
-	if len(chunks) > 0 {
-		if s.seq == 0 {
-			s.seq = ev.Seq
-		}
-		for _, c := range chunks {
-			if c.Full {
-				// 完整的一条：这条消息的身份就是帧自己的 seq（与宿主的日志 seq 对齐，
-				// 重连重放同一条时才能靠 seq 更新掉，而不是追加第二份）。
-				s.seq = ev.Seq
-				break
+	for _, c := range chunks {
+		s.hasContent = true
+		switch c.Block {
+		case BlockReasoning, BlockText:
+			meta := metaOf(c)
+			if !s.hasTextMeta || meta.identified() {
+				s.content = meta
+				s.hasTextMeta = true
 			}
-		}
-		for _, c := range chunks {
-			switch c.Block {
-			case BlockReasoning:
+			s.seq = s.content.seq()
+			if c.Block == BlockReasoning {
 				s.thinking.WriteString(c.Text)
-				changed = true
-			case BlockText:
-				s.text.WriteString(c.Text)
-				changed = true
-			case BlockTool:
-				// tool/call 带 Tool+Args，tool/result 带 Text（见 packet.isToolResult）：
-				// 前者开一条工具消息，后者把结果填到最近那条上。这样实时就能画工具卡，
-				// 不必等下一次 session.load 才把轨迹带回来。
-				switch {
-				case c.Tool != "" || c.Args != "":
-					s.tools = append(s.tools, Message{Role: "tool", Tool: c.Tool, Args: c.Args})
-					changed = true
-				case c.Text != "" && len(s.tools) > 0:
-					s.tools[len(s.tools)-1].Summary = c.Text
-					changed = true
+			} else {
+				if c.role != "" {
+					s.textRole = c.role
 				}
+				s.text.WriteString(c.Text)
 			}
-			if c.Full {
-				s.done = true
-				changed = true
-			}
+			changed = true
+		case BlockTool:
+			s.applyTool(c)
+			changed = true
+		}
+		if c.Full && c.Block != BlockTool {
+			// 完整文本/思考消息可结束这一段；完整 tool/call 或 tool/result 不能，
+			// 否则壳在 result 后立刻 Reset，后续 call/result 就没有配对上下文。
+			s.done = true
+			changed = true
 		}
 	}
-	if ev.End() && s.seq != 0 && !s.done {
+	if ev.End() && s.hasContent && !s.done {
 		s.done = true
 		changed = true
 	}
@@ -546,20 +862,25 @@ func (s *Stream) Apply(ev Event) bool {
 func (s *Stream) Messages() []Message {
 	var out []Message
 	if th := s.thinking.String(); th != "" {
-		out = append(out, Message{Seq: s.seq, Role: "thinking", Text: th})
+		out = append(out, s.message("thinking", th))
 	}
 	// 工具消息**不等 done**：tool/call 一到就要能画出来（用户能立刻看到"正在跑"），
 	// 结果到了再补 Summary。等 done 的话，一个跑满几轮的长工具全程都是空白。
 	out = append(out, s.tools...)
 	if s.done {
 		if tx := s.text.String(); tx != "" {
-			out = append(out, Message{Seq: s.seq, Role: "assistant", Text: tx})
+			role := s.textRole
+			if role == "" || role == "tool" {
+				role = "assistant"
+			}
+			out = append(out, s.message(role, tx))
 		}
 	}
 	return out
 }
 
-// MergeMessages 把 fresh 并进 keep：**keep 里已有的不删**，同 (Seq,Role) 的更新。
+// MergeMessages 把 fresh 并进 keep：**keep 里已有的不删**，相同内容身份的更新。
+// 旧 load 投影只有 (Seq,Role)，仍按原规则兼容；流消息有更强的 data 身份时优先用它。
 //
 // 用途是"刷新不能吞历史"。`session.load` 给的是**尾巴**（tail），而界面手里
 // 可能已经有更完整的一份——直接 `msgs = r.Messages` 会把尾巴之前的内容整段吃掉。
@@ -573,11 +894,8 @@ func MergeMessages(keep, fresh []Message) []Message {
 	return out
 }
 
-// Merge 把流状态并进消息列表：同 seq 同角色**更新**，绝不重复追加。
-//
-// 为什么按 seq 去重：断线重连、同帧重放、以及"先流式落了一条、随后
-// session.load 又给了同一条"这三条路都会让同一 seq 再来一次。
-// 追加的话用户会看到两遍一模一样的内容；去重唯一可靠的事实就是宿主给的 seq。
+// Merge 把流状态并进消息列表。Event.Seq 不参与这里：v4 seq/messageId/turn+call
+// 身份优先；完全没有真值时只用 Stream+Reset 代次的局部键防误覆盖。
 func Merge(msgs []Message, s *Stream) []Message {
 	for _, m := range s.Messages() {
 		msgs = upsertMsg(msgs, m)
@@ -585,34 +903,125 @@ func Merge(msgs []Message, s *Stream) []Message {
 	return msgs
 }
 
-// upsertMsg 按 (Seq, Role) 更新或插入一条消息。
-//
-// 工具消息是例外：同一轮里可能有多个工具调用，它们的 seq 都是这轮的 seq，
-// 按 (Seq, Role) 认就会互相覆盖——所以 tool 按 (Tool, Args) 认身份。
+func matchesV4Seq(m Message, seq int64) bool {
+	if m.V4Seq != nil {
+		return *m.V4Seq == seq
+	}
+	// 无 identity 的 Message 是旧 load/调用方字面量，其 Seq 本来就是 v4 域。
+	return m.identity == "" && int64(m.Seq) == seq
+}
+
+// sameContent 双向兼容“旧 load 裸 Seq”与“流消息 V4Seq”，但局部 fallback
+// 不会因为数值碰巧相同就退化成 Seq 匹配。
+func sameContent(have, want Message) bool {
+	if have.Role != want.Role {
+		return false
+	}
+	if have.identity != "" && have.identity == want.identity {
+		return true
+	}
+	if want.V4Seq != nil && matchesV4Seq(have, *want.V4Seq) {
+		return true
+	}
+	if have.V4Seq != nil && want.identity == "" && *have.V4Seq == int64(want.Seq) {
+		return true
+	}
+	if want.MessageID != "" && have.MessageID == want.MessageID {
+		return true
+	}
+	if have.identity == "" && want.identity == "" {
+		return have.Seq == want.Seq
+	}
+	return false
+}
+
+func sameToolContent(have, want Message) bool {
+	// turn 只是配对作用域，不是一次工具调用的唯一身份；不同 callId/local
+	// 调用即便同 turn、同 Tool+Args，也不能在内容合并阶段再次折叠。
+	if want.V4Seq == nil && want.MessageID == "" && have.V4Seq == nil && have.MessageID == "" &&
+		(want.identity != "" || have.identity != "") {
+		return false
+	}
+	return sameContent(have, want)
+}
+
+func identityBase(key string) string {
+	if i := strings.LastIndex(key, "\x00"); i >= 0 {
+		return key[:i]
+	}
+	return key
+}
+
+func sameMessageScope(have, want Message) bool {
+	if have.identity != "" && want.identity != "" && identityBase(have.identity) == identityBase(want.identity) {
+		return true
+	}
+	if want.V4Seq != nil && matchesV4Seq(have, *want.V4Seq) {
+		return true
+	}
+	return want.MessageID != "" && have.MessageID == want.MessageID
+}
+
+func insertMsgBefore(msgs []Message, at int, want Message) []Message {
+	msgs = append(msgs, Message{})
+	copy(msgs[at+1:], msgs[at:])
+	msgs[at] = want
+	return msgs
+}
+
+// upsertMsg 按内容身份更新或插入。工具首先按 callId，其次按本 Stream 的
+// 配对键或 v4/message 身份；旧投影兼容键也含 v4 Seq，不全局匹同 Tool+Args。
 func upsertMsg(msgs []Message, want Message) []Message {
 	if want.Role == "tool" {
 		for i := range msgs {
-			if msgs[i].Role == "tool" && msgs[i].Tool == want.Tool && msgs[i].Args == want.Args {
+			if msgs[i].Role != "tool" {
+				continue
+			}
+			if want.CallID != "" && msgs[i].CallID == want.CallID {
 				msgs[i] = want
 				return msgs
+			}
+			if want.toolIdentity != "" && msgs[i].toolIdentity == want.toolIdentity {
+				msgs[i] = want
+				return msgs
+			}
+		}
+		for i := range msgs {
+			if msgs[i].Role == "tool" && sameToolContent(msgs[i], want) {
+				msgs[i] = want
+				return msgs
+			}
+		}
+		if want.identity == "" && want.toolIdentity == "" {
+			for i := range msgs {
+				if msgs[i].Role == "tool" && msgs[i].identity == "" && msgs[i].toolIdentity == "" &&
+					msgs[i].Seq == want.Seq && msgs[i].Tool == want.Tool && msgs[i].Args == want.Args {
+					msgs[i] = want
+					return msgs
+				}
 			}
 		}
 		return append(msgs, want)
 	}
 	for i := range msgs {
-		if msgs[i].Seq == want.Seq && msgs[i].Role == want.Role {
+		if sameContent(msgs[i], want) {
 			msgs[i] = want
 			return msgs
 		}
 	}
-	// 新的思考块排在同 seq 的正文前面：先想后说。
+	// 新的思考块排在对应正文前面。没有真值的局部 fallback 只能兼容旧的
+	// “已落正文、后补思考”调用方式；不能插到另一个 Stream 代次的正文前面。
 	if want.Role == "thinking" {
 		for i := range msgs {
-			if msgs[i].Seq == want.Seq && msgs[i].Role == "assistant" {
-				msgs = append(msgs, Message{})
-				copy(msgs[i+1:], msgs[i:])
-				msgs[i] = want
-				return msgs
+			if msgs[i].Role == "assistant" && sameMessageScope(msgs[i], want) {
+				return insertMsgBefore(msgs, i, want)
+			}
+		}
+		if strings.HasPrefix(want.identity, "stream:") {
+			for i := len(msgs) - 1; i >= 0; i-- {
+				if msgs[i].Role == "assistant" && msgs[i].identity == "" {
+					return insertMsgBefore(msgs, i, want)
+				}
 			}
 		}
 	}

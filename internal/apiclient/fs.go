@@ -17,14 +17,24 @@ type WorkspaceEntry struct {
 	Name  string `json:"name"`
 	IsDir bool   `json:"isDir"`
 	Size  int64  `json:"size"`
+	// Path 是完整路径。**宿主目前不给**（它只回 name/isDir/size），
+	// 所以客户端要自己在 dir 基础上拼。等宿主补了就直接用。
+	Path string `json:"path,omitempty"`
 }
 
-// WorkspaceList 列当前工作区根目录。
-func (c *Client) WorkspaceList(ctx context.Context) ([]WorkspaceEntry, error) {
+// WorkspaceList 列一个目录。
+//
+// dir 为空 = 宿主的进程工作目录（旧行为）；给绝对路径就列那个目录——
+// 有了它文件树才能一层层往下走（旧版只能列根，因为宿主不收 path）。
+func (c *Client) WorkspaceList(ctx context.Context, dir string) ([]WorkspaceEntry, error) {
 	var out struct {
 		Entries []WorkspaceEntry `json:"entries"`
 	}
-	if err := c.Call(ctx, "workspace.list", struct{}{}, &out); err != nil {
+	var params any = struct{}{}
+	if dir != "" {
+		params = map[string]any{"path": dir}
+	}
+	if err := c.Call(ctx, "workspace.list", params, &out); err != nil {
 		return nil, err
 	}
 	return out.Entries, nil

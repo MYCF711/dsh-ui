@@ -25,9 +25,29 @@ type Session struct {
 
 // Message 对应 session.load 的 messages 一项（v1 先只有纯文本）。
 type Message struct {
+	// Seq 是内容所属的 v4 seq。session.load 本来就在这个序号域；流式消息只有
+	// data 内真给了 seq 才设置它，绝不拿 Transport journal 的 Event.Seq 冒充。
+	// 未知时为 0；V4Seq 非 nil 可区分“真实的 v4 seq=0”和“未知”。
 	Seq  int    `json:"seq"`
 	Role string `json:"role"` // user / assistant / tool
 	Text string `json:"text"`
+
+	// 以下是流式 data 里实际出现的内容身份。指针保留数值零值与字段缺失的区别；
+	// 字符串原样保留，不拼前缀、不生成跨轮 ID。它们不影响旧 session.load JSON。
+	V4Seq     *int64 `json:"-"`
+	MessageID string `json:"messageId,omitempty"`
+	TurnID    string `json:"turnId,omitempty"`
+	Turn      *int64 `json:"turn,omitempty"`
+	Step      *int64 `json:"step,omitempty"`
+	CallID    string `json:"callId,omitempty"`
+
+	// identity/toolIdentity/toolScope 只用于本进程归约。identity 是内容键；
+	// toolIdentity 是 call/result 配对键；toolScope 限制无 callId 时的配对范围。
+	// 未经宿主提供的 fallback 只绑定 Stream 实例与 Reset 代次，不伪装成持久身份。
+	identity     string
+	toolIdentity string
+	toolScope    string
+
 	// role == "tool" 时这三个字段描述一次工具调用（契约 v1 先只给摘要）
 	Tool    string `json:"tool,omitempty"`
 	Args    string `json:"args,omitempty"`

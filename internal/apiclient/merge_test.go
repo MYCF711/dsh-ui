@@ -58,7 +58,8 @@ func TestMergeMessagesDoesNotMutateKeep(t *testing.T) {
 }
 
 func TestMergeMessagesToolIdentity(t *testing.T) {
-	// 工具消息按 (Tool,Args) 认身份：同一轮多个工具共用这轮的 seq
+	// 旧投影没有 callId/turn 时，以 (Seq,Tool,Args) 认身份；这里的零 Seq
+	// 是既有调用方的未指定值，不是 Transport 水位。
 	keep := []Message{{Role: "tool", Tool: "bash", Args: "ls", Summary: ""}}
 	fresh := []Message{{Role: "tool", Tool: "bash", Args: "ls", Summary: "[exit 0] a.go"}}
 	got := MergeMessages(keep, fresh)
@@ -67,5 +68,14 @@ func TestMergeMessagesToolIdentity(t *testing.T) {
 	}
 	if got[0].Summary != "[exit 0] a.go" {
 		t.Fatalf("结果应补上，得到 %q", got[0].Summary)
+	}
+}
+
+func TestMergeMessagesLegacyToolsDoNotCrossV4Seq(t *testing.T) {
+	keep := []Message{{Seq: 10, Role: "tool", Tool: "bash", Args: "same", Summary: "第一轮"}}
+	fresh := []Message{{Seq: 20, Role: "tool", Tool: "bash", Args: "same", Summary: "第二轮"}}
+	got := MergeMessages(keep, fresh)
+	if len(got) != 2 || got[0].Summary != "第一轮" || got[1].Summary != "第二轮" {
+		t.Fatalf("不同 v4 seq 的同参数工具不得跨轮覆盖：%+v", got)
 	}
 }

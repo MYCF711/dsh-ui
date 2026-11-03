@@ -70,6 +70,11 @@
 影响面：mux 的读循环、带水位重连、多会话订阅池、`FillGap` 都是并发代码，
 没有 race 检测就等于没验过数据竞争。**要真验需要装 mingw64 或换一台有 C 工具链的机器。**
 
+**兜底（不能替代 race，但抓的是另一类错）**：加了两个逻辑断言测试 ——
+`TestFillGapConcurrentGoroutinesSafe`（8 个 goroutine 并行补互不重叠的缺口，
+断言每个 seq 恰好被应用一次：不重复、不漏）与 `TestFillGapStopsWhenHostHasNoMore`
+（宿主提前没帧时必须退出不死循环）。race detector 抓内存竞争，这两个抓顺序/重复/死循环。
+
 ## 三、仍然缺的（不假装有）
 
 1. **完整工作日**：没有连续数小时的真实使用记录。这一步只能真的用，不能模拟。

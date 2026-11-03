@@ -45,6 +45,10 @@ type message struct {
 	Role  string `json:"role"`
 	Text  string `json:"text"`
 	SeqID string `json:"-"`
+	// role == "tool" 时这三个字段描述一次调用（与 apiclient.Message 同名同义）。
+	Tool    string `json:"tool,omitempty"`
+	Args    string `json:"args,omitempty"`
+	Summary string `json:"summary,omitempty"`
 	// View 让工具自己声明这块结果怎么显示（形状见 viewSpec）。
 	// 界面对 View 零容忍：Kind 不认识就退化成 Text——不认识 == 没声明。
 	View *viewSpec `json:"view,omitempty"`

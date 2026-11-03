@@ -57,11 +57,26 @@ type v4Event struct {
 	Type string `json:"type"`
 	Seq  int    `json:"seq"`
 	Data struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
+		Content []block `json:"content"`
+
+		// tool/call：arguments 是 **JSON 字符串**，不是对象
+		CallID    string `json:"callId"`
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+
+		// tool/result：消息体在 data.message 里，不在 data 自己身上
+		Message *struct {
+			ToolCallID string  `json:"toolCallId"`
+			IsError    bool    `json:"isError"`
+			Content    []block `json:"content"`
+		} `json:"message"`
 	} `json:"data"`
+}
+
+// block 是 content 数组里的一块（只关心 text）。
+type block struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 // text 把一条消息的 content 块拼成纯文本（只要 text 块）。
@@ -149,6 +164,7 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 		rs.UpdatedAt = fi.ModTime()
 	}
 
+	calls := make(map[string]toolCall)
 	for _, line := range strings.Split(out.String(), "\n") {
 		if line == "" {
 			continue
@@ -166,6 +182,28 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 		if err := json.Unmarshal([]byte(line), &e); err != nil {
 			continue // 坏行跳过，别让一条坏行废掉整个会话
 		}
+		// 工具调用本身不是消息：先记下来，等 tool/result 用 callId 配对。
+		if e.Type == "tool/call" {
+			if e.Data.CallID != "" {
+				calls[e.Data.CallID] = toolCall{name: e.Data.Name, arguments: e.Data.Arguments}
+			}
+			continue
+		}
+
+		// 工具结果：role=tool，文本在 data.message.content 里。
+		if e.Type == "tool/result" && e.Data.Message != nil && !headerOnly {
+			call := calls[e.Data.Message.ToolCallID]
+			txt := joinBlocks(e.Data.Message.Content)
+			rs.Total++
+			rs.Messages = append(rs.Messages, message{
+				Seq:  e.Seq,
+				Role: "tool",
+				Text: oneLine(txt, 120),
+				View: toolView(call.name, call.arguments, txt, e.Data.Message.IsError),
+			})
+			continue
+		}
+
 		var role string
 		switch e.Type {
 		case "user/message":

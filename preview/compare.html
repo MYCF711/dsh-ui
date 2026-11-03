@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>对照表：官方 vs dsh-ui</title>
+<style>
+ :root{--bg:#151517;--panel:#1b1b1c;--line:#ffffff1f;--fg:#e9edf2;--dim:#9aa0a6;--accent:#5686fe}
+ *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
+   font:14px/1.7 "Microsoft YaHei",sans-serif;padding:28px}
+ h1{font-size:20px;margin:0 0 6px}.sub{color:var(--dim);font-size:13px;margin-bottom:20px}
+ table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:12px;overflow:hidden}
+ th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;font-size:13px}
+ th{background:#232324;color:var(--accent);font-weight:600}
+ tr:last-child td{border-bottom:none}
+ .ok{color:#22c55e}.part{color:#f59e0b}.todo{color:#f25a5a}
+ code{background:#2c2c2e;border-radius:4px;padding:1px 5px;font-size:12px}
+</style></head><body>
+<h1>官方组件 → 我们的插件，逐项对照</h1>
+<div class="sub">每一行都是「官方源码里的真值」和「我们插件里现在的实现」。状态列是实测结论，不是估计。</div>
+<table>
+<tr><th style="width:20%">官方包</th><th style="width:18%">我们的插件</th><th style="width:44%">对齐的规格</th><th style="width:18%">状态</th></tr>
+<tr><td><code>ui-primitives</code></td><td><code>ds-core</code></td><td>圆钮 28×28 / radius 999、chip、badge、divider、行 radius 8</td><td class="ok">已移植</td></tr>
+<tr><td><code>ui-layout</code></td><td><code>ds-shell</code></td><td>侧栏 280、中栏 ≥400、右栏首次 45%、底部整行</td><td class="ok">已移植</td></tr>
+<tr><td><code>ui-session</code></td><td><code>ds-sidebar</code></td><td>单行会话（标题 + 相对时间）、工作区分组、折叠</td><td class="ok">已移植</td></tr>
+<tr><td><code>ui-chat</code> / <code>conversation</code></td><td><code>ds-conversation</code></td><td>气泡 radius 20、callRow radius 8 无描边、思考行 24px 可折叠</td><td class="part">大体对齐，气泡上限缺列宽</td></tr>
+<tr><td><code>chat composer</code></td><td><code>ds-composer</code></td><td>整块 radius 16 面板 + 右下圆形发送</td><td class="ok">已移植</td></tr>
+<tr><td><code>ui-layout</code> 状态行</td><td><code>ds-statusbar</code></td><td>轮次 / 步数 / token / 上下文 / 就绪</td><td class="ok">已移植</td></tr>
+<tr><td><code>ui-plan</code> / <code>ui-goal</code></td><td><code>ds-rightbar</code></td><td>只做真实有的：工具调用时间线（宿主还没 plan/goal 数据）</td><td class="part">结构在，数据源待宿主</td></tr>
+<tr><td><code>ui-model-selection</code></td><td>—</td><td>需要 <code>model</code> 字段（H4）</td><td class="todo">等宿主</td></tr>
+<tr><td><code>ui-permission-presets</code></td><td>—</td><td>需要权限 preset（H5），不许拿 mode 冒充</td><td class="todo">等宿主</td></tr>
+<tr><td>第三方插件槽</td><td><code>hello.counter</code> / <code>ds-demo</code></td><td>公开契约包 <code>pluginapi</code>，不碰壳不碰内核</td><td class="ok">已跑通</td></tr>
+</table>
+</body></html>

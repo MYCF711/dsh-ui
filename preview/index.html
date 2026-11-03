@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>dsh-ui · 当前实现</title>
+<style>
+  :root{--bg:#151517;--panel:#1b1b1c;--line:#ffffff1f;--fg:#e9edf2;--dim:#9aa0a6;--accent:#5686fe}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.6 "Microsoft YaHei",-apple-system,sans-serif}
+  .wrap{display:flex;gap:24px;padding:24px;align-items:flex-start;flex-wrap:wrap}
+  .shot{flex:1 1 640px;min-width:320px}
+  .shot img{width:100%;border-radius:12px;border:1px solid var(--line);display:block}
+  .side{flex:1 1 280px;max-width:360px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:16px}
+  h1{font-size:18px;margin:0 0 4px} .sub{color:var(--dim);font-size:12px;margin-bottom:14px}
+  h2{font-size:13px;margin:16px 0 6px;color:var(--accent);font-weight:600}
+  ul{margin:0;padding-left:18px} li{margin:3px 0;font-size:13px}
+  code{background:#2c2c2e;border-radius:4px;padding:1px 5px;font-size:12px}
+  .ok{color:#22c55e}.warn{color:#f59e0b}
+</style></head><body>
+<div class="wrap">
+  <div class="shot"><img src="../docs/p16-layered.png" alt="dsh-ui 当前实现"></div>
+  <div class="side">
+    <h1>dsh-ui · 分层移植</h1>
+    <div class="sub">Viva 原生 · 一切皆插件 · 单进程 73 MB</div>
+    <h2>已上塔的层</h2>
+    <ul>
+      <li><b>L1</b> 契约 + 内核（槽位树 / 键盘转发 / 拓扑装配）</li>
+      <li><b>L2</b> ds-core：官方令牌 + 圆钮/Chip/气泡/徽标</li>
+      <li><b>L3</b> ds-shell：三栏几何、底栏整行、浮层</li>
+      <li><b>L4</b> 六个部件：侧栏 / 消息流 / 输入 / 顶栏 / 状态栏 / 轨迹</li>
+      <li><b>L5</b> 第三方插件：<code>hello.counter</code>、<code>ds-demo</code></li>
+    </ul>
+    <h2>照官方源码抠的值</h2>
+    <ul>
+      <li>图标按钮 28×28 / radius 999</li>
+      <li>气泡 radius 20 · 行 radius 8 · 输入面板 16</li>
+      <li>侧栏 280 · 中栏 ≥400 · 右栏 45%</li>
+    </ul>
+    <h2>仍缺（等宿主字段）</h2>
+    <ul>
+      <li class="warn">模型名 / 权限徽标（H4、H5）</li>
+      <li class="warn">会话内容列宽（H12，气泡上限的唯一缺数）</li>
+    </ul>
+  </div>
+</div>
+</body></html>

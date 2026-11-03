@@ -81,3 +81,45 @@ func TestFillGapSurfacesStaleEpoch(t *testing.T) {
 		t.Fatal("stale_epoch 必须冒泡")
 	}
 }
+
+// TestFillGapBatchesLargeGap 钉住"缺口比单次上限大时要分批补"。
+//
+// 早先只调一次 history，大缺口会静默漏掉中段——界面上看不出少了东西，
+// 用户只会觉得"翻上去怎么缺了几条"。
+func TestFillGapBatchesLargeGap(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		since := int(body["sinceSeq"].(float64))
+		limit := int(body["limit"].(float64))
+		var frames []map[string]any
+		for i := since + 1; i <= since+limit; i++ {
+			if i > 500 {
+				break
+			}
+			frames = append(frames, map[string]any{"seq": i, "type": "x", "time": 1})
+		}
+		out, _ := json.Marshal(map[string]any{"result": map[string]any{
+			"frames": frames, "lastSeq": 500, "journalEpoch": 1,
+		}})
+		_, _ = w.Write(out)
+	}))
+	defer srv.Close()
+
+	var got []int
+	n, err := FillGap(context.Background(), New(srv.URL), "s-1", 1, 500, func(f Frame) { got = append(got, f.Seq) })
+	if err != nil {
+		t.Fatalf("不该报错：%v", err)
+	}
+	if n != 500 || len(got) != 500 {
+		t.Fatalf("500 帧的缺口要补齐，得到 n=%d len=%d", n, len(got))
+	}
+	if calls < 3 {
+		t.Fatalf("500 帧应分多批拉（每批 ≤200），实际只调了 %d 次", calls)
+	}
+	if got[0] != 1 || got[499] != 500 {
+		t.Fatalf("首尾不对：%d..%d", got[0], got[len(got)-1])
+	}
+}

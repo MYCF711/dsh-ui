@@ -55,9 +55,16 @@ func (c *Client) History(ctx context.Context, id string, sinceSeq, limit int) (*
 	return &out, nil
 }
 
+// fillChunk 是单次 history 拉多少条。宿主单次有上限（journal capacity），
+// 缺口比它大时必须分批——否则中间那段永远补不回来，而界面上看不出少了东西。
+const fillChunk = 200
+
 // FillGap 用 history 补一段缺口，把补回的帧按顺序交给 apply。
 //
 // 返回补了多少帧；调用方据此决定要不要提示"有内容缺失"。
+//
+// **分批循环**：一次 history 拉不完（缺口 > 单次上限）就接着拉，直到补到 to
+// 或者宿主不再给新帧。早先只拉一次，大缺口会静默漏掉中段。
 //
 // **失败不致命**：宿主可能回 409 stale_epoch（journal 换代，旧水位无意义）——
 // 那种情况补洞本来就补不了，应当退回 `session.load` 重建基线，而不是重试到死。
@@ -65,18 +72,37 @@ func FillGap(ctx context.Context, c *Client, id string, from, to int, apply func
 	if from <= 0 || to < from {
 		return 0, nil
 	}
-	// 区间是闭区间 [from,to]，而 history 的 sinceSeq 是开区间 → 传 from-1。
-	res, err := c.History(ctx, id, from-1, to-from+1)
-	if err != nil {
-		return 0, err
-	}
 	n := 0
-	for _, f := range res.Frames {
-		if f.Seq < from || f.Seq > to {
-			continue // 宿主多给的不要：补洞只补这一段
+	cursor := from
+	for cursor <= to {
+		// 区间是闭区间 [from,to]，而 history 的 sinceSeq 是开区间 → 传 cursor-1。
+		want := to - cursor + 1
+		if want > fillChunk {
+			want = fillChunk
 		}
-		apply(f)
-		n++
+		res, err := c.History(ctx, id, cursor-1, want)
+		if err != nil {
+			return n, err
+		}
+		if len(res.Frames) == 0 {
+			return n, nil // 宿主没有更早的帧了，补到哪算哪
+		}
+		advanced := 0
+		for _, f := range res.Frames {
+			if f.Seq < cursor {
+				continue // 宿主多给的旧帧
+			}
+			if f.Seq > to {
+				break // 超出本次缺口，留给下一轮或丢弃
+			}
+			apply(f)
+			n++
+			advanced++
+			cursor = f.Seq + 1
+		}
+		if advanced == 0 {
+			return n, nil // 没有任何前进：别死循环
+		}
 	}
 	return n, nil
 }

@@ -70,6 +70,8 @@ type Plugin struct {
 	// expanded 记录哪些思考块被展开（键是消息 seq，切会话后依然有效）。
 	// 缺省全收起：真实语料里思考比正文多八倍，默认展开会把消息流淹没。
 	expanded map[int]bool
+	// toolOpen 记录哪些工具调用被展开（官方默认收起，只留一行）。
+	toolOpen map[int]bool
 	// SearchOpen / SearchQuery 是调试开关：启动就带着搜索词打开（截搜索态用）。
 	SearchOpen  bool
 	SearchQuery string
@@ -355,6 +357,16 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 }
 
 // humanRunes 把字数压成「812 / 1.2k」。
+// summarize 压成一行并截断（工具标题行只有一行，长参数必须收住）。
+func summarize(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
+}
+
 func humanRunes(n int) string {
 	if n < 1000 {
 		return itoa(n)
@@ -392,21 +404,65 @@ func itoa(n int) string {
 // 没声明就退化成一行纯文本——不认识 == 没声明。
 func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message) {
 	t := p.theme
-	f.Column().WidthPercent(100).Children(func() {
-		f.Column().FillWidth().Pad(8).Radius(t.Radii.SM).
-			Background(t.BgLayer1).Border(1, t.BorderL1).Gap(4).Children(func() {
-			if msg.View != nil {
-				p.drawView(f, env, msg.View)
-				return
+	// 照官方 .V4vHZW_callRow + .BE0jCW_* 的结构：
+	//   · 整行只有 border-radius(sm)，**没有边框色**，悬停才有一层浅底；
+	//   · 左侧 16px 的 leading 图标位（官方 .BE0jCW_leading），右侧一行
+	//     「工具名 · 摘要」，字号 13/行高 24，超长省略；
+	//   · 点这一行展开/收起正文（展开体最大高度 min(400px, 50vh)）。
+	open := p.toolOpen[msg.Seq]
+	width := p.contentWidth(env)
+
+	title := msg.Tool
+	if title == "" && msg.View != nil {
+		title = msg.View.Title
+	}
+	summary := msg.Summary
+	if summary == "" {
+		summary = msg.Args
+	}
+	if msg.View != nil && msg.View.Badge == "error" {
+		summary = "错误：" + summary
+	}
+
+	// 标题行：点它展开
+	head := f.Row().WidthPercent(100).PadX(4).PadY(2).Radius(t.Radii.SM).
+		Items(flex.Center).Gap(6).HoverBackground(t.Hover).
+		Hit(env.Tree.ID(env.Feat, "tool-"+itoa(msg.Seq)), "").Children(func() {
+		// leading：16px 方框里的展开箭头（官方也是这个位置放 chevron）
+		f.Row().Width(16).Items(flex.Center).Children(func() {
+			arrow := "▸"
+			if open {
+				arrow = "▾"
 			}
-			f.Row().Gap(8).Items(flex.Center).Children(func() {
-				f.Text(msg.Tool).Mono().Bold().FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
-				f.Text(msg.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Ellipsis()
-			})
-			if msg.Summary != "" {
-				f.Text(msg.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(3)
-			}
+			f.Text(arrow).FontSize(t.Fonts.Tiny).Color(t.LabelSecondary)
 		})
+		f.Text(title).Mono().FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
+		if summary != "" {
+			f.Text("·").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			f.Text(summarize(summary, 120)).FontSize(t.Fonts.Secondary).
+				Color(t.LabelTertiary).MaxWidth(width - 120).Ellipsis()
+		}
+	})
+	if head.Clicked() {
+		p.toolOpen[msg.Seq] = !open
+	}
+
+	if !open {
+		return
+	}
+	// 展开体：官方 max-height:min(400px,50vh)，我们按行数近似（不引入滚动区，
+	// 这里的展开体本身就是普通盒子，超长由下面的 MaxLines 截断）。
+	f.Column().WidthPercent(100).PadX(22).PadY(4).Gap(4).Children(func() {
+		if msg.View != nil {
+			p.drawView(f, env, msg.View)
+			return
+		}
+		if msg.Args != "" {
+			f.Text(msg.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
+		}
+		if msg.Summary != "" {
+			f.Text(msg.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
+		}
 	})
 }
 
@@ -639,6 +695,9 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32) float32 {
 		return float32(float64(lines)*18 + 40)
 	}
 	if m.Role == "tool" {
+		if !p.toolOpen[m.Seq] {
+			return 28 // 收起时只有标题一行（官方就是这么一行）
+		}
 		if m.View != nil {
 			// 有结构化显示的工具卡：头 + 若干行
 			return float32(50 + 20*(len(m.View.Fields)+min(len(m.View.Rows), 8)))

@@ -47,6 +47,22 @@ func (p *Primitives) CircleButton(f *flex.Frame, id ui.ID, glyph string, filled 
 	}).Clicked()
 }
 
+// Chip 一个只读小标签。官方 .chip：max-width 240、gap 3px、business-primary 文字。
+func (p *Primitives) Chip(f *flex.Frame, label string) flex.Box {
+	t := p.Theme
+	return f.Row().Height(20).Radius(t.Radii.XS).PadX(6).Items(flex.Center).
+		Background(t.BgLayer2).Children(func() {
+		f.Text(label).FontSize(t.Fonts.Tiny).Color(t.Info)
+	})
+}
+
+// Bubble 一个用户气泡容器。官方 .bubble：radius xl、specific-bubble 底、
+// font-size/line-height 跟正文令牌走。
+func (p *Primitives) Bubble(f *flex.Frame, body func()) flex.Box {
+	t := p.Theme
+	return f.Column().Pad(10).Radius(t.Radii.XL).Background(t.Bubble).Children(body)
+}
+
 // SectionHeader 画一个分组头（工作区名 + 条数 + 折叠箭头）。
 //
 // 官方侧栏的分组头是「小号灰字 + 右边数字」，不是按钮样式；这里保持同样的克制：

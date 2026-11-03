@@ -97,9 +97,9 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 				f.Text("共 " + itoa(env.Data.Total) + " 条").
 					FontSize(t.Fonts.Caption).Color(t.LabelCaption)
 			}
-			// 模式徽标：宿主给了才画。
+			// 模式徽标：宿主给了才画。用官方的 .chip 观感（细底 + business-primary 文字）。
 			if mode != "" {
-				p.prims.Badge(f, mode, t.LabelTertiary)
+				p.prims.Chip(f, mode)
 			}
 		})
 		p.prims.Divider(f)

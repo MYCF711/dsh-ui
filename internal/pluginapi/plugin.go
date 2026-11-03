@@ -157,6 +157,11 @@ type Primitives interface {
 	Divider(f *flex.Frame)
 	// CircleButton 一个 28px 圆形图标按钮（官方 .action 的尺寸），返回是否被点击。
 	CircleButton(f *flex.Frame, id ui.ID, glyph string, filled bool) bool
+	// Chip 一个只读小标签（官方的 .chip：inline-flex、gap 3px、business-primary 文字）。
+	Chip(f *flex.Frame, label string) flex.Box
+	// Bubble 画一个用户气泡容器（官方 .bubble：radius xl、specific-bubble 底）。
+	// 调用方传进内容，气泡只管外观。
+	Bubble(f *flex.Frame, body func()) flex.Box
 }
 
 // Env 是绘制期拿到的全部东西：只读快照 + 动作 + 主题。

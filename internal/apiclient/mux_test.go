@@ -6,13 +6,16 @@
 package apiclient
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,18 +37,47 @@ func startMockd(t *testing.T) string {
 		t.Fatalf("编译 mockd 失败：%v\n%s", err, out)
 	}
 
+	// **不写死端口**：从 mockd 的日志里读它实际监听的地址。
+	//
+	// 写死 7788 的代价实测过——调试时自己起的 mockd 占着那个端口，
+	// `go test` 一直红，而我一直在翻代码找 bug。
+	pr, pw := io.Pipe()
 	cmd := exec.Command(bin)
-	cmd.Stdout = os.Stderr // mockd 的日志别混进我们的输出
-	cmd.Stderr = os.Stderr
+	// Go 的 log 默认写 **stderr**，那行 "mockd listening on http://…" 也在 stderr。
+	cmd.Stderr = io.MultiWriter(os.Stderr, pw)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("启动 mockd 失败：%v", err)
 	}
 	t.Cleanup(func() {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
+		_ = pw.Close()
 	})
 
-	base := "http://127.0.0.1:7788"
+	baseCh := make(chan string, 1)
+	go func() {
+		sc := bufio.NewScanner(pr)
+		for sc.Scan() {
+			line := sc.Text()
+			if i := strings.Index(line, "mockd listening on http://"); i >= 0 {
+				rest := line[i+len("mockd listening on http://"):]
+				if j := strings.IndexAny(rest, " 	"); j > 0 {
+					rest = rest[:j]
+				}
+				select {
+				case baseCh <- "http://" + rest:
+				default:
+				}
+			}
+		}
+	}()
+
+	var base string
+	select {
+	case base = <-baseCh:
+	case <-time.After(15 * time.Second):
+		t.Fatal("mockd 15 秒内没打印监听地址")
+	}
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(base + "/healthz")
@@ -55,7 +87,7 @@ func startMockd(t *testing.T) string {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("mockd 10 秒内没起来（%s）", base)
+	t.Fatalf("mockd 起来了但 /healthz 不通（%s）", base)
 	return ""
 }
 

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -138,6 +139,13 @@ func main() {
 	acpExe := flag.String("acp", "", "dshd 可执行文件路径；给了就接真模型（否则用假回答）")
 	acpMani := flag.String("acp-manifest", "", "dshd 的 manifest（dsh.toml 列了没编译进去的模块时必须给精简版）")
 	acpDir := flag.String("acp-cwd", "D:/DeepSeek Harness/default-workspace/dsh-ui", "ACP 会话的工作目录")
+	// 端口默认由 OS 分配（:0），启动后把真实地址打到日志。
+	//
+	// 为什么不能写死 7788：测试夹具和调试进程会抢同一个端口——实测有一次
+	// `go test` 一直红，查了半天才发现是我自己起的 mockd 占着 7788，
+	// 测试连到了那个已被订阅过的实例（跳号被消耗光）。
+	// 需要固定端口的场景用 -addr 写死。
+	listenAddr := flag.String("addr", "127.0.0.1:0", "监听地址（:0 = 由 OS 分配，从日志读真实地址）")
 
 	flag.Parse()
 
@@ -161,7 +169,13 @@ func main() {
 		startACP(*acpExe, *acpMani, *acpDir)
 	}
 
-	addr := "127.0.0.1:7788"
+	// 端口默认由 OS 分配（:0），启动后把真实地址打到 stdout。
+	//
+	// 为什么不能写死 7788：测试夹具和调试进程会抢同一个端口——实测有一次
+	// `go test` 一直红，查了半天才发现是我自己起的 mockd 占着 7788，
+	// 测试连到了那个已被订阅过的实例（跳号被消耗光）。
+	// 需要固定端口的场景用 -addr。
+	addr := *listenAddr
 	src := "fake data"
 	if acp != nil {
 		src = "ACP → dshd（真模型）"
@@ -169,8 +183,13 @@ func main() {
 	if realDB != nil {
 		src = fmt.Sprintf("%d real sessions", len(realDB.byID))
 	}
-	log.Printf("mockd listening on http://%s (14 methods + /ws, %s)", addr, src)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("监听失败：%v", err)
+	}
+	// 这一行是给脚本/测试读的：`mockd listening on http://127.0.0.1:PORT`
+	log.Printf("mockd listening on http://%s (14 methods + /ws, %s)", ln.Addr().String(), src)
+	log.Fatal(http.Serve(ln, nil))
 }
 
 // ---------------------------------------------------------------------------

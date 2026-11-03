@@ -193,6 +193,15 @@ func (m *model) openSession(id string) {
 	// 切到 B 时 lastSeq 还是 A 的，B 的第一条事件要么被当成"断号"、
 	// 要么被 `ev.Seq > lastSeq` 直接丢掉——这是"多会话串流"的真正成因。
 	m.lastSeq = m.lastSeqOfLocked(id)
+	// 切回来时把该会话的旧订阅掐掉重订一次：后台期间的事件没被消费，
+	// 只有"带着切走时的水位重新 sub"才能让宿主把它们重放出来。
+	// 水位已经在上一行取到 m.lastSeq 里，删 sub 不会丢它。
+	if sub := m.subs[id]; sub != nil {
+		if sub.cancel != nil {
+			sub.cancel()
+		}
+		delete(m.subs, id)
+	}
 	// 待审批也属于具体会话：切走时清掉，绝不能在 B 的界面上批准 A 的工具。
 	// （代价：切回来要等宿主重推该请求；宿主 120s 无应答会自己拒，不会永远挂着。）
 	m.approval = nil
@@ -364,7 +373,9 @@ func (m *model) subscribe(id string) {
 		return // 已经在订了
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	sub := &muxSub{cancel: cancel, lastSeq: m.lastSeqOfLocked(id)}
+	// 用 m.lastSeq（openSession 刚按目标会话设过），而不是 subs 里那份——
+	// 切回来时旧 sub 已被删掉，水位只在 m.lastSeq 里。
+	sub := &muxSub{cancel: cancel, lastSeq: m.lastSeq}
 	if m.subs == nil {
 		m.subs = map[string]*muxSub{}
 	}
@@ -423,12 +434,16 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 				break
 			}
 			m.applyEvent(id, ev)
+			// 水位只在**前台**会话上前进：后台会话不消费事件（见 applyEvent），
+			// 若这里也前进水位，切回来时就"跳过了没消费的那一段"——字会永久丢。
 			m.mu.Lock()
-			if sub := m.subs[id]; sub != nil && ev.Seq > sub.lastSeq {
-				sub.lastSeq = ev.Seq
+			if id == m.cur {
+				if sub := m.subs[id]; sub != nil && ev.Seq > sub.lastSeq {
+					sub.lastSeq = ev.Seq
+				}
+				since = ev.Seq
 			}
 			m.mu.Unlock()
-			since = ev.Seq
 		}
 		// channel 关闭 = 连接断了：带水位重连，而不是退回"下次点开再 load"。
 		if ctx.Err() != nil {
@@ -452,6 +467,50 @@ func (m *model) lastSeqOfLocked(id string) int {
 // （`assistant/message` 带 `content` 块，思考块 type=reasoning），
 // 只读 delta 就等于整条流一个字都进不来。分类规则在 apiclient.Chunks 里，
 // 它认识 delta / text / content 块三种形状，并且**不翻译事件名**。
+// approve 走 H13 新接口：requestID 与 optionID 都由插件原样给出。
+//
+// 与 decide 的分工：decide 是"老接口+按 kind 找选项"，approve 是"插件已经选好了"。
+// 两条路都要做同一件事——**只有宿主 200 且 accepted 才收气泡**。
+func (m *model) approve(requestID, optionID string) {
+	if requestID == "" || optionID == "" {
+		m.setStatus("审批失败：请求缺少 requestId/optionId")
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := m.cli.Approve(ctx, requestID, optionID); err != nil {
+			log.Printf("approve 失败 requestId=%s option=%s: %v", requestID, optionID, err)
+			m.setStatus("审批没送达：" + err.Error())
+			return
+		}
+		log.Printf("approve 成功 requestId=%s option=%s", requestID, optionID)
+		m.mu.Lock()
+		if m.approval != nil && m.approval.RequestID == requestID {
+			m.approval = nil
+		}
+		m.mu.Unlock()
+		m.inv.Invalidate()
+		m.setStatus("已审批（" + optionID + "）")
+	}()
+}
+
+// approvalOptions 把 apiclient 的选项转成契约包的类型（两边都不 import 对方）。
+func approvalOptions(in []apiclient.ApprovalOption) []pluginapi.ApprovalOption {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]pluginapi.ApprovalOption, 0, len(in))
+	for _, o := range in {
+		out = append(out, pluginapi.ApprovalOption{
+			OptionID: o.OptionID,
+			Name:     o.Name,
+			Kind:     o.Kind,
+		})
+	}
+	return out
+}
+
 // decide 把一个审批决定原样回传宿主。
 //
 // 三种失败都要让用户看见，不许静默：
@@ -544,6 +603,18 @@ func (m *model) applyEvent(id string, ev apiclient.Event) {
 	}
 
 	m.mu.Lock()
+	// **后台会话的帧不能写前台视图**。
+	//
+	// 以前切走就退订，所以这条没暴露；现在不退订了（方向是对的），
+	// 若还往 m.msgs / m.stream 里 merge，B 的字就会出现在 A 的列表里——
+	// 这就是"多会话串流"的真正落点，而且 A 的 cache 会被 B 的内容污染。
+	//
+	// 后台只做一件事：什么都不做（水位也不前进，见 runSubscription）。
+	// 切回来时用旧水位重订，宿主把这段时间的事件重放一遍——用时间换正确。
+	if id != m.cur {
+		m.mu.Unlock()
+		return
+	}
 	if ev.Seq > m.lastSeq {
 		m.lastSeq = ev.Seq
 	}
@@ -1077,6 +1148,11 @@ func main() {
 		// 审批：真调 session.approve，把宿主的 requestId 与它自己的 optionId 原样回传。
 		// **只有宿主 200 且 accepted 才收气泡**——本地收掉不等于批准了（宿主 §11.7）。
 		// 失败时气泡留着、状态栏报错，用户可以再点一次。
+		// H13 新接口：插件把**用户点中的那个 optionId** 原样交回来（可能是
+		// allow_once / allow_always / reject_once，也可能是宿主以后加的新选项）。
+		// 壳不再自己按 kind 猜——猜就等于替用户做了决定。
+		Approve: func(requestID, optionID string) { m.approve(requestID, optionID) },
+		// 旧接口保留：还没接 Approve 的插件走这里，按 kind 找选项。
 		Allow:    func() { m.decide("allow_once") },
 		Deny:     func() { m.decide("reject_once") },
 		SetDraft: func(text string) { m.draft.SetText(text) },

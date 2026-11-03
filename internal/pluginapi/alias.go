@@ -24,10 +24,13 @@ type (
 	Snapshot   = pub.Snapshot
 	Usage      = pub.Usage
 	Approval   = pub.Approval
-	Actions    = pub.Actions
-	Theme      = pub.Theme
-	Radii      = pub.Radii
-	Fonts      = pub.Fonts
+	// ApprovalOption 是审批帧里 data.options 的一项（H13）。
+	// 纯别名，不在这里加任何东西——两份定义会漂移。
+	ApprovalOption = pub.ApprovalOption
+	Actions        = pub.Actions
+	Theme          = pub.Theme
+	Radii          = pub.Radii
+	Fonts          = pub.Fonts
 )
 
 const (

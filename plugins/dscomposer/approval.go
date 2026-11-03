@@ -1,0 +1,354 @@
+// 审批条：待审批的工具调用画在输入框正上方。
+//
+// 为什么归 composer：这里是"用户该做决定的地方"——决定"允许/拒绝"和
+// "接着说什么"发生在同一个位置，审批条不会跑到消息流里被滚走。
+//
+// 这一文件分两层，刻意分开：
+//
+//	计划层（approvalVisible / planApproval / chooseOption / oneLine）  纯函数，喂 Snapshot 就能算
+//	绘制层（drawApproval / decide）                                    碰 flex.Frame 与 Actions
+//
+// 单测只打计划层：界面对不对，先看"该不该画、画什么、回传什么"算得对不对，
+// 再看像素。
+package dscomposer
+
+import (
+	"strings"
+
+	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
+)
+
+const (
+	// approvalArgsMax 是参数摘要最多留多少个**字符**（rune，不是字节）。
+	// 按字节截会把"审批"切成半个字，屏幕上出现 �（UTF-8 被切断）。
+	// 这只是逻辑上限；放不下的由 flex 的 Ellipsis() 再按像素收一次。
+	approvalArgsMax = 120
+	// approvalTitleMax 是标题行的字符上限（宿主给的 title 已经是单行，这里只防超长）。
+	approvalTitleMax = 160
+)
+
+// approvalVisible 决定整条审批条画不画。
+//
+// Approval == nil 就是"宿主没在等审批"：**整条不画**，连外边距都不留——
+// 留一个空框等于告诉用户"这里本来有个东西"，比没有更糟。
+func approvalVisible(s pluginapi.Snapshot) bool {
+	return s.Approval != nil
+}
+
+// clipRunes 按字符截断，超长补一个省略号。
+//
+// 用 []rune 而不是 s[:n]：rune 边界天然是 UTF-8 边界，中文/emoji 都不会被切成半个字。
+// 组合字符（e + ́）可能被拆开，这是可接受的：比切坏字节好得多，也不影响读。
+func clipRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "…"
+}
+
+// oneLine 把任意文本压成一行再截断。
+//
+// 参数是 JSON 时会带 \n、\t 的转义（两个字符，不是真换行），但 title/detail
+// 里可能是真换行——审批条只有一行的高度，真换行会把布局撑开，所以统一压成空格。
+func oneLine(s string, max int) string {
+	var b strings.Builder
+	pendingSpace := false
+	for _, r := range s {
+		switch r {
+		case ' ', '\t', '\n', '\r':
+			pendingSpace = true
+		default:
+			if pendingSpace && b.Len() > 0 {
+				b.WriteRune(' ')
+			}
+			pendingSpace = false
+			b.WriteRune(r)
+		}
+	}
+	return clipRunes(b.String(), max)
+}
+
+// approvalTool 取显示用的工具名。
+//
+// 顺序：宿主直接给的 Tool → title 冒号前那一段（宿主 approvalTitle 的约定）。
+// 都不成立就返回空串：界面只画"需要审批"，**不编一个"未知工具"以外的名字**。
+// （"写入 <路径>" / "修改 <路径>" 没有冒号，解析不出工具名，也不猜。）
+func approvalTool(ap *pluginapi.Approval) string {
+	if ap == nil {
+		return ""
+	}
+	if ap.Tool != "" {
+		return ap.Tool
+	}
+	title := strings.TrimSpace(ap.Title)
+	for _, sep := range []string{": ", "："} {
+		if before, after, ok := strings.Cut(title, sep); ok {
+			name := strings.TrimSpace(before)
+			// 只认"一个词"的前缀：带空格的句子不是工具名（"这个命令会删除…"）。
+			if name != "" && !strings.ContainsAny(name, " \t") && len([]rune(name)) <= 24 && after != "" {
+				return name
+			}
+		}
+	}
+	return ""
+}
+
+// approvalArgs 取参数摘要：Args 优先，没有就回退兼容字段 Cmd，都空返回空串。
+func approvalArgs(ap *pluginapi.Approval) string {
+	if ap == nil {
+		return ""
+	}
+	if ap.Args != "" {
+		return oneLine(ap.Args, approvalArgsMax)
+	}
+	return oneLine(ap.Cmd, approvalArgsMax)
+}
+
+// chooseOption 从宿主给的 Options 里挑"允许 / 拒绝"该用哪一项。
+//
+// 规则只有一条：**只认宿主给的 kind**，不猜、不造。
+// 优先选只生效一次的那一项（allow_once / reject_once），没有才退到
+// 同方向的其它项（allow_always），并把它的名字一并返回——
+// 这样界面能把"以后都允许"如实写出来，而不是用"允许"两个字骗用户。
+func chooseOption(ap *pluginapi.Approval, allow bool) (pluginapi.ApprovalOption, bool) {
+	if ap == nil {
+		return pluginapi.ApprovalOption{}, false
+	}
+	exact, prefix := "reject_once", "reject"
+	if allow {
+		exact, prefix = "allow_once", "allow"
+	}
+	var loose *pluginapi.ApprovalOption
+	for i := range ap.Options {
+		opt := ap.Options[i]
+		if opt.OptionID == "" || opt.Kind == "" {
+			continue // 没 id 或没 kind 的项不能用：不知道它是干什么的
+		}
+		if opt.Kind == exact {
+			return opt, true
+		}
+		if loose == nil && strings.HasPrefix(opt.Kind, prefix) {
+			loose = &ap.Options[i]
+		}
+	}
+	if loose != nil {
+		return *loose, true
+	}
+	return pluginapi.ApprovalOption{}, false
+}
+
+// approvalPlan 是"这条审批条此刻画什么、点了回传什么"的纯计算结果。
+//
+// 不碰 env、不画东西：喂一个 Snapshot 就能算，单测直接断言它。
+type approvalPlan struct {
+	Visible bool
+	Tool    string // 空 = 宿主没说工具名，不画
+	Title   string
+	Args    string // 已压成一行并截断
+	Detail  string
+	// Note 是按钮旁边/底部的一行说明："宿主没给 requestId，回传不出去"这类。
+	// 空 = 没有要解释的（正常可用状态）。
+	Note  string
+	Allow approvalButton
+	Deny  approvalButton
+}
+
+// approvalButton 是一个按钮：画什么字、回传哪一个 optionId、点不点得动。
+type approvalButton struct {
+	Label  string
+	Option string // 要回传的 optionId；空 = 宿主没给这一项
+	Usable bool   // false = 画成禁用态，点了什么也不会发生
+}
+
+// planApproval 把快照算成审批条要画的东西。
+//
+// wired 表示壳有没有接 Actions.Approve：
+//   - 接了（wired=true）：每个按钮必须同时有 requestId 和 optionId 才点得动，
+//     少一个就画成禁用 + 一行说明——**不许编 id 让它看起来能点**。
+//   - 没接（wired=false，mockd 旧路径）：退回 Allow/Deny，不要 id 也能点。
+func planApproval(s pluginapi.Snapshot, wired bool) approvalPlan {
+	ap := s.Approval
+	if ap == nil {
+		return approvalPlan{}
+	}
+	plan := approvalPlan{
+		Visible: true,
+		Tool:    approvalTool(ap),
+		Title:   oneLine(ap.Title, approvalTitleMax),
+		Args:    approvalArgs(ap),
+		Detail:  oneLine(ap.Detail, approvalTitleMax),
+	}
+	// 兼容旧字段：只有 Reason 没有 Detail 时，把它标成"模型自述（不可信）"再显示。
+	// 模型说的话**不可信**这条标注不能省——它是审批界面上唯一一句"别人告诉你的话"。
+	if plan.Detail == "" && ap.Reason != "" {
+		plan.Detail = oneLine("模型自述（不可信）："+ap.Reason, approvalTitleMax)
+	}
+	// 标题和参数说的是同一件事时只留一行：省一行高度，也不重复念两遍。
+	if plan.Title != "" && plan.Args != "" && strings.Contains(plan.Title, plan.Args) {
+		plan.Title = ""
+	}
+
+	allowOpt, allowOK := chooseOption(ap, true)
+	rejectOpt, rejectOK := chooseOption(ap, false)
+	plan.Allow = approvalButton{Label: "允许", Option: allowOpt.OptionID}
+	plan.Deny = approvalButton{Label: "拒绝", Option: rejectOpt.OptionID}
+	if allowOK && allowOpt.Name != "" {
+		plan.Allow.Label = allowOpt.Name // 宿主给的措辞优先（"允许这一次"/"以后都允许"）
+	}
+	if rejectOK && rejectOpt.Name != "" {
+		plan.Deny.Label = rejectOpt.Name
+	}
+
+	if wired {
+		plan.Allow.Usable = ap.RequestID != "" && allowOK
+		plan.Deny.Usable = ap.RequestID != "" && rejectOK
+		plan.Note = approvalNote(ap, allowOK, rejectOK)
+	} else {
+		// 旧路径：Allow/Deny 不带 id，只要壳接了就能点。
+		plan.Allow.Usable = true
+		plan.Deny.Usable = true
+	}
+	return plan
+}
+
+// approvalNote 说明"为什么点不动"。能用的时候返回空串（不占地方）。
+func approvalNote(ap *pluginapi.Approval, allowOK, rejectOK bool) string {
+	switch {
+	case ap.RequestID == "":
+		return "宿主没给 requestId，这次审批回传不出去"
+	case !allowOK && !rejectOK:
+		return "宿主没给可选项，按钮点不动"
+	case !allowOK || !rejectOK:
+		return "宿主只给了一个方向的可选项"
+	}
+	return ""
+}
+
+// decide 把"用户点了哪一边"翻成一次真实回传，返回是否发出去了。
+//
+// 这是整个审批条唯一的出口：所有 id 都从快照里取，**一个都不自己造**。
+func decide(ap *pluginapi.Approval, act pluginapi.Actions, allow bool) bool {
+	if ap == nil {
+		return false
+	}
+	if act.Approve != nil {
+		opt, ok := chooseOption(ap, allow)
+		if !ok || opt.OptionID == "" || ap.RequestID == "" {
+			return false // 缺 id 就不发：发一个假的比不发更糟
+		}
+		act.Approve(ap.RequestID, opt.OptionID)
+		return true
+	}
+	// 兼容旧壳：只清本地气泡。注意这**不是**审批完成（H13）。
+	if allow {
+		if act.Allow == nil {
+			return false
+		}
+		act.Allow()
+		return true
+	}
+	if act.Deny == nil {
+		return false
+	}
+	act.Deny()
+	return true
+}
+
+// approvalTextWidth 算审批条里一行文本最多能有多宽（像素）。
+//
+// **不用 env.MainWidth**：壳把它算成「窗口 - 侧栏 - 300」，而右栏实际占的是
+// Geometry.RightWidth（这个尺寸下是 500）——右栏展开时两者差 100px 以上，
+// 按 MainWidth 定宽会被卡片直接裁掉，而且**裁在省略号那一头**，看上去就像
+// 参数被硬切了（实拍 tmp/approval-crop-args.png）。
+// 这里按壳自己给的三个几何数减：窗口 - 侧栏 - 右栏 - 壳 padding(12×2) - 卡片 padding(12×2)。
+// 右边那一项保守一点没关系：窄了只是少显示几个字，宽了就是硬切。
+func approvalTextWidth(env *pluginapi.Env) float32 {
+	w := env.Bounds.Width - env.Geometry.SidebarWidth - env.Geometry.RightWidth - 48
+	if w < 120 {
+		w = 120 // 再窄也至少留一行字，别把文本压成 0 宽
+	}
+	return w
+}
+
+// oneLineText 画一行"放不下就省略号"的文本。
+//
+// 两件事都要做对，缺一个省略号就不出现：
+//   - **给一个确定的宽度**（MaxWidth）。Text 默认按内在宽度排版，宽到超出卡片时
+//     是被裁掉，Ellipsis 根本来不及生效；
+//   - **不要 Mono()**。WrapLines 是按比例字宽量的（canvas.TextWidthWeight 不带字面），
+//     等宽字实际更宽，量出来"放得下"于是不省略，屏幕上还是硬切
+//     （同一份截图里比例字那行有省略号、等宽那行没有，对比出来的）。
+func oneLineText(f *flex.Frame, text string, width, size float32, color ui.Color) {
+	f.Row().FillWidth().Children(func() {
+		f.Text(text).MaxWidth(width).FontSize(size).Color(color).Ellipsis()
+	})
+}
+
+// drawApproval 画审批条（在输入框上方，同一个 paint 里）。
+//
+// 视觉规格跟官方审批卡一致：卡片底、圆角 MD、描边 BorderL3；
+// 第一行"需要审批"用警告色，正文两行（标题 / 参数），按钮右对齐。
+func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
+	t := p.theme
+	plan := planApproval(env.Data, env.Act.Approve != nil)
+	if !plan.Visible {
+		return
+	}
+	f.Column().FillWidth().Radius(t.Radii.MD).Background(t.BgLayer2).
+		Border(1, t.BorderL3).PadX(12).PadY(10).Gap(6).Children(func() {
+		f.Row().Gap(8).Items(flex.Center).Children(func() {
+			f.Text("需要审批").Bold().FontSize(t.Fonts.Caption).Color(t.Warn)
+			if plan.Tool != "" {
+				f.Text(plan.Tool).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
+			}
+			f.Spacer()
+		})
+		textW := approvalTextWidth(env)
+		if plan.Title != "" {
+			oneLineText(f, plan.Title, textW, t.Fonts.Caption, t.LabelSecondary)
+		}
+		// 参数摘要：宿主原样给的，只压成一行、超长省略号。
+		if plan.Args != "" {
+			oneLineText(f, plan.Args, textW, t.Fonts.Tiny, t.LabelSecondary)
+		}
+		if plan.Detail != "" {
+			oneLineText(f, plan.Detail, textW, t.Fonts.Tiny, t.LabelCaption)
+		}
+		if plan.Note != "" {
+			f.Text(plan.Note).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+		}
+		f.Row().Gap(8).Items(flex.Center).Justify(flex.End).Children(func() {
+			if f.Button(env.Tree.ID(env.Feat, "approval-deny"), plan.Deny.Label).Outline().Small().
+				Disabled(!plan.Deny.Usable).Clicked() && plan.Deny.Usable {
+				p.press(env, false)
+			}
+			if f.Button(env.Tree.ID(env.Feat, "approval-allow"), plan.Allow.Label).Small().
+				Disabled(!plan.Allow.Usable).Clicked() && plan.Allow.Usable {
+				p.press(env, true)
+			}
+		})
+	})
+}
+
+// press 是绘制层对 decide() 的薄封装：按钮点击走这里（键盘走 decideKey）。
+func (p *Plugin) press(env *pluginapi.Env, allow bool) {
+	ap := env.Data.Approval
+	act := env.Act
+	if !decide(ap, act, allow) {
+		return
+	}
+	if p.logf != nil {
+		opt, _ := chooseOption(ap, allow)
+		verdict := "拒绝"
+		if allow {
+			verdict = "允许"
+		}
+		p.logf("审批：%s → %s", verdict, opt.OptionID)
+	}
+}

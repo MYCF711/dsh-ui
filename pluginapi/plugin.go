@@ -276,11 +276,73 @@ type Usage struct {
 // Known 表示宿主真的给过 usage；false 时界面不该画任何 token 数字。
 func (u Usage) Known() bool { return u.TotalTokens > 0 || u.InputTokens > 0 || u.OutputTokens > 0 }
 
-// Approval 是待审批的一次工具调用。
+// Approval 是一次待审批的工具调用（跨线 §12 H13）。
+//
+// 每个字段的来源都是 WS `approval/request` 帧的 `data.*`（契约见
+// `../DSH-GO/docs/h13-approval.md`），注释里逐个写明是哪个键。
+//
+// **零值 = 宿主没说**：界面要显示"未知"或整段不画，
+// 不许自己补一个看起来合理的值——不编工具名、不编参数、不编 optionId，
+// 尤其**不编风险等级**（宿主没有这个字段，界面也不许从命令里算一个出来）。
 type Approval struct {
-	Tool   string
-	Cmd    string
-	Reason string // 模型自述，**不可信**，界面上必须标出来
+	// RequestID ← `data.requestId`。
+	// 回传（`session.approve`）时必须**原样**带回去；界面不许自己造一个。
+	// 空串 = 宿主没给 → 这次审批回传不出去，按钮只能画成禁用态。
+	RequestID string
+
+	// Tool ← `data.toolCall.title` 里冒号前那一段（宿主 approvalTitle 的约定：
+	// "bash: go test ./..." → "bash"；"写入 <路径>" / "修改 <路径>" 这种没有冒号的
+	// 前缀不一定是工具名，所以解析不出来就是空串）。
+	// 空串 = 不知道用什么名字显示，界面只画"需要审批"，不猜。
+	Tool string
+
+	// Title ← `data.toolCall.title`：宿主给的一行摘要（已经是单行）。
+	// 空串 = 宿主没给，界面不画这一行。
+	Title string
+
+	// Kind ← `data.toolCall.kind`：execute / edit / other。
+	// 只用来决定措辞（"要执行"/"要改文件"），**不是风险等级**。
+	// 空串 = 不知道，界面按 other 处理（不写"低风险"这类话）。
+	Kind string
+
+	// Args ← `data.toolCall.rawInput` 的原文（一般是 JSON，如 {"command":"go test ./..."}）。
+	// 宿主给什么就是什么，界面只压成一行、超长截断，**不改写、不美化**。
+	// 空串 = 没有参数摘要（title 已经说完了），界面不画参数行。
+	Args string
+
+	// Cmd 是**兼容字段**：旧路径（mockd / 本地假审批）只填这一个，代表 bash 的完整命令。
+	// 新路径请填 Args；界面在 Args 为空时回退到 Cmd，两者都空就不画参数行。
+	Cmd string
+
+	// Detail ← `data.toolCall.content[].content.text`：完整说明。
+	// 宿主那边已经把"模型自述（仅供参考）"的标注拼进去了，界面原样显示即可。
+	// 空串 = 没有。
+	Detail string
+
+	// Reason 是模型自述，**不可信**，界面上必须标出来。
+	// 兼容字段：新帧里通常为空（内容已经在 Detail 里）。
+	Reason string
+
+	// Options ← `data.options`，按宿主给的顺序。
+	// **界面不许自己造 optionId**：回传的每一个 id 都必须来自这里
+	// （"允许这一次"和"以后都允许"是两件事，编一个就等于替用户做了决定）。
+	// 空 = 宿主没给可选项 → 这次审批点不动。
+	Options []ApprovalOption
+}
+
+// ApprovalOption 是 `data.options` 里的一项。
+type ApprovalOption struct {
+	// OptionID ← `data.options[].optionId`（宿主当前给的是 "allow-once" /
+	// "allow-always" / "reject-once"）。回传时原样交给 Actions.Approve。
+	// 空串 = 这一项不能用。
+	OptionID string
+	// Name ← `data.options[].name`：宿主给的按钮文案（"允许这一次" / "拒绝"）。
+	// 空串 = 用界面的默认文案（"允许" / "拒绝"）。
+	Name string
+	// Kind ← `data.options[].kind`：allow_once / allow_always / reject_once / reject_always。
+	// 界面只按它分"允许 / 拒绝"两类，**不据此判断风险**。
+	// 空串 = 不知道是哪一类，这一项不会被选中（不猜）。
+	Kind string
 }
 
 // Actions 是插件能触发的动作。
@@ -303,6 +365,22 @@ type Actions struct {
 	// 壳不再持有草稿，所以不用 SetDraft 回灌。
 	Send     func(text string)
 	SetDraft func(text string)
-	Allow    func()
-	Deny     func()
+
+	// Approve 回一次审批（H13 的 `session.approve`）。
+	//
+	//	requestID ← Approval.RequestID，optionID ← Approval.Options[].OptionID
+	//
+	// 两个 id 都必须**原样**转发：requestID 是宿主认这次审批的唯一凭据，
+	// optionID 决定"允许这一次 / 以后都允许 / 拒绝"，插件自己造一个就等于
+	// 替用户改了决定。壳拿到之后走 HTTP + 失败反馈（404 已失效 / 400 未知选项），
+	// 插件只管把按钮点成了哪一项。
+	//
+	// nil = 壳还没接线（mockd 那条旧路径）：插件这时才退回下面的 Allow/Deny，
+	// 那两个只清本地气泡，**不产生真实审批**（H13 明确：气泡消失 ≠ 已批准）。
+	Approve func(requestID, optionID string)
+
+	// Allow / Deny 是**旧接口**，只为还没接 Approve 的壳保命用。
+	// 新代码一律用 Approve：这两个没有 id，宿主那边无从对应。
+	Allow func()
+	Deny  func()
 }

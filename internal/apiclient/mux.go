@@ -159,7 +159,6 @@ func (m *Mux) readLoop(ctx context.Context, conn *websocket.Conn, topic string, 
 		pingEvery = 20 * time.Second
 	}
 	pingCtx, stopPing := context.WithCancel(ctx)
-	defer stopPing()
 	var pingWG sync.WaitGroup
 	pingWG.Add(1)
 	go func() {
@@ -178,7 +177,14 @@ func (m *Mux) readLoop(ctx context.Context, conn *websocket.Conn, topic string, 
 			}
 		}
 	}()
-	defer pingWG.Wait()
+	// **顺序很关键**：先 stopPing 让 ping goroutine 退出，再 Wait。
+	// 反过来（defer stopPing 在前、defer Wait 在后，LIFO 先 Wait）会死锁：
+	// 对端断开但 ctx 未取消时，ping goroutine 卡在 conn.Write 上不返回，
+	// Wait 永远等不到 → close(out) 永不执行 → 调用方 for-range 永不结束。
+	defer func() {
+		stopPing()
+		pingWG.Wait()
+	}()
 
 	last := sinceSeq
 	for {
@@ -196,9 +202,22 @@ func (m *Mux) readLoop(ctx context.Context, conn *websocket.Conn, topic string, 
 		if f.Type == "pong" {
 			continue
 		}
+		// seq<=0 的帧（error / session/reset 这类控制帧）**不参与水位**。
+		// 曾经直接 `last = f.Seq`，于是收到一个 error 帧就把水位归零，
+		// 后面的正常事件全部漏掉断号检测（实测：seq 1 → 5 中间缺 2/3/4 却报 0 个 gap）。
+		if f.Seq <= 0 {
+			out <- Event{Kind: f.Type, Seq: 0, Topic: topic, Data: f.Data}
+			continue
+		}
+		// 重复 / 倒退的 seq：调用方已经消费过这一号，**静默丢弃**。
+		// 重连时宿主按块重放、或同一帧重复投递都会走到这里；再投一次就是消息重影。
+		// （实测：seq=3 推两次会给调用方两份同样的内容。）
+		if last != 0 && f.Seq <= last {
+			continue
+		}
 		// 连续性由客户端查（H14：服务端只发事件帧，不发 gap）。
-		// 断号时把缺口区间交给调用方，由它调 session.history 补——绝不整页 load。
-		if last != 0 && f.Seq != last+1 && f.Seq > last {
+		// 断号时把缺口区间交给调用方，由它带水位重订——绝不整页 load。
+		if last != 0 && f.Seq > last+1 {
 			out <- Event{Kind: "gap", Topic: topic, Gap: &GapInfo{
 				FromSeq: last + 1,
 				ToSeq:   f.Seq - 1,

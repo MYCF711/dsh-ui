@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // ApprovalOption 是宿主给出的一个可选项。**不要自己编**：
@@ -41,6 +42,13 @@ type ApprovalRequest struct {
 		Kind       string          `json:"kind"`
 		Status     string          `json:"status"`
 		RawInput   json.RawMessage `json:"rawInput"`
+		Content    []struct {
+			Type    string `json:"type"`
+			Content *struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"content"`
 	} `json:"toolCall"`
 	Options []ApprovalOption `json:"options"`
 }
@@ -84,6 +92,26 @@ func (a *ApprovalRequest) Command() string {
 		return string(a.ToolCall.RawInput)
 	}
 	return a.ToolCall.Title
+}
+
+// Args 是 rawInput 原文（JSON），给"参数摘要"那一行用。
+// 只压成一行、超长截断，**不改写、不美化**——用户要看的是宿主到底给了什么。
+func (a *ApprovalRequest) Args() string {
+	return string(a.ToolCall.RawInput)
+}
+
+// Detail 是 toolCall.content[].content.text 拼起来的完整说明。
+//
+// 宿主那边已经把「模型自述（仅供参考）」的标注拼进 content 了，
+// 界面原样显示即可，不要二次加工。
+func (a *ApprovalRequest) Detail() string {
+	var out []string
+	for _, c := range a.ToolCall.Content {
+		if c.Content != nil && c.Content.Text != "" {
+			out = append(out, c.Content.Text)
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // OptionID 按 host 的 kind 找一个可选项（allow_once / allow_always / reject_once）。

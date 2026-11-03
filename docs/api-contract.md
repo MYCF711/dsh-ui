@@ -95,7 +95,11 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 
 ---
 
-## 3. 方法清单（13 个）
+## 3. 方法清单（**14 个**）
+
+> 2026-11-03 核对：按宿主 `internal/transport` 里实际注册的 method 字符串逐个数，
+> 是 14 个（`session.approve` 是 H13 加的，文档长期写着 13 个，漏的就是它）。
+> 数一遍的命令：`grep -oE '"(session|workspace|config|fs)\.[a-z]+"' internal/transport/*.go | sort -u`
 
 ### 第一批（8 个，U1 之前必须全通）
 
@@ -110,8 +114,19 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 | `session.history` | 向前翻页 | `id` / `sessionId`、`sinceSeq`、`limit` |
 | `session.prompt` | 发消息 | `id` / `sessionId`、`text` |
 | `session.cancel` | 取消 turn | `id` / `sessionId` |
+| `session.approve` | **回传一次审批决定** | `requestId`、`optionId`（**注意：没有 sessionId**） |
 | `workspace.list` | 工作区根 | — |
 | `config.get` | 读配置 | —（宿主忽略 body；`keys` 尚未实现） |
+
+`session.approve` 的三条硬约束（真机验过，见 `docs/product-acceptance.md`）：
+
+- `optionId` 只接受宿主给过的值，**实测就是这三个**：`allow_once` / `allow_always` / `reject_once`（**下划线**，不是连字符）；
+- 不是这三个 → 400 `bad_option`，提示原文 `optionId 必须是 allow_once / allow_always / reject_once 之一`；
+- 请求已经应答或超过 120s → 404 `no_such_request`（`这个审批请求已经不在了（已应答或已超时）`）；
+- 回 `{"accepted":true,"optionId":…}` 才算成功；**界面只在自己 200 且 accepted 时才收气泡**。
+
+`allow_always` 是真生效的：宿主会记住「这个会话的 bash 以后都允许」，下一次直接
+`早先已选择「以后都允许」，本轮自动放行`，不再推 `approval/request`。
 
 别名（同一个字段两个名字）**两边都收**，冲突时的取法逐字对齐宿主：
 `sessionId` 优先于 `id`（`server.go:395` `fillID`），`limit` 优先于 `tailMessages`

@@ -21,7 +21,8 @@ import (
 )
 
 var (
-	user32 = syscall.NewLazyDLL("user32.dll")
+	kernel32 = syscall.NewLazyDLL("kernel32.dll")
+	user32   = syscall.NewLazyDLL("user32.dll")
 	gdi32  = syscall.NewLazyDLL("gdi32.dll")
 
 	procEnumWindows        = user32.NewProc("EnumWindows")
@@ -41,6 +42,10 @@ var (
 	procDeleteObject           = gdi32.NewProc("DeleteObject")
 	procDeleteDC               = gdi32.NewProc("DeleteDC")
 	procGetDIBits              = gdi32.NewProc("GetDIBits")
+
+	psapi                  = syscall.NewLazyDLL("psapi.dll")
+	procGetProcessMemory   = psapi.NewProc("GetProcessMemoryInfo")
+	procGetCurrentProcess  = kernel32.NewProc("GetCurrentProcess")
 )
 
 type rect struct {
@@ -167,6 +172,29 @@ func readDIB(hdcMem, hbm uintptr, w, h int) image.Image {
 	return img
 }
 
+// workingSetMB 取当前进程工作集（含图形栈那几十 MB，是用户真正看到的数）。
+func workingSetMB() float64 {
+	type pmc struct {
+		cb                         uint32
+		PageFaultCount             uint32
+		PeakWorkingSetSize         uintptr
+		WorkingSetSize             uintptr
+		QuotaPeakPagedPoolUsage    uintptr
+		QuotaPagedPoolUsage        uintptr
+		QuotaPeakNonPagedPoolUsage uintptr
+		QuotaNonPagedPoolUsage     uintptr
+		PagefileUsage              uintptr
+		PeakPagefileUsage          uintptr
+	}
+	var m pmc
+	m.cb = uint32(unsafe.Sizeof(m))
+	h, _, _ := procGetCurrentProcess.Call()
+	if ok, _, _ := procGetProcessMemory.Call(h, uintptr(unsafe.Pointer(&m)), uintptr(m.cb)); ok == 0 {
+		return 0
+	}
+	return float64(m.WorkingSetSize) / (1024 * 1024)
+}
+
 // moveOffscreen 把窗口挪到屏幕外：用户看不见，但窗口依然"在"，PrintWindow 照样能画。
 func moveOffscreen(hwnd syscall.Handle) {
 	var off int32 = -6000
@@ -252,7 +280,7 @@ func startShot(path string, delay time.Duration) {
 		time.Sleep(delay) // 再等界面把真实会话拉回来
 
 		if captureWindow("dsh-ui", path, 8*time.Second) {
-			log.Printf("shot: 已保存 %s", path)
+			log.Printf("shot: 已保存 %s · 工作集 %.1f MB", path, workingSetMB())
 			os.Exit(0)
 		}
 		log.Print("shot: 抓取失败")

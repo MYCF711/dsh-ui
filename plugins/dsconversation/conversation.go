@@ -30,6 +30,9 @@ import (
 //
 // 真实会话里有 200 条长消息，全上 Markdown 会让文档树常驻 + 首次排版 4 秒
 // （实测 168.8 MB）。这是 LOD，不是偷懒。
+// nlChar 是换行符。写成常量是为了避开「用工具拼 Go 源码时换行字面量被吃」的老坑（踩过三次）。
+const nlChar = "\n"
+
 const markdownBudget = 30
 
 // mdSlot 是「先占位、布局后再画」的一个槽。
@@ -58,6 +61,14 @@ type Plugin struct {
 	look   components.MarkdownLook
 
 	slots []mdSlot
+	// collapsedOnce 记录调试开关下被用户手动收起过的，避免压不住点击。
+	collapsedOnce map[int]bool
+	// expanded 记录哪些思考块被展开（键是消息 seq，切会话后依然有效）。
+	// 缺省全收起：真实语料里思考比正文多八倍，默认展开会把消息流淹没。
+	expanded map[int]bool
+	// ExpandAllThinking 是调试开关：把所有思考块初始化为展开。
+	// 只为"无头截图验证展开态"存在，正常运行一直是 false。
+	ExpandAllThinking bool
 	// lastWidth 是本帧内容列宽度（工具卡要按它定宽）。
 	lastWidth float32
 }
@@ -99,6 +110,12 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	msgs := env.Data.Msgs
 	p.slots = p.slots[:0]
+	if p.expanded == nil {
+		p.expanded = map[int]bool{}
+	}
+	if p.collapsedOnce == nil {
+		p.collapsedOnce = map[int]bool{}
+	}
 
 	if len(msgs) == 0 && env.Data.Stream == "" {
 		f.Row().FillWidth().Pad(24).Children(func() {
@@ -127,7 +144,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			offs := make([]float32, len(msgs))
 			var acc float32
 			for i := range msgs {
-				heights[i] = estimateMsgHeight(msgs[i], w0)
+				heights[i] = p.estimateMsgHeight(msgs[i], w0)
 				offs[i] = acc
 				acc += heights[i] + 6
 			}
@@ -180,6 +197,9 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 	msg := env.Data.Msgs[i]
 
 	switch {
+	case msg.Role == "thinking":
+		p.drawThinking(f, env, msg)
+
 	case msg.Role == "tool":
 		p.drawTool(f, env, msg)
 
@@ -204,6 +224,72 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 		h := p.layoutMarkdown(env.Canvas, i, msg.Text, w)
 		p.slots = append(p.slots, mdSlot{idx: i, box: f.Slot().Height(h)})
 	}
+}
+
+// drawThinking 画一条思考块：默认收起，点一下展开。
+//
+// 官方也是这个交互（折叠的思考），但官方把它做得更轻：一行灰字 + 一个小箭头。
+// 这里保持同样的克制——收起时只占一行，不抢正文的注意力。
+func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message) {
+	t := p.theme
+	open := p.expanded[msg.Seq] || (p.ExpandAllThinking && !p.collapsedOnce[msg.Seq])
+
+	arrow, label := "▸ 思考 · ", "▸ 思考 · "
+	_ = arrow
+	label += humanRunes(len([]rune(msg.Text))) + " 字"
+	if open {
+		label = "▾ 思考 · " + humanRunes(len([]rune(msg.Text))) + " 字"
+	}
+
+	if f.Row().WidthPercent(100).PadY(3).PadX(4).Radius(t.Radii.SM).Items(flex.Center).
+		HoverBackground(t.Hover).
+		Hit(env.Tree.ID(env.Feat, "think-"+itoa(msg.Seq)), "").Children(func() {
+		f.Text(label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Ellipsis()
+	}).Clicked() {
+		p.expanded[msg.Seq] = !open
+		if p.ExpandAllThinking {
+			p.collapsedOnce[msg.Seq] = open
+		}
+	}
+
+	if !open {
+		return
+	}
+	f.Column().WidthPercent(100).Pad(8).Radius(t.Radii.SM).Background(t.BgLayer1).
+		Border(1, t.BorderL1).Children(func() {
+		f.Wrap(msg.Text).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+	})
+}
+
+// humanRunes 把字数压成「812 / 1.2k」。
+func humanRunes(n int) string {
+	if n < 1000 {
+		return itoa(n)
+	}
+	return itoa(n/1000) + "." + itoa((n%1000)/100) + "k"
+}
+
+// itoa 避免为一个小数字 import strconv。
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var buf [12]byte
+	i := len(buf)
+	for n > 0 && i > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg && i > 0 {
+		i--
+		buf[i] = '-'
+	}
+	return string(buf[i:])
 }
 
 // drawTool 画一次工具调用。
@@ -431,11 +517,33 @@ func (p *Plugin) markdownLook() components.MarkdownLook {
 // estimateMsgHeight 估算一条消息占多高（只看字符数与换行，不排版）。
 //
 // 估算偏大不会错位，偏小会让滚动跳——所以宁可大一点。
-func estimateMsgHeight(m apiclient.Message, width float32) float32 {
+func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32) float32 {
 	const lineH = 22.0
 	const gapPad = 28.0
 	if width < 120 {
 		width = 120
+	}
+	if m.Role == "thinking" {
+		open := p.expanded[m.Seq] || (p.ExpandAllThinking && !p.collapsedOnce[m.Seq])
+		if !open {
+			return 26 // 收起时只占一行
+		}
+		// 展开时必须按真实字数估：估小了滚动位置会错，内容被虚拟化掉变成白屏
+		// （踩过：这里恒返回 26，展开后整块主区是空的）。
+		per := width / (13 * 0.62)
+		if per < 8 {
+			per = 8
+		}
+		lines := 0
+		for _, para := range strings.Split(m.Text, nlChar) {
+			n := float64(len([]rune(para)))
+			l := int(math.Ceil(n / float64(per)))
+			if l < 1 {
+				l = 1
+			}
+			lines += l
+		}
+		return float32(float64(lines)*18 + 40)
 	}
 	if m.Role == "tool" {
 		if m.View != nil {

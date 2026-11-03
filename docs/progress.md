@@ -112,3 +112,7 @@
 | 2026-11-03 13:02 | **token 用量接进状态栏**：mockd 解 `assistant/message` 的 `usage` + 事件 `time`，算出速率。踩到两个语义坑：① usage 处理写在 `if txt=="" continue` 之后 → 助手调工具那几轮没有 text 块，整段会话合计永远是 0；② `totalTokens` 是「这次请求的上下文多大」，**累加会得到 13 亿**，只能取最后一次。速率也不能用 user→assistant（中间隔几十次工具调用），改用 assistant→assistant 且区间 0.2–120 s | `docs/p7-usage.png`：`0 轮 · 50 步 · ↑9.5M ↓571.3k · 40.7 tok/s · 上下文 388.1k` |
 | 2026-11-03 13:03 | **ViewSpec 三种渲染器都用真实语料验过**：`card`（bash：命令/输出 + ok 徽标，607 条）、`plain`（read/write，25 条）、`table`（grep，9 行 + 「… 另有 N 行」）。折叠态单独截了一张（`-collapse` 调试开关） | `docs/p8-table.png`、`docs/p9-collapsed.png` |
 | 2026-11-03 13:04 | **目标四项全部达成并留证**：①侧栏按 cwd 分组 + 可折叠（`p7`/`p9`）②状态栏 轮次/步数/token 速率/总量（`p7`：`40.7 tok/s`、`上下文 388.1k`）③右栏工具轨迹时间线（`p7` 右栏 50 条）④ViewSpec `card`/`table`/`plain` 三渲染器都用真实语料验过（`p8`）。七个插件按 `Requires` 自动排序装配；`CGO_ENABLED=0` 构建通过，`-s -w` 后 **9.08 MB** | 无残留进程 |
+| 2026-11-03 13:12 | **修一个一直在丢数据的 bug**：`assistant/message` 的 content 有的日志放在 `data.content`、有的放在 `data.message.content`（与 `tool/result` 同构）。之前只读前者，后者那种会话的**助手消息全部被 `txt==""` 静默丢掉**——界面上表现为「这个会话只有我说的话」。改成 `blocks()` 统一取后再回退 | 同一会话从 `{user:7, tool:3}` 变成 `{user:7, thinking:2, tool:3, assistant:1}` |
+| 2026-11-03 13:12 | **接上思考块**：真实语料 content 块统计 `reasoning 9960 / tool-call 15241 / text 1140`——**思考比正文多八倍**，以前一个字都没显示。现在解成 `role:"thinking"` 消息，界面上默认收起成一行「▸ 思考 · 255 字」，点一下展开 | `docs/p10-thinking.png`（收起）、`docs/p11-think-expanded.png`（展开） |
+| 2026-11-03 13:12 | 坑（第三次）：用脚本往 Go 源码里写字符串换行，`
+` 被打成真换行。现在插件里一律用常量 `nlChar`，不再写字面量 | 编译红一次 |

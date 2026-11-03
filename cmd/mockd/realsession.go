@@ -98,20 +98,41 @@ type block struct {
 }
 
 // text 把一条消息的 content 块拼成纯文本（只要 text 块）。
+// blocks 取这条事件的 content 块。
+//
+// 踩过的坑：同一个 assistant/message，有的日志把 content 放在 data.content，
+// 有的放在 data.message.content（和 tool/result 同构）。只读前者的话，
+// 后者那个会话的**所有助手消息都是空文本**，被 "txt==""" 静默丢掉——
+// 界面上表现为「这个会话只有我说的话、助手一个字都没有」。
+func (e *v4Event) blocks() []block {
+	if len(e.Data.Content) > 0 {
+		return e.Data.Content
+	}
+	if e.Data.Message != nil {
+		return e.Data.Message.Content
+	}
+	return nil
+}
 func (e *v4Event) text() string {
-	if len(e.Data.Content) == 0 {
-		return ""
-	}
+	return tvJoinBlocks(e.blocks())
+}
+
+// reasoning 取 assistant/message 里的思考块。
+//
+// 为什么要它：真实语料的 content 块统计是 reasoning 9960 / tool-call 15241 /
+// text 1140——**思考比正文多八倍**。以前只取 text，等于把助手说的大部分话丢了。
+func (e *v4Event) reasoning() string {
 	var b strings.Builder
-	for _, c := range e.Data.Content {
-		if c.Type == "text" && c.Text != "" {
-			if b.Len() > 0 {
-				b.WriteString("\n")
-			}
-			b.WriteString(c.Text)
+	for _, c := range e.blocks() {
+		if c.Type != "reasoning" || c.Text == "" {
+			continue
 		}
+		if b.Len() > 0 {
+			b.WriteString(tvNL)
+		}
+		b.WriteString(c.Text)
 	}
-	return b.String()
+	return tvTrunc(b.String(), 8000) // 有界：单条思考可能上万字
 }
 
 // loadRealSessions 扫 root 下所有 session.v4.jsonl.zstd，返回索引。
@@ -270,6 +291,14 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 				rs.Usage.HasRate = true
 			}
 		}
+		// 思考块排在正文之前：视觉上是「先想后说」，和官方一致。
+		if role == "assistant" {
+			if think := e.reasoning(); think != "" {
+				rs.Total++
+				rs.Messages = append(rs.Messages, message{Seq: e.Seq, Role: "thinking", Text: think})
+			}
+		}
+
 		txt := e.text()
 		if txt == "" {
 			continue

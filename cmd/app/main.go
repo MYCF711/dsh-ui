@@ -599,6 +599,7 @@ func main() {
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
 	title := flag.String("title", "dsh-ui", "窗口标题（并行跑多个实例时用来区分）")
+	expandThink := flag.Bool("expand-think", false, "调试：把思考块默认展开（截展开态用）")
 	collapseAll := flag.Bool("collapse", false, "调试：启动时把所有工作区分组收起（截折叠态用）")
 	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
 	flag.Parse()
@@ -624,7 +625,7 @@ func main() {
 	if err := m.kernel.Load(
 		&dscore.Plugin{Dark: true}, // 根本依赖插件：令牌 + 基础组件
 		m.side,                     // 左栏会话列表
-		&dsconversation.Plugin{},   // 主区消息流 + 工具卡 + 审批
+		&dsconversation.Plugin{ExpandAllThinking: *expandThink}, // 主区消息流 + 工具卡 + 审批
 		&dscomposer.Plugin{},       // 输入区
 		&dsstatusbar.Plugin{},      // 底部状态栏
 		&dstopbar.Plugin{},         // 主区顶部条

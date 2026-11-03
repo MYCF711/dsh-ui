@@ -188,6 +188,23 @@ func (m *model) toggleRightbar() {
 }
 
 func (m *model) refreshList() {
+	// **UI 配置在这里拉**：`refreshList` 是启动与新建会话的公共入口
+	// （`-session` 的自动打开也在它内部），放这儿比放 `newSession` 早且全覆盖。
+	//
+	// 为什么必须壳主动拉：`dsshell` 的拖拽宽度在第一帧之后轮询
+	// `Actions.ConfigGet`，而那个返回的是**壳的缓存**。壳不拉一次，缓存永远是 nil
+	// —— 持久化“读回来”这条链在真机上就从来没通过（我第一版只接了 set 方向）。
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		cfg, err := m.cli.ConfigGet(ctx)
+		if err != nil {
+			return // 读不到就用默认，别打扰用户
+		}
+		m.mu.Lock()
+		uiConfig = cfg
+		m.mu.Unlock()
+	}()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

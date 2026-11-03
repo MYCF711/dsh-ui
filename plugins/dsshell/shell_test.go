@@ -170,18 +170,37 @@ func TestClampWidthRoundsLikeOfficial(t *testing.T) {
 	}
 }
 
-// TestSyncMainWidth 窄窗口下把壳算的 MainWidth 校正成画出来的中栏宽；
-// 视口未知（center=0）时不覆盖壳的值。
-func TestSyncMainWidth(t *testing.T) {
-	env := &pluginapi.Env{MainWidth: 380}
-	syncMainWidth(env, columns{sidebar: 280, center: 680})
-	if env.MainWidth != 680 {
-		t.Fatalf("有中栏宽时应校正成 680，得到 %v", env.MainWidth)
+// TestSyncGeometry 把壳说的几何校正成画出来的：
+// 视口未知（center=0）时不覆盖壳的值；有中栏宽时三列宽一并校正。
+func TestSyncGeometry(t *testing.T) {
+	env := &pluginapi.Env{
+		MainWidth: 380,
+		Geometry:  pluginapi.Geometry{Width: 1920, SidebarWidth: 280, RightWidth: 300, MainWidth: 380},
+	}
+	syncGeometry(env, columns{sidebar: 280, center: 680})
+	if env.MainWidth != 680 || env.Geometry.MainWidth != 680 {
+		t.Fatalf("有中栏宽时应校正成 680，得到 MainWidth=%v Geometry.MainWidth=%v",
+			env.MainWidth, env.Geometry.MainWidth)
 	}
 
-	env2 := &pluginapi.Env{MainWidth: 380}
-	syncMainWidth(env2, columns{})
-	if env2.MainWidth != 380 {
-		t.Fatalf("视口未知时不该覆盖壳的值，得到 %v", env2.MainWidth)
+	env2 := &pluginapi.Env{
+		MainWidth: 380,
+		Geometry:  pluginapi.Geometry{Width: 1920, SidebarWidth: 280, RightWidth: 300, MainWidth: 380},
+	}
+	syncGeometry(env2, columns{})
+	if env2.MainWidth != 380 || env2.Geometry.SidebarWidth != 280 {
+		t.Fatalf("视口未知时不该覆盖壳的值，得到 MainWidth=%v Sidebar=%v",
+			env2.MainWidth, env2.Geometry.SidebarWidth)
+	}
+
+	// 用户拖过侧栏：Geometry 里壳的旧值（280）必须被改成画出来的 344，
+	// 否则侧栏的活动面板浮层会按 280 定位，停在新侧栏的中间。
+	env3 := &pluginapi.Env{
+		MainWidth: 776,
+		Geometry:  pluginapi.Geometry{Width: 1920, SidebarWidth: 280, RightWidth: 864, MainWidth: 776},
+	}
+	syncGeometry(env3, columns{sidebar: 344, center: 712, rightbar: 864})
+	if env3.Geometry.SidebarWidth != 344 || env3.Geometry.MainWidth != 712 || env3.Geometry.RightWidth != 864 {
+		t.Fatalf("拖动后几何未校正：%+v", env3.Geometry)
 	}
 }

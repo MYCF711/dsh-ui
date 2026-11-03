@@ -70,6 +70,21 @@
 影响面：mux 的读循环、带水位重连、多会话订阅池、`FillGap` 都是并发代码，
 没有 race 检测就等于没验过数据竞争。**要真验需要装 mingw64 或换一台有 C 工具链的机器。**
 
+**2026-11-03 尝试安装（失败）**：本机有 choco 与 winget，两者都能装 mingw，但**下载源都在
+GitHub**，而本机直连 GitHub **超时**（`curl -r 0-2000000` 15 秒无响应）、三个常见加速镜像
+（ghfast/ghproxy/mirror.ghproxy）**全部失败**、也没有 HTTP 代理；清华的 msys2 路径是网页不是
+目录索引、USTC 超时。所以包管理器卡在下载阶段，**本轮没能装上**。
+已杀掉卡住的 choco/winget 进程，不留半成品。
+
+好消息是命令已经准备好了，gcc 一到位就能跑：
+
+```bash
+cd D:/DeepSeek Harness/default-workspace/dsh-ui
+export PATH="/c/Program Files/Go/bin:/c/ProgramData/chocolatey/lib/mingw/tools/install/mingw64/bin:$PATH"
+CGO_ENABLED=1 go test -race ./internal/apiclient/ ./plugins/dscomposer/   # 界面并发面
+cd ../DSH-GO && CGO_ENABLED=1 go test -race ./internal/transport/ ./cmd/dshd/   # 宿主并发面
+```
+
 **兜底（不能替代 race，但抓的是另一类错）**：加了两个逻辑断言测试 ——
 `TestFillGapConcurrentGoroutinesSafe`（8 个 goroutine 并行补互不重叠的缺口，
 断言每个 seq 恰好被应用一次：不重复、不漏）与 `TestFillGapStopsWhenHostHasNoMore`

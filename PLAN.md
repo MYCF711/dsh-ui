@@ -181,4 +181,18 @@ L4 里每个部件只依赖 L2 的图元和 L3 的槽名，**彼此之间没有�
 
 ### 当前进度（对应上面的层）
 
-- L0 ✅ / L1 ✅ / L2 ✅（令牌 + 5 个图元 + 圆钮）/ L3 ⏳（三栏硬编码在壳里，还没抽成插件）/ L4 六个 ✅ / L5 ⏳（契约已够，缺文档与样例）
+> 2026-11-03 15:35 复核（每条都有截图/命令作证，明细在 `docs/progress.md` 与 `docs/official-specs.md`）。
+
+| 层 | 状态 | 证据 |
+|---|---|---|
+| **L0 壳** | ✅ | `cmd/app` 833 行；`-size WxH` 可验不同窗口尺寸下的几何 |
+| **L1 运行时** | ✅ | `pluginapi`（公开契约）+ `internal/uikernel`（拓扑装配 + 槽位树）；`internal/uiplugins`（白名单 / `dirs`） |
+| **L2 根本依赖** | ✅ | `plugins/dscore`：令牌 + **8 个图元**（ListRow / CircleButton / Chip / Bubble / SectionHeader / Divider / Hairline / StatusBarRow）；几何全部对得上官方 CSS 原文 |
+| **L3 框架插件** | ✅ | `plugins/dsshell`：三栏（侧栏 280 / 中栏 ≥400 / 右栏 45%）+ `shell.bottom` 整行 + **`shell.overlay`**；`Env.Geometry` 由壳发布 |
+| **L4 部件** | ✅ 六个 | `ds-sidebar` `ds-conversation` `ds-composer` `ds-statusbar` `ds-topbar` `ds-rightbar` |
+| **L5 第三方** | ✅ 两条通道 | ① 编译期：`cmd/plugingen` 扫目录生成 blank import，加插件**不改 `cmd/app`**；② 运行时：`internal/uidecl` + `plugins/dsdecl`，**一个 JSON = 一个只读部件，不重编译**。样例：`plugins/dsdemo`（`shell.overlay`）+ 仓库外 `../dsh-ui-plugins/hello` |
+
+已闭合的三个真 bug（都是本轮合并验证抓到的）：
+1. `afterDraw` 的 Markdown 覆画用整窗做 `Clip` → 消息盖住顶栏 / 宽表格横穿右栏；
+2. `shell.bottom` 用绝对定位 → 状态栏不从 x=0 开始、不压矮三列；
+3. 侧栏缺 `Shrink(0)` → 被 flex 从 280 压到 239，行底色横穿正文。

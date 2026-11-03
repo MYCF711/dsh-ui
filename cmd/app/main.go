@@ -12,11 +12,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	_ "example.com/dsh-hello"
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
@@ -24,6 +24,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsdecl"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
@@ -481,8 +482,29 @@ func drawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *plugi
 	k.DrawSlot(f, slot, env)
 }
 
+// 窗口初始尺寸：默认 1180x800，-size 可改（只为无头截图量几何用）。
+var (
+	winWidth  = 1180
+	winHeight = 800
+)
+
+// parseWinSize 解析 "WxH"。只认一个 'x'（大小写都行，也接受 '×'），
+// 不做宽容解析：这个开关只给无头截图用，写错就报错，别猜。
+func parseWinSize(s string) (int, int, bool) {
+	i := strings.IndexAny(s, "xX×")
+	if i <= 0 || i >= len(s)-1 {
+		return 0, 0, false
+	}
+	w, err1 := strconv.Atoi(strings.TrimSpace(s[:i]))
+	h, err2 := strconv.Atoi(strings.TrimSpace(s[i+1:]))
+	if err1 != nil || err2 != nil || w < 320 || h < 240 {
+		return 0, 0, false
+	}
+	return w, h, true
+}
+
 func newConfig(m *model) app.Config {
-	cfg := app.Config{Tree: &tree, Title: winTitle, Width: 1180, Height: 800,
+	cfg := app.Config{Tree: &tree, Title: winTitle, Width: winWidth, Height: winHeight,
 		MinWidth: 760, MinHeight: 520, Invalidator: &m.inv}
 	// 插件的输入框也要登记，否则收不到键盘（viva 只把登记过的 Field 当输入焦点候选）。
 	// 走一次统一的聚合：以后再加插件不用改这里。
@@ -702,7 +724,15 @@ func main() {
 	searchAtStart := flag.String("search", "", "调试：启动就把会话内搜索打开，并带上这个词（截搜索态用）")
 	shotWait := flag.Int("shot-wait", 4, "无头抓图前等多少秒（流式/发送类验证要给大一点）")
 	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
+	winSize := flag.String("size", "", "调试：窗口初始尺寸 WxH（如 1600x900）；空 = 1180x800。验证几何在不同宽度下是否成立")
 	flag.Parse()
+	if *winSize != "" {
+		w, h, ok := parseWinSize(*winSize)
+		if !ok {
+			log.Fatalf("-size 要写成 WxH（宽>=320、高>=240），收到 %q", *winSize)
+		}
+		winWidth, winHeight = w, h
+	}
 	renderLimit = *limit
 	forceSession = *sess
 	tailCount = *tail

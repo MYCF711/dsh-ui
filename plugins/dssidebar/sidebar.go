@@ -82,9 +82,19 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 }
 
 // drawHeader 画「新会话 + 搜索」。
+//
+// 搜索框几何照官方会话浏览器的**展开态**（`WorkspaceBrowser.module.css`）：
+//
+//	.GAkraW_searchExpanded{border:.5px solid var(--dsw-alias-border-l4);
+//	  border-radius:var(--dsw-radius-md);height:30px;padding:0 4px 0 0}
+//	.GAkraW_searchInput{font-size:13px;line-height:18px;
+//	  color:var(--dsw-alias-label-primary)}
+//	.GAkraW_searchInput::placeholder{color:var(--dsw-alias-label-tertiary)}
+//
+// 原来是 viva 的 `.Small()`（28px 高、无描边），和官方不是一回事。
 func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
-	f.Row().FillWidth().Height(40).Items(flex.Center).Gap(8).Children(func() {
+	f.Row().FillWidth().Height(38).Items(flex.Center).Gap(8).Children(func() {
 		if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "new"), "+", false) {
 			if env.Act.NewSession != nil {
 				env.Act.NewSession()
@@ -98,16 +108,27 @@ func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
 			}
 		}
 	})
-	f.Field(&p.search, env.Tree.ID(env.Feat, "search"), "搜索", "过滤会话…").Small().
-		FillWidth().FontSize(t.Fonts.Caption)
+	f.Field(&p.search, env.Tree.ID(env.Feat, "search"), "搜索", "过滤会话…").
+		FillWidth().Height(30).Radius(t.Radii.MD).Border(0.5, t.BorderL4).
+		FontSize(t.Fonts.Secondary)
 }
 
 // drawFooter 画左栏底部那一行：会话总数 + 连接状态。
 //
+// 官方侧栏 footer（`SidebarRoot.module.css`）只给了这些：
+//
+//	.wtg9ga_footArea{flex-direction:column;flex:none;display:flex}
+//	.wtg9ga_settingsArea,.wtg9ga_footerActions{flex:none;width:100%;min-width:0}
+//	.wtg9ga_footerActions{display:flex}
+//	.wtg9ga_iconButton{border-radius:var(--dsw-radius-sm);width:28px;height:28px;…}
+//
+// **没有高度、没有字号**（里面装的是 28px 图标按钮，高度由按钮撑）。所以这里
+// 行高取按钮那一档 28，字号沿用我们原来的一档（官方未给，不另编一个）。
+//
 // 数据全部来自快照，不自己发请求。状态文字太长就省略——底部这行只用来"扫一眼"。
 func (p *Plugin) drawFooter(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
-	f.Row().WidthPercent(100).Height(22).Items(flex.Center).Gap(6).Children(func() {
+	f.Row().FillWidth().Height(28).Items(flex.Center).Gap(6).Children(func() {
 		f.Text(itoa(len(env.Data.Sessions)) + " 个会话").
 			FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		f.Spacer()
@@ -166,7 +187,14 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
-// drawSession 画一条会话行：标题 + 相对时间，选中态带一个圆点。
+// drawSession 画一条会话行：缩进 + 标题 + 相对时间。
+//
+// 数值全部来自官方 `.wnFoaW_sessionRow`（见 prims.ListRow 的注释）：
+//   - 行高 32、radius md(12)、左右内边距 8；
+//   - 标题 14px/20px、正文色（官方对未选中行**不降级**，一直是 label-primary）；
+//   - 时间是 10px/16px、`--dsw-alias-label-tertiary`；
+//   - 会话行要挂在项目行下面，官方用 `padding-inline-start:calc(8px + indent)`，
+//     indent 由 JS 给 `depth * 12px`，所以这里补 12px 缩进。
 func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Session) {
 	t := p.theme
 	active := s.ID == env.Data.Cur
@@ -176,11 +204,13 @@ func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Sess
 	}
 	id := env.Tree.ID(env.Feat, "s-"+s.ID)
 
-	// 单行：标题在左、相对时间在右（官方侧栏就是一行，两行会把列表撑到看不了几屏）
-	row := p.prims.ListRow(f, id, active, 30, func() {
-		f.Text(title).FontSize(t.Fonts.Secondary).Ellipsis().Grow(1).
-			Color(cond(active, t.LabelPrimary, t.LabelSecondary))
-		f.Text(relativeTime(s.UpdatedAt)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+	// 单行：标题在左、相对时间在右（官方侧栏就是一行，两行会把列表撑到看不了几屏）。
+	// 时间是 Shrink(0)：官方 `.wnFoaW_time{flex:none}`，不许被压缩——
+	// 不写的话标题一长就把「分钟前」挤出右边界，看起来像被切掉半个字。
+	row := p.prims.ListRow(f, id, active, 32, func() {
+		f.Row().Width(12).Height(1) // 官方 depth*12 的缩进
+		f.Text(title).FontSize(t.Fonts.Body).Ellipsis().Grow(1).Color(t.LabelPrimary)
+		f.Text(relativeTime(s.UpdatedAt)).FontSize(10).Color(t.LabelTertiary).Shrink(0)
 	})
 	if row.Clicked() && env.Act.OpenSession != nil {
 		env.Act.OpenSession(s.ID)

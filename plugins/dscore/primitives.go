@@ -16,16 +16,28 @@ type Primitives struct {
 
 // ListRow 画一条列表行，返回盒子给调用方接 .Clicked()。
 //
-// 几何照官方：圆角 MD(12)、最小高 36、横向内边距 10、行间距 10
-// （`dsh-client-ui-chat` 里的 .row 规则）。选中态用 NavActive，悬停用 NavHover。
+// 几何照官方**会话行**（`ui-workspace/src/client/rows/Rows.module.css`）：
+//
+//	.wnFoaW_sessionRow{gap:0;height:32px}
+//	.wnFoaW_projectRow,.wnFoaW_sessionRow{border-radius:var(--dsw-radius-md);
+//	  padding:0 8px;…;padding-inline-start:calc(8px + var(--dsh-workspace-indent,0px))}
+//	.wnFoaW_projectRow:hover,.wnFoaW_sessionRow:hover,
+//	.wnFoaW_sessionRow.wnFoaW_selected{background:var(--dsw-alias-interactive-bg-hover)}
+//
+// 注意两点，和"想当然"不一样：
+//   - 行高是**固定 32**，不是最小高；字号 14/20（标题那层给）。
+//   - **选中态和悬停态同色**，都是 `--dsw-alias-interactive-bg-hover`。
+//     我们原来的 NavActive 是自造的深一档色，官方没有这个东西。
+//
+// height 由调用方给（官方会话行 32、项目行 34），这里只管形状。
 func (p *Primitives) ListRow(f *flex.Frame, id ui.ID, active bool, height float32, body func()) flex.Box {
 	t := p.Theme
-	row := f.Row().FillWidth().MinHeight(height).Radius(t.Radii.MD).
-		PadX(10).PadY(6).Items(flex.Center).Gap(8)
+	row := f.Row().FillWidth().Height(height).Radius(t.Radii.MD).
+		PadX(8).PadY(0).Items(flex.Center).Gap(0)
 	if active {
-		row = row.Background(t.NavActive)
+		row = row.Background(t.Hover)
 	} else {
-		row = row.HoverBackground(t.NavHover)
+		row = row.HoverBackground(t.Hover)
 	}
 	return row.Hit(id, "").Children(body)
 }
@@ -65,21 +77,33 @@ func (p *Primitives) Bubble(f *flex.Frame, body func()) flex.Box {
 
 // SectionHeader 画一个分组头（工作区名 + 条数 + 折叠箭头）。
 //
-// 官方侧栏的分组头是「小号灰字 + 右边数字」，不是按钮样式；这里保持同样的克制：
-// 12px、第三级文字、没有底色，只有悬停时轻微变色。
+// 照官方**项目行** `.wnFoaW_projectRow`（它就是侧栏里那一行可折叠的工作区名）：
+//
+//	.wnFoaW_projectRow{box-sizing:border-box;align-items:center;height:34px}
+//	.wnFoaW_projectRow,.wnFoaW_sessionRow{border-radius:var(--dsw-radius-md);
+//	  padding:0 8px;gap:6px;color:var(--dsw-alias-label-primary);…}
+//	.wnFoaW_title{font-size:14px;line-height:20px}
+//	.wnFoaW_chevron{color:var(--dsw-alias-label-caption)}
+//	.wnFoaW_arrow{transition:transform .15s var(--ds-ease-in-out)}
+//	.wnFoaW_arrowOpen{transform:rotate(90deg)}
+//
+// 所以它比会话行**高 2px（34 vs 32）**、字是正文色而不是灰字——
+// 原来那版 26px 的灰字按钮和官方不是一个东西。
 func (p *Primitives) SectionHeader(f *flex.Frame, id ui.ID, title string, count int, open bool) flex.Box {
 	t := p.Theme
 	arrow := "▸"
 	if open {
 		arrow = "▾"
 	}
-	return f.Row().FillWidth().Height(26).Radius(t.Radii.SM).PadX(6).
+	return f.Row().FillWidth().Height(34).Radius(t.Radii.MD).PadX(8).
 		Items(flex.Center).Gap(6).HoverBackground(t.Hover).Hit(id, "").Children(func() {
-		f.Text(arrow).FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
-		f.Text(title).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
+		f.Text(arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
+		f.Text(title).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Ellipsis()
 		f.Spacer()
 		if count > 0 {
-			f.Text(itoa(count)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			// 官方项目行没有计数；计数用的字形取自 `.wnFoaW_meta`
+			// （12px/20、--dsw-alias-label-tertiary）。
+			f.Text(itoa(count)).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
 	})
 }
@@ -102,6 +126,42 @@ func (p *Primitives) Dot(f *flex.Frame, color ui.Color, size float32) flex.Box {
 func (p *Primitives) Divider(f *flex.Frame) {
 	t := p.Theme
 	f.Row().FillWidth().Height(1).Background(t.BorderL1)
+}
+
+// Hairline 是一条 0.5px 的分隔线（官方到处用的 `.5px solid var(--dsw-alias-border-l2)`）。
+//
+// 和 Divider 的区别只在粗细和颜色层级：Divider 是 1px / border-l1，给栏内分块用；
+// Hairline 是官方底板（底部整行、菜单 footer）那一档，给"整条边"用。
+func (p *Primitives) Hairline(f *flex.Frame) {
+	t := p.Theme
+	f.Row().FillWidth().Height(0.5).Background(t.BorderL2)
+}
+
+// StatusBarRow 画底部整行的壳：一条 0.5px 的分隔线 + 一行内容。
+//
+// 官方对应物是 AppFrame 的 bottomRow（它是**整行**，不是某一列的一部分）：
+//
+//	.mP3x-q_bottomRow{background:var(--dsw-alias-bg-base);grid-column:1/-1;
+//	  min-width:0;min-height:0;overflow:auto}
+//
+// 官方没有给这一行写死高度、padding 和字号（slot 文档：「Its occupant controls
+// its own height and visibility」），所以高度由壳的 Geometry 给；
+// 内容的字号/间隔取官方统计胶囊 StatsPills 的那一档：
+//
+//	.hNGZaa_anchor{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);
+//	  line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}
+//	.hNGZaa_pill{color:var(--dsw-alias-label-tertiary);
+//	  font-variant-numeric:tabular-nums;align-items:center;gap:6px;padding:1px 8px}
+//	.hNGZaa_sep{color:var(--dsw-alias-separator-primary);margin:0 6px}
+//
+// 左边距 12 取 `--dsh-sidebar-inline-padding`，这样底部条的文字和侧栏文字左对齐，
+// 而不是从窗口中间（中栏）开始。
+func (p *Primitives) StatusBarRow(f *flex.Frame, height float32, body func()) flex.Box {
+	t := p.Theme
+	return f.Column().FillWidth().Height(height).Background(t.BgBase).Children(func() {
+		p.Hairline(f)
+		f.Row().FillWidth().FillHeight().PadX(12).Items(flex.Center).Gap(6).Children(body)
+	})
 }
 
 // itoa 避免为了一个数字去 import strconv（这一层要保持极简依赖）。

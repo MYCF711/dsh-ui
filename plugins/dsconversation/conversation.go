@@ -62,6 +62,10 @@ type Plugin struct {
 	look   components.MarkdownLook
 
 	slots []mdSlot
+	// bodyBox 是消息流滚动区的盒子：AfterDraw 覆画 Markdown 时，
+	// 裁剪区必须用它（视口矩形），不能用 env.Bounds（那是整窗——
+	// 会把消息画到顶栏/输入区上面去）。
+	bodyBox flex.Box
 	// collapsedOnce 记录调试开关下被用户手动收起过的，避免压不住点击。
 	collapsedOnce map[int]bool
 	// lastAct / lastMsgs / lastApproval 是绘制期快照，按键时要用。
@@ -208,7 +212,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	// 内容列必须**显式给宽度**：ScrollArea 里用 FillWidth 时宽度算不出来，
 	// 元素会被推到父容器外面（踩过两次：一次是消息画到侧栏上，一次是现在这样）。
 	// 用百分比而不是像素：像素得先知道列宽，而槽位里拿不到。
-	f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip().Children(func() {
+	p.bodyBox = f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip().Children(func() {
 		f.Column().WidthPercent(100).Gap(6).Children(func() {
 			p.drawStreaming(f, env)
 
@@ -648,6 +652,11 @@ func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
 	}
 	look := p.markdownLook()
 	bounds := env.Bounds
+	// 裁剪区必须是**消息流滚动区自己的视口**，不能用 env.Bounds（整窗）。
+	// 踩过的坑：ScrollArea 里 slot 的 Y 是屏幕坐标（滚出去就是负数），
+	// 用整窗当 Clip 等于不裁——排在上方的 Markdown 会画到顶栏和输入区上面，
+	// 「顶栏消失」的真相就是它被消息盖住了（实测 view=(251,286 489x382)）。
+	view := p.bodyBox.Rect()
 	for _, slot := range p.slots {
 		if slot.idx >= len(p.views) {
 			continue
@@ -656,13 +665,25 @@ func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
 		if r.Width <= 0 || r.Height <= 0 {
 			continue
 		}
+		clip := ui.Rect{
+			X:      r.X,
+			Y:      view.Y,
+			Width:  view.X + view.Width - r.X - 24,
+			Height: view.Height,
+		}
+		if view.Height <= 0 || view.Width <= 0 {
+			// 兜底：拿不到视口就退回整窗（宁可多画，不可不画）。
+			clip.X, clip.Y = r.X, bounds.Y
+			clip.Width, clip.Height = bounds.Width-r.X-24, bounds.Height
+		}
 		p.views[slot.idx].Paint(canvas, components.MarkdownPaint{
 			Look: look,
 			X:    r.X,
 			Y:    r.Y,
-			// Clip 右边界要到窗口边：表格/代码块会比卡片宽，只裁到 r.Width
-			// 会画到侧栏上。右边留 24px 给滚动条，否则会看见贴边碎片。
-			Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: bounds.Width - r.X - 24, Height: bounds.Height},
+			// 裁剪右边界用**消息区视口**的右边，不是窗口右边：用整窗的话
+			// 宽表格/宽代码会横穿右栏（实测 1180 宽时表格直接画到「轨迹」上面）。
+			// 留 24px 给滚动条，否则会看见贴边碎片。
+			Clip: clip,
 		})
 	}
 }

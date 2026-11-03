@@ -48,11 +48,24 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	}
 }
 
+// bar 是 dscore 那个「底部整行」图元的可选能力。
+//
+// 为什么不写进 pluginapi.Primitives：那份契约是跨线共用的（`pluginapi/plugin.go`），
+// 改它要两边一起动；而这里只是"dscore 正好多提供了一个画法"。
+// 类型断言拿得到就用，拿不到就退回自己画——插件之间只认契约，不认具体类型。
+type bar interface {
+	StatusBarRow(f *flex.Frame, height float32, body func()) flex.Box
+}
+
 // draw 画一整条状态栏。
 //
 // 宽度分配：左边的数字段全部 Shrink(0)（不许被压缩，否则最后一个字会被切掉——
 // 实测 "571.3k" 显示成 "571.3"），右边只留一段可省略的 Status，
 // 空间不够时压缩的永远是它。
+//
+// 整行的壳（背景、0.5px 分隔线、左内边距）交给 prims，这里只排内容：
+// 官方 bottomRow 是横跨三列的整行，内容从 `--dsh-sidebar-inline-padding`(12)
+// 开始，不是从窗口中间开始。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 
@@ -72,24 +85,25 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		dotColor, dotLabel = t.Warn, "待审批"
 	}
 
-	// 上边一条最轻的分隔线：状态栏要和上面的内容分开，但不该用重描边。
-	p.prims.Divider(f)
+	h := env.Geometry.BottomHeight
+	if h <= 0 {
+		h = 24
+	}
 
-	f.Row().FillWidth().FillHeight().Background(t.SidebarFill).
-		PadX(12).Items(flex.Center).Gap(10).Children(func() {
+	p.bar(f, h, func() {
 		if turns+steps > 0 {
-			p.num(f, itoa(turns)+" 轮 · "+itoa(steps)+" 步", t.LabelCaption)
+			p.num(f, itoa(turns)+" 轮 · "+itoa(steps)+" 步", t.LabelTertiary)
 		}
 		if u := env.Data.Usage; u.Known() {
 			p.sep(f)
-			p.num(f, "↑"+tok(u.InputTokens)+" ↓"+tok(u.OutputTokens), t.LabelCaption)
+			p.num(f, "↑"+tok(u.InputTokens)+" ↓"+tok(u.OutputTokens), t.LabelTertiary)
 			if u.HasRate && u.TokPerSec > 0 {
 				p.sep(f)
-				p.num(f, rate(u.TokPerSec), t.LabelCaption)
+				p.num(f, rate(u.TokPerSec), t.LabelTertiary)
 			}
 			if u.TotalTokens > 0 {
 				p.sep(f)
-				p.num(f, "上下文 "+tok(u.TotalTokens), t.LabelCaption)
+				p.num(f, "上下文 "+tok(u.TotalTokens), t.LabelTertiary)
 			}
 		}
 		f.Spacer()
@@ -105,14 +119,30 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
+// bar 调 dscore 的整行图元；拿不到就自己画一条等价的（保证插件仍能单独跑）。
+func (p *Plugin) bar(f *flex.Frame, height float32, body func()) {
+	if sb, ok := p.prims.(bar); ok {
+		sb.StatusBarRow(f, height, body)
+		return
+	}
+	t := p.theme
+	f.Column().FillWidth().Height(height).Background(t.BgBase).Children(func() {
+		f.Row().FillWidth().Height(0.5).Background(t.BorderL2)
+		f.Row().FillWidth().FillHeight().PadX(12).Items(flex.Center).Gap(6).Children(body)
+	})
+}
+
 // num 画一个不可压缩的数字段。
 func (p *Plugin) num(f *flex.Frame, s string, c ui.Color) {
 	f.Text(s).FontSize(p.theme.Fonts.Caption).Color(c).PadX(2).Shrink(0)
 }
 
-// sep 画一个间隔点。
+// sep 画一个间隔点。左右各 6px 照官方 `.hNGZaa_sep{margin:0 6px}`。
+//
+// 官方那个 `--dsw-alias-separator-primary` 在打包产物里只有引用、没有定义
+// （app.asar 里 grep 不到它的赋值），所以退到现有的最弱一档文字色。
 func (p *Plugin) sep(f *flex.Frame) {
-	f.Text("·").FontSize(p.theme.Fonts.Caption).Color(p.theme.LabelDimmed).Shrink(0)
+	f.Text("·").FontSize(p.theme.Fonts.Caption).Color(p.theme.LabelDimmed).PadX(6).Shrink(0)
 }
 
 // tok 把 token 数压成「6.5k / 1.2M」这种短写法。

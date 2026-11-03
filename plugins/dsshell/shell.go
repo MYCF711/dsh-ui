@@ -60,21 +60,47 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 }
 
 // draw 只画底色：分栏几何在 children 里。
+//
+// 底色的画法照官方 AppFrame：`.mP3x-q_frame{background:var(--dsw-alias-bg-base)}`
+// 铺满整框。这里直接落在画布上而不是开一个 Box——开 Box 会在 root 列里
+// 多占一个孩子，把后面的行挤出视口（踩过：底部整行跑到窗口外面）。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
-	f.Row().FillWidth().FillHeight().Background(p.theme.BgBase)
+	env.Canvas.Fill(env.Bounds, p.theme.BgBase)
 }
 
-// children 把 root 切三层，再把 frame 交给下一层。
+// children 把 root 切成「上：三列」+「下：底部整行」两行。
+//
+// 官方 AppFrame 是 grid：
+//
+//	.mP3x-q_frame{grid-template-rows:minmax(0,1fr) auto;display:grid}
+//	.mP3x-q_bottomRow{grid-column:1/-1;background:var(--dsw-alias-bg-base)}
+//
+// 也就是**底部条横跨三列整行**，且三列因为它的高度而变矮。
+// 这里用等价的 Column(主体 Grow(1) + 底部定高) 表达，
+// 而不是把底部条绝对定位——绝对定位的元素不参与父级布局，
+// 先前那一版状态栏因此既没从 x=0 开始，也没把三列压矮。
 func (p *Plugin) children(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
-	// 注意：这里不要再包一层 Column。draw 已经建了一个填满的 Row，
-	// 再套 Column 会多消耗一次剩余高度，实测整窗白屏。
-	// 主体用 Grow(1)，不重新开 Row：f 本身已经是 draw 建好的那一行。
-	f.Row().FillWidth().Grow(1).Children(func() {
-		p.drawSidebar(f, env, drawSlot)
-		p.drawMain(f, env, drawSlot)
-		p.drawRightbar(f, env, drawSlot)
+	f.Column().FillWidth().FillHeight().Children(func() {
+		f.Row().FillWidth().Grow(1).Children(func() {
+			p.drawSidebar(f, env, drawSlot)
+			p.drawMain(f, env, drawSlot)
+			p.drawRightbar(f, env, drawSlot)
+		})
+		p.drawBottom(f, env, drawSlot)
+		// 浮层放**最后**画：viva 按绘制顺序叠，靠后的盖在靠前的上面。
+		// 这一步漏了整整一轮——`ds-demo` 装配日志里明明有，界面上却什么都没有，
+		// 因为没人画 shell.overlay 这个槽。
+		//
+		// 官方对应 `.mP3x-q_overlayLayer{position:absolute;inset:0;pointer-events:none}`：
+		// 覆盖整个框架的绝对定位层。这里同样从 (0,0) 铺满整窗，而不是铺满某一列。
+		if env.Has(pluginapi.SlotShellOverlay) {
+			f.Row().Absolute().Left(0).Top(0).
+				Width(env.Bounds.Width).Height(env.Bounds.Height).
+				Children(func() {
+					drawSlot(pluginapi.SlotShellOverlay)
+				})
+		}
 	})
-	p.drawBottom(f, env, drawSlot)
 }
 
 // drawSidebar 左栏：只有挂了 sidebar.* 的插件才出现。
@@ -87,7 +113,15 @@ func (p *Plugin) drawSidebar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pl
 	if sw <= 0 {
 		sw = p.SidebarWidth
 	}
-	f.Column().Width(sw).FillHeight().Pad(12).Gap(8).
+	// 内边距照官方侧栏根：`.wtg9ga_root{padding:6px var(--dsh-sidebar-inline-padding)}`，
+	// 其中 `--dsh-sidebar-inline-padding:12px`。所以上下 6、左右 12，不是四边 12。
+	//
+	// Shrink(0) 是必须的：侧栏是**定宽**（官方 264–420，默认 280），不参与压缩。
+	// 不写它的话，中间栏 + 右栏一起超宽时 flex 会把侧栏压到 239，
+	// 而侧栏内部的滚动区是按 280 算的（280-24=256），于是每一行都往中栏里
+	// 探出 41px——悬停/选中底色会横穿到会话正文上（这次截图里量出来的：
+	// 行背景 x=20…276，而侧栏列只到 x=247）。
+	f.Column().Width(sw).Shrink(0).FillHeight().PadX(12).PadY(6).Gap(8).
 		Background(p.theme.SidebarFill).Children(func() {
 		drawSlot(pluginapi.SlotSidebarHeader)
 		p.prims.Divider(f)
@@ -136,7 +170,13 @@ func (p *Plugin) drawRightbar(f *flex.Frame, env *pluginapi.Env, drawSlot func(p
 
 // drawBottom 底部整行：占用方自己声明高度；没占用方就一行都不占。
 //
-// 占位行 + 绝对定位两步走：只绝对定位的话，主体和侧栏会画到窗口底边被压住（踩过）。
+// 几何照官方 `.mP3x-q_bottomRow{background:var(--dsw-alias-bg-base);grid-column:1/-1}`：
+// **横跨整行**（从窗口左边缘到右边缘，不是从中栏开始），底色 bg-base，
+// 高度由占用方决定（官方 slot 文档：「Its occupant controls its own height
+// and visibility; the columns shrink by that height」）。
+//
+// 用 Column 不是 Row：底部槽里通常是「一条分隔线 + 一行内容」，
+// 竖着排。用 Row 会让分隔线和内容并排，背景只剩右半截。
 func (p *Plugin) drawBottom(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	if !env.Has(pluginapi.SlotShellBottom) {
 		return
@@ -145,11 +185,9 @@ func (p *Plugin) drawBottom(f *flex.Frame, env *pluginapi.Env, drawSlot func(plu
 	if h <= 0 {
 		h = 24
 	}
-	f.Row().FillWidth().Height(h)
-	f.Row().Absolute().Left(0).Bottom(0).Width(env.Bounds.Width).Height(h).
-		Children(func() {
-			drawSlot(pluginapi.SlotShellBottom)
-		})
+	f.Column().FillWidth().Height(h).Background(p.theme.BgBase).Children(func() {
+		drawSlot(pluginapi.SlotShellBottom)
+	})
 }
 
 var (

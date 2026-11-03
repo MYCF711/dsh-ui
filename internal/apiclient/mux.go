@@ -57,6 +57,11 @@ type Mux struct {
 	// Cookies 是 /connect 换来的会话 cookie。WS 与 HTTP 同一套认证语义，
 	// 不带上就是 401（H14 §11.4）。
 	Cookies []*http.Cookie
+	// EpochOf 返回某个 topic 当前 journal 世代（壳从 session.load 的
+	// journalEpoch 拿到）。用回调而不是改 Subscribe 签名：订阅点很多，
+	// 而世代是"壳每帧都可能刷新"的东西，回调能随时取最新值。
+	// nil 或返回 0 = 不知道，按首次订阅处理。
+	EpochOf func(topic string) int64
 }
 
 // NewMux 用和 Client 同一个 base 建流客户端。
@@ -100,6 +105,10 @@ type clientFrame struct {
 	T        string `json:"t"`
 	Topic    string `json:"topic,omitempty"`
 	SinceSeq int    `json:"sinceSeq,omitempty"`
+	// JournalEpoch 是客户端以为的世代（H14）。0 = 首次订阅；带上且对不上，
+	// 宿主会发 session/reset 让客户端丢掉旧水位重建基线。不带的话，
+	// 宿主重启换 journal 之后客户端会拿旧水位静默错位——这是 A 实测的第四层坑。
+	JournalEpoch int64 `json:"journalEpoch,omitempty"`
 }
 
 // Subscribe 订阅一个话题，从 sinceSeq 之后开始收。
@@ -138,7 +147,11 @@ func (m *Mux) Subscribe(ctx context.Context, topic string, sinceSeq int) (<-chan
 	}
 
 	// 订阅帧必须是最先发出去的。
-	sub, _ := json.Marshal(clientFrame{T: "sub", Topic: topic, SinceSeq: sinceSeq})
+	var epoch int64
+	if m.EpochOf != nil {
+		epoch = m.EpochOf(topic)
+	}
+	sub, _ := json.Marshal(clientFrame{T: "sub", Topic: topic, SinceSeq: sinceSeq, JournalEpoch: epoch})
 	if err := conn.Write(ctx, websocket.MessageText, sub); err != nil {
 		conn.CloseNow()
 		return nil, fmt.Errorf("发 sub 失败：%w", err)
@@ -206,6 +219,9 @@ func (m *Mux) readLoop(ctx context.Context, conn *websocket.Conn, topic string, 
 		// 曾经直接 `last = f.Seq`，于是收到一个 error 帧就把水位归零，
 		// 后面的正常事件全部漏掉断号检测（实测：seq 1 → 5 中间缺 2/3/4 却报 0 个 gap）。
 		if f.Seq <= 0 {
+			// session/reset 也走这里：它没有 seq（不代表某个事件），但必须交给
+			// 调用方——否则客户端不知道"你手里的水位作废了，重新 load"，
+			// 会拿旧水位继续订阅，被宿主按 seq>sinceSeq 静默过滤。
 			out <- Event{Kind: f.Type, Seq: 0, Topic: topic, Data: f.Data}
 			continue
 		}

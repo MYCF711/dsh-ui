@@ -105,6 +105,12 @@ type LoadResult struct {
 	Permission string `json:"permission"`
 	// ContentWidth 是宿主知道的会话内容列宽；0 = 不知道（界面自己算）。
 	ContentWidth int `json:"contentWidth"`
+	// JournalEpoch/LastSeq 是**订阅水位基线**（H14）：
+	// 订阅时把 epoch 带上，宿主发现世代不对会发 session/reset；
+	// LastSeq 是这条 journal 现在到哪了，供"首次订阅从哪开始"参考。
+	// 零值 = 宿主没给（老宿主），订阅按首次处理。
+	JournalEpoch int64 `json:"journalEpoch"`
+	LastSeq      int   `json:"lastSeq"`
 }
 
 // APIError 是契约里的 error 对象。

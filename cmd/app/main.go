@@ -102,7 +102,10 @@ type model struct {
 	// 为什么必须独立存：subs 里那份会在切会话时被删掉（为的是重订重放），
 	// 删了水位就没了——实测切回已看过的会话时 since=0，等于从头重放一遍，
 	// 与"按水位续、不整页刷新"的契约相反。
-	seqs       map[string]int
+	seqs map[string]int
+	// epochs 是每会话的 journal 世代（从 session.load 的 journalEpoch 拿）。
+	// 订阅时带上它，宿主换代了就会发 session/reset——不带的话旧水位会静默错位。
+	epochs     map[string]int64
 	streamText string
 	// turnBusy：当前会话有 turn 在跑。发 prompt 置 true，流结束/取消/失败置 false。
 	turnBusy bool
@@ -268,6 +271,10 @@ func (m *model) refreshSession(id string, quiet bool) {
 		m.usageTotal = r.UsageTotal
 		m.contextTokens = r.ContextTokens
 		m.modelName = r.Model
+		// 水位基线：epoch 用来核对世代，lastSeq 是宿主那边已经到哪了。
+		if r.JournalEpoch > 0 {
+			m.epochs[id] = r.JournalEpoch
+		}
 		// permission 是**进程级**的审批策略（不是会话 mode），每次 load 都刷新。
 		m.permission = r.Permission
 		if demoTool && len(m.msgs) > 0 {
@@ -321,6 +328,14 @@ func (m *model) newSession() {
 			return
 		}
 
+		// 订阅时带上 journal 世代（H14）：宿主换代后发 session/reset，界面据重建基线。
+		m.mux.EpochOf = func(topic string) int64 {
+			id := strings.TrimPrefix(topic, "session:")
+			m.mu.Lock()
+			e := m.epochs[id]
+			m.mu.Unlock()
+			return e
+		}
 		m.refreshList()
 
 		m.openSession(id)
@@ -466,6 +481,18 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 					}
 				}
 				continue
+			}
+			if ev.Kind == "session/reset" {
+				// 宿主说"你在旧世代上"：丢掉旧水位，重新 load 拿新基线。
+				// **不清空已有消息**——先把新基线拉回来，界面再整体替换，
+				// 这样用户看到的是"刷新了一下"，而不是"内容突然没了"。
+				log.Printf("mux session/reset session:%s（journal 换代，重建基线）", id)
+				m.mu.Lock()
+				delete(m.seqs, id)
+				delete(m.epochs, id)
+				m.mu.Unlock()
+				m.refreshSession(id, true)
+				break
 			}
 			m.applyEvent(id, ev)
 			// 水位只在**前台**会话上前进：后台会话不消费事件（见 applyEvent），
@@ -1166,6 +1193,7 @@ func main() {
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
 		cache:        map[string]*cachedSession{},
 		seqs:         map[string]int{},
+		epochs:       map[string]int64{},
 		mux:          apiclient.NewMux(*addr),
 		scrollPos:    map[string]float32{},
 		showRightbar: *rightbarOn,

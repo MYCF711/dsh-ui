@@ -1,0 +1,116 @@
+=== RUN   TestFishLogoPathIsOfficialBytes
+--- PASS: TestFishLogoPathIsOfficialBytes (0.00s)
+=== RUN   TestFishViewBox
+--- PASS: TestFishViewBox (0.00s)
+=== RUN   TestParseFishPathCommandCounts
+--- PASS: TestParseFishPathCommandCounts (0.00s)
+=== RUN   TestParseFishPathGeometry
+--- PASS: TestParseFishPathGeometry (0.00s)
+=== RUN   TestParseFishPathRejectsUnknownCommands
+--- PASS: TestParseFishPathRejectsUnknownCommands (0.00s)
+=== RUN   TestFishIcon
+--- PASS: TestFishIcon (0.00s)
+=== RUN   TestHumanRunes
+=== RUN   TestHumanRunes/零
+=== RUN   TestHumanRunes/个位
+=== RUN   TestHumanRunes/三位数不换单位
+=== RUN   TestHumanRunes/整一千换成_k
+=== RUN   TestHumanRunes/千位截断不四舍五入
+=== RUN   TestHumanRunes/999_后面那一位仍是_9_也不进位
+=== RUN   TestHumanRunes/五位数
+=== RUN   TestHumanRunes/百万也走_k（本函数不认_M）
+--- PASS: TestHumanRunes (0.00s)
+    --- PASS: TestHumanRunes/零 (0.00s)
+    --- PASS: TestHumanRunes/个位 (0.00s)
+    --- PASS: TestHumanRunes/三位数不换单位 (0.00s)
+    --- PASS: TestHumanRunes/整一千换成_k (0.00s)
+    --- PASS: TestHumanRunes/千位截断不四舍五入 (0.00s)
+    --- PASS: TestHumanRunes/999_后面那一位仍是_9_也不进位 (0.00s)
+    --- PASS: TestHumanRunes/五位数 (0.00s)
+    --- PASS: TestHumanRunes/百万也走_k（本函数不认_M） (0.00s)
+=== RUN   TestItoa
+=== RUN   TestItoa/零要走特判分支
+=== RUN   TestItoa/个位
+=== RUN   TestItoa/多位
+=== RUN   TestItoa/负数带符号
+=== RUN   TestItoa/负多位数
+--- PASS: TestItoa (0.00s)
+    --- PASS: TestItoa/零要走特判分支 (0.00s)
+    --- PASS: TestItoa/个位 (0.00s)
+    --- PASS: TestItoa/多位 (0.00s)
+    --- PASS: TestItoa/负数带符号 (0.00s)
+    --- PASS: TestItoa/负多位数 (0.00s)
+=== RUN   TestIsKey
+=== RUN   TestIsKey/小写_text
+=== RUN   TestIsKey/大写_text（Shift_之后）
+=== RUN   TestIsKey/只填_Typed
+=== RUN   TestIsKey/两者都没有
+=== RUN   TestIsKey/别的字母
+--- PASS: TestIsKey (0.00s)
+    --- PASS: TestIsKey/小写_text (0.00s)
+    --- PASS: TestIsKey/大写_text（Shift_之后） (0.00s)
+    --- PASS: TestIsKey/只填_Typed (0.00s)
+    --- PASS: TestIsKey/两者都没有 (0.00s)
+    --- PASS: TestIsKey/别的字母 (0.00s)
+=== RUN   TestMin
+--- PASS: TestMin (0.00s)
+=== RUN   TestSummarizeCollapsesWhitespace
+--- PASS: TestSummarizeCollapsesWhitespace (0.00s)
+=== RUN   TestSummarizeTruncates
+--- PASS: TestSummarizeTruncates (0.00s)
+=== RUN   TestSummarizeNonPositiveLimit
+--- PASS: TestSummarizeNonPositiveLimit (0.00s)
+=== RUN   TestRoleKindMapsRoles
+--- PASS: TestRoleKindMapsRoles (0.00s)
+=== RUN   TestStreamedReasoningUsesThinkingBranch
+--- PASS: TestStreamedReasoningUsesThinkingBranch (0.00s)
+=== RUN   TestEmptyStateUsesOfficialHero
+--- PASS: TestEmptyStateUsesOfficialHero (0.00s)
+=== RUN   TestHeroWorkspaceUsesOnlyCurrentSessionCWD
+--- PASS: TestHeroWorkspaceUsesOnlyCurrentSessionCWD (0.00s)
+=== RUN   TestHeroGeometryAtOfficialWindowWidths
+=== RUN   TestHeroGeometryAtOfficialWindowWidths/1182_外框对应主列
+    visual_test.go:139: V1_GEOMETRY 1182 外框对应主列 root={X:0 Y:0 Width:886 Height:700} stack={X:87 Y:314 Width:712 Height:72} headline={X:87 Y:314 Width:712 Height:32} mark={X:321.2 Y:317.49222 Width:34 Height:25.015545} workspaceRow={X:87 Y:358 Width:712 Height:28} workspace={X:107 Y:358 Width:94 Height:28}
+=== RUN   TestHeroGeometryAtOfficialWindowWidths/1920_外框对应主列
+    visual_test.go:139: V1_GEOMETRY 1920 外框对应主列 root={X:0 Y:0 Width:1624 Height:700} stack={X:336 Y:314 Width:952 Height:72} headline={X:336 Y:314 Width:952 Height:32} mark={X:690.2 Y:317.49222 Width:34 Height:25.015545} workspaceRow={X:336 Y:358 Width:952 Height:28} workspace={X:356 Y:358 Width:94 Height:28}
+--- PASS: TestHeroGeometryAtOfficialWindowWidths (0.00s)
+    --- PASS: TestHeroGeometryAtOfficialWindowWidths/1182_外框对应主列 (0.00s)
+    --- PASS: TestHeroGeometryAtOfficialWindowWidths/1920_外框对应主列 (0.00s)
+=== RUN   TestHeroHiddenForRealConversationActivity
+=== RUN   TestHeroHiddenForRealConversationActivity/历史消息
+=== RUN   TestHeroHiddenForRealConversationActivity/流式正文
+=== RUN   TestHeroHiddenForRealConversationActivity/已发送但正文尚未到达
+--- PASS: TestHeroHiddenForRealConversationActivity (0.00s)
+    --- PASS: TestHeroHiddenForRealConversationActivity/历史消息 (0.00s)
+    --- PASS: TestHeroHiddenForRealConversationActivity/流式正文 (0.00s)
+    --- PASS: TestHeroHiddenForRealConversationActivity/已发送但正文尚未到达 (0.00s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dsconversation	0.034s
+=== RUN   TestHostLabel
+=== RUN   TestHostLabel/都空
+=== RUN   TestHostLabel/只有模型
+=== RUN   TestHostLabel/只有权限
+=== RUN   TestHostLabel/都有
+=== RUN   TestHostLabel/空白算空
+=== RUN   TestHostLabel/两边带空白要修掉
+--- PASS: TestHostLabel (0.00s)
+    --- PASS: TestHostLabel/都空 (0.00s)
+    --- PASS: TestHostLabel/只有模型 (0.00s)
+    --- PASS: TestHostLabel/只有权限 (0.00s)
+    --- PASS: TestHostLabel/都有 (0.00s)
+    --- PASS: TestHostLabel/空白算空 (0.00s)
+    --- PASS: TestHostLabel/两边带空白要修掉 (0.00s)
+=== RUN   TestBlankHeaderHidesSessionChrome
+--- PASS: TestBlankHeaderHidesSessionChrome (0.00s)
+=== RUN   TestBlankHeaderOmitsToggleWithoutRightbarSlot
+--- PASS: TestBlankHeaderOmitsToggleWithoutRightbarSlot (0.00s)
+=== RUN   TestActiveHeaderUsesOfficialCrumbTypography
+--- PASS: TestActiveHeaderUsesOfficialCrumbTypography (0.00s)
+=== RUN   TestHeaderGeometryMatchesOfficialBlankActiveAndSessionless
+    visual_test.go:108: V1_GEOMETRY blank root={X:0 Y:0 Width:900 Height:40} body={X:0 Y:0 Width:900 Height:40} titleRow={X:20 Y:10 Width:852 Height:30} corner={X:860 Y:11 Width:28 Height:28}
+    visual_test.go:122: V1_GEOMETRY active root={X:0 Y:0 Width:900 Height:50.5} body={X:0 Y:0 Width:900 Height:50} titleRow={X:20 Y:10 Width:852 Height:30} corner={X:860 Y:11 Width:28 Height:28} divider={X:0 Y:50 Width:900 Height:0.5}
+    visual_test.go:130: V1_GEOMETRY sessionless root={X:0 Y:0 Width:900 Height:10} body={X:0 Y:0 Width:900 Height:10}
+--- PASS: TestHeaderGeometryMatchesOfficialBlankActiveAndSessionless (0.00s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dstopbar	0.034s
+GO_TEST_EXIT=0

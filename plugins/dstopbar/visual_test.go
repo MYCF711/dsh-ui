@@ -82,8 +82,9 @@ func TestActiveHeaderUsesOfficialCrumbTypography(t *testing.T) {
 		Msgs: []apiclient.Message{{Role: "user", Text: "hi"}}, Total: 1,
 	}, true)
 	title := topbarTestText(t, canvas, "真实会话")
-	if title.Style.Size != 14 || title.Bounds.Height != 20 {
-		t.Errorf("官方当前 crumb 应为 14/20，实际 size=%v line=%v", title.Style.Size, title.Bounds.Height)
+	if title.Style.Size != 14 || title.Bounds.Height != 20 || title.Style.Weight != ui.WeightMedium {
+		t.Errorf("官方当前 crumb 应为 14/20/500，实际 size=%v line=%v weight=%v",
+			title.Style.Size, title.Bounds.Height, title.Style.Weight)
 	}
 }
 

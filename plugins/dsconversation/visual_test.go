@@ -53,15 +53,25 @@ func heroTestText(t *testing.T, canvas *ui.Canvas, value string) ui.Text {
 }
 
 func TestEmptyStateUsesOfficialHero(t *testing.T) {
-	canvas, _ := drawHeroTest(t, pluginapi.Snapshot{}, 900)
+	canvas, p := drawHeroTest(t, pluginapi.Snapshot{}, 900)
 
 	headline := heroTestText(t, canvas, "探索未至之境")
-	if headline.Style.Size != 26 || headline.Bounds.Height != 32 {
-		t.Errorf("官方 headline 应为 26/32，实际 size=%v line=%v", headline.Style.Size, headline.Bounds.Height)
+	if headline.Style.Size != 26 || headline.Bounds.Height != 32 || headline.Style.Weight != ui.WeightMedium {
+		t.Errorf("官方 headline 应为 26/32/500，实际 size=%v line=%v weight=%v",
+			headline.Style.Size, headline.Bounds.Height, headline.Style.Weight)
 	}
 	preview := heroTestText(t, canvas, "预览版")
-	if preview.Style.Size != 12 || preview.Bounds.Height != 18 {
-		t.Errorf("官方预览胶囊应为 12/18，实际 size=%v line=%v", preview.Style.Size, preview.Bounds.Height)
+	if preview.Style.Size != 12 || preview.Style.Weight != ui.WeightMedium {
+		t.Errorf("官方预览胶囊应为 12/500，实际 size=%v weight=%v", preview.Style.Size, preview.Style.Weight)
+	}
+	if !preview.Style.Mono {
+		t.Error("官方预览胶囊使用 ds-font-family-code，应走等宽字体")
+	}
+	// Viva 的 mono glyph 框不使用 LineHeight；CSS 的 18px 行高由胶囊内容区表达：
+	// 20（外高）- 2×0.5（描边）- 1（上 padding）= 18。
+	badge := p.heroBoxes.Badge.Rect()
+	if badge.Height != 20 || badge.Height-2*heroBadgeBorder-heroBadgePadTop != 18 {
+		t.Errorf("预览胶囊几何 = %+v，不能表达官方 12/18 与 20px 外高", badge)
 	}
 	if len(canvas.Triangles()) == 0 {
 		t.Error("空态没有矢量品牌鱼标，仍只是文字提示")
@@ -76,7 +86,11 @@ func TestEmptyStateUsesOfficialHero(t *testing.T) {
 func TestHeroWorkspaceUsesOnlyCurrentSessionCWD(t *testing.T) {
 	sessions := []apiclient.Session{{ID: "s1", Title: "blank", Cwd: `D:\\work\\dsh-ui`}}
 	canvas, _ := drawHeroTest(t, pluginapi.Snapshot{Cur: "s1", Sessions: sessions}, 900)
-	heroTestText(t, canvas, "dsh-ui")
+	workspace := heroTestText(t, canvas, "dsh-ui")
+	if workspace.Style.Size != 13 || workspace.Bounds.Height != 20 || workspace.Style.Weight != ui.WeightMedium {
+		t.Errorf("工作区应为 13/20/500，实际 size=%v line=%v weight=%v",
+			workspace.Style.Size, workspace.Bounds.Height, workspace.Style.Weight)
+	}
 
 	canvas, _ = drawHeroTest(t, pluginapi.Snapshot{Sessions: sessions}, 900)
 	for _, text := range canvas.Texts() {

@@ -103,7 +103,7 @@ const (
 //     官方那是个按钮（开工作区选择器），我们没有对应 Action，所以这里画成纯标签。
 //   - `conversation.hero.options` / `agentPreset`：需要真实的模型/预设动作，未实现。
 type heroBoxes struct {
-	Root, Stack, Headline, Mark, TitleGroup, WorkspaceRow, Workspace flex.Box
+	Root, Stack, Headline, Mark, TitleGroup, Badge, WorkspaceRow, Workspace flex.Box
 }
 
 // heroStackWidth 是官方 `--dsh-composer-card-max-width`：
@@ -201,12 +201,16 @@ func workspaceOf(cwd string) string {
 // 形状（999 圆角、1px 上内边距、2px 上外边距、12/18 字号行高）与官方逐项一致。
 func (p *Plugin) drawPreviewBadge(f *flex.Frame) {
 	t := p.theme
-	f.Text(heroBadgeText).
-		FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).Weight(ui.WeightMedium).
-		Color(t.LabelPrimary).
+	// Viva 的 mono 文本按字体 cell 高测量，忽略 Text.LineHeight。用固定 20px
+	// 容器表达官方 CSS：0.5 双边 + 1px 上 padding + 18px 内容行；
+	// 等宽字形在 18px 内容区居中，不把 15px glyph 框误当成 line-height。
+	p.heroBoxes.Badge = f.Row().Height(20).
 		PadSides(heroBadgePadTop, heroBadgePadX, 0, heroBadgePadX).
 		MarginSides(heroBadgeMarginTop, 0, 0, 0).
-		Radius(heroBadgeRadius).
-		Border(heroBadgeBorder, t.Hover).
-		Background(t.BgLayer3)
+		Radius(heroBadgeRadius).Border(heroBadgeBorder, t.Hover).
+		Background(t.BgLayer3).Items(flex.Center).Children(func() {
+		f.Text(heroBadgeText).
+			FontSize(t.Fonts.Caption).Weight(ui.WeightMedium).Mono().
+			Color(t.LabelPrimary)
+	})
 }

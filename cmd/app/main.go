@@ -348,10 +348,16 @@ func (m *model) refreshSession(id string, quiet bool) {
 		//
 		// 规则：新快照**不比手里少**才允许整份替换；少了就合并（保留旧的、
 		// 按 seq 去重并入新的）。这样"刷新"永远不会让屏幕上少东西。
+		before := len(m.msgs)
 		if len(r.Messages) >= len(m.msgs) {
 			m.msgs = r.Messages
 		} else {
 			m.msgs = apiclient.MergeMessages(m.msgs, r.Messages)
+		}
+		if msgsDebug > 0 {
+			msgsDebug--
+			log.Printf("DBG load session:%s 宿主 tail=%d total=%d | 覆盖前 %d 条 → 之后 %d 条",
+				id, len(r.Messages), r.Total, before, len(m.msgs))
 		}
 		m.usage = r.Usage
 		// H1/H4/H5：真宿主给的字段原样带进快照；mockd 不给时是零值，
@@ -989,6 +995,7 @@ const demoWideCode = "超宽代码块验证（这一行 129 个字符，卡片�
 	"上面那行应该能横向滚动，而不是被硬切。"
 
 // streamDebug 只打前几条增量，用来证明"是流出来的、不是重新 load 出来的"。
+var msgsDebug = 0 // -debug 时置为 N：打 N 条 load 诊断（宿主 tail/total 与覆盖前后条数）
 var streamDebug = 3
 
 var (

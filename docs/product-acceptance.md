@@ -20,6 +20,7 @@
 | 10 | **真实审批：允许 → 工具真的执行** | ✅ | `approve 成功 … option=allow_once` → 会话里 `tool(bash) = [exit 0] allow-real-1` |
 | 11 | **真实审批：拒绝 → 工具不执行** | ✅ | `approve 成功 … option=reject_once` → `Error: 用户拒绝了 bash 提示` |
 | 12 | 审批三选项（allow_once/allow_always/reject_once） | ✅ | `tmp/h13-3btn2.png`：`拒绝 / 这个会话里以后都允许 / 允许这一次` |
+| 12b | `allow_always` 在宿主侧生效 | ✅ | `tmp/serve-aw.log`：`早先已选择「以后都允许」，本轮自动放行`；第二轮工具 `[exit 0] always-2` 无审批 |
 | 13 | 审批超时（120s） | ✅ | 复用过期 requestId → `no_such_request（已应答或已超时）` |
 | 14 | **取消 turn** | ✅ | `key 4 handled=true` → `cancel 已发送 id=a0eaa207…`（停止键 ■ / 无审批时 Esc） |
 | 15 | 多会话不串流 | ✅ | **3 会话**（不止 2 个）：`docs/multi-session.md` —— A 界面不含 BETA/GAMMA；`tmp/ms-run-r2/p1-A-concurrent.png` |
@@ -65,5 +66,5 @@
 3. **宿主重启后自愈**：卡在凭据——cookie 存在宿主进程内存里，重启即失效，界面 `-cookie` 只 `SetCookies` 一次、`runSubscription` 没有重新 `/connect` 的路径。要有这条得先让重连能换凭据（跨线）。
 4. ~~**journalEpoch（跨线，未接）**~~ → **已接（2026-11-03 18:46）**：`LoadResult` 收 `journalEpoch/lastSeq`、sub 帧带 epoch、收到 `session/reset` 时丢旧水位重建基线。真机：首次订阅 `epoch=0`（按首次处理）、切回 `epoch=1`（宿主给的世代）。
 5. ~~**宿主 `FrameSub` 不重放 journal**~~ → **已修（2026-11-03 18:52，未提交）**：先重放再 Subscribe，探针实测 `sinceSeq=2 → 收到 seq=3,4,5,…13`。改动在宿主工作区，等 commit 授权。
-6. **审批的 `allow_always` 效果**：按钮与回传都验了（`TestAllowAlwaysGetsItsOwnButton`），但"以后都允许"在宿主侧是否真的记住了，**未验**。
+6. ~~**审批的 `allow_always` 效果**~~ → **已验（2026-11-03 18:56）**：宿主日志 `审批：… 的 bash 早先已选择「以后都允许」，本轮自动放行`，第二轮工具直接执行、没再弹审批。另纠正：宿主 optionId 是**下划线**（`allow_once`/`allow_always`/`reject_once`），连字符只存在于 mockd 假数据里。
 7. **性能里没测到的 10 项**：GPU 显存、帧率、输入延迟、invalidate→重绘耗时、纯滚轮、真模型一轮内存、5 会话内容一致性、宿主整树、高 DPI、258ms 冷启动分解（见 `docs/perf.md` §9）。

@@ -237,7 +237,7 @@ func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Messa
 // 百分比也按整窗解析，结果就是卡片内容一路画到窗口边缘、Ellipsis 没有边界。
 // 唯一可靠的事实是壳保证了侧栏 280，主区再来回扣 56 的内边距/滚动条。
 func (p *Plugin) contentWidth(env *pluginapi.Env) float32 {
-	w := env.Bounds.Width - 280 - 56
+	w := env.MainWidth - 40 // 扣掉列内边距和卡片内边距
 	if w < 200 {
 		w = 200
 	}

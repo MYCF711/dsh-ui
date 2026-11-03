@@ -153,6 +153,9 @@ type Env struct {
 	Canvas *ui.Canvas
 	// Scroll 取某个滚动区的状态。viva 要求"要的时候再取"，所以给的是函数不是指针。
 	Scroll func(id ui.ID) *flex.ScrollState
+	// MainWidth 是主区那一列的内容宽度（壳按 窗口 - 侧栏 - 右栏 算好）。
+	// 插件要按像素定宽时只能用它：槽位里 f.Bounds() 给的是整窗宽（实测 1180）。
+	MainWidth float32
 	// Bounds 是这一帧的整窗尺寸。AfterDraw 拿到的 canvas 没有尺寸接口，
 	// 要在覆画时算裁剪区就用这个。
 	Bounds ui.Rect

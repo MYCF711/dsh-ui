@@ -467,6 +467,17 @@ func newConfig(m *model) app.Config {
 		}
 		m.mu.Unlock()
 
+		// 主区宽度：壳算好交给插件，插件不该猜（侧栏 280 + 右栏 300 只有壳知道）。
+		const rightbarW = 300.0
+		hasRightbar := m.kernel.Has(pluginapi.SlotRightbar)
+		mainWidth := bounds.Width - m.side.Width()
+		if hasRightbar {
+			mainWidth -= rightbarW
+		}
+		if mainWidth < 320 {
+			mainWidth = 320
+		}
+
 		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
 		approvalView := (*pluginapi.Approval)(nil)
 		if approval != nil {
@@ -482,8 +493,9 @@ func newConfig(m *model) app.Config {
 			Act:    m.actions,
 			Tree:   &tree,
 			Feat:   home,
-			Canvas: canvas,
-			Bounds: bounds,
+			Canvas:    canvas,
+			Bounds:    bounds,
+			MainWidth: mainWidth,
 			// viva 要求滚动状态"要的时候再取"，所以传函数而不是指针。
 			Scroll: m.view.ScrollState,
 		}
@@ -510,14 +522,7 @@ func newConfig(m *model) app.Config {
 				// 宽度要钉死：插件里用百分比定宽时，父级宽度必须是确定的，
 				// 否则 % 会按整窗解析，内容被推到窗口外（踩过：气泡跑到右上角）。
 				// 右栏只在有插件挂上来时才占位置（官方也是可以收起的）。
-				const rightbarW = 300.0
-				mainW := bounds.Width - m.side.Width()
-				if m.kernel.Has(pluginapi.SlotRightbar) {
-					mainW -= rightbarW
-				}
-				if mainW < 320 {
-					mainW = 320
-				}
+				mainW := mainWidth
 				f.Column().Width(mainW).Grow(1).FillHeight().Pad(12).Gap(8).Children(func() {
 					drawSlot(f, m.kernel, pluginapi.SlotMainHeader, env)
 					drawSlot(f, m.kernel, pluginapi.SlotMainBody, env)
@@ -537,7 +542,7 @@ func newConfig(m *model) app.Config {
 				})
 
 
-				if m.kernel.Has(pluginapi.SlotRightbar) {
+				if hasRightbar {
 					f.Column().Width(rightbarW).FillHeight().Pad(12).Gap(8).
 						Background(m.theme.SidebarFill).Children(func() {
 						drawSlot(f, m.kernel, pluginapi.SlotRightbar, env)

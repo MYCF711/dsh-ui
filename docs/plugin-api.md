@@ -86,7 +86,9 @@ var (
 | `main.body` | 主区主体 | 待移植（`ds-conversation`：消息流 + 工具卡） |
 | `main.composer` | 主区底部 | 待移植（`ds-composer`：输入框 + 发送） |
 | `rightbar` | 右栏 | 待移植（任务板 / 轨迹） |
-| `statusbar` | 窗口底部 | 待移植（轮次 / 步数 / token） |
+| `statusbar` | 窗口底部 | `ds-statusbar`（轮次 / 步数 / 条数 / 就绪） |
+| `main.header` | 主区顶部 | `ds-topbar`（标题 / 模式 / 共 N 条） |
+| `rightbar` | 右侧栏（无插件时不占位） | `ds-rightbar`（工具调用时间线） |
 
 同一个槽里按 `Painter.Order` 从小到大画（小的贴上）。
 
@@ -140,7 +142,10 @@ var (
 2. **插件初始化必须发生在 `newConfig(m)` 之前**。把装配代码插错位置（插到了
    `refreshSession` 里）会导致 `m.side == nil`，`newConfig` 里解引用直接 panic，
    窗口都起不来——现象是「进程秒退、日志里一串 nil pointer」。
-3. **`HoverBackground` 只在悬停时着色**，非悬停的行是透明的（这是对的）。
+3. **槽位里 `f.Bounds().Width` 与百分比都按整窗解析**（实测 1180）。要按像素定宽只能用
+   `env.MainWidth`（壳算好的主区宽度 = 窗口 − 侧栏 − 右栏）。踩过两次：气泡被推到窗口右上角、
+   工具卡的长命令画到右栏上。
+4. **`HoverBackground` 只在悬停时着色**，非悬停的行是透明的（这是对的）。
    排查「行不显示」时不要拿它当可见性证据，先用 `Background` 验一遍布局。
 
 4. **多个代理并行写同一个库会互相踩**：两个代理同时改 `cmd/mockd` 的同一批文件时，

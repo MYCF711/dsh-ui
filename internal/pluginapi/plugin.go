@@ -103,8 +103,15 @@ const (
 	SlotMainHeader    Slot = "main.header"
 	SlotMainBody      Slot = "main.body"
 	SlotMainComposer  Slot = "main.composer"
-	SlotRightbar      Slot = "rightbar"
-	SlotStatusbar     Slot = "statusbar"
+	// ── 框架层（L3 ds-shell 提供）──
+	// 这三个是官方的 shell.* 槽：跨三列的整行、左上角座、覆盖整个框架的浮层。
+	SlotShellRoot    Slot = "shell.root"
+	SlotShellLeading Slot = "shell.leading"
+	SlotShellBottom  Slot = "shell.bottom"
+	SlotShellOverlay Slot = "shell.overlay"
+
+	SlotRightbar  Slot = "rightbar"
+	SlotStatusbar Slot = "statusbar"
 )
 
 // Painter 是一块可挂载的绘制单元。
@@ -124,6 +131,12 @@ type Painter struct {
 	// 为什么需要它：viva 的绘制顺序不受调用方控制，在 Draw 里画一条线会被
 	// 后面的节点覆盖（踩过）。所以分两个阶段：先布局（Draw），再覆画（AfterDraw）。
 	AfterDraw func(canvas *ui.Canvas, env *Env)
+	// Children 让一个槽位在画完自己之后，再把 f 交给下一层槽位。
+	//
+	// 这就是"高塔"的做法：壳只画 root 一个槽，框架插件在 root 里切出
+	// shell.leading / serveral 个列 / shell.bottom，再把 f 交给
+	// sidebar.* / main.* / rightbar。插件不需要知道自己在第几层。
+	Children func(f *flex.Frame, env *Env, drawSlot func(Slot))
 }
 
 // Primitives 是基础组件的画法，由根本依赖插件（ds-core）提供。
@@ -163,6 +176,9 @@ type Env struct {
 	Canvas *ui.Canvas
 	// Scroll 取某个滚动区的状态。viva 要求"要的时候再取"，所以给的是函数不是指针。
 	Scroll func(id ui.ID) *flex.ScrollState
+	// Has 判断某个槽位有没有插件挂东西。框架插件靠它决定"这一列画不画"——
+	// 没有侧栏插件时不该留一条空栏。
+	Has func(Slot) bool
 	// MainWidth 是主区那一列的内容宽度（壳按 窗口 - 侧栏 - 右栏 算好）。
 	// 插件要按像素定宽时只能用它：槽位里 f.Bounds() 给的是整窗宽（实测 1180）。
 	MainWidth float32

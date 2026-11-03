@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -215,6 +216,30 @@ func (k *Kernel) Painters(slot pluginapi.Slot) []pluginapi.Painter {
 // AllPainters 返回全部挂载（不分槽位），壳在布局结束后按序跑它们的 AfterDraw。
 func (k *Kernel) AllPainters() []pluginapi.Painter {
 	return append([]pluginapi.Painter(nil), k.painters...)
+}
+
+// DrawSlot 画一个槽位，并递归它声明的子槽位。
+//
+// 深度上限是防御性的：插件写错成自引用（槽 A 的 Children 又画槽 A）会无限递归，
+// 这里直接截断——宁可少画一层，也不要把窗口卡死。
+func (k *Kernel) DrawSlot(f *flex.Frame, slot pluginapi.Slot, env *pluginapi.Env) {
+	k.drawSlot(f, slot, env, 0)
+}
+
+func (k *Kernel) drawSlot(f *flex.Frame, slot pluginapi.Slot, env *pluginapi.Env, depth int) {
+	if depth > 8 {
+		return
+	}
+	for _, p := range k.Painters(slot) {
+		if p.Draw != nil {
+			p.Draw(f, env)
+		}
+		if p.Children != nil {
+			p.Children(f, env, func(next pluginapi.Slot) {
+				k.drawSlot(f, next, env, depth+1)
+			})
+		}
+	}
 }
 
 // HandleKey 按装配顺序把按键交给插件，第一个处理掉的赢。

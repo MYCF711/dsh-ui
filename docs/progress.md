@@ -133,3 +133,5 @@
 | 2026-11-03 14:06 | **左栏底部状态**（`sidebar.footer` 这个常量终于有人用了）：`193 个会话` + 壳给的提示，一行 22px。壳那边第一次真的 `drawSlot(SlotSidebarFooter)` | `tmp/footer-crop.png` |
 | 2026-11-03 14:09 | **会话内搜索**（Ctrl+F）：只显示命中的消息（文本/工具名/摘要，大小写不敏感），带命中数，Esc 先关搜索再拒审批。**不做"上下跳转"**——过滤之后命中的都在列表里，跳转是"不过滤"才需要的东西，少一个状态就少一处和滚动位置打架的地方。截图：搜 `mockd` → `5 条`（3 个思考块 + 1 张 bash 卡） | `tmp/search.png`；`-search` 可直接带词启动 |
 | 2026-11-03 14:16 | **照官方源码改样子（第一批）**：从 `dsh-client-ui-*` 的打包 CSS 里抠出真值——`.action` 是 **28×28、radius 999** 的圆形图标按钮、`.row` 是 **radius sm**、`.bubble` 是 **radius xl + content-font 14/22**、`.chip` 用 `state-business-primary`；改了三处：① 侧栏会话行改成**单行**（标题左 + 相对时间右，30px）② 侧栏头部改**圆形「+」**③ 输入区改成**一整个圆角面板**，发送是面板右下角的圆形「↑」 | `tmp/look1.png` |
+| 2026-11-03 14:33 | **L3 框架插件 `ds-shell` 落地**：三栏几何从 `cmd/app` 搬进插件，壳里只剩一句 `drawSlot(SlotShellRoot)`。契约加 `Painter.Children` + `Env.Has`，`uikernel.DrawSlot` 递归画槽位树（深度上限 8 防自引用） | 日志 `插件 [ds-core ds-shell ds-sidebar …]` |
+| 2026-11-03 14:33 | 踩坑两个：① 壳里的 `drawSlot` 还留着只有 `p.Draw` 的旧实现，`Children` 永远不被调用 → **窗口全黑**（连底色都没有），查了三轮才定位；② `draw` 建了一个填满的 Row 之后，`children` 里又包了一层 Column/Row，剩余高度被吃掉 | 现在 `drawSlot` → `kernel.DrawSlot`，壳不再自己遍历 |

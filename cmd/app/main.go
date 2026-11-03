@@ -23,6 +23,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsrightbar"
+	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
@@ -469,10 +470,12 @@ var (
 //
 // 槽位空着就什么都不画——壳不需要知道哪个槽有人挂，也就不会因为少装一个
 // 插件而画出一块空白边框。
+// drawSlot 画一个槽位。
+//
+// 壳里只剩这一句：槽位树（谁在谁里面）由插件自己声明（Painter.Children），
+// 壳不知道有几层、也不知道哪一层是什么部件——这就是「高塔」。
 func drawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env) {
-	for _, p := range k.Painters(slot) {
-		p.Draw(f, env)
-	}
+	k.DrawSlot(f, slot, env)
 }
 
 func newConfig(m *model) app.Config {
@@ -548,71 +551,11 @@ func newConfig(m *model) app.Config {
 			// viva 要求滚动状态"要的时候再取"，所以传函数而不是指针。
 			Scroll: m.view.ScrollState,
 		}
+		env.Has = func(slot pluginapi.Slot) bool { return m.kernel.Has(slot) }
 
 		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
-			f.Column().Fill().Children(func() {
-				// 主体用 Grow(1) 而不是 Fill：Fill 会把状态栏那 24px 挤成 0。
-				f.Row().FillWidth().Grow(1).Children(func() {
-
-					// ── 左栏：会话列表（插件 ds-sidebar 挂上来的）──
-					// 壳只给列宽和底色。分组、排序、折叠、点击行为全在 plugins/dssidebar 里，
-					// 这就是「一个部件一个插件」：换侧栏不用动壳。
-					f.Column().Width(m.side.Width()).FillHeight().Pad(12).Gap(8).
-						Background(m.theme.SidebarFill).Children(func() {
-						drawSlot(f, m.kernel, pluginapi.SlotSidebarHeader, env)
-						m.prims.Divider(f)
-						f.Column().Grow(1).MinHeight(120).Children(func() {
-							drawSlot(f, m.kernel, pluginapi.SlotSidebarList, env)
-						})
-						if m.kernel.Has(pluginapi.SlotSidebarFooter) {
-							m.prims.Divider(f)
-							drawSlot(f, m.kernel, pluginapi.SlotSidebarFooter, env)
-						}
-					})
-
-					// ── 右栏：主区的每一块都是插件挂上来的 ──
-					// 头部 / 消息流 / 输入区各占一个槽；槽空着就整块不出现。
-					// 宽度要钉死：插件里用百分比定宽时，父级宽度必须是确定的，
-					// 否则 % 会按整窗解析，内容被推到窗口外（踩过：气泡跑到右上角）。
-					// 右栏只在有插件挂上来时才占位置（官方也是可以收起的）。
-					mainW := mainWidth
-					f.Column().Width(mainW).Grow(1).FillHeight().Pad(12).Gap(8).Children(func() {
-						drawSlot(f, m.kernel, pluginapi.SlotMainHeader, env)
-						drawSlot(f, m.kernel, pluginapi.SlotMainBody, env)
-						// 输入区：插件没到位时退回壳自带的那一行，保证随时能打字。
-						if m.kernel.Has(pluginapi.SlotMainComposer) {
-							drawSlot(f, m.kernel, pluginapi.SlotMainComposer, env)
-						} else {
-							f.Row().Gap(8).Items(flex.Center).Children(func() {
-								if f.Field(&m.draft, draftID, "输入", "说点什么…（Enter 发送）").Grow(1).Submitted() {
-									m.send()
-								}
-								if f.Button(btnSend, "发送").Clicked() {
-									m.send()
-								}
-							})
-						}
-					})
-
-					if hasRightbar {
-						f.Column().Width(rightbarW).FillHeight().Pad(12).Gap(8).
-							Background(m.theme.SidebarFill).Children(func() {
-							drawSlot(f, m.kernel, pluginapi.SlotRightbar, env)
-						})
-					}
-				})
-
-				// 底部状态栏分两步：先用一个 24px 的空行把位置占住（让主体和侧栏都提前让开），
-				// 再把状态栏绝对定位钉在窗口底边画在上面。
-				// 只绝对定位不占位的话，主体和侧栏会一直画到窗口底边、被状态栏压住（踩过）。
-				if m.kernel.Has(pluginapi.SlotStatusbar) {
-					f.Row().FillWidth().Height(24)
-					f.Row().Absolute().Left(0).Bottom(0).Width(bounds.Width).Height(24).
-						Children(func() {
-							drawSlot(f, m.kernel, pluginapi.SlotStatusbar, env)
-						})
-				}
-			})
+			// 壳只画一个槽：三栏怎么切、底栏多高、右栏占多少，全在 plugins/dsshell 里。
+			drawSlot(f, m.kernel, pluginapi.SlotShellRoot, env)
 		})
 
 		// 布局已定：先恢复待恢复的滚动位置，再跑插件的 AfterDraw
@@ -726,8 +669,9 @@ func main() {
 	m.side = &dssidebar.Plugin{CollapseAll: *collapseAll}
 	m.kernel = uikernel.New("dsh-ui")
 	if err := m.kernel.Load(
-		&dscore.Plugin{Dark: true}, // 根本依赖插件：令牌 + 基础组件
-		m.side,                     // 左栏会话列表
+		&dscore.Plugin{Dark: true}, // L2 根本依赖插件：令牌 + 基础组件
+		&dsshell.Plugin{},          // L3 框架：三栏几何 + 底栏整行
+		m.side,                     // L4 左栏会话列表
 		&dsconversation.Plugin{
 			ExpandAllThinking: *expandThink,
 			SearchOpen:        *searchAtStart != "",

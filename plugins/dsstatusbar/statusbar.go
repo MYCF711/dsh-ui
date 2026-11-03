@@ -44,7 +44,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 // Panels 实现 pluginapi.Panels。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
-		{ID: "bar", Slot: pluginapi.SlotStatusbar, Order: 10, Draw: p.draw},
+		{ID: "bar", Slot: pluginapi.SlotShellBottom, Order: 10, Draw: p.draw},
 	}
 }
 

@@ -573,8 +573,20 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 							m.applyEvent(id, apiclient.Event{Kind: f.Type, Seq: f.Seq, Topic: "session:" + id, Data: f.Data})
 						})
 						if err != nil {
-							// 409 stale_epoch 之类：补不回来就别硬补，记下来（退回 load 也要用户看得见）。
-							log.Printf("history 补洞失败 session:%s [%d,%d]: %v（缺口保留，不整页刷新）", id, from, to, err)
+							log.Printf("history 补洞失败 session:%s [%d,%d]: %v", id, from, to, err)
+							// 409 stale_epoch = journal 换代了，旧水位没意义，**这一条
+							// 补不回来**（宿主提示原文就是「重新 load 拿 journalEpoch/
+							// lastSeq」）。这时候唯一正确的动作是重建基线：
+							// 丢掉水位 + 重新 load。早先只打一行日志就过去了，
+							// 于是界面会一直拿着一个作废的水位继续订阅。
+							if strings.Contains(err.Error(), "stale_epoch") {
+								log.Printf("journal 换代（stale_epoch）session:%s，重建基线", id)
+								m.mu.Lock()
+								delete(m.seqs, id)
+								delete(m.epochs, id)
+								m.mu.Unlock()
+								m.refreshSession(id, true)
+							}
 						} else {
 							log.Printf("history 补洞完成 session:%s 补回 %d 帧", id, n)
 						}

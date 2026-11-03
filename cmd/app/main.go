@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -92,11 +93,14 @@ type model struct {
 	mdWidth []float32 // 上次 Layout 用的宽度
 	mdH     []float32 // 上次 Layout 的高度：文本和宽度都没变就不重新排版
 
-	// 流式：当前订阅的取消函数 + 正在拼接的助手文本（delta 累积）
+	// 流式：每个会话一条独立订阅（H14：一个会话一条 WS 连接）。
+	// **切会话不退订**：后台会话的连接照收，只是不前台渲染。
 	mux        *apiclient.Mux
-	subCancel  context.CancelFunc
+	subs       map[string]*muxSub
 	streamText string
-	lastSeq    int
+	// lastSeq 是**当前会话**已收到的最大 seq。per-session 的水位在 muxSub.lastSeq，
+	// 这里保留一份是为了"打开会话时给 since"和审批帧用，不要拿它当全局水位。
+	lastSeq int
 	// stream 归约当前这一回合的流式块（text / reasoning 交错到达）。
 	// 为什么交给 apiclient：事件名与 content 块的形状是**线上契约**，
 	// 归约规则（同 seq 更新、思考先于正文）也要在能被单测的地方。
@@ -185,6 +189,13 @@ func (m *model) openSession(id string) {
 	m.mu.Lock()
 	m.cur = id
 	m.pendingScroll = id
+	// 水位跟着会话走。不复位就会拿上一个会话的 seq 去判连续性：
+	// 切到 B 时 lastSeq 还是 A 的，B 的第一条事件要么被当成"断号"、
+	// 要么被 `ev.Seq > lastSeq` 直接丢掉——这是"多会话串流"的真正成因。
+	m.lastSeq = m.lastSeqOfLocked(id)
+	// 待审批也属于具体会话：切走时清掉，绝不能在 B 的界面上批准 A 的工具。
+	// （代价：切回来要等宿主重推该请求；宿主 120s 无应答会自己拒，不会永远挂着。）
+	m.approval = nil
 	hit := false
 	if cs, ok := m.cache[id]; ok {
 		m.msgs = cs.msgs
@@ -332,34 +343,107 @@ func (m *model) applyPendingScroll() {
 	}
 }
 
-// subscribe 订阅某个会话的流；切换会话时先取消旧订阅。
+// subscribe 给**每个会话**建一条独立订阅（H14：一个会话一条 WS 连接）。
+//
+// 三条纪律，都是踩出来的：
+//
+//  1. **切会话不退订**。以前 `subscribe` 一上来就 cancel 旧 ctx，等于切走就把后台
+//     会话的流掐了——模型还在跑、事件全丢，切回来只能整页重载。现在按会话保存订阅，
+//     切走只是不再"前台渲染"，连接照收、seq 照记。
+//  2. **水位 per-session**。`lastSeq` 以前是全局字段：切到 B 之后还带着 A 的水位，
+//     断号检测立刻错乱（甚至把 B 的事件当成 A 的续号）。现在水位挂在会话上。
+//  3. **断号只重订、不整页刷新**（宿主 §11.6）。整页 load 会闪、会丢滚动位置；
+//     正确做法是带着 lastSeq 重新 sub，宿主从水位之后继续推。
 func (m *model) subscribe(id string) {
+	if id == "" {
+		return
+	}
 	m.mu.Lock()
-	if m.subCancel != nil {
-		m.subCancel()
-		m.subCancel = nil
+	if sub, ok := m.subs[id]; ok && sub.cancel != nil {
+		m.mu.Unlock()
+		return // 已经在订了
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	m.subCancel = cancel
-	since := m.lastSeq
+	sub := &muxSub{cancel: cancel, lastSeq: m.lastSeqOfLocked(id)}
+	if m.subs == nil {
+		m.subs = map[string]*muxSub{}
+	}
+	m.subs[id] = sub
+	since := sub.lastSeq
 	m.mu.Unlock()
 
-	go func() {
+	go m.runSubscription(ctx, id, since)
+}
+
+// muxSub 是一个会话的订阅状态。
+type muxSub struct {
+	cancel  context.CancelFunc
+	lastSeq int
+}
+
+// runSubscription 跑一条会话的流，断了就带水位重连。
+//
+// 重连不做退避上限之外的花活：1s→2s→4s→…封顶 30s，ctx 取消就退出。
+// 目的只有一个——**别让用户在切回来时才发现流早就断了**。
+func (m *model) runSubscription(ctx context.Context, id string, since int) {
+	backoff := time.Second
+	for {
+		if ctx.Err() != nil {
+			return
+		}
 		ch, err := m.mux.Subscribe(ctx, "session:"+id, since)
 		if err != nil {
-			log.Printf("mux 订阅失败（退回 session.load）: %v", err)
-			return // 流不可用不致命：界面仍能靠 session.load 工作
+			log.Printf("mux 订阅失败（%v），%s 后重试 session:%s", err, backoff, id)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if backoff < 30*time.Second {
+				backoff *= 2
+			}
+			continue
 		}
+		backoff = time.Second
 		log.Printf("mux 已订阅 session:%s since=%d", id, since)
+
 		for ev := range ch {
 			if ev.Kind == "gap" {
-				// 断号：按契约去补这一段，绝不整体刷新
-				m.refreshSession(id, true)
-				continue
+				// 断号：**不整页刷新**。记下水位，跳出内层循环让外层带水位重订；
+				// 宿主从 lastSeq 之后继续推，缺的那段自然补齐。
+				if ev.Gap != nil {
+					log.Printf("mux 断号 session:%s [%d,%d]，带水位重订（不整页刷新）",
+						id, ev.Gap.FromSeq, ev.Gap.ToSeq)
+				}
+				m.mu.Lock()
+				if sub := m.subs[id]; sub != nil {
+					since = sub.lastSeq
+				}
+				m.mu.Unlock()
+				break
 			}
 			m.applyEvent(id, ev)
+			m.mu.Lock()
+			if sub := m.subs[id]; sub != nil && ev.Seq > sub.lastSeq {
+				sub.lastSeq = ev.Seq
+			}
+			m.mu.Unlock()
+			since = ev.Seq
 		}
-	}()
+		// channel 关闭 = 连接断了：带水位重连，而不是退回"下次点开再 load"。
+		if ctx.Err() != nil {
+			return
+		}
+		log.Printf("mux 连接断开 session:%s，带水位 %d 重连", id, since)
+	}
+}
+
+// lastSeqOfLocked 取某会话已收到的最大 seq（没有就是 0）。
+func (m *model) lastSeqOfLocked(id string) int {
+	if sub := m.subs[id]; sub != nil {
+		return sub.lastSeq
+	}
+	return 0
 }
 
 // applyEvent 把一个 ev 帧吃进 model：增量攒进流状态，按 seq 落成消息。
@@ -368,7 +452,97 @@ func (m *model) subscribe(id string) {
 // （`assistant/message` 带 `content` 块，思考块 type=reasoning），
 // 只读 delta 就等于整条流一个字都进不来。分类规则在 apiclient.Chunks 里，
 // 它认识 delta / text / content 块三种形状，并且**不翻译事件名**。
+// decide 把一个审批决定原样回传宿主。
+//
+// 三种失败都要让用户看见，不许静默：
+//   - 没有 RequestID（帧外来源）→ 直接拒绝，不能编一个 id 发过去；
+//   - 宿主没给这个 kind 的选项 → 报"宿主没给这个选项"，不退回写死的 optionId；
+//   - 网络/HTTP 失败 → 气泡留着、状态栏报错，可以再点。
+//
+// 成功才把气泡收掉：**本地气泡消失不等于已批准**。
+func (m *model) decide(kind string) {
+	m.mu.Lock()
+	req := m.approval
+	m.mu.Unlock()
+	if req == nil {
+		return
+	}
+	if req.RequestID == "" {
+		m.setStatus("审批失败：这条待审批没有 requestId（不是真宿主发来的帧）")
+		return
+	}
+	optID := ""
+	for _, o := range req.Options {
+		if o.Kind == kind {
+			optID = o.OptionID
+			break
+		}
+	}
+	if optID == "" {
+		m.setStatus("审批失败：宿主没给 " + kind + " 这个选项")
+		return
+	}
+	label := map[string]string{"allow_once": "已允许", "allow_always": "本会话已允许", "reject_once": "已拒绝"}[kind]
+	if label == "" {
+		label = "已" + kind
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := m.cli.Approve(ctx, req.RequestID, optID); err != nil {
+			log.Printf("approve 失败 requestId=%s option=%s: %v", req.RequestID, optID, err)
+			m.setStatus("审批没送达：" + err.Error())
+			return
+		}
+		log.Printf("approve 成功 requestId=%s option=%s", req.RequestID, optID)
+		m.mu.Lock()
+		// 只收掉**同一条**：期间可能已经来了新的审批请求。
+		if m.approval != nil && m.approval.RequestID == req.RequestID {
+			m.approval = nil
+		}
+		m.mu.Unlock()
+		m.inv.Invalidate()
+		m.setStatus(label)
+	}()
+}
+
+// maxInt 只给 seq 比较用（stdlib 没 generic max，为一行引入泛型不值）。
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func (m *model) applyEvent(id string, ev apiclient.Event) {
+	// 审批帧不是流事件，不能进 stream.Apply（那会把 tool-call 之类混进正文）。
+	// 它只对**当前会话**有意义：后台会话的审批等切回去再显示，
+	// 否则用户会在 A 的界面上批准 B 的工具——线上事故级别的错误。
+	if ev.Kind == "approval/request" {
+		req, err := apiclient.ParseApprovalRequest(ev.Data)
+		if err != nil {
+			log.Printf("审批帧解析失败（忽略）：%v", err)
+			return
+		}
+		m.mu.Lock()
+		isCur := id == m.cur
+		if isCur {
+			m.approval = &approvalReq{
+				RequestID: req.RequestID,
+				Tool:      req.Tool(),
+				Cmd:       req.Command(),
+				Options:   req.Options,
+			}
+			m.lastSeq = maxInt(m.lastSeq, ev.Seq)
+		}
+		m.mu.Unlock()
+		if isCur {
+			log.Printf("待审批 requestId=%s tool=%s options=%d", req.RequestID, req.Tool(), len(req.Options))
+			m.inv.Invalidate()
+		}
+		return
+	}
+
 	m.mu.Lock()
 	if ev.Seq > m.lastSeq {
 		m.lastSeq = ev.Seq
@@ -465,9 +639,14 @@ func (m *model) sendText(text string) {
 
 // approvalReq 是一条待审批的工具调用。
 type approvalReq struct {
-	Tool   string
-	Cmd    string // 完整命令（不截断——用户要看的就是这个）
-	Reason string // 模型自述，界面必须标注"不可信"
+	// RequestID 是宿主给的请求标识，回传 session.approve 时必须**原样**带上。
+	// 空串表示这条待审批不是从真实帧来的（老的 demo 路径），此时按钮要报错而不是假装成功。
+	RequestID string
+	Tool      string
+	Cmd       string // 完整命令（不截断——用户要看的就是这个）
+	Reason    string // 模型自述，界面必须标注"不可信"
+	// Options 是宿主给的可选项，**原样**保留：不自己造 optionId，也不改名字。
+	Options []apiclient.ApprovalOption
 }
 
 // estimateMsgHeight 估算一条消息的高度。系数 0.62 来自 docs/virt.md 的实测反推
@@ -592,6 +771,10 @@ func newConfig(m *model) app.Config {
 		approvalView := (*pluginapi.Approval)(nil)
 		if approval != nil {
 			approvalView = &pluginapi.Approval{Tool: approval.Tool, Cmd: approval.Cmd, Reason: approval.Reason}
+		}
+		// 调试胶水（3 行）：-demo-approval 时用假审批截图；默认返回 nil，正式路径不看它。
+		if approvalView == nil {
+			approvalView = demoApprovalView()
 		}
 		env := &pluginapi.Env{
 			Theme: m.theme,
@@ -769,6 +952,7 @@ func main() {
 	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	prompt := flag.String("prompt", "", "调试：-smoke 时发这条文本（默认 smoke-<时间>）；验工具卡/审批用")
+	cookie := flag.String("cookie", "", "调试：直接用这条会话 cookie（形如 dshd_session=…），跳过 /connect。token 一次性时用来与 curl 共用同一个宿主")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
 	title := flag.String("title", "dsh-ui", "窗口标题（并行跑多个实例时用来区分）")
 	keysSeq := flag.String("keys", "", "调试：启动后依次注入按键（down,up,home,end,esc），走的是插件的 HandleKey，用来验证键盘路由")
@@ -809,7 +993,18 @@ func main() {
 	// 看日志完全像认证失败，实际只是顺序错了。
 	//
 	// 真宿主（dshd serve）要求 cookie；mockd 不需要，所以只在给了 -token 时做。
-	if *token != "" {
+	if *cookie != "" {
+		// 调试路径：token 是一次性的，先 curl /connect 换好 cookie 再传进来，
+		// 这样界面与 curl 能同时打同一个宿主（多会话/审批要两路并发验证）。
+		name, value, ok := strings.Cut(*cookie, "=")
+		if !ok || name == "" || value == "" {
+			log.Fatalf("-cookie 要写成 name=value，收到 %q", *cookie)
+		}
+		cks := []*http.Cookie{{Name: name, Value: value, Path: "/"}}
+		m.cli.SetCookies(cks)
+		m.mux.Cookies = cks
+		log.Printf("已注入会话 cookie（%s）", name)
+	} else if *token != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		err := m.cli.Connect(ctx, *token)
 		cancel()
@@ -879,21 +1074,11 @@ func main() {
 				m.setStatus("右栏：收起")
 			}
 		},
-		// 审批：宿主侧真正的「批准/拒绝」接口还没进契约（见 DSH-GO/AGENTS.md §12），
-		// 这里只把本地气泡收掉并给一句状态——以前内联版本就是这么做的。
-		// 注意：**不能**留 nil，否则插件里判 nil 静默跳过，按钮点了没反应。
-		Allow: func() {
-			m.mu.Lock()
-			m.approval = nil
-			m.mu.Unlock()
-			m.setStatus("已允许")
-		},
-		Deny: func() {
-			m.mu.Lock()
-			m.approval = nil
-			m.mu.Unlock()
-			m.setStatus("已拒绝")
-		},
+		// 审批：真调 session.approve，把宿主的 requestId 与它自己的 optionId 原样回传。
+		// **只有宿主 200 且 accepted 才收气泡**——本地收掉不等于批准了（宿主 §11.7）。
+		// 失败时气泡留着、状态栏报错，用户可以再点一次。
+		Allow:    func() { m.decide("allow_once") },
+		Deny:     func() { m.decide("reject_once") },
 		SetDraft: func(text string) { m.draft.SetText(text) },
 		Retry:    m.retryLast,
 	}

@@ -181,6 +181,15 @@ func (c *Client) Cookies() []*http.Cookie {
 	return c.cookies
 }
 
+// SetCookies 直接注入会话 cookie，跳过 /connect。
+//
+// 为什么需要：launch token 是**一次性**的，所以"界面 + curl 同时验证同一个宿主"
+// 做不到——谁先 connect 谁把 token 用掉。调试时先用 curl 换一次 cookie，
+// 再把同一个值给界面和后续 curl，两边就能并存。
+func (c *Client) SetCookies(cks []*http.Cookie) {
+	c.cookies = cks
+}
+
 // envelope 是约定的响应信封（见 testdata/api.snapshot.json）。
 //
 // Error 用 RawMessage 而不是 *APIError：真宿主的错误体是字符串

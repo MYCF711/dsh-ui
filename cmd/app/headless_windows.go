@@ -32,6 +32,8 @@ var (
 	procSetWindowPos       = user32.NewProc("SetWindowPos")
 	procPrintWindow        = user32.NewProc("PrintWindow")
 	procGetWindowRect      = user32.NewProc("GetWindowRect")
+	procIsIconic           = user32.NewProc("IsIconic")
+	procShowWindow         = user32.NewProc("ShowWindow")
 	procGetDC              = user32.NewProc("GetDC")
 	procReleaseDC          = user32.NewProc("ReleaseDC")
 	procGetWindowDC        = user32.NewProc("GetWindowDC")
@@ -73,13 +75,27 @@ func captureWindow(title, path string, wait time.Duration) bool {
 		return false
 	}
 
+	// **最小化的窗口抓不出东西**：最小化时 GetWindowRect 返回的是 160×28，
+	// PrintWindow 只画得出标题栏，存下来就是一张 895 字节的废图。
+	// 实测根因（docs/perf.md）：4 张历史废图字节完全相同，用
+	// `Start-Process -WindowStyle Minimized` 或等待期间 ShowWindow(hwnd,6)
+	// 都能复现同一 md5。所以先 IsIconic 判一下，是就还原再抓。
+	if iconic, _, _ := procIsIconic.Call(uintptr(hwnd)); iconic != 0 {
+		log.Print("shot: 窗口是最小化状态，先还原再抓")
+		procShowWindow.Call(uintptr(hwnd), 9) // SW_RESTORE
+		time.Sleep(300 * time.Millisecond)
+	}
+
 	time.Sleep(700 * time.Millisecond) // 等一帧画完
 
 	var r winRect
 	procGetWindowRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&r)))
 	w, h := int(r.Right-r.Left), int(r.Bottom-r.Top)
-	if w <= 0 || h <= 0 {
-		log.Printf("shot: 窗口尺寸无效 %dx%d", w, h)
+	// 正常窗口是 1196×839（96 DPI、1180×800 客户区）；被钳最小也有 776×559。
+	// 760×520 这条线卡的是「明显不是正常窗口」的情况——不达标就**明确失败**，
+	// 绝不静默存一张废图（以前就是静默存，排查了半天）。
+	if w < 760 || h < 520 {
+		log.Printf("shot: 窗口尺寸 %dx%d 不像正常窗口（最小化/被隐藏？），拒存废图", w, h)
 		return false
 	}
 

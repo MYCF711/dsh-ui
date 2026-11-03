@@ -54,6 +54,9 @@ have_scenario() { case ",$ONLY," in *",$1,"*) return 0;; *) return 1;; esac; }
 
 # ── 0. 二进制：自己构建，源码一变就重建（数字必须对应某一版源码） ──────────
 mkdir -p "$WORK"
+# 结果目录每次重跑都清掉：二进制一变，混着旧 JSON 中位数就是假的。
+# big-template / big-sessions.json / search-word.txt 是准备物，保留（重算要几十秒）。
+for _d in A B1 B2 C D1 D2 T trend; do rm -rf "$WORK/$_d"; done
 if [ ! -x "$SERVE" ]; then
   log "== 构建真宿主 tmp/dshd-serve.exe（来自 ../DSH-GO）"
   ( cd ../DSH-GO && CGO_ENABLED=0 go build -o "../dsh-ui/$SERVE" ./cmd/dshd )
@@ -619,7 +622,7 @@ run_case() { # name  runs  helper 参数...
 }
 
 BIG_ID=""
-if have_scenario C || have_scenario D1 || have_scenario D2; then
+if have_scenario C || have_scenario D1 || have_scenario D2 || have_scenario T; then
   prepare_session
   BIG_ID=$("$PY" -c "import json,sys;print(json.load(open(sys.argv[1],encoding='utf-8'))['sessionId'])" "$WORK/big-session.json")
 fi
@@ -648,13 +651,17 @@ if have_scenario B2; then
     --create-session --ready-marker "mux 已订阅" --observe "$IDLE"
 fi
 
-if have_scenario C; then
+if [ -z "$BIG_ID" ] && { have_scenario C || have_scenario D1 || have_scenario D2 || have_scenario T; }; then
+  log "!! 没有拿到大会话 id（$WORK/big-sessions.json 缺失），C/D1/D2/T 跳过"
+fi
+
+if have_scenario C && [ -n "$BIG_ID" ]; then
   run_case C "$RUNS" --home-template "$WORK/big-template" \
     --args "-addr {URL} -token {TOKEN} -session $BIG_ID -tail 200" \
     --ready-marker "mux 已订阅" --observe "$IDLE"
 fi
 
-if have_scenario D1; then
+if have_scenario D1 && [ -n "$BIG_ID" ]; then
   # ↓↑ 交替：home 里只有有限个会话，单向连按会在边界被忽略（handleKey 返回 false）
   KEYS_SEQ=""
   for k in $(seq 1 "$KEYS"); do
@@ -666,7 +673,7 @@ if have_scenario D1; then
     --ready-marker "mux 已订阅" --observe 12
 fi
 
-if have_scenario T; then
+if have_scenario T && [ -n "$BIG_ID" ]; then
   # 进程内趋势：一个进程里连做 5 组 × 10 次切会话，每组之后看一次工作集
   TSEQ=""
   for k in $(seq 1 $((TREND_BATCH * TREND_GROUPS))); do
@@ -690,13 +697,14 @@ if have_scenario D2; then
   fi
 fi
 
-# ── 4. 汇总成 markdown 表 ────────────────────────────────────────────────
+# ── 4. 汇总（markdown 表；同时落一份 $WORK/summary.md） ──────────────────
 {
-"$PY" - "$WORK" "$ROOT" "$APP_SHA" "$SERVE_SHA" "$GIT_HEAD" "$GIT_DIRTY" "$IDLE" "$KEYS" "$TREND_GROUPS" "$TREND_BATCH" <<'PY'
+"$PY" - "$WORK" "$ROOT" "$APP_SHA" "$SERVE_SHA" "$GIT_HEAD" "$GIT_DIRTY" "$IDLE" "$KEYS" <<'SUMMARY'
 import glob, json, os, statistics, sys
 
 work, repo, app_sha, serve_sha, head, dirty, idle, keys = sys.argv[1:9]
 work = os.path.join(repo, work)
+
 
 def load(name):
     out = []
@@ -707,8 +715,10 @@ def load(name):
             pass
     return out
 
+
 def fmt(v):
     return "—" if v is None else ("%.1f" % v if isinstance(v, float) else str(v))
+
 
 def agg(values):
     values = [v for v in values if v is not None]
@@ -716,21 +726,23 @@ def agg(values):
         return None, None, None
     return statistics.median(values), min(values), max(values)
 
-rows = []
 
+rows = []
 a = load("A")
 vis = [r.get("events", {}).get("visible") for r in a]
 sized = [r.get("events", {}).get("sized") for r in a]
 shot_t = [(r.get("shot") or {}).get("t_ms") for r in a]
+self_ws = [r.get("self_ws_mb") for r in a]
 bad = [r for r in a if r.get("shot") and not r["shot"].get("valid")]
+
 for label, vals, unit, note in [
     ("A 冷启动 → 窗口可见（首帧在 ShowWindow 之前已 apply）", vis, "ms",
-     "EnumWindows 5ms 轮询；进程内首帧 apply 早于窗口可见"),
+     "EnumWindows 5ms 轮询；首帧 apply 早于 ShowWindow，所以它就是「首帧就绪」"),
     ("A 冷启动 → 第一张 1196x839 的图落盘", shot_t, "ms",
      "-shot 自带 ~780ms 固定等待（发现窗口后睡 700ms）+ PNG 编码，不是纯首帧"),
     ("A 冷启动 → 窗口尺寸就绪（>=1000x700）", sized, "ms", "同可见口径，只判尺寸"),
-    ("A 抓图那一刻的工作集（进程自报）", [r.get("self_ws_mb") for r in a], "MB",
-     "抓图/编码自己也会分配 ~8 MB（4 MB DIB + 4 MB RGBA），比 B1 稳态高是正常的"),
+    ("A 抓图那一刻的工作集（进程自报）", self_ws, "MB",
+     "抓图自己会分配 ~8MB（4MB DIB + 4MB RGBA），比 B1 稳态高是正常的"),
 ]:
     mid, lo, hi = agg(vals)
     rows.append((label, mid, lo, hi, len([v for v in vals if v is not None]), unit, note))
@@ -739,7 +751,8 @@ for label, name, key, note in [
     ("B1 空 home（0 会话）静置 10s", "B1", "ws_final_mb", "WorkingSetSize 单进程；最后 1s 中位数"),
     ("B2 已打开的空会话静置 10s", "B2", "ws_final_mb", "同上；会话由 session.create 建，0 条消息"),
     ("C 大会话 -tail 200 静置 10s", "C", "ws_final_mb", "WorkingSetSize 单进程；真实会话只读副本"),
-    ("D1 大会话 + 连续 %s 次会话切换（↓↑ 交替）峰值" % keys, "D1", "ws_max_mb", "操作期间采样最大值（50ms 一次）"),
+    ("D1 大会话 + 连续 %s 次会话切换（↓↑ 交替）峰值" % keys, "D1", "ws_max_mb",
+     "操作期间采样最大值（50ms 一次）"),
     ("D2 大会话 + 搜索（-search）峰值", "D2", "ws_max_mb", "搜索态首屏 + 静置期间最大值"),
 ]:
     data = load(name)
@@ -750,7 +763,7 @@ for label, name, key, note in [
 print()
 print("## dsh-ui 性能/内存基线（实测）")
 print()
-print("- 界面二进制：`%s` sha256 `%s`" % ("tmp/perf-app.exe", app_sha[:16]))
+print("- 界面二进制：`tmp/perf-app.exe` sha256 `%s`" % app_sha[:16])
 print("- 宿主二进制：`tmp/dshd-serve.exe` sha256 `%s`" % serve_sha[:16])
 print("- git：`%s`（未提交改动 %s 个文件）" % (head, dirty))
 print()
@@ -760,36 +773,37 @@ for label, mid, lo, hi, n, unit, note in rows:
     print("| %s | %s | %s | %s | %d | %s | %s |" % (label, fmt(mid), fmt(lo), fmt(hi), n, unit, note))
 print()
 
-# 补充：整进程树 / 子进程 / CPU / 废图
-kids = sum(len(r.get("children_at_ready") or []) for r in a + load("B1") + load("B2") + load("C") + load("D1") + load("D2"))
-print("- 子进程：所有迭代 `children_at_ready` 合计 **%d** 个 → 界面是**单进程**（见 docs/perf.md 口径）。" % kids)
-b1 = load("B1"); c = load("C")
+allruns = a + load("B1") + load("B2") + load("C") + load("D1") + load("D2") + load("T")
+kids = sum(len(r.get("children_at_ready") or []) for r in allruns)
+print("- 子进程：所有迭代 `children_at_ready` 合计 **%d** 个 → 界面**单进程**（口径见 docs/perf.md）。" % kids)
+polluted = [r for r in allruns if r.get("contaminated")]
+print("- 污染检测：%d 次迭代里临时 home 多出了会话（有别的客户端接到了这个 serve）。" % len(polluted))
+b1, c = load("B1"), load("C")
 if b1 and c:
     pm = agg([r.get("priv_final_mb") for r in b1])[0]
     cm = agg([r.get("priv_final_mb") for r in c])[0]
-    print("- PrivateUsage 对照：B1 中位数 %s MB，C 中位数 %s MB（PrivateUsage = 私有提交，含未触碰/已换出页；"
-          "这里比 WorkingSetSize **大**，两个数不能混着报）。"
-          % (fmt(pm), fmt(cm)))
+    print("- PrivateUsage 对照：B1 中位数 %s MB，C 中位数 %s MB（私有提交，含未触碰/已换出页；"
+          "这里比 WorkingSetSize **大**，两个数不能混着报）。" % (fmt(pm), fmt(cm)))
 if bad:
     b = bad[0]["shot"]
-    print("- **废图（160x28）**：%d 次（%dx%d，抓图时窗口是最小化态=%s）。签名 = 最小化窗口的 GetWindowRect；"
-          "复现与规避见 docs/perf.md「已知问题」。" % (len(bad), b["w"], b["h"], b["iconic_seen"]))
+    print("- **废图（160x28）**：%d 次（%dx%d，抓图时窗口是最小化态=%s）。签名 = 最小化窗口的 "
+          "GetWindowRect；复现与规避见 docs/perf.md「已知问题」。" % (len(bad), b["w"], b["h"], b["iconic_seen"]))
 else:
     print("- **废图（160x28）**：0 次。")
 d1 = load("D1")
 if d1:
     kh = sum(r.get("keys_handled") or 0 for r in d1)
     ki = sum(r.get("keys_ignored") or 0 for r in d1)
-    print("- D1 按键命中：日志里 `handled=true` **%d** 次、`handled=false` %d 次（false = 侧栏没接住，通常是在列表边界）。"
+    print("- D1 按键命中：`handled=true` **%d** 次、`handled=false` %d 次（false=侧栏没接住，通常在列表边界）。"
           % (kh, ki))
     cpu = agg([r.get("cpu_ms") for r in d1])[0]
-    print("- D1 每次操作的平均 CPU 时间（代理指标，**不是** invalidate→重绘延迟）：%s ms / %s 次 = %s ms。"
+    print("- D1 每次操作的 CPU 时间（代理指标，**不是** invalidate→重绘延迟）：%s ms / %s 次 = %s ms。"
           % (fmt(cpu), keys, fmt(None if cpu is None else round(cpu / int(keys), 1))))
 print()
-PY
+SUMMARY
 } | tee "$WORK/summary.md"
 
-# ── 5. 趋势：同一场景连跑 N 次（独立进程），看内存是不是一路涨 ─────────────
+# ── 5. 趋势 A：同一场景连跑 N 次（每次独立进程） ──────────────────────────
 if have_scenario TREND || have_scenario B1; then
   log "== 趋势：B1 连跑 $TREND_RUNS 次（独立进程）"
   mkdir -p "$WORK/trend"
@@ -800,7 +814,7 @@ if have_scenario TREND || have_scenario B1; then
       >"$WORK/trend/$i.stdout" 2>"$WORK/trend/$i.stderr" \
       || log "   [trend] 第 $i 次失败"
   done
-  "$PY" - "$WORK" <<'PY'
+  "$PY" - "$WORK" <<'T1'
 import glob, json, os, sys
 work = sys.argv[1]
 vals = []
@@ -812,58 +826,75 @@ for f in sorted(glob.glob(os.path.join(work, "trend", "*.json")),
         continue
     vals.append(r.get("ws_final_mb"))
 print()
-print("### 趋势（B1 连跑 %d 次，每次一个独立进程）" % len(vals))
+print("### 趋势 A（B1 连跑 %d 次，每次一个独立进程）" % len(vals))
 print()
 print("| 第 N 次 | " + " | ".join(str(i + 1) for i in range(len(vals))) + " |")
 print("|---|" + "---:|" * len(vals))
 print("| WorkingSetSize (MB) | " + " | ".join("—" if v is None else "%.1f" % v for v in vals) + " |")
 real = [v for v in vals if v is not None]
 if len(real) >= 2:
-    first, last = real[0], real[-1]
     print()
-    print("- 首次 → 末次：%+.1f MB" % (last - first))
+    print("- 首次 → 末次：%+.1f MB" % (real[-1] - real[0]))
     tail = real[-3:]
     print("- 后三次范围：%.1f – %.1f MB（极差 %.1f MB）" % (min(tail), max(tail), max(tail) - min(tail)))
     print("- 判定：%s" % ("平（极差 <= 3 MB）" if max(tail) - min(tail) <= 3 else "有抬升，见数字"))
 print("- 注意：跨进程连跑量的是「启动开销是否漂移」；**不是**进程内泄漏判定。")
-
-# 进程内趋势：一个进程里连做 5 组 × N 次切会话，看每组的稳态工作集
-tfiles = sorted(glob.glob(os.path.join(work, "T", "*.json")))
-if tfiles:
-    try:
-        t = json.load(open(tfiles[0], encoding="utf-8"))
-    except Exception:
-        t = {}
-    series = t.get("ws_series") or []
-    groups = int(sys.argv[9]) if len(sys.argv) > 9 else 5
-    batch = int(sys.argv[10]) if len(sys.argv) > 10 else 10
-    print()
-    print("### 进程内趋势（T：一个进程，连做 %d 组 × %d 次切会话）" % (groups, batch))
-    print()
-    if not series:
-        print("- 拿不到：这次没有采样序列。")
-    else:
-        # 按键在启动后 2.5s 开始、每 0.35s 一次；每组结束取该时刻之后 400ms 内的中位数
-        marks = []
-        for g in range(1, groups + 1):
-            end_ms = (2.5 + 0.35 * batch * g) * 1000
-            win = [v for (tm, v, _p) in series if end_ms + 200 <= tm <= end_ms + 600]
-            if not win:
-                near = sorted(series, key=lambda x: abs(x[0] - (end_ms + 400)))[:5]
-                win = [v for (_tm, v) in ((x[0], x[1]) for x in near)]
-            marks.append(statistics.median(win) / 1048576 if win else None)
-        print("| 组（%d 次切会话/组） | " % batch + " | ".join(str(i + 1) for i in range(len(marks))) + " |")
-        print("|---|" + "---:|" * len(marks))
-        print("| WorkingSetSize (MB) | " + " | ".join("—" if m is None else "%.1f" % m for m in marks) + " |")
-        real = [m for m in marks if m is not None]
-        if len(real) >= 2:
-            print()
-            print("- 第 1 组 → 最后一组：%+.1f MB" % (real[-1] - real[0]))
-            print("- 末两组差：%+.1f MB；全部组极差 %.1f MB" % (real[-1] - real[-2], max(real) - min(real)))
-            print("- 判读：%s（只陈述数字；是分配器保留还是泄漏需要 heap profile，**待查**）"
-                  % ("平" if max(real) - min(real) <= 2 else "有抬升，见上面的数"))
-    print("- 口径：采样 50ms 一次；组边界按 `-keys` 的固定节奏（2.5s 起、0.35s 一键）换算。")
-PY
+T1
 fi
 
-log "== 产物目录：$WORK（保留；删掉不影响下次重跑）"
+# ── 6. 趋势 B：进程内连做 5 组操作，看内存涨不涨 ────────────────────────
+if have_scenario T; then
+  "$PY" - "$WORK" "$TREND_GROUPS" "$TREND_BATCH" <<'T2'
+import glob, json, os, sys, statistics
+work, groups, batch = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+files = sorted(glob.glob(os.path.join(work, "T", "*.json")))
+t = {}
+if files:
+    try:
+        t = json.load(open(files[0], encoding="utf-8"))
+    except Exception:
+        t = {}
+series = t.get("ws_series") or []
+print()
+print("### 趋势 B（进程内：一个进程连做 %d 组 × %d 次切会话）" % (groups, batch))
+print()
+if not series:
+    print("- 拿不到：这次没有采样序列。")
+else:
+    marks = []
+    for g in range(1, groups + 1):
+        end_ms = (2.5 + 0.35 * batch * g) * 1000
+        win = [s[1] for s in series if end_ms + 200 <= s[0] <= end_ms + 600]
+        if not win:
+            near = sorted(series, key=lambda x: abs(x[0] - (end_ms + 400)))[:5]
+            win = [s[1] for s in near]
+        marks.append(statistics.median(win) / 1048576 if win else None)
+    print("| 组（每组 %d 次切会话） | " % batch + " | ".join(str(i + 1) for i in range(len(marks))) + " |")
+    print("|---|" + "---:|" * len(marks))
+    print("| WorkingSetSize (MB) | " + " | ".join("—" if m is None else "%.1f" % m for m in marks) + " |")
+    real = [m for m in marks if m is not None]
+    if len(real) >= 2:
+        print()
+        print("- 第 1 组 → 最后一组：%+.1f MB" % (real[-1] - real[0]))
+        print("- 末两组差：%+.1f MB；全部组极差 %.1f MB" % (real[-1] - real[-2], max(real) - min(real)))
+        span = max(real) - min(real)
+        if span <= 2:
+            verdict = "平（极差 %.1f MB，在噪声内）" % span
+        elif real[-1] - real[-2] <= 1 and span <= 6:
+            verdict = "先抬升 %.1f MB、末两组趋于平台（%+.1f MB）" % (real[-1] - real[0], real[-1] - real[-2])
+        else:
+            verdict = "仍在上升（%+.1f MB，末两组 %+.1f MB）" % (real[-1] - real[0], real[-1] - real[-2])
+        print("- 判读：%s。是分配器保留还是泄漏需要 heap profile，**待查**（本轮只给数字）。" % verdict)
+    print("- 口径：50ms 采样一次；组边界按 `-keys` 的固定节奏（2.5s 起、0.35s 一键）换算；"
+          "按键命中 %d 次。" % (t.get("keys_handled") or 0))
+T2
+fi
+
+# 收尾：删掉每轮的会话副本（一份 ~22 MB，20 轮就是几百 MB），日志/JSON/模板留着。
+# 想留着复查就 PERF_KEEP_HOMES=1。
+if [ "${PERF_KEEP_HOMES:-0}" != "1" ]; then
+  for _h in "$WORK"/*/*/home "$WORK"/trend/*/home "$WORK"/word-home; do
+    [ -d "$_h" ] && rm -rf "$_h"
+  done
+fi
+log "== 产物目录：$WORK（日志/JSON/模板保留，每轮的 home 副本已删；PERF_KEEP_HOMES=1 可留）"

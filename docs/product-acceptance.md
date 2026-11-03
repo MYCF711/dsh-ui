@@ -81,6 +81,19 @@ cd DSH-GO && bash scripts/race.sh                    # 39 包 ok，合计 OK=1 F
 覆盖到的并发面：mux 读循环 / 带水位重连 / 多会话订阅池 / `FillGap` 分批补洞 /
 插件内核装配 / 插件配置解析 / 宿主 transport 与 dshd。
 
+
+## 二·七、第 20–42 轮补修的三处真机缺陷（都有前后对照）
+
+这三条不属于原来那张 24 项表，是**真机使用中**才暴露的，都修了并留了对照证据。
+
+| # | 缺陷 | 症状 | 修法 | 证据 |
+|---|---|---|---|---|
+| A | **鼠标滚轮滚不动消息列表** | 全仓 `OnScroll` 0 命中；viva 在 `OnScroll == nil` 时 `case wmWheel: … return 0` **直接吞掉** `WM_MOUSEWHEEL`，连默认 canvas 偏移都没有 | 接 `view.Wheel`（按指针位置找最内层可滚区域，滚到头再往外层） | `tmp/wheel-before.png`（`-tail 40` 显示第 153-156 条）vs `tmp/wheel-after.png`（`-tail 500` + 10 次滚轮显示第 **102-105** 条） |
+| B | **实时跑的工具不进轨迹栏** | `Stream.Apply` 的 `case BlockTool:` 是空的（注释写"空卡比不画更糟"）；`tool/result` 又因 `packet` 不读 `message.role` 被当 assistant 正文流进气泡 | ①`packet` 读 `role`，tool 帧标 `BlockTool`；②`Stream` 攒 `tools`（call 开一条、result 补最近那条）；③`upsertMsg` 对 tool 按 `(Tool,Args)` 认身份 | `tmp/tool-live.png`：右栏「轨迹 1 次」+ bash 节点 `[exit 0] … TOOL-LIVE`，**且右栏自动打开** |
+| C | **宿主断开时界面还在说「已连接 · 就绪」** | `runSubscription` 重连失败只 `log.Printf`；`dsstatusbar` 的状态点只判 `Approval`，否则永远绿点「就绪」 | ①失败时 `m.status = "连不上宿主，重试中…"`；②`Snapshot` 加 `Disconnected`，状态点按 **断线 > 待审批 > 就绪** 取色 | `tmp/rs2-after.png`（修前：杀宿主 33 秒后仍亮绿点「已连接 · 就绪」）vs `tmp/rs4-after.png`（修后：「连不上宿主，重试中... ● **已断开** 红点」，三处一致） |
+
+**C 这条尤其值得记**：连接已断而界面说正常，比"卡住"更糟——用户在等一个根本不会来的回复。
+
 ## 三、仍然缺的（不假装有）
 
 1. **完整工作日**：没有连续数小时的真实使用记录。这一步只能真的用，不能模拟。

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
@@ -916,8 +917,15 @@ func parseWinSize(s string) (int, int, bool) {
 	if i <= 0 || i >= len(s)-1 {
 		return 0, 0, false
 	}
+	// 分隔符未必是 1 字节：`×` 是 UTF-8 里的 2 字节（U+00D7）。
+	// 早先写死 `s[i+1:]`，于是 `1024×768` 这种"文档明说支持"的写法
+	// **解析失败**——注释和实现对不上，是单测把这条抓出来的。
+	_, sepLen := utf8.DecodeRuneInString(s[i:])
+	if i+sepLen >= len(s) {
+		return 0, 0, false
+	}
 	w, err1 := strconv.Atoi(strings.TrimSpace(s[:i]))
-	h, err2 := strconv.Atoi(strings.TrimSpace(s[i+1:]))
+	h, err2 := strconv.Atoi(strings.TrimSpace(s[i+sepLen:]))
 	if err1 != nil || err2 != nil || w < 320 || h < 240 {
 		return 0, 0, false
 	}

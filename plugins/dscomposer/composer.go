@@ -3,7 +3,7 @@
 // 官方对应物是 `@deepseek-ai/dsh-client-ui-conversation`（不是 ui-chat）：
 //
 //	InputBar.module.css   .GRgSLq_card     输入框那张大圆角卡片
-//	                      .GRgSLq_input    卡片里的可编辑区（最终 min-height 52、padding 4/8/0/14）
+//	                      .GRgSLq_input    可编辑区（active 36 / hero 52，padding 4/8/0/14）
 //	                      .GRgSLq_row      底部控件行（padding 2/8/6、space-between）
 //	                      .GRgSLq_add      命令键 28×28 圆形（无真实命令动作时不画）
 //	                      ModelSelect / PermissionSelect trigger（高 28、radius sm、13px）
@@ -285,20 +285,16 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env) {
 	f.Row().FillWidth().Height(rowPadTop+sendSize+rowPadBottom).
 		PadSides(rowPadTop-sendLift, rowPadSide, rowPadBottom+sendLift, rowPadSide).
 		Items(flex.Center).Justify(flex.Between).Gap(cardGap).Children(func() {
-		// 官方 InputBar 的控件行分两簇：左簇是权限/模型这类"模式"，右簇是
-		// 活动状态 + 主按钮。**左簇内部的先后顺序我没找到确定的出处**：
-		// 现有测试与这份代码的注释都要求 permission 在 model 左边，所以保持
-		// permission → model；如果将来从 asar 里读出确切 DOM 顺序再改，
-		// 别凭"感觉哪个更重"来排。
+		// 官方 DOM 的左 modes 只有 permission/plan；model 属于右 standardControls。
 		if permission != "" {
 			p.hostChip(f, permission, permissionChipWeight)
-		}
-		if model != "" {
-			p.hostChip(f, model, modelChipWeight)
 		}
 		// 即使左边为空，Spacer 也把右侧 trailing 固定到卡片右缘。
 		f.Spacer()
 		f.Row().Items(flex.Center).Gap(cardGap).Children(func() {
+			if model != "" {
+				p.hostChip(f, model, modelChipWeight)
+			}
 			if status != "" {
 				p.hostChip(f, status, modelChipWeight)
 			}

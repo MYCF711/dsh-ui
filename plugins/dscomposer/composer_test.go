@@ -72,21 +72,26 @@ func TestComposerCardMatchesOfficialGeometry(t *testing.T) {
 	// 官方 ConversationRoot + InputBar：
 	// content=clamp(680, main*.64, 920)，cardMax=content+32；
 	// shell 左右各 12，composer root 左右各 16，卡片在剩余空间中居中。
-	// 空草稿高度 = top 8 + input 52 + gap 12 + controlRow(2+34+6) = 114。
+	// hero（无会话）input 52 → 卡高 114；active（有会话）input 36 → 卡高 98。
+	// 其余都是 top 8 + gap 12 + controlRow(2+34+6)。
 	cases := []struct {
 		name       string
 		main       float32
 		window     float32
+		cur        string
 		wantWidth  float32
 		wantLocalX float32
+		wantHeight float32
 	}{
-		{name: "1920 主区", main: 1640, window: 1920, wantWidth: 952, wantLocalX: 332},
-		{name: "1182 主区", main: 902, window: 1182, wantWidth: 712, wantLocalX: 83},
+		{name: "1920 hero", main: 1640, window: 1920, wantWidth: 952, wantLocalX: 332, wantHeight: 114},
+		{name: "1920 active", main: 1640, window: 1920, cur: "s-001", wantWidth: 952, wantLocalX: 332, wantHeight: 98},
+		{name: "1182 hero", main: 902, window: 1182, wantWidth: 712, wantLocalX: 83, wantHeight: 114},
+		{name: "1182 active", main: 902, window: 1182, cur: "s-001", wantWidth: 712, wantLocalX: 83, wantHeight: 98},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p := &Plugin{}
-			canvas := renderComposer(t, p, pluginapi.Snapshot{}, pluginapi.Actions{}, tc.main, tc.window, "")
+			canvas := renderComposer(t, p, pluginapi.Snapshot{Cur: tc.cur}, pluginapi.Actions{}, tc.main, tc.window, "")
 			card, ok := largestSurface(canvas, p.theme.InputMajor)
 			if !ok {
 				t.Fatal("找不到 composer 的 InputMajor 面板")
@@ -97,8 +102,8 @@ func TestComposerCardMatchesOfficialGeometry(t *testing.T) {
 			if !closeEnough(card.Bounds.X, tc.wantLocalX) {
 				t.Errorf("卡片在主区内容框中的 x = %.2f，官方居中 x %.2f", card.Bounds.X, tc.wantLocalX)
 			}
-			if !closeEnough(card.Bounds.Height, 114) {
-				t.Errorf("空草稿卡片高 = %.2f，官方 114", card.Bounds.Height)
+			if !closeEnough(card.Bounds.Height, tc.wantHeight) {
+				t.Errorf("卡片高 = %.2f，官方 %.2f", card.Bounds.Height, tc.wantHeight)
 			}
 			if !closeEnough(card.Radius, 28) {
 				t.Errorf("卡片圆角 = %.2f，官方 radius-panel 28", card.Radius)
@@ -153,6 +158,12 @@ func TestComposerShowsHostTruthInOfficialSeats(t *testing.T) {
 	if !(permissionX >= 0 && permissionX < modelX && modelX < statusX && statusX < primaryX) {
 		t.Errorf("控件顺序应为 permission < model < status < primary；x=%v/%v/%v/%v",
 			permissionX, modelX, statusX, primaryX)
+	}
+	card, _ := largestSurface(canvas, p.theme.InputMajor)
+	// 官方 DOM 明确：modes 只有 permission/plan；model 在右侧 standardControls。
+	if modelX < card.Bounds.X+card.Bounds.Width/2 {
+		t.Errorf("model 必须落在右 trailing，而不是左 modes：modelX=%.2f cardCenter=%.2f",
+			modelX, card.Bounds.X+card.Bounds.Width/2)
 	}
 }
 
@@ -216,7 +227,7 @@ func TestEscapeWithoutApprovalPreservesCancelRoute(t *testing.T) {
 func TestApprovalCardMatchesOfficialSurface(t *testing.T) {
 	p := &Plugin{}
 	ap := hostFrame()
-	canvas := renderComposer(t, p, pluginapi.Snapshot{Approval: &ap}, pluginapi.Actions{}, 902, 1182, "")
+	canvas := renderComposer(t, p, pluginapi.Snapshot{Cur: "s-001", Approval: &ap}, pluginapi.Actions{}, 902, 1182, "")
 	foundOuter, foundFill := false, false
 	var outer, composer ui.Rectangle
 	for _, r := range canvas.Rectangles() {

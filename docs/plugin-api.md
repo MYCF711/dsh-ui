@@ -156,9 +156,13 @@ var (
 
 ```bash
 export PATH="/c/Program Files/Go/bin:$PATH"
-CGO_ENABLED=0 go build ./...                 # 必须过
-go run ./cmd/app -addr http://127.0.0.1:7788  # 起窗口
-python scripts/shot.py dsh-ui docs/<名字>.png # 截图（按窗口标题找，裁掉不可见边框）
+CGO_ENABLED=0 go build ./...                  # 必须过
+
+# 无头验证（推荐）：窗口一起就把自己挪到屏幕外，抓完图直接退出，用户看不到弹窗
+./tmp/app.exe -addr http://127.0.0.1:7788 -tail 60   -session <id> -shot docs/<名字>.png
+
+# 需要亲眼看手感时才起可见窗口
+./tmp/app.exe -addr http://127.0.0.1:7788
 ```
 
 插件装配日志会打印顺序与依赖，**顺序不对就是 `Requires` 写错了**：

@@ -419,6 +419,7 @@ const demoWideCode = "超宽代码块验证（这一行 129 个字符，卡片�
 
 var (
 	winTitle string
+	shotPath string
 	theme        ui.Theme // 由 dscore 的令牌算出来，启动时赋值（见 main）
 	renderLimit  int    // 0 = 不限制
 	forceSession string // 非空则启动后直接打开
@@ -585,6 +586,7 @@ func main() {
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
 	title := flag.String("title", "dsh-ui", "窗口标题（并行跑多个实例时用来区分）")
+	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
 	flag.Parse()
 	renderLimit = *limit
 	forceSession = *sess
@@ -592,6 +594,7 @@ func main() {
 	smokeSend = *smoke
 	demoTool  = *demo
 	winTitle  = *title
+	shotPath  = *shot
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
 		cache:      map[string]*cachedSession{},
@@ -624,6 +627,10 @@ func main() {
 		Send:        m.sendText,
 	}
 	log.Printf("插件 %v，主题 %s", m.kernel.Order(), m.theme.Name)
+
+	if shotPath != "" {
+		startShot(shotPath, 4*time.Second)
+	}
 
 	var canvas ui.Canvas
 	if err := app.RunCanvas(newConfig(m), &canvas); err != nil {

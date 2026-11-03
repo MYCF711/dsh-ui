@@ -224,7 +224,8 @@ INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives
 |---|---|---|---|
 | `ds-sidebar` | `↑` `↓` | `Modifiers == 0` | 在**分组 + 过滤 + 折叠之后**的可见顺序里上下切会话 |
 | `ds-sidebar` | `Home` `End` | `Modifiers == 0` | 跳第一个 / 最后一个 |
-| `ds-conversation` | `Esc` | `Modifiers == 0` | 拒绝当前审批（**注意：`Allow`/`Deny` 还没接线，见下**） |
+| `ds-composer` | `Enter` / `Esc` | `Modifiers == 0` | 审批可见时：允许 / 拒绝；**没有审批时 `Esc` = 取消当前 turn** |
+| `ds-conversation` | `Esc` | `Modifiers == 0` | 旧路径：清审批气泡（composer 装配在前，正常抢不到这个键） |
 | `ds-conversation` | `Ctrl+R` | `ModifierControl` | 重发上一条用户消息 |
 | `ds-conversation` | `Ctrl+Shift+C` | `ModifierControl\|ModifierShift` | 复制最后一条助手回复 |
 
@@ -244,11 +245,37 @@ INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives
 | `Retry` | `func()` | ✅ | 重发最后一条用户消息 |
 | `Notify` | `func(msg string)` | ✅ | 让壳在状态栏说一句话（插件不直接写状态栏，那是别的插件的地盘） |
 | `SetDraft` | `func(text string)` | ❌ 未接线（nil） | 没有插件在用 |
-| `Allow` | `func()` | ❌ 未接线（nil） | **已知缺口**：审批气泡的「允许」按钮点了没反应 |
-| `Deny` | `func()` | ❌ 未接线（nil） | 同上；`Esc` 也因为同一个原因无效 |
+| `Approve` | `func(requestID, optionID string)` | ✅ | **审批的正路**：两个 id 原样转发给 `session.approve`。插件不许自己造 id |
+| `Cancel` | `func()` | ✅ | 打断当前会话的 turn（`session.cancel`）；宿主对没有 turn 的调用幂等 |
+| `Allow` | `func()` | ✅ | **旧接口**，只在 `Approve == nil` 时兜底（它没有 id，宿主那边无从对应） |
+| `Deny` | `func()` | ✅ | 同上 |
 
-**所以插件里调动作前必须判空**（`if env.Act.Allow != nil {...}`）——现在这些分支不会 panic，
-但会静默无效果。接线点在 `cmd/app/main.go` 的 `m.actions = pluginapi.Actions{...}`。
+**所以插件里调动作前必须判空**（`if env.Act.Approve != nil {...}`）。接线点在
+`cmd/app/main.go` 的 `m.actions = pluginapi.Actions{...}`。
+
+### 审批：新插件请只用 `Approve`
+
+`Snapshot.Approval` 的字段全部来自宿主 `approval/request` 帧，**零值 = 不知道**：
+
+| 帧键 | 字段 | 不显示的条件 |
+|---|---|---|
+| `data.requestId` | `RequestID` | 空 → 回传不出去，按钮必须画成不可点 |
+| `data.toolCall.title` | `Title`（冒号前缀解析成 `Tool`） | 空 → 不画标题行 |
+| `data.toolCall.kind` | `Kind` | 空 → 按 other 处理，**不是风险等级** |
+| `data.toolCall.rawInput` | `Args` | 空 → 回退 `Cmd` → 都空不画参数行 |
+| `data.toolCall.content[].content.text` | `Detail` | 空 → 回退 `Reason` |
+| `data.options[]` | `Options` | 空 → 按钮点不动（**不许编 optionId**） |
+
+三条硬规则（真机踩过）：
+
+1. **`requestId` 必须原样回传**，界面不许造；
+2. **本地气泡消失不等于已批准**——只有 `Approve` 回 200 且 `accepted` 才算；
+3. **宿主给几个选项就画几个**：`allow_once` / `allow_always` / `reject_once` 三个时
+   只画两个，用户就永远点不到「这个会话里以后都允许」（`planApproval` 为此专门
+   留了 `AllowAlways` 槽）。
+
+**注意 optionId 的两种写法**：宿主代码用连字符（`allow-once`），H13 文档用下划线
+（`allow_once`）。所以**按 `kind` 匹配，别按 id 字面量硬编码**。
 
 ## 10. 调试开关（`cmd/app` 的真实 flag）
 

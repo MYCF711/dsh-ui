@@ -13,7 +13,6 @@
 package dsconversation
 
 import (
-	"fmt"
 	"math"
 	"strings"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/MYCF711/dsh-ui/plugins/dstool"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/markdown"
@@ -74,8 +74,6 @@ type Plugin struct {
 	// expanded 记录哪些思考块被展开（键是消息 seq，切会话后依然有效）。
 	// 缺省全收起：真实语料里思考比正文多八倍，默认展开会把消息流淹没。
 	expanded map[int]bool
-	// toolOpen 记录哪些工具调用被展开（官方默认收起，只留一行）。
-	toolOpen map[int]bool
 	// SearchOpen / SearchQuery 是调试开关：启动就带着搜索词打开（截搜索态用）。
 	SearchOpen  bool
 	SearchQuery string
@@ -101,6 +99,13 @@ type Plugin struct {
 	// 是它的来源与落点（壳接到宿主 ui-config.json）。
 	feedback       map[string]string
 	feedbackSeeded bool
+
+	// tools 是工具卡渲染器（ds-tool 提供 ui.tool-card）。
+	//
+	// 工具卡在 2026-11-04 从本包抽成独立插件：它的展开状态、每种工具的画法
+	// 都搬去了 plugins/dstool，这里只留一个引用。为什么它不再是一个 map：
+	// 展开状态原先和消息流的滚动状态混在一起，改一种工具的画法要动整条消息流。
+	tools dstool.Service
 }
 
 // drawSearchBar 画搜索栏：输入框 + 命中数 + 关闭。
@@ -137,6 +142,16 @@ func (*Plugin) Requires() []string {
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	// 工具卡由 ds-tool 提供（见 toolCards 里为什么不写进 Requires）。
+	if cards, ok := ctx.Inject(dstool.ServiceKey).(dstool.Service); ok {
+		p.tools = cards
+	} else {
+		// 走到这里说明内核里没有 ds-tool（只有"把本插件单独装进一个 kernel"的
+		// 测试会这样）。工具卡仍然画得出来，只是没有 ds-core 的徽标——
+		// 所以不 fail，只留一行警告，免得"为什么这次截图里没有 exit 0 徽标"
+		// 让人去猜。
+		ctx.Logf("警告：没有 %s（ds-tool 未装配），工具卡走兜底渲染器", dstool.ServiceKey)
+	}
 	return nil
 }
 
@@ -437,21 +452,6 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 }
 
 // humanRunes 把字数压成「812 / 1.2k」。
-// summarize 压成一行并截断（工具标题行只有一行，长参数必须收住）。
-func summarize(s string, n int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	// n<=0 时没有"摘要"可言：返回 "…" 会误导成"有内容但被截断了"，
-	// 而实际是调用方给的长度预算为零。返回空串，让调用方决定要不要画这一行。
-	if n <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "…"
-}
-
 func humanRunes(n int) string {
 	if n < 1000 {
 		return itoa(n)
@@ -484,171 +484,38 @@ func itoa(n int) string {
 
 // drawTool 画一次工具调用。
 //
-// 这里就是「一切皆插件」的显示契约落点：工具**不渲染自己**，只在
-// `msg.View` 里声明 Kind（card / table / plain），界面按 Kind 选渲染器。
-// 没声明就退化成一行纯文本——不认识 == 没声明。
+// **画法不在这里**：工具卡是独立部件 ds-tool（plugins/dstool），它按
+// `Card.Tool` 分派——bash 画命令 + 退出码 + 输出预览，read/edit/glob/grep
+// 画路径/模式。消息流只做一件不属于它的事：把一条 `apiclient.Message`
+// 翻译成工具卡认识的 Card。
+//
+// 这个切分是这一轮的重点：改某一种工具的长相，不用碰消息流一行代码
+// （也不用再跑一遍消息流的截图）。
 func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message) {
-	t := p.theme
-	// 照官方 .V4vHZW_callRow + .BE0jCW_* 的结构：
-	//   · 整行只有 border-radius(sm)，**没有边框色**，悬停才有一层浅底；
-	//   · 左侧 16px 的 leading 图标位（官方 .BE0jCW_leading），右侧一行
-	//     「工具名 · 摘要」，字号 13/行高 24，超长省略；
-	//   · 点这一行展开/收起正文（展开体最大高度 min(400px, 50vh)）。
-	open := p.toolOpen[msg.Seq]
-	width := p.contentWidth(env)
-
-	title := msg.Tool
-	if title == "" && msg.View != nil {
-		title = msg.View.Title
-	}
-	summary := msg.Summary
-	if summary == "" {
-		summary = msg.Args
-	}
-	if msg.View != nil && msg.View.Badge == "error" {
-		summary = "错误：" + summary
-	}
-
-	// 标题行：点它展开
-	head := f.Row().WidthPercent(100).PadX(4).PadY(2).Radius(t.Radii.SM).
-		Items(flex.Center).Gap(6).HoverBackground(t.Hover).
-		Hit(env.Tree.ID(env.Feat, "tool-"+itoa(msg.Seq)), "").Children(func() {
-		// leading：16px 方框里的展开箭头（官方也是这个位置放 chevron）
-		f.Row().Width(16).Items(flex.Center).Children(func() {
-			arrow := "▸"
-			if open {
-				arrow = "▾"
-			}
-			f.Text(arrow).FontSize(t.Fonts.Tiny).Color(t.LabelSecondary)
-		})
-		f.Text(title).Mono().FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
-		if summary != "" {
-			f.Text("·").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			f.Text(summarize(summary, 120)).FontSize(t.Fonts.Secondary).
-				Color(t.LabelTertiary).MaxWidth(width - 120).Ellipsis()
-		}
-	})
-	if head.Clicked() {
-		p.toolOpen[msg.Seq] = !open
-	}
-
-	if !open {
-		return
-	}
-	// 展开体：官方 max-height:min(400px,50vh)，我们按行数近似（不引入滚动区，
-	// 这里的展开体本身就是普通盒子，超长由下面的 MaxLines 截断）。
-	// 展开体：官方同样是 callRow 的一部分（radius sm、无边框），
-	// 底色用最浅一层 BgLayer1 把正文托起来，不描边。
-	f.Column().WidthPercent(100).PadX(22).PadY(4).Gap(4).Radius(t.Radii.SM).
-		Background(t.BgLayer1).Children(func() {
-		if msg.View != nil {
-			p.drawView(f, env, msg.View)
-			return
-		}
-		if msg.Args != "" {
-			f.Text(msg.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
-		}
-		if msg.Summary != "" {
-			f.Text(msg.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
-		}
+	p.toolCards().Render(f, env, dstool.Card{
+		Seq:     msg.Seq,
+		Tool:    msg.Tool,
+		Args:    msg.Args,
+		Summary: msg.Summary,
+		View:    msg.View,
 	})
 }
 
-// contentWidth 是主区内容可用的最大像素宽。
+// toolCards 取工具卡渲染器。
 //
-// 为什么不用百分比：槽位里 f.Bounds() 拿到的是整窗宽（实测 1180），
-// 百分比也按整窗解析，结果就是卡片内容一路画到窗口边缘、Ellipsis 没有边界。
-// 唯一可靠的事实是壳保证了侧栏 280，主区再来回扣 56 的内边距/滚动条。
-func (p *Plugin) contentWidth(env *pluginapi.Env) float32 {
-	w := env.MainWidth - 40 // 扣掉列内边距和卡片内边距
-	if w < 200 {
-		w = 200
-	}
-	return w
-}
-
-// drawView 按 ViewSpec 的 Kind 选渲染器。
-func (p *Plugin) drawView(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewSpec) {
-	t := p.theme
-
-	// 头：工具名 + 徽标
-	if v.Title != "" || v.Badge != "" {
-		f.Row().Gap(8).Items(flex.Center).Children(func() {
-			f.Text(v.Title).Mono().Bold().FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
-			f.Spacer()
-			if v.Badge != "" {
-				color := t.Success
-				if v.Badge == "error" {
-					color = t.Error
-				}
-				p.prims.Badge(f, v.Badge, color)
-			}
-		})
-	}
-
-	switch v.Kind {
-	case "table":
-		p.drawTable(f, env, v)
-	case "plain":
-		// 纯文本工具结果只给一眼：12 行会把一条工具卡撑满半屏（实测过），
-		// 想看全文应该点开或去 artifacts，而不是在消息流里翻。
-		f.Text(v.Body).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary).MaxLines(6)
-	case "card", "":
-		p.drawCard(f, env, v)
-	default:
-		// 不认识的 Kind：退化成正文，别丢内容也别崩。
-		f.Text(v.Body).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-	}
-}
-
-// drawCard 是 Kind=card：一组键值。
-func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewSpec) {
-	t := p.theme
-	cw := p.contentWidth(env)
-	for _, fv := range v.Fields {
-		f.Row().WidthPercent(100).Gap(8).Children(func() {
-			f.Text(fv.Key).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			// Value 必须 Grow(1)：不撑满的话 Ellipsis 没有可省略的边界，
-			// 长命令会直接画到窗口外（实测：bash 的 command 被切在右边缘）。
-			f.Text(fv.Value).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelSecondary).
-				MaxWidth(cw - 120).Ellipsis()
-		})
-	}
-}
-
-// drawTable 是 Kind=table：列头 + 行。
+// 正常路径一定拿得到：ds-tool 提供 `ui.tool-card`，壳的 blank import 保证它
+// 被装配（日志 `插件已装配 id=ds-tool`）。**没有写进 Requires** 是刻意的：
+// 有两个既有测试把 ds-conversation 单独装进一个没有 ds-tool 的 kernel
+// （dsshortcuts/overlay_test.go、dstopbar/frame_interaction_test.go），
+// 列进 Requires 会让它们装配失败，而那两个文件不在本轮边界内。
 //
-// 行宽必须等于列数；不等就截断到列数（**不许 panic**：这是外部数据）。
-func (p *Plugin) drawTable(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewSpec) {
-	t := p.theme
-	cw := p.contentWidth(env)
-	if len(v.Columns) == 0 {
-		return
+// 兜底不是第二套画法：用的还是 dstool 自己的渲染器，只是没有 ds-core 的
+// 徽标（prims 为 nil）。**画法只有一份**，不存在"抽出去了但没真用"。
+func (p *Plugin) toolCards() dstool.Service {
+	if p.tools == nil {
+		p.tools = dstool.New(nil)
 	}
-	f.Row().FillWidth().Gap(8).Children(func() {
-		for _, c := range v.Columns {
-			f.Text(c).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).
-				MaxWidth(cw / float32(len(v.Columns))).Ellipsis()
-		}
-	})
-	const maxRows = 8
-	for r := 0; r < len(v.Rows) && r < maxRows; r++ {
-		row := v.Rows[r]
-		f.Row().FillWidth().Gap(8).Children(func() {
-			for c := range v.Columns {
-				cell := ""
-				if c < len(row) {
-					cell = row[c]
-				}
-				f.Text(cell).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary).
-					MaxWidth(cw / float32(len(v.Columns))).Ellipsis()
-			}
-		})
-	}
-	if len(v.Rows) > maxRows {
-		f.Text(fmt.Sprintf("… 另有 %d 行", len(v.Rows)-maxRows)).
-			FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-	}
+	return p.tools
 }
 
 // layoutMarkdown 排版一条消息的 Markdown，返回高度。
@@ -767,14 +634,8 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32) float32 {
 		return float32(float64(lines)*18 + 40)
 	}
 	if m.Role == "tool" {
-		if !p.toolOpen[m.Seq] {
-			return 28 // 收起时只有标题一行（官方就是这么一行）
-		}
-		if m.View != nil {
-			// 有结构化显示的工具卡：头 + 若干行
-			return float32(50 + 20*(len(m.View.Fields)+min(len(m.View.Rows), 8)))
-		}
-		return 70
+		// 工具卡占多高由 ds-tool 自己说了算：它知道这种工具展开后画几行。
+		return p.toolCards().Height(m.Seq, m.View)
 	}
 	perLine := float64(width) / (14 * 0.62)
 	if perLine < 8 {
@@ -793,13 +654,6 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32) float32 {
 		return float32(float64(lines)*lineH + gapPad + 26) // 多一排操作按钮
 	}
 	return float32(float64(lines)*lineH + gapPad)
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // HandleKey 实现 pluginapi.KeyHandler：

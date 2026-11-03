@@ -2,7 +2,7 @@
 //
 // 这个函数在画工具卡/标题时被调用，输入是**宿主任意文本**（可能含换行、
 // 制表符、超长单行、中文）。它错了的症状是"摘要看起来怪"，很难归因到一行函数。
-package dsconversation
+package dstool
 
 import (
 	"strings"

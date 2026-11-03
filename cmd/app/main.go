@@ -34,6 +34,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
+	_ "github.com/MYCF711/dsh-ui/plugins/dstool"
 	_ "github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
@@ -1603,18 +1604,18 @@ func main() {
 		ConfigGet: func() map[string]string {
 			m.mu.Lock()
 			defer m.mu.Unlock()
-			return m.uiConfig
+			return uiConfig
 		},
 		ConfigSet: func(kv map[string]string) {
 			if len(kv) == 0 {
 				return
 			}
 			m.mu.Lock()
-			if m.uiConfig == nil {
-				m.uiConfig = map[string]string{}
+			if uiConfig == nil {
+				uiConfig = map[string]string{}
 			}
 			for k, v := range kv {
-				m.uiConfig[k] = v
+				uiConfig[k] = v
 			}
 			m.mu.Unlock()
 			go func() {

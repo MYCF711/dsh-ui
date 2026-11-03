@@ -69,6 +69,12 @@ type cachedSession struct {
 	at            time.Time
 }
 
+// rightbarSessionState 把用户选择留在各自会话里；explicit=false 时只是由轨迹推导的临时状态。
+type rightbarSessionState struct {
+	open     bool
+	explicit bool
+}
+
 const cacheLimit = 5
 
 type model struct {
@@ -138,10 +144,13 @@ type model struct {
 	contextTokens int64
 	modelName     string
 	permission    string
-	// showRightbar 是右栏开合（壳持有，插件只读）。
+	// showRightbar 是当前会话的右栏开合（壳持有，插件只读）。
 	showRightbar bool
-	status       string
-	loading      bool
+	// rightbarDefault 保留 -rightbar 的显式默认；普通启动为 false。
+	rightbarDefault  bool
+	rightbarSessions map[string]rightbarSessionState
+	status           string
+	loading          bool
 }
 
 func (m *model) setStatus(s string) {
@@ -150,6 +159,49 @@ func (m *model) setStatus(s string) {
 	m.loading = false
 	m.mu.Unlock()
 	m.inv.Invalidate()
+}
+
+func hasToolTrajectory(msgs []apiclient.Message) bool {
+	for i := range msgs {
+		if msgs[i].Role == "tool" {
+			return true
+		}
+	}
+	return false
+}
+
+// syncRightbarLocked 按当前会话轨迹推导默认开合；用户明确开过或关过后不被刷新覆盖。
+// 调用方必须持有 m.mu。
+func (m *model) syncRightbarLocked() {
+	state := m.rightbarSessions[m.cur]
+	if !state.explicit {
+		state.open = m.rightbarDefault || hasToolTrajectory(m.msgs)
+		if m.cur != "" {
+			if m.rightbarSessions == nil {
+				m.rightbarSessions = map[string]rightbarSessionState{}
+			}
+			m.rightbarSessions[m.cur] = state
+		}
+	}
+	m.showRightbar = state.open
+}
+
+func (m *model) toggleRightbar() {
+	m.mu.Lock()
+	m.showRightbar = !m.showRightbar
+	if m.cur != "" {
+		if m.rightbarSessions == nil {
+			m.rightbarSessions = map[string]rightbarSessionState{}
+		}
+		m.rightbarSessions[m.cur] = rightbarSessionState{open: m.showRightbar, explicit: true}
+	}
+	on := m.showRightbar
+	m.mu.Unlock()
+	if on {
+		m.setStatus("右栏：显示")
+	} else {
+		m.setStatus("右栏：收起")
+	}
 }
 
 func (m *model) refreshList() {
@@ -238,6 +290,7 @@ func (m *model) openSession(id string) {
 		m.loading = true
 		m.status = "加载 " + id + " …"
 	}
+	m.syncRightbarLocked()
 	m.mu.Unlock()
 	m.inv.Invalidate()
 	m.subscribe(id)
@@ -292,6 +345,7 @@ func (m *model) refreshSession(id string, quiet bool) {
 				// 带 129 字符单行代码的助手消息：验横向滚动（清单 3.3）
 				apiclient.Message{Seq: -4, Role: "assistant", Text: demoWideCode})
 		}
+		m.syncRightbarLocked()
 		m.status = fmt.Sprintf("已连接 · %d 条（总 %d）", len(r.Messages), r.Total)
 		m.loading = false
 	}
@@ -748,6 +802,7 @@ func (m *model) applyEvent(id string, ev apiclient.Event) {
 	if m.stream.Apply(ev) {
 		// 思考一有增量就落（边想边看）；正文等这段说完才落（流式期间由气泡显示）。
 		m.msgs = apiclient.Merge(m.msgs, &m.stream)
+		m.syncRightbarLocked()
 		if streamDebug > 0 && m.stream.Thinking() != "" && m.stream.Text() == "" {
 			streamDebug--
 			log.Printf("mux 思考增量（累计 %d 字）", len([]rune(m.stream.Thinking())))
@@ -1077,6 +1132,22 @@ func newConfig(m *model) app.Config {
 	// 窗口变了必须全屏重绘：Viva 只重画变化区域，缩小后旧帧会残留在边缘。
 	// 键盘：先给插件（↑↓ 切会话、Esc 拒审批、Ctrl+Shift+C 复制…），
 	// 插件都不要才算壳的。壳里因此**没有任何具体快捷键的判断**。
+	// 滚轮：**不接就是 bug，不是"没测的性能项"**。
+	//
+	// viva 的窗口过程长这样（window_windows.go）：
+	//     case wmWheel: if OnScroll != nil { ... }; return 0
+	// 也就是 OnScroll == nil 时 WM_MOUSEWHEEL 被**直接吞掉**，连 canvas 的
+	// 默认偏移都没有。所以真机上鼠标滚轮滚不动消息列表（只能 ↑↓ 或自动跟随），
+	// 而 PostMessage 测滚动也永远量不到东西——不是事件没到，是到了没人接。
+	//
+	// 接到消息区的 ScrollState（它自己管跟随与边界），会话 id 用当前会话。
+	// 用 viva 自带的 `View.Wheel`：它按**指针位置**找最内层能滚的 ScrollArea，
+	// 滚到头再往外层找，行为跟浏览器一致。自己拿当前会话的 ScrollState 去 Wheel
+	// 只覆盖"消息区"一个区域，侧栏/轨迹栏在指针下时就不该滚消息区。
+	cfg.OnScroll = func(ev ui.ScrollEvent) ui.EventResult {
+		return m.view.Wheel(ev)
+	}
+
 	cfg.OnKey = func(ev ui.KeyEvent) ui.EventResult {
 		if ev.Release {
 			return ui.EventResult{}
@@ -1206,7 +1277,7 @@ func main() {
 	// 只有真在同一个进程里切，才能验出"切走时流没断、切回来内容还在"。
 	switchSeq := flag.String("switch", "", "调试：启动后按顺序切换会话（逗号分隔 id）")
 	switchEvery := flag.Int("switch-every", 3, "调试：-switch 每隔多少秒切一个")
-	rightbarOn := flag.Bool("rightbar", true, "启动时是否展开右栏（-rightbar=false 收起来）")
+	rightbarOn := flag.Bool("rightbar", false, "无工具轨迹时是否展开右栏（有真实轨迹会自动展开）")
 	token := flag.String("token", "", "宿主 launch token：给了就先 /connect 换 cookie（真宿主 dshd serve 必须给）")
 	searchAtStart := flag.String("search", "", "调试：启动就把会话内搜索打开，并带上这个词（截搜索态用）")
 	shotWait := flag.Int("shot-wait", 4, "无头抓图前等多少秒（流式/发送类验证要给大一点）")
@@ -1230,12 +1301,14 @@ func main() {
 	shotPath = *shot
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
-		cache:        map[string]*cachedSession{},
-		seqs:         map[string]int{},
-		epochs:       map[string]int64{},
-		mux:          apiclient.NewMux(*addr),
-		scrollPos:    map[string]float32{},
-		showRightbar: *rightbarOn,
+		cache:            map[string]*cachedSession{},
+		seqs:             map[string]int{},
+		epochs:           map[string]int64{},
+		mux:              apiclient.NewMux(*addr),
+		scrollPos:        map[string]float32{},
+		showRightbar:     *rightbarOn,
+		rightbarDefault:  *rightbarOn,
+		rightbarSessions: map[string]rightbarSessionState{},
 	}
 	// **先换 cookie，再拉数据**。
 	// 反过来（先 refreshList 再 Connect）的后果实测过：第一次 list 必然 401，
@@ -1312,18 +1385,8 @@ func main() {
 			}
 			m.setStatus("已复制 " + itoaLocal(len([]rune(text))) + " 字")
 		},
-		Notify: m.setStatus,
-		ToggleRightbar: func() {
-			m.mu.Lock()
-			m.showRightbar = !m.showRightbar
-			on := m.showRightbar
-			m.mu.Unlock()
-			if on {
-				m.setStatus("右栏：显示")
-			} else {
-				m.setStatus("右栏：收起")
-			}
-		},
+		Notify:         m.setStatus,
+		ToggleRightbar: m.toggleRightbar,
 		// 审批：真调 session.approve，把宿主的 requestId 与它自己的 optionId 原样回传。
 		// **只有宿主 200 且 accepted 才收气泡**——本地收掉不等于批准了（宿主 §11.7）。
 		// 失败时气泡留着、状态栏报错，用户可以再点一次。

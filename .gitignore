@@ -62,3 +62,5 @@ tmp/app-*.exe
 tmp/mockd-run.log
 tmp/diag*.png
 tmp/rect-probe*
+tmp/final-bubble*.png
+tmp/mockd-f*.log

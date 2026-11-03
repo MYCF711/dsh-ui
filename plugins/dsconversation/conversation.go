@@ -217,7 +217,7 @@ func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Messa
 		f.Column().FillWidth().Pad(8).Radius(t.Radii.SM).
 			Background(t.BgLayer1).Border(1, t.BorderL1).Gap(4).Children(func() {
 			if msg.View != nil {
-				p.drawView(f, msg.View)
+				p.drawView(f, env, msg.View)
 				return
 			}
 			f.Row().Gap(8).Items(flex.Center).Children(func() {
@@ -231,8 +231,21 @@ func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Messa
 	})
 }
 
+// contentWidth 是主区内容可用的最大像素宽。
+//
+// 为什么不用百分比：槽位里 f.Bounds() 拿到的是整窗宽（实测 1180），
+// 百分比也按整窗解析，结果就是卡片内容一路画到窗口边缘、Ellipsis 没有边界。
+// 唯一可靠的事实是壳保证了侧栏 280，主区再来回扣 56 的内边距/滚动条。
+func (p *Plugin) contentWidth(env *pluginapi.Env) float32 {
+	w := env.Bounds.Width - 280 - 56
+	if w < 200 {
+		w = 200
+	}
+	return w
+}
+
 // drawView 按 ViewSpec 的 Kind 选渲染器。
-func (p *Plugin) drawView(f *flex.Frame, v *apiclient.ViewSpec) {
+func (p *Plugin) drawView(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewSpec) {
 	t := p.theme
 
 	// 头：工具名 + 徽标
@@ -252,11 +265,11 @@ func (p *Plugin) drawView(f *flex.Frame, v *apiclient.ViewSpec) {
 
 	switch v.Kind {
 	case "table":
-		p.drawTable(f, v)
+		p.drawTable(f, env, v)
 	case "plain":
 		f.Text(v.Body).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary).MaxLines(12)
 	case "card", "":
-		p.drawCard(f, v)
+		p.drawCard(f, env, v)
 	default:
 		// 不认识的 Kind：退化成正文，别丢内容也别崩。
 		f.Text(v.Body).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
@@ -264,15 +277,16 @@ func (p *Plugin) drawView(f *flex.Frame, v *apiclient.ViewSpec) {
 }
 
 // drawCard 是 Kind=card：一组键值。
-func (p *Plugin) drawCard(f *flex.Frame, v *apiclient.ViewSpec) {
+func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewSpec) {
 	t := p.theme
+	cw := p.contentWidth(env)
 	for _, fv := range v.Fields {
-		f.Row().FillWidth().Gap(8).Children(func() {
+		f.Row().WidthPercent(100).Gap(8).Children(func() {
 			f.Text(fv.Key).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 			// Value 必须 Grow(1)：不撑满的话 Ellipsis 没有可省略的边界，
 			// 长命令会直接画到窗口外（实测：bash 的 command 被切在右边缘）。
 			f.Text(fv.Value).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelSecondary).
-				Grow(1).Ellipsis()
+				MaxWidth(cw - 120).Ellipsis()
 		})
 	}
 }
@@ -280,14 +294,16 @@ func (p *Plugin) drawCard(f *flex.Frame, v *apiclient.ViewSpec) {
 // drawTable 是 Kind=table：列头 + 行。
 //
 // 行宽必须等于列数；不等就截断到列数（**不许 panic**：这是外部数据）。
-func (p *Plugin) drawTable(f *flex.Frame, v *apiclient.ViewSpec) {
+func (p *Plugin) drawTable(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewSpec) {
 	t := p.theme
+	cw := p.contentWidth(env)
 	if len(v.Columns) == 0 {
 		return
 	}
 	f.Row().FillWidth().Gap(8).Children(func() {
 		for _, c := range v.Columns {
-			f.Text(c).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Grow(1).Ellipsis()
+			f.Text(c).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).
+				MaxWidth(cw/float32(len(v.Columns))).Ellipsis()
 		}
 	})
 	const maxRows = 8
@@ -299,7 +315,8 @@ func (p *Plugin) drawTable(f *flex.Frame, v *apiclient.ViewSpec) {
 				if c < len(row) {
 					cell = row[c]
 				}
-				f.Text(cell).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary).Grow(1).Ellipsis()
+				f.Text(cell).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary).
+					MaxWidth(cw/float32(len(v.Columns))).Ellipsis()
 			}
 		})
 	}

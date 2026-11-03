@@ -131,3 +131,4 @@
 | 2026-11-03 14:02 | H10 排查再进一步（写进 §12）：`session.load` 404 **不是文件不存在**——create 落盘的文件我找到了，`filepath.Glob` 能命中，`session.list` 也列得出来；四种入参组合全是 404。建议宿主在 `resolve` 的三个 `ErrNoSuchSession` 返回前打一行 debug 日志 | 已在 `DSH-GO/AGENTS.md` §12 |
 | 2026-11-03 14:06 | **流式验真了**：`-smoke` 发一条，日志里 `mux 已订阅 session:… since=0` 之后是 `mux 增量 +1 字（累计 1/2/3）`——**是逐字流出来的，不是重新 load 出来的**。截图里回复按 Markdown 渲染（粗体/行内代码/列表/代码块） | `tmp/stream2.log`、`tmp/stream.png` |
 | 2026-11-03 14:06 | **左栏底部状态**（`sidebar.footer` 这个常量终于有人用了）：`193 个会话` + 壳给的提示，一行 22px。壳那边第一次真的 `drawSlot(SlotSidebarFooter)` | `tmp/footer-crop.png` |
+| 2026-11-03 14:09 | **会话内搜索**（Ctrl+F）：只显示命中的消息（文本/工具名/摘要，大小写不敏感），带命中数，Esc 先关搜索再拒审批。**不做"上下跳转"**——过滤之后命中的都在列表里，跳转是"不过滤"才需要的东西，少一个状态就少一处和滚动位置打架的地方。截图：搜 `mockd` → `5 条`（3 个思考块 + 1 张 bash 卡） | `tmp/search.png`；`-search` 可直接带词启动 |

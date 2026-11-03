@@ -689,6 +689,7 @@ func main() {
 	collapseAll := flag.Bool("collapse", false, "调试：启动时把所有工作区分组收起（截折叠态用）")
 	rightbarOn := flag.Bool("rightbar", true, "启动时是否展开右栏（-rightbar=false 收起来）")
 	token := flag.String("token", "", "宿主 launch token：给了就先 /connect 换 cookie（真宿主 dshd serve 必须给）")
+	searchAtStart := flag.String("search", "", "调试：启动就把会话内搜索打开，并带上这个词（截搜索态用）")
 	shotWait := flag.Int("shot-wait", 4, "无头抓图前等多少秒（流式/发送类验证要给大一点）")
 	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
 	flag.Parse()
@@ -727,7 +728,11 @@ func main() {
 	if err := m.kernel.Load(
 		&dscore.Plugin{Dark: true}, // 根本依赖插件：令牌 + 基础组件
 		m.side,                     // 左栏会话列表
-		&dsconversation.Plugin{ExpandAllThinking: *expandThink}, // 主区消息流 + 工具卡 + 审批
+		&dsconversation.Plugin{
+			ExpandAllThinking: *expandThink,
+			SearchOpen:        *searchAtStart != "",
+			SearchQuery:       *searchAtStart,
+		}, // 主区消息流 + 工具卡 + 审批
 		&dscomposer.Plugin{},  // 输入区
 		&dsstatusbar.Plugin{}, // 底部状态栏
 		&dstopbar.Plugin{},    // 主区顶部条

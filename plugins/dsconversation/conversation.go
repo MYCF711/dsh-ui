@@ -70,11 +70,41 @@ type Plugin struct {
 	// expanded 记录哪些思考块被展开（键是消息 seq，切会话后依然有效）。
 	// 缺省全收起：真实语料里思考比正文多八倍，默认展开会把消息流淹没。
 	expanded map[int]bool
+	// SearchOpen / SearchQuery 是调试开关：启动就带着搜索词打开（截搜索态用）。
+	SearchOpen  bool
+	SearchQuery string
+	initialized bool
+
 	// ExpandAllThinking 是调试开关：把所有思考块初始化为展开。
 	// 只为"无头截图验证展开态"存在，正常运行一直是 false。
 	ExpandAllThinking bool
 	// lastWidth 是本帧内容列宽度（工具卡要按它定宽）。
 	lastWidth float32
+
+	// 会话内搜索：Ctrl+F 打开，只显示命中的消息（最简单也最不容易出错的一种）。
+	searchOn    bool
+	searchField flex.Field
+	// searchHits 是最近一帧的命中数，给搜索栏显示。
+	searchHits int
+}
+
+// drawSearchBar 画搜索栏：输入框 + 命中数 + 关闭。
+//
+// 不做"上下跳转"：过滤之后命中的消息全都在列表里，跳转是在没有过滤的视图里
+// 才有意义的东西。少一个状态，就少一处会和滚动位置打架的地方。
+func (p *Plugin) drawSearchBar(f *flex.Frame, env *pluginapi.Env) {
+	t := p.theme
+	f.Row().WidthPercent(100).Gap(8).Items(flex.Center).PadY(2).Children(func() {
+		f.Text("搜索").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		f.Field(&p.searchField, env.Tree.ID(env.Feat, "search-msgs"), "搜索", "在当前会话里找…").
+			Grow(1).FontSize(t.Fonts.Caption)
+		hits := itoa(p.searchHits) + " 条"
+		f.Text(hits).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
+		if f.Button(env.Tree.ID(env.Feat, "search-close"), "关闭").Ghost().Small().Clicked() {
+			p.searchOn = false
+			p.searchField.SetText("")
+		}
+	})
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -94,6 +124,9 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	return nil
 }
+
+// Fields 实现 pluginapi.Fields：搜索框要收键盘（壳会把它登记给 viva）。
+func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.searchField} }
 
 // Panels 实现 pluginapi.Panels：一块主体（消息流）+ 一块审批气泡。
 func (p *Plugin) Panels() []pluginapi.Painter {
@@ -122,6 +155,13 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	if p.collapsedOnce == nil {
 		p.collapsedOnce = map[int]bool{}
 	}
+	if !p.initialized {
+		p.initialized = true
+		if p.SearchOpen {
+			p.searchOn = true
+			p.searchField.SetText(p.SearchQuery)
+		}
+	}
 
 	if len(msgs) == 0 && env.Data.Stream == "" {
 		f.Row().FillWidth().Pad(24).Children(func() {
@@ -133,6 +173,29 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	// 注意：槽位里 f.Bounds() 拿到的是**整窗**宽度（实测 1180），不是本列宽度。
 	// 所以这里一律用百分比定宽，别拿 Bounds 去算列宽——算了就会把内容推到窗口外。
 	width := f.Bounds().Width // 只用来估高度，不用于布局
+
+	// 会话内搜索：命中判定只认纯文本（大小写不敏感），不解析 Markdown。
+	q := ""
+	if p.searchOn {
+		q = strings.ToLower(strings.TrimSpace(p.searchField.Text()))
+	}
+	vis := make([]int, 0, len(msgs))
+	for i := range msgs {
+		if q == "" || strings.Contains(strings.ToLower(msgs[i].Text+" "+msgs[i].Tool+" "+msgs[i].Summary), q) {
+			vis = append(vis, i)
+		}
+	}
+	p.searchHits = len(vis)
+	if p.searchOn {
+		p.drawSearchBar(f, env)
+	}
+	if len(vis) == 0 {
+		f.Row().FillWidth().Pad(16).Children(func() {
+			f.Text("没有匹配「" + p.searchField.Text() + "」的消息").
+				FontSize(t.Fonts.Secondary).Color(t.LabelCaption)
+		})
+		return
+	}
 
 	// 每个会话一个滚动 id：否则切会话时滚动位置会串（viva flex/scroll.go:174）。
 	scrID := env.Tree.ID(env.Feat, "msgs-"+env.Data.Cur)
@@ -146,13 +209,13 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			// 视口虚拟化：先算每条的估算高度和累计位置，视口外的只放 Slot
 			// ——不建 Text 就不会生成 GPU 文本纹理（99.1 → 72.5 MB）。
 			w0 := width - 40
-			heights := make([]float32, len(msgs))
-			offs := make([]float32, len(msgs))
+			heights := make([]float32, len(vis))
+			offs := make([]float32, len(vis))
 			var acc float32
-			for i := range msgs {
-				heights[i] = p.estimateMsgHeight(msgs[i], w0)
-				offs[i] = acc
-				acc += heights[i] + 6
+			for k, i := range vis {
+				heights[k] = p.estimateMsgHeight(msgs[i], w0)
+				offs[k] = acc
+				acc += heights[k] + 6
 			}
 
 			var vpOffset, vpHeight float32
@@ -167,9 +230,9 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			}
 			const overscan = 800.0
 
-			for i := range msgs {
-				if offs[i]+heights[i] < vpOffset-overscan || offs[i] > vpOffset+vpHeight+overscan {
-					f.Slot().Height(heights[i])
+			for k, i := range vis {
+				if offs[k]+heights[k] < vpOffset-overscan || offs[k] > vpOffset+vpHeight+overscan {
+					f.Slot().Height(heights[k])
 					continue
 				}
 				p.drawMessage(f, env, i, width)
@@ -615,7 +678,19 @@ func min(a, b int) int {
 //	Ctrl+R         重发上一条用户消息
 func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 	switch {
+	case isKey(ev, "f") && ev.Modifiers == ui.ModifierControl:
+		p.searchOn = !p.searchOn
+		if !p.searchOn {
+			p.searchField.SetText("")
+		}
+		return true
+
 	case ev.Key == ui.KeyEscape && ev.Modifiers == 0:
+		if p.searchOn {
+			p.searchOn = false
+			p.searchField.SetText("")
+			return true
+		}
 		if p.lastAct.Deny == nil {
 			return false
 		}
@@ -663,4 +738,5 @@ var (
 	_ pluginapi.Plugin     = (*Plugin)(nil)
 	_ pluginapi.Panels     = (*Plugin)(nil)
 	_ pluginapi.KeyHandler = (*Plugin)(nil)
+	_ pluginapi.Fields     = (*Plugin)(nil)
 )

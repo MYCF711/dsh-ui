@@ -268,6 +268,10 @@ type Snapshot struct {
 	// ShowRightbar 是右栏当前是开还是关（壳持有这个状态，插件只读）。
 	ShowRightbar bool
 	// Truncated 表示这次只渲染了末尾一段（视口虚拟化 / -limit）。
+	//
+	// **当前无人使用**：壳从不设它、插件也从不读它。真正需要"截断必须让人看得见"
+	// 的地方（dsrightbar 的「更早的还有 N 次未显示」）用的是它自己算出来的 hidden
+	// 计数。留着是因为将来做视口虚拟化时它是对的位置，但现在**别以为有人在维护它**。
 	Truncated bool
 }
 
@@ -365,6 +369,10 @@ type Actions struct {
 	NewSession  func()
 	// Notify 让插件在状态栏说一句话（"已复制"这类反馈）。
 	// 插件不直接写状态栏：状态栏是另一个插件的地盘。
+	//
+	// **当前零调用**：壳接了线，但没有插件用它——"已复制"这类反馈是各插件
+	// 自己调 Copy/Notify 之外的方式给的（看 composer 的复制按钮实现）。
+	// 当空转接口看。
 	Notify func(msg string)
 	// Copy 把文本放进系统剪贴板（插件不 import app，剪贴板归壳管）。
 	Copy func(text string)

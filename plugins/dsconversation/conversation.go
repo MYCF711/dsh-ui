@@ -95,6 +95,12 @@ type Plugin struct {
 
 	// heroBoxes 保存首屏关键容器的本帧几何，供布局回归测试与截图证据核对。
 	heroBoxes heroBoxes
+
+	// 消息反馈（👍/👎）的本机记录，见 feedback.go 顶部那段边界说明。
+	// feedback 是内存表，键 = feedback.<sessionID>.<msgIndex>；ConfigGet/ConfigSet
+	// 是它的来源与落点（壳接到宿主 ui-config.json）。
+	feedback       map[string]string
+	feedbackSeeded bool
 }
 
 // drawSearchBar 画搜索栏：输入框 + 命中数 + 关闭。
@@ -258,17 +264,27 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 }
 
 // drawStreaming 画「正在流式输出」的那一条。
+//
+// 与定稿共用 layoutMarkdown / MarkdownView，不再把增量当纯文本 Wrap。
+// 缓存下标故意取 len(Msgs)：done 后助手正文正好落在这个下标，同文本同宽度
+// 无需重排，未闭合围栏也不会在流式转定稿时换一种解析路径。
 func (p *Plugin) drawStreaming(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	if env.Data.Stream == "" {
 		return
 	}
+	width := env.MainWidth
+	if width < 200 {
+		width = f.Bounds().Width
+	}
+	streamIndex := len(env.Data.Msgs)
+	h := p.layoutMarkdown(env.Canvas, streamIndex, env.Data.Stream, width-40)
 	f.Column().FillWidth().Pad(8).Radius(t.Radii.MD).Children(func() {
 		f.Row().Gap(6).Items(flex.Center).Children(func() {
 			f.Text("助手").FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
 			f.Spinner()
 		})
-		f.Wrap(env.Data.Stream).FontSize(t.Fonts.Body)
+		p.slots = append(p.slots, mdSlot{idx: streamIndex, box: f.Slot().Height(h)})
 	})
 }
 
@@ -341,7 +357,7 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 		w := width - 40
 		h := p.layoutMarkdown(env.Canvas, i, msg.Text, w)
 		p.slots = append(p.slots, mdSlot{idx: i, box: f.Slot().Height(h)})
-		p.drawActions(f, env, msg, i == len(env.Data.Msgs)-1)
+		p.drawActions(f, env, msg, i, i == len(env.Data.Msgs)-1)
 	}
 }
 
@@ -349,7 +365,9 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 //
 // 为什么要有它：Ctrl+Shift+C / Ctrl+R 是看不见的快捷键，不给可见入口等于没做。
 // 只在"有正文的助手消息"下面画，而且是 Ghost 小按钮——它不该抢正文的注意力。
-func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, last bool) {
+//
+// index 是这条消息在当前消息列表里的下标：反馈记录按它归属（见 feedback.go）。
+func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, index int, last bool) {
 	t := p.theme
 	if strings.TrimSpace(msg.Text) == "" {
 		return
@@ -366,6 +384,9 @@ func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Me
 			Ghost().Small().Clicked() {
 			env.Act.Copy(text)
 		}
+		// 👍/👎 夹在「复制」和「重试」之间——官方图标动作行的次序就是
+		// copy → feedback → branch，这里照摆。
+		p.drawFeedback(f, env, index)
 		if last && env.Act.Retry != nil && f.Button(env.Tree.ID(env.Feat, "retry-"+itoa(msg.Seq)), "重试").
 			Ghost().Small().Clicked() {
 			env.Act.Retry()

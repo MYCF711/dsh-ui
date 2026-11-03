@@ -70,15 +70,17 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 ## 2. 流：`/ws`（WebSocket，H14 唯一基线）
 
 ```
-客户端 → { "t":"sub", "topic":"session:<id>", "sinceSeq": 123 }
+客户端 → { "t":"sub", "topic":"session:<id>", "sinceSeq": 123, "journalEpoch": 7 }
 服务端 → { "seq":124, "type":"user/message", "data":{...}, "time":1793693560098 }
 服务端 → { "type":"pong" }
+服务端 → { "type":"session/reset", "data":{"journalEpoch":8,"lastSeq":0} }   ← 无 seq 的控制帧
 ```
 
 | 字段 | 说明 |
 |---|---|
 | 路径 | **`/ws`**。`/api/mux` 是界面早期的自定形状，已废弃，不要留两套 |
 | 控制帧（客户端） | `t=sub` / `t=unsub` / `t=ping`（应用层心跳，不占用 WS 控制帧） |
+| `t=sub` 的两个水位 | `sinceSeq`（收到哪了）+ `journalEpoch`（那一代是第几代）。**两个要一起带**，见 §3.1 |
 | 事件帧（服务端） | `{seq,type,data,time}`；**没有 topic 字段**——连接本身就是会话归属 |
 | `type` | v4 原始事件名，或 `pong`。不是 `{t:"ev",kind:…}` |
 | `seq` | 由宿主每会话 Transport journal 统一分配；`pong` 无 seq、不入日志 |
@@ -111,7 +113,7 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 | `session.list` | 会话列表 | —（宿主忽略 body；`cwd`/`limit`/`cursor` 尚未实现） |
 | `session.create` | 新建 | `mode`（`cwd`/`title` 客户端会发，宿主暂不读） |
 | `session.load` | 打开会话（含尾页） | `id` / `sessionId`、`tailMessages` / `limit` |
-| `session.history` | 向前翻页 | `id` / `sessionId`、`sinceSeq`、`limit` |
+| `session.history` | 断号补洞（**原始 frames**，不是 messages 投影） | `id` / `sessionId`、`sinceSeq`、`limit`、`journalEpoch` |
 | `session.prompt` | 发消息 | `id` / `sessionId`、`text` |
 | `session.cancel` | 取消 turn | `id` / `sessionId` |
 | `session.approve` | **回传一次审批决定** | `requestId`、`optionId`（**注意：没有 sessionId**） |
@@ -132,6 +134,51 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 `sessionId` 优先于 `id`（`server.go:395` `fillID`），`limit` 优先于 `tailMessages`
 （`server.go:417` `firstNonZero(in.Limit, in.TailMessages)`）。
 只认一个就是静默 404 —— 这是 H9/H10 的成因，别再加第三个名字。
+
+### 3.1 `journalEpoch`：水位属于哪一代（U0 收口）
+
+一个会话的 journal 会**换代**（宿主重启换了内存里的 journal，或会话被重建）。
+换代之后 `seq` 从 1 重新数，所以"我收到 277 了"这句话在下一代里毫无意义。
+`journalEpoch` 就是用来把水位钉在某一代上的整数。
+
+| 位置 | 字段 | 语义 |
+|---|---|---|
+| `session.load` 响应 | `journalEpoch` / `lastSeq` | 当前世代的编号与该 journal 的末尾 seq。**订阅前的基线就取这两个** |
+| `t=sub` 控制帧 | `journalEpoch` | 客户端手里的世代。`0` = 还没有基线，宿主不核（首次订阅） |
+| `session.history` 请求 | `journalEpoch` | **必带**，每批都带同一个值（`0` = 还没有基线，宿主不核） |
+| `session.history` 响应 | `journalEpoch` / `lastSeq` / `frames` | 同一个 journal 的原始帧；形状与 WS 事件帧一致 |
+| `session/reset` 帧 | `data.journalEpoch` / `data.lastSeq` | 无 `seq` 的控制帧：宿主发现你在旧世代上 |
+
+**不匹配的两条出口**（都不是"重试一下就好"）：
+
+- `session.history` → **HTTP 409**，`error.code = "stale_epoch"`，并附当前
+  `journalEpoch` / `lastSeq` 与 `hint`（原文：`丢弃旧水位，重新 session.load 拿 journalEpoch/lastSeq`）；
+- WS → 推一条无 `seq` 的 `session/reset`。
+
+**客户端收到这两个中的任何一个，动作完全一样**：
+
+1. 丢掉这一代的水位——`seq` 与 `epoch` **一起**丢，`seqs`、`lastSeq`、订阅结构里那份都要清；
+2. 重新 `session.load` 拿新基线（`journalEpoch` + `lastSeq`）；
+3. 用新基线重连（`t=sub` 带新的 `journalEpoch` 与 `lastSeq`），**不要带旧 `since`**。
+
+> 第 3 步用"新基线"而不是恒定的 `0`：从 0 重连会把新 journal 整条重放一遍，而那些
+> 内容刚刚已经被 `load` 画到界面上了，结果是同一条消息出现两次。**只有在拿不到
+> 新基线（load 失败 / 新 journal 本来就是空的）时，才从 `0` 开始。**
+>
+> 局部变量也算一份水位：界面 `cmd/app/main.go` 的 `runSubscription` 里重连用的是
+> 局部 `since`，只删 map 不清它，重连照样带着旧值。这条曾在复核里被点名为
+> 「reset 后局部 `since` 未归零」。
+
+界面上这两条路的实现与断言：
+
+| 行为 | 实现 | 断言 |
+|---|---|---|
+| `session/reset` 清三份水位 + 局部 `since=0` | `model.onJournalResetLocked`（`cmd/app/main.go`） | `TestJournalResetZeroesEveryWatermark`、`TestJournalResetOfBackgroundSessionKeepsForegroundWatermark`、`TestJournalResetToleratesMissingState`（`cmd/app/reset_watermark_test.go`） |
+| history 请求带 `journalEpoch`（且分批每批都带） | `apiclient.History` / `apiclient.FillGap`（`internal/apiclient/history.go`） | `TestHistorySendsJournalEpoch`、`TestFillGapForwardsEpoch`（`internal/apiclient/history_test.go`，httptest 抓请求 body） |
+
+> 快照 `testdata/api.snapshot.json` 仍是 v1 旧形状（`stream.path=/api/mux`、服务端帧用
+> `kind`、history 返回 `messages`、缺 `session.approve`）。本次只改了实现与本文，
+> **没有动快照**——整份重写归契约 owner（`DSH-GO` W0 / 本仓 W2），两边要一起改。
 
 ### 第二批（5 个，U1 之后）
 

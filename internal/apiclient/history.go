@@ -4,7 +4,7 @@
 // 是只补缺失的那一段，而不是整页 `session.load`（那会闪、会丢滚动位置）。
 // 宿主侧实测（2026-11-03，`docs/reconnect.md`）：
 //
-//	POST /api/session.history {"id":…,"sinceSeq":166,"limit":…}
+//	POST /api/session.history {"id":…,"sinceSeq":166,"limit":…,"journalEpoch":1}
 //	→ {"result":{"frames":[{seq,type,data,time},…],"lastSeq":277,"journalEpoch":1}}
 //
 // 返回的帧与 WS 推的**同一个形状**（同一个 journal 的原始帧），所以补回来的东西
@@ -36,7 +36,12 @@ type HistoryResult struct {
 //
 // sinceSeq 的语义是开区间：传 166 会拿到 167 起（宿主实测如此，别传 FromSeq）。
 // limit <= 0 时用一个保守默认值，避免一次拉爆。
-func (c *Client) History(ctx context.Context, id string, sinceSeq, limit int) (*HistoryResult, error) {
+//
+// epoch 是客户端手里的 journal 世代（0 = 还没有基线，宿主不核）。宿主拿它判
+// "你手里的水位是不是这一代的"：对不上就直接 409 `stale_epoch`，让调用方去
+// 重建基线。不带的话宿主只能按 seq 硬补——重启换 journal 之后补回来的是一段
+// **错位**的数据，界面上完全看不出来（见 docs/reconnect.md §4）。
+func (c *Client) History(ctx context.Context, id string, sinceSeq, limit, epoch int) (*HistoryResult, error) {
 	if id == "" {
 		return nil, fmt.Errorf("history 需要会话 id")
 	}
@@ -48,6 +53,9 @@ func (c *Client) History(ctx context.Context, id string, sinceSeq, limit int) (*
 		"id":       id,
 		"sinceSeq": sinceSeq,
 		"limit":    limit,
+		// 字段名逐字对齐宿主 handler 的 `json:"journalEpoch"`（server.go:488）。
+		// 平铺发，别套 params（那会让宿主解出零值，见 docs/api-contract.md §1.1）。
+		"journalEpoch": epoch,
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -66,9 +74,12 @@ const fillChunk = 200
 // **分批循环**：一次 history 拉不完（缺口 > 单次上限）就接着拉，直到补到 to
 // 或者宿主不再给新帧。早先只拉一次，大缺口会静默漏掉中段。
 //
+// **epoch 每批都带**：补洞可能跨几秒（大缺口要分批），这期间 journal 完全可能
+// 换代；带同一代的水位去要新一代的帧，宿主会 409 而不是给出错位数据。
+//
 // **失败不致命**：宿主可能回 409 stale_epoch（journal 换代，旧水位无意义）——
 // 那种情况补洞本来就补不了，应当退回 `session.load` 重建基线，而不是重试到死。
-func FillGap(ctx context.Context, c *Client, id string, from, to int, apply func(Frame)) (int, error) {
+func FillGap(ctx context.Context, c *Client, id string, from, to, epoch int, apply func(Frame)) (int, error) {
 	if from <= 0 || to < from {
 		return 0, nil
 	}
@@ -80,7 +91,7 @@ func FillGap(ctx context.Context, c *Client, id string, from, to int, apply func
 		if want > fillChunk {
 			want = fillChunk
 		}
-		res, err := c.History(ctx, id, cursor-1, want)
+		res, err := c.History(ctx, id, cursor-1, want, epoch)
 		if err != nil {
 			return n, err
 		}

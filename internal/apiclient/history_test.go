@@ -24,7 +24,7 @@ func TestHistoryParsesFrames(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res, err := New(srv.URL).History(context.Background(), "s-1", 166, 2)
+	res, err := New(srv.URL).History(context.Background(), "s-1", 166, 2, 1)
 	if err != nil {
 		t.Fatalf("history 不该报错：%v", err)
 	}
@@ -37,6 +37,84 @@ func TestHistoryParsesFrames(t *testing.T) {
 	// 传进去的就是传出来的（调用方自己决定语义），别在这里偷偷 +1/-1。
 	if int(gotBody["sinceSeq"].(float64)) != 166 {
 		t.Fatalf("sinceSeq 应原样发送，实际 %v", gotBody["sinceSeq"])
+	}
+	if int(gotBody["journalEpoch"].(float64)) != 1 {
+		t.Fatalf("journalEpoch 应原样发送，实际 %v", gotBody["journalEpoch"])
+	}
+}
+
+// TestHistorySendsJournalEpoch 钉住「补洞要报世代」这条契约（U0 剩余项之一）。
+//
+// 宿主拿它判"你手里的水位是不是这一代的"（`server.go:497`：
+// `in.JournalEpoch != 0 && in.JournalEpoch != j.Epoch()` → 409 stale_epoch）。
+// 不带这个字段时宿主只能按 seq 硬补，重启换 journal 之后补回来的是一段
+// **错位**的数据：不报错、也不丢帧，只是内容对不上号——界面上看不出来。
+func TestHistorySendsJournalEpoch(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"result":{"frames":[],"lastSeq":0,"journalEpoch":3}}`))
+	}))
+	defer srv.Close()
+
+	if _, err := New(srv.URL).History(context.Background(), "s-1", 9, 0, 3); err != nil {
+		t.Fatalf("history 不该报错：%v", err)
+	}
+	// 字段必须**存在**，不是"值对就算"：缺席和值错在宿主那边都表现为 409，
+	// 但缺席是客户端漏了契约，值错是水位本身过期——两件事得分开钉。
+	raw, ok := gotBody["journalEpoch"]
+	if !ok {
+		t.Fatalf("请求 body 里没有 journalEpoch 字段：%v", gotBody)
+	}
+	if int(raw.(float64)) != 3 {
+		t.Fatalf("journalEpoch 应原样发送 3，实际 %v", raw)
+	}
+	// limit<=0 时补默认值，但 sinceSeq 与 id 不能被动过。
+	if int(gotBody["sinceSeq"].(float64)) != 9 || gotBody["id"] != "s-1" {
+		t.Fatalf("sinceSeq/id 也要一起发：%v", gotBody)
+	}
+	if int(gotBody["limit"].(float64)) != 200 {
+		t.Fatalf("limit<=0 应补默认 200，实际 %v", gotBody["limit"])
+	}
+}
+
+// TestFillGapForwardsEpoch 钉住「FillGap 把它知道的世代传下去」。
+//
+// 分批补洞时**每一批**都要带同一个世代：只带第一批的话，第二批就是拿旧水位
+// 去问新 journal 的帧，宿主照样给 409（或者更糟：静默错位）。
+func TestFillGapForwardsEpoch(t *testing.T) {
+	var epochs []int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		epochs = append(epochs, int(body["journalEpoch"].(float64)))
+		since := int(body["sinceSeq"].(float64))
+		limit := int(body["limit"].(float64))
+		var frames []map[string]any
+		for i := since + 1; i <= since+limit && i <= 500; i++ {
+			frames = append(frames, map[string]any{"seq": i, "type": "x", "time": 1})
+		}
+		out, _ := json.Marshal(map[string]any{"result": map[string]any{
+			"frames": frames, "lastSeq": 500, "journalEpoch": 7,
+		}})
+		_, _ = w.Write(out)
+	}))
+	defer srv.Close()
+
+	n, err := FillGap(context.Background(), New(srv.URL), "s-1", 1, 500, 7, func(Frame) {})
+	if err != nil {
+		t.Fatalf("不该报错：%v", err)
+	}
+	if n != 500 {
+		t.Fatalf("应补 500 帧，实际 %d", n)
+	}
+	if len(epochs) < 3 {
+		t.Fatalf("500 帧要分批（≥3 次），实际 %d 次", len(epochs))
+	}
+	for i, e := range epochs {
+		if e != 7 {
+			t.Fatalf("第 %d 批带错了世代：%d，期望 7", i+1, e)
+		}
 	}
 }
 
@@ -59,7 +137,7 @@ func TestFillGapOnlyAppliesRequestedRange(t *testing.T) {
 	defer srv.Close()
 
 	var got []int
-	n, err := FillGap(context.Background(), New(srv.URL), "s-1", 10, 11, func(f Frame) { got = append(got, f.Seq) })
+	n, err := FillGap(context.Background(), New(srv.URL), "s-1", 10, 11, 1, func(f Frame) { got = append(got, f.Seq) })
 	if err != nil {
 		t.Fatalf("不该报错：%v", err)
 	}
@@ -76,7 +154,7 @@ func TestFillGapSurfacesStaleEpoch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := FillGap(context.Background(), New(srv.URL), "s-1", 10, 11, func(Frame) {})
+	_, err := FillGap(context.Background(), New(srv.URL), "s-1", 10, 11, 1, func(Frame) {})
 	if err == nil {
 		t.Fatal("stale_epoch 必须冒泡")
 	}
@@ -109,7 +187,7 @@ func TestFillGapBatchesLargeGap(t *testing.T) {
 	defer srv.Close()
 
 	var got []int
-	n, err := FillGap(context.Background(), New(srv.URL), "s-1", 1, 500, func(f Frame) { got = append(got, f.Seq) })
+	n, err := FillGap(context.Background(), New(srv.URL), "s-1", 1, 500, 1, func(f Frame) { got = append(got, f.Seq) })
 	if err != nil {
 		t.Fatalf("不该报错：%v", err)
 	}

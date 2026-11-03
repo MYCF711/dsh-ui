@@ -541,8 +541,14 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 		if ctx.Err() != nil {
 			return
 		}
-		ch, err := m.mux.Subscribe(ctx, "session:"+id, since)
+		// **每条连接一个可取消的子 ctx**：reset / stale_epoch 之后要 break 出去重连，
+		// 必须把旧连接关掉。共用外层 ctx 的话，旧 readLoop 会一直挂在 conn.Read 上，
+		// out（缓冲 64）填满后永远阻塞——每换一代 journal 就漏一个 socket 加两个
+		// goroutine，而且它还会继续把新 journal 的帧读进一个没人消费的 channel。
+		connCtx, connCancel := context.WithCancel(ctx)
+		ch, err := m.mux.Subscribe(connCtx, "session:"+id, since)
 		if err != nil {
+			connCancel()
 			// 401 = 凭据失效（宿主重启换了 launch token，cookie 在它内存里）。
 			// 这不是"网络抖一下"，重试一万次都好不了——必须让用户看见，
 			// 否则界面永远静默地连不上，而用户以为只是"有点慢"。
@@ -579,6 +585,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 
 		for ev := range ch {
 			if ev.Kind == "gap" {
+				resub := false
 				// 断号：**只上报，不重连**。
 				//
 				// 以前这里是 break 出去重订，结果无限循环：重订用的水位还是旧的，
@@ -604,42 +611,74 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 						if id == m.cur {
 							m.lastSeq = from - 1
 						}
+						// 补洞也要报世代：宿主拿它判"这条水位还作不作数"，
+						// 不带就只剩按 seq 硬补——换代之后补回来的是一段错位数据。
+						ep := int(m.epochs[id])
 						m.mu.Unlock()
-						n, err := apiclient.FillGap(ctx, m.cli, id, from, to, func(f apiclient.Frame) {
+						n, err := apiclient.FillGap(ctx, m.cli, id, from, to, ep, func(f apiclient.Frame) {
 							m.applyEvent(id, apiclient.Event{Kind: f.Type, Seq: f.Seq, Topic: "session:" + id, Data: f.Data})
 						})
 						if err != nil {
 							log.Printf("history 补洞失败 session:%s [%d,%d]: %v", id, from, to, err)
 							// 409 stale_epoch = journal 换代了，旧水位没意义，**这一条
 							// 补不回来**（宿主提示原文就是「重新 load 拿 journalEpoch/
-							// lastSeq」）。这时候唯一正确的动作是重建基线：
-							// 丢掉水位 + 重新 load。早先只打一行日志就过去了，
-							// 于是界面会一直拿着一个作废的水位继续订阅。
+							// lastSeq」）。这是 `session/reset` 的 HTTP 面，处理完全一样：
+							// 丢三份水位 + 局部 since 归零 → 重连。
+							//
+							// **必须重连**：这条连接的读循环还拿旧 since 当基线，
+							// 新 journal 的 seq 从 1 起，会被它当"重复帧"静默丢光。
 							if strings.Contains(err.Error(), "stale_epoch") {
-								log.Printf("journal 换代（stale_epoch）session:%s，重建基线", id)
 								m.mu.Lock()
-								delete(m.seqs, id)
-								delete(m.epochs, id)
+								oldSeq, oldEpoch := since, m.epochs[id]
+								since = m.onJournalResetLocked(id)
 								m.mu.Unlock()
 								m.refreshSession(id, true)
+								m.mu.Lock()
+								if base := m.seqs[id]; base > since {
+									since = base // 新基线之后重连，别把新 journal 整条重放
+								}
+								base, now := m.seqs[id], since
+								m.mu.Unlock()
+								log.Printf("journal 换代（stale_epoch）session:%s 旧水位 seq=%d epoch=%d；新基线 lastSeq=%d，从 %d 重连",
+									id, oldSeq, oldEpoch, base, now)
+								resub = true
 							}
 						} else {
 							log.Printf("history 补洞完成 session:%s 补回 %d 帧", id, n)
 						}
 					}
 				}
+				if resub {
+					break // 世代变了：这条连接的水位基线已经作废，重连
+				}
 				continue
 			}
 			if ev.Kind == "session/reset" {
-				// 宿主说"你在旧世代上"：丢掉旧水位，重新 load 拿新基线。
+				// 宿主说"你在旧世代上"：journal 换代了，旧 seq 属于**另一个序号域**。
+				// 契约要求的动作是「丢弃旧水位 → 重新 load 拿 journalEpoch/lastSeq」。
+				//
+				// **局部 since 也要归零**：只删 map 不够——重连用的是本函数的局部
+				// since，它还是旧值。拿旧值去要新 journal 的帧，宿主不报错，只是
+				// 从错位处开始推（界面症状是"少了几条"）。这条是 U0 复核点名的
+				// 「reset 后局部 since 未归零」。
+				m.mu.Lock()
+				oldSeq, oldEpoch := since, m.epochs[id]
+				since = m.onJournalResetLocked(id)
+				m.mu.Unlock()
 				// **不清空已有消息**——先把新基线拉回来，界面再整体替换，
 				// 这样用户看到的是"刷新了一下"，而不是"内容突然没了"。
-				log.Printf("mux session/reset session:%s（journal 换代，重建基线）", id)
-				m.mu.Lock()
-				delete(m.seqs, id)
-				delete(m.epochs, id)
-				m.mu.Unlock()
 				m.refreshSession(id, true)
+				// refreshSession 会把新基线写回 m.seqs[id]（新 journal 的 lastSeq）。
+				// 有它就从他之后重连：从 0 重连会把新 journal 整条重放一遍，而那些
+				// 内容刚刚已经由 load 画上去了（同一条消息出现两次）。
+				m.mu.Lock()
+				if base := m.seqs[id]; base > since {
+					since = base
+				}
+				base, now := m.seqs[id], since
+				m.mu.Unlock()
+				log.Printf("mux session/reset session:%s（journal 换代）旧水位 seq=%d epoch=%d；新基线 lastSeq=%d，从 %d 重连",
+					id, oldSeq, oldEpoch, base, now)
 				break
 			}
 			m.applyEvent(id, ev)
@@ -657,12 +696,43 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 			}
 			m.mu.Unlock()
 		}
+		// 连接已经不用了：reset / stale_epoch 之后是**我们**主动 break 出来的，
+		// 那条 socket 还在读（ctx 没取消），不关掉就是漏一个连接加两个 goroutine。
+		connCancel()
 		// channel 关闭 = 连接断了：带水位重连，而不是退回"下次点开再 load"。
 		if ctx.Err() != nil {
 			return
 		}
 		log.Printf("mux 连接断开 session:%s，带水位 %d 重连", id, since)
 	}
+}
+
+// onJournalResetLocked 是「journal 换代」时本地该做的事：把这一代的水位全部丢掉。
+//
+// 返回重连该用的 since，**恒为 0**：journal 换代了，旧 seq 属于另一个序号域；
+// 带着它去要新 journal 的帧，宿主要么判 stale_epoch、要么从错位处推——后者
+// 不报错也不丢帧，只是"少了几条"，这是最难发现的一种错。
+//
+// 三份水位都要清，少一份就等于没清：
+//   - `seqs[id]`：per-session 水位（切会话、重连时取 since 用）；
+//   - `lastSeq`：前台水位（applyEvent / 审批帧用它判过期）；
+//   - `subs[id].lastSeq`：订阅结构里那一份（重连时 subscribe 从这里取）。
+//
+// 两个触发点共用它：WS 的 `session/reset`（无 seq 的控制帧）与 history 的
+// 409 `stale_epoch`——它们是同一件事的两个面。
+//
+// 调用方必须持有 m.mu。
+func (m *model) onJournalResetLocked(id string) int {
+	delete(m.seqs, id)
+	delete(m.epochs, id)
+	if sub := m.subs[id]; sub != nil {
+		sub.lastSeq = 0
+	}
+	if id == m.cur {
+		// 只清前台会话：别的会话的水位跟这条连接没关系，清掉就是丢别人的进度。
+		m.lastSeq = 0
+	}
+	return 0
 }
 
 // isAuthErr 判断一条错误是不是"凭据失效"。

@@ -48,7 +48,7 @@ func TestFillGapConcurrentGoroutinesSafe(t *testing.T) {
 			defer wg.Done()
 			from := g*10 + 1
 			to := from + 9
-			_, err := FillGap(context.Background(), New(srv.URL), "s-1", from, to, func(f Frame) {
+			_, err := FillGap(context.Background(), New(srv.URL), "s-1", from, to, 1, func(f Frame) {
 				mu.Lock()
 				seen[f.Seq]++
 				mu.Unlock()
@@ -95,7 +95,7 @@ func TestFillGapStopsWhenHostHasNoMore(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		n, err := FillGap(context.Background(), New(srv.URL), "s-1", 1, 500, func(Frame) {})
+		n, err := FillGap(context.Background(), New(srv.URL), "s-1", 1, 500, 1, func(Frame) {})
 		if err != nil {
 			t.Errorf("不该报错：%v", err)
 		}

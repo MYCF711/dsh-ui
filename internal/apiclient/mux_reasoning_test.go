@@ -171,15 +171,46 @@ func TestStreamSameSeqNoDuplicate(t *testing.T) {
 	}
 }
 
-// TestStreamToolFrameMakesNoMessage 钉住"tool/call 不落空卡"。
-// 一张没有结果的工具卡比不画更糟。
-func TestStreamToolFrameMakesNoMessage(t *testing.T) {
+// TestStreamToolCallThenResultMakesOneToolMessage 钉住工具消息的**新**语义。
+//
+// 旧设计是"tool/call 不落空卡（一张没结果的卡比不画更糟）"，实测代价更大：
+// **实时跑的工具压根不出现在轨迹栏里**，只有下次 session.load 才带回来
+// （V4B 用真宿主跑 echo 复现：画面有 [exit 0] … 但右栏「轨迹」是空的）。
+//
+// 现在：tool/call 先落一条无结果的工具消息（"正在跑"），tool/result 到了把它补全。
+// 工具消息按 (Tool, Args) 认身份，因为同一轮的多个工具共用这轮的 seq。
+func TestStreamToolCallThenResultMakesOneToolMessage(t *testing.T) {
 	var s Stream
-	if s.Apply(Event{Kind: "tool/call", Seq: 5, Data: raw(`{"tool":"bash","args":"git status"}`)}) {
-		t.Fatal("只有 tool/call 时不该改变消息状态")
+	if !s.Apply(Event{Kind: "tool/call", Seq: 5, Data: raw(`{"tool":"bash","args":"git status"}`)}) {
+		t.Fatal("tool/call 应改变消息状态（要能立刻画出'正在跑'）")
 	}
-	if msgs := Merge(nil, &s); len(msgs) != 0 {
-		t.Fatalf("tool/call 不该落消息，得到 %+v", msgs)
+	msgs := Merge(nil, &s)
+	if len(msgs) != 1 || msgs[0].Role != "tool" || msgs[0].Tool != "bash" || msgs[0].Args != "git status" {
+		t.Fatalf("tool/call 应落一条 role=tool 的消息，得到 %+v", msgs)
+	}
+	if msgs[0].Summary != "" {
+		t.Fatalf("还没结果时 Summary 应为空，得到 %q", msgs[0].Summary)
+	}
+
+	// 结果帧：宿主 shape 是 message.role == "tool" + content[].text
+	res := raw(`{"message":{"role":"tool","content":[{"type":"text","text":"[exit 0] clean"}]}}`)
+	if !s.Apply(Event{Kind: "tool/result", Seq: 6, Data: res}) {
+		t.Fatal("tool/result 应改变状态（要把结果补上）")
+	}
+	msgs = Merge(msgs, &s)
+	if len(msgs) != 1 {
+		t.Fatalf("结果不该多出一条（按 Tool+Args 认身份），得到 %d 条：%+v", len(msgs), msgs)
+	}
+	if msgs[0].Summary != "[exit 0] clean" {
+		t.Fatalf("结果应填进 Summary，得到 %q", msgs[0].Summary)
+	}
+
+	// 同一轮第二个工具：seq 相同但 Tool+Args 不同，必须各自一条
+	if !s.Apply(Event{Kind: "tool/call", Seq: 5, Data: raw(`{"tool":"read","args":"a.go"}`)}) {
+		t.Fatal("第二个 tool/call 也该记录")
+	}
+	if msgs = Merge(msgs, &s); len(msgs) != 2 {
+		t.Fatalf("两个不同工具应是两条消息，得到 %d 条：%+v", len(msgs), msgs)
 	}
 }
 

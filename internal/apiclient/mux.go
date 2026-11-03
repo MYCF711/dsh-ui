@@ -290,8 +290,16 @@ type packet struct {
 	Tool    string        `json:"tool"`
 	Args    string        `json:"args"`
 	Content []packetBlock `json:"content"`
+	// Role 用来区分"这条 content 是工具结果"还是普通正文。
+	// 宿主的 tool/result 帧长这样：
+	//   {"message":{"content":[{"type":"text","text":"[exit 0] …"}],
+	//               "role":"tool","toolCallId":"call_…"}}
+	// 不读 role 的话，工具输出会被当成 assistant 正文流进气泡里——
+	// 界面上看到的是"回答里混着命令输出"，而不是一张工具卡。
+	Role    string `json:"role"`
 	Message *struct {
 		Content []packetBlock `json:"content"`
+		Role    string        `json:"role"`
 	} `json:"message"`
 }
 
@@ -361,8 +369,30 @@ func (e Event) Chunks() []Chunk {
 	}
 }
 
+// isToolResult 判断这一帧是不是工具结果（宿主的 role 在 message 里，mockd 的也有在顶层）。
+func (p packet) isToolResult() bool {
+	if p.Message != nil && p.Message.Role == "tool" {
+		return true
+	}
+	return p.Role == "tool"
+}
+
 // chunks 把数据包拆成块；没有块就退回增量形状。
 func (p packet) chunks() []Chunk {
+	if p.isToolResult() {
+		// 工具结果整条进来（一条 text 块），交给 Stream 记成 role=="tool" 的消息，
+		// 不要拆成正文增量——那是"命令输出混进回答里"的来源。
+		var b strings.Builder
+		for _, blk := range p.blocks() {
+			if blk.Type == "text" {
+				b.WriteString(blk.Text)
+			}
+		}
+		if b.Len() > 0 {
+			return []Chunk{{Block: BlockTool, Text: b.String(), Full: true}}
+		}
+		return nil
+	}
 	if blocks := p.blocks(); len(blocks) > 0 {
 		out := make([]Chunk, 0, len(blocks))
 		for _, b := range blocks {
@@ -422,10 +452,24 @@ type Stream struct {
 	thinking strings.Builder
 	text     strings.Builder
 	done     bool
+	// tools 是这一段里真发生过的工具调用/结果，按发生顺序。
+	//
+	// 为什么必须在这里攒：工具卡要有 Tool/Args/结果三样才画得出来，
+	// 而这三样分散在 tool/call 和 tool/result 两帧里。早先 case BlockTool
+	// 是空的（"暂时不落消息"），于是**实时跑的工具完全不出现在右栏轨迹里**，
+	// 只有下次 session.load 才带回来——用户看到的是"我明明跑了工具，轨迹是空的"。
+	tools []Message
 }
 
 // Seq 是本段消息的 seq（0 = 还没有内容）。
 func (s *Stream) Seq() int { return s.seq }
+
+// ToolMessages 是这一段里发生过的工具消息（role=="tool"），按发生顺序返回副本。
+func (s *Stream) ToolMessages() []Message {
+	out := make([]Message, len(s.tools))
+	copy(out, s.tools)
+	return out
+}
 
 // Thinking 是已攒下的思考正文。
 func (s *Stream) Thinking() string { return s.thinking.String() }
@@ -469,8 +513,17 @@ func (s *Stream) Apply(ev Event) bool {
 				s.text.WriteString(c.Text)
 				changed = true
 			case BlockTool:
-				// 工具调用暂时不落消息：一张工具卡要有结果（tool/result 的 Tool/Args/View），
-				// 光有 tool/call 画出来是一张没有结果的空卡，比不画更糟。
+				// tool/call 带 Tool+Args，tool/result 带 Text（见 packet.isToolResult）：
+				// 前者开一条工具消息，后者把结果填到最近那条上。这样实时就能画工具卡，
+				// 不必等下一次 session.load 才把轨迹带回来。
+				switch {
+				case c.Tool != "" || c.Args != "":
+					s.tools = append(s.tools, Message{Role: "tool", Tool: c.Tool, Args: c.Args})
+					changed = true
+				case c.Text != "" && len(s.tools) > 0:
+					s.tools[len(s.tools)-1].Summary = c.Text
+					changed = true
+				}
 			}
 			if c.Full {
 				s.done = true
@@ -495,6 +548,9 @@ func (s *Stream) Messages() []Message {
 	if th := s.thinking.String(); th != "" {
 		out = append(out, Message{Seq: s.seq, Role: "thinking", Text: th})
 	}
+	// 工具消息**不等 done**：tool/call 一到就要能画出来（用户能立刻看到"正在跑"），
+	// 结果到了再补 Summary。等 done 的话，一个跑满几轮的长工具全程都是空白。
+	out = append(out, s.tools...)
 	if s.done {
 		if tx := s.text.String(); tx != "" {
 			out = append(out, Message{Seq: s.seq, Role: "assistant", Text: tx})
@@ -516,7 +572,19 @@ func Merge(msgs []Message, s *Stream) []Message {
 }
 
 // upsertMsg 按 (Seq, Role) 更新或插入一条消息。
+//
+// 工具消息是例外：同一轮里可能有多个工具调用，它们的 seq 都是这轮的 seq，
+// 按 (Seq, Role) 认就会互相覆盖——所以 tool 按 (Tool, Args) 认身份。
 func upsertMsg(msgs []Message, want Message) []Message {
+	if want.Role == "tool" {
+		for i := range msgs {
+			if msgs[i].Role == "tool" && msgs[i].Tool == want.Tool && msgs[i].Args == want.Args {
+				msgs[i] = want
+				return msgs
+			}
+		}
+		return append(msgs, want)
+	}
 	for i := range msgs {
 		if msgs[i].Seq == want.Seq && msgs[i].Role == want.Role {
 			msgs[i] = want

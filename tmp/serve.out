@@ -1,0 +1,2 @@
+ready {"url":"http://127.0.0.1:60743","token":"5ab7ba6cb55705c4469a2cd89fb6500e309e47282a9ffeebefd4f7a944f7cd2b"}
+policy deny（无人值守；写操作会被拒绝）；每轮最多 6 步

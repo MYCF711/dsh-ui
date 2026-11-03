@@ -124,3 +124,6 @@
 | 2026-11-03 13:36 | **修审批按钮静默失效**（子代理查出来的）：`m.actions` 里 `Allow`/`Deny`/`SetDraft` 三个动作没接线。插件对 nil 做了保护所以不 panic，只是**按钮点了完全没反应**——这类"判了 nil 就静默跳过"的缺口比崩溃更难发现。接上后用 `-demo`（气泡在）+ `-demo -keys esc`（气泡消失、状态栏「已拒绝」）两张图验证 | `tmp/appr1.png` / `tmp/appr2.png` |
 | 2026-11-03 13:36 | 子代理补齐单测 **9 个 Test / 42 个子用例全过**（`tok`/`fmt1`/`rate`/`itoa`/`humanRunes`/`isKey`/`min` + `Usage.Known()` 门控），并修掉 `docs/plugin-api.md` 里 5 处与代码不符的描述（重复槽位行、把已移植的写成一个待移植、漏掉 `main.body` 挂两个 painter 等） | `go test ./plugins/...` 全绿 |
 | 2026-11-03 13:36 | **跨线反馈生效**：`DSH-GO/AGENTS.md` §12 的 H1（usage）与 H2（事件 `time`）已被宿主线标 ✅ 并实现 | 见 §12 |
+| 2026-11-03 13:50 | **第一次真的接上真宿主**（`dshd serve`）：新增 `-token`，启动先 `/connect` 换 cookie。踩到三处跨线不一致，全部记进 `DSH-GO/AGENTS.md` §12：**H8** 宿主不套 `{result}` 信封（裸 payload + 字符串错误）、**H9** 入参名是 `sessionId`/`limit` 而不是 `id`/`tailMessages`、**H10** `session.load` 对 `list` 返回的 id 和刚 `create` 出来的会话都报「没有这个会话」。界面侧已做兼容（两种信封都认、两个名字都发） | `/connect` 200 + `session.list` 拿到 1 个会话；**H10 阻塞「点进去」这一步** |
+| 2026-11-03 13:50 | 修 `/connect` 跟随重定向：真宿主成功时返回 **303 + Set-Cookie**，Go 默认客户端会跟着 `Location:/` 去拿 404，于是我们只看到「not found」、cookie 丢了。改成本次请求 `CheckRedirect = ErrUseLastResponse` | 日志从 `/connect 返回 404` 变成「已用 launch token 换到 cookie」 |
+| 2026-11-03 13:50 | 顺带发现 **H11**：`dshd serve` 的 stdout 除 `ready {...}` 还多打了一行 `policy deny…`，而它自己的注释写着"stdout 只放那一行 ready" | 已记进 §12 |

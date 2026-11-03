@@ -248,6 +248,7 @@ func (m *model) newSession() {
 			m.setStatus("新建失败: " + err.Error())
 			return
 		}
+
 		m.refreshList()
 
 		m.openSession(id)
@@ -669,6 +670,7 @@ func main() {
 	keysSeq := flag.String("keys", "", "调试：启动后依次注入按键（down,up,home,end,esc），走的是插件的 HandleKey，用来验证键盘路由")
 	expandThink := flag.Bool("expand-think", false, "调试：把思考块默认展开（截展开态用）")
 	collapseAll := flag.Bool("collapse", false, "调试：启动时把所有工作区分组收起（截折叠态用）")
+	token := flag.String("token", "", "宿主 launch token：给了就先 /connect 换 cookie（真宿主 dshd serve 必须给）")
 	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
 	flag.Parse()
 	renderLimit = *limit
@@ -685,6 +687,18 @@ func main() {
 		scrollPos: map[string]float32{},
 	}
 	m.refreshList()
+
+	// 真宿主（dshd serve）要求先把 launch token 换成 cookie，否则 /api 一律 401。
+	// mockd 不需要，所以这一步只在给了 -token 时做。
+	if *token != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := m.cli.Connect(ctx, *token)
+		cancel()
+		if err != nil {
+			log.Fatalf("/connect 失败: %v", err)
+		}
+		log.Print("已用 launch token 换到 cookie")
+	}
 
 	// 装插件：先根本依赖（ds-core：设计令牌 + 基础组件），再依赖它的部件。
 	// 装配器按 Requires 排序；ds-sidebar 少一个键就直接报错，不会静默少画一块。

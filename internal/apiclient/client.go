@@ -129,7 +129,15 @@ func (c *Client) Connect(ctx context.Context, token string) error {
 	if err != nil {
 		return err
 	}
-	resp, err := c.HTTP.Do(req)
+	// 关键：**不许跟随重定向**。
+	// 真宿主的 /connect 成功时返回 303 + Set-Cookie: dshd_session=…，
+	// Go 的默认客户端会跟着 Location 去 GET "/"，那一步是 404，
+	// 于是我们只看到 "not found"、拿不到 cookie（踩过：app 起不来，报 /connect 返回 404）。
+	noRedirect := *c.HTTP
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := noRedirect.Do(req)
 	if err != nil {
 		return fmt.Errorf("连不上 %s：%w", c.Base, err)
 	}
@@ -149,9 +157,27 @@ func (c *Client) Connect(ctx context.Context, token string) error {
 	return nil
 }
 
+// envelope 是约定的响应信封（见 testdata/api.snapshot.json）。
+//
+// Error 用 RawMessage 而不是 *APIError：真宿主的错误体是字符串
+// `{"error":"unauthorized"}`，直接解成结构体会让整个响应"不是合法 JSON"，
+// 于是真正的原因（401 未授权）被吞成一条看不懂的报错。
 type envelope struct {
 	Result json.RawMessage `json:"result"`
-	Error  *APIError       `json:"error"`
+	Error  json.RawMessage `json:"error"`
+}
+
+// parseError 把 error 字段的两种形状都解成 APIError。
+func parseError(raw json.RawMessage) *APIError {
+	var e APIError
+	if err := json.Unmarshal(raw, &e); err == nil && (e.Code != "" || e.Message != "") {
+		return &e
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil && s != "" {
+		return &APIError{Code: s, Message: s}
+	}
+	return nil
 }
 
 // Call 发一次一元调用，把 result 解到 out。
@@ -180,19 +206,36 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 		return err
 	}
 	var env envelope
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return fmt.Errorf("响应不是合法 JSON（HTTP %d）: %.200s", resp.StatusCode, raw)
-	}
-	if env.Error != nil {
-		return env.Error
+	envOK := json.Unmarshal(raw, &env) == nil
+
+	// 错误体两种都认：{"error":{code,message,hint,retryable}}（约定）
+	// 和 {"error":"unauthorized"}（真宿主当前形状，见 DSH-GO/AGENTS.md §12 的 H8）。
+	if envOK && len(env.Error) > 0 {
+		if apiErr := parseError(env.Error); apiErr != nil {
+			return apiErr
+		}
 	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("HTTP %d: %.200s", resp.StatusCode, raw)
 	}
-	if out == nil || len(env.Result) == 0 {
+
+	// 约定信封：有 result 就解 result。
+	if envOK && len(env.Result) > 0 {
+		if out == nil {
+			return nil
+		}
+		return json.Unmarshal(env.Result, out)
+	}
+
+	// 真宿主目前**不套信封**，直接返回 payload（{"sessions":[...]}）。
+	// 这里退一步把整个 body 当 result，否则界面永远看到 0 个会话（踩过）。
+	if out == nil || len(raw) == 0 {
 		return nil
 	}
-	return json.Unmarshal(env.Result, out)
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("响应不是合法 JSON（HTTP %d）: %.200s", resp.StatusCode, raw)
+	}
+	return nil
 }
 
 // List 是 session.list。
@@ -209,7 +252,10 @@ func (c *Client) List(ctx context.Context) ([]Session, error) {
 // Load 是 session.load。
 func (c *Client) Load(ctx context.Context, id string, tail int) (*LoadResult, error) {
 	var r LoadResult
-	if err := c.Call(ctx, "session.load", map[string]any{"id": id, "tailMessages": tail}, &r); err != nil {
+	// 两个名字都发：mockd 读 id/tailMessages，真宿主读 sessionId/limit。
+	// 契约对不齐这件事已记在 DSH-GO/AGENTS.md §12（H9），对不齐之前先两边都兼容。
+	params := map[string]any{"id": id, "sessionId": id, "tailMessages": tail, "limit": tail}
+	if err := c.Call(ctx, "session.load", params, &r); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -225,12 +271,16 @@ func (c *Client) Create(ctx context.Context, cwd, mode, title string) (string, e
 		params["title"] = title
 	}
 	var r struct {
-		ID string `json:"id"`
+		ID        string `json:"id"`
+		SessionID string `json:"sessionId"` // 真宿主用这个键
 	}
 	if err := c.Call(ctx, "session.create", params, &r); err != nil {
 		return "", err
 	}
-	return r.ID, nil
+	if r.ID != "" {
+		return r.ID, nil
+	}
+	return r.SessionID, nil
 }
 
 // Prompt 是 session.prompt。
@@ -239,7 +289,9 @@ func (c *Client) Prompt(ctx context.Context, id, text string) (string, error) {
 		TurnID   string `json:"turnId"`
 		Accepted bool   `json:"accepted"`
 	}
-	if err := c.Call(ctx, "session.prompt", map[string]any{"id": id, "text": text}, &r); err != nil {
+	if err := c.Call(ctx, "session.prompt", map[string]any{
+		"id": id, "sessionId": id, "text": text, "prompt": text,
+	}, &r); err != nil {
 		return "", err
 	}
 	return r.TurnID, nil

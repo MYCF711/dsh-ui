@@ -173,8 +173,12 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	}
 
 	// 注意：槽位里 f.Bounds() 拿到的是**整窗**宽度（实测 1180），不是本列宽度。
-	// 所以这里一律用百分比定宽，别拿 Bounds 去算列宽——算了就会把内容推到窗口外。
-	width := f.Bounds().Width // 只用来估高度，不用于布局
+	// 所以这里一律用百分比定宽，别拿它去算列宽——算了就会把内容推到窗口外（踩过两次）。
+	// 布局宽度只认 env.MainWidth（壳算好的主区宽度）；Bounds 仅作兜底，防止估高度除零。
+	width := env.MainWidth
+	if width < 200 {
+		width = f.Bounds().Width
+	}
 
 	// 会话内搜索：命中判定只认纯文本（大小写不敏感），不解析 Markdown。
 	q := ""
@@ -275,15 +279,14 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 		p.drawTool(f, env, msg)
 
 	case msg.Role == "user":
-		// 用户消息：右对齐气泡。
-		// 官方 .LOmM4q_userStack：max-width = min(748 × .702, 82%)，气泡 radius xl。
+		// 用户消息：右对齐气泡（官方 .LOmM4q_userStack：
+		//   max-width = min(chat-content-width × .702, 82%)，flex-column + align-items:flex-end，gap 8
+		//   气泡本体 .bubble：radius xl、specific-bubble 底、正文 14/22）
+		// 外观交给 prims.Bubble；这里只负责"右对齐"和"宽度上限"两件事。
 		f.Row().WidthPercent(100).Justify(flex.End).Children(func() {
-			maxW := width * 0.82
-			if cap := 748 * 0.702; maxW > float32(cap) {
-				maxW = float32(cap)
-			}
-			f.Column().MaxWidth(maxW).PadX(12).PadY(10).Radius(t.Radii.XL).
-				Background(t.Bubble).Children(func() {
+			// 官方的 82%/748px 是相对**会话内容列**算的，而槽位里拿不到列宽；
+			// viva 的文字会自然换行，气泡按内容宽度收缩，所以不需要像素上限（见验收说明）。
+			p.prims.Bubble(f, func() {
 				f.Wrap(msg.Text).FontSize(t.Fonts.Body)
 			})
 		})
@@ -340,17 +343,22 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 	t := p.theme
 	open := p.expanded[msg.Seq] || (p.ExpandAllThinking && !p.collapsedOnce[msg.Seq])
 
-	arrow, label := "▸ 思考 · ", "▸ 思考 · "
-	_ = arrow
-	label += humanRunes(len([]rune(msg.Text))) + " 字"
+	arrow := "▸"
 	if open {
-		label = "▾ 思考 · " + humanRunes(len([]rune(msg.Text))) + " 字"
+		arrow = "▾"
 	}
+	label := "思考 · " + humanRunes(len([]rune(msg.Text))) + " 字"
 
-	if f.Row().WidthPercent(100).PadY(3).PadX(4).Radius(t.Radii.SM).Items(flex.Center).
-		HoverBackground(t.Hover).
+	// 官方折叠行（如 .LOmM4q_compactionRow）：高 24、radius sm、左侧 16px 展开位、
+	// 标题 13px。高度用 MinHeight + PadY 撑，不用 Height(x).Shrink(0)——那会塌成 0 高。
+	if f.Row().WidthPercent(100).MinHeight(24).PadX(4).Radius(t.Radii.SM).
+		Items(flex.Center).Gap(6).HoverBackground(t.Hover).
 		Hit(env.Tree.ID(env.Feat, "think-"+itoa(msg.Seq)), "").Children(func() {
-		f.Text(label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Ellipsis()
+		// 左侧 16px 展开位（和工具行同一个位置，视线不用跳）
+		f.Row().Width(16).Items(flex.Center).Children(func() {
+			f.Text(arrow).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+		})
+		f.Text(label).FontSize(t.Fonts.Secondary).Color(t.LabelCaption).Ellipsis()
 	}).Clicked() {
 		p.expanded[msg.Seq] = !open
 		if p.ExpandAllThinking {
@@ -361,10 +369,11 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 	if !open {
 		return
 	}
+	// 展开态：浅底盒子，不描边（官方 callRow / compactionBody 都没有边框色）。
 	f.Column().WidthPercent(100).Pad(8).Radius(t.Radii.SM).Background(t.BgLayer1).
-		Border(1, t.BorderL1).Children(func() {
-		f.Wrap(msg.Text).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-	})
+		Children(func() {
+			f.Wrap(msg.Text).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		})
 }
 
 // humanRunes 把字数压成「812 / 1.2k」。
@@ -463,7 +472,10 @@ func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Messa
 	}
 	// 展开体：官方 max-height:min(400px,50vh)，我们按行数近似（不引入滚动区，
 	// 这里的展开体本身就是普通盒子，超长由下面的 MaxLines 截断）。
-	f.Column().WidthPercent(100).PadX(22).PadY(4).Gap(4).Children(func() {
+	// 展开体：官方同样是 callRow 的一部分（radius sm、无边框），
+	// 底色用最浅一层 BgLayer1 把正文托起来，不描边。
+	f.Column().WidthPercent(100).PadX(22).PadY(4).Gap(4).Radius(t.Radii.SM).
+		Background(t.BgLayer1).Children(func() {
 		if msg.View != nil {
 			p.drawView(f, env, msg.View)
 			return

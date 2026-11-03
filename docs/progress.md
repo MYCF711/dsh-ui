@@ -139,3 +139,5 @@
 | 2026-11-03 14:35 | **图元补齐到官方那套**：`ds-core` 新增 `Chip`（官方 `.chip`：inline-flex、gap 3、business-primary 文字）与 `Bubble`（官方 `.bubble`：radius xl + specific-bubble 底），顶栏模式徽标改用它。两个子代理并行开工：一个对齐消息流（气泡/工具卡/思考行），一个写第三方插件样例 `dsdemo` 并补文档 | `tmp/topbar.png`；**76.0 MB** |
 | 2026-11-03 14:36 | **L4 消息流：工具调用改成官方的一行式**（`.V4vHZW_callRow` + `.BE0jCW_*`）。原来每张卡常驻「命令/输出」两行，一屏只能看三四条；现在默认收起成**一行**：`16px leading 箭头 · 工具名 · 摘要`，点这行展开正文（缩进 22px）。高度估算同步改成收起 28px，否则虚拟化会把内容判成视口外 | `tmp/toolrow.png`；工作集 80.8 MB |
 | 2026-11-03 14:36 | 官方规格摘录（`dsh-client-ui-chat` 打包 CSS）：`.callRow{border-radius:sm}` **无边框色**、悬停才浅底；`.leading{16×16}` 放 chevron；`.label` 13/24、省略；展开体 `max-height:min(400px,50vh)` | 已按此实现 |
+| 2026-11-03 14:38 | **L5 第三方插件跑通了**：新增公开契约包 `pluginapi/`（`internal/pluginapi` 改成它的**别名层**，`type X = pub.X`，两边是同一组类型不会漂移）。仓库外独立 module `../dsh-ui-plugins/hello` 只 import 公开包 + 声明 `Requires` + 一个 `Slot`，壳里加一行 `&hello.Plugin{}` 就出现在左栏底部 | 装配日志 `[… hello.counter]`；`tmp/l5-crop.png` |
+| 2026-11-03 14:38 | 这一步暴露了一个真问题：私有化（`internal/`）把「插件生态」这件事从物理上堵死了——第三方根本 import 不到契约。别名层是标准解法（Go 的 `math/rand` → `math/rand/v2`、`io/ioutil` 都这么过渡过） | |

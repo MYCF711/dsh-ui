@@ -276,8 +276,13 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 
 	case msg.Role == "user":
 		// 用户消息：右对齐气泡。
+		// 官方 .LOmM4q_userStack：max-width = min(748 × .702, 82%)，气泡 radius xl。
 		f.Row().WidthPercent(100).Justify(flex.End).Children(func() {
-			f.Column().MaxWidthPercent(78).Pad(10).Radius(t.Radii.XL).
+			maxW := width * 0.82
+			if cap := 748 * 0.702; maxW > float32(cap) {
+				maxW = float32(cap)
+			}
+			f.Column().MaxWidth(maxW).PadX(12).PadY(10).Radius(t.Radii.XL).
 				Background(t.Bubble).Children(func() {
 				f.Wrap(msg.Text).FontSize(t.Fonts.Body)
 			})
@@ -308,7 +313,13 @@ func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Me
 		return
 	}
 	text := msg.Text
-	f.Row().WidthPercent(100).Gap(2).Items(flex.Center).Children(func() {
+	// 官方 .cVfUIq_actions / .xMeOpW_actions：margin-top 16（助手）/4（用户），
+	// margin-left:-6 抵消 Ghost 按钮自身的内边距，视觉上贴左。
+	marginTop := float32(4)
+	if msg.Role == "assistant" {
+		marginTop = 16
+	}
+	f.Row().WidthPercent(100).Items(flex.Center).MarginSides(marginTop, 0, 0, -6).Children(func() {
 		if env.Act.Copy != nil && f.Button(env.Tree.ID(env.Feat, "copy-"+itoa(msg.Seq)), "复制").
 			Ghost().Small().Clicked() {
 			env.Act.Copy(text)

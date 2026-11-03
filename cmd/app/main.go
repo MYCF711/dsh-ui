@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	hello "example.com/dsh-hello"
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
@@ -681,6 +682,7 @@ func main() {
 		&dsstatusbar.Plugin{}, // 底部状态栏
 		&dstopbar.Plugin{},    // 主区顶部条
 		&dsrightbar.Plugin{},  // 右栏工具轨迹
+		&hello.Plugin{},       // L5 第三方插件样例（仓库外，走公开契约包）
 	); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}

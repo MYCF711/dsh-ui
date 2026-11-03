@@ -2,10 +2,13 @@ module github.com/MYCF711/dsh-ui
 
 go 1.27.3
 
-require github.com/vivaui/viva v0.2.3
+require github.com/ebitengine/purego v0.11.1 // indirect
 
 require (
-	github.com/coder/websocket v1.8.15 // indirect
-	github.com/ebitengine/purego v0.11.1 // indirect
-	github.com/klauspost/compress v1.20.3 // indirect
+	example.com/dsh-hello v0.0.0
+	github.com/coder/websocket v1.8.15
+	github.com/klauspost/compress v1.20.3
+	github.com/vivaui/viva v0.2.3
 )
+
+replace example.com/dsh-hello => ../dsh-ui-plugins/hello

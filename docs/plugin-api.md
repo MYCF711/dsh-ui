@@ -257,3 +257,49 @@ INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives
 - `-keys` 注入的是 `kernel.HandleKey`，**绕过了操作系统 → `cfg.OnKey` 那一段**，
   所以它只能证明"插件路由对了"，不能证明"真按键盘有用"（后者要人拿窗口试）。
 - `-demo` / `-smoke` 会往会话里写东西，只在 mockd 上跑；对着真宿主别开。
+
+## 11. 第三方插件怎么接进来（仓库外，已实测）
+
+官方 DSH 的做法是「第三方包往预留的 slot 里一插就有」；我们是同一套：
+
+```go
+// 一个独立 module：example.com/dsh-hello
+package hello
+
+import (
+    "github.com/MYCF711/dsh-ui/pluginapi"   // ← 公开契约包，不是 internal/
+    "github.com/vivaui/viva/flex"
+)
+
+type Plugin struct{ theme *pluginapi.Theme; prims pluginapi.Primitives }
+
+func (*Plugin) ID() string         { return "hello.counter" }
+func (*Plugin) Provides() []string { return nil }
+func (*Plugin) Requires() []string { return []string{pluginapi.KeyTheme, pluginapi.KeyPrimitives} }
+
+func (p *Plugin) Register(ctx pluginapi.Context) error {
+    p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
+    p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+    return nil
+}
+
+func (p *Plugin) Panels() []pluginapi.Painter {
+    return []pluginapi.Painter{
+        {ID: "hello", Slot: pluginapi.SlotSidebarFooter, Order: 90, Draw: p.draw},
+    }
+}
+```
+
+壳里只多一行：`&hello.Plugin{}`。装配日志会多出 `hello.counter`。
+
+### 两条硬约束（都踩过）
+
+1. **必须用公开契约包 `pluginapi`，不能用 `internal/pluginapi`** —— Go 禁止外部 module
+   import `internal/`。`internal/pluginapi` 现在是公开包的**别名层**（只有 `type X = pub.X`），
+   所以第三方插件对象能直接交给 `Load`，两边是**同一组类型**，不是两份定义。
+2. **槽位名是契约**（`pluginapi.Slot*` 常量）。挂在没有占用方的槽上会被静默忽略——
+   想确认自己挂上了没有，看装配日志与 `Env.Has`。
+
+样例在 `../dsh-ui-plugins/hello/`（独立 module，`replace` 到本仓），
+2026-11-03 实测：装配日志 `[ds-core ds-shell … hello.counter]`，左栏底部多一行
+「第三方插件：hello.counter 已接上」。

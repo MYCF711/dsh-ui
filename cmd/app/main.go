@@ -24,6 +24,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/internal/uiplugins"
+	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscommands"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscomposer"
@@ -33,6 +34,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsschedule"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
@@ -83,7 +85,9 @@ type model struct {
 	// 键是目录绝对路径；空切片表示"正在拉"，不是"目录是空的"。
 	fsDirs map[string][]pluginapi.FSEntry
 	// fsPending 记录哪些目录正在拉，避免同一目录每帧都发一次请求。
-	fsPending  map[string]bool
+	fsPending map[string]bool
+	// schedules 是定时任务的缓存（宿主 <home>/state/schedules/ 的投影）。
+	schedules  []pluginapi.ScheduleItem
 	smokeFired bool
 
 	// 待审批的请求（v1 只支持一条；工具名 + 命令 + 模型自述）
@@ -153,6 +157,12 @@ type model struct {
 	rightbarSessions map[string]rightbarSessionState
 	status           string
 	loading          bool
+
+	// WP-C1 的本地发送与原始终局均按会话隔离；不进入 apiclient.Message.Seq。
+	outgoing   map[string][]pubapi.OutgoingMessage
+	msgMeta    map[string]map[string]pubapi.MessageMetadata
+	turnEvents map[string][]pubapi.TurnEvent
+	localSend  uint64
 }
 
 func (m *model) setStatus(s string) {
@@ -215,6 +225,23 @@ func (m *model) refreshList() {
 		uiConfig = cfg
 		m.mu.Unlock()
 
+		// 定时任务：读 <home>/state/schedules/，失败就算了（只是界面上的一块）。
+		//
+		// **必须在启动时拉一次**：`dsschedule` 插件的 `Actions.ScheduleList` 读的是
+		// 这里的缓存。不拉就是空数组，而空数组在插件那边等于"没有定时任务"——
+		// 它不会画空标题，所以界面上什么都看不到（**看起来像功能没做**）。
+		if scheds, serr := m.cli.ScheduleList(ctx); serr == nil {
+			items := make([]pluginapi.ScheduleItem, 0, len(scheds))
+			for _, it := range scheds {
+				items = append(items, pluginapi.ScheduleItem{
+					ID: it.ID, Title: it.Title, Kind: it.Kind, NextAt: it.NextAt,
+					EverySec: it.EverySec, DailyAt: it.DailyAt, WeeklyAt: it.WeeklyAt,
+				})
+			}
+			m.mu.Lock()
+			m.schedules = items
+			m.mu.Unlock()
+		}
 	}()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -313,7 +340,7 @@ func (m *model) openSession(id string) {
 	// 这一次 load 是本地 HTTP，几毫秒到几十毫秒，只在切会话时发生一次。
 	{
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		if r, err := m.cli.Load(ctx, id, tailCount); err == nil {
+		if r, _, err := m.loadSession(ctx, id, tailCount); err == nil {
 			m.mu.Lock()
 			if r.LastSeq > m.seqs[id] {
 				m.seqs[id] = r.LastSeq
@@ -340,7 +367,7 @@ func (m *model) openSession(id string) {
 func (m *model) refreshSession(id string, quiet bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	r, err := m.cli.Load(ctx, id, tailCount)
+	r, metadata, err := m.loadSession(ctx, id, tailCount)
 	if err != nil {
 		if !quiet {
 			m.setStatus("加载失败: " + err.Error())
@@ -348,6 +375,15 @@ func (m *model) refreshSession(id string, quiet bool) {
 		return
 	}
 	m.mu.Lock()
+	if m.msgMeta == nil {
+		m.msgMeta = map[string]map[string]pubapi.MessageMetadata{}
+	}
+	if m.msgMeta[id] == nil {
+		m.msgMeta[id] = map[string]pubapi.MessageMetadata{}
+	}
+	for key, value := range metadata {
+		m.msgMeta[id][key] = value
+	}
 	m.cache[id] = &cachedSession{msgs: r.Messages, total: r.Total, title: r.Title, usage: r.Usage,
 		usageTotal: r.UsageTotal, contextTokens: r.ContextTokens, model: r.Model, at: time.Now()}
 	m.evictLocked(id)
@@ -659,7 +695,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 						ep := int(m.epochs[id])
 						m.mu.Unlock()
 						n, err := apiclient.FillGap(ctx, m.cli, id, from, to, ep, func(f apiclient.Frame) {
-							m.applyEvent(id, apiclient.Event{Kind: f.Type, Seq: f.Seq, Topic: "session:" + id, Data: f.Data})
+							m.applyEventAt(id, apiclient.Event{Kind: f.Type, Seq: f.Seq, Topic: "session:" + id, Data: f.Data}, f.Time)
 						})
 						if err != nil {
 							log.Printf("history 补洞失败 session:%s [%d,%d]: %v", id, from, to, err)
@@ -938,6 +974,10 @@ func maxInt(a, b int) int {
 }
 
 func (m *model) applyEvent(id string, ev apiclient.Event) {
+	m.applyEventAt(id, ev, 0)
+}
+
+func (m *model) applyEventAt(id string, ev apiclient.Event, envelopeTime int64) {
 	// 审批帧不是流事件，不能进 stream.Apply（那会把 tool-call 之类混进正文）。
 	// 它只对**当前会话**有意义：后台会话的审批等切回去再显示，
 	// 否则用户会在 A 的界面上批准 B 的工具——线上事故级别的错误。
@@ -993,7 +1033,23 @@ func (m *model) applyEvent(id string, ev apiclient.Event) {
 	if ev.Seq > m.lastSeq {
 		m.lastSeq = ev.Seq
 	}
+	if stoppedEvent(ev) && !ev.End() {
+		// 显式 stopped/interrupted 是终局：先让已有部分正文按既有 End 路径落条，
+		// 不把“点了取消”本身伪造成宿主 stopped。
+		end := ev
+		end.Kind = "turn/end"
+		if m.stream.Apply(end) {
+			m.msgs = apiclient.Merge(m.msgs, &m.stream)
+			m.streamText = ""
+			m.stream.Reset()
+			m.turnBusy = false
+		}
+	}
+	durableUserText := ""
 	if m.stream.Apply(ev) {
+		if ev.Kind == "user/message" {
+			durableUserText = m.stream.Text()
+		}
 		// 思考一有增量就落（边想边看）；正文等这段说完才落（流式期间由气泡显示）。
 		m.msgs = apiclient.Merge(m.msgs, &m.stream)
 		m.syncRightbarLocked()
@@ -1009,6 +1065,8 @@ func (m *model) applyEvent(id string, ev apiclient.Event) {
 			m.streamText = m.stream.Text()
 		}
 	}
+	m.recordTurnEventsLocked(id, ev, envelopeTime)
+	m.reconcileOutgoingLocked(id, durableUserText)
 	m.mu.Unlock()
 	m.inv.Invalidate()
 }
@@ -1041,6 +1099,14 @@ func (m *model) send() { m.sendText(m.draft.Text()) }
 // 不新造一条：Prompt 本来就是"以这条为准再走一轮"，界面侧只负责把它再发一遍。
 func (m *model) retryLast() {
 	m.mu.Lock()
+	for i := len(m.outgoing[m.cur]) - 1; i >= 0; i-- {
+		if m.outgoing[m.cur][i].State == pubapi.OutgoingFailed {
+			key := m.outgoing[m.cur][i].Key
+			m.mu.Unlock()
+			m.retrySend(key)
+			return
+		}
+	}
 	var last string
 	for i := len(m.msgs) - 1; i >= 0; i-- {
 		if m.msgs[i].Role == "user" && m.msgs[i].Text != "" {
@@ -1056,37 +1122,7 @@ func (m *model) retryLast() {
 	m.sendText(last)
 }
 
-func (m *model) sendText(text string) {
-	if text == "" {
-		return
-	}
-	m.mu.Lock()
-	cur := m.cur
-	m.mu.Unlock()
-	if cur == "" {
-		m.setStatus("先选一个会话")
-		return
-	}
-	if m.draft.Text() == text {
-		m.draft.SetText("")
-	}
-	m.msgs = append(m.msgs, apiclient.Message{Seq: -1, Role: "user", Text: text})
-	m.inv.Invalidate()
-
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		turn, err := m.cli.Prompt(ctx, cur, text)
-		if err != nil {
-			m.setStatus("发送失败: " + err.Error())
-			return
-		}
-		m.mu.Lock()
-		m.turnBusy = true // 从现在起"有 turn 在跑"，停止键/ Esc 才有意义
-		m.mu.Unlock()
-		m.setStatus("已发送 · turn " + turn)
-	}()
-}
+func (m *model) sendText(text string) { m.sendLocal(text) }
 
 // approvalReq 是一条待审批的工具调用。
 type approvalReq struct {
@@ -1223,6 +1259,12 @@ func newConfig(m *model) app.Config {
 		sessions := append([]apiclient.Session(nil), m.sessions...)
 		cur := m.cur
 		msgs := append([]apiclient.Message(nil), m.msgs...)
+		metadata := map[string]pubapi.MessageMetadata{}
+		for key, value := range m.msgMeta[cur] {
+			metadata[key] = value
+		}
+		turnEvents := append([]pubapi.TurnEvent(nil), m.turnEvents[cur]...)
+		outgoing := append([]pubapi.OutgoingMessage(nil), m.outgoing[cur]...)
 		status := m.status
 		streamText := m.streamText
 		approval := m.approval
@@ -1284,6 +1326,7 @@ func newConfig(m *model) app.Config {
 			Data: pluginapi.Snapshot{
 				Sessions: sessions, Cur: cur, Status: status,
 				Msgs: msgs, Total: len(msgs), Stream: streamText,
+				MessageMeta: metadata, TurnEvents: turnEvents, Outgoing: outgoing,
 				Usage: pluginapi.Usage{
 					InputTokens:     usage.InputTokens,
 					OutputTokens:    usage.OutputTokens,
@@ -1363,6 +1406,13 @@ func newConfig(m *model) app.Config {
 	// 滚到头再往外层找，行为跟浏览器一致。自己拿当前会话的 ScrollState 去 Wheel
 	// 只覆盖"消息区"一个区域，侧栏/轨迹栏在指针下时就不该滚消息区。
 	cfg.OnScroll = func(ev ui.ScrollEvent) ui.EventResult {
+		for _, plugin := range m.kernel.Plugins() {
+			if handler, ok := plugin.(pubapi.ScrollHandler); ok {
+				if result := handler.HandleScroll(ev); result.Handled {
+					return result
+				}
+			}
+		}
 		return m.view.Wheel(ev)
 	}
 
@@ -1598,6 +1648,9 @@ func main() {
 		showRightbar:     *rightbarOn,
 		rightbarDefault:  *rightbarOn,
 		rightbarSessions: map[string]rightbarSessionState{},
+		outgoing:         map[string][]pubapi.OutgoingMessage{},
+		msgMeta:          map[string]map[string]pubapi.MessageMetadata{},
+		turnEvents:       map[string][]pubapi.TurnEvent{},
 	}
 	// **先换 cookie，再拉数据**。
 	// 反过来（先 refreshList 再 Connect）的后果实测过：第一次 list 必然 401，
@@ -1715,6 +1768,11 @@ func main() {
 			}
 			return names
 		},
+		ScheduleList: func() []pluginapi.ScheduleItem {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			return m.schedules
+		},
 		FSRead: func(path string) (string, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -1724,16 +1782,13 @@ func main() {
 			}
 			return c.Content, nil
 		},
-		OpenSession: m.openSession,
-		NewSession:  m.newSession,
-		Send:        m.sendText,
-		Copy: func(text string) {
-			if err := app.SetClipboardText(text); err != nil {
-				m.setStatus("复制失败: " + err.Error())
-				return
-			}
-			m.setStatus("已复制 " + itoaLocal(len([]rune(text))) + " 字")
-		},
+		OpenSession:    m.openSession,
+		NewSession:     m.newSession,
+		Send:           m.sendText,
+		Copy:           func(text string) { _ = m.copyText(text) },
+		CopyResult:     m.copyText,
+		OpenExternal:   m.openExternal,
+		OpenFile:       m.openFile,
 		Notify:         m.setStatus,
 		ToggleRightbar: m.toggleRightbar,
 		// 审批：真调 session.approve，把宿主的 requestId 与它自己的 optionId 原样回传。
@@ -1747,9 +1802,10 @@ func main() {
 		Allow: func() { m.decide("allow_once") },
 		Deny:  func() { m.decide("reject_once") },
 		// 取消：用户点停止键时打断当前会话的 turn。
-		Cancel:   m.cancelTurn,
-		SetDraft: func(text string) { m.draft.SetText(text) },
-		Retry:    m.retryLast,
+		Cancel:    m.cancelTurn,
+		SetDraft:  func(text string) { m.draft.SetText(text) },
+		Retry:     m.retryLast,
+		RetrySend: m.retrySend,
 	}
 	log.Printf("插件 %v，主题 %s", m.kernel.Order(), m.theme.Name)
 

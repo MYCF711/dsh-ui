@@ -108,7 +108,7 @@ func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
 func (p *Plugin) drawFooter(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	f.Row().WidthPercent(100).Height(22).Items(flex.Center).Gap(6).Children(func() {
-		f.Text(itoa(len(env.Data.Sessions))+" 个会话").
+		f.Text(itoa(len(env.Data.Sessions)) + " 个会话").
 			FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		f.Spacer()
 		if env.Data.Status != "" {

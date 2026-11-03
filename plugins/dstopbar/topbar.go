@@ -18,15 +18,74 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
-// barHeight 是顶栏高度。固定值：顶栏一变高，消息区就被推下去，滚动位置会跳。
-const barHeight = 40
+// 顶栏几何全部来自官方 `ui-conversation` 的 ConversationRoot.module.css
+// （安装态 asar 内，模块 hash an3WzG；结构见同包 ConversationSessionHeader：
+// titleRow > titleCluster > nav.crumbs，右侧 headerActions / utilities / corner）：
+//
+//	.an3WzG_header{box-sizing:border-box;border-bottom:.5px solid var(--dsw-alias-border-l3);
+//	               grid-template-columns:auto minmax(0,1fr);min-height:76px;
+//	               padding:10px 28px 0 20px;display:grid}
+//	.an3WzG_header:where(:not(:has(.an3WzG_tabs))){min-height:0;padding-bottom:10px}
+//	.an3WzG_headerBlank{border-bottom:none;min-height:0;padding-bottom:0}
+//	.an3WzG_titleRow{min-height:30px;align-items:center;gap:0;display:flex}
+//	.an3WzG_titleCluster{flex:1;align-items:center;gap:10px;min-width:0;display:flex}
+//	.an3WzG_crumbs{align-items:center;gap:4px;min-width:0;display:flex;overflow:hidden}
+//	.an3WzG_crumb{max-width:220px;border-radius:var(--dsw-radius-md);padding:4px 8px;
+//	              font-size:14px;line-height:20px;color:var(--dsw-alias-label-tertiary)}
+//	.an3WzG_crumbCurrent{color:var(--dsw-alias-label-primary);font-weight:500}
+//	.an3WzG_crumbSep{color:var(--dsw-alias-label-caption);font-size:14px;line-height:20px}
+//	.an3WzG_headerUtilities{flex:none;align-items:center;gap:8px;margin-left:20px}
+//	.an3WzG_headerCorner{flex:none;align-items:center;margin-left:8px;margin-right:-16px}
+//	html:not([data-platform=darwin]) .an3WzG_headerSessionless{padding-top:0}
+//	html:not([data-platform=darwin]) .an3WzG_headerSessionless .an3WzG_titleRow{min-height:0}
+//
+// 三种状态（都与官方一一对应）：
+//
+//	有会话且有内容  10 + 30 + 10 = 50，底下一条 0.5px 的 border-l3
+//	有会话但空白    10 + 30 +  0 = 40，没有下划线（headerBlank）
+//	一个会话都没有   0 +  0 + 10 = 10（headerSessionless：上内边距 0、titleRow 塌成 0）
+//
+// 那根 `margin-right:-16px` 是给右内边距 28 用的：28-16 = 12，控件右边离列右边 12px。
+// 它不是"粘到窗口边缘"的意思，照抄时必须连同 28 的右内边距一起抄。
+//
+// 坐标口径：壳给中栏加 columnPad=12（dsshell 的跨插件契约，见那里的注释），
+// 所以本槽位的原点比官方裸列多 12px。按窗口坐标量这一行整体 +12px；
+// 扣掉壳内边距后，行高/内边距/间距与官方逐项相等（量测见 tmp/v1-nav-*.png）。
+const (
+	// headerPad* 是官方 header 的 `padding:10px 28px 0 20px`（无 tabs 时下内边距 10）。
+	headerPadTop    = 10
+	headerPadRight  = 28
+	headerPadBottom = 10
+	headerPadLeft   = 20
+	// headerRule 是官方 header 的 `border-bottom:.5px solid border-l3`。
+	headerRule = 0.5
+
+	titleRowHeight    = 30
+	titleClusterGap   = 10
+	crumbsGap         = 4
+	crumbMaxWidth     = 220
+	crumbPadX         = 8
+	crumbPadY         = 4
+	utilitiesGap      = 8
+	utilitiesMarginLX = 20
+	cornerMarginLX    = 8
+	cornerMarginRX    = -16
+)
 
 // Plugin 实现 pluginapi.Plugin / Panels。
 type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
+
+	// headerBoxes 保存本帧关键容器几何，供官方 50/40/10px 高度回归测试使用。
+	headerBoxes headerBoxes
+}
+
+type headerBoxes struct {
+	Root, Body, TitleRow, Corner, Divider flex.Box
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -54,71 +113,171 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	}
 }
 
-// draw 画一行：标题 · 工作区 …… 共 N 条 · 模式徽标，底下一根分割线。
+// draw 画官方的主区导航行：`面包屑` + 右侧工具区 + 最右角控件。
 //
-// 高度用 MinHeight + PadY 撑，不用 Height + Shrink 组合：
-// 后者在 viva 里会让整行塌成 0 高（踩过，见 docs/plugin-api.md §7）。
+// 结构逐项照官方 ConversationSessionHeader：
+//
+//	titleRow ─ titleCluster ─ nav.crumbs ─ crumb / crumbSep / crumb(当前)
+//	         └ headerUtilities … headerCorner
+//
+// 三条硬规矩：
+//  1. **只画真实数据**：工作区名来自 cwd、crumb 来自会话标题、条数来自 Total、
+//     模型/审批来自宿主。任何一项拿不到就整段不出现（不补占位文案）。
+//  2. **不做死按钮**：官方祖先 crumb 是 `<button onClick=open(id)>`；
+//     我们没有"跳到另一个会话"的 Action，所以祖先 crumb 画成纯文本，
+//     不给它 HoverBackground、也不给 Hit id —— 点上去什么都不发生，
+//     而不是点上去像坏了一样。
+//  3. **没有会话时不画空标题**：官方 `headerSessionless .titleRow{min-height:0}`，
+//     titleRow 塌成 0，只剩 header 的 10px 下内边距。
+//
+// 高度用 MinHeight（行）+ PadSides（内边距）撑，不用 Height + Shrink 组合：
+// 后者在 viva 里会让整行塌成 0 高（见 docs/plugin-api.md §7）。
 // 宽度用百分比：槽位里 f.Bounds().Width 拿到的是**整窗**宽，不是本列宽。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 
 	title, cwd, mode := titleOf(env)
 	hasSession := env.Data.Cur != "" && title != ""
+	active := len(env.Data.Msgs) > 0 || env.Data.Stream != "" || env.Data.Busy
 
-	f.Column().WidthPercent(100).Children(func() {
-		f.Row().WidthPercent(100).MinHeight(barHeight).PadY(8).
-			Items(flex.Center).Gap(8).Children(func() {
-			// 标题：有会话就是标题，没有就明说没有（不编，也不整条消失——
-			// 顶栏消失会让下面内容整体上移，看起来像"界面跳了一下"）。
-			if hasSession {
-				f.Text(title).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary).
-					MaxLines(1).Ellipsis()
-				if ws := workspaceOf(cwd); ws != "" {
-					f.Text("·").FontSize(t.Fonts.Caption).Color(t.LabelDimmed)
-					f.Text(ws).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
-				}
-			} else {
-				f.Text("未选择会话").FontSize(t.Fonts.Secondary).Color(t.LabelCaption)
+	p.headerBoxes = headerBoxes{}
+	p.headerBoxes.Root = f.Column().WidthPercent(100).Children(func() {
+		if !hasSession {
+			// 官方 sessionless：上内边距 0、titleRow 高 0、没有下划线，只剩 10px。
+			p.headerBoxes.Body = f.Row().WidthPercent(100).Height(headerPadBottom)
+			return
+		}
+		if !active {
+			// 官方 blank Session：隐藏标题、actions、utilities、tabs 与分割线，
+			// 但保留 headerCorner（右栏展开入口）。高度仍是 10 + 30。
+			p.headerBoxes.Body = f.Column().WidthPercent(100).
+				PadSides(headerPadTop, headerPadRight, 0, headerPadLeft).
+				Children(func() {
+					p.headerBoxes.TitleRow = f.Row().WidthPercent(100).MinHeight(titleRowHeight).
+						Items(flex.Center).Children(func() {
+						f.Spacer()
+						p.drawCorner(f, env)
+					})
+				})
+			return
+		}
+
+		p.headerBoxes.Body = f.Column().WidthPercent(100).
+			PadSides(headerPadTop, headerPadRight, headerPadBottom, headerPadLeft).
+			Children(func() {
+				p.headerBoxes.TitleRow = f.Row().WidthPercent(100).MinHeight(titleRowHeight).
+					Items(flex.Center).Gap(0).Children(func() {
+					p.drawTitleCluster(f, title, cwd)
+					p.drawUtilities(f, env, mode)
+					p.drawCorner(f, env)
+				})
+			})
+
+		// 官方 header 的下划线：`.5px solid border-l3`，横跨整列（含左右内边距）。
+		p.headerBoxes.Divider = f.Row().WidthPercent(100).Height(headerRule).Background(t.BorderL3)
+	})
+}
+
+// drawTitleCluster 画 nav.crumbs：`工作区 / 会话标题`。
+func (p *Plugin) drawTitleCluster(f *flex.Frame, title, cwd string) {
+	t := p.theme
+	f.Row().Grow(1).Items(flex.Center).Gap(titleClusterGap).MinWidth(0).Children(func() {
+		f.Row().Items(flex.Center).Gap(crumbsGap).MinWidth(0).Children(func() {
+			// 祖先：工作区（官方祖先 crumb 是按钮，我们无对应 Action → 纯文本）
+			if ws := workspaceOf(cwd); ws != "" {
+				p.crumb(f, ws, false)
+				f.Text("/").FontSize(t.Fonts.Body).LineHeight(t.Fonts.SecondaryLine).
+					Color(t.LabelCaption)
 			}
+			// 当前：会话标题（官方 crumbCurrent：primary + 500）
+			p.crumb(f, title, true)
+		})
+	})
+}
 
-			// 宿主 §12 H4/H5：模型名与审批策略。空串 = 不知道 → 整段不画，
-			// 也不编默认值（编了就没法区分"没数据"和"就是这个值"）。
-			//
-			// 用弱色文字而不是 chip：两个 chip 实测会把右端挤出去
-			// （「共 4 条」被截成「共 4」、审批 chip 半个字露在外面）。
-			// 宽度门槛：顶栏一行就这么多地方。实测 1196 宽窗口（主列约 515px）时
-			// 标题 + 工作区 + 这段 + 条数 + 轨迹按钮 一起放不下，最后一项会被裁掉；
-			// 主列 700px 以上才有余量。宁可整段不画，也不留半个字在边上。
-			if host := hostLabel(env.Data.Model, env.Data.Permission); host != "" && env.MainWidth >= 700 {
-				f.Text("·").FontSize(t.Fonts.Caption).Color(t.LabelDimmed).Shrink(0)
-				f.Text(host).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).
-					MaxLines(1).Ellipsis()
+// drawUtilities 画官方 headerUtilities：只放真实宿主数据，拿不到就整段不出现。
+func (p *Plugin) drawUtilities(f *flex.Frame, env *pluginapi.Env, mode string) {
+	t := p.theme
+	f.Row().Items(flex.Center).Gap(utilitiesGap).
+		MarginSides(0, 0, 0, utilitiesMarginLX).Children(func() {
+		if mode != "" {
+			f.Text(mode).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
+				Color(t.LabelTertiary).MaxLines(1).Ellipsis()
+		}
+		// 条数：只在真的加载过消息时显示，0 条不显示「共 0 条」。
+		if env.Data.Total > 0 {
+			f.Text("共 " + itoa(env.Data.Total) + " 条").
+				FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
+				Color(t.LabelCaption)
+		}
+		// 宿主 §12 H4/H5：模型名与审批策略。空串 = 不知道 → 整段不画。
+		// 窄列（主列 < 700）放不下这一整行，宁可整段不画也不留半个字在边上。
+		if host := hostLabel(env.Data.Model, env.Data.Permission); host != "" && env.MainWidth >= 700 {
+			f.Text("·").FontSize(t.Fonts.Caption).Color(t.LabelDimmed).Shrink(0)
+			f.Text(host).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
+				Color(t.LabelTertiary).MaxLines(1).Ellipsis()
+		}
+	})
+}
+
+// drawCorner 画官方 headerCorner：最右角的那一个控件（右栏开合）。
+func (p *Plugin) drawCorner(f *flex.Frame, env *pluginapi.Env) {
+	t := p.theme
+	f.Row().Items(flex.Center).MarginSides(0, cornerMarginRX, 0, cornerMarginLX).
+		Children(func() {
+			// slot 不存在时开关没有可见效果，必须整颗隐藏；blank Session 也只在
+			// action 与 slot 都真实存在时保留官方 corner 入口。
+			available := env.Act.ToggleRightbar != nil && env.Has != nil && env.Has(pluginapi.SlotRightbar)
+			if !available {
+				return
 			}
-
-			f.Spacer()
-			// 右栏开合：官方也能收右栏，这里给一个明显的入口（状态从快照读，不改本地）。
-			// 用文字而不是三角：▸/▾ 在这个字号下几乎分不出来（实测两张图看着一样）。
-			label := "轨迹 关"
+			label := "打开右侧边栏"
 			if env.Data.ShowRightbar {
-				label = "轨迹 开"
+				label = "收起右侧边栏"
 			}
-			if env.Act.ToggleRightbar != nil &&
-				f.Button(env.Tree.ID(env.Feat, "toggle-rightbar"), label).Ghost().Small().Clicked() {
+			// 官方 ExpandButton 是 28px 小按钮 + 15px 面板图标。这里保留开/关
+			// 两个方向，因为当前 ds-rightbar 尚无自己的收起按钮，不能删掉唯一出口。
+			p.headerBoxes.Corner = f.Row().Width(28).Height(28).Radius(t.Radii.SM).
+				Items(flex.Center).Justify(flex.Center).HoverBackground(t.Hover).
+				Hit(env.Tree.ID(env.Feat, "toggle-rightbar"), label).Children(func() {
+				f.Icon(rightbarPanelIcon).Width(15).Height(15).Color(t.LabelSecondary)
+			})
+			if p.headerBoxes.Corner.Clicked() {
 				env.Act.ToggleRightbar()
 			}
-
-			// 右：条数。只在真的加载过消息时显示，0 条不显示「共 0 条」。
-			if hasSession && env.Data.Total > 0 {
-				f.Text("共 " + itoa(env.Data.Total) + " 条").
-					FontSize(t.Fonts.Caption).Color(t.LabelCaption)
-			}
-			// 模式徽标：宿主给了才画。用官方的 .chip 观感（细底 + business-primary 文字）。
-			if mode != "" {
-				p.prims.Chip(f, mode)
-			}
 		})
-		p.prims.Divider(f)
-	})
+}
+
+// rightbarPanelIcon 与官方 ExpandButton 的镜像 PanelLeft 同属 panel-right 形状：
+// 24 viewBox、2px stroke、圆角外框 + 右侧栏分隔线。
+var rightbarPanelIcon = ui.Icon{
+	ViewBox: 24, Stroke: 2, Cap: ui.CapRound, Join: ui.JoinRound,
+	Commands: []ui.PathCommand{
+		ui.MoveTo(5, 3), ui.LineTo(19, 3), ui.QuadTo(21, 3, 21, 5),
+		ui.LineTo(21, 19), ui.QuadTo(21, 21, 19, 21), ui.LineTo(5, 21),
+		ui.QuadTo(3, 21, 3, 19), ui.LineTo(3, 5), ui.QuadTo(3, 3, 5, 3), ui.ClosePath(),
+		ui.MoveTo(15, 3), ui.LineTo(15, 21),
+	},
+}
+
+// crumb 画一枚官方面包屑。
+//
+// 官方：`padding:4px 8px;border-radius:radius-md;max-width:220px;
+// font-size:14px;line-height:20px;color:label-tertiary`，
+// 当前项 `color:label-primary;font-weight:500`，超长省略。
+func (p *Plugin) crumb(f *flex.Frame, text string, current bool) {
+	t := p.theme
+	b := f.Text(text).
+		FontSize(t.Fonts.Body).LineHeight(t.Fonts.SecondaryLine).
+		MaxWidth(crumbMaxWidth).MaxLines(1).Ellipsis().
+		PadSides(crumbPadY, crumbPadX, crumbPadY, crumbPadX).
+		Radius(t.Radii.MD)
+	if current {
+		b.Color(t.LabelPrimary).Weight(ui.WeightMedium)
+		return
+	}
+	// 祖先 crumb 没有可用的跳转 Action：保持官方底色/字号，但不给悬停反馈。
+	b.Color(t.LabelTertiary)
 }
 
 // hostLabel 返回顶栏上「宿主给的」那一段文字（§12 H4 模型 / H5 审批策略）。

@@ -66,41 +66,46 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		calls = calls[len(calls)-maxEntries:]
 	}
 
-	// ── 标题：轨迹 + 条数 ──
-	f.Row().WidthPercent(100).Items(flex.Center).Gap(6).Children(func() {
-		f.Text("轨迹").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		f.Spacer()
-		if n := hidden + len(calls); n > 0 {
-			f.Text(itoa(n) + " 次").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-		}
-	})
-	p.prims.Divider(f)
-
-	// ── 空态：只给一句提示，不画空线 ──
-	if len(calls) == 0 {
-		msg := "本会话还没有工具调用"
-		if env.Data.Cur == "" {
-			msg = "先选一个会话"
-		}
-		f.Column().WidthPercent(100).Pad(12).Children(func() {
-			f.Text(msg).FontSize(t.Fonts.Caption).Color(t.LabelCaption).TextCenter()
+	// 壳的右栏轨道已有 12px inset；本层只负责内容轨道。
+	// 空态再补 12px，合计官方 guide 的 24px；标题/时间线直接使用壳的 12px。
+	f.Column().WidthPercent(100).FillHeight().Children(func() {
+		// ── 标题：轨迹 + 条数 ──
+		f.Row().WidthPercent(100).Items(flex.Center).Gap(6).Children(func() {
+			f.Text("轨迹").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
+			f.Spacer()
+			if n := hidden + len(calls); n > 0 {
+				f.Text(itoa(n) + " 次").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			}
 		})
-		return
-	}
+		p.prims.Divider(f)
 
-	// ── 时间线本体 ──
-	// 宽度一律用百分比：槽位里 f.Bounds() 拿到的是整窗宽（实测 1180），
-	// 按它算会把内容画到窗口外面去。
-	scrID := env.Tree.ID(env.Feat, "rightbar-scroll")
-	f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip().Children(func() {
-		f.Column().WidthPercent(100).Gap(2).Children(func() {
-			if hidden > 0 {
-				f.Text("… 更早的 " + itoa(hidden) + " 次未显示").
-					FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
+		// ── 空态：官方 guide 在可用 body 内居中，padding 0 24px，secondary/tertiary ──
+		if len(calls) == 0 {
+			msg := "本会话还没有工具调用"
+			if env.Data.Cur == "" {
+				msg = "先选一个会话"
 			}
-			for i := range calls {
-				p.drawEntry(f, calls[i], i == len(calls)-1)
-			}
+			f.Column().WidthPercent(100).Grow(1).Justify(flex.Center).Items(flex.Center).PadX(12).Children(func() {
+				f.Text(msg).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
+					Color(t.LabelTertiary).TextCenter()
+			})
+			return
+		}
+
+		// ── 时间线本体 ──
+		// 宽度一律用百分比：槽位里 f.Bounds() 拿到的是整窗宽，
+		// 按它算会把内容画到窗口外面去。
+		scrID := env.Tree.ID(env.Feat, "rightbar-scroll")
+		f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip().Children(func() {
+			f.Column().WidthPercent(100).Gap(2).Children(func() {
+				if hidden > 0 {
+					f.Text("… 更早的 " + itoa(hidden) + " 次未显示").
+						FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
+				}
+				for i := range calls {
+					p.drawEntry(f, calls[i], i == len(calls)-1)
+				}
+			})
 		})
 	})
 }

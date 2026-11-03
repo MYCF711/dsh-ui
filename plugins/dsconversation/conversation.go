@@ -92,6 +92,9 @@ type Plugin struct {
 	searchField flex.Field
 	// searchHits 是最近一帧的命中数，给搜索栏显示。
 	searchHits int
+
+	// heroBoxes 保存首屏关键容器的本帧几何，供布局回归测试与截图证据核对。
+	heroBoxes heroBoxes
 }
 
 // drawSearchBar 画搜索栏：输入框 + 命中数 + 关闭。
@@ -171,10 +174,11 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		}
 	}
 
-	if len(msgs) == 0 && env.Data.Stream == "" {
-		f.Row().FillWidth().Pad(24).Children(func() {
-			f.Text("← 左边选一个会话").FontSize(t.Fonts.Body).Color(t.LabelTertiary)
-		})
+	if len(msgs) == 0 && env.Data.Stream == "" && !env.Data.Busy {
+		// 官方首屏（HeroShell）：没有会话 / 会话为空时，主区正中是
+		// 「鲸鱼标记 + 探索未至之境 + 预览版」。见 hero.go。
+		// Busy 也属于真实活动：已发送、正文尚未到达时不能退回欢迎区。
+		p.drawHero(f, env)
 		return
 	}
 

@@ -329,18 +329,13 @@ func decideOption(ap *pluginapi.Approval, act pluginapi.Actions, optionID string
 	return true
 }
 
-// approvalTextWidth 算审批条里一行文本最多能有多宽（像素）。
-//
-// **不用 env.MainWidth**：壳把它算成「窗口 - 侧栏 - 300」，而右栏实际占的是
-// Geometry.RightWidth（这个尺寸下是 500）——右栏展开时两者差 100px 以上，
-// 按 MainWidth 定宽会被卡片直接裁掉，而且**裁在省略号那一头**，看上去就像
-// 参数被硬切了（实拍 tmp/approval-crop-args.png）。
-// 这里按壳自己给的三个几何数减：窗口 - 侧栏 - 右栏 - 壳 padding(12×2) - 卡片 padding(12×2)。
-// 右边那一项保守一点没关系：窄了只是少显示几个字，宽了就是硬切。
+// approvalTextWidth 取官方审批卡内容宽：chat content 减去 body 左右各 16px。
+// 不再从整窗、侧栏和右栏反推；它与输入卡共用 composerColumn/contentWidth，
+// 因而右栏开合和两种验收尺寸下都与实际卡片一致。
 func approvalTextWidth(env *pluginapi.Env) float32 {
-	w := env.Bounds.Width - env.Geometry.SidebarWidth - env.Geometry.RightWidth - 48
+	w := contentWidth(composerColumn(env)) - 32
 	if w < 120 {
-		w = 120 // 再窄也至少留一行字，别把文本压成 0 宽
+		w = 120 // 极窄兜底不是官方档位，只保证文本不会被压成 0 宽
 	}
 	return w
 }
@@ -359,54 +354,63 @@ func oneLineText(f *flex.Frame, text string, width, size float32, color ui.Color
 	})
 }
 
-// drawApproval 画审批条（在输入框上方，同一个 paint 里）。
-//
-// 视觉规格跟官方审批卡一致：卡片底、圆角 MD、描边 BorderL3；
-// 第一行"需要审批"用警告色，正文两行（标题 / 参数），按钮右对齐。
+// drawApproval 按官方 ApprovalPanel 画在输入框上方：root padding 8/12，卡片宽
+// chat-content、radius-xl 20、InputMajor；strip → body → actionRow 三层。
+// 按钮仍调用原来的 press/pressOption，requestId/optionId 回传路径不变。
 func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	plan := planApproval(env.Data, env.Act.Approve != nil)
 	if !plan.Visible {
 		return
 	}
-	f.Column().FillWidth().Radius(t.Radii.MD).Background(t.BgLayer2).
-		Border(1, t.BorderL3).PadX(12).PadY(10).Gap(6).Children(func() {
-		f.Row().Gap(8).Items(flex.Center).Children(func() {
-			f.Text("需要审批").Bold().FontSize(t.Fonts.Caption).Color(t.Warn)
-			if plan.Tool != "" {
-				f.Text(plan.Tool).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
-			}
-			f.Spacer()
-		})
-		textW := approvalTextWidth(env)
-		if plan.Title != "" {
-			oneLineText(f, plan.Title, textW, t.Fonts.Caption, t.LabelSecondary)
-		}
-		// 参数摘要：宿主原样给的，只压成一行、超长省略号。
-		if plan.Args != "" {
-			oneLineText(f, plan.Args, textW, t.Fonts.Tiny, t.LabelSecondary)
-		}
-		if plan.Detail != "" {
-			oneLineText(f, plan.Detail, textW, t.Fonts.Tiny, t.LabelCaption)
-		}
-		if plan.Note != "" {
-			f.Text(plan.Note).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-		}
-		f.Row().Gap(8).Items(flex.Center).Justify(flex.End).Children(func() {
-			if f.Button(env.Tree.ID(env.Feat, "approval-deny"), plan.Deny.Label).Outline().Small().
-				Disabled(!plan.Deny.Usable).Clicked() && plan.Deny.Usable {
-				p.press(env, false)
-			}
-			if plan.AllowAlways.Option != "" {
-				if f.Button(env.Tree.ID(env.Feat, "approval-allow-always"), plan.AllowAlways.Label).Outline().Small().
-					Disabled(!plan.AllowAlways.Usable).Clicked() && plan.AllowAlways.Usable {
-					p.pressOption(env, plan.AllowAlways.Option, plan.AllowAlways.Label)
-				}
-			}
-			if f.Button(env.Tree.ID(env.Feat, "approval-allow"), plan.Allow.Label).Small().
-				Disabled(!plan.Allow.Usable).Clicked() && plan.Allow.Usable {
-				p.press(env, true)
-			}
+	f.Column().FillWidth().PadSides(8, 0, 12, 0).Children(func() {
+		f.Row().FillWidth().Justify(flex.Center).Children(func() {
+			f.Column().Width(contentWidth(composerColumn(env))).Radius(t.Radii.XL).
+				Background(t.InputMajor).Border(1, t.Warn).Clip().Children(func() {
+				stripFill := t.Warn
+				stripFill.Alpha = 0.12 // theme 没有 warn-tertiary；由 Warn 派生，不写新色号
+				f.Row().FillWidth().Background(stripFill).PadSides(10, 16, 10, 16).
+					Gap(8).Items(flex.Center).Children(func() {
+					f.Text("需要审批").FontSize(t.Fonts.Secondary).LineHeight(18).Color(t.Warn)
+					if plan.Tool != "" {
+						f.Text(plan.Tool).FontSize(t.Fonts.Secondary).LineHeight(18).Color(t.Warn)
+					}
+					f.Spacer()
+				})
+				textW := approvalTextWidth(env)
+				f.Column().FillWidth().PadSides(12, 16, 0, 16).Gap(6).Children(func() {
+					if plan.Title != "" {
+						oneLineText(f, plan.Title, textW, t.Fonts.Title, t.LabelPrimary)
+					}
+					// 参数摘要：宿主原样给的，只压成一行、超长省略号。
+					if plan.Args != "" {
+						oneLineText(f, plan.Args, textW, t.Fonts.Secondary, t.LabelTertiary)
+					}
+					if plan.Detail != "" {
+						oneLineText(f, plan.Detail, textW, t.Fonts.Secondary, t.LabelCaption)
+					}
+					if plan.Note != "" {
+						oneLineText(f, plan.Note, textW, t.Fonts.Tiny, t.LabelCaption)
+					}
+				})
+				f.Row().Gap(8).Items(flex.Center).Justify(flex.End).
+					PadSides(14, 16, 14, 16).Children(func() {
+					if f.Button(env.Tree.ID(env.Feat, "approval-deny"), plan.Deny.Label).Outline().Small().
+						Disabled(!plan.Deny.Usable).Clicked() && plan.Deny.Usable {
+						p.press(env, false)
+					}
+					if plan.AllowAlways.Option != "" {
+						if f.Button(env.Tree.ID(env.Feat, "approval-allow-always"), plan.AllowAlways.Label).Outline().Small().
+							Disabled(!plan.AllowAlways.Usable).Clicked() && plan.AllowAlways.Usable {
+							p.pressOption(env, plan.AllowAlways.Option, plan.AllowAlways.Label)
+						}
+					}
+					if f.Button(env.Tree.ID(env.Feat, "approval-allow"), plan.Allow.Label).Small().
+						Disabled(!plan.Allow.Usable).Clicked() && plan.Allow.Usable {
+						p.press(env, true)
+					}
+				})
+			})
 		})
 	})
 }

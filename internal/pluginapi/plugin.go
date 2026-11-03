@@ -1,0 +1,172 @@
+// Package pluginapi 是界面线的插件契约：全部接口 + 共享数据类型，**零实现**。
+//
+// 分工照抄宿主线（DSH-GO）的做法，别自创第二套：
+//
+//	宿主线                     界面线
+//	internal/spi   （契约）  →  internal/pluginapi （本包）
+//	internal/kernel（运行时）→  internal/uikernel  （作用域 / 注册表 / 装配）
+//	modules/*      （插件）  →  plugins/*          （插件）
+//
+// 本包的红线（与宿主线 R1 / R2 同源）：
+//
+//	① 只 import viva 的 ui 与 flex，**不** import components / markdown：
+//	   契约不许绑定某一种绘制实现，否则换渲染器就得改所有插件。
+//	② 插件不许 import cmd/app：拿不到窗口、拿不到 model 单例，
+//	   只能通过 Env 里给的快照和 Action 做事。这就是宿主线的 R2。
+//	③ 本包不 import 任何 plugins/*：依赖方向永远是 插件 → 契约。
+//
+// 「一个部件一个部件移植」的落地方式：每个官方组件（侧栏 / 会话流 / 输入框 /
+// 状态栏 …）各成一个 plugins/<id>，声明自己挂在哪个 Slot 上、依赖哪些服务键。
+// 先装根本依赖插件（ds-core：设计令牌 + 基础组件），它的 Provides 就是后面
+// 所有插件的 Requires。
+package pluginapi
+
+import (
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
+)
+
+// ── 服务键 ────────────────────────────────────────────────────────────────
+//
+// 服务键是插件之间**唯一**的耦合方式（对齐宿主线 kernel.Scope 的 Provide/Inject）。
+// 键名用 "<域>.<东西>"，全局唯一，写死在这里——散落在各插件里就会拼错。
+const (
+	// KeyTheme 由根本依赖插件 ds-core 提供，值是 *Theme。
+	// 所有画东西的插件都必须 Requires 它，这样装配器保证它先就位。
+	KeyTheme = "ui.theme"
+	// KeyPrimitives 由 ds-core 提供，值是 *Primitives（基础组件的画法）。
+	KeyPrimitives = "ui.primitives"
+)
+
+// Plugin 是一个界面插件。字段形状刻意和宿主线的 kernel.Module 对齐。
+type Plugin interface {
+	// ID 全局唯一、kebab-case、稳定（写进日志和依赖表）。
+	ID() string
+	// Provides 是本插件注册后能提供的能力（服务键）。
+	Provides() []string
+	// Requires 是本插件开工前必须已经就位的能力。缺一个就装配失败，
+	// 不许静默降级——「插件少画了一块」是最难查的 bug。
+	Requires() []string
+	// Register 在窗口起来之前调用一次。这里只做注册，不许画东西。
+	Register(ctx Context) error
+}
+
+// Panels 是「会画东西的插件」的可选接口。
+// 一个插件可以不实现它（纯服务提供者，比如 ds-core）。
+type Panels interface {
+	Panels() []Painter
+}
+
+// Context 是插件在注册期唯一能碰到的东西。
+//
+// 故意做成接口而不是 uikernel.Scope：否则 uikernel 要 import pluginapi，
+// pluginapi 又要 import uikernel，成环。宿主线用同样的办法绕开了
+// （kernel.Module.Register 收的是 *Scope，而 spi 里根本提不到 Scope）。
+type Context interface {
+	// Name 是这个插件的作用域名（一般等于 ID）。
+	Name() string
+	// Provide 登记一个能力。同一个键被两个插件提供是装配错误。
+	Provide(key string, value any)
+	// Inject 取一个能力；没提供过返回 nil。
+	Inject(key string) any
+	// Effect 登记一个要在卸载时执行的清理函数（goroutine / 订阅 / 定时器）。
+	Effect(fn func())
+	// Logf 打一行日志，前缀已是插件 ID。
+	Logf(format string, args ...any)
+}
+
+// Slot 是界面上的一个可挂载区域。
+//
+// 槽位名写死：插件挂在哪一块由壳决定，插件不许自己算坐标。
+// 这样「换个布局」只是壳的事，插件一行不用改。
+type Slot string
+
+const (
+	SlotSidebarHeader Slot = "sidebar.header"
+	SlotSidebarList   Slot = "sidebar.list"
+	SlotSidebarFooter Slot = "sidebar.footer"
+	SlotMainHeader    Slot = "main.header"
+	SlotMainBody      Slot = "main.body"
+	SlotMainComposer  Slot = "main.composer"
+	SlotRightbar      Slot = "rightbar"
+	SlotStatusbar     Slot = "statusbar"
+)
+
+// Painter 是一块可挂载的绘制单元。
+type Painter struct {
+	// ID 在同一个插件内唯一，用于日志和调试（不是交互 id）。
+	ID string
+	// Slot 挂在哪。
+	Slot Slot
+	// Order 决定同一个槽里谁先画：小的先（= 贴在上面）。
+	Order int
+	// Draw 画自己。frame 已经是这块槽的位置和尺寸，别自己算全局坐标。
+	Draw func(f *flex.Frame, env *Env)
+}
+
+// Primitives 是基础组件的画法，由根本依赖插件（ds-core）提供。
+//
+// 做成**接口**而不是具体类型，是为了让下游插件只认契约、不认 dscore 这个包：
+// 哪天要换一套视觉实现（浅色变体、紧凑变体），下游一行都不用改。
+// 实现方必须自己加 `var _ pluginapi.Primitives = (*X)(nil)` 断言。
+type Primitives interface {
+	// ListRow 一条列表行：选中/悬停底色由实现决定，调用方只给状态。
+	ListRow(f *flex.Frame, id ui.ID, active bool, height float32, body func()) flex.Box
+	// SectionHeader 一个分组头（标题 + 条数 + 展开/收起箭头）。
+	SectionHeader(f *flex.Frame, id ui.ID, title string, count int, open bool) flex.Box
+	// Badge 行尾的小徽标。
+	Badge(f *flex.Frame, text string, color ui.Color) flex.Box
+	// Dot 一个状态圆点。
+	Dot(f *flex.Frame, color ui.Color, size float32) flex.Box
+	// Divider 一条最轻的分隔线。
+	Divider(f *flex.Frame)
+}
+
+// Env 是绘制期拿到的全部东西：只读快照 + 动作 + 主题。
+//
+// 明确**不给** model / 互斥锁 / 客户端：插件不该知道数据怎么来的，
+// 也就不会有人偷偷在 Paint 里发请求。
+type Env struct {
+	Theme *Theme
+	Data  Snapshot
+	Act   Actions
+	// Tree / Feat 是这个槽所属的交互树与 feature 作用域。
+	// 插件自己用 env.Tree.ID(env.Feat, "名字") 造交互 id——不许写死数字。
+	Tree *ui.Tree
+	Feat ui.Scope
+}
+
+// Snapshot 是一帧的数据快照，壳在锁内拷好再传进来，插件里不用加锁。
+type Snapshot struct {
+	Sessions []apiclient.Session
+	Cur      string
+	Search   string
+	Status   string
+	Msgs     []apiclient.Message
+	Total    int
+	Stream   string
+	Approval *Approval
+	// Truncated 表示这次只渲染了末尾一段（视口虚拟化 / -limit）。
+	Truncated bool
+}
+
+// Approval 是待审批的一次工具调用。
+type Approval struct {
+	Tool   string
+	Cmd    string
+	Reason string // 模型自述，**不可信**，界面上必须标出来
+}
+
+// Actions 是插件能触发的动作。
+//
+// 只放「用户点了会改状态」的入口；读状态走 Snapshot。
+// nil 的动作表示当前不可用，插件要自己判断（别假设一定有）。
+type Actions struct {
+	OpenSession func(id string)
+	NewSession  func()
+	Send        func()
+	SetDraft    func(text string)
+	Allow       func()
+	Deny        func()
+}

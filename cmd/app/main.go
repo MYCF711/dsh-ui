@@ -19,6 +19,10 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
+	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
@@ -80,6 +84,15 @@ type model struct {
 	subCancel  context.CancelFunc
 	streamText string
 	lastSeq    int
+
+	// ── 插件运行时（界面线的「一切皆插件」）──
+	// 壳只做三件事：装配插件、给槽位、把快照递进去。
+	// 部件怎么分组、怎么排序、展开还是收起，全是插件自己的事。
+	kernel  *uikernel.Kernel
+	theme   *pluginapi.Theme
+	prims   pluginapi.Primitives
+	side    *dssidebar.Plugin
+	actions pluginapi.Actions
 
 	mu       sync.Mutex
 	sessions []apiclient.Session
@@ -250,6 +263,7 @@ func (m *model) newSession() {
 			return
 		}
 		m.refreshList()
+
 		m.openSession(id)
 	}()
 }
@@ -443,7 +457,7 @@ const demoWideCode = "超宽代码块验证（这一行 129 个字符，卡片�
 	"上面那行应该能横向滚动，而不是被硬切。"
 
 var (
-	theme        = ui.DarkTheme()
+	theme        ui.Theme // 由 dscore 的令牌算出来，启动时赋值（见 main）
 	renderLimit  int    // 0 = 不限制
 	forceSession string // 非空则启动后直接打开
 	tailCount    int    // session.load 的 tailMessages
@@ -451,10 +465,22 @@ var (
 	smokeSend    bool   // 启动后自动发一条
 )
 
+// drawSlot 把一个槽位上的插件按序画出来。
+//
+// 槽位空着就什么都不画——壳不需要知道哪个槽有人挂，也就不会因为少装一个
+// 插件而画出一块空白边框。
+func drawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env) {
+	for _, p := range k.Painters(slot) {
+		p.Draw(f, env)
+	}
+}
+
 func newConfig(m *model) app.Config {
 	cfg := app.Config{Tree: &tree, Title: "dsh-ui", Width: 1180, Height: 800,
 		MinWidth: 760, MinHeight: 520, Invalidator: &m.inv}
-	cfg.TextInput = flex.Fields(&m.draft)
+	// 插件的输入框也要登记，否则收不到键盘（viva 只把登记过的 Field 当输入焦点候选）。
+	fields := append([]*flex.Field{&m.draft}, m.side.Fields()...)
+	cfg.TextInput = flex.Fields(fields...)
 
 	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
@@ -473,47 +499,36 @@ func newConfig(m *model) app.Config {
 		}
 		m.mu.Unlock()
 
+		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
+		approvalView := (*pluginapi.Approval)(nil)
+		if approval != nil {
+			approvalView = &pluginapi.Approval{Tool: approval.Tool, Cmd: approval.Cmd, Reason: approval.Reason}
+		}
+		env := &pluginapi.Env{
+			Theme: m.theme,
+			Data: pluginapi.Snapshot{
+				Sessions: sessions, Cur: cur, Status: status,
+				Msgs: msgs, Total: len(msgs), Stream: streamText,
+				Approval: approvalView,
+			},
+			Act:  m.actions,
+			Tree: &tree,
+			Feat: home,
+		}
+
 		var mdSlots []mdSlot
 		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
 			f.Row().Fill().Children(func() {
 
-				// ── 左栏：会话列表 ──
-				f.Column().Width(260).FillHeight().Pad(10).Gap(6).Border(1, theme.Border).Children(func() {
-					f.Row().Gap(6).Items(flex.Center).Children(func() {
-						f.Text("会话").FontSize(13).Bold()
-						f.Spacer()
-						if f.Button(btnNew, "新建").Small().Clicked() {
-							m.newSession()
-						}
-						f.Field(&m.search, searchID, "搜索", "过滤会话…").Small().Grow(1)
-					})
-					f.Divider()
-					f.ScrollArea(sideScr).Width(240).Grow(1).MinHeight(120).Gap(3).Children(func() {
-						f.Column().Gap(3).Children(func() {
-							q := strings.ToLower(strings.TrimSpace(m.search.Text()))
-							shown := 0
-							for i := range sessions {
-								s := sessions[i]
-								if q != "" && !strings.Contains(strings.ToLower(s.Title+" "+s.Cwd), q) {
-									continue
-								}
-								shown++
-								id := tree.ID(home, "s-"+s.ID)
-								mark := "   "
-								if s.ID == cur {
-									mark = "●  "
-								}
-								// Hit 的标签留空：只当点击区用。
-								// 传 s.Title 会让它自己也渲染一遍标签，和下面那行 Text 打架，
-								// 结果是宽度算不出来、标题竖排成两三个字（实测踩过）。
-								if f.Row().Width(236).PadX(8).PadY(6).Radius(5).
-									Hit(id, "").Children(func() {
-									f.Text(mark + s.Title).FontSize(13).Ellipsis()
-								}).Clicked() {
-									m.openSession(s.ID)
-								}
-							}
-						})
+				// ── 左栏：会话列表（插件 ds-sidebar 挂上来的）──
+				// 壳只给列宽和底色。分组、排序、折叠、点击行为全在 plugins/dssidebar 里，
+				// 这就是「一个部件一个插件」：换侧栏不用动壳。
+				f.Column().Width(m.side.Width()).FillHeight().Pad(12).Gap(8).
+					Background(m.theme.SidebarFill).Children(func() {
+					drawSlot(f, m.kernel, pluginapi.SlotSidebarHeader, env)
+					m.prims.Divider(f)
+					f.Column().Grow(1).MinHeight(120).Children(func() {
+						drawSlot(f, m.kernel, pluginapi.SlotSidebarList, env)
 					})
 				})
 
@@ -705,6 +720,23 @@ func main() {
 		scrollPos:  map[string]float32{},
 }
 	m.refreshList()
+
+	// 装插件：先根本依赖（ds-core：设计令牌 + 基础组件），再依赖它的部件。
+	// 装配器按 Requires 排序；ds-sidebar 少一个键就直接报错，不会静默少画一块。
+	m.side = &dssidebar.Plugin{}
+	m.kernel = uikernel.New("dsh-ui")
+	if err := m.kernel.Load(&dscore.Plugin{Dark: true}, m.side); err != nil {
+		log.Fatalf("插件装配失败: %v", err)
+	}
+	m.theme = m.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
+	m.prims = m.kernel.MustGet(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	theme = dscore.VivaTheme(m.theme)
+	m.actions = pluginapi.Actions{
+		OpenSession: m.openSession,
+		NewSession:  m.newSession,
+		Send:        m.send,
+	}
+	log.Printf("插件 %v，主题 %s", m.kernel.Order(), m.theme.Name)
 
 	var canvas ui.Canvas
 	if err := app.RunCanvas(newConfig(m), &canvas); err != nil {

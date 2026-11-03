@@ -45,6 +45,29 @@ type message struct {
 	Role  string `json:"role"`
 	Text  string `json:"text"`
 	SeqID string `json:"-"`
+	// View 让工具自己声明这块结果怎么显示（形状见 viewSpec）。
+	// 界面对 View 零容忍：Kind 不认识就退化成 Text——不认识 == 没声明。
+	View *viewSpec `json:"view,omitempty"`
+}
+
+// viewSpec 的形状逐字对齐宿主线的 spi.ViewSpec（DSH-GO/internal/spi/tool.go:103）：
+// 界面线的插件靠它做到「一切皆插件」——工具不渲染自己，只声明 Kind 和内容，
+// 由界面侧按 Kind 走对应的渲染器。字段名、可空性都不许改；改了要同步
+// testdata/api.snapshot.json 与 DSH-GO 那边的结构体。
+type viewSpec struct {
+	Kind    string      `json:"kind"`              // card | table | plain
+	Title   string      `json:"title,omitempty"`   // 卡片标题（一般是工具名）
+	Badge   string      `json:"badge,omitempty"`   // 右上角小标：ok / error / 耗时
+	Fields  []viewField `json:"fields,omitempty"`  // Kind=card
+	Columns []string    `json:"columns,omitempty"` // Kind=table
+	Rows    [][]string  `json:"rows,omitempty"`    // Kind=table，每行长度必须 == len(Columns)
+	Body    string      `json:"body,omitempty"`    // Kind=plain
+}
+
+// viewField 是 card 的一行键值。Value 允许换行（多行输出照原样放进来）。
+type viewField struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // realDB 非空时，session.list / session.load 走真实会话（-sessions 指定目录）。

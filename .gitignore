@@ -11,3 +11,11 @@ spike/**/*.exe
 # dshd 的默认 home（`acp` 子命令 -home 默认 tmp/dshd-home）：
 # 它会在跑过的地方建会话，属于运行产物，不进仓库
 tmp/dshd-home/
+
+# 本地跑起来的东西：二进制 / 日志 / 从 asar 里 dump 出来的官方资产（体积大，可重生成）
+tmp/*.exe
+tmp/*.log
+tmp/*~
+tmp/official*
+tmp/crop-*
+tmp/dsh-client-ui-*

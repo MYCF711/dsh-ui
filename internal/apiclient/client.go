@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -63,10 +64,42 @@ func (e *APIError) Error() string {
 type Client struct {
 	Base string
 	HTTP *http.Client
+
+	cookies []*http.Cookie // /connect 换来的会话 cookie
 }
 
 func New(base string) *Client {
 	return &Client{Base: base, HTTP: &http.Client{Timeout: 8 * time.Second}}
+}
+
+// Connect 用一次性 launch token 换 session cookie，之后所有请求都带上它。
+// 真宿主（dshd serve）要求这个；mockd 不要求，所以调用方可以只在真宿主时调。
+func (c *Client) Connect(ctx context.Context, token string) error {
+	if token == "" {
+		return fmt.Errorf("token 为空")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Base+"/connect?token="+token, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("连不上 %s：%w", c.Base, err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNoContent, http.StatusSeeOther, http.StatusFound:
+	default:
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("/connect 返回 %d：%s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+
+	if len(resp.Cookies()) == 0 {
+		return fmt.Errorf("/connect 没发 cookie")
+	}
+	c.cookies = resp.Cookies()
+	return nil
 }
 
 type envelope struct {
@@ -85,6 +118,9 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for _, ck := range c.cookies {
+		req.AddCookie(ck)
+	}
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {

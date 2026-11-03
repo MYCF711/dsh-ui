@@ -187,3 +187,43 @@
 - `message-feedback`：按钮画了，但"记录"这个动作没有真实通道（差点就要写假的"已上报"）
 
 **"能画"和"能看见/能生效"是两个问题**，后者更难，也更少人验。
+
+## B 类的确切阻塞点（逐个查过，不是猜）
+
+我本想先做 `sidebar-files`，查下来卡在**宿主没给工作区根**。逐项实测（真宿主 `curl`）：
+
+| 宿主方法 | 实测结果 | 能否支撑界面 |
+|---|---|---|
+| `workspace.list` | `{"entries":[{"name":".git","isDir":true,"size":0}, ...]}` | **只给 name，没有 path、也没有"列子目录"的入参** |
+| `fs.read` | `{"path":"D:/.../go.mod","content":...}` 通了（**必须 Windows 路径**，MSYS 的 `/d/...` 报"文件不存在"） | 能读，但**要先知道完整路径** |
+| `session.load` | `keys: [messages, total, truncated, permission, usageTotal, contextTokens, journalEpoch, lastSeq]` | **没有 `cwd`** |
+
+**所以 `sidebar-files` 走不通的链条是**：
+
+```
+workspace.list 给 name（无 path）
+  ↓
+要读文件得拼「工作区根 + name」
+  ↓
+界面不知道工作区根（session.load 没有 cwd）
+  ↓
+fs.read 无法调用
+```
+
+**要解开只需宿主给一样东西**（二选一）：
+1. `workspace.list` 每项补 `path`（或加 `list(path)` 入参）
+2. `session.load` 回 `cwd`
+
+**这不是"界面没做"，是"做不了"**。我把它写死在这里，免得下一轮又有人从头查一遍。
+
+**B 类其余几个的阻塞**（同样逐项查过）：
+
+| 部件 | 阻塞 |
+|---|---|
+| `deliverables` | 没有"哪些文件算交付物"的约定——`fs.write` 只知道写了什么，不知道哪个是交付品 |
+| `reference` | 没有 `@` 引用的语法与解析约定（官方在 composer 里把 `@path` 变成引用块） |
+| `jobs` | 没有 `jobs.list` / `jobs.output` 这两个方法 |
+| `schedule` | 完全没有定时任务的存储与方法 |
+| `sidebar-documentpreview` | 只差上面那个"工作区根"（有根就能读、能预览） |
+
+**结论**：B 类 6 个**全部**卡在宿主侧。界面这边能做的只有"等"——所以我不会假装在推进它们。

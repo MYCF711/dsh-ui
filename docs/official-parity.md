@@ -23,17 +23,17 @@
 
 - ✅ `sidebar`
 - ❌ `sidebar-browser`
-- ❌ `sidebar-documentpreview`
-- ❌ `sidebar-files`
+- ✅ `sidebar-documentpreview`（`dsfiles` 的预览浮层；16KB 上限、20 行截断）
+- ✅ `sidebar-files`（`dsfiles`；`workspace.list(path)` + `fs.read`，可进子目录）
 - ❌ `sidebar-right`
 - ❌ `sidebar-terminal`
 
 ### composer 控件（7）
 
-- ❌ `model-selection`
-- ❌ `permission-presets`
+- ✅ `model-selection`（F2 命令面板；数据来自宿主 `models.list` → 网关 `/v1/models`）
+- ✅ `permission-presets`（F2 命令面板 5 条；宿主 `session.setPermission` + 白名单）
 - ❌ `attachment`
-- ❌ `commands`
+- ✅ `commands`（F2 命令面板；A 类时做的）
 - ❌ `input-trigger`
 - ❌ `entry-customization`
 - ❌ `deepseek-model-label-1017`
@@ -82,13 +82,26 @@
 
 ## 合计：官方 55 个 · 我们有 10 个 · **缺 53 个**
 
-## 缺的里面，用户最能直接感知的前五个
+## 缺的里面，用户最能直接感知的
 
-1. **`model-selection` / `permission-presets`** —— composer 上那两枚现在是**只读文本**，官方是能点开的下拉
-2. **`attachment`** —— 现在没有附件入口（画了就是死按钮，所以没画）
-3. **`settings*`（9 个）** —— 完全没有设置界面，改配置只能改 JSON
-4. **`sidebar-files` / `sidebar-terminal`** —— 官方侧栏能看文件树和终端
-5. **`shortcuts`** —— 快捷键说明面板
+### 已补掉（2026-11-04）
+
+| 部件 | 现在是什么 | 数据来源 |
+|---|---|---|
+| `model-selection` | F2 命令面板列出网关的真实模型 | 宿主 `models.list` → 网关 `GET /v1/models` |
+| `permission-presets` | F2 命令面板 5 条（4 个值 + 恢复默认） | 宿主 `session.setPermission`（白名单） |
+| `sidebar-files` | 侧栏文件树，可进子目录 | 宿主 `workspace.list(path)` + `fs.read` |
+| `sidebar-documentpreview` | 点文件 → 右上浮层看全文 | 同上（16KB 上限、20 行截断） |
+| `shortcuts` | F1 键位表 | 本仓真实的 `HandleKey` 绑定 |
+
+### 仍然缺
+
+1. **`attachment`** —— 没有附件入口（画了就是死按钮，所以没画）
+2. **`settings*`（9 个）** —— 完全没有设置界面，改配置只能改 JSON
+3. **`sidebar-terminal`** —— 官方侧栏能开终端
+4. **`reference`（`@` 文件引用）** —— 要改 `dscomposer`，而它现在有**别人的未提交改动**（`composer.go` + 两个未跟踪测试），按 §4 不碰
+5. **`jobs.output` 的界面消费** —— 宿主侧通了，但**只在轮次进行中可用**（每轮一个子进程，跑完就退）；做成"点开看输出"会是**大多数时候点了报错**的按钮，所以没做
+6. **`deliverables`** —— 只做了「写过的文件」（证据只是工具参数里的路径痕迹，**不叫"交付物"**）
 
 ## 说明
 

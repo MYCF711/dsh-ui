@@ -55,3 +55,28 @@ func (c *Client) FSRead(ctx context.Context, path string) (*FSContent, error) {
 	}
 	return &out, nil
 }
+
+// ScheduleItem 是 `schedule.list` 的一行（宿主 `internal/schedule.Item` 的投影）。
+type ScheduleItem struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Kind     string `json:"kind"`
+	NextAt   string `json:"next_at"`
+	EverySec int    `json:"every_seconds,omitempty"`
+	DailyAt  string `json:"daily_at,omitempty"`
+	WeeklyAt string `json:"weekly_at,omitempty"`
+}
+
+// ScheduleList 列定时任务（宿主 `<home>/state/schedules/` 里的那些）。
+//
+// 它是**磁盘上的**，不是子进程推的——所以每次问都能拿到最新的，
+// 不需要像 jobs 那样靠子进程推 + 父进程缓存。
+func (c *Client) ScheduleList(ctx context.Context) ([]ScheduleItem, error) {
+	var out struct {
+		Schedules []ScheduleItem `json:"schedules"`
+	}
+	if err := c.Call(ctx, "schedule.list", struct{}{}, &out); err != nil {
+		return nil, err
+	}
+	return out.Schedules, nil
+}

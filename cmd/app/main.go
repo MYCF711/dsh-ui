@@ -589,7 +589,11 @@ func (m *model) applyEvent(id string, ev apiclient.Event) {
 			m.approval = &approvalReq{
 				RequestID: req.RequestID,
 				Tool:      req.Tool(),
+				Title:     req.ToolCall.Title,
+				Kind:      req.ToolCall.Kind,
+				Args:      req.Args(),
 				Cmd:       req.Command(),
+				Detail:    req.Detail(),
 				Options:   req.Options,
 			}
 			m.lastSeq = maxInt(m.lastSeq, ev.Seq)
@@ -713,8 +717,12 @@ type approvalReq struct {
 	// RequestID 是宿主给的请求标识，回传 session.approve 时必须**原样**带上。
 	// 空串表示这条待审批不是从真实帧来的（老的 demo 路径），此时按钮要报错而不是假装成功。
 	RequestID string
-	Tool      string
-	Cmd       string // 完整命令（不截断——用户要看的就是这个）
+	Tool      string // toolCall.title 冒号前那段；解析不出来就空（不猜）
+	Title     string // toolCall.title 原文（单行摘要）
+	Kind      string // execute / edit / other；不是风险等级
+	Args      string // toolCall.rawInput 原文（JSON）
+	Cmd       string // 兼容字段：老路径只有这个（bash 的完整命令）
+	Detail    string // toolCall.content[].content.text
 	Reason    string // 模型自述，界面必须标注"不可信"
 	// Options 是宿主给的可选项，**原样**保留：不自己造 optionId，也不改名字。
 	Options []apiclient.ApprovalOption
@@ -846,7 +854,20 @@ func newConfig(m *model) app.Config {
 		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
 		approvalView := (*pluginapi.Approval)(nil)
 		if approval != nil {
-			approvalView = &pluginapi.Approval{Tool: approval.Tool, Cmd: approval.Cmd, Reason: approval.Reason}
+			// **九个字段一个都不能少**：早先只传了 Tool/Cmd/Reason，结果
+			// requestId 和 options 全丢，插件只能显示「宿主没给 requestId，
+			// 这次审批回传不出去」——按钮点了也发不出去（真实 WS 帧里明明有）。
+			approvalView = &pluginapi.Approval{
+				RequestID: approval.RequestID,
+				Tool:      approval.Tool,
+				Title:     approval.Title,
+				Kind:      approval.Kind,
+				Args:      approval.Args,
+				Cmd:       approval.Cmd,
+				Detail:    approval.Detail,
+				Reason:    approval.Reason,
+				Options:   approvalOptions(approval.Options),
+			}
 		}
 		// 调试胶水（3 行）：-demo-approval 时用假审批截图；默认返回 nil，正式路径不看它。
 		if approvalView == nil {

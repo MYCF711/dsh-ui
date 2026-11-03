@@ -138,6 +138,7 @@ func main() {
 	acpExe := flag.String("acp", "", "dshd 可执行文件路径；给了就接真模型（否则用假回答）")
 	acpMani := flag.String("acp-manifest", "", "dshd 的 manifest（dsh.toml 列了没编译进去的模块时必须给精简版）")
 	acpDir := flag.String("acp-cwd", "D:/DeepSeek Harness/default-workspace/dsh-ui", "ACP 会话的工作目录")
+
 	flag.Parse()
 
 	// /ws 是流；/api/ 是一元 method 的兜底前缀，两者不冲突。
@@ -201,6 +202,19 @@ type serverFrame struct {
 	Data json.RawMessage `json:"data,omitempty"`
 	Time int64           `json:"time,omitempty"`
 }
+
+// mockApprovalFlag：流里推一条**真的** approval/request 帧（形状照宿主 docs/h13-approval.md）。
+//
+// 为什么需要：宿主 H13 执行链没闭环，真宿主推不出这个帧，而界面要在「帧一到就能用」
+// 上被验证。开了它，客户端走的就是完整链路：WS 帧 → 审批条 → 点按钮 → POST session.approve。
+var mockApprovalFlag = flag.Bool("approval", false, "流里推一条 approval/request 帧（验界面审批链路用）")
+
+// 这两个必须是**包级**：放在连接里的话，客户端断号重连后 n 归零、又跳一次号，
+// 于是"跳号→断号→重连→跳号"无限循环（实测 10 秒内重连几十次）。
+var (
+	mockGappedOnce   bool // 跳号只做一次
+	mockApprovalOnce bool // approval 帧只推一次
+)
 
 const (
 	muxTick     = 200 * time.Millisecond // 背景假事件
@@ -348,12 +362,24 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			n++
-			if n == 8 && !gapped {
+			if n == 8 && !gapped && !mockGappedOnce {
 				// H14：服务端**不发 gap 帧**。这里只把 seq 跳过两个号，
 				// 客户端按 seq 连续性自己发现断号、再调 session.history 补洞。
 				seq += 2
 				gapped = true
+				mockGappedOnce = true
 				log.Printf("mux: 故意跳号，下一个 seq=%d（客户端应自己发现）", seq+1)
+			}
+			// 第 3 条之后插一条审批帧：形状与宿主完全一致（含 allow-once/reject-once
+			// 两个 optionId 和对应的 kind——注意宿主的 id 是连字符、kind 是下划线）。
+			if *mockApprovalFlag && n == 3 && !mockApprovalOnce {
+				mockApprovalOnce = true
+				seq++
+				apData := json.RawMessage(`{"requestId":"perm-mock-1","sessionId":"mock","toolCall":{"toolCallId":"perm-mock-1","title":"bash: echo approval-test","kind":"execute","status":"pending","rawInput":{"command":"echo approval-test"}},"options":[{"optionId":"allow-once","name":"允许这一次","kind":"allow_once"},{"optionId":"reject-once","name":"拒绝","kind":"reject_once"}]}`)
+				if !writeFrame(serverFrame{Seq: seq, Type: "approval/request", Data: apData, Time: time.Now().UnixMilli()}) {
+					return
+				}
+				log.Printf("mux: 推了一条 approval/request（requestId=perm-mock-1）")
 			}
 			seq++
 			kind := "user/message"
@@ -635,6 +661,21 @@ func route(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, envelope{Result: map[string]any{"values": map[string]any{
 			"model": "deepseek-v4.1", "theme": "dark", "locale": "zh-CN",
 		}}})
+
+	case "session.approve":
+		var in struct {
+			RequestID string `json:"requestId"`
+			OptionID  string `json:"optionId"`
+		}
+		_ = json.Unmarshal(params, &in)
+		if in.RequestID == "" || in.OptionID == "" {
+			fail(w, 400, errObj{Code: "invalid_arg", Message: "session.approve 需要 requestId 与 optionId",
+				Hint: `形如 {"requestId":"perm-mock-1","optionId":"allow-once"}`})
+			return
+		}
+		// 记录到 stderr：验收时要看到"界面真的把用户的决定送回来了"。
+		log.Printf("approve: requestId=%s optionId=%s（界面回传成功）", in.RequestID, in.OptionID)
+		writeJSON(w, 200, envelope{Result: map[string]any{"accepted": true, "optionId": in.OptionID}})
 
 	case "session.delete", "session.fork", "fs.read", "fs.write", "config.set":
 		fail(w, 501, errObj{Code: "unsupported", Message: method + " 属于第二批，mockd 暂未实现", Hint: "见 docs/api-contract.md §3"})

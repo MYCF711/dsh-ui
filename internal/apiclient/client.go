@@ -32,6 +32,35 @@ type Message struct {
 	Tool    string `json:"tool,omitempty"`
 	Args    string `json:"args,omitempty"`
 	Summary string `json:"summary,omitempty"`
+	// View 是工具对这块结果的显示声明（形状逐字对齐宿主 spi.ViewSpec）。
+	// 界面按 Kind 选渲染器；不认识就退化成 Text——不认识 == 没声明。
+	View *ViewSpec `json:"view,omitempty"`
+}
+
+// ViewKind 是 ViewSpec 的渲染种类。
+type ViewKind string
+
+const (
+	ViewCard  ViewKind = "card"  // 一组键值
+	ViewTable ViewKind = "table" // 列 + 行
+	ViewPlain ViewKind = "plain" // 一段文本
+)
+
+// ViewSpec 是工具结果的显示契约（对齐 DSH-GO internal/spi/tool.go:103）。
+type ViewSpec struct {
+	Kind    string       `json:"kind"`
+	Title   string       `json:"title,omitempty"`
+	Badge   string       `json:"badge,omitempty"`
+	Fields  []ViewField  `json:"fields,omitempty"`
+	Columns []string     `json:"columns,omitempty"`
+	Rows    [][]string   `json:"rows,omitempty"`
+	Body    string       `json:"body,omitempty"`
+}
+
+// ViewField 是 card 的一行键值。
+type ViewField struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // LoadResult 是 session.load 的返回。

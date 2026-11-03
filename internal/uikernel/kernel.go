@@ -158,7 +158,7 @@ func (k *Kernel) install(p pluginapi.Plugin) error {
 
 	if withPanels, ok := p.(pluginapi.Panels); ok {
 		for _, painter := range withPanels.Panels() {
-			if painter.Draw == nil || painter.Slot == "" {
+			if (painter.Draw == nil && painter.AfterDraw == nil) || painter.Slot == "" {
 				return fmt.Errorf("uikernel: 插件 %s 挂了一块没有槽位或没有 Draw 的画", p.ID())
 			}
 			k.painters = append(k.painters, painter)
@@ -182,6 +182,17 @@ func (k *Kernel) MustGet(key string) any {
 	return v
 }
 
+// Plugins 按装配顺序返回插件本体，供壳问"谁要接键盘输入"这类可选能力。
+func (k *Kernel) Plugins() []pluginapi.Plugin {
+	out := make([]pluginapi.Plugin, 0, len(k.order))
+	for _, id := range k.order {
+		if p, ok := k.byID[id]; ok {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // Order 返回装配顺序（插件 id）。
 func (k *Kernel) Order() []string { return append([]string(nil), k.order...) }
 
@@ -198,6 +209,11 @@ func (k *Kernel) Painters(slot pluginapi.Slot) []pluginapi.Painter {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Order < out[j].Order })
 	return out
+}
+
+// AllPainters 返回全部挂载（不分槽位），壳在布局结束后按序跑它们的 AfterDraw。
+func (k *Kernel) AllPainters() []pluginapi.Painter {
+	return append([]pluginapi.Painter(nil), k.painters...)
 }
 
 // Has 判断某个槽位有没有画（壳据此决定要不要留白、要不要显示分隔线）。

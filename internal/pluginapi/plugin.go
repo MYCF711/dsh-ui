@@ -52,6 +52,12 @@ type Plugin interface {
 	Register(ctx Context) error
 }
 
+// Fields 是「要接键盘输入的插件」的可选接口：壳会把这些 Field 交给 viva 的
+// TextInput。不实现就等于这个插件收不到任何按键（搜索框、输入框都必须实现）。
+type Fields interface {
+	Fields() []*flex.Field
+}
+
 // Panels 是「会画东西的插件」的可选接口。
 // 一个插件可以不实现它（纯服务提供者，比如 ds-core）。
 type Panels interface {
@@ -103,6 +109,13 @@ type Painter struct {
 	Order int
 	// Draw 画自己。frame 已经是这块槽的位置和尺寸，别自己算全局坐标。
 	Draw func(f *flex.Frame, env *Env)
+	// AfterDraw 在整棵树布局完成之后调用，给那些「必须先知道位置才能画」的东西用：
+	// MarkdownView.Paint、自绘文本排版、代码块高亮。canvas 是全屏画布，
+	// 坐标要自己从 Draw 阶段量到的矩形来（拿 Box.Rect() 存起来）。
+	//
+	// 为什么需要它：viva 的绘制顺序不受调用方控制，在 Draw 里画一条线会被
+	// 后面的节点覆盖（踩过）。所以分两个阶段：先布局（Draw），再覆画（AfterDraw）。
+	AfterDraw func(canvas *ui.Canvas, env *Env)
 }
 
 // Primitives 是基础组件的画法，由根本依赖插件（ds-core）提供。
@@ -135,6 +148,14 @@ type Env struct {
 	// 插件自己用 env.Tree.ID(env.Feat, "名字") 造交互 id——不许写死数字。
 	Tree *ui.Tree
 	Feat ui.Scope
+	// Canvas 只在 Draw 阶段有效：Markdown 排版这类必须先量后画的东西要它。
+	// （AfterDraw 收到的 canvas 是布局后的全屏画布，两者是同一个对象。）
+	Canvas *ui.Canvas
+	// Scroll 取某个滚动区的状态。viva 要求"要的时候再取"，所以给的是函数不是指针。
+	Scroll func(id ui.ID) *flex.ScrollState
+	// Bounds 是这一帧的整窗尺寸。AfterDraw 拿到的 canvas 没有尺寸接口，
+	// 要在覆画时算裁剪区就用这个。
+	Bounds ui.Rect
 }
 
 // Snapshot 是一帧的数据快照，壳在锁内拷好再传进来，插件里不用加锁。
@@ -165,8 +186,10 @@ type Approval struct {
 type Actions struct {
 	OpenSession func(id string)
 	NewSession  func()
-	Send        func()
-	SetDraft    func(text string)
+	// Send 把这段文字发出去。输入框由哪个插件画，文字就由哪个插件给——
+	// 壳不再持有草稿，所以不用 SetDraft 回灌。
+	Send     func(text string)
+	SetDraft func(text string)
 	Allow       func()
 	Deny        func()
 }

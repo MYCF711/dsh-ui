@@ -97,9 +97,12 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 
 	// 滚动区宽度要留出 20px 给滚动条 + 容器内边距，否则最后一行的背景
 	// 会盖住滚动条（踩过一次，视觉上像"行被切了"）。
+	// 宽度必须钉死：ScrollArea 里用 FillWidth 时内容宽度算不出来，
+	// 标题会被压成竖排（第一次踩），或者整个内容列撑到窗口宽（第二次踩）。
+	inner := p.width - 24 // 扣掉左右各 12 的列内边距
 	scrID := env.Tree.ID(env.Feat, "sidebar-scroll")
-	f.ScrollArea(scrID).FillWidth().Grow(1).MinHeight(120).Gap(2).Clip().Children(func() {
-		f.Column().FillWidth().Gap(2).Children(func() {
+	f.ScrollArea(scrID).Width(inner).Grow(1).MinHeight(120).Gap(2).Clip().Children(func() {
+		f.Column().Width(inner).Gap(2).Children(func() {
 			if len(order) == 0 {
 				f.Text("没有匹配的会话").FontSize(t.Fonts.Caption).Color(t.LabelCaption).Pad(8)
 				return

@@ -8,8 +8,6 @@ package main
 
 import (
 	"context"
-	"math"
-	"strings"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -18,11 +16,13 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
-	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dscomposer"
+	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
+	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
@@ -227,29 +227,8 @@ func (m *model) refreshSession(id string, quiet bool) {
 }
 
 // layoutMarkdown 保证第 i 条消息的 Markdown 文档与视图就绪，返回高度。
-func (m *model) layoutMarkdown(canvas *ui.Canvas, i int, text string, width float32) float32 {
-	for len(m.mdDocs) <= i {
-		m.mdDocs = append(m.mdDocs, markdown.Document{})
-		m.mdViews = append(m.mdViews, components.MarkdownView{})
-		m.mdText = append(m.mdText, "")
-		m.mdWidth = append(m.mdWidth, -1)
-		m.mdH = append(m.mdH, 0)
-	}
-	// MarkdownView.Layout 是昂贵的：只在文本或宽度变化时才重排（这是 111MB 那一版的教训）
-	if m.mdText[i] != text || m.mdWidth[i] != width {
-		m.mdText[i] = text
-		m.mdWidth[i] = width
-		m.mdDocs[i].Parse(text)
-		m.mdH[i] = m.mdViews[i].Layout(canvas, components.MarkdownStyle{Size: 14, Highlight: mdlite.Highlight}, &m.mdDocs[i], width)
-	}
-	return m.mdH[i]
-}
 
 // mdSlot 记录一条助手消息占位用的 Slot，等布局完成后在它的位置画 Markdown。
-type mdSlot struct {
-	idx int
-	box flex.Box
-}
 
 // newSession 建一个会话并直接打开。
 func (m *model) newSession() {
@@ -374,8 +353,11 @@ func (m *model) evictLocked(keep string) {
 	}
 }
 
-func (m *model) send() {
-	text := m.draft.Text()
+// send 是旧的入口：从壳自己的输入框发。插件化之后输入框归 ds-composer，
+// 它走 sendText；这里留着是给 -smoke 和键盘快捷键用。
+func (m *model) send() { m.sendText(m.draft.Text()) }
+
+func (m *model) sendText(text string) {
 	if text == "" {
 		return
 	}
@@ -386,7 +368,9 @@ func (m *model) send() {
 		m.setStatus("先选一个会话")
 		return
 	}
-	m.draft.SetText("")
+	if m.draft.Text() == text {
+		m.draft.SetText("")
+	}
 	m.msgs = append(m.msgs, apiclient.Message{Seq: -1, Role: "user", Text: text})
 	m.inv.Invalidate()
 
@@ -412,31 +396,6 @@ type approvalReq struct {
 // estimateMsgHeight 估算一条消息的高度。系数 0.62 来自 docs/virt.md 的实测反推
 // （中英混排每行字数 ≈ 可用宽度 / (字号 × 0.62)）。视口外只靠它占位，不精确也没关系：
 // 固定高度盒子保证累计位置可预测，滚动不会漂移。
-func estimateMsgHeight(m apiclient.Message, width float32) float32 {
-	const lineH = 22.0
-	const gapPad = 28.0
-	if width < 120 {
-		width = 120
-	}
-	text := m.Text
-	if m.Role == "tool" {
-		return 70 // 工具卡是固定形状
-	}
-	perLine := width / (14 * 0.62)
-	if perLine < 8 {
-		perLine = 8
-	}
-	lines := 0
-	for _, para := range strings.Split(text, "\n") {
-		n := float64(len([]rune(para)))
-		l := int(math.Ceil(n / float64(perLine)))
-		if l < 1 {
-			l = 1
-		}
-		lines += l
-	}
-	return float32(float64(lines)*lineH + gapPad)
-}
 
 // markdownBudget 是"最近的多少条消息用 Markdown 渲染"，其余降级成纯文本。
 // 依据：真实会话 442 条、tail=200 时全量 Markdown 要 168.8 MB / 首排 4 s。
@@ -479,7 +438,13 @@ func newConfig(m *model) app.Config {
 	cfg := app.Config{Tree: &tree, Title: "dsh-ui", Width: 1180, Height: 800,
 		MinWidth: 760, MinHeight: 520, Invalidator: &m.inv}
 	// 插件的输入框也要登记，否则收不到键盘（viva 只把登记过的 Field 当输入焦点候选）。
-	fields := append([]*flex.Field{&m.draft}, m.side.Fields()...)
+	// 走一次统一的聚合：以后再加插件不用改这里。
+	fields := []*flex.Field{&m.draft}
+	for _, p := range m.kernel.Plugins() {
+		if withFields, ok := p.(pluginapi.Fields); ok {
+			fields = append(fields, withFields.Fields()...)
+		}
+	}
 	cfg.TextInput = flex.Fields(fields...)
 
 	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
@@ -511,14 +476,19 @@ func newConfig(m *model) app.Config {
 				Msgs: msgs, Total: len(msgs), Stream: streamText,
 				Approval: approvalView,
 			},
-			Act:  m.actions,
-			Tree: &tree,
-			Feat: home,
+			Act:    m.actions,
+			Tree:   &tree,
+			Feat:   home,
+			Canvas: canvas,
+			Bounds: bounds,
+			// viva 要求滚动状态"要的时候再取"，所以传函数而不是指针。
+			Scroll: m.view.ScrollState,
 		}
 
-		var mdSlots []mdSlot
 		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
-			f.Row().Fill().Children(func() {
+			f.Column().Fill().Children(func() {
+				// 主体用 Grow(1) 而不是 Fill：Fill 会把状态栏那 24px 挤成 0。
+				f.Row().FillWidth().Grow(1).Children(func() {
 
 				// ── 左栏：会话列表（插件 ds-sidebar 挂上来的）──
 				// 壳只给列宽和底色。分组、排序、折叠、点击行为全在 plugins/dssidebar 里，
@@ -532,167 +502,54 @@ func newConfig(m *model) app.Config {
 					})
 				})
 
-				// ── 右栏：消息 + 输入 ──
-				f.Column().Grow(1).FillHeight().Pad(12).Gap(8).Children(func() {
-					f.Text(status).FontSize(12).Muted()
-					f.Divider()
-					// 每个会话用不同的 scroll id：否则切会话时滚动位置会串（viva flex/scroll.go:174）
-					scrID := msgScr
-					if cur != "" {
-						scrID = tree.ID(home, "msgs-"+cur)
-					}
-					f.ScrollArea(scrID).Width(f.Bounds().Width-278).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip().Children(func() {
-						f.Column().Gap(6).Children(func() {
-							if len(msgs) == 0 {
-								f.Text("← 左边选一个会话").Muted()
+				// ── 右栏：主区的每一块都是插件挂上来的 ──
+				// 头部 / 消息流 / 输入区各占一个槽；槽空着就整块不出现。
+				// 宽度要钉死：插件里用百分比定宽时，父级宽度必须是确定的，
+				// 否则 % 会按整窗解析，内容被推到窗口外（踩过：气泡跑到右上角）。
+				mainW := bounds.Width - m.side.Width()
+				if mainW < 320 {
+					mainW = 320
+				}
+				f.Column().Width(mainW).Grow(1).FillHeight().Pad(12).Gap(8).Children(func() {
+					drawSlot(f, m.kernel, pluginapi.SlotMainHeader, env)
+					drawSlot(f, m.kernel, pluginapi.SlotMainBody, env)
+					// 输入区：插件没到位时退回壳自带的那一行，保证随时能打字。
+					if m.kernel.Has(pluginapi.SlotMainComposer) {
+						drawSlot(f, m.kernel, pluginapi.SlotMainComposer, env)
+					} else {
+						f.Row().Gap(8).Items(flex.Center).Children(func() {
+							if f.Field(&m.draft, draftID, "输入", "说点什么…（Enter 发送）").Grow(1).Submitted() {
+								m.send()
 							}
-							if streamText != "" {
-								f.Column().FillWidth().Pad(8).Radius(6).Border(1, theme.Border).Children(func() {
-									f.Row().Gap(6).Items(flex.Center).Children(func() {
-										f.Text("助手").FontSize(11).Muted()
-										f.Spinner()
-									})
-									f.Wrap(streamText).FontSize(14)
-								})
-							}
-							// 视口虚拟化（docs/virt.md）：先算高度和累计位置，
-							// 视口外只放 Slot —— 不建 Text 就不生成 GPU 文本纹理。
-							w0 := f.Bounds().Width - 300
-							if w0 < 200 {
-								w0 = 200
-							}
-							heights := make([]float32, len(msgs))
-							offs := make([]float32, len(msgs))
-							var acc float32
-							for i := range msgs {
-								heights[i] = estimateMsgHeight(msgs[i], float32(w0))
-								offs[i] = acc
-								acc += heights[i] + 6
-							}
-							var vpOffset, vpHeight float32
-							if st := m.view.ScrollState(scrID); st != nil {
-								vpOffset = st.Offset
-							}
-							vpHeight = f.Bounds().Height - 220
-							if vpHeight < 240 {
-								vpHeight = 240
-							}
-							const overscan = 800.0
-
-							for i := range msgs {
-								msg := msgs[i]
-								if offs[i]+heights[i] < vpOffset-overscan || offs[i] > vpOffset+vpHeight+overscan {
-									f.Slot().Height(heights[i])
-									continue
-								}
-								who := "你"
-								switch msg.Role {
-								case "tool":
-									who = "" // 工具卡自己带标题，不套「助手」
-								case "assistant":
-									who = "助手"
-								}
-								f.Column().FillWidth().Pad(8).Radius(6).Border(1, theme.Border).Children(func() {
-									if who != "" {
-										f.Text(who).FontSize(11).Muted()
-									}
-									if msg.Role == "tool" {
-										// 工具调用卡片：名字 + 参数 + 一行结果摘要（不再套「助手」标签）
-										f.Column().Pad(10).Radius(8).Background(theme.Muted).Children(func() {
-											f.Row().Gap(8).Items(flex.Center).Children(func() {
-												f.Text(msg.Tool).Mono().Bold().FontSize(13)
-												f.Text(msg.Args).Mono().Muted().FontSize(12).Ellipsis()
-											})
-											if msg.Summary != "" {
-												f.Text(msg.Summary).Muted().FontSize(12)
-											}
-										})
-									} else if msg.Role == "user" {
-										f.Wrap(msg.Text).FontSize(14)
-									} else if i < len(msgs)-markdownBudget {
-										// LOD：老消息只画纯文本。真实会话里有 200 条长消息，
-										// 全上 Markdown 会让文档树常驻 + 首次排版 4 秒（实测 168.8 MB）。
-										f.Wrap(msg.Text).FontSize(13).Muted()
-									} else {
-										// 最近的消息走 MarkdownView：先算高度占位，Draw 之后再画
-										mi := i
-										w := f.Bounds().Width - 300
-										if w < 200 {
-											w = 200
-										}
-										h := m.layoutMarkdown(canvas, mi, msg.Text, w)
-										mdSlots = append(mdSlots, mdSlot{idx: mi, box: f.Slot().Height(h)})
-									}
-								})
+							if f.Button(btnSend, "发送").Clicked() {
+								m.send()
 							}
 						})
-					})
-					if ap := approval; ap != nil {
-						// 审批气泡：先命令、后模型自述（且标注不可信）——对齐宿主线的审批框规矩
-						f.Column().Pad(12).Radius(8).Background(theme.Muted).Border(1, theme.Border).Gap(8).Children(func() {
-							f.Row().Gap(8).Items(flex.Center).Children(func() {
-								f.Text("需要审批").Bold().FontSize(13)
-								f.Text(ap.Tool).Mono().Muted().FontSize(12)
-								f.Spacer()
-							})
-							f.Text(ap.Cmd).Mono().FontSize(13)
-							if ap.Reason != "" {
-								f.Text("模型自述（不可信）：" + ap.Reason).Muted().FontSize(11)
-							}
-							f.Row().Gap(8).Justify(flex.End).Children(func() {
-								if f.Button(btnDeny, "拒绝").Outline().Small().Clicked() {
-									m.approval = nil
-									m.setStatus("已拒绝")
-								}
-								if f.Button(btnAllow, "允许").Small().Clicked() {
-									m.approval = nil
-									m.setStatus("已允许")
-								}
-							})
-						})
 					}
-					f.Row().Gap(8).Items(flex.Center).Children(func() {
-						if f.Field(&m.draft, draftID, "输入", "说点什么…（Enter 发送）").Grow(1).Submitted() {
-							m.send()
-						}
-						if f.Button(btnSend, "发送").Clicked() {
-							m.send()
-						}
-					})
 				})
+
+			})
+
+			// 底部状态栏分两步：先用一个 24px 的空行把位置占住（让主体和侧栏都提前让开），
+			// 再把状态栏绝对定位钉在窗口底边画在上面。
+			// 只绝对定位不占位的话，主体和侧栏会一直画到窗口底边、被状态栏压住（踩过）。
+			if m.kernel.Has(pluginapi.SlotStatusbar) {
+				f.Row().FillWidth().Height(24)
+				f.Row().Absolute().Left(0).Bottom(0).Width(bounds.Width).Height(24).
+					Children(func() {
+						drawSlot(f, m.kernel, pluginapi.SlotStatusbar, env)
+					})
+			}
 			})
 		})
 
-		// 布局已定：恢复待恢复的滚动位置，再画 Markdown
+		// 布局已定：先恢复待恢复的滚动位置，再跑插件的 AfterDraw
+		// （插件负责 Markdown 这类"先布局后覆画"的东西，壳不再画内容）。
 		m.applyPendingScroll()
-		look := components.MarkdownLookFor(theme)
-		// MarkdownLookFor 不设 Code 数组（全透明 = 所有 class 都画成正文色），
-		// 所以 Highlight 返回了 class 也没颜色。这里补一套深色主题的语法色。
-		look.Code[components.CodeComment-1] = ui.RGB(0x6A, 0x99, 0x55)
-		look.Code[components.CodeString-1] = ui.RGB(0xCE, 0x91, 0x78)
-		look.Code[components.CodeNumber-1] = ui.RGB(0xB5, 0xCE, 0xA8)
-		look.Code[components.CodeKeyword-1] = ui.RGB(0x56, 0x9C, 0xD6)
-		look.Code[components.CodeFunction-1] = ui.RGB(0xDC, 0xDC, 0xAA)
-		look.Code[components.CodeVariable-1] = ui.RGB(0x9C, 0xDC, 0xFE)
-		for _, slot := range mdSlots {
-			if slot.idx >= len(m.mdViews) {
-				continue
+		for _, painter := range m.kernel.AllPainters() {
+			if painter.AfterDraw != nil {
+				painter.AfterDraw(canvas, env)
 			}
-			r := slot.box.Rect()
-			if r.Width <= 0 || r.Height <= 0 {
-				continue
-			}
-			m.mdViews[slot.idx].Paint(canvas, components.MarkdownPaint{
-				Look: look,
-				X:    r.X,
-				Y:    r.Y,
-				// Clip 的右边界要到窗口边：Markdown 里的表格/代码块会比卡片宽，
-				// 只裁到 r.Width 会溢出画到侧栏上（实测过一次）。
-				// 右边留 24px：窗口 padding 之外还有滚动条的位置，不留就会看见
-				// 内容画到窗口边线上（实测 1180×800 时右缘有竖排碎片）。
-				Clip: ui.Rect{X: r.X, Y: bounds.Y, Width: bounds.Width - r.X - 24, Height: bounds.Height},
-			})
-
 		}
 	}
 	// 窗口变了必须全屏重绘：Viva 只重画变化区域，缩小后旧帧会残留在边缘。
@@ -725,7 +582,13 @@ func main() {
 	// 装配器按 Requires 排序；ds-sidebar 少一个键就直接报错，不会静默少画一块。
 	m.side = &dssidebar.Plugin{}
 	m.kernel = uikernel.New("dsh-ui")
-	if err := m.kernel.Load(&dscore.Plugin{Dark: true}, m.side); err != nil {
+	if err := m.kernel.Load(
+		&dscore.Plugin{Dark: true}, // 根本依赖插件：令牌 + 基础组件
+		m.side,                     // 左栏会话列表
+		&dsconversation.Plugin{},   // 主区消息流 + 工具卡 + 审批
+		&dscomposer.Plugin{},       // 输入区
+		&dsstatusbar.Plugin{},      // 底部状态栏
+	); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}
 	m.theme = m.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
@@ -734,7 +597,7 @@ func main() {
 	m.actions = pluginapi.Actions{
 		OpenSession: m.openSession,
 		NewSession:  m.newSession,
-		Send:        m.send,
+		Send:        m.sendText,
 	}
 	log.Printf("插件 %v，主题 %s", m.kernel.Order(), m.theme.Name)
 

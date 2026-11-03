@@ -716,7 +716,23 @@ func main() {
 			m.setStatus("已复制 " + itoaLocal(len([]rune(text))) + " 字")
 		},
 		Notify: m.setStatus,
-		Retry:       m.retryLast,
+		// 审批：宿主侧真正的「批准/拒绝」接口还没进契约（见 DSH-GO/AGENTS.md §12），
+		// 这里只把本地气泡收掉并给一句状态——以前内联版本就是这么做的。
+		// 注意：**不能**留 nil，否则插件里判 nil 静默跳过，按钮点了没反应。
+		Allow: func() {
+			m.mu.Lock()
+			m.approval = nil
+			m.mu.Unlock()
+			m.setStatus("已允许")
+		},
+		Deny: func() {
+			m.mu.Lock()
+			m.approval = nil
+			m.mu.Unlock()
+			m.setStatus("已拒绝")
+		},
+		SetDraft: func(text string) { m.draft.SetText(text) },
+		Retry:    m.retryLast,
 	}
 	log.Printf("插件 %v，主题 %s", m.kernel.Order(), m.theme.Name)
 

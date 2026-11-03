@@ -77,29 +77,40 @@ var (
 
 ## 3. 槽位（插件挂在哪）
 
-| 槽位 | 位置 | 谁在用 / 计划 |
+| 槽位 | 位置 | 谁在用（已按代码核实） |
 |---|---|---|
-| `sidebar.header` | 左栏顶部 | `ds-sidebar`（新会话 + 搜索） |
+| `sidebar.header` | 左栏顶部 | `ds-sidebar`（新会话 + 全部收起） |
 | `sidebar.list` | 左栏主体 | `ds-sidebar`（工作区分组 + 会话行） |
-| `sidebar.footer` | 左栏底部 | 待移植（模型选择 / 连接状态） |
-| `main.header` | 主区顶部 | 待移植（标题 + 面包屑 + 权限状态） |
-| `main.body` | 主区主体 | 待移植（`ds-conversation`：消息流 + 工具卡） |
-| `main.composer` | 主区底部 | 待移植（`ds-composer`：输入框 + 发送） |
-| `rightbar` | 右栏 | 待移植（任务板 / 轨迹） |
-| `statusbar` | 窗口底部 | `ds-statusbar`（轮次 / 步数 / 条数 / 就绪） |
+| `sidebar.footer` | 左栏底部 | **目前没人用**：常量在，壳没有 `drawSlot` 调用，插件也没挂（预留给模型选择 / 连接状态） |
 | `main.header` | 主区顶部 | `ds-topbar`（标题 / 模式 / 共 N 条） |
-| `rightbar` | 右侧栏（无插件时不占位） | `ds-rightbar`（工具调用时间线） |
+| `main.body` | 主区主体 | `ds-conversation`，**同一槽挂两个 painter**：`stream`（Order 20，`Draw` + `AfterDraw`）与 `approval`（Order 30） |
+| `main.composer` | 主区底部 | `ds-composer`（输入框 + 发送） |
+| `rightbar` | 右栏；**无插件时不占 300px** | `ds-rightbar`（工具调用时间线） |
+| `statusbar` | 窗口底部（绝对定位 + 24px 占位行） | `ds-statusbar`（轮次 / 步数 / token / 就绪） |
 
-同一个槽里按 `Painter.Order` 从小到大画（小的贴上）。
+壳目前只画 7 个槽位：`sidebar.header` `sidebar.list` `main.header` `main.body` `main.composer` `rightbar` `statusbar`。
+
+同一个槽里按 `Painter.Order` 从小到大画（小的贴上）。`main.body` 就是这么把审批气泡压在消息流上面的。
+一个 `Painter` 可以只有 `AfterDraw`（布局后覆画），`Draw` 与 `AfterDraw` 至少实现一个，否则装配器直接报错。
 
 ## 4. 服务键
 
 | 键 | 值类型 | 提供者 | 说明 |
 |---|---|---|---|
-| `ui.theme` | `*pluginapi.Theme` | `ds-core` | 颜色 / 圆角 / 字号 |
-| `ui.primitives` | `pluginapi.Primitives` | `ds-core` | ListRow / SectionHeader / Badge / Dot / Divider |
+| `ui.theme` | `*pluginapi.Theme`（指针，**不是**值） | `ds-core` | 颜色 / 圆角 / 字号；`Dark()` 与 `Light()` 两套 |
+| `ui.primitives` | `pluginapi.Primitives`（**接口**，由 `*dscore.Primitives` 实现） | `ds-core` | `ListRow` / `SectionHeader` / `Badge` / `Dot` / `Divider` |
 
-要加新键：先在 `pluginapi` 里定义常量并写进本表，再让提供者 `Provide`。
+两点按代码核实过：
+
+- 下游插件拿它们的方式是**类型断言**，写错类型会在 `Register` 里当场 panic，不会静默降级：
+  `ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)`、`ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)`。
+- `ui.primitives` 故意是接口而不是 `*dscore.Primitives`：正常的下游插件**不需要 import dscore**，
+  只认契约包就能画。当前唯一的例外是 `ds-conversation`——它为
+  `dscore.VivaTheme(theme)` 而 import 了 `plugins/dscore`，用来算 Markdown 的
+  `MarkdownLook`（那要 `ui.Theme`，不在服务键里）。要消掉这个例外，正确做法是给
+  `Primitives` 加一个 `MarkdownLook()`，而不是让更多插件去 import dscore。
+
+要加新键：先在 `pluginapi` 里定义常量并写进本表，再让提供者 `Provide`。同一个键被两个插件提供是装配错误。
 
 ## 5. 规矩（违反即返工）
 
@@ -171,3 +182,78 @@ CGO_ENABLED=0 go build ./...                  # 必须过
 INFO 插件已装配 id=ds-core    provides="[ui.theme ui.primitives]" requires=[]
 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
 ```
+
+## 9. 插件可选能力
+
+`Plugin` 本体只有四个方法（`ID` / `Provides` / `Requires` / `Register`）。**要不要画、要不要键盘、
+要不要输入框**都是额外实现一个可选接口，壳按接口探测，实现与否都合法。
+
+| 可选接口 | 方法 | 实现它 = 什么 | 不实现 = 什么 |
+|---|---|---|---|
+| `Panels` | `Panels() []Painter` | 会往槽位里画东西 | 纯服务提供者（`ds-core` 就是这种） |
+| `Fields` | `Fields() []*flex.Field` | 要接键盘输入 | 收不到任何字符（壳只把登记过的 `Field` 交给 viva） |
+| `KeyHandler` | `HandleKey(ev ui.KeyEvent) bool` | 想抢按键 | 按键与你无关 |
+
+### `KeyHandler` 的转发规则（按代码核实）
+
+壳在 `cfg.OnKey` 里做三件事，**没有任何具体快捷键的判断**：
+
+1. `ev.Release` 直接丢弃（只管按下，否则一次按键会触发两次）；
+2. 调 `kernel.HandleKey(ev)`：按**装配顺序**（= 依赖顺序）逐个问插件，**第一个返回 true 的赢**；
+3. 谁也不认就返回空 `EventResult`，交还系统默认处理。
+
+现在的分工：
+
+| 插件 | 按键 | 条件 | 动作 |
+|---|---|---|---|
+| `ds-sidebar` | `↑` `↓` | `Modifiers == 0` | 在**分组 + 过滤 + 折叠之后**的可见顺序里上下切会话 |
+| `ds-sidebar` | `Home` `End` | `Modifiers == 0` | 跳第一个 / 最后一个 |
+| `ds-conversation` | `Esc` | `Modifiers == 0` | 拒绝当前审批（**注意：`Allow`/`Deny` 还没接线，见下**） |
+| `ds-conversation` | `Ctrl+R` | `ModifierControl` | 重发上一条用户消息 |
+| `ds-conversation` | `Ctrl+Shift+C` | `ModifierControl\|ModifierShift` | 复制最后一条助手回复 |
+
+**字母键的坑**：viva 只给功能键定义常量（`KeyUp` / `KeyEnter` / `KeyEscape` …），
+**没有 `KeyC` 这种东西**。可打印键要靠 `ev.Text` / `ev.Typed` 判断，且 `Text` 是
+"不受修饰键影响"的字符——按住 Shift 打出来的仍是 `"c"`，所以必须用 `EqualFold`
+两边（`Text` 与 `Typed`）都比较。`ds-conversation` 里封了 `isKey(ev, "c")` 就是这件事。
+
+### `Actions` 的全部字段（逐个对照 `internal/pluginapi/plugin.go`）
+
+| 字段 | 签名 | 壳是否接线 | 说明 |
+|---|---|---|---|
+| `OpenSession` | `func(id string)` | ✅ | 切会话 |
+| `NewSession` | `func()` | ✅ | 新建并打开 |
+| `Send` | `func(text string)` | ✅ | 发出去；文字由画输入框的插件给 |
+| `Copy` | `func(text string)` | ✅ | 壳调 `app.SetClipboardText`，成功后状态栏显示「已复制 N 字」 |
+| `Retry` | `func()` | ✅ | 重发最后一条用户消息 |
+| `Notify` | `func(msg string)` | ✅ | 让壳在状态栏说一句话（插件不直接写状态栏，那是别的插件的地盘） |
+| `SetDraft` | `func(text string)` | ❌ 未接线（nil） | 没有插件在用 |
+| `Allow` | `func()` | ❌ 未接线（nil） | **已知缺口**：审批气泡的「允许」按钮点了没反应 |
+| `Deny` | `func()` | ❌ 未接线（nil） | 同上；`Esc` 也因为同一个原因无效 |
+
+**所以插件里调动作前必须判空**（`if env.Act.Allow != nil {...}`）——现在这些分支不会 panic，
+但会静默无效果。接线点在 `cmd/app/main.go` 的 `m.actions = pluginapi.Actions{...}`。
+
+## 10. 调试开关（`cmd/app` 的真实 flag）
+
+全部来自 `cmd/app/main.go` 的 `flag.*` 声明，括号里是默认值。
+
+| flag | 类型（默认值） | 用途 |
+|---|---|---|
+| `-addr` | string（`http://127.0.0.1:7788`） | Transport base URL |
+| `-tail` | int（40） | `session.load` 拉多少条尾巴 |
+| `-limit` | int（0） | 只渲染最后 N 条（0 = 全部），量视口虚拟化收益用 |
+| `-session` | string（空） | 启动后直接打开这个会话 id |
+| `-title` | string（`dsh-ui`） | 窗口标题；并行跑多个实例时用来区分（截图按标题找窗口） |
+| `-shot` | string（空） | **无头验证**：窗口一出现就挪到屏幕外，`PrintWindow` 抓成 PNG 后 `os.Exit(0)`，并在日志里打工作集 |
+| `-keys` | string（空） | 依次注入按键（`down,up,home,end,esc`），走真实的 `kernel.HandleKey`，用来验键盘路由 |
+| `-collapse` | bool（false） | 启动时把所有工作区分组收起（截折叠态） |
+| `-expand-think` | bool（false） | 把思考块默认展开（截展开态） |
+| `-demo` | bool（false） | 在消息列表里插假的工具卡，验渲染 |
+| `-smoke` | bool（false） | 启动后自动发一条消息，验 send 链路 |
+
+**两条边界要记住**：
+
+- `-keys` 注入的是 `kernel.HandleKey`，**绕过了操作系统 → `cfg.OnKey` 那一段**，
+  所以它只能证明"插件路由对了"，不能证明"真按键盘有用"（后者要人拿窗口试）。
+- `-demo` / `-smoke` 会往会话里写东西，只在 mockd 上跑；对着真宿主别开。

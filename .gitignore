@@ -24,3 +24,8 @@ app.exe
 tmp/*.json
 tmp/*.err
 tmp/dumplog/
+tmp/ck.txt
+tmp/url.txt
+tmp/tok.txt
+tmp/serve.out
+tmp/*.log

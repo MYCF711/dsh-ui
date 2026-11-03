@@ -1278,10 +1278,12 @@ func parseKeys(seq string) []ui.Key {
 //
 // 白名单模式下列没列它们也要装：ds-core 是所有插件的 Requires，ds-shell 负责切三栏。
 // 这一步直接在壳里实例化，因为白名单可能把它们漏掉，而它们是地基不是部件。
-func fixedFirst(configPath string) []pluginapi.Plugin {
+func fixedFirst(configPath, themeName string) []pluginapi.Plugin {
 	// 无论哪个模式都要带上：skip 把它们从注册表结果里排掉了（壳自己注入实例）。
 	// 全装模式下漏掉 ds-core，所有需要 ui.theme 的插件都会装配失败（实测）。
-	return []pluginapi.Plugin{&dscore.Plugin{Dark: true}, &dsshell.Plugin{}}
+	// 主题由 -theme 决定；它必须在装配**之前**定，因为 ds-core 是第一个被装的插件，
+	// 后面所有插件都从它 Inject 颜色令牌——装完再换就等于没换。
+	return []pluginapi.Plugin{&dscore.Plugin{Dark: themeName != "light"}, &dsshell.Plugin{}}
 }
 
 // geomRightWidth 算右栏宽度：官方首次打开占视口 45%，扣完中栏最小 400 还不够就压到 300。
@@ -1393,6 +1395,7 @@ func main() {
 	addr := flag.String("addr", "http://127.0.0.1:7788", "Transport base URL")
 	limit := flag.Int("limit", 0, "只渲染最后 N 条消息（0 = 全部）；用于量视口虚拟化的收益")
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
+	themeName := flag.String("theme", "dark", "主题：dark / light（light 用 dscore.Light()，与官方浅色令牌同源）")
 	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	prompt := flag.String("prompt", "", "调试：-smoke 时发这条文本（默认 smoke-<时间>）；验工具卡/审批用")
@@ -1501,7 +1504,7 @@ func main() {
 	// 白名单模式下，cs-shell 必须永远是第一个：它负责切三栏。
 	// 少了它，其余部件会各自独占整个窗口（实测：白名单里漏掉 ds-shell，
 	// 侧栏和消息流就上下堆在一起了）。
-	plugins = append(plugins, fixedFirst(*pluginConfig)...)
+	plugins = append(plugins, fixedFirst(*pluginConfig, *themeName)...)
 	if err := m.kernel.Load(orderPlugins(plugins)...); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}

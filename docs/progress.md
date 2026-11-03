@@ -136,3 +136,4 @@
 | 2026-11-03 14:33 | **L3 框架插件 `ds-shell` 落地**：三栏几何从 `cmd/app` 搬进插件，壳里只剩一句 `drawSlot(SlotShellRoot)`。契约加 `Painter.Children` + `Env.Has`，`uikernel.DrawSlot` 递归画槽位树（深度上限 8 防自引用） | 日志 `插件 [ds-core ds-shell ds-sidebar …]` |
 | 2026-11-03 14:33 | 踩坑两个：① 壳里的 `drawSlot` 还留着只有 `p.Draw` 的旧实现，`Children` 永远不被调用 → **窗口全黑**（连底色都没有），查了三轮才定位；② `draw` 建了一个填满的 Row 之后，`children` 里又包了一层 Column/Row，剩余高度被吃掉 | 现在 `drawSlot` → `kernel.DrawSlot`，壳不再自己遍历 |
 | 2026-11-03 14:35 | **工具卡照官方 `.callRow` 改**：官方那行只有 `border-radius: sm`，**没有边框色**；我之前画成了带 1px 描边的卡片。去掉 Border、底色降到 `BgLayer2`、内边距改横向 10 纵向 8 | `tmp/toolrow-crop.png` |
+| 2026-11-03 14:35 | **图元补齐到官方那套**：`ds-core` 新增 `Chip`（官方 `.chip`：inline-flex、gap 3、business-primary 文字）与 `Bubble`（官方 `.bubble`：radius xl + specific-bubble 底），顶栏模式徽标改用它。两个子代理并行开工：一个对齐消息流（气泡/工具卡/思考行），一个写第三方插件样例 `dsdemo` 并补文档 | `tmp/topbar.png`；**76.0 MB** |

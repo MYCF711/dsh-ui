@@ -236,11 +236,22 @@
       "resp": {
         "ok": "bool"
       }
+    },
+    "session.approve": {
+      "batch": 2,
+      "req": {
+        "requestId": "string",
+        "optionId": "string"
+      },
+      "resp": {
+        "accepted": "bool",
+        "optionId": "string"
+      }
     }
   },
   "counts": {
-    "total": 13,
+    "total": 14,
     "batch1": 8,
-    "batch2": 5
+    "batch2": 6
   }
 }

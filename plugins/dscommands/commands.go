@@ -48,6 +48,31 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	return nil
 }
 
+// shortModel 去掉渠道前缀（`group/deepseek-v4.1-flash1017` → `deepseek-v4.1-flash1017`）。
+//
+// 命令面板一行放不下全名；而且渠道（group/streamlake/…）对用户选模型没帮助——
+// 他关心的是"哪个模型"，渠道只该出现在提示里（Hint 里已经给了 OwnedBy）。
+func shortModel(id string) string {
+	if i := strings.Index(id, "/"); i >= 0 && i+1 < len(id) {
+		return id[i+1:]
+	}
+	return id
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(b[i:])
+}
+
 // commands 按当前接到的 Actions 生成命令表。**每次打开都重新生成**，
 // 这样壳后来接上的能力会立刻出现，接不上的永远不出现。
 func (p *Plugin) commands() []Command {
@@ -65,6 +90,36 @@ func (p *Plugin) commands() []Command {
 	if a.Cancel != nil {
 		out = append(out, Command{"打断当前 turn", "停止正在跑的这一轮", a.Cancel})
 	}
+	// 模型：每个模型一条命令。**上限 8 条**——网关上有几十个模型，
+	// 全塞进命令面板会把"打断当前 turn"这种常用命令挤到看不见的地方。
+	// 超出的部分用户可以在宿主侧改默认模型，这里不做分页（命令面板不是列表页）。
+	if a.ModelsList != nil && a.SetModel != nil {
+		set := a.SetModel
+		if models := a.ModelsList(); len(models) > 0 {
+			const maxModels = 8
+			shown := models
+			if len(shown) > maxModels {
+				shown = shown[:maxModels]
+			}
+			for _, m := range shown {
+				m := m // 闭包捕获（同下面权限命令的坑）
+				out = append(out, Command{
+					"模型：" + shortModel(m.ID),
+					m.OwnedBy,
+					func() { set(m.ID) },
+				})
+			}
+			// 超出的部分**不画成命令**：`Action` 为 nil 的命令点下去什么都不会发生，
+			// 画出来就是在骗人。改成写进"恢复默认"的提示里——用户看得到还有多少，
+			// 而且那一条本来就可点。
+			hint := "回到宿主默认模型"
+			if len(models) > maxModels {
+				hint = "回到宿主默认模型（另有 " + itoa(len(models)-maxModels) + " 个未列出）"
+			}
+			out = append(out, Command{"模型：恢复默认", hint, func() { set("") }})
+		}
+	}
+
 	// 审批策略：四条命令，**值都来自宿主的白名单**（deny/ask/allow/auto）。
 	//
 	// 为什么不做成"一个循环切换"：用户没法从命令名看出下一个是什么。

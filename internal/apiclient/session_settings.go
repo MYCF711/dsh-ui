@@ -25,3 +25,24 @@ func (c *Client) SetSessionPermission(ctx context.Context, sessionID, perm strin
 	}
 	return c.Call(ctx, "session.setPermission", params, nil)
 }
+
+// ModelEntry 是 `models.list` 的一行。
+type ModelEntry struct {
+	ID      string `json:"id"`
+	OwnedBy string `json:"owned_by,omitempty"`
+}
+
+// ModelsList 问宿主有哪些模型可用。
+//
+// **宿主转发、界面不直连**：网关地址与凭据只在宿主那一侧（R7）。
+// 失败时宿主回 502 并带原文——**不会回空列表**，
+// 因为空列表在界面上等于"没有可用模型"，而真实原因可能是网关没起。
+func (c *Client) ModelsList(ctx context.Context) ([]ModelEntry, error) {
+	var out struct {
+		Models []ModelEntry `json:"models"`
+	}
+	if err := c.Call(ctx, "models.list", struct{}{}, &out); err != nil {
+		return nil, err
+	}
+	return out.Models, nil
+}

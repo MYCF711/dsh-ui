@@ -97,6 +97,8 @@ type model struct {
 	// **它靠轮询刷新**：宿主那边是子进程推上来的一份快照，不会主动通知界面。
 	// 所以壳每隔一会儿问一次（见 refreshJobs 的调用点），而不是等事件。
 	jobs []pluginapi.Job
+	// models 是可选模型清单（宿主 models.list 的投影），启动拉一次。
+	models []pluginapi.Model
 	// jobsPending 防重入：刷新在途时不再发第二次请求（每帧都可能问）。
 	jobsPending bool
 	smokeFired  bool
@@ -251,6 +253,17 @@ func (m *model) refreshList() {
 			}
 			m.mu.Lock()
 			m.schedules = items
+			m.mu.Unlock()
+		}
+		// 模型清单：启动拉一次（网关的模型不会每分钟变；变了重新打开就好）。
+		// **失败不写状态栏**：它只是"能不能选模型"，不该盖掉更重要的提示。
+		if ms, merr := m.cli.ModelsList(ctx); merr == nil {
+			out := make([]pluginapi.Model, 0, len(ms))
+			for _, it := range ms {
+				out = append(out, pluginapi.Model{ID: it.ID, OwnedBy: it.OwnedBy})
+			}
+			m.mu.Lock()
+			m.models = out
 			m.mu.Unlock()
 		}
 		// 后台任务是**轮询**的：宿主那边的数据靠子进程推上来，不会主动通知界面。
@@ -1885,6 +1898,37 @@ func main() {
 				go m.refreshJobs()
 			}
 			return jobs
+		},
+		// 模型清单（启动时拉一次，见 refreshList）；没拉到就返回 nil，
+		// 插件据此不画"选模型"命令（画了也选不出东西）。
+		ModelsList: func() []pluginapi.Model {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			return m.models
+		},
+		// 模型覆盖：写宿主 <home>/state/session-model.json。
+		// **空串 = 清除覆盖**，回到宿主默认。异步、失败只写状态栏。
+		SetModel: func(modelID string) {
+			m.mu.Lock()
+			id := m.cur
+			m.mu.Unlock()
+			if id == "" {
+				m.setStatus("没有当前会话，改不了模型")
+				return
+			}
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := m.cli.SetSessionModel(ctx, id, modelID); err != nil {
+					m.setStatus("改模型失败: " + err.Error())
+					return
+				}
+				if modelID == "" {
+					m.setStatus("模型已恢复默认")
+				} else {
+					m.setStatus("模型已设为 " + modelID)
+				}
+			}()
 		},
 		// 审批策略：写宿主 <home>/state/session-permission.json。
 		// **异步、失败只写状态栏**——和 ConfigSet 同一个策略：插件不等待、不重试。

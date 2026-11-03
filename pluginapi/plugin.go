@@ -229,6 +229,16 @@ type Geometry struct {
 	BottomHeight float32 // 0 = 没有底部整行
 }
 
+// Model 是可选模型的一行（宿主 `models.list` 的投影）。
+//
+// 用 `OwnedBy` 按渠道分组——同一个网关后面确实挂着多个 provider
+// （wps-lingxi / workbuddy / streamlake / monkeycodeintl …），
+// 只列 id 的话几十条挤在一起，用户分不清哪个是自己要的。
+type Model struct {
+	ID      string
+	OwnedBy string
+}
+
 // Job 是后台任务的一行。
 //
 // **它是一份快照，不是活句柄**：宿主那边的数据由子进程推上来，
@@ -500,6 +510,12 @@ type Actions struct {
 	// 插件画的时候不该把"这一帧没有"理解成"没有后台任务"。
 	// nil = 壳没接（老宿主）。
 	JobsList func() []Job
+
+	// ModelsList 列可选模型（壳缓存，启动后拉一次）。
+	// nil = 壳没接（老宿主）。
+	ModelsList func() []Model
+	// SetModel 改当前会话的模型覆盖（空串 = 清除）。
+	SetModel func(id string)
 
 	// SetPermission 改当前会话的审批策略（deny/ask/allow/auto）。
 	//

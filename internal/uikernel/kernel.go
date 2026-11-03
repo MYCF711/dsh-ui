@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/vivaui/viva/ui"
 )
 
 // Kernel 是插件运行时的根。
@@ -214,6 +215,19 @@ func (k *Kernel) Painters(slot pluginapi.Slot) []pluginapi.Painter {
 // AllPainters 返回全部挂载（不分槽位），壳在布局结束后按序跑它们的 AfterDraw。
 func (k *Kernel) AllPainters() []pluginapi.Painter {
 	return append([]pluginapi.Painter(nil), k.painters...)
+}
+
+// HandleKey 按装配顺序把按键交给插件，第一个处理掉的赢。
+//
+// 插件顺序就是装配顺序（= 依赖顺序），所以根本插件天然排在最前，
+// 但它不实现 KeyHandler，按键会继续往下走。
+func (k *Kernel) HandleKey(ev ui.KeyEvent) bool {
+	for _, id := range k.order {
+		if h, ok := k.byID[id].(pluginapi.KeyHandler); ok && h.HandleKey(ev) {
+			return true
+		}
+	}
+	return false
 }
 
 // Has 判断某个槽位有没有画（壳据此决定要不要留白、要不要显示分隔线）。

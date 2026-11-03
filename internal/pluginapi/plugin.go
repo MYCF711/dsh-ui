@@ -58,6 +58,14 @@ type Fields interface {
 	Fields() []*flex.Field
 }
 
+// KeyHandler 是「想接键盘的插件」的可选接口。
+//
+// 壳把按键按装配顺序依次交给插件，**第一个返回 true 的赢**，壳自己不认识任何具体快捷键——
+// 这样「↑ 切会话」是侧栏插件的能力，不是壳里写死的 if。
+type KeyHandler interface {
+	HandleKey(ev ui.KeyEvent) bool
+}
+
 // Panels 是「会画东西的插件」的可选接口。
 // 一个插件可以不实现它（纯服务提供者，比如 ds-core）。
 type Panels interface {
@@ -208,6 +216,10 @@ type Approval struct {
 type Actions struct {
 	OpenSession func(id string)
 	NewSession  func()
+	// Copy 把文本放进系统剪贴板（插件不 import app，剪贴板归壳管）。
+	Copy func(text string)
+	// Retry 重发上一条用户消息。
+	Retry func()
 	// Send 把这段文字发出去。输入框由哪个插件画，文字就由哪个插件给——
 	// 壳不再持有草稿，所以不用 SetDraft 回灌。
 	Send     func(text string)

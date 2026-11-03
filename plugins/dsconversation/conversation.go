@@ -63,6 +63,9 @@ type Plugin struct {
 	slots []mdSlot
 	// collapsedOnce 记录调试开关下被用户手动收起过的，避免压不住点击。
 	collapsedOnce map[int]bool
+	// lastAct / lastMsgs / lastApproval 是绘制期快照，按键时要用。
+	lastAct      pluginapi.Actions
+	lastMsgs     []apiclient.Message
 	// expanded 记录哪些思考块被展开（键是消息 seq，切会话后依然有效）。
 	// 缺省全收起：真实语料里思考比正文多八倍，默认展开会把消息流淹没。
 	expanded map[int]bool
@@ -110,6 +113,8 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	msgs := env.Data.Msgs
 	p.slots = p.slots[:0]
+	p.lastAct = env.Act
+	p.lastMsgs = env.Data.Msgs
 	if p.expanded == nil {
 		p.expanded = map[int]bool{}
 	}
@@ -575,7 +580,59 @@ func min(a, b int) int {
 	return b
 }
 
+// HandleKey 实现 pluginapi.KeyHandler：
+//
+//	Esc            拒绝当前审批（有审批时）
+//	Ctrl+Shift+C   复制最后一条助手回复
+//	Ctrl+R         重发上一条用户消息
+func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+	switch {
+	case ev.Key == ui.KeyEscape && ev.Modifiers == 0:
+		if p.lastAct.Deny == nil {
+			return false
+		}
+		p.lastAct.Deny()
+		return true
+
+	case isKey(ev, "r") && ev.Modifiers == ui.ModifierControl:
+		if p.lastAct.Retry == nil {
+			return false
+		}
+		p.lastAct.Retry()
+		return true
+
+	case isKey(ev, "c") && ev.Modifiers == ui.ModifierControl|ui.ModifierShift:
+		if p.lastAct.Copy == nil {
+			return false
+		}
+		if text := p.lastAssistant(); text != "" {
+			p.lastAct.Copy(text)
+			return true
+		}
+	}
+	return false
+}
+
+// isKey 判断这是不是某个字母键。
+//
+// viva 里字母键没有 KeyXxx 常量：Key 只覆盖功能键，可打印键靠 ev.Text 识别
+// （Text 是"不受修饰键影响"的字符，所以 Ctrl+Shift+C 也拿得到 "c"）。
+func isKey(ev ui.KeyEvent, letter string) bool {
+	return strings.EqualFold(ev.Text, letter) || strings.EqualFold(ev.Typed, letter)
+}
+
+// lastAssistant 取最后一条有正文的助手消息。
+func (p *Plugin) lastAssistant() string {
+	for i := len(p.lastMsgs) - 1; i >= 0; i-- {
+		if p.lastMsgs[i].Role == "assistant" && strings.TrimSpace(p.lastMsgs[i].Text) != "" {
+			return p.lastMsgs[i].Text
+		}
+	}
+	return ""
+}
+
 var (
 	_ pluginapi.Plugin = (*Plugin)(nil)
 	_ pluginapi.Panels = (*Plugin)(nil)
+	_ pluginapi.KeyHandler = (*Plugin)(nil)
 )

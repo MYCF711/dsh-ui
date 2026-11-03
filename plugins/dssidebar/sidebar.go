@@ -21,6 +21,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // Plugin 实现 pluginapi.Plugin + Panels + 字段登记。
@@ -29,6 +30,11 @@ type Plugin struct {
 	prims pluginapi.Primitives
 
 	search  flex.Field
+	// lastOrder / lastCur / act 是绘制期留下的快照，按键时要用：
+	// "下一个会话"是哪个只有分组和过滤之后才知道，壳不该替它算。
+	lastOrder []string
+	lastCur   string
+	act       pluginapi.Actions
 	// CollapseAll 是调试开关：Register 时把所有分组置为收起。
 	// 只为"无头截图验证折叠态"存在，正常运行一直是 false。
 	CollapseAll bool
@@ -101,6 +107,17 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 	q := strings.ToLower(strings.TrimSpace(p.search.Text()))
 
 	groups, order := groupByWorkspace(env.Data.Sessions, q)
+	p.lastCur = env.Data.Cur
+	p.act = env.Act
+	p.lastOrder = p.lastOrder[:0]
+	for _, key := range order {
+		if p.collapsed[key] || p.collapseAll {
+			continue // 收起的分组里的会话不参与键盘导航
+		}
+		for i := range groups[key] {
+			p.lastOrder = append(p.lastOrder, groups[key][i].ID)
+		}
+	}
 
 	// 滚动区宽度要留出 20px 给滚动条 + 容器内边距，否则最后一行的背景
 	// 会盖住滚动条（踩过一次，视觉上像"行被切了"）。
@@ -268,7 +285,53 @@ func itoa(n int) string {
 }
 
 // 编译期断言：这个插件确实满足契约，漏实现会在这里炸，而不是在装配时。
+// HandleKey 实现 pluginapi.KeyHandler：↑↓ 上下切会话，Home/End 跳到首尾。
+//
+// 为什么放在侧栏插件里而不是壳里：'下一个会话'取决于分组、过滤和折叠状态，
+// 只有这个插件知道。壳只负责把按键转发过来。
+func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+	if ev.Modifiers != 0 {
+		return false // 带修饰键的是别的意图（留给别的插件）
+	}
+	switch ev.Key {
+	case ui.KeyUp:
+		return p.move(-1)
+	case ui.KeyDown:
+		return p.move(1)
+	case ui.KeyHome:
+		return p.moveTo(0)
+	case ui.KeyEnd:
+		return p.moveTo(len(p.lastOrder) - 1)
+	}
+	return false
+}
+
+// move 在当前可见顺序里移动 delta 个。
+func (p *Plugin) move(delta int) bool {
+	idx := -1
+	for i, id := range p.lastOrder {
+		if id == p.lastCur {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return false
+	}
+	return p.moveTo(idx + delta)
+}
+
+// moveTo 打开第 i 个；越界就不处理（让别的插件或系统拿这个键）。
+func (p *Plugin) moveTo(i int) bool {
+	if i < 0 || i >= len(p.lastOrder) || p.act.OpenSession == nil {
+		return false
+	}
+	p.act.OpenSession(p.lastOrder[i])
+	return true
+}
+
 var (
 	_ pluginapi.Plugin = (*Plugin)(nil)
 	_ pluginapi.Panels = (*Plugin)(nil)
+	_ pluginapi.KeyHandler = (*Plugin)(nil)
 )

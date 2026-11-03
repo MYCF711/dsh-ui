@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -363,6 +364,26 @@ func (m *model) evictLocked(keep string) {
 // 它走 sendText；这里留着是给 -smoke 和键盘快捷键用。
 func (m *model) send() { m.sendText(m.draft.Text()) }
 
+// retryLast 重发最后一条用户消息（消息级「重试」）。
+//
+// 不新造一条：Prompt 本来就是"以这条为准再走一轮"，界面侧只负责把它再发一遍。
+func (m *model) retryLast() {
+	m.mu.Lock()
+	var last string
+	for i := len(m.msgs) - 1; i >= 0; i-- {
+		if m.msgs[i].Role == "user" && m.msgs[i].Text != "" {
+			last = m.msgs[i].Text
+			break
+		}
+	}
+	m.mu.Unlock()
+	if last == "" {
+		m.setStatus("没有可重试的用户消息")
+		return
+	}
+	m.sendText(last)
+}
+
 func (m *model) sendText(text string) {
 	if text == "" {
 		return
@@ -587,8 +608,40 @@ func newConfig(m *model) app.Config {
 		}
 	}
 	// 窗口变了必须全屏重绘：Viva 只重画变化区域，缩小后旧帧会残留在边缘。
+	// 键盘：先给插件（↑↓ 切会话、Esc 拒审批、Ctrl+Shift+C 复制…），
+	// 插件都不要才算壳的。壳里因此**没有任何具体快捷键的判断**。
+	cfg.OnKey = func(ev ui.KeyEvent) ui.EventResult {
+		if ev.Release {
+			return ui.EventResult{}
+		}
+		if m.kernel.HandleKey(ev) {
+			return ui.EventResult{Handled: true, Repaint: true}
+		}
+		return ui.EventResult{}
+	}
+
 	cfg.OnResize = func(ui.Size) { m.inv.Invalidate() }
 	return cfg
+}
+
+// parseKeys 把 "down,up" 翻成 ui.Key（只认导航键，够验证路由用）。
+func parseKeys(seq string) []ui.Key {
+	var out []ui.Key
+	for _, name := range strings.Split(seq, ",") {
+		switch strings.TrimSpace(strings.ToLower(name)) {
+		case "down":
+			out = append(out, ui.KeyDown)
+		case "up":
+			out = append(out, ui.KeyUp)
+		case "home":
+			out = append(out, ui.KeyHome)
+		case "end":
+			out = append(out, ui.KeyEnd)
+		case "esc":
+			out = append(out, ui.KeyEscape)
+		}
+	}
+	return out
 }
 
 func main() {
@@ -599,6 +652,7 @@ func main() {
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
 	title := flag.String("title", "dsh-ui", "窗口标题（并行跑多个实例时用来区分）")
+	keysSeq := flag.String("keys", "", "调试：启动后依次注入按键（down,up,home,end,esc），走的是插件的 HandleKey，用来验证键盘路由")
 	expandThink := flag.Bool("expand-think", false, "调试：把思考块默认展开（截展开态用）")
 	collapseAll := flag.Bool("collapse", false, "调试：启动时把所有工作区分组收起（截折叠态用）")
 	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
@@ -640,8 +694,24 @@ func main() {
 		OpenSession: m.openSession,
 		NewSession:  m.newSession,
 		Send:        m.sendText,
+		Copy:        func(text string) { _ = app.SetClipboardText(text) },
+		Retry:       m.retryLast,
 	}
 	log.Printf("插件 %v，主题 %s", m.kernel.Order(), m.theme.Name)
+
+	if *keysSeq != "" {
+		go func(seq string) {
+			time.Sleep(2500 * time.Millisecond) // 等会话列表和消息都到位
+			for _, name := range parseKeys(seq) {
+				ok := m.kernel.HandleKey(ui.KeyEvent{Key: name})
+				log.Printf("key %v handled=%v", name, ok)
+				time.Sleep(350 * time.Millisecond)
+			}
+			m.mu.Lock()
+			log.Printf("注入后当前会话: %s", m.cur)
+			m.mu.Unlock()
+		}(*keysSeq)
+	}
 
 	if shotPath != "" {
 		startShot(shotPath, 4*time.Second)

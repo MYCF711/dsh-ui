@@ -25,9 +25,11 @@
 | 15 | 多会话不串流 | ✅ | **3 会话**（不止 2 个）：`docs/multi-session.md` —— A 界面不含 BETA/GAMMA；`tmp/ms-run-r2/p1-A-concurrent.png` |
 | 16 | 切会话状态隔离 | ✅ | 切到 B 后用量 `17.1k`（A 是 `1110.6k`）（`tmp/nc-B.png`）；3 会话 × 5 次起停，标题/消息区/用量三区 md5 同会话全等、跨会话互不相同 |
 | 16b | 反复切会话不涨内存 | ✅ | `docs/multi-session.md`：来回切 15 次 58.9–62.3 MB 振荡（首末 −3.4/−2.3/−0.9 MB）；常驻 5 点 59.0→59.8 后走平 |
-| 17 | 断线重连（单元级） | ✅ | `TestReconnect*` / `TestMultiSession*` 10/10 |
-| 18 | 断号检测（不整页刷新） | ✅ | `TestMultiSessionSeqGapIsReported`；真机曾经无限重连（已修） |
+| 17 | 断线重连（链路剪断，宿主活着） | ✅ | `docs/reconnect.md`：`连接断开 → 带水位 5 重连 → 已订阅 since=5`，且**只发 `GET /ws`、不发 `session.load`**（没整页重载）；新二进制复现 `since=340/354` |
+| 17b | 断线重连（宿主**重启**） | ❌ 不能自愈 | 同文档：卡在**凭据**不是重连逻辑 —— cookie 在宿主内存里，重启即失效，界面 `-cookie` 只 SetCookies 一次、`runSubscription` 没有重新 /connect 的路径。退避正常（1/2/4/8/16/32s） |
+| 18 | 断号检测（不整页刷新） | 🟡 检测到但**没补洞** | 客户端会报「断号 [a,b]（待用 session.history 补洞）」并继续消费，但**实测 0 次调用 history**（用记录请求行的中继验证），缺段被永久跳过 |
 | 19 | 会话续历史 | ✅ | 重启界面后 `session.load` 带回历史 |
+| 19b | 断线期间的数据 | ✅ 盘上有 / ❌ 界面没补 | 同文档：被杀那一轮完整落盘（子进程活过父进程 10.3s）；宿主活着时 `history{"sinceSeq":166}` → 200 + frames 167..277（**能补**）；重启后 → 409 `stale_epoch` |
 | 20 | 断线恢复（真机） | ⏳ | 子代理验证中，见 `docs/reconnect.md`（未出） |
 | 21 | 完整工作日 | ❌ 未验 | 需要连续数小时真实使用 |
 | 22 | 同任务 A/B（vs 官方） | ❌ 未验 | — |
@@ -53,6 +55,6 @@
 
 1. **完整工作日**：没有连续数小时的真实使用记录。这一步只能真的用，不能模拟。
 2. **断线恢复真机**：子代理在验（宿主重启 / 同端口重起），结论未回。
-3. **`session.history` 补洞**：宿主仍回 `messages` 投影（§11.6 新基线是 journal `frames`）。界面**故意没接**补洞调用，避免对着两套形状写两次。断号目前只上报、不重放。
+3. **`session.history` 补洞**：宿主**已经回 frames 了**（实测 `history{"sinceSeq":166}` → 200 + frames 167..277），缺的是界面没接这个调用（实测 0 次）。另有三层跨线缺口（见 `docs/reconnect.md` §9）：sub 帧不带 `journalEpoch`、`LoadResult` 没有 journalEpoch/lastSeq、宿主 `FrameSub` 不重放 journal。
 4. **审批的 `allow_always` 效果**：按钮与回传都验了（`TestAllowAlwaysGetsItsOwnButton`），但"以后都允许"在宿主侧是否真的记住了，**未验**。
 5. **性能里没测到的 10 项**：GPU 显存、帧率、输入延迟、invalidate→重绘耗时、纯滚轮、真模型一轮内存、5 会话内容一致性、宿主整树、高 DPI、258ms 冷启动分解（见 `docs/perf.md` §9）。

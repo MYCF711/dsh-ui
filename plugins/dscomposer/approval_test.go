@@ -313,3 +313,41 @@ func TestHandleKeyTakesEnterOnlyWhenVisible(t *testing.T) {
 		t.Fatal("带修饰键的 Enter 不该被审批条吃掉")
 	}
 }
+
+// TestAllowAlwaysGetsItsOwnButton 钉住「宿主给 3 个选项时界面不能只画 2 个」。
+//
+// 真宿主 policy=ask 推的是 allow-once / allow-always / reject-once 三项
+// （见 2026-11-03 17:47 的真机日志 options=3）。如果只画一个允许按钮，
+// 用户就永远点不到"以后都允许"——连续几次工具调用要手点好几次。
+func TestAllowAlwaysGetsItsOwnButton(t *testing.T) {
+	ap := hostFrame()
+	plan := planApproval(pluginapi.Snapshot{Approval: &ap}, true)
+
+	if plan.Allow.Option != "allow-once" {
+		t.Fatalf("主允许按钮应是 allow_once 那一项，得到 %q", plan.Allow.Option)
+	}
+	if plan.AllowAlways.Option != "allow-always" {
+		t.Fatalf("第二个允许项（以后都允许）必须有独立按钮，得到 %q", plan.AllowAlways.Option)
+	}
+	var gotOpt string
+	act := pluginapi.Actions{Approve: func(requestID, optionID string) { gotOpt = optionID }}
+	if !decideOption(&ap, act, plan.AllowAlways.Option) {
+		t.Fatal("点 allow_always 应该能回传")
+	}
+	if gotOpt != "allow-always" {
+		t.Fatalf("点的是以后都允许，回传的必须是它自己，得到 %q", gotOpt)
+	}
+}
+
+// TestNoSecondAllowWhenHostGivesOne 反向：宿主只给一个 allow 时**不许**多画一个按钮。
+func TestNoSecondAllowWhenHostGivesOne(t *testing.T) {
+	ap := hostFrame()
+	ap.Options = []pluginapi.ApprovalOption{
+		{OptionID: "allow-once", Name: "允许这一次", Kind: "allow_once"},
+		{OptionID: "reject-once", Name: "拒绝", Kind: "reject_once"},
+	}
+	plan := planApproval(pluginapi.Snapshot{Approval: &ap}, true)
+	if plan.AllowAlways.Option != "" {
+		t.Fatalf("宿主只给一个允许项时不该有第二个按钮，得到 %q", plan.AllowAlways.Option)
+	}
+}

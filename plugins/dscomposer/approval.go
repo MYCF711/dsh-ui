@@ -143,6 +143,30 @@ func chooseOption(ap *pluginapi.Approval, allow bool) (pluginapi.ApprovalOption,
 	return pluginapi.ApprovalOption{}, false
 }
 
+// chooseOtherAllow 找与主允许项**不同**的另一个 allow 类选项。
+//
+// 判据是 optionId 不同（不是 kind 不同）：宿主可能给 allow_once / allow_always
+// 两个不同 kind，也可能给两个同 kind 但不同 id 的（比如"允许这一次"和"允许这个命令"）。
+// 只要 id 不同就是两个选择，界面都该让用户看得到。
+func chooseOtherAllow(ap *pluginapi.Approval, main pluginapi.ApprovalOption) (pluginapi.ApprovalOption, bool) {
+	if ap == nil {
+		return pluginapi.ApprovalOption{}, false
+	}
+	for _, opt := range ap.Options {
+		if opt.OptionID == "" || opt.Kind == "" {
+			continue
+		}
+		if !strings.HasPrefix(opt.Kind, "allow") {
+			continue
+		}
+		if opt.OptionID == main.OptionID {
+			continue // 就是主按钮那一项
+		}
+		return opt, true
+	}
+	return pluginapi.ApprovalOption{}, false
+}
+
 // approvalPlan 是"这条审批条此刻画什么、点了回传什么"的纯计算结果。
 //
 // 不碰 env、不画东西：喂一个 Snapshot 就能算，单测直接断言它。
@@ -157,6 +181,13 @@ type approvalPlan struct {
 	Note  string
 	Allow approvalButton
 	Deny  approvalButton
+	// AllowAlways 是宿主给的第二个"允许"类选项（典型是「这个会话里以后都允许」）。
+	//
+	// 为什么单独一个字段而不是把 Allow 变成列表：宿主只给一个时（最常见），
+	// 界面不该多画一个空按钮；给了两个时用户必须能选得到——否则连续几次工具调用
+	// 就得点 N 次「允许这一次」，而宿主明明提供了"以后都允许"。
+	// Option 为空 = 宿主没给这一项，不画。
+	AllowAlways approvalButton
 }
 
 // approvalButton 是一个按钮：画什么字、回传哪一个 optionId、点不点得动。
@@ -196,6 +227,10 @@ func planApproval(s pluginapi.Snapshot, wired bool) approvalPlan {
 
 	allowOpt, allowOK := chooseOption(ap, true)
 	rejectOpt, rejectOK := chooseOption(ap, false)
+	// 再找**另一个** allow 类选项（kind 不同即可）。宿主这次给了 3 个选项时
+	// （allow_once / allow_always / reject_once），只画一个允许按钮就等于替用户
+	// 丢掉了"以后都允许"——而它恰恰是连续工具调用时最该点的那个。
+	alwaysOpt, alwaysOK := chooseOtherAllow(ap, allowOpt)
 	plan.Allow = approvalButton{Label: "允许", Option: allowOpt.OptionID}
 	plan.Deny = approvalButton{Label: "拒绝", Option: rejectOpt.OptionID}
 	if allowOK && allowOpt.Name != "" {
@@ -205,6 +240,13 @@ func planApproval(s pluginapi.Snapshot, wired bool) approvalPlan {
 		plan.Deny.Label = rejectOpt.Name
 	}
 
+	if alwaysOK {
+		plan.AllowAlways = approvalButton{Label: alwaysOpt.Name, Option: alwaysOpt.OptionID}
+		if plan.AllowAlways.Label == "" {
+			plan.AllowAlways.Label = "以后都允许"
+		}
+		plan.AllowAlways.Usable = ap.RequestID != ""
+	}
 	if wired {
 		plan.Allow.Usable = ap.RequestID != "" && allowOK
 		plan.Deny.Usable = ap.RequestID != "" && rejectOK
@@ -257,6 +299,33 @@ func decide(ap *pluginapi.Approval, act pluginapi.Actions, allow bool) bool {
 		return false
 	}
 	act.Deny()
+	return true
+}
+
+// pressOption 是 press 的"指定项"版本：用户点的就是这一项，id 已确定。
+func (p *Plugin) pressOption(env *pluginapi.Env, optionID, label string) {
+	ap := env.Data.Approval
+	if !decideOption(ap, env.Act, optionID) {
+		return
+	}
+	if p.logf != nil {
+		p.logf("审批：%s → %s", label, optionID)
+	}
+}
+
+// decideOption 用**指定**的 optionId 回传（allow_always 这类非主按钮走这里）。
+//
+// 和 decide 的区别只有一点：decide 按 allow/reject 二选一去"找"选项，
+// 而这里用户点的就是某个具体项，id 已经确定——不能再找一次（那会点"以后都允许"
+// 却回传"允许这一次"）。
+func decideOption(ap *pluginapi.Approval, act pluginapi.Actions, optionID string) bool {
+	if ap == nil || optionID == "" {
+		return false
+	}
+	if act.Approve == nil || ap.RequestID == "" {
+		return false // 没有回传通道就不假装成功
+	}
+	act.Approve(ap.RequestID, optionID)
 	return true
 }
 
@@ -327,6 +396,12 @@ func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 			if f.Button(env.Tree.ID(env.Feat, "approval-deny"), plan.Deny.Label).Outline().Small().
 				Disabled(!plan.Deny.Usable).Clicked() && plan.Deny.Usable {
 				p.press(env, false)
+			}
+			if plan.AllowAlways.Option != "" {
+				if f.Button(env.Tree.ID(env.Feat, "approval-allow-always"), plan.AllowAlways.Label).Outline().Small().
+					Disabled(!plan.AllowAlways.Usable).Clicked() && plan.AllowAlways.Usable {
+					p.pressOption(env, plan.AllowAlways.Option, plan.AllowAlways.Label)
+				}
 			}
 			if f.Button(env.Tree.ID(env.Feat, "approval-allow"), plan.Allow.Label).Small().
 				Disabled(!plan.Allow.Usable).Clicked() && plan.Allow.Usable {

@@ -81,6 +81,16 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			}
 
 			f.Spacer()
+		// 右栏开合：官方也能收右栏，这里给一个明显的入口（状态从快照读，不改本地）。
+		// 用文字而不是三角：▸/▾ 在这个字号下几乎分不出来（实测两张图看着一样）。
+		label := "轨迹 关"
+		if env.Data.ShowRightbar {
+			label = "轨迹 开"
+		}
+		if env.Act.ToggleRightbar != nil &&
+			f.Button(env.Tree.ID(env.Feat, "toggle-rightbar"), label).Ghost().Small().Clicked() {
+			env.Act.ToggleRightbar()
+		}
 
 			// 右：条数。只在真的加载过消息时显示，0 条不显示「共 0 条」。
 			if hasSession && env.Data.Total > 0 {

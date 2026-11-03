@@ -182,6 +182,8 @@ type Snapshot struct {
 	// Usage 是当前会话的 token 用量（壳从 session.load 拿到的合计）。
 	// Usage.Known() 为 false 时插件不许显示任何 token 数字。
 	Usage Usage
+	// ShowRightbar 是右栏当前是开还是关（壳持有这个状态，插件只读）。
+	ShowRightbar bool
 	// Truncated 表示这次只渲染了末尾一段（视口虚拟化 / -limit）。
 	Truncated bool
 }
@@ -221,6 +223,8 @@ type Actions struct {
 	Notify func(msg string)
 	// Copy 把文本放进系统剪贴板（插件不 import app，剪贴板归壳管）。
 	Copy func(text string)
+	// ToggleRightbar 收起/展开右栏（官方也能收）。
+	ToggleRightbar func()
 	// Retry 重发上一条用户消息。
 	Retry func()
 	// Send 把这段文字发出去。输入框由哪个插件画，文字就由哪个插件给——

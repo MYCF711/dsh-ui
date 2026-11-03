@@ -103,6 +103,8 @@ type model struct {
 	cur      string
 	msgs     []apiclient.Message
 	usage    apiclient.Usage
+	// showRightbar 是右栏开合（壳持有，插件只读）。
+	showRightbar bool
 	status   string
 	loading  bool
 }
@@ -489,6 +491,7 @@ func newConfig(m *model) app.Config {
 		streamText := m.streamText
 		approval := m.approval
 		usage := m.usage
+		showRightbar := m.showRightbar
 		if renderLimit > 0 && len(msgs) > renderLimit {
 			status = fmt.Sprintf("%s（渲染末尾 %d / %d）", status, renderLimit, len(msgs))
 			msgs = msgs[len(msgs)-renderLimit:]
@@ -497,7 +500,7 @@ func newConfig(m *model) app.Config {
 
 		// 主区宽度：壳算好交给插件，插件不该猜（侧栏 280 + 右栏 300 只有壳知道）。
 		const rightbarW = 300.0
-		hasRightbar := m.kernel.Has(pluginapi.SlotRightbar)
+		hasRightbar := showRightbar && m.kernel.Has(pluginapi.SlotRightbar)
 		mainWidth := bounds.Width - m.side.Width()
 		if hasRightbar {
 			mainWidth -= rightbarW
@@ -524,7 +527,8 @@ func newConfig(m *model) app.Config {
 					TokPerSec:       usage.TokPerSec,
 					HasRate:         usage.HasRate,
 				},
-				Approval: approvalView,
+				Approval:     approvalView,
+				ShowRightbar: showRightbar,
 			},
 			Act:       m.actions,
 			Tree:      &tree,
@@ -670,6 +674,7 @@ func main() {
 	keysSeq := flag.String("keys", "", "调试：启动后依次注入按键（down,up,home,end,esc），走的是插件的 HandleKey，用来验证键盘路由")
 	expandThink := flag.Bool("expand-think", false, "调试：把思考块默认展开（截展开态用）")
 	collapseAll := flag.Bool("collapse", false, "调试：启动时把所有工作区分组收起（截折叠态用）")
+	rightbarOn := flag.Bool("rightbar", true, "启动时是否展开右栏（-rightbar=false 收起来）")
 	token := flag.String("token", "", "宿主 launch token：给了就先 /connect 换 cookie（真宿主 dshd serve 必须给）")
 	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
 	flag.Parse()
@@ -684,7 +689,8 @@ func main() {
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
 		cache:     map[string]*cachedSession{},
 		mux:       apiclient.NewMux(*addr),
-		scrollPos: map[string]float32{},
+		scrollPos:    map[string]float32{},
+		showRightbar: *rightbarOn,
 	}
 	m.refreshList()
 
@@ -730,6 +736,17 @@ func main() {
 			m.setStatus("已复制 " + itoaLocal(len([]rune(text))) + " 字")
 		},
 		Notify: m.setStatus,
+		ToggleRightbar: func() {
+			m.mu.Lock()
+			m.showRightbar = !m.showRightbar
+			on := m.showRightbar
+			m.mu.Unlock()
+			if on {
+				m.setStatus("右栏：显示")
+			} else {
+				m.setStatus("右栏：收起")
+			}
+		},
 		// 审批：宿主侧真正的「批准/拒绝」接口还没进契约（见 DSH-GO/AGENTS.md §12），
 		// 这里只把本地气泡收掉并给一句状态——以前内联版本就是这么做的。
 		// 注意：**不能**留 nil，否则插件里判 nil 静默跳过，按钮点了没反应。

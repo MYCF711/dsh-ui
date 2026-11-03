@@ -17,6 +17,7 @@ type (
 	Panels     = pub.Panels
 	Context    = pub.Context
 	Slot       = pub.Slot
+	FSEntry    = pub.FSEntry
 	Painter    = pub.Painter
 	Primitives = pub.Primitives
 	Env        = pub.Env

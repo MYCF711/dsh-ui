@@ -224,6 +224,15 @@ type Geometry struct {
 }
 
 // Snapshot 是一帧的数据快照，壳在锁内拷好再传进来，插件里不用加锁。
+// FSEntry 是 FSList 的一项。
+//
+// **必须带 IsDir**：只回名字的话，插件分不清"点它该进目录还是该读文件"——
+// 点目录会去 fs.read 然后拿到"文件不存在"，界面上看着像读不了。
+type FSEntry struct {
+	Name  string
+	IsDir bool
+}
+
 type Snapshot struct {
 	Sessions []apiclient.Session
 	Cur      string
@@ -412,12 +421,13 @@ type Actions struct {
 	// 壳异步落盘、失败只写状态栏——插件不等待、不重试。
 	ConfigSet func(kv map[string]string)
 
-	// FSList 列当前工作区**根目录**（宿主 `workspace.list`）。
+	// FSList 列一个目录（宿主 `workspace.list`，**已支持 path 入参**）。
 	//
-	// **只列一层**：宿主回的是 `{name,isDir,size}`，没有 path、也没有"列子目录"
-	// 的入参。所以拿它做不出完整文件树——要进子目录得宿主先补 `path` 入参。
+	// **同步返回的是壳的缓存**：首次问某个 dir 拿到空切片，壳在后台拉，
+	// 拉到后重绘。所以插件必须能接受"这一帧没有、下一帧才有"——
+	// 画"加载中"或者干脆先不画都行，但**不能把它当成"这个目录是空的"**。
 	// nil = 壳没接。
-	FSList func() []string
+	FSList func(dir string) []FSEntry
 	// FSRead 读一个文件（**绝对路径**，Windows 风格）。
 	//
 	// 路径怎么来：`Snapshot.CWD` + "/" + `FSList` 的名字。宿主不做工作区内限制，

@@ -32,6 +32,7 @@ type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
 
+	curDir  string // 当前目录（相对于 CWD；空 = 根）
 	sel     string // 当前预览的文件名（空 = 没选）
 	content string // 读到的内容（只取前 maxPreviewBytes）
 	err     string // 读取失败的原因（原样给用户看，不翻译成"加载失败"）
@@ -72,11 +73,20 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 	if env.Data.CWD == "" || env.Act.FSList == nil {
 		return
 	}
-	names := env.Act.FSList()
+	// 目录路径 = CWD + "/" + curDir。**CWD 为空整块不画**（见文件头）。
+	dir := env.Data.CWD
+	if p.curDir != "" {
+		dir += "/" + p.curDir
+	}
+	names := env.Act.FSList(dir)
+	t := p.theme
+
+	// 首次问某个目录返回空是**正常的**（壳在后台拉），不是"这个目录没东西"。
+	// 所以这里什么都不画，等下一帧——不能写"空目录"，那是在编。
 	if len(names) == 0 {
 		return
 	}
-	t := p.theme
+
 	shown := names
 	more := 0
 	if len(shown) > maxShown {
@@ -85,17 +95,44 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 	}
 
 	f.Column().FillWidth().Gap(2).PadY(4).Children(func() {
-		f.Text("文件").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		for _, name := range shown {
-			label := name
-			if label == p.sel {
-				label = "▸ " + label
+		title := "文件"
+		if p.curDir != "" {
+			title = "▸ " + p.curDir
+		}
+		f.Text(title).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		if p.curDir != "" {
+			if back := p.prims.ListRow(f, env.Tree.ID(env.Feat, "files-up"), false, 22, func() {
+				f.Text("← 上一级").FontSize(12).Color(t.LabelTertiary)
+			}); back.Clicked() {
+				p.curDir = parentDir(p.curDir)
+				p.sel = ""
 			}
-			row := p.prims.ListRow(f, env.Tree.ID(env.Feat, "file-"+name), label == p.sel, 22, func() {
+		}
+		for _, e := range shown {
+			e := e
+			label := e.Name
+			if e.IsDir {
+				label = "▸ " + label // 目录用 ▸ 前缀，和文件区分开
+			} else if label == p.sel {
+				label = "• " + label
+			}
+			active := !e.IsDir && e.Name == p.sel
+			row := p.prims.ListRow(f, env.Tree.ID(env.Feat, "file-"+e.Name), active, 22, func() {
 				f.Text(label).FontSize(12).Color(t.LabelSecondary)
 			})
-			if row.Clicked() {
-				p.open(env, name)
+			if !row.Clicked() {
+				continue
+			}
+			if e.IsDir {
+				// 进目录：curDir 是相对 CWD 的路径
+				if p.curDir == "" {
+					p.curDir = e.Name
+				} else {
+					p.curDir += "/" + e.Name
+				}
+				p.sel = ""
+			} else {
+				p.open(env, e.Name)
 			}
 		}
 		if more > 0 {
@@ -150,6 +187,16 @@ func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
 			}
 		})
 	})
+}
+
+// parentDir 去掉最后一段（`a/b` → `a`，`a` → ``）。
+func parentDir(d string) string {
+	for i := len(d) - 1; i >= 0; i-- {
+		if d[i] == '/' {
+			return d[:i]
+		}
+	}
+	return ""
 }
 
 // itoa 是本地整数转字符串（避免为一处 import strconv 而让整个文件看起来杂乱）。

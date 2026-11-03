@@ -79,8 +79,11 @@ type model struct {
 	// cwd 是当前会话的工作目录（来自 session.load.cwd）。插件拼文件路径要用它，
 	// 空串表示不知道——那时它们不该拼。
 	cwd string
-	// fsNames 是工作区根目录的一层名字（workspace.list 的结果），壳后台刷新。
-	fsNames    []string
+	// fsDirs 是按目录缓存的名字列表（workspace.list 的结果）。
+	// 键是目录绝对路径；空切片表示"正在拉"，不是"目录是空的"。
+	fsDirs map[string][]pluginapi.FSEntry
+	// fsPending 记录哪些目录正在拉，避免同一目录每帧都发一次请求。
+	fsPending  map[string]bool
 	smokeFired bool
 
 	// 待审批的请求（v1 只支持一条；工具名 + 命令 + 模型自述）
@@ -211,19 +214,7 @@ func (m *model) refreshList() {
 		m.mu.Lock()
 		uiConfig = cfg
 		m.mu.Unlock()
-		// 工作区根目录（一层）：侧栏文件列表用它。失败就算了，不打扰用户。
-		if ents, lerr := m.cli.WorkspaceList(ctx); lerr == nil {
-			names := make([]string, 0, len(ents))
-			for _, e := range ents {
-				if !e.IsDir {
-					names = append(names, e.Name)
-				}
-			}
-			sort.Strings(names)
-			m.mu.Lock()
-			m.fsNames = names
-			m.mu.Unlock()
-		}
+
 	}()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -467,6 +458,37 @@ func (m *model) newSession() {
 
 		m.openSession(id)
 	}()
+}
+
+// loadDir 后台拉一个目录，成功后写缓存并重绘。
+//
+// **空 dir 不拉**：那会退化成"进程 cwd"，而这条链上我们要的一直是"这条会话的
+// 工作目录"，拿进程 cwd 冒充在多工作区下就是错的。
+func (m *model) loadDir(dir string) {
+	if dir == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ents, err := m.cli.WorkspaceList(ctx, dir)
+	m.mu.Lock()
+	if m.fsDirs == nil {
+		m.fsDirs = map[string][]pluginapi.FSEntry{}
+	}
+	if m.fsPending == nil {
+		m.fsPending = map[string]bool{}
+	}
+	delete(m.fsPending, dir)
+	if err == nil {
+		es := make([]pluginapi.FSEntry, 0, len(ents))
+		for _, e := range ents {
+			es = append(es, pluginapi.FSEntry{Name: e.Name, IsDir: e.IsDir})
+		}
+		sort.Slice(es, func(i, j int) bool { return es[i].Name < es[j].Name })
+		m.fsDirs[dir] = es
+	}
+	m.mu.Unlock()
+	m.inv.Invalidate() // 拉到了就重绘，插件下一帧才看得见
 }
 
 // saveScroll 记下某个会话当前的滚动偏移。
@@ -1671,10 +1693,25 @@ func main() {
 		// 工作区根目录（一层）+ 读文件。**都是同步的**：插件在 draw 里调，
 		// 让它等 HTTP 会阻塞首帧。所以列目录读缓存、读文件**由插件自己看情况调**
 		// （它知道自己在画什么，比壳更该决定要不要阻塞）。
-		FSList: func() []string {
+		FSList: func(dir string) []pluginapi.FSEntry {
 			m.mu.Lock()
-			names := m.fsNames
+			if m.fsDirs == nil {
+				m.fsDirs = map[string][]pluginapi.FSEntry{}
+			}
+			if m.fsPending == nil {
+				m.fsPending = map[string]bool{}
+			}
+			names, ok := m.fsDirs[dir]
+			pending := m.fsPending[dir]
+			if !ok && !pending {
+				m.fsPending[dir] = true
+			}
 			m.mu.Unlock()
+			// 没拉到过 → 后台拉一次，拉到后重绘（插件下一帧就能拿到）。
+			// **不在 draw 里等 HTTP**：那会让首帧卡住。
+			if !ok && !pending {
+				go m.loadDir(dir)
+			}
 			return names
 		},
 		FSRead: func(path string) (string, error) {

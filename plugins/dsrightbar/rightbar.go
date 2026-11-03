@@ -14,6 +14,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
@@ -25,10 +26,25 @@ import (
 // 并在顶上如实写出「更早的还有多少条」——截断必须让人看得见。
 const maxEntries = 80
 
+const shellColumnInset = 12
+
 // Plugin 实现 pluginapi.Plugin / Panels。
 type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
+	views viewapi.Store
+	// fullscreen 是右栏自己的 per-session mode；它不伪造壳的 ShowRightbar。
+	fullscreen map[string]bool
+	// viewData 在 main.body 的 chat 前后两个 painter 之间保存一帧原始快照。
+	// 这是公共 Actions 尚无 SelectConversationView 时的最小本地适配。
+	viewData   *pluginapi.Snapshot
+	viewScroll func(ui.ID) *flex.ScrollState
+	// turnOpen 记「哪一组 turn 被用户手动收/开过」。
+	//
+	// 只在本机内存里、按会话隔开：切回同一会话还是原样，进程重启就回到默认。
+	// 不写 ConfigSet 是刻意的——这条是**看的时候的临时视图状态**，不是配置，
+	// 写盘会让「我上次收起过」变成跨机器、跨安装的持久事实。
+	turnOpen map[string]bool
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -39,13 +55,20 @@ func (*Plugin) Provides() []string { return nil }
 
 // Requires 实现 pluginapi.Plugin。
 func (*Plugin) Requires() []string {
-	return []string{pluginapi.KeyTheme, pluginapi.KeyPrimitives}
+	return []string{pluginapi.KeyTheme, pluginapi.KeyPrimitives, viewapi.ServiceKey}
 }
 
 // Register 实现 pluginapi.Plugin。
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	p.views = ctx.Inject(viewapi.ServiceKey).(viewapi.Store)
+	if p.fullscreen == nil {
+		p.fullscreen = map[string]bool{}
+	}
+	if p.turnOpen == nil {
+		p.turnOpen = map[string]bool{}
+	}
 	return nil
 }
 
@@ -53,61 +76,335 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{ID: "timeline", Slot: pluginapi.SlotRightbar, Order: 10, Draw: p.draw},
+		{ID: "view-chat-gate", Slot: pluginapi.SlotMainBody, Order: 10, Draw: p.beginTrajectoryView},
+		{ID: "trajectory-view", Slot: pluginapi.SlotMainBody, Order: 30, Draw: p.drawTrajectoryView},
 	}
 }
 
-// draw 画整条右栏：标题 + 分隔线 + 时间线（可滚）。
+// draw 画整条右栏：PanelChrome + 分隔线 + 时间线（可滚）。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
-	calls := toolCalls(env.Data.Msgs)
-	hidden := 0
-	if len(calls) > maxEntries {
-		hidden = len(calls) - maxEntries
-		calls = calls[len(calls)-maxEntries:]
+	full := p.fullscreen[env.Data.Cur]
+	root := f.Column().WidthPercent(100).FillHeight()
+	if full {
+		h := env.Bounds.Height - env.Geometry.BottomHeight
+		if h <= 0 {
+			h = env.Bounds.Height
+		}
+		// 官方 fullscreen 是 100vw、锚定右缘。相对本槽内容轨道回退壳的 12px inset，
+		// 不读取或修改 cmd/app，也不猜全局窗口坐标。
+		root = f.Column().Absolute().Top(-shellColumnInset).Right(-shellColumnInset).
+			Width(env.Bounds.Width).Height(h).Background(t.BgBase).Clip().Pad(shellColumnInset).
+			Hit(env.Tree.ID(env.Feat, "rightbar-fullscreen"), "右栏全屏面板")
+	}
+	root.Children(func() {
+		p.drawTimeline(f, env, env.Data, "rightbar-scroll-", true)
+	})
+}
+
+// drawTimeline 同时服务右栏与主区 trajectory；两种容器共享同一组真实工具消息。
+func (p *Plugin) drawTimeline(f *flex.Frame, env *pluginapi.Env, data pluginapi.Snapshot, scrollKey string, chrome bool) {
+	t := p.theme
+	groups := groupTurns(data.Msgs)
+	total := 0
+	for i := range groups {
+		total += len(groups[i].calls)
+	}
+	shown, hidden := clipGroups(groups, maxEntries)
+
+	f.Row().WidthPercent(100).MinHeight(28).Items(flex.Center).Gap(6).Children(func() {
+		f.Text("轨迹").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
+		f.Spacer()
+		if total > 0 {
+			f.Text(itoa(total) + " 次").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		}
+		if chrome {
+			p.drawFullscreenButton(f, env)
+			if env.Act.ToggleRightbar != nil {
+				collapse := p.chromeButton(f, env, "collapse-rightbar", "收起右侧边栏", rightbarCollapseIcon)
+				if collapse.Clicked() {
+					env.Act.ToggleRightbar()
+				}
+			}
+		}
+	})
+	p.prims.Divider(f)
+
+	if total == 0 {
+		msg := "本会话还没有工具调用"
+		if data.Cur == "" {
+			msg = "先选一个会话"
+		}
+		f.Column().WidthPercent(100).Grow(1).Justify(flex.Center).Items(flex.Center).PadX(12).Children(func() {
+			f.Text(msg).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
+				Color(t.LabelTertiary).TextCenter()
+		})
+		return
 	}
 
-	// 壳的右栏轨道已有 12px inset；本层只负责内容轨道。
-	// 空态再补 12px，合计官方 guide 的 24px；标题/时间线直接使用壳的 12px。
-	f.Column().WidthPercent(100).FillHeight().Children(func() {
-		// ── 标题：轨迹 + 条数 ──
-		f.Row().WidthPercent(100).Items(flex.Center).Gap(6).Children(func() {
-			f.Text("轨迹").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
-			f.Spacer()
-			if n := hidden + len(calls); n > 0 {
-				f.Text(itoa(n) + " 次").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+	scrID := env.Tree.ID(env.Feat, scrollKey+data.Cur)
+	f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip().Children(func() {
+		f.Column().WidthPercent(100).Gap(2).Children(func() {
+			if hidden > 0 {
+				f.Text("… 更早的 " + itoa(hidden) + " 次未显示").
+					FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
 			}
-		})
-		p.prims.Divider(f)
-
-		// ── 空态：官方 guide 在可用 body 内居中，padding 0 24px，secondary/tertiary ──
-		if len(calls) == 0 {
-			msg := "本会话还没有工具调用"
-			if env.Data.Cur == "" {
-				msg = "先选一个会话"
+			for i := range shown {
+				p.drawTurnGroup(f, env, data.Cur, scrollKey, shown[i], i == len(shown)-1)
 			}
-			f.Column().WidthPercent(100).Grow(1).Justify(flex.Center).Items(flex.Center).PadX(12).Children(func() {
-				f.Text(msg).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
-					Color(t.LabelTertiary).TextCenter()
-			})
-			return
-		}
-
-		// ── 时间线本体 ──
-		// 宽度一律用百分比：槽位里 f.Bounds() 拿到的是整窗宽，
-		// 按它算会把内容画到窗口外面去。
-		scrID := env.Tree.ID(env.Feat, "rightbar-scroll")
-		f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip().Children(func() {
-			f.Column().WidthPercent(100).Gap(2).Children(func() {
-				if hidden > 0 {
-					f.Text("… 更早的 " + itoa(hidden) + " 次未显示").
-						FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
-				}
-				for i := range calls {
-					p.drawEntry(f, calls[i], i == len(calls)-1)
-				}
-			})
 		})
 	})
+}
+
+// drawTurnGroup 画一组 turn：可点的组头 + （展开时）这一组的工具条目。
+//
+// 折叠只影响**这一帧画不画条目**，不改 Snapshot、不改消息：收起时数据仍在，
+// 只是没铺开。组头永远带条数，所以收起也不会让人以为"这次只有下面这些"。
+func (p *Plugin) drawTurnGroup(f *flex.Frame, env *pluginapi.Env, session, scope string, g turnGroup, last bool) {
+	t := p.theme
+	open := p.groupOpen(session, g.key, last)
+	title := "第 " + itoa(g.turn) + " 轮 · " + itoa(len(g.calls)) + " 次工具"
+
+	header := f.Row().WidthPercent(100).MinHeight(24).Radius(t.Radii.SM).PadX(2).
+		Items(flex.Center).Gap(6).HoverBackground(t.Hover).
+		// 标签就是看得见的那行字：读屏和 -keys/无头点击都按它找，
+		// 不另起一个用户看不见的名字。
+		Hit(env.Tree.ID(env.Feat, scope+"turn-"+g.key), title).Children(func() {
+		arrow := "▸"
+		if open {
+			arrow = "▾"
+		}
+		f.Text(arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
+		f.Text(title).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis().Grow(1)
+	})
+	if header.Clicked() {
+		p.toggleGroup(session, g.key, last)
+	}
+	if !open {
+		return
+	}
+	if g.skip > 0 {
+		f.Text("… 前 " + itoa(g.skip) + " 次未显示").FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
+	}
+	for i := g.skip; i < len(g.calls); i++ {
+		p.drawEntry(f, g.calls[i], i == len(g.calls)-1)
+	}
+}
+
+// groupOpen 决定这一组现在是不是展开。
+//
+// 默认**只展开最后一组**（正在发生的那一轮），更早的收成一行组头——这正是
+// 分组要解决的问题：一长串历史工具调用不该把当前这一轮挤到看不见的地方。
+// 用户点过之后以他点的为准（同一会话内一直有效）。
+func (p *Plugin) groupOpen(session, key string, last bool) bool {
+	if open, ok := p.turnOpen[session+"/"+key]; ok {
+		return open
+	}
+	return last
+}
+
+// toggleGroup 是"点了这一组的组头"：原来开就收，原来收就开。
+func (p *Plugin) toggleGroup(session, key string, last bool) {
+	if p.turnOpen == nil {
+		p.turnOpen = map[string]bool{}
+	}
+	p.turnOpen[session+"/"+key] = !p.groupOpen(session, key, last)
+}
+
+// turnGroup 是一次 turn 里的全部工具调用。
+type turnGroup struct {
+	// key 是这一组的身份，拿来做折叠状态的下标；同一个会话里稳定。
+	key string
+	// turn 是这一组在**当前这份消息列表**里的序号（1 起）。
+	//
+	// 为什么用视图内的序号而不是宿主的 turn 数值：session.load 的消息投影里
+	// 没有 turnId/turn（只有 WS 流式帧有），而首屏看到的绝大多数条目都来自 load。
+	// 按用户消息切出来的序号两边都成立，宿主数值只在流式帧里出现、基数（0 还是 1）
+	// 没有契约保证——拿它直接当"第 N 轮"就是在编。
+	turn int
+	// hostKey 是宿主真的给了的 turn 身份（Turn 优先、TurnID 次之）；空 = 没给。
+	hostKey string
+	calls   []apiclient.Message
+	// skip 是组内被 maxEntries 砍掉的前段条数（条目数上限是全局的，
+	// 一组自己就超过上限时只能组内切，切了就要说出来）。
+	skip int
+}
+
+// groupTurns 把消息按 turn 切开。
+//
+// 切法三层，优先级从硬到软：
+//
+//  1. **用户消息**是 turn 的真实边界（宿主数据里一轮一定从 user 开始），
+//     它同时给出界面上的"第 N 轮"序号——这是 load 投影里唯一稳定的轮次信息。
+//  2. 宿主在流式帧里给了 turn（`Turn` 数值优先，`TurnID` 次之）时用它做**切分**
+//     的依据：同一轮里 turn 变了就另起一组，turn 没变就并进去。
+//  3. 两者都没有（load 投影、旧数据）就只能靠 1，也就是"两条用户消息之间算一轮"。
+func groupTurns(msgs []apiclient.Message) []turnGroup {
+	groups := make([]turnGroup, 0, len(msgs)/4)
+	users, split, cur := 0, 0, -1
+	for i := range msgs {
+		m := msgs[i]
+		if m.Role == "user" {
+			users++
+			split = 0
+			cur = -1
+			continue
+		}
+		if m.Role != "tool" {
+			continue
+		}
+		host := messageTurnKey(m)
+		if cur >= 0 && host != "" && groups[cur].hostKey != "" && groups[cur].hostKey != host {
+			// 没有新的用户消息，但宿主说这是另一轮（load 窗口从某轮中间开始时
+			// 会出现）：照样切开，序号在同一条用户消息下加一位后缀。
+			split++
+			cur = -1
+		}
+		if cur < 0 {
+			g := turnGroup{key: "u" + itoa(users) + ":" + itoa(split), hostKey: host, turn: len(groups) + 1}
+			groups = append(groups, g)
+			cur = len(groups) - 1
+		}
+		groups[cur].calls = append(groups[cur].calls, m)
+	}
+	return groups
+}
+
+// messageTurnKey 取宿主给这一条的工具轮次身份；空串 = 宿主没给，不许自己编。
+func messageTurnKey(m apiclient.Message) string {
+	if m.Turn != nil {
+		return "n" + itoa(int(*m.Turn))
+	}
+	if m.TurnID != "" {
+		return "id:" + m.TurnID
+	}
+	return ""
+}
+
+// clipGroups 把要画的条数压到 max 以内，返回留下的组和"更早的还有多少条"。
+//
+// 从最早的一整组开始丢，而不是把第一组切一半：组头的「K 次工具」讲的是这一轮
+// 一共有几次，切一半就会报一个比真实值小的数（和 "更早的 N 次未显示" 重复计数）。
+// 只有最后一组自己就超过上限时才组内切，切了多少记在 skip 里、在展开时写明。
+func clipGroups(groups []turnGroup, max int) ([]turnGroup, int) {
+	total := 0
+	for i := range groups {
+		total += len(groups[i].calls)
+	}
+	if total <= max {
+		return groups, 0
+	}
+	cut, i := 0, 0
+	for i < len(groups)-1 && total-cut > max {
+		cut += len(groups[i].calls)
+		i++
+	}
+	kept := append([]turnGroup(nil), groups[i:]...)
+	if len(kept) == 1 {
+		if n := len(kept[0].calls) - kept[0].skip; n > max {
+			kept[0].skip += n - max
+		}
+	}
+	shown := 0
+	for i := range kept {
+		shown += len(kept[i].calls) - kept[i].skip
+	}
+	return kept, total - shown
+}
+
+func (p *Plugin) drawFullscreenButton(f *flex.Frame, env *pluginapi.Env) {
+	full := p.fullscreen[env.Data.Cur]
+	label, icon := "右栏全屏", rightbarFullscreenIcon
+	if full {
+		label, icon = "退出全屏", rightbarRestoreIcon
+	}
+	button := p.chromeButton(f, env, "fullscreen-rightbar", label, icon)
+	if button.Clicked() {
+		if p.fullscreen == nil {
+			p.fullscreen = map[string]bool{}
+		}
+		p.fullscreen[env.Data.Cur] = !full
+	}
+}
+
+func (p *Plugin) chromeButton(f *flex.Frame, env *pluginapi.Env, name, label string, icon ui.Icon) flex.Box {
+	t := p.theme
+	return f.Row().Width(28).Height(28).Radius(t.Radii.SM).
+		Items(flex.Center).Justify(flex.Center).HoverBackground(t.Hover).
+		Hit(env.Tree.ID(env.Feat, name), label).Children(func() {
+		f.Icon(icon).Width(16).Height(16).Color(t.LabelSecondary)
+	})
+}
+
+// beginTrajectoryView 是 main.body 的 Order=10 适配器。公共 Snapshot/Actions 还没有
+// view 字段，因此只在 chat painter 执行期间把原始消息投到视口外，Order=30 立即恢复。
+// 这样 dsconversation 不生成 chat 文本/Markdown 槽位，也不会画空投影的“没有匹配”。
+// composer、rightbar、statusbar 和下一帧仍读原始快照；原消息切片从不被改写。
+func (p *Plugin) beginTrajectoryView(_ *flex.Frame, env *pluginapi.Env) {
+	p.viewData = nil
+	p.viewScroll = nil
+	if p.views == nil || p.views.Active(env.Data.Cur) != viewapi.Trajectory {
+		return
+	}
+	data := env.Data
+	p.viewData = &data
+	p.viewScroll = env.Scroll
+	if len(env.Data.Msgs) == 0 {
+		// 零值只用于通过 chat 的正常列表分支；下面的视口投影保证它不会被读取或实画。
+		env.Data.Msgs = []apiclient.Message{{}}
+	}
+	env.Data.Stream = ""
+	env.Data.Busy = true
+	env.Scroll = func(ui.ID) *flex.ScrollState {
+		return &flex.ScrollState{Offset: 1e9}
+	}
+}
+
+// drawTrajectoryView 是 main.body 的 Order=30 真实轨迹 painter。
+func (p *Plugin) drawTrajectoryView(f *flex.Frame, env *pluginapi.Env) {
+	if p.viewData == nil {
+		return
+	}
+	data := *p.viewData
+	p.viewData = nil
+	env.Data = data
+	env.Scroll = p.viewScroll
+	p.viewScroll = nil
+	f.Column().Absolute().Left(0).Top(0).WidthPercent(100).HeightPercent(100).
+		Background(p.theme.BgBase).Clip().
+		Hit(env.Tree.ID(env.Feat, "main-trajectory"), "主区轨迹").Children(func() {
+		p.drawTimeline(f, env, data, "main-trajectory-scroll-", false)
+	})
+}
+
+var rightbarCollapseIcon = ui.Icon{
+	ViewBox: 24, Stroke: 2, Cap: ui.CapRound, Join: ui.JoinRound,
+	Commands: []ui.PathCommand{
+		ui.MoveTo(5, 3), ui.LineTo(19, 3), ui.QuadTo(21, 3, 21, 5),
+		ui.LineTo(21, 19), ui.QuadTo(21, 21, 19, 21), ui.LineTo(5, 21),
+		ui.QuadTo(3, 21, 3, 19), ui.LineTo(3, 5), ui.QuadTo(3, 3, 5, 3), ui.ClosePath(),
+		ui.MoveTo(15, 3), ui.LineTo(15, 21),
+	},
+}
+
+var rightbarFullscreenIcon = ui.Icon{
+	ViewBox: 16, Stroke: 1, Cap: ui.CapRound, Join: ui.JoinRound,
+	Commands: []ui.PathCommand{
+		ui.MoveTo(6, 2), ui.LineTo(2, 2), ui.LineTo(2, 6),
+		ui.MoveTo(10, 2), ui.LineTo(14, 2), ui.LineTo(14, 6),
+		ui.MoveTo(6, 14), ui.LineTo(2, 14), ui.LineTo(2, 10),
+		ui.MoveTo(10, 14), ui.LineTo(14, 14), ui.LineTo(14, 10),
+	},
+}
+
+var rightbarRestoreIcon = ui.Icon{
+	ViewBox: 16, Stroke: 1, Cap: ui.CapRound, Join: ui.JoinRound,
+	Commands: []ui.PathCommand{
+		ui.MoveTo(2, 6), ui.LineTo(6, 6), ui.LineTo(6, 2),
+		ui.MoveTo(14, 6), ui.LineTo(10, 6), ui.LineTo(10, 2),
+		ui.MoveTo(2, 10), ui.LineTo(6, 10), ui.LineTo(6, 14),
+		ui.MoveTo(14, 10), ui.LineTo(10, 10), ui.LineTo(10, 14),
+	},
 }
 
 // drawEntry 画时间线上的一条：左边「点 + 竖线」，右边两行文字。
@@ -142,17 +439,6 @@ func (p *Plugin) drawEntry(f *flex.Frame, msg apiclient.Message, last bool) {
 			}
 		})
 	})
-}
-
-// toolCalls 按顺序取出工具调用。
-func toolCalls(msgs []apiclient.Message) []apiclient.Message {
-	out := make([]apiclient.Message, 0, len(msgs)/3)
-	for i := range msgs {
-		if msgs[i].Role == "tool" {
-			out = append(out, msgs[i])
-		}
-	}
-	return out
 }
 
 // describe 决定一条的标题、摘要与「是不是失败」。

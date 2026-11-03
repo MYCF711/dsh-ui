@@ -103,7 +103,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 
 	// **必须 Absolute**：overlay 槽给的是一个"自由画"的区域，`FillWidth/FillHeight`
 	// 在里面不一定撑满（dsdemo 也是 Absolute + Top/Right）。
-	f.Column().Absolute().
+	f.Row().Absolute().
 		Left(200).Top(96).
 		Children(func() {
 			f.Column().Width(w).Radius(t.Radii.Panel).

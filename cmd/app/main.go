@@ -465,20 +465,29 @@ func (m *model) saveScroll(id string) {
 	m.mu.Unlock()
 }
 
-// applyPendingScroll 在某次布局之后把记住的偏移恢复回去（只做一次）。
-func (m *model) applyPendingScroll() {
+// applyPendingScroll 在首批消息完成布局后恢复滚动位置，并报告是否必须补一帧。
+//
+// Follow 到布局末尾才把 Offset 移到尾部，而消息虚拟化在声明时读的是旧 Offset。
+// 空消息 Hero 帧不能消费 pendingScroll；否则首载只有尾部占位，没有下一帧实画。
+func (m *model) applyPendingScroll() bool {
 	m.mu.Lock()
 	id := m.pendingScroll
-	m.pendingScroll = ""
-	off, ok := m.scrollPos[id]
-	m.mu.Unlock()
-	if !ok {
-		return
+	if id == "" || id != m.cur || len(m.msgs) == 0 {
+		m.mu.Unlock()
+		return false
 	}
+	off, restore := m.scrollPos[id]
+	m.pendingScroll = ""
+	m.mu.Unlock()
+
 	st := m.view.ScrollState(tree.ID(home, "msgs-"+id))
-	if st != nil {
+	if st == nil {
+		return false
+	}
+	if restore {
 		st.ScrollTo(off)
 	}
+	return true
 }
 
 // subscribe 给**每个会话**建一条独立订阅（H14：一个会话一条 WS 连接）。
@@ -1190,7 +1199,10 @@ func newConfig(m *model) app.Config {
 
 		// 布局已定：先恢复待恢复的滚动位置，再跑插件的 AfterDraw
 		// （插件负责 Markdown 这类"先布局后覆画"的东西，壳不再画内容）。
-		m.applyPendingScroll()
+		// 第一批消息的高度/尾部 Offset 刚确定，必须再绘一帧让虚拟化实画尾部。
+		if m.applyPendingScroll() {
+			m.inv.Invalidate()
+		}
 		for _, painter := range m.kernel.AllPainters() {
 			if painter.AfterDraw != nil {
 				painter.AfterDraw(canvas, env)
@@ -1221,6 +1233,10 @@ func newConfig(m *model) app.Config {
 			return ui.EventResult{}
 		}
 		if m.kernel.HandleKey(ev) {
+			// **必须显式 Invalidate**：viva 的 EventResult.Repaint 不足以让
+			// shell.overlay 里的画重新执行。实测：F1 把插件状态切成 shown=true，
+			// 但之后一帧都没再画，面板永远不出现（key 16 handled=true 却看不见东西）。
+			m.inv.Invalidate()
 			return ui.EventResult{Handled: true, Repaint: true}
 		}
 		return ui.EventResult{}

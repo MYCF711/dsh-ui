@@ -64,3 +64,19 @@ tmp/diag*.png
 tmp/rect-probe*
 tmp/final-bubble*.png
 tmp/mockd-f*.log
+
+# 临时实验产物（截图/日志/home/探针）：明确加入白名单才进仓库。
+# 早先只忽略了 *.exe/*.log，于是 200+ 个 png/目录一直挂在 git status 里，
+# 每次看工作区状态都要自己过滤——真正该看的那三行容易被淹。
+tmp/*.png
+tmp/*.txt
+tmp/*.jsonl
+tmp/*.pid
+tmp/*.out
+tmp/*.html
+tmp/*.bak
+tmp/*/
+tmp/__pycache__/
+# 注：**已跟踪**的文件不受这些规则影响（git 只忽略未跟踪的），
+# 所以历史上进了仓库的截图不需要在这里逐条列白名单——列了反而会把
+# 同名模式下的新文件一起放出来。

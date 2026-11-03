@@ -21,6 +21,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
@@ -508,7 +509,12 @@ func newConfig(m *model) app.Config {
 				// 头部 / 消息流 / 输入区各占一个槽；槽空着就整块不出现。
 				// 宽度要钉死：插件里用百分比定宽时，父级宽度必须是确定的，
 				// 否则 % 会按整窗解析，内容被推到窗口外（踩过：气泡跑到右上角）。
+				// 右栏只在有插件挂上来时才占位置（官方也是可以收起的）。
+				const rightbarW = 300.0
 				mainW := bounds.Width - m.side.Width()
+				if m.kernel.Has(pluginapi.SlotRightbar) {
+					mainW -= rightbarW
+				}
 				if mainW < 320 {
 					mainW = 320
 				}
@@ -530,6 +536,13 @@ func newConfig(m *model) app.Config {
 					}
 				})
 
+
+				if m.kernel.Has(pluginapi.SlotRightbar) {
+					f.Column().Width(rightbarW).FillHeight().Pad(12).Gap(8).
+						Background(m.theme.SidebarFill).Children(func() {
+						drawSlot(f, m.kernel, pluginapi.SlotRightbar, env)
+					})
+				}
 			})
 
 			// 底部状态栏分两步：先用一个 24px 的空行把位置占住（让主体和侧栏都提前让开），
@@ -593,6 +606,7 @@ func main() {
 		&dscomposer.Plugin{},       // 输入区
 		&dsstatusbar.Plugin{},      // 底部状态栏
 		&dstopbar.Plugin{},         // 主区顶部条
+		&dsrightbar.Plugin{},       // 右栏工具轨迹
 	); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}

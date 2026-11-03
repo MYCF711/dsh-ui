@@ -73,7 +73,9 @@ def find_window(title, timeout=15.0):
                 return True
             buf = ctypes.create_unicode_buffer(n + 1)
             user32.GetWindowTextW(hwnd, buf, n + 1)
-            if needle in buf.value.lower():
+            # **精确**匹配标题：子串匹配会撞上标题里带同名工作区的别的窗口
+            # （实测把 DSH 主窗口当成我们的截了两次，白查半天渲染问题）。
+            if buf.value.strip().lower() == needle:
                 pid = wt.DWORD()
                 user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
                 hit.append((pid.value, hwnd))

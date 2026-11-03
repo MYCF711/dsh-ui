@@ -65,44 +65,28 @@ R1=$(curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.load" -d "{\"id\":\"$SID\
 echo "$R1" | grep -q "WORKDAY-1" && ok "第 1 轮回答到位" || bad "第 1 轮没答"
 
 step "第 2 轮：工具调用 + 审批(ask)"
-# prompt 走文件：Git Bash 会把中文 argv 按 CP936 传给原生 curl.exe，
-# 落进会话就成乱码（实测模型自己都说 "The message is mojibake encoded"）。
-python -c "import json,sys; open(sys.argv[1],'w',encoding='utf-8').write(json.dumps({'id':sys.argv[2],'text':'用 bash 工具执行 ls -la，然后告诉我输出一共有多少行。不运行就无法知道答案，必须调用工具。'}))" "$OUT/p2.json" "$SID"
-curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.prompt" --data-binary @"$OUT/p2.json" >/dev/null
-# **重要约束**：审批请求是走 WS 推给客户端的，而本脚本只用 curl 发 prompt——
-# 没有 WS 订阅者，`approval/request` 就没人收，宿主等 120 秒后**默认拒绝**
-# （会话里会留下 `Error: 用户拒绝了 bash 提示`）。所以 curl 场景下这一轮
-# 要么 SKIP、要么只能验"超时会被拒"这件事本身。要真验审批得让界面（WS 客户端）
-# 在场并有人（或脚本）按下允许 —— 那条路已在 tmp/h13-allow2.png 等证据里验过。
-#
-# 等两件事：①模型真的调了工具（会话里出现 role=tool）②宿主写下了审批请求。
-# 早先只等 requestId，20 秒没等到就 SKIP——实际是模型先思考几秒才调工具，
-# 而日志要等工具调用发生后才写。现在先等 tool 消息，再取 requestId。
+# 这一轮**必须由界面发**：审批是走 WS 推给客户端的，只有界面在场才收得到
+# approval/request；用 curl 发的话没人收帧，宿主 120 秒后默认拒绝（实测过）。
+"$APP" -addr "$URL" -cookie "dshd_session=$CK" -session "$SID"   -smoke -prompt "用 bash 工具执行 echo WORKDAY-TOOL，把输出告诉我"   -shot "$OUT/ui-tool.png" -shot-wait 110 > "$OUT/app2.log" 2>&1 &
+APP2=$!
 RID=""
-# 实测：从 prompt 到工具调用要 60–90 秒（模型要先想），所以等 150 秒不是奢侈。
-for _ in $(seq 1 150); do
-  HAS_TOOL=$(curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.load"     -d "{\"id\":\"$SID\",\"tailMessages\":6}" 2>/dev/null | grep -c '"role":"tool"')
-  if [ "${HAS_TOOL:-0}" -gt 0 ]; then
-    RID=$(grep -o '"requestId":"perm-[^"]*"' "$OUT/serve.log" 2>/dev/null | tail -1 | cut -d'"' -f4)
-    [ -n "$RID" ] && break
-  fi
+for _ in $(seq 1 120); do
+  RID=$(grep -o 'requestId=perm-[a-z0-9-]*' "$OUT/app2.log" 2>/dev/null | tail -1 | cut -d= -f2)
+  [ -n "$RID" ] && break
   sleep 1
 done
-# 诊断：等不到时把现场打出来，免得下次又是一句没头没尾的 SKIP
-if [ -z "$RID" ]; then
-  echo "  DIAG serve.log 行数=$(wc -l < "$OUT/serve.log" 2>/dev/null)"
-  echo "  DIAG 审批标记=$(grep -c '@@APPROVAL@@' "$OUT/serve.log" 2>/dev/null)"
-  echo "  DIAG 会话尾部=$(curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.load" -d "{\"id\":\"$SID\",\"tailMessages\":2}" 2>/dev/null | head -c 200)"
-fi
 if [ -n "$RID" ]; then
-  ok "收到审批请求 $RID"
+  ok "界面收到审批请求 $RID"
   AP=$(curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.approve" -d "{\"requestId\":\"$RID\",\"optionId\":\"allow_once\"}")
-  echo "$AP" | grep -q '"accepted":true' && ok "审批放行" || bad "审批回传失败: $AP"
-  sleep 10
-  curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.load" -d "{\"id\":\"$SID\",\"tailMessages\":4}" \
-    | grep -q "WORKDAY-TOOL" && ok "工具真的执行了" || bad "工具没执行"
+  echo "$AP" | grep -q '"accepted":true' && ok "审批回传被接受" || bad "审批回传失败: $AP"
+  wait "$APP2" 2>/dev/null
+  sleep 5
+  curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.load" -d "{\"id\":\"$SID\",\"tailMessages\":6}"     | grep -q "WORKDAY-TOOL" && ok "工具真的执行了（allow 生效）" || bad "工具没执行"
 else
-  echo "  SKIP  这轮模型没用工具（审批路径本轮走不到）"
+  echo "  DIAG 界面日志行数=$(wc -l < "$OUT/app2.log" 2>/dev/null)"
+  echo "  DIAG 界面日志尾部=$(tail -2 "$OUT/app2.log" 2>/dev/null | head -c 200)"
+  echo "  SKIP  界面没等到审批帧（模型可能没调工具，或耗时超过 110 秒）"
+  wait "$APP2" 2>/dev/null
 fi
 
 step "第 3 轮：取消"

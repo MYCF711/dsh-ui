@@ -23,6 +23,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/MYCF711/dsh-ui/plugins/dsdemo"
 	"github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
@@ -683,6 +684,7 @@ func main() {
 		&dstopbar.Plugin{},    // 主区顶部条
 		&dsrightbar.Plugin{},  // 右栏工具轨迹
 		&hello.Plugin{},       // L5 第三方插件样例（仓库外，走公开契约包）
+		&dsdemo.Plugin{},      // 最小插件样例（plugins/dsdemo，挂 shell.overlay）
 	); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}

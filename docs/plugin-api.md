@@ -303,3 +303,35 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 样例在 `../dsh-ui-plugins/hello/`（独立 module，`replace` 到本仓），
 2026-11-03 实测：装配日志 `[ds-core ds-shell … hello.counter]`，左栏底部多一行
 「第三方插件：hello.counter 已接上」。
+
+## 12. 写一个第三方插件（10 分钟）
+
+> 完整说明在 **`plugins/dsdemo/README.md`**（含骨架代码、槽位表、服务键、三条坑、验收命令）。
+> 这一节只讲"为什么它算证据"。
+
+`plugins/dsdemo/` 是一个**最小但完整**的插件：`ds-demo`，`Requires(ui.theme, ui.primitives)`，
+挂 `SlotShellOverlay`，右上角一个小浮层，`F12` 收起（实现 `KeyHandler`）。
+
+它证明的是三件事，缺一条都不成立：
+
+1. **不碰壳**：`cmd/app` 里只多了一行 `&dsdemo.Plugin{},`（加 import），没有第二个改动。
+2. **不碰内核**：`internal/uikernel` 与 `internal/pluginapi` 一行没动；它只 import 公开的
+   `pluginapi` 和 viva。
+3. **只靠声明就出现**：`Panels()` 里写 `Slot` + `Order` + `Draw`，装配器就把它画在那块位置上。
+
+内嵌（`plugins/dsdemo`）和仓库外（`../dsh-ui-plugins/hello`，独立 module + `replace`）
+两种接法**走的是同一条装配路径**——这就是「一切皆插件」在界面线上的落地形态：
+不需要改壳、不需要注册表、不需要在别处声明"我存在"。
+
+验收（无头，不弹窗）：
+
+```bash
+CGO_ENABLED=0 go build ./... && CGO_ENABLED=0 go vet ./plugins/dsdemo/
+./tmp/app.exe -addr http://127.0.0.1:7788 -shot /tmp/demo.png   # 看右上角浮层
+```
+
+装配日志应出现：
+
+```
+INFO 插件已装配 id=ds-demo provides=[] requires="[ui.theme ui.primitives]"
+```

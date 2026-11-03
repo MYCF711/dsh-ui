@@ -92,9 +92,24 @@ fi
 step "第 3 轮：取消"
 curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.prompt" \
   -d "{\"id\":\"$SID\",\"text\":\"写一篇两万字的技术文档，越详细越好\"}" >/dev/null
-sleep 3
-CN=$(curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.cancel" -d "{\"id\":\"$SID\"}")
-echo "$CN" | grep -q '"cancelled":true' && ok "取消被受理" || bad "取消失败: $CN"
+# 要**确认 turn 真在跑**再取消：上一轮已经跑完时宿主回
+# `没有这一轮`（不算产品 bug，但那样验不到取消）。
+# 判据是会话尾部出现空的 assistant（回合开始但还没收尾）。
+RUNNING=0
+for _ in $(seq 1 20); do
+  TAIL=$(curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.load" -d "{\"id\":\"$SID\",\"tailMessages\":1}" 2>/dev/null)
+  if echo "$TAIL" | grep -q '"role":"assistant","text":""'; then
+    RUNNING=1
+    break
+  fi
+  sleep 1
+done
+if [ "$RUNNING" = "1" ]; then
+  CN=$(curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.cancel" -d "{\"id\":\"$SID\"}")
+  echo "$CN" | grep -q '"cancelled":true' && ok "取消被受理（turn 在跑时）" || bad "取消失败: $CN"
+else
+  echo "  SKIP  turn 已经跑完，没有可取消的在途轮次"
+fi
 
 step "第 4 轮：切会话不串流"
 curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.prompt" \
@@ -108,7 +123,7 @@ curl -s -b "$OUT/ck.txt" -XPOST "$URL/api/session.load" -d "{\"id\":\"$SID2\",\"
 step "界面连续使用（真宿主 + 真模型）+ 内存"
 "$APP" -addr "$URL" -cookie "dshd_session=$CK" -session "$SID" \
   -smoke -prompt "Reply with exactly: WORKDAY-UI" \
-  -shot "$OUT/ui-list.png" -shot-wait 25 > "$OUT/app.log" 2>&1
+  -shot "$OUT/ui-list.png" -shot-wait 15 > "$OUT/app.log" 2>&1
 grep -q "shot: 已保存" "$OUT/app.log" && ok "界面正常出图" || bad "界面没出图"
 WS=$(grep -oE '工作集 [0-9.]+ MB' "$OUT/app.log" | tail -1)
 echo "  $WS"

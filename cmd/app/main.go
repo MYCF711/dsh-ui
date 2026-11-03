@@ -105,8 +105,8 @@ type model struct {
 	usage    apiclient.Usage
 	// showRightbar 是右栏开合（壳持有，插件只读）。
 	showRightbar bool
-	status   string
-	loading  bool
+	status       string
+	loading      bool
 }
 
 func (m *model) setStatus(s string) {
@@ -687,8 +687,8 @@ func main() {
 	shotPath = *shot
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
-		cache:     map[string]*cachedSession{},
-		mux:       apiclient.NewMux(*addr),
+		cache:        map[string]*cachedSession{},
+		mux:          apiclient.NewMux(*addr),
 		scrollPos:    map[string]float32{},
 		showRightbar: *rightbarOn,
 	}

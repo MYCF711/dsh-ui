@@ -229,7 +229,31 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 		w := width - 40
 		h := p.layoutMarkdown(env.Canvas, i, msg.Text, w)
 		p.slots = append(p.slots, mdSlot{idx: i, box: f.Slot().Height(h)})
+		p.drawActions(f, env, msg, i == len(env.Data.Msgs)-1)
 	}
+}
+
+// drawActions 画消息下面那排小操作。
+//
+// 为什么要有它：Ctrl+Shift+C / Ctrl+R 是看不见的快捷键，不给可见入口等于没做。
+// 只在"有正文的助手消息"下面画，而且是 Ghost 小按钮——它不该抢正文的注意力。
+func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, last bool) {
+	t := p.theme
+	if strings.TrimSpace(msg.Text) == "" {
+		return
+	}
+	text := msg.Text
+	f.Row().WidthPercent(100).Gap(2).Items(flex.Center).Children(func() {
+		if env.Act.Copy != nil && f.Button(env.Tree.ID(env.Feat, "copy-"+itoa(msg.Seq)), "复制").
+			Ghost().Small().Clicked() {
+			env.Act.Copy(text)
+		}
+		if last && env.Act.Retry != nil && f.Button(env.Tree.ID(env.Feat, "retry-"+itoa(msg.Seq)), "重试").
+			Ghost().Small().Clicked() {
+			env.Act.Retry()
+		}
+	})
+	_ = t
 }
 
 // drawThinking 画一条思考块：默认收起，点一下展开。
@@ -570,6 +594,9 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32) float32 {
 			l = 1
 		}
 		lines += l
+	}
+	if m.Role == "assistant" {
+		return float32(float64(lines)*lineH + gapPad + 26) // 多一排操作按钮
 	}
 	return float32(float64(lines)*lineH + gapPad)
 }

@@ -643,6 +643,21 @@ func parseKeys(seq string) []ui.Key {
 	return out
 }
 
+// itoaLocal 只给状态文字用（壳里没有别的地方需要它）。
+func itoaLocal(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var buf [12]byte
+	i := len(buf)
+	for n > 0 && i > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(buf[i:])
+}
+
 func main() {
 	addr := flag.String("addr", "http://127.0.0.1:7788", "Transport base URL")
 	limit := flag.Int("limit", 0, "只渲染最后 N 条消息（0 = 全部）；用于量视口虚拟化的收益")
@@ -693,7 +708,14 @@ func main() {
 		OpenSession: m.openSession,
 		NewSession:  m.newSession,
 		Send:        m.sendText,
-		Copy:        func(text string) { _ = app.SetClipboardText(text) },
+		Copy: func(text string) {
+			if err := app.SetClipboardText(text); err != nil {
+				m.setStatus("复制失败: " + err.Error())
+				return
+			}
+			m.setStatus("已复制 " + itoaLocal(len([]rune(text))) + " 字")
+		},
+		Notify: m.setStatus,
 		Retry:       m.retryLast,
 	}
 	log.Printf("插件 %v，主题 %s", m.kernel.Order(), m.theme.Name)

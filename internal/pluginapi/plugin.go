@@ -216,6 +216,9 @@ type Approval struct {
 type Actions struct {
 	OpenSession func(id string)
 	NewSession  func()
+	// Notify 让插件在状态栏说一句话（"已复制"这类反馈）。
+	// 插件不直接写状态栏：状态栏是另一个插件的地盘。
+	Notify func(msg string)
 	// Copy 把文本放进系统剪贴板（插件不 import app，剪贴板归壳管）。
 	Copy func(text string)
 	// Retry 重发上一条用户消息。

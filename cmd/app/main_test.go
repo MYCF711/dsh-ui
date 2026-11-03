@@ -283,3 +283,37 @@ func TestGeometryResizeSequence(t *testing.T) {
 }
 
 var _ = pluginapi.Approval{} // 保持 pluginapi 引用（审批结构参与上面的转换测试）
+
+// TestGeometryRightbarVanishesWhenNoRoom 钉住官方 computeColumns 的「整列消失」。
+//
+// 早先的实现（geomRightWidth）在中栏被压到 400 以下时，把右栏硬压到 300 硬塞：
+// 960 宽实测 280 + 389 + 291——中栏掉到官方下限以下，右栏也不到 300。
+// 官方是：available = viewport - sidebar - 400，available < 300 时右栏直接 0。
+func TestGeometryRightbarVanishesWhenNoRoom(t *testing.T) {
+	cases := []struct {
+		width float32
+		want  [3]float32 // sidebar / main / right
+		note  string
+	}{
+		{960, [3]float32{280, 680, 0}, "右栏放不下 → 整列消失（官方 680/0）"},
+		{1182, [3]float32{280, 400, 502}, "available=502，右栏偏好 531.9 被卡到 502"},
+		{1920, [3]float32{280, 776, 864}, "偏好 864 未超上限"},
+		{600, [3]float32{280, 320, 0}, "极窄：右栏消失，中栏恰好 320（600-280）"},
+	}
+	for _, c := range cases {
+		g := buildGeometry(c.width, 832, 280, true, false)
+		got := [3]float32{g.SidebarWidth, g.MainWidth, g.RightWidth}
+		if got != c.want {
+			t.Errorf("width=%.0f (%s): 得到 sidebar/main/right = %.0f/%.0f/%.0f，期望 %.0f/%.0f/%.0f",
+				c.width, c.note, got[0], got[1], got[2], c.want[0], c.want[1], c.want[2])
+		}
+		if c.width >= 320 && got[0]+got[1]+got[2] > c.width+0.5 {
+			t.Errorf("width=%.0f: 三列之和 %.1f 超过视口", c.width, got[0]+got[1]+got[2])
+		}
+	}
+	// 右栏关：右栏必须是 0，中栏吃满
+	g := buildGeometry(1182, 832, 280, false, false)
+	if g.RightWidth != 0 || g.MainWidth != 902 {
+		t.Fatalf("右栏关应是 280/902/0，得到 %.0f/%.0f/%.0f", g.SidebarWidth, g.MainWidth, g.RightWidth)
+	}
+}

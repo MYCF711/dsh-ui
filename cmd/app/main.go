@@ -329,6 +329,16 @@ func (m *model) refreshSession(id string, quiet bool) {
 		if r.JournalEpoch > 0 {
 			m.epochs[id] = r.JournalEpoch
 		}
+		// **load 已经把 content 给全了**，水位就该跳到宿主当前末尾。
+		// 不跳的话订阅会从 0 起重放整条 journal，把刚 load 出来的
+		// user/message、tool/result 再按"流式载荷"解析一遍并 merge 进消息列表——
+		// 实测症状是"共 7 条"而宿主只有 4 条，提示和工具结果各多画一遍。
+		if r.LastSeq > m.seqs[id] {
+			m.seqs[id] = r.LastSeq
+			if id == m.cur {
+				m.lastSeq = r.LastSeq
+			}
+		}
 		// permission 是**进程级**的审批策略（不是会话 mode），每次 load 都刷新。
 		m.permission = r.Permission
 		if demoTool && len(m.msgs) > 0 {
@@ -1214,10 +1224,30 @@ func geomRightWidth(total, sidebar float32, has bool) float32 {
 // width/height 是**客户区**尺寸（跟 pluginapi.Geometry 的语义一致），
 // 不是整窗：Viva 的 Paint 给的 size 已经是客户区，别再自己减标题栏。
 func buildGeometry(width, height, sidebar float32, hasRightbar, hasBottom bool) pluginapi.Geometry {
-	right := geomRightWidth(width, sidebar, hasRightbar)
+	// 照搬官方 computeColumns：**右栏放不下就整列消失**。
+	//
+	// 早先是 geomRightWidth：中栏被压到 400 以下就把右栏硬压到 300 硬塞。
+	// 结果是 960 宽时中栏掉到 389、右栏 291——正是官方明确不允许的状态
+	// （dsshell 一侧已按官方实画 0，这里不改就会让 Geometry 传出去的值
+	// 和实际画的列宽对不上：壳说右栏 300、dsshell 画 0）。
+	right := float32(0)
+	if hasRightbar {
+		if avail := width - sidebar - 400; avail >= 300 {
+			right = width * 0.45
+			if right > avail {
+				right = avail
+			}
+			if right > width*0.7 {
+				right = width * 0.7
+			}
+			if right < 300 {
+				right = 300
+			}
+		}
+	}
 	main := width - sidebar - right
-	if main < 320 {
-		main = 320
+	if main < 0 {
+		main = 0
 	}
 	return pluginapi.Geometry{
 		Width:        width,

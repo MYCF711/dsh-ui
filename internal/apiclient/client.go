@@ -327,6 +327,20 @@ func (c *Client) Create(ctx context.Context, cwd, mode, title string) (string, e
 	return r.SessionID, nil
 }
 
+// Cancel 是 session.cancel：打断这个会话正在跑的 turn。
+//
+// 返回 nil 表示宿主收下了；宿主若本来就没有 turn 在跑，也可能回 cancelled=true
+// （幂等），所以不要拿返回值当"确实打断了一个正在跑的东西"的证据。
+func (c *Client) Cancel(ctx context.Context, id string) error {
+	if id == "" {
+		return fmt.Errorf("cancel 需要会话 id")
+	}
+	var out struct {
+		Cancelled bool `json:"cancelled"`
+	}
+	return c.Call(ctx, "session.cancel", map[string]string{"id": id}, &out)
+}
+
 // Prompt 是 session.prompt。
 func (c *Client) Prompt(ctx context.Context, id, text string) (string, error) {
 	var r struct {

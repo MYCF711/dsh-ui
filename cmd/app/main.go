@@ -98,6 +98,8 @@ type model struct {
 	mux        *apiclient.Mux
 	subs       map[string]*muxSub
 	streamText string
+	// turnBusy：当前会话有 turn 在跑。发 prompt 置 true，流结束/取消/失败置 false。
+	turnBusy bool
 	// lastSeq 是**当前会话**已收到的最大 seq。per-session 的水位在 muxSub.lastSeq，
 	// 这里保留一份是为了"打开会话时给 since"和审批帧用，不要拿它当全局水位。
 	lastSeq int
@@ -420,18 +422,20 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 
 		for ev := range ch {
 			if ev.Kind == "gap" {
-				// 断号：**不整页刷新**。记下水位，跳出内层循环让外层带水位重订；
-				// 宿主从 lastSeq 之后继续推，缺的那段自然补齐。
+				// 断号：**只上报，不重连**。
+				//
+				// 以前这里是 break 出去重订，结果无限循环：重订用的水位还是旧的，
+				// 宿主从同一位置推同样的东西、客户端又报同样的 gap —— 实测日志 4 秒
+				// 内重连三次、永远收不到后面的内容。
+				//
+				// 正确做法就是契约里写的：断号是**补洞**的信号，补洞走
+				// session.history（只补缺失区间），跟重连是两件事。这里先如实记下来，
+				// 继续消费后续事件（readLoop 已经把水位推进到断号后的 seq）。
 				if ev.Gap != nil {
-					log.Printf("mux 断号 session:%s [%d,%d]，带水位重订（不整页刷新）",
+					log.Printf("mux 断号 session:%s [%d,%d]（待用 session.history 补洞；不整页刷新）",
 						id, ev.Gap.FromSeq, ev.Gap.ToSeq)
 				}
-				m.mu.Lock()
-				if sub := m.subs[id]; sub != nil {
-					since = sub.lastSeq
-				}
-				m.mu.Unlock()
-				break
+				continue
 			}
 			m.applyEvent(id, ev)
 			// 水位只在**前台**会话上前进：后台会话不消费事件（见 applyEvent），
@@ -467,6 +471,33 @@ func (m *model) lastSeqOfLocked(id string) int {
 // （`assistant/message` 带 `content` 块，思考块 type=reasoning），
 // 只读 delta 就等于整条流一个字都进不来。分类规则在 apiclient.Chunks 里，
 // 它认识 delta / text / content 块三种形状，并且**不翻译事件名**。
+// cancelTurn 打断当前会话正在跑的 turn。
+//
+// 失败要显示出来：用户点了停止却什么都没发生，比没有停止键更糟。
+func (m *model) cancelTurn() {
+	m.mu.Lock()
+	id := m.cur
+	m.mu.Unlock()
+	if id == "" {
+		m.setStatus("没有选中的会话，无法取消")
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		if err := m.cli.Cancel(ctx, id); err != nil {
+			log.Printf("cancel 失败 id=%s: %v", id, err)
+			m.setStatus("取消失败：" + err.Error())
+			return
+		}
+		log.Printf("cancel 已发送 id=%s", id)
+		m.mu.Lock()
+		m.turnBusy = false
+		m.mu.Unlock()
+		m.setStatus("已取消")
+	}()
+}
+
 // approve 走 H13 新接口：requestID 与 optionID 都由插件原样给出。
 //
 // 与 decide 的分工：decide 是"老接口+按 kind 找选项"，approve 是"插件已经选好了"。
@@ -632,6 +663,7 @@ func (m *model) applyEvent(id string, ev apiclient.Event) {
 		if m.stream.Done() {
 			m.streamText = ""
 			m.stream.Reset()
+			m.turnBusy = false
 		} else {
 			m.streamText = m.stream.Text()
 		}
@@ -708,6 +740,9 @@ func (m *model) sendText(text string) {
 			m.setStatus("发送失败: " + err.Error())
 			return
 		}
+		m.mu.Lock()
+		m.turnBusy = true // 从现在起"有 turn 在跑"，停止键/ Esc 才有意义
+		m.mu.Unlock()
 		m.setStatus("已发送 · turn " + turn)
 	}()
 }
@@ -852,6 +887,9 @@ func newConfig(m *model) app.Config {
 		}
 
 		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
+		m.mu.Lock()
+		busy := m.turnBusy
+		m.mu.Unlock()
 		approvalView := (*pluginapi.Approval)(nil)
 		if approval != nil {
 			// **九个字段一个都不能少**：早先只传了 Tool/Cmd/Reason，结果
@@ -899,6 +937,7 @@ func newConfig(m *model) app.Config {
 				Model:         modelName,
 				Permission:    permission,
 				Approval:      approvalView,
+				Busy:          busy,
 				ShowRightbar:  showRightbar,
 			},
 			Act:       m.actions,
@@ -1186,8 +1225,10 @@ func main() {
 		// 壳不再自己按 kind 猜——猜就等于替用户做了决定。
 		Approve: func(requestID, optionID string) { m.approve(requestID, optionID) },
 		// 旧接口保留：还没接 Approve 的插件走这里，按 kind 找选项。
-		Allow:    func() { m.decide("allow_once") },
-		Deny:     func() { m.decide("reject_once") },
+		Allow: func() { m.decide("allow_once") },
+		Deny:  func() { m.decide("reject_once") },
+		// 取消：用户点停止键时打断当前会话的 turn。
+		Cancel:   m.cancelTurn,
 		SetDraft: func(text string) { m.draft.SetText(text) },
 		Retry:    m.retryLast,
 	}

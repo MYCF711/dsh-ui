@@ -231,7 +231,12 @@ type Snapshot struct {
 	Status   string
 	Msgs     []apiclient.Message
 	Total    int
-	Stream   string
+	Stream string
+	// Busy 表示当前会话**有一个 turn 在跑**（已发 prompt、还没结束/取消/失败）。
+	//
+	// 为什么不能只看 Stream：只有思考（reasoning）没有正文时 Stream 是空的，
+	// 但 turn 照样在跑——那时按 Esc 应该能停（实测踩过：只判 Stream 就停不了）。
+	Busy bool
 	Approval *Approval
 	// Usage 是当前会话的 token 用量（壳从 session.load 拿到的合计）。
 	// Usage.Known() 为 false 时插件不许显示任何 token 数字。
@@ -363,7 +368,11 @@ type Actions struct {
 	Retry func()
 	// Send 把这段文字发出去。输入框由哪个插件画，文字就由哪个插件给——
 	// 壳不再持有草稿，所以不用 SetDraft 回灌。
-	Send     func(text string)
+	Send func(text string)
+	// Cancel 打断当前会话正在跑的 turn（H13 的 session.cancel）。
+	//
+	// nil = 壳没接；插件要自己判，别假设一定有。
+	Cancel   func()
 	SetDraft func(text string)
 
 	// Approve 回一次审批（H13 的 `session.approve`）。

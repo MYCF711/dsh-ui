@@ -89,6 +89,18 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			// 底部一行：左边留给以后的模型/权限 chip（宿主还没这几个字段），右边发送。
 			f.Row().WidthPercent(100).Items(flex.Center).Children(func() {
 				f.Spacer()
+				// 正在流式输出时，发送键变成**停止键**（■）：这时用户想要的是
+				// "别说了"，而不是再发一条（再发也会被宿主的 busy 挡回来）。
+				// 判据用 Data.Stream：工具执行期间它可能是空的（那时确实还能发，
+				// 但宿主会回 busy，界面上会显示错误——比假装能发更诚实）。
+				if env.Data.Stream != "" || env.Data.Busy {
+					if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "stop"), "■", true) {
+						if env.Act.Cancel != nil {
+							env.Act.Cancel()
+						}
+					}
+					return
+				}
 				if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "send"), "↑", true) {
 					p.submit(env)
 				}
@@ -125,6 +137,16 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		return false
 	}
 	if !approvalVisible(p.lastData) {
+		// 没有审批时 Esc 退而求其次 = **停止当前 turn**（官方也是这个直觉）。
+		// 不做这一条的话，无头环境里根本没法触发停止键——它是个按钮，
+		// 注入不了鼠标事件；而"能停"是产品级链路的必选项（宿主 §0.6）。
+		if ev.Key == ui.KeyEscape && p.lastAct.Cancel != nil {
+			// 不判 Stream/Busy：这两个字段在"只有思考流"或快照延迟时都不可靠
+			// （实测 turn 明明在跑，Busy 却还是 false）。宿主对没有 turn 在跑的
+			// cancel 是幂等的（回 cancelled=true），多按一次不会出错。
+			p.lastAct.Cancel()
+			return true
+		}
 		return false
 	}
 	plan := planApproval(p.lastData, p.lastAct.Approve != nil)

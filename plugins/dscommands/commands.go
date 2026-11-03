@@ -151,7 +151,10 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	cs := p.filtered()
 	w := float32(360)
 
-	f.Row().Absolute().Top(56).Right(24).MaxWidth(w).
+	// **必须用 Column 而不是 Row**：Row 会把所有子元素排成一行——我第一版
+	// 就是用 Row，结果面板只有一行高、下面几条全被压没了。Column 让高度由
+	// 内容 pref 决定（只给 Top/Right 时宽高就是内容 pref，见 dsshortcuts 注释）。
+	f.Column().Absolute().Top(56).Right(24).Width(w).
 		Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
 		PadSides(14, 14, 12, 14).Gap(4).Children(func() {
 		f.Text("命令").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)

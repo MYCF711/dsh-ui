@@ -104,6 +104,11 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		p.shown = !p.shown
 		p.query = nil
 		p.cursor = 0
+		// 借 Notify 的副作用请求重绘（宿主实现是 setStatus：写状态栏 + Invalidate）。
+		// pluginapi 目前没有显式的 repaint 动作，这是插件唯一能请求重绘的公开入口。
+		if p.shown && p.act.Notify != nil {
+			p.act.Notify("命令面板已打开 · F2 或 Esc 关闭")
+		}
 		return true
 	}
 	if !p.shown {

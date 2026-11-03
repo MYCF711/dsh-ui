@@ -1639,6 +1639,12 @@ func main() {
 			for _, name := range parseKeys(seq) {
 				ok := m.kernel.HandleKey(ui.KeyEvent{Key: name})
 				log.Printf("key %v handled=%v", name, ok)
+				// **注入路径必须自己重绘**：它直接调 kernel.HandleKey，绕过了
+				// cfg.OnKey 里那句 Invalidate。插件把 shown 切成 true 之后，
+				// 一帧都不会再画——日志 handled=true 而屏幕上什么都没有。
+				// 真按键盘时走 OnKey 那条路，本来就会重绘，所以这个坑只在
+				// 「无头注入 + 按键改状态」的组合下暴露。
+				m.inv.Invalidate()
 				time.Sleep(350 * time.Millisecond)
 			}
 			m.mu.Lock()

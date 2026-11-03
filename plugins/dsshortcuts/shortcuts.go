@@ -12,6 +12,8 @@
 package dsshortcuts
 
 import (
+	"sync"
+
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
@@ -41,7 +43,12 @@ var bindings = []Binding{
 type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
-	shown bool
+
+	// mu 保护 shown / notify：HandleKey 会从两个线程进来（窗口线程的 OnKey，
+	// 以及 cmd/app `-keys` 的注入 goroutine），而 notify 是在绘制线程的 draw 里写的。
+	mu     sync.Mutex
+	shown  bool
+	notify func(string)
 }
 
 func (*Plugin) ID() string { return "ds-shortcuts" }
@@ -64,7 +71,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
 		ID:    "shortcuts-sheet",
 		Slot:  pluginapi.SlotShellOverlay,
-		Order: 95, // 比 dsdemo 的提示条（90）高一档，两者可同时出现时不互相盖住
+		Order: 95, // 比 dsdemo 的提示条（Order 10）后画：两者同时出现时面板在上面
 		Draw:  p.draw,
 	}}
 }
@@ -75,38 +82,97 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // **返回 true 是有代价的**：事件不会再传给后面的插件。所以只在
 // ①按 F1（是我的键）②面板开着时按 Esc（先关面板）两种情况下吃掉。
 // 面板没开时按 Esc 必须放行——那是审批拒绝 / 取消 turn 的键，被我吞掉就出事了。
+//
+// 状态切换之后**必须请求一次重绘**：HandleKey 跑在绘制之外，改完 shown 之后
+// 没有任何一帧会自动发生。pluginapi 没有「请重绘」这个动作，插件手里唯一的
+// 公开入口是 Actions.Notify——它的宿主实现写状态栏 + Invalidate（cmd/app 的
+// setStatus）。少了这一步，`-keys f1` 的日志是 `key 16 handled=true`、
+// 屏幕上却什么都没有：上一轮「面板画不出来」卡的就是这里，不是 Absolute 布局
+// （布局在 overlay_test.go 里用真 kernel + 真 dsshell 验过）。
 func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 	switch ev.Key {
 	case ui.KeyF1:
+		p.mu.Lock()
 		p.shown = !p.shown
+		shown, notify := p.shown, p.notify
+		p.mu.Unlock()
+		if notify != nil {
+			if shown {
+				notify("键位表已打开 · F1 或 Esc 关闭")
+			} else {
+				notify("键位表已关闭")
+			}
+		}
 		return true
 	case ui.KeyEscape:
-		if p.shown {
-			p.shown = false
-			return true
+		p.mu.Lock()
+		shown, notify := p.shown, p.notify
+		p.shown = false
+		p.mu.Unlock()
+		if !shown {
+			return false
 		}
+		if notify != nil {
+			notify("键位表已关闭")
+		}
+		return true
 	}
 	return false
 }
 
+// 面板的几何。宽度是设计值，但要能在窄窗口里收窄；顶距是固定值——
+// 面板高度要等布局完才知道，而 viva 的 Absolute 只在「没有 edge 的轴」上
+// 按 Self/Items 对齐，给不了"垂直居中"。
+const (
+	sheetWidth    = 520
+	sheetMinWidth = 320
+	sheetMargin   = 80
+	sheetTop      = 96
+)
+
+// panelWidth 返回面板在给定窗口宽度下的宽度。
+func panelWidth(window float32) float32 {
+	w := float32(sheetWidth)
+	if window > 0 && w > window-2*sheetMargin {
+		w = window - 2*sheetMargin
+	}
+	if w < sheetMinWidth {
+		w = sheetMinWidth
+	}
+	return w
+}
+
 // draw 画一张居中卡片：标题 + 逐条键位。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+	// 记住「请求重绘」的入口，给 HandleKey 用（理由见 HandleKey 的注释）。
+	// 每帧都写：Actions 是壳每帧新建的，缓存一份旧的不如跟着帧走。
+	if env.Act.Notify != nil {
+		p.mu.Lock()
+		p.notify = env.Act.Notify
+		p.mu.Unlock()
+	}
 	if !p.shown {
 		return
 	}
 	t := p.theme
-	// **不依赖 env.Bounds**：overlay 槽里它不一定是整窗尺寸，算出来是 0 的话
-	// 整块面板就退化成 0 宽、等于没画（我第一次就是这么失败又找不到原因的）。
-	// 用固定尺寸 + 固定左边距，和 dsdemo 的 Absolute().Top/Right 是同一个思路。
-	w := float32(520)
+	// **必须 Absolute，并且必须显式 Width**：
+	//   - overlay 槽是"自由画"的区域，普通流式布局里它只是浮层行的一个孩子；
+	//   - 只给 Left/Top 的绝对盒子，宽度取自内容的 pref；内容若是 FillWidth，
+	//     Fill 又相对父盒子的宽度解析，于是父 0 → 子 0，整块退化成 0 宽（实测）。
+	//   - 给两条边（Left+Right）会拉伸到容器宽；这里要的是设计宽度，所以给 Width。
+	// 居中用的是 env.Bounds：overlay 槽的边界就是整窗（dsshell 用同一对数给
+	// 浮层行定宽高，dsdemo 的提示条也靠它贴在右上角）。
+	w := panelWidth(env.Bounds.Width)
+	left := (env.Bounds.Width - w) / 2
+	if left < 0 {
+		left = 0
+	}
 	rowH := float32(26)
-
-	// **必须 Absolute**：overlay 槽给的是一个"自由画"的区域，`FillWidth/FillHeight`
-	// 在里面不一定撑满（dsdemo 也是 Absolute + Top/Right）。
 	f.Row().Absolute().
-		Left(200).Top(96).
+		Left(left).Top(sheetTop).
+		Width(w).
 		Children(func() {
-			f.Column().Width(w).Radius(t.Radii.Panel).
+			f.Column().FillWidth().Radius(t.Radii.Panel).
 				Background(t.InputMajor).
 				Shadow(ui.ShadowXS).
 				PadSides(20, 20, 16, 20).Gap(10).Children(func() {

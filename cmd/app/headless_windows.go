@@ -23,7 +23,7 @@ import (
 var (
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 	user32   = syscall.NewLazyDLL("user32.dll")
-	gdi32  = syscall.NewLazyDLL("gdi32.dll")
+	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 
 	procEnumWindows        = user32.NewProc("EnumWindows")
 	procGetWindowThreadPID = user32.NewProc("GetWindowThreadProcessId")
@@ -43,9 +43,9 @@ var (
 	procDeleteDC               = gdi32.NewProc("DeleteDC")
 	procGetDIBits              = gdi32.NewProc("GetDIBits")
 
-	psapi                  = syscall.NewLazyDLL("psapi.dll")
-	procGetProcessMemory   = psapi.NewProc("GetProcessMemoryInfo")
-	procGetCurrentProcess  = kernel32.NewProc("GetCurrentProcess")
+	psapi                 = syscall.NewLazyDLL("psapi.dll")
+	procGetProcessMemory  = psapi.NewProc("GetProcessMemoryInfo")
+	procGetCurrentProcess = kernel32.NewProc("GetCurrentProcess")
 )
 
 type rect struct {
@@ -147,11 +147,11 @@ func readDIB(hdcMem, hbm uintptr, w, h int) image.Image {
 
 	buf := make([]byte, w*h*4)
 	bih := bitmapInfoHeader{
-		Size:      uint32(unsafe.Sizeof(bitmapInfoHeader{})),
-		Width:     int32(w),
-		Height:    int32(-h), // 负数 = 从上到下，省一次翻转
-		Planes:    1,
-		BitCount:  32,
+		Size:        uint32(unsafe.Sizeof(bitmapInfoHeader{})),
+		Width:       int32(w),
+		Height:      int32(-h), // 负数 = 从上到下，省一次翻转
+		Planes:      1,
+		BitCount:    32,
 		Compression: biRGB,
 	}
 	n, _, _ := procGetDIBits.Call(hdcMem, hbm, 0, uintptr(h),

@@ -20,12 +20,12 @@ type acpEvent struct {
 }
 
 var (
-	acp       *ACPClient
-	acpSess   string
+	acp        *ACPClient
+	acpSess    string
 	acpResumed = map[string]bool{} // 已经 resume 过的会话（避免每次 prompt 都 resume）
-	acpLive   chan acpEvent
-	acpCWD    string
-	acpPrompt bool
+	acpLive    chan acpEvent
+	acpCWD     string
+	acpPrompt  bool
 )
 
 // startACP 起 dshd 子进程并建一个会话。失败只打日志，mockd 继续用假数据服务。

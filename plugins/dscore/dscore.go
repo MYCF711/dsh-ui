@@ -21,7 +21,7 @@ import (
 // Plugin 实现 pluginapi.Plugin。
 type Plugin struct {
 	// Dark 选深色还是浅色（官方两套都在下面的表里）。
-	Dark bool
+	Dark  bool
 	theme *pluginapi.Theme
 }
 
@@ -208,17 +208,17 @@ func Light() *pluginapi.Theme {
 		ButtonPrimaryFill: ui.RGB24(staticNeutralBluish1000),
 		ButtonPrimaryFg:   ui.RGB24(staticNeutralBluish00),
 
-		CodeBlock:      ui.RGB24(staticNeutralBluish50),
-		CodeBanner:     ui.RGB24(staticNeutralBluish50),
-		InlineCode:     ui.RGB24(staticNeutralBluish50),
-		CodeComment:    ui.RGB24(0x6a9955),
-		CodeString:     ui.RGB24(0xa31515),
-		CodeNumber:     ui.RGB24(0x098658),
-		CodeKeyword:    ui.RGB24(0x0000ff),
-		CodeFunction:   ui.RGB24(0x795e26),
-		CodeVariable:   ui.RGB24(0x001080),
+		CodeBlock:    ui.RGB24(staticNeutralBluish50),
+		CodeBanner:   ui.RGB24(staticNeutralBluish50),
+		InlineCode:   ui.RGB24(staticNeutralBluish50),
+		CodeComment:  ui.RGB24(0x6a9955),
+		CodeString:   ui.RGB24(0xa31515),
+		CodeNumber:   ui.RGB24(0x098658),
+		CodeKeyword:  ui.RGB24(0x0000ff),
+		CodeFunction: ui.RGB24(0x795e26),
+		CodeVariable: ui.RGB24(0x001080),
 
-		Bubble:     ui.RGB24(staticDeepseek50),  // --dsw-specific-bubble
+		Bubble:     ui.RGB24(staticDeepseek50), // --dsw-specific-bubble
 		InputMajor: ui.RGB24(staticNeutralBluish00),
 
 		Scrollbar:      ui.RGB24(staticNeutral200),

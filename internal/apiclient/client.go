@@ -50,13 +50,13 @@ const (
 
 // ViewSpec 是工具结果的显示契约（对齐 DSH-GO internal/spi/tool.go:103）。
 type ViewSpec struct {
-	Kind    string       `json:"kind"`
-	Title   string       `json:"title,omitempty"`
-	Badge   string       `json:"badge,omitempty"`
-	Fields  []ViewField  `json:"fields,omitempty"`
-	Columns []string     `json:"columns,omitempty"`
-	Rows    [][]string   `json:"rows,omitempty"`
-	Body    string       `json:"body,omitempty"`
+	Kind    string      `json:"kind"`
+	Title   string      `json:"title,omitempty"`
+	Badge   string      `json:"badge,omitempty"`
+	Fields  []ViewField `json:"fields,omitempty"`
+	Columns []string    `json:"columns,omitempty"`
+	Rows    [][]string  `json:"rows,omitempty"`
+	Body    string      `json:"body,omitempty"`
 }
 
 // ViewField 是 card 的一行键值。

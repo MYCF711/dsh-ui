@@ -7,8 +7,9 @@
 // 它只认 `pluginapi.Env`：只读快照 + Action，没有锁、没有客户端、没有全局变量。
 //
 // 两个阶段（viva 的绘制顺序不受调用方控制，所以必须分开）：
-//   Draw      布局：算出每条消息的高度，把视口外的消息只留 Slot（不建文本纹理）
-//   AfterDraw 覆画：MarkdownView.Paint 必须等布局定下来才知道画在哪
+//
+//	Draw      布局：算出每条消息的高度，把视口外的消息只留 Slot（不建文本纹理）
+//	AfterDraw 覆画：MarkdownView.Paint 必须等布局定下来才知道画在哪
 package dsconversation
 
 import (
@@ -64,8 +65,8 @@ type Plugin struct {
 	// collapsedOnce 记录调试开关下被用户手动收起过的，避免压不住点击。
 	collapsedOnce map[int]bool
 	// lastAct / lastMsgs / lastApproval 是绘制期快照，按键时要用。
-	lastAct      pluginapi.Actions
-	lastMsgs     []apiclient.Message
+	lastAct  pluginapi.Actions
+	lastMsgs []apiclient.Message
 	// expanded 记录哪些思考块被展开（键是消息 seq，切会话后依然有效）。
 	// 缺省全收起：真实语料里思考比正文多八倍，默认展开会把消息流淹没。
 	expanded map[int]bool
@@ -396,7 +397,7 @@ func (p *Plugin) drawTable(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewS
 	f.Row().FillWidth().Gap(8).Children(func() {
 		for _, c := range v.Columns {
 			f.Text(c).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).
-				MaxWidth(cw/float32(len(v.Columns))).Ellipsis()
+				MaxWidth(cw / float32(len(v.Columns))).Ellipsis()
 		}
 	})
 	const maxRows = 8
@@ -409,7 +410,7 @@ func (p *Plugin) drawTable(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewS
 					cell = row[c]
 				}
 				f.Text(cell).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary).
-					MaxWidth(cw/float32(len(v.Columns))).Ellipsis()
+					MaxWidth(cw / float32(len(v.Columns))).Ellipsis()
 			}
 		})
 	}
@@ -435,7 +436,7 @@ func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 		})
 		f.Text(ap.Cmd).Mono().FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
 		if ap.Reason != "" {
-			f.Text("模型自述（不可信）："+ap.Reason).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			f.Text("模型自述（不可信）：" + ap.Reason).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		}
 		f.Row().Gap(8).Justify(flex.End).Children(func() {
 			if f.Button(env.Tree.ID(env.Feat, "deny"), "拒绝").Outline().Small().Clicked() {
@@ -632,7 +633,7 @@ func (p *Plugin) lastAssistant() string {
 }
 
 var (
-	_ pluginapi.Plugin = (*Plugin)(nil)
-	_ pluginapi.Panels = (*Plugin)(nil)
+	_ pluginapi.Plugin     = (*Plugin)(nil)
+	_ pluginapi.Panels     = (*Plugin)(nil)
 	_ pluginapi.KeyHandler = (*Plugin)(nil)
 )

@@ -29,7 +29,7 @@ type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
 
-	search  flex.Field
+	search flex.Field
 	// lastOrder / lastCur / act 是绘制期留下的快照，按键时要用：
 	// "下一个会话"是哪个只有分组和过滤之后才知道，壳不该替它算。
 	lastOrder []string
@@ -40,7 +40,7 @@ type Plugin struct {
 	CollapseAll bool
 	collapsed   map[string]bool
 	collapseAll bool
-	width     float32
+	width       float32
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -331,7 +331,7 @@ func (p *Plugin) moveTo(i int) bool {
 }
 
 var (
-	_ pluginapi.Plugin = (*Plugin)(nil)
-	_ pluginapi.Panels = (*Plugin)(nil)
+	_ pluginapi.Plugin     = (*Plugin)(nil)
+	_ pluginapi.Panels     = (*Plugin)(nil)
 	_ pluginapi.KeyHandler = (*Plugin)(nil)
 )

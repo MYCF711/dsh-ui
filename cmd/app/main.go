@@ -24,8 +24,8 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
-	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
+	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
@@ -37,14 +37,14 @@ var (
 	tree = ui.Tree{}
 	home = tree.Feature("home")
 
-	btnNew  = tree.ID(home, "new")
-	sideScr = tree.ID(home, "side")
-	msgScr  = tree.ID(home, "msgs")
-	draftID = tree.ID(home, "draft")
-	btnSend  = tree.ID(home, "send")
-	searchID = tree.ID(home, "search")
-	btnAllow = tree.ID(home, "allow")
-	btnDeny  = tree.ID(home, "deny")
+	btnNew    = tree.ID(home, "new")
+	sideScr   = tree.ID(home, "side")
+	msgScr    = tree.ID(home, "msgs")
+	draftID   = tree.ID(home, "draft")
+	btnSend   = tree.ID(home, "send")
+	searchID  = tree.ID(home, "search")
+	btnAllow  = tree.ID(home, "allow")
+	btnDeny   = tree.ID(home, "deny")
 	btnAlways = tree.ID(home, "always")
 )
 
@@ -61,11 +61,11 @@ type cachedSession struct {
 const cacheLimit = 5
 
 type model struct {
-	view   flex.View
-	draft  flex.Field
-	search flex.Field // 侧栏过滤（按标题 + cwd 匹配）
-	inv   app.Invalidator
-	cli   *apiclient.Client
+	view       flex.View
+	draft      flex.Field
+	search     flex.Field // 侧栏过滤（按标题 + cwd 匹配）
+	inv        app.Invalidator
+	cli        *apiclient.Client
 	cache      map[string]*cachedSession
 	smokeFired bool
 
@@ -443,14 +443,14 @@ const demoWideCode = "超宽代码块验证（这一行 129 个字符，卡片�
 	"上面那行应该能横向滚动，而不是被硬切。"
 
 var (
-	winTitle string
-	shotPath string
+	winTitle     string
+	shotPath     string
 	theme        ui.Theme // 由 dscore 的令牌算出来，启动时赋值（见 main）
-	renderLimit  int    // 0 = 不限制
-	forceSession string // 非空则启动后直接打开
-	tailCount    int    // session.load 的 tailMessages
-	demoTool     bool   // 在消息列表里插假的工具卡
-	smokeSend    bool   // 启动后自动发一条
+	renderLimit  int      // 0 = 不限制
+	forceSession string   // 非空则启动后直接打开
+	tailCount    int      // session.load 的 tailMessages
+	demoTool     bool     // 在消息列表里插假的工具卡
+	smokeSend    bool     // 启动后自动发一条
 )
 
 // drawSlot 把一个槽位上的插件按序画出来。
@@ -525,9 +525,9 @@ func newConfig(m *model) app.Config {
 				},
 				Approval: approvalView,
 			},
-			Act:    m.actions,
-			Tree:   &tree,
-			Feat:   home,
+			Act:       m.actions,
+			Tree:      &tree,
+			Feat:      home,
 			Canvas:    canvas,
 			Bounds:    bounds,
 			MainWidth: mainWidth,
@@ -540,61 +540,60 @@ func newConfig(m *model) app.Config {
 				// 主体用 Grow(1) 而不是 Fill：Fill 会把状态栏那 24px 挤成 0。
 				f.Row().FillWidth().Grow(1).Children(func() {
 
-				// ── 左栏：会话列表（插件 ds-sidebar 挂上来的）──
-				// 壳只给列宽和底色。分组、排序、折叠、点击行为全在 plugins/dssidebar 里，
-				// 这就是「一个部件一个插件」：换侧栏不用动壳。
-				f.Column().Width(m.side.Width()).FillHeight().Pad(12).Gap(8).
-					Background(m.theme.SidebarFill).Children(func() {
-					drawSlot(f, m.kernel, pluginapi.SlotSidebarHeader, env)
-					m.prims.Divider(f)
-					f.Column().Grow(1).MinHeight(120).Children(func() {
-						drawSlot(f, m.kernel, pluginapi.SlotSidebarList, env)
+					// ── 左栏：会话列表（插件 ds-sidebar 挂上来的）──
+					// 壳只给列宽和底色。分组、排序、折叠、点击行为全在 plugins/dssidebar 里，
+					// 这就是「一个部件一个插件」：换侧栏不用动壳。
+					f.Column().Width(m.side.Width()).FillHeight().Pad(12).Gap(8).
+						Background(m.theme.SidebarFill).Children(func() {
+						drawSlot(f, m.kernel, pluginapi.SlotSidebarHeader, env)
+						m.prims.Divider(f)
+						f.Column().Grow(1).MinHeight(120).Children(func() {
+							drawSlot(f, m.kernel, pluginapi.SlotSidebarList, env)
+						})
 					})
-				})
 
-				// ── 右栏：主区的每一块都是插件挂上来的 ──
-				// 头部 / 消息流 / 输入区各占一个槽；槽空着就整块不出现。
-				// 宽度要钉死：插件里用百分比定宽时，父级宽度必须是确定的，
-				// 否则 % 会按整窗解析，内容被推到窗口外（踩过：气泡跑到右上角）。
-				// 右栏只在有插件挂上来时才占位置（官方也是可以收起的）。
-				mainW := mainWidth
-				f.Column().Width(mainW).Grow(1).FillHeight().Pad(12).Gap(8).Children(func() {
-					drawSlot(f, m.kernel, pluginapi.SlotMainHeader, env)
-					drawSlot(f, m.kernel, pluginapi.SlotMainBody, env)
-					// 输入区：插件没到位时退回壳自带的那一行，保证随时能打字。
-					if m.kernel.Has(pluginapi.SlotMainComposer) {
-						drawSlot(f, m.kernel, pluginapi.SlotMainComposer, env)
-					} else {
-						f.Row().Gap(8).Items(flex.Center).Children(func() {
-							if f.Field(&m.draft, draftID, "输入", "说点什么…（Enter 发送）").Grow(1).Submitted() {
-								m.send()
-							}
-							if f.Button(btnSend, "发送").Clicked() {
-								m.send()
-							}
+					// ── 右栏：主区的每一块都是插件挂上来的 ──
+					// 头部 / 消息流 / 输入区各占一个槽；槽空着就整块不出现。
+					// 宽度要钉死：插件里用百分比定宽时，父级宽度必须是确定的，
+					// 否则 % 会按整窗解析，内容被推到窗口外（踩过：气泡跑到右上角）。
+					// 右栏只在有插件挂上来时才占位置（官方也是可以收起的）。
+					mainW := mainWidth
+					f.Column().Width(mainW).Grow(1).FillHeight().Pad(12).Gap(8).Children(func() {
+						drawSlot(f, m.kernel, pluginapi.SlotMainHeader, env)
+						drawSlot(f, m.kernel, pluginapi.SlotMainBody, env)
+						// 输入区：插件没到位时退回壳自带的那一行，保证随时能打字。
+						if m.kernel.Has(pluginapi.SlotMainComposer) {
+							drawSlot(f, m.kernel, pluginapi.SlotMainComposer, env)
+						} else {
+							f.Row().Gap(8).Items(flex.Center).Children(func() {
+								if f.Field(&m.draft, draftID, "输入", "说点什么…（Enter 发送）").Grow(1).Submitted() {
+									m.send()
+								}
+								if f.Button(btnSend, "发送").Clicked() {
+									m.send()
+								}
+							})
+						}
+					})
+
+					if hasRightbar {
+						f.Column().Width(rightbarW).FillHeight().Pad(12).Gap(8).
+							Background(m.theme.SidebarFill).Children(func() {
+							drawSlot(f, m.kernel, pluginapi.SlotRightbar, env)
 						})
 					}
 				})
 
-
-				if hasRightbar {
-					f.Column().Width(rightbarW).FillHeight().Pad(12).Gap(8).
-						Background(m.theme.SidebarFill).Children(func() {
-						drawSlot(f, m.kernel, pluginapi.SlotRightbar, env)
-					})
+				// 底部状态栏分两步：先用一个 24px 的空行把位置占住（让主体和侧栏都提前让开），
+				// 再把状态栏绝对定位钉在窗口底边画在上面。
+				// 只绝对定位不占位的话，主体和侧栏会一直画到窗口底边、被状态栏压住（踩过）。
+				if m.kernel.Has(pluginapi.SlotStatusbar) {
+					f.Row().FillWidth().Height(24)
+					f.Row().Absolute().Left(0).Bottom(0).Width(bounds.Width).Height(24).
+						Children(func() {
+							drawSlot(f, m.kernel, pluginapi.SlotStatusbar, env)
+						})
 				}
-			})
-
-			// 底部状态栏分两步：先用一个 24px 的空行把位置占住（让主体和侧栏都提前让开），
-			// 再把状态栏绝对定位钉在窗口底边画在上面。
-			// 只绝对定位不占位的话，主体和侧栏会一直画到窗口底边、被状态栏压住（踩过）。
-			if m.kernel.Has(pluginapi.SlotStatusbar) {
-				f.Row().FillWidth().Height(24)
-				f.Row().Absolute().Left(0).Bottom(0).Width(bounds.Width).Height(24).
-					Children(func() {
-						drawSlot(f, m.kernel, pluginapi.SlotStatusbar, env)
-					})
-			}
 			})
 		})
 
@@ -661,15 +660,15 @@ func main() {
 	forceSession = *sess
 	tailCount = *tail
 	smokeSend = *smoke
-	demoTool  = *demo
-	winTitle  = *title
-	shotPath  = *shot
+	demoTool = *demo
+	winTitle = *title
+	shotPath = *shot
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
-		cache:      map[string]*cachedSession{},
-		mux:        apiclient.NewMux(*addr),
-		scrollPos:  map[string]float32{},
-}
+		cache:     map[string]*cachedSession{},
+		mux:       apiclient.NewMux(*addr),
+		scrollPos: map[string]float32{},
+	}
 	m.refreshList()
 
 	// 装插件：先根本依赖（ds-core：设计令牌 + 基础组件），再依赖它的部件。
@@ -680,10 +679,10 @@ func main() {
 		&dscore.Plugin{Dark: true}, // 根本依赖插件：令牌 + 基础组件
 		m.side,                     // 左栏会话列表
 		&dsconversation.Plugin{ExpandAllThinking: *expandThink}, // 主区消息流 + 工具卡 + 审批
-		&dscomposer.Plugin{},       // 输入区
-		&dsstatusbar.Plugin{},      // 底部状态栏
-		&dstopbar.Plugin{},         // 主区顶部条
-		&dsrightbar.Plugin{},       // 右栏工具轨迹
+		&dscomposer.Plugin{},  // 输入区
+		&dsstatusbar.Plugin{}, // 底部状态栏
+		&dstopbar.Plugin{},    // 主区顶部条
+		&dsrightbar.Plugin{},  // 右栏工具轨迹
 	); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}

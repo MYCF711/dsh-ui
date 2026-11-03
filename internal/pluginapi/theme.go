@@ -51,15 +51,15 @@ type Theme struct {
 	ButtonPrimaryFg   ui.Color
 
 	// ── 代码 ──
-	CodeBlock      ui.Color // 代码块底
-	CodeBanner     ui.Color // 代码块顶栏（语言名）
-	InlineCode     ui.Color // 行内代码底
-	CodeComment    ui.Color
-	CodeString     ui.Color
-	CodeNumber     ui.Color
-	CodeKeyword    ui.Color
-	CodeFunction   ui.Color
-	CodeVariable   ui.Color
+	CodeBlock    ui.Color // 代码块底
+	CodeBanner   ui.Color // 代码块顶栏（语言名）
+	InlineCode   ui.Color // 行内代码底
+	CodeComment  ui.Color
+	CodeString   ui.Color
+	CodeNumber   ui.Color
+	CodeKeyword  ui.Color
+	CodeFunction ui.Color
+	CodeVariable ui.Color
 
 	// ── 气泡与输入 ──
 	Bubble     ui.Color

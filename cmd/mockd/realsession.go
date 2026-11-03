@@ -9,9 +9,9 @@ package main
 
 import (
 	"bytes"
-	"io"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -36,7 +36,7 @@ type realSession struct {
 	// 索引期只解到第一条 user 消息（快），所以 Messages 非空**不等于**解全了。
 	// 踩过的坑：load 里用 len(Messages)==0 判断要不要全量解，
 	// 结果永远命中"已有 1 条"，真实会话只显示第一条消息、总数永远 1。
-	Full      bool
+	Full bool
 }
 
 // realStore 是全部真实会话的索引。
@@ -239,8 +239,8 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 				Seq:     e.Seq,
 				Role:    "tool",
 				Text:    tvOneLine(txt, 120),
-				Tool:    call.name,                        // 工具名（界面的卡片标题）
-				Args:    tvOneLine(call.arguments, 110),   // 参数压一行，给折叠态看
+				Tool:    call.name,                      // 工具名（界面的卡片标题）
+				Args:    tvOneLine(call.arguments, 110), // 参数压一行，给折叠态看
 				Summary: tvOneLine(txt, 120),
 				View:    tvToolView(call.name, call.arguments, txt, e.Data.Message.IsError),
 			})

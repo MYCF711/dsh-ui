@@ -11,7 +11,7 @@ import (
 	"github.com/vivaui/viva/components"
 )
 
-// keywords 是各语言的关键字表。键是小写语言名（`` `` `` 表示未知语言，空表）。
+// keywords 是各语言的关键字表。键是小写语言名（“ “ “ 表示未知语言，空表）。
 var keywords = map[string]map[string]bool{
 	"go": toSet(
 		"break", "case", "chan", "const", "continue", "default", "defer", "else",

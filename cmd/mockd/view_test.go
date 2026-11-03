@@ -61,6 +61,7 @@ func TestToolViewReadIsPlain(t *testing.T) {
 // 这是有意的设计取舍，不是漏判：
 //   - 纯文本会同时显示 tool / args / summary 三段，在长会话里比卡片更吵；
 //   - 通用卡片仍然是"从真实参数与结果里取的"，没有编造字段。
+//
 // 但**空结果必须回到 nil**——只有标题的空卡片是纯噪音（见下一个用例）。
 func TestToolViewUnknownGetsGenericCard(t *testing.T) {
 	got := tvToolView("some_future_tool", `{"path":"x.go"}`, "一些输出", false)

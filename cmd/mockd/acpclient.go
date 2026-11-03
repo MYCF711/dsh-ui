@@ -91,7 +91,7 @@ func StartACP(exe, manifest, workDir string) (*ACPClient, error) {
 
 	// initialize：dshd 要先拿到它才会处理 session/prompt
 	if _, err := c.call("initialize", map[string]any{
-		"protocolVersion":   1,
+		"protocolVersion":    1,
 		"clientCapabilities": map[string]any{},
 	}, 10*time.Second); err != nil {
 		c.Close()

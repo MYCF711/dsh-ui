@@ -21,12 +21,12 @@ import (
 
 // Kernel 是插件运行时的根。
 type Kernel struct {
-	root    *Scope
-	log     *slog.Logger
-	byID    map[string]pluginapi.Plugin
-	order   []string // 装配成功的插件 id，按装配顺序
-	provide map[string]string
-	values  map[string]any
+	root     *Scope
+	log      *slog.Logger
+	byID     map[string]pluginapi.Plugin
+	order    []string // 装配成功的插件 id，按装配顺序
+	provide  map[string]string
+	values   map[string]any
 	painters []pluginapi.Painter
 	// scopes 记下每个插件的作用域，卸载时按装配逆序跑它们的 Effect。
 	scopes map[string]*Scope
@@ -82,7 +82,7 @@ func (s *Scope) Effect(fn func()) {
 
 // Logf 打日志，前缀是插件名。
 func (s *Scope) Logf(format string, args ...any) {
-	s.kernel.log.Info(s.name+": "+fmt.Sprintf(format, args...))
+	s.kernel.log.Info(s.name + ": " + fmt.Sprintf(format, args...))
 }
 
 // Load 按依赖顺序装配插件，并登记它们挂的画。

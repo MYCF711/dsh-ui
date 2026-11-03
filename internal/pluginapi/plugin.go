@@ -224,6 +224,6 @@ type Actions struct {
 	// 壳不再持有草稿，所以不用 SetDraft 回灌。
 	Send     func(text string)
 	SetDraft func(text string)
-	Allow       func()
-	Deny        func()
+	Allow    func()
+	Deny     func()
 }

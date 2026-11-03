@@ -448,8 +448,8 @@ func route(w http.ResponseWriter, r *http.Request) {
 
 	case "session.history":
 		var p struct {
-			ID     string `json:"id"`
-			Limit  int    `json:"limit"`
+			ID    string `json:"id"`
+			Limit int    `json:"limit"`
 		}
 		_ = json.Unmarshal(body.Params, &p)
 		h, ok := history[p.ID]

@@ -1,10 +1,14 @@
 {
   "$schema": "dsh-ui/api-contract@1",
   "version": 1,
-  "note": "自定契约，不复刻官方 {path,key} 信封；路径形状保持 /api/<method> 便于将来加兼容映射",
+  "input_style": "flat",
+  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method> 便于将来加兼容映射。入参一律平铺：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构（../DSH-GO/internal/transport/server.go）。{\"params\":{…}} 只有 cmd/mockd 为历史脚本继续收，新代码不许发——套一层会让参数全部解成零值，症状是 list 正常、load 404、prompt 子进程参数为空",
   "envelope": {
     "request": {
-      "params": "object"
+      "style": "flat",
+      "body": "{ \"id\": \"…\", \"tailMessages\": 2 }",
+      "alias_rule": "同一字段的多个名字都收：sessionId 优先于 id，limit 优先于 tailMessages（对齐宿主 fillID / firstNonZero）",
+      "legacy_wrapped": "{\"params\":{…}} 仅 cmd/mockd 兼容，真宿主只认平铺"
     },
     "response": {
       "result": "object"
@@ -68,11 +72,8 @@
   "methods": {
     "session.list": {
       "batch": 1,
-      "req": {
-        "cwd": "string?",
-        "limit": "int=50",
-        "cursor": "string?"
-      },
+      "req": {},
+      "req_note": "宿主忽略 body（handler 不读 r.Body）；客户端传 {} 即可",
       "resp": {
         "sessions": [
           {
@@ -89,10 +90,9 @@
     "session.create": {
       "batch": 1,
       "req": {
-        "cwd": "string?",
-        "mode": "string=default",
-        "title": "string?"
+        "mode": "string=default"
       },
+      "req_note": "宿主只解 mode；cwd/title 客户端会发但目前没有任何一侧读（尚未实现）",
       "resp": {
         "id": "string",
         "createdAt": "RFC3339",
@@ -102,9 +102,12 @@
     "session.load": {
       "batch": 1,
       "req": {
+        "sessionId": "string",
         "id": "string",
-        "tailMessages": "int=200"
+        "tailMessages": "int=200",
+        "limit": "int=200"
       },
+      "req_note": "两个 id 名字、两个条数名字都收；sessionId 优先于 id，limit 优先于 tailMessages（target：打开会话含尾页）",
       "resp": {
         "id": "string",
         "title": "string",
@@ -120,10 +123,12 @@
     "session.history": {
       "batch": 1,
       "req": {
+        "sessionId": "string",
         "id": "string",
-        "beforeSeq": "int?",
+        "sinceSeq": "int?",
         "limit": "int=200"
       },
+      "req_note": "断号后按 sinceSeq 补洞；beforeSeq 是旧快照里的猜名，两边都没有实现",
       "resp": {
         "messages": [
           "Message"
@@ -134,12 +139,11 @@
     "session.prompt": {
       "batch": 1,
       "req": {
+        "sessionId": "string",
         "id": "string",
-        "text": "string",
-        "attachments": [
-          "{path,name,mime}"
-        ]
+        "text": "string"
       },
+      "req_note": "宿主只读 text；attachments 不在契约里（旧快照的猜名，未实现）",
       "resp": {
         "turnId": "string",
         "accepted": "bool"
@@ -148,6 +152,7 @@
     "session.cancel": {
       "batch": 1,
       "req": {
+        "sessionId": "string",
         "id": "string"
       },
       "resp": {
@@ -157,8 +162,9 @@
     "session.delete": {
       "batch": 2,
       "req": {
-        "id": "string"
+        "sessionId": "string"
       },
+      "req_note": "宿主只认 sessionId（没有 id 别名）；mockd 仍是 501",
       "resp": {
         "deleted": "bool"
       }
@@ -166,9 +172,10 @@
     "session.fork": {
       "batch": 2,
       "req": {
-        "id": "string",
-        "fromSeq": "int?"
+        "sessionId": "string",
+        "title": "string?"
       },
+      "req_note": "宿主只认 sessionId/title；fromSeq 是旧快照里的猜名，未实现",
       "resp": {
         "id": "string",
         "parentSession": "string"
@@ -190,9 +197,9 @@
     "fs.read": {
       "batch": 2,
       "req": {
-        "path": "string",
-        "maxBytes": "int=262144"
+        "path": "string"
       },
+      "req_note": "宿主只解 path；maxBytes 未实现（大小上限在宿主侧，不由协议层定）",
       "resp": {
         "path": "string",
         "content": "string",
@@ -204,9 +211,9 @@
       "batch": 2,
       "req": {
         "path": "string",
-        "content": "string",
-        "createDirs": "bool=false"
+        "content": "string"
       },
+      "req_note": "宿主只解 path/content；createDirs 未实现（协议层不建目录）",
       "resp": {
         "path": "string",
         "bytes": "int"
@@ -214,11 +221,8 @@
     },
     "config.get": {
       "batch": 1,
-      "req": {
-        "keys": [
-          "string"
-        ]
-      },
+      "req": {},
+      "req_note": "宿主不读 body（整份配置原样返回）；keys 过滤尚未实现",
       "resp": {
         "values": "object"
       }
@@ -228,6 +232,7 @@
       "req": {
         "values": "object"
       },
+      "req_note": "values 是扁平的 key → string 表；只覆盖给出的 key",
       "resp": {
         "ok": "bool"
       }

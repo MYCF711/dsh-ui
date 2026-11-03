@@ -4,11 +4,15 @@
 // token 速率）。我们放上去的都是**真算得出来**的东西：
 //
 //	轮数 / 步数    数 env.Data.Msgs 里的 assistant / tool 条数
-//	累计 ↑ ↓       session.load 里 usage 的 inputTokens / outputTokens 合计
+//	累计 ↑ ↓      宿主 §12 H1 的 usageTotal（全会话累计，不随 tail 切页变化）
 //	tok/s          宿主只给用量不给耗时，用事件墙钟时间的差算（见 mockd/realsession.go）
-//	上下文         **最后一次** usage 的 totalTokens（不是累加——累加会得到 13 亿这种数）
+//	上下文         宿主 §12 H1 的 contextTokens（最近一条 assistant 的 totalTokens）
 //
-// 明确的克制：`Usage.Known()` 为假时**一个字都不显示**。显示「0 tok」比不显示更糟。
+// 累计与上下文是**两件事**：累计一直涨，上下文会随压缩回落。不相加、不互相顶替。
+//
+// 明确的克制：所有用量字段的零值都表示**不知道**——`Usage.Known()` 为假、
+// `ContextTokens == 0`、`UsageTotal` 全零时**一个字都不显示**。
+// 显示「↑0 ↓0」「上下文 0」比不显示更糟：用户会以为模型真的没消耗。
 package dsstatusbar
 
 import (
@@ -94,16 +98,13 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		if turns+steps > 0 {
 			p.num(f, itoa(turns)+" 轮 · "+itoa(steps)+" 步", t.LabelTertiary)
 		}
-		if u := env.Data.Usage; u.Known() {
+		if segs := usageSegments(env.Data); len(segs) > 0 {
 			p.sep(f)
-			p.num(f, "↑"+tok(u.InputTokens)+" ↓"+tok(u.OutputTokens), t.LabelTertiary)
-			if u.HasRate && u.TokPerSec > 0 {
-				p.sep(f)
-				p.num(f, rate(u.TokPerSec), t.LabelTertiary)
-			}
-			if u.TotalTokens > 0 {
-				p.sep(f)
-				p.num(f, "上下文 "+tok(u.TotalTokens), t.LabelTertiary)
+			for i, s := range segs {
+				if i > 0 {
+					p.sep(f)
+				}
+				p.num(f, s, t.LabelTertiary)
 			}
 		}
 		f.Spacer()
@@ -117,6 +118,47 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			f.Text(dotLabel).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		})
 	})
+}
+
+// usageSegments 决定「用量那一段」画哪几块文字，返回按顺序要画的段
+// （不含中间的 · 分隔点）。返回空 = 整段不画。
+//
+// 数据有两条来源，语义**不同**，不许混用：
+//
+//	真宿主 §12 H1   UsageTotal（全会话累计，一直涨）+ ContextTokens（当前占用，压缩后回落）
+//	mockd           Usage（旧的一份合计；它的 TotalTokens 是最后一次 assistant 的 totalTokens）
+//
+// 规则三条：
+//
+//	① 累计 ↑↓ 与上下文各自独立判断，谁有值画谁——**不相加，也不拿一个顶替另一个**；
+//	② ContextTokens 为 0 表示"不知道"，不是"上下文里有 0 个 token"，所以不画；
+//	③ UsageTotal 全零时才退回旧 Usage（兼容 mockd）；两者都没有就整段不画。
+func usageSegments(d pluginapi.Snapshot) []string {
+	in, out := d.UsageTotal.InputTokens, d.UsageTotal.OutputTokens
+	perSec, hasRate := d.UsageTotal.TokPerSec, d.UsageTotal.HasRate
+	ctx := d.ContextTokens
+	if !d.UsageTotal.Known() {
+		in, out = d.Usage.InputTokens, d.Usage.OutputTokens
+		perSec, hasRate = d.Usage.TokPerSec, d.Usage.HasRate
+		// 旧路径里 TotalTokens 就是"最后一次 usage 的 totalTokens"，
+		// 语义正好是上下文占用，可以退过去；真宿主的 UsageTotal 则**不是**。
+		if ctx == 0 {
+			ctx = d.Usage.TotalTokens
+		}
+	}
+	var segs []string
+	// 只有 input/output 任一有值才画 ↑↓：旧路径可能只给了 TotalTokens，
+	// 那时画 "↑0 ↓0" 就是编数字。
+	if in > 0 || out > 0 {
+		segs = append(segs, "↑"+tok(in)+" ↓"+tok(out))
+		if hasRate && perSec > 0 {
+			segs = append(segs, rate(perSec))
+		}
+	}
+	if ctx > 0 {
+		segs = append(segs, "上下文 "+tok(ctx))
+	}
+	return segs
 }
 
 // bar 调 dscore 的整行图元；拿不到就自己画一条等价的（保证插件仍能单独跑）。

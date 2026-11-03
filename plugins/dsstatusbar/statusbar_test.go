@@ -1,6 +1,7 @@
 package dsstatusbar
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
@@ -129,6 +130,85 @@ func TestUsageKnownGatesTokenDisplay(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := tc.usage.Known(); got != tc.want {
 				t.Fatalf("Usage%+v.Known() = %v，want %v", tc.usage, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUsageSegments 钉住状态栏「用量那一段」的显示规则（宿主 §12 H1）。
+//
+// 为什么要精确比对文字：draw 里唯一的文本来源就是 usageSegments 的返回值，
+// 所以"状态栏文本里有没有 ↑ / 上下文"等价于"这个函数返回了什么"。
+// 规则的核心是**未知一律不显示**：
+//
+//   - 零值 = 不知道，不许画成 "↑0 ↓0" 或 "上下文 0"；
+//   - UsageTotal（累计，一直涨）与 ContextTokens（当前占用，压缩后回落）
+//     是两个量：不相加、不互相顶替；
+//   - 只有真宿主两个都缺时才退回旧 Usage（mockd 兼容）。
+func TestUsageSegments(t *testing.T) {
+	cases := []struct {
+		name string
+		data pluginapi.Snapshot
+		// want 是把返回段用 " · " 连起来的期望文本（空串 = 整段不画）。
+		want string
+		// banned 是文本里**绝对不许出现**的片段。
+		banned []string
+	}{
+		{
+			name:   "全零：整段不画",
+			data:   pluginapi.Snapshot{},
+			want:   "",
+			banned: []string{"↑", "↓", "上下文"},
+		},
+		{
+			name: "宿主累计 + 上下文都有：各画各的",
+			data: pluginapi.Snapshot{
+				UsageTotal:    pluginapi.Usage{InputTokens: 100, OutputTokens: 50},
+				ContextTokens: 2000,
+			},
+			want: "↑100 ↓50 · 上下文 2.0k",
+			// 上下文必须用 contextTokens(2000)，不是累计里任何一个数（100/50/150）。
+			banned: []string{"150", "上下文 100", "上下文 50"},
+		},
+		{
+			name:   "只有上下文：只画上下文",
+			data:   pluginapi.Snapshot{ContextTokens: 2000},
+			want:   "上下文 2.0k",
+			banned: []string{"↑", "↓"},
+		},
+		{
+			name: "上下文为 0 = 不知道：不画上下文，也不拿累计顶替",
+			data: pluginapi.Snapshot{
+				UsageTotal: pluginapi.Usage{InputTokens: 100, OutputTokens: 50, TotalTokens: 150},
+			},
+			want:   "↑100 ↓50",
+			banned: []string{"上下文"},
+		},
+		{
+			name: "旧 mockd 路径：UsageTotal 全零时退回 Usage",
+			data: pluginapi.Snapshot{
+				Usage: pluginapi.Usage{InputTokens: 6502, OutputTokens: 831,
+					TotalTokens: 23717, TokPerSec: 40.7, HasRate: true},
+			},
+			want: "↑6.5k ↓831 · 40.7 tok/s · 上下文 23.7k",
+		},
+		{
+			name:   "旧 Usage 只有缓存读：仍不画",
+			data:   pluginapi.Snapshot{Usage: pluginapi.Usage{CacheReadTokens: 16384}},
+			want:   "",
+			banned: []string{"↑", "↓", "上下文"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			text := strings.Join(usageSegments(tc.data), " · ")
+			if text != tc.want {
+				t.Fatalf("用量段 = %q，want %q", text, tc.want)
+			}
+			for _, bad := range tc.banned {
+				if strings.Contains(text, bad) {
+					t.Fatalf("状态栏文本 %q 里不该出现 %q", text, bad)
+				}
 			}
 		})
 	}

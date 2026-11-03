@@ -51,7 +51,7 @@ func TestPromptProducesStream(t *testing.T) {
 	}
 	defer c.CloseNow()
 
-	sub, _ := json.Marshal(muxFrame{T: "sub", Topic: "session:" + sid, SinceSeq: 1000})
+	sub, _ := json.Marshal(clientFrame{T: "sub", Topic: "session:" + sid, SinceSeq: 1000})
 	if err := c.Write(ctx, websocket.MessageText, sub); err != nil {
 		t.Fatalf("sub 写失败: %v", err)
 	}
@@ -69,11 +69,11 @@ func TestPromptProducesStream(t *testing.T) {
 		if err != nil {
 			t.Fatalf("读帧失败（已收 delta=%d done=%d）: %v", deltas, dones, err)
 		}
-		var f muxFrame
+		var f serverFrame
 		if json.Unmarshal(data, &f) != nil {
 			continue
 		}
-		if f.T != "ev" || f.Kind != "assistant/message" {
+		if f.Type != "assistant/message" {
 			continue // 背景假事件（user/message）不管
 		}
 		// seq 必须连续（同一秒内的背景事件也算在内）

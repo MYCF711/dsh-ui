@@ -6,9 +6,10 @@
 // 顶栏回答的是「我现在在看什么」：会话标题、它属于哪个工作区、这条会话有多少条、
 // 以及（宿主给了才有）模式徽标。
 //
-// 一条硬规矩：**契约里没有的字段一律不画**。模型名、token 用量、权限状态现在
-// 都不在 `pluginapi.Snapshot` 里，所以这里一个都不出现——顶栏上多一个看起来
-// 很专业的假徽标，比空着糟糕得多。
+// 一条硬规矩：**契约里没有的字段一律不画**。模型名（§12 H4）与审批策略（§12 H5）
+// 现在由 `pluginapi.Snapshot.Model / Permission` 带进来，但宿主的约定是
+// 「空串 = 不知道」，所以空串时整段不出现——顶栏上多一个看起来很专业的假徽标，
+// 比空着糟糕得多。
 package dstopbar
 
 import (
@@ -80,6 +81,20 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 				f.Text("未选择会话").FontSize(t.Fonts.Secondary).Color(t.LabelCaption)
 			}
 
+			// 宿主 §12 H4/H5：模型名与审批策略。空串 = 不知道 → 整段不画，
+			// 也不编默认值（编了就没法区分"没数据"和"就是这个值"）。
+			//
+			// 用弱色文字而不是 chip：两个 chip 实测会把右端挤出去
+			// （「共 4 条」被截成「共 4」、审批 chip 半个字露在外面）。
+			// 宽度门槛：顶栏一行就这么多地方。实测 1196 宽窗口（主列约 515px）时
+			// 标题 + 工作区 + 这段 + 条数 + 轨迹按钮 一起放不下，最后一项会被裁掉；
+			// 主列 700px 以上才有余量。宁可整段不画，也不留半个字在边上。
+			if host := hostLabel(env.Data.Model, env.Data.Permission); host != "" && env.MainWidth >= 700 {
+				f.Text("·").FontSize(t.Fonts.Caption).Color(t.LabelDimmed).Shrink(0)
+				f.Text(host).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).
+					MaxLines(1).Ellipsis()
+			}
+
 			f.Spacer()
 			// 右栏开合：官方也能收右栏，这里给一个明显的入口（状态从快照读，不改本地）。
 			// 用文字而不是三角：▸/▾ 在这个字号下几乎分不出来（实测两张图看着一样）。
@@ -104,6 +119,23 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		})
 		p.prims.Divider(f)
 	})
+}
+
+// hostLabel 返回顶栏上「宿主给的」那一段文字（§12 H4 模型 / H5 审批策略）。
+//
+// 空串（含只有空白）= 宿主不知道 → 返回空串，这里**绝不**补默认值：
+// 顶栏上写一个看起来专业的假模型名，比空着糟糕得多。
+// permission 是 deny/ask/allow/auto，**不是会话 mode**，所以前面带上"审批"二字，
+// 免得和旁边的 mode 徽标混成一个东西。
+func hostLabel(model, permission string) string {
+	var parts []string
+	if m := strings.TrimSpace(model); m != "" {
+		parts = append(parts, m)
+	}
+	if p := strings.TrimSpace(permission); p != "" {
+		parts = append(parts, "审批 "+p)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // titleOf 从快照里找出当前会话的标题 / cwd / mode。

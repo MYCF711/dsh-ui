@@ -4,13 +4,18 @@
 // 里的 13 个 method 形状是否够用。**它不碰会话日志，也不连 dshd。**
 //
 //	go run ./cmd/mockd            # 监听 127.0.0.1:7788
-//	curl -s -XPOST 127.0.0.1:7788/api/session.list -d '{"params":{}}'
+//	curl -s -XPOST 127.0.0.1:7788/api/session.list -d '{}'
+//
+// 入参形状：**平铺**（`{"id":"…","tailMessages":2}`）是唯一契约，与真宿主一致；
+// 旧的 `{"params":{…}}` 只有这里为历史脚本继续收，见 decodeParams 的注释。
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -136,7 +141,7 @@ func main() {
 	flag.Parse()
 
 	// /api/mux 比 /api/ 长，ServeMux 会优先精确匹配到它，不影响 13 个一元 method。
-	http.HandleFunc("/api/mux", muxHandler)
+	http.HandleFunc("/ws", muxHandler)
 	http.HandleFunc("/api/", route)
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]string{"ok": "mockd", "time": time.Now().Format(time.RFC3339)})
@@ -163,7 +168,7 @@ func main() {
 	if realDB != nil {
 		src = fmt.Sprintf("%d real sessions", len(realDB.byID))
 	}
-	log.Printf("mockd listening on http://%s (13 methods + /api/mux, %s)", addr, src)
+	log.Printf("mockd listening on http://%s (14 methods + /ws, %s)", addr, src)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
@@ -178,17 +183,23 @@ func main() {
 //   - ping → pong。
 // ---------------------------------------------------------------------------
 
-// muxFrame 收发同构：客户端只填 t/topic/sinceSeq，服务端只填其余字段。
-type muxFrame struct {
-	T        string          `json:"t"`
-	Topic    string          `json:"topic,omitempty"`
-	SinceSeq int             `json:"sinceSeq,omitempty"`
-	Seq      int             `json:"seq,omitempty"`
-	Kind     string          `json:"kind,omitempty"`
-	Data     json.RawMessage `json:"data,omitempty"`
-	FromSeq  int             `json:"fromSeq,omitempty"`
-	ToSeq    int             `json:"toSeq,omitempty"`
-	Reason   string          `json:"reason,omitempty"`
+// clientFrame 是客户端控制帧（H14：t=sub/unsub/ping）。
+type clientFrame struct {
+	T        string `json:"t"`
+	Topic    string `json:"topic,omitempty"`
+	SinceSeq int    `json:"sinceSeq,omitempty"`
+}
+
+// serverFrame 是服务端事件帧（H14 唯一基线）：{seq,type,data,time}。
+//
+// `type` 是 v4 原始事件名；心跳回包是 {"type":"pong"}。
+// **没有 topic**：连接即会话归属（一个会话一条连接）。
+// **不发 gap 帧**：断号由客户端按 seq 自己发现，再调 session.history 补洞。
+type serverFrame struct {
+	Seq  int             `json:"seq"`
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data,omitempty"`
+	Time int64           `json:"time,omitempty"`
 }
 
 const (
@@ -206,7 +217,7 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// 读侧只把命令投进 chan，不自己写 —— 全程单写，避免并发写。
-	cmds := make(chan muxFrame, 8)
+	cmds := make(chan clientFrame, 8)
 	go func() {
 		defer close(cmds)
 		for {
@@ -214,7 +225,7 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return
 			}
-			var f muxFrame
+			var f clientFrame
 			if json.Unmarshal(data, &f) != nil {
 				continue
 			}
@@ -226,7 +237,7 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	writeFrame := func(f muxFrame) bool {
+	writeFrame := func(f serverFrame) bool {
 		b, err := json.Marshal(f)
 		if err != nil {
 			return false
@@ -260,7 +271,7 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 			switch f.T {
 			case "sub":
 				if f.Topic == "" {
-					if !writeFrame(muxFrame{T: "gap", Reason: "sub 缺 topic"}) {
+					if !writeFrame(serverFrame{Type: "error", Data: json.RawMessage(`{"reason":"sub 缺 topic"}`)}) {
 						return
 					}
 					continue
@@ -270,7 +281,7 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 			case "unsub":
 				subbed = false
 			case "ping":
-				if !writeFrame(muxFrame{T: "pong"}) {
+				if !writeFrame(serverFrame{Type: "pong"}) {
 					return
 				}
 			}
@@ -299,7 +310,7 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 				data["tool"] = ev.Tool
 			}
 			b, _ := json.Marshal(data)
-			if !writeFrame(muxFrame{T: "ev", Topic: topic, Seq: seq, Kind: ev.Kind, Data: b}) {
+			if !writeFrame(serverFrame{Seq: seq, Type: ev.Kind, Data: b, Time: time.Now().UnixMilli()}) {
 				return
 			}
 
@@ -317,13 +328,13 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			seq++
 			d, _ := json.Marshal(map[string]string{"delta": string(ch)})
-			if !writeFrame(muxFrame{T: "ev", Topic: topic, Seq: seq, Kind: "assistant/message", Data: d}) {
+			if !writeFrame(serverFrame{Seq: seq, Type: "assistant/message", Data: d, Time: time.Now().UnixMilli()}) {
 				return
 			}
 			if lineDone {
 				seq++
 				dd, _ := json.Marshal(map[string]bool{"done": true})
-				if !writeFrame(muxFrame{T: "ev", Topic: topic, Seq: seq, Kind: "assistant/message", Data: dd}) {
+				if !writeFrame(serverFrame{Seq: seq, Type: "assistant/message", Data: dd, Time: time.Now().UnixMilli()}) {
 					return
 				}
 			}
@@ -338,14 +349,11 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			n++
 			if n == 8 && !gapped {
-				from := seq + 1
-				to := from + 1
-				seq = to
+				// H14：服务端**不发 gap 帧**。这里只把 seq 跳过两个号，
+				// 客户端按 seq 连续性自己发现断号、再调 session.history 补洞。
+				seq += 2
 				gapped = true
-				if !writeFrame(muxFrame{T: "gap", Topic: topic, FromSeq: from, ToSeq: to, Reason: "mockd: 故意跳号，客户端应去 session.history 补洞"}) {
-					return
-				}
-				log.Printf("mux: 跳号 gap from=%d to=%d", from, to)
+				log.Printf("mux: 故意跳号，下一个 seq=%d（客户端应自己发现）", seq+1)
 			}
 			seq++
 			kind := "user/message"
@@ -355,24 +363,142 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 			data, _ := json.Marshal(map[string]string{
 				"text": fmt.Sprintf("第 %d 条假事件（topic=%s）", seq, topic),
 			})
-			if !writeFrame(muxFrame{T: "ev", Topic: topic, Seq: seq, Kind: kind, Data: data}) {
+			if !writeFrame(serverFrame{Seq: seq, Type: kind, Data: data, Time: time.Now().UnixMilli()}) {
 				return
 			}
 		}
 	}
 }
 
+// ── 入参：平铺是唯一真相，{"params":{…}} 只为历史脚本继续收 ────────────────
+//
+// 真宿主每个 handler 都是 `json.NewDecoder(r.Body).Decode(&in)` 直接解到**平铺**
+// 结构（../DSH-GO/internal/transport/server.go：session.prompt:330、cancel:352、
+// create:369、load:412、approve:434、history:464），它自己的契约测试
+// envelope_test.go:74 也是平铺。
+//
+// 两边形状不一致的后果是**参数静默变零值**：session.list 照常返回（它不要参数）、
+// session.load 报 not_found、session.prompt 拿到空 id 与空 text —— 看起来像
+// "会话坏了"，其实是解包解错了。所以：
+//
+//   - 新代码只发平铺；
+//   - mockd 继续收 {"params":{…}}（老的 curl 示例、cmd/acpsmoke、历史脚本都在用）。
+//
+// 13 个 method 共用下面这一处解包，别在 handler 里各写一遍。
+
+// decodeParams 从请求体取出真正的入参。
+//
+// 规则：顶层有 "params" 且是对象 → 用它（兼容层）；否则整个 body 就是入参。
+// 第二个返回值 false 表示 body 不是合法 JSON 对象（返回 400，不猜）。
+func decodeParams(raw []byte) (json.RawMessage, bool) {
+	body := bytes.TrimSpace(raw)
+	if len(body) == 0 {
+		// 没 body：参数全是零值。宿主也是这个行为（Decode 的 EOF 被 `_ =` 吞掉）。
+		return nil, true
+	}
+	if body[0] != '{' {
+		// 数组/字符串/数字：协议只认对象。这类 body 从来不是"参数少给了"而是发错了。
+		return nil, false
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(body, &top); err != nil {
+		return nil, false
+	}
+	if p, has := top["params"]; has {
+		var wrapped map[string]json.RawMessage
+		if json.Unmarshal(p, &wrapped) == nil { // 必须是对象；不是对象就当平铺用
+			return p, true
+		}
+	}
+	return body, true
+}
+
+// readParams 读请求体（上限 1 MiB，mockd 没有大 body 的正当用途）再解包。
+func readParams(r *http.Request) (json.RawMessage, bool) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		return nil, false
+	}
+	return decodeParams(raw)
+}
+
+// 下面几个结构体的字段名**逐个对齐真宿主 handler**，一个名字都不能少：
+// 同一个字段两个名字，只认一个就是静默 404（宿主 server.go:382 的 fillID 注释
+// 记的就是这个坑，H9/H10）。
+
+// loadParams 是 session.load：id/sessionId 都收（sessionId 优先），
+// tailMessages/limit 都收（limit 优先，与宿主 firstNonZero(in.Limit, in.TailMessages) 一致）。
+type loadParams struct {
+	SessionID    string `json:"sessionId"`
+	ID           string `json:"id"`
+	Limit        int    `json:"limit"`
+	TailMessages int    `json:"tailMessages"`
+}
+
+func (p loadParams) sessionID() string { return fillSessionID(p.SessionID, p.ID) }
+func (p loadParams) tail() int         { return firstNonZeroInt(p.Limit, p.TailMessages) }
+
+// historyParams 是 session.history。
+type historyParams struct {
+	SessionID string `json:"sessionId"`
+	ID        string `json:"id"`
+	SinceSeq  int    `json:"sinceSeq"`
+	Limit     int    `json:"limit"`
+}
+
+func (p historyParams) sessionID() string { return fillSessionID(p.SessionID, p.ID) }
+
+// promptParams 是 session.prompt（宿主只读 text，不读 prompt/attachments）。
+type promptParams struct {
+	SessionID string `json:"sessionId"`
+	ID        string `json:"id"`
+	Text      string `json:"text"`
+}
+
+func (p promptParams) sessionID() string { return fillSessionID(p.SessionID, p.ID) }
+
+// cancelParams 是 session.cancel。
+type cancelParams struct {
+	SessionID string `json:"sessionId"`
+	ID        string `json:"id"`
+}
+
+func (p cancelParams) sessionID() string { return fillSessionID(p.SessionID, p.ID) }
+
+// createParams 是 session.create（宿主只读 mode）。
+type createParams struct {
+	Mode string `json:"mode"`
+}
+
+// fillSessionID 与宿主 server.go:395 同义：sessionId 优先，其次 id。
+func fillSessionID(sessionID, id string) string {
+	if sessionID != "" {
+		return sessionID
+	}
+	return id
+}
+
+// firstNonZeroInt 与宿主 server.go:388 同义：取第一个非零值。
+func firstNonZeroInt(a, b int) int {
+	if a != 0 {
+		return a
+	}
+	return b
+}
+
 func route(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		fail(w, 405, errObj{Code: "invalid_arg", Message: "只接受 POST", Hint: "用 POST /api/<method>，body 形如 {\"params\":{}}"})
+		fail(w, 405, errObj{Code: "invalid_arg", Message: "只接受 POST", Hint: `用 POST /api/<method>，body 形如 {"id":"s-001"}`})
 		return
 	}
 	method := strings.TrimPrefix(r.URL.Path, "/api/")
-	var body struct {
-		Params json.RawMessage `json:"params"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		fail(w, 400, errObj{Code: "invalid_arg", Message: "body 不是合法 JSON", Hint: `形如 {"params":{}}`})
+	params, ok := readParams(r)
+	if !ok {
+		fail(w, 400, errObj{
+			Code:    "invalid_arg",
+			Message: "body 不是合法 JSON 对象",
+			Hint:    `平铺形如 {"id":"s-001"}；老的 {"params":{…}} 也收`,
+		})
 		return
 	}
 	mu.Lock()
@@ -396,34 +522,38 @@ func route(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, envelope{Result: map[string]any{"sessions": sessions}})
 
 	case "session.create":
+		var p createParams
+		_ = json.Unmarshal(params, &p)
+		mode := p.Mode
+		if mode == "" {
+			mode = "default"
+		}
 		nextN++
-		s := session{ID: fmt.Sprintf("s-%03d", nextN), Title: "新会话", Cwd: "", UpdatedAt: time.Now().Format(time.RFC3339), Mode: "default"}
+		s := session{ID: fmt.Sprintf("s-%03d", nextN), Title: "新会话", Cwd: "", UpdatedAt: time.Now().Format(time.RFC3339), Mode: mode}
 		sessions = append([]session{s}, sessions...)
-		writeJSON(w, 200, envelope{Result: map[string]any{"id": s.ID, "createdAt": s.UpdatedAt, "mode": s.Mode}})
+		writeJSON(w, 200, envelope{Result: map[string]any{"id": s.ID, "sessionId": s.ID, "createdAt": s.UpdatedAt, "mode": s.Mode}})
 
 	case "session.load":
-		var p struct {
-			ID           string `json:"id"`
-			TailMessages int    `json:"tailMessages"`
-		}
-		_ = json.Unmarshal(body.Params, &p)
+		var p loadParams
+		_ = json.Unmarshal(params, &p)
+		id, tail := p.sessionID(), p.tail()
 		if realDB != nil {
-			rs, ok := realDB.byID[p.ID]
+			rs, ok := realDB.byID[id]
 			if !ok {
-				fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID, Hint: "先调 session.list 拿一个真实 id"})
+				fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + id, Hint: "先调 session.list 拿一个真实 id"})
 				return
 			}
 			// 索引期只解到第一条 user 消息；第一次 load 这个会话时才全量解并缓存。
 			// 判断条件必须是 Full，不能是 len(Messages)==0（见 realSession.Full 的注释）。
 			if !rs.Full && rs.Path != "" {
 				if full, err := decodeSession(rs.Path, 0, false); err == nil {
-					realDB.byID[p.ID] = full
+					realDB.byID[id] = full
 					rs = full
 				}
 			}
 			msgs := rs.Messages
-			if p.TailMessages > 0 && len(msgs) > p.TailMessages {
-				msgs = msgs[len(msgs)-p.TailMessages:]
+			if tail > 0 && len(msgs) > tail {
+				msgs = msgs[len(msgs)-tail:]
 			}
 			writeJSON(w, 200, envelope{Result: map[string]any{
 				"id": rs.ID, "title": firstUserLine(rs), "cwd": rs.Cwd, "mode": "default",
@@ -432,74 +562,66 @@ func route(w http.ResponseWriter, r *http.Request) {
 			}})
 			return
 		}
-		h, ok := history[p.ID]
+		h, ok := history[id]
 		if !ok {
-			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID, Hint: "先调 session.list 拿一个真实 id"})
+			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + id, Hint: "先调 session.list 拿一个真实 id"})
 			return
 		}
-		tail := p.TailMessages
 		if tail <= 0 || tail > len(h) {
 			tail = len(h)
 		}
 		writeJSON(w, 200, envelope{Result: map[string]any{
-			"id": p.ID, "title": "假会话", "cwd": "D:/DeepSeek Harness/default-workspace", "mode": "default",
+			"id": id, "title": "假会话", "cwd": "D:/DeepSeek Harness/default-workspace", "mode": "default",
 			"messages": h[len(h)-tail:], "truncated": tail < len(h), "total": len(h),
 		}})
 
 	case "session.history":
-		var p struct {
-			ID    string `json:"id"`
-			Limit int    `json:"limit"`
-		}
-		_ = json.Unmarshal(body.Params, &p)
-		h, ok := history[p.ID]
+		var p historyParams
+		_ = json.Unmarshal(params, &p)
+		h, ok := history[p.sessionID()]
 		if !ok {
-			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID})
+			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.sessionID()})
 			return
 		}
 		writeJSON(w, 200, envelope{Result: map[string]any{"messages": h, "nextBefore": nil}})
 
 	case "session.prompt":
-		var p struct {
-			ID   string `json:"id"`
-			Text string `json:"text"`
-		}
-		_ = json.Unmarshal(body.Params, &p)
+		var p promptParams
+		_ = json.Unmarshal(params, &p)
+		id := p.sessionID()
 		// ACP 模式下可以往"真实会话"发消息，那些不在假的 history 表里
-		_, inFake := history[p.ID]
-		inReal := realDB != nil && realDB.byID[p.ID] != nil
+		_, inFake := history[id]
+		inReal := realDB != nil && realDB.byID[id] != nil
 		if !inFake && !inReal {
-			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.ID, Hint: "先调 session.list 拿一个真实 id"})
+			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + id, Hint: "先调 session.list 拿一个真实 id"})
 			return
 		}
 		if strings.TrimSpace(p.Text) == "" {
 			fail(w, 400, errObj{Code: "invalid_arg", Message: "text 为空", Hint: "至少一个非空白字符"})
 			return
 		}
-		if busy[p.ID] {
+		if busy[id] {
 			fail(w, 409, errObj{Code: "busy", Message: "该会话有 turn 在跑", Retryable: true, Hint: "先 session.cancel，或等 turn 结束"})
 			return
 		}
-		busy[p.ID] = true
+		busy[id] = true
 		if inFake {
-			h := history[p.ID]
+			h := history[id]
 			h = append(h, message{Seq: len(h) + 1, Role: "user", Text: p.Text})
-			history[p.ID] = h
+			history[id] = h
 		}
 		if acp != nil {
-			go runACPPrompt(p.ID, p.Text) // 真模型：流事件会塞进 acpLive；结束时自己清 busy
+			go runACPPrompt(id, p.Text) // 真模型：流事件会塞进 acpLive；结束时自己清 busy
 		} else {
-			enqueueReplyLocked(p.ID, p.Text) // 假回答：排队等 /api/mux 的订阅者来取
+			enqueueReplyLocked(id, p.Text) // 假回答：排队等 /api/mux 的订阅者来取
 		}
 		nextN++
 		writeJSON(w, 200, envelope{Result: map[string]any{"turnId": fmt.Sprintf("t-%d", nextN), "accepted": true}})
 
 	case "session.cancel":
-		var p struct {
-			ID string `json:"id"`
-		}
-		_ = json.Unmarshal(body.Params, &p)
-		busy[p.ID] = false
+		var p cancelParams
+		_ = json.Unmarshal(params, &p)
+		busy[p.sessionID()] = false
 		writeJSON(w, 200, envelope{Result: map[string]any{"cancelled": true}})
 
 	case "workspace.list":

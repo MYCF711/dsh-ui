@@ -8,7 +8,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -60,7 +59,12 @@ type cachedSession struct {
 	total int
 	title string
 	usage apiclient.Usage
-	at    time.Time
+	// 宿主 §12 H1/H4 的字段跟 usage 一起缓存：切回来时先显示上一次的真值，
+	// 而不是先掉回零值（那会让状态栏闪一下"没有数据"）。
+	usageTotal    apiclient.Usage
+	contextTokens int64
+	model         string
+	at            time.Time
 }
 
 const cacheLimit = 5
@@ -93,6 +97,10 @@ type model struct {
 	subCancel  context.CancelFunc
 	streamText string
 	lastSeq    int
+	// stream 归约当前这一回合的流式块（text / reasoning 交错到达）。
+	// 为什么交给 apiclient：事件名与 content 块的形状是**线上契约**，
+	// 归约规则（同 seq 更新、思考先于正文）也要在能被单测的地方。
+	stream apiclient.Stream
 
 	// ── 插件运行时（界面线的「一切皆插件」）──
 	// 壳只做三件事：装配插件、给槽位、把快照递进去。
@@ -108,6 +116,12 @@ type model struct {
 	cur      string
 	msgs     []apiclient.Message
 	usage    apiclient.Usage
+	// 宿主 §12 H1/H4/H5：累计用量、当前上下文、模型名、审批策略。
+	// 零值/空串 = 不知道，界面据此整段不画（绝不拿 0 或 mode 冒充）。
+	usageTotal    apiclient.Usage
+	contextTokens int64
+	modelName     string
+	permission    string
 	// showRightbar 是右栏开合（壳持有，插件只读）。
 	showRightbar bool
 	status       string
@@ -175,11 +189,20 @@ func (m *model) openSession(id string) {
 	if cs, ok := m.cache[id]; ok {
 		m.msgs = cs.msgs
 		m.usage = cs.usage
+		m.usageTotal = cs.usageTotal
+		m.contextTokens = cs.contextTokens
+		m.modelName = cs.model
 		m.status = fmt.Sprintf("温缓存 · %d 条（总 %d）", len(cs.msgs), cs.total)
 		m.loading = false
 		hit = true
 	} else {
+		// 换成没缓存的会话时必须把上一份用量清掉：留着它就成了"这个会话的
+		// 数据"，而实际是上一个会话的——比不显示严重得多。
 		m.msgs = nil
+		m.usage = apiclient.Usage{}
+		m.usageTotal = apiclient.Usage{}
+		m.contextTokens = 0
+		m.modelName = ""
 		m.loading = true
 		m.status = "加载 " + id + " …"
 	}
@@ -206,11 +229,19 @@ func (m *model) refreshSession(id string, quiet bool) {
 		return
 	}
 	m.mu.Lock()
-	m.cache[id] = &cachedSession{msgs: r.Messages, total: r.Total, title: r.Title, usage: r.Usage, at: time.Now()}
+	m.cache[id] = &cachedSession{msgs: r.Messages, total: r.Total, title: r.Title, usage: r.Usage,
+		usageTotal: r.UsageTotal, contextTokens: r.ContextTokens, model: r.Model, at: time.Now()}
 	m.evictLocked(id)
 	if m.cur == id { // 用户可能已经切走了
 		m.msgs = r.Messages
 		m.usage = r.Usage
+		// H1/H4/H5：真宿主给的字段原样带进快照；mockd 不给时是零值，
+		// 状态栏/顶栏据此整段不画。H1 的两个量是两件事，各自独立存。
+		m.usageTotal = r.UsageTotal
+		m.contextTokens = r.ContextTokens
+		m.modelName = r.Model
+		// permission 是**进程级**的审批策略（不是会话 mode），每次 load 都刷新。
+		m.permission = r.Permission
 		if demoTool && len(m.msgs) > 0 {
 			// 注意：这里已经在 m.mu 内（refreshSession 的锁），不能再 Lock —— 会自死锁
 			m.approval = &approvalReq{Tool: "bash", Cmd: "git status --short",
@@ -235,7 +266,13 @@ func (m *model) refreshSession(id string, quiet bool) {
 	m.mu.Unlock()
 	m.inv.Invalidate()
 	if fireSmoke {
-		m.draft.SetText("smoke-" + time.Now().Format("150405"))
+		// -prompt 给了就用它：验工具卡/审批这类链路时，光发 "smoke-时间戳"
+		// 是触发不到工具调用的。
+		text := promptText
+		if text == "" {
+			text = "smoke-" + time.Now().Format("150405")
+		}
+		m.draft.SetText(text)
 		m.send()
 	}
 }
@@ -325,31 +362,30 @@ func (m *model) subscribe(id string) {
 	}()
 }
 
-// applyEvent 把一个 ev 帧吃进 model：delta 累积，done 落成一条消息。
+// applyEvent 把一个 ev 帧吃进 model：增量攒进流状态，按 seq 落成消息。
+//
+// 这里**不再只认 delta/done/text**：真宿主 follow 推的是 v4 原始事件
+// （`assistant/message` 带 `content` 块，思考块 type=reasoning），
+// 只读 delta 就等于整条流一个字都进不来。分类规则在 apiclient.Chunks 里，
+// 它认识 delta / text / content 块三种形状，并且**不翻译事件名**。
 func (m *model) applyEvent(id string, ev apiclient.Event) {
-	var d struct {
-		Delta string `json:"delta"`
-		Done  bool   `json:"done"`
-		Text  string `json:"text"`
-	}
-	_ = json.Unmarshal(ev.Data, &d)
-
 	m.mu.Lock()
 	if ev.Seq > m.lastSeq {
 		m.lastSeq = ev.Seq
 	}
-	if d.Delta != "" {
-		m.streamText += d.Delta
-		if streamDebug > 0 {
+	if m.stream.Apply(ev) {
+		// 思考一有增量就落（边想边看）；正文等这段说完才落（流式期间由气泡显示）。
+		m.msgs = apiclient.Merge(m.msgs, &m.stream)
+		if streamDebug > 0 && m.stream.Thinking() != "" && m.stream.Text() == "" {
 			streamDebug--
-			log.Printf("mux 增量 +%d 字（累计 %d）", len([]rune(d.Delta)), len([]rune(m.streamText)))
+			log.Printf("mux 思考增量（累计 %d 字）", len([]rune(m.stream.Thinking())))
 		}
-	}
-	if d.Done {
-		if m.streamText != "" {
-			m.msgs = append(m.msgs, apiclient.Message{Seq: ev.Seq, Role: "assistant", Text: m.streamText})
+		if m.stream.Done() {
+			m.streamText = ""
+			m.stream.Reset()
+		} else {
+			m.streamText = m.stream.Text()
 		}
-		m.streamText = ""
 	}
 	m.mu.Unlock()
 	m.inv.Invalidate()
@@ -468,6 +504,7 @@ var (
 	tailCount    int      // session.load 的 tailMessages
 	demoTool     bool     // 在消息列表里插假的工具卡
 	smokeSend    bool     // 启动后自动发一条
+	promptText   string   // -prompt 覆盖 smoke 文本
 )
 
 // drawSlot 把一个槽位上的插件按序画出来。
@@ -528,6 +565,11 @@ func newConfig(m *model) app.Config {
 		streamText := m.streamText
 		approval := m.approval
 		usage := m.usage
+		// H1/H4/H5：会话语义的真值原样带进快照，插件自己决定画不画。
+		usageTotal := m.usageTotal
+		contextTokens := m.contextTokens
+		modelName := m.modelName
+		permission := m.permission
 		showRightbar := m.showRightbar
 		if renderLimit > 0 && len(msgs) > renderLimit {
 			status = fmt.Sprintf("%s（渲染末尾 %d / %d）", status, renderLimit, len(msgs))
@@ -564,8 +606,20 @@ func newConfig(m *model) app.Config {
 					TokPerSec:       usage.TokPerSec,
 					HasRate:         usage.HasRate,
 				},
-				Approval:     approvalView,
-				ShowRightbar: showRightbar,
+				// 宿主 §12 H1：累计与上下文是两个量，分开传，谁也不顶替谁。
+				UsageTotal: pluginapi.Usage{
+					InputTokens:     usageTotal.InputTokens,
+					OutputTokens:    usageTotal.OutputTokens,
+					TotalTokens:     usageTotal.TotalTokens,
+					CacheReadTokens: usageTotal.CacheReadTokens,
+					TokPerSec:       usageTotal.TokPerSec,
+					HasRate:         usageTotal.HasRate,
+				},
+				ContextTokens: contextTokens,
+				Model:         modelName,
+				Permission:    permission,
+				Approval:      approvalView,
+				ShowRightbar:  showRightbar,
 			},
 			Act:       m.actions,
 			Tree:      &tree,
@@ -714,6 +768,7 @@ func main() {
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
 	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
+	prompt := flag.String("prompt", "", "调试：-smoke 时发这条文本（默认 smoke-<时间>）；验工具卡/审批用")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
 	title := flag.String("title", "dsh-ui", "窗口标题（并行跑多个实例时用来区分）")
 	keysSeq := flag.String("keys", "", "调试：启动后依次注入按键（down,up,home,end,esc），走的是插件的 HandleKey，用来验证键盘路由")
@@ -737,6 +792,7 @@ func main() {
 	forceSession = *sess
 	tailCount = *tail
 	smokeSend = *smoke
+	promptText = *prompt
 	demoTool = *demo
 	winTitle = *title
 	shotPath = *shot
@@ -747,10 +803,12 @@ func main() {
 		scrollPos:    map[string]float32{},
 		showRightbar: *rightbarOn,
 	}
-	m.refreshList()
-
-	// 真宿主（dshd serve）要求先把 launch token 换成 cookie，否则 /api 一律 401。
-	// mockd 不需要，所以这一步只在给了 -token 时做。
+	// **先换 cookie，再拉数据**。
+	// 反过来（先 refreshList 再 Connect）的后果实测过：第一次 list 必然 401，
+	// 界面停在"0 个会话 / 列会话失败: unauthorized"，而 /connect 本身是成功的——
+	// 看日志完全像认证失败，实际只是顺序错了。
+	//
+	// 真宿主（dshd serve）要求 cookie；mockd 不需要，所以只在给了 -token 时做。
 	if *token != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		err := m.cli.Connect(ctx, *token)
@@ -758,8 +816,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("/connect 失败: %v", err)
 		}
+		// WS 与 HTTP 同一套认证：cookie 也要给流客户端，否则 /ws 401。
+		m.mux.Cookies = m.cli.Cookies()
 		log.Print("已用 launch token 换到 cookie")
 	}
+	m.refreshList()
 
 	// 装插件：先根本依赖（ds-core：设计令牌 + 基础组件），再依赖它的部件。
 	// 装配器按 Requires 排序；ds-sidebar 少一个键就直接报错，不会静默少画一块。

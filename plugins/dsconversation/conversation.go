@@ -266,6 +266,35 @@ func (p *Plugin) drawStreaming(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
+// msgKind 是一条消息该走哪个绘制分支。
+//
+// 为什么要有这个名字：**流式 reasoning 落进 Msgs 之后，角色同样是 thinking**
+// （见 internal/apiclient.Stream.Messages / Merge）。以前只有 session.load
+// 回来的历史里有这个角色，于是"流式期间的思考块"其实没有绘制路径——
+// 收得到、存得下，但画不出来。现在两条路合成一条，这里就是那条路的入口。
+type msgKind int
+
+const (
+	kindAssistant msgKind = iota
+	kindThinking
+	kindTool
+	kindUser
+)
+
+// roleKind 把消息角色翻成绘制分支。不认识的角色一律当助手正文（降级，不丢内容）。
+func roleKind(role string) msgKind {
+	switch role {
+	case "thinking":
+		return kindThinking
+	case "tool":
+		return kindTool
+	case "user":
+		return kindUser
+	default:
+		return kindAssistant
+	}
+}
+
 // drawMessage 画一条消息。
 //
 // 视觉规矩照官方：**不要给每条消息套一个带边框的卡片**（官方是平铺的），
@@ -275,14 +304,14 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 	t := p.theme
 	msg := env.Data.Msgs[i]
 
-	switch {
-	case msg.Role == "thinking":
+	switch roleKind(msg.Role) {
+	case kindThinking:
 		p.drawThinking(f, env, msg)
 
-	case msg.Role == "tool":
+	case kindTool:
 		p.drawTool(f, env, msg)
 
-	case msg.Role == "user":
+	case kindUser:
 		// 用户消息：右对齐气泡（官方 .LOmM4q_userStack：
 		//   max-width = min(chat-content-width × .702, 82%)，flex-column + align-items:flex-end，gap 8
 		//   气泡本体 .bubble：radius xl、specific-bubble 底、正文 14/22）

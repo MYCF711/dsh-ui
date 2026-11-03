@@ -90,6 +90,21 @@ type LoadResult struct {
 	// Usage 是整段会话的用量合计（所有 assistant/message 的 usage 相加）。
 	// 没有 usage 的会话这里是零值——界面要据此不显示，而不是显示 0。
 	Usage Usage `json:"usage"`
+
+	// 以下是真宿主（H1/H4/H5/H12）补的字段，mockd 不产时保持零值。
+	// 零值 = 不知道，界面必须整段不显示，不许拿 0 冒充。
+	//
+	// UsageTotal 是**全会话累计**（不会随 tail 切页变化）。
+	UsageTotal Usage `json:"usageTotal"`
+	// ContextTokens 是**最近一条** assistant 的 totalTokens，即"现在上下文占多少"。
+	// 与 UsageTotal 是两件事：累计一直涨，上下文会随压缩回落。
+	ContextTokens int64 `json:"contextTokens"`
+	// Model 是最近一次 request/context 的模型名；空 = 不知道。
+	Model string `json:"model"`
+	// Permission 是这一进程真正的审批策略（deny/ask/allow/auto），不是 mode。
+	Permission string `json:"permission"`
+	// ContentWidth 是宿主知道的会话内容列宽；0 = 不知道（界面自己算）。
+	ContentWidth int `json:"contentWidth"`
 }
 
 // APIError 是契约里的 error 对象。
@@ -157,6 +172,15 @@ func (c *Client) Connect(ctx context.Context, token string) error {
 	return nil
 }
 
+// Cookies 返回 /connect 换来的会话 cookie，给流客户端（Mux）复用。
+//
+// 为什么要有：WS 与 HTTP 用**同一套认证语义**（H14 §11.4），
+// 而 Mux 是独立对象、不共享 Client 的 cookie。不显式传过去的话，
+// /ws 会回 401（实测：路径改对之后下一步就撞这个）。
+func (c *Client) Cookies() []*http.Cookie {
+	return c.cookies
+}
+
 // envelope 是约定的响应信封（见 testdata/api.snapshot.json）。
 //
 // Error 用 RawMessage 而不是 *APIError：真宿主的错误体是字符串
@@ -182,8 +206,19 @@ func parseError(raw json.RawMessage) *APIError {
 
 // Call 发一次一元调用，把 result 解到 out。
 func (c *Client) Call(ctx context.Context, method string, params any, out any) error {
-	body, err := json.Marshal(map[string]any{"params": params})
-	if err != nil {
+	// 入参是**平铺**的：真 dshd 的 handler 直接 decode 到
+	// `struct{ SessionID string `json:"sessionId"`; ID string `json:"id"`; ... }`，
+	// 外面再套一层 `{"params":…}` 会让每个参数都解成零值——症状极隐蔽：
+	// list 照常返回（它不需要参数），而 load 报 no_such_session、prompt 的
+	// 子进程拿到空的 --session/--prompt（实测踩到，见 docs/progress.md）。
+	//
+	// 旧实现发的是 `{"params":…}`（那是 mockd 的早期形状）。两仓已经统一的
+	// 契约是平铺，见 docs/api-contract.md 与 testdata/api.snapshot.json。
+	var body []byte
+	var err error
+	if params == nil {
+		body = []byte("{}")
+	} else if body, err = json.Marshal(params); err != nil {
 		return fmt.Errorf("encode params: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/api/"+method, bytes.NewReader(body))

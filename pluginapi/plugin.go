@@ -235,7 +235,25 @@ type Snapshot struct {
 	Approval *Approval
 	// Usage 是当前会话的 token 用量（壳从 session.load 拿到的合计）。
 	// Usage.Known() 为 false 时插件不许显示任何 token 数字。
+	//
+	// **兼容字段**：mockd 只填这一个。真宿主（session.load）改填下面的
+	// UsageTotal / ContextTokens；那两个全零时才回退到这份旧数据。
 	Usage Usage
+	// UsageTotal 是宿主 §12 H1 给的**全会话累计**用量，不随 tail 切页变化。
+	//
+	// 与 ContextTokens 是**两件事**：累计一直涨，上下文会随压缩回落。
+	// 不许相加、不许互相替代。零值 = 不知道，插件要整段不画。
+	UsageTotal Usage
+	// ContextTokens 是宿主 §12 H1 给的**最近一条** assistant 的 totalTokens，
+	// 也就是"当前上下文占多少"。0 = 不知道（不是 0 个 token），不许显示"上下文 0"。
+	ContextTokens int64
+	// Model 是宿主 §12 H4 给的最近一次 request/context 的模型名。
+	// 空串 = 不知道；插件不许拿自己的默认值冒充。
+	Model string
+	// Permission 是宿主 §12 H5 给的这一进程真正的审批策略
+	// （deny / ask / allow / auto），**不是会话 mode**。
+	// 空串 = 不知道；插件不许拿 mode 顶替。
+	Permission string
 	// ShowRightbar 是右栏当前是开还是关（壳持有这个状态，插件只读）。
 	ShowRightbar bool
 	// Truncated 表示这次只渲染了末尾一段（视口虚拟化 / -limit）。

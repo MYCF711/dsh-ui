@@ -1030,15 +1030,13 @@ func newConfig(m *model) app.Config {
 		// 1180 宽的窗口右栏占 500），写死 300 会让插件以为主列比实际宽 200px，
 		// 于是按 600 排版、真主列只有 ~495，内容被卡片硬裁（省略号都不画）。
 		// 症状是审批条/长参数的末尾直接被切掉。
+		//
+		// 每帧按**这一帧的** bounds 重算：buildGeometry 是纯函数，没有可残留的
+		// 缓存，所以 resize 之后不会沿用上一帧的列宽（真机三档见 tmp/v4b-shots）。
 		hasRightbar := showRightbar && m.kernel.Has(pluginapi.SlotRightbar)
-		var rightbarW float32
-		if hasRightbar {
-			rightbarW = geomRightWidth(bounds.Width, m.side.Width(), hasRightbar)
-		}
-		mainWidth := bounds.Width - m.side.Width() - rightbarW
-		if mainWidth < 320 {
-			mainWidth = 320
-		}
+		geom := buildGeometry(bounds.Width, bounds.Height, m.side.Width(), hasRightbar,
+			m.kernel.Has(pluginapi.SlotShellBottom))
+		mainWidth := geom.MainWidth
 
 		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
 		m.mu.Lock()
@@ -1106,14 +1104,8 @@ func newConfig(m *model) app.Config {
 		env.Has = func(slot pluginapi.Slot) bool { return m.kernel.Has(slot) }
 		// 三栏几何由壳算：它知道侧栏要的宽度、右栏开不开、白名单里有没有底部整行。
 		// 框架插件照着摆，不再自己猜（猜错过：白名单里漏掉 shell，部件就上下堆叠）。
-		env.Geometry = pluginapi.Geometry{
-			Width:        bounds.Width,
-			Height:       bounds.Height,
-			SidebarWidth: m.side.Width(),
-			RightWidth:   geomRightWidth(bounds.Width, m.side.Width(), hasRightbar),
-			MainWidth:    mainWidth,
-			BottomHeight: condF(m.kernel.Has(pluginapi.SlotShellBottom), 24, 0),
-		}
+		// 与上面 env.MainWidth 用的是**同一份**求解结果，不允许两处各算一遍。
+		env.Geometry = geom
 
 		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
 			// 壳只画一个槽：三栏怎么切、底栏多高、右栏占多少，全在 plugins/dsshell 里。
@@ -1209,6 +1201,32 @@ func geomRightWidth(total, sidebar float32, has bool) float32 {
 		w = 300
 	}
 	return w
+}
+
+// buildGeometry 把这一帧的三栏几何算成一份 pluginapi.Geometry（纯函数）。
+//
+// 为什么要单独一个函数：这三行以前内联在 Paint 闭包里，唯一的验证方式是起窗口
+// 截图量像素，"传下去的值"对不对只能靠看。抽出来以后 resize 各档的**传入值**
+// 可以直接单测（TestGeometryMatchesOfficialColumns），
+// 而且纯函数顺带保证了 resize 安全——值只取决于这一帧的 bounds，
+// 没有任何能跨帧残留的状态。
+//
+// width/height 是**客户区**尺寸（跟 pluginapi.Geometry 的语义一致），
+// 不是整窗：Viva 的 Paint 给的 size 已经是客户区，别再自己减标题栏。
+func buildGeometry(width, height, sidebar float32, hasRightbar, hasBottom bool) pluginapi.Geometry {
+	right := geomRightWidth(width, sidebar, hasRightbar)
+	main := width - sidebar - right
+	if main < 320 {
+		main = 320
+	}
+	return pluginapi.Geometry{
+		Width:        width,
+		Height:       height,
+		SidebarWidth: sidebar,
+		RightWidth:   right,
+		MainWidth:    main,
+		BottomHeight: condF(hasBottom, 24, 0),
+	}
 }
 
 // condF 是三目（Go 没有，写个小函数比每处写 if 清楚）。

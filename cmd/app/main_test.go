@@ -9,6 +9,8 @@ package main
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
@@ -119,6 +121,164 @@ func TestApprovalOptionsConversion(t *testing.T) {
 func TestMaxInt(t *testing.T) {
 	if maxInt(3, 5) != 5 || maxInt(5, 3) != 5 || maxInt(-1, -2) != -1 || maxInt(7, 7) != 7 {
 		t.Fatal("maxInt 结果不对")
+	}
+}
+
+func TestRightbarDefaultsClosedWithoutToolTrajectory(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"empty","messages":[{"seq":1,"role":"assistant","text":"没有工具"}],"total":1}`))
+	}))
+	defer ts.Close()
+
+	// true 模拟旧 main 的 -rightbar 默认值；加载一个无工具会话后必须纠正为关闭。
+	m := &model{
+		cli:          apiclient.New(ts.URL),
+		cache:        map[string]*cachedSession{},
+		epochs:       map[string]int64{},
+		cur:          "empty",
+		showRightbar: true,
+	}
+	m.refreshSession("empty", false)
+	if m.showRightbar {
+		t.Fatal("无工具轨迹的会话加载后右栏仍打开；旧默认让空右栏占据主区")
+	}
+}
+
+func TestRightbarOpensWithToolTrajectory(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"tools","messages":[{"seq":1,"role":"tool","tool":"bash","summary":"exit 0"}],"total":1}`))
+	}))
+	defer ts.Close()
+
+	m := &model{
+		cli:    apiclient.New(ts.URL),
+		cache:  map[string]*cachedSession{},
+		epochs: map[string]int64{},
+		cur:    "tools",
+	}
+	m.refreshSession("tools", false)
+	if !m.showRightbar {
+		t.Fatal("真实 role=tool 轨迹加载后右栏未自动打开")
+	}
+}
+
+func TestRightbarSessionStateDoesNotLeak(t *testing.T) {
+	m := &model{}
+	show := func(id string, msgs ...apiclient.Message) {
+		t.Helper()
+		m.mu.Lock()
+		m.cur = id
+		m.msgs = msgs
+		m.syncRightbarLocked()
+		m.mu.Unlock()
+	}
+	assertOpen := func(want bool, context string) {
+		t.Helper()
+		if m.showRightbar != want {
+			t.Fatalf("%s：showRightbar=%v，期望 %v", context, m.showRightbar, want)
+		}
+	}
+
+	show("empty", apiclient.Message{Role: "assistant", Text: "无工具"})
+	assertOpen(false, "空会话默认")
+	m.toggleRightbar() // 用户在 empty 明确打开
+	assertOpen(true, "empty 用户打开")
+
+	show("tools", apiclient.Message{Role: "tool", Tool: "bash"})
+	assertOpen(true, "tools 自动打开")
+	m.toggleRightbar() // 用户在 tools 明确关闭
+	assertOpen(false, "tools 用户关闭")
+
+	show("fresh", apiclient.Message{Role: "assistant", Text: "另一个空会话"})
+	assertOpen(false, "fresh 不继承 empty 的打开状态")
+	show("empty", apiclient.Message{Role: "assistant", Text: "无工具"})
+	assertOpen(true, "返回 empty 恢复它自己的选择")
+	show("tools", apiclient.Message{Role: "tool", Tool: "bash"})
+	assertOpen(false, "返回 tools 保留用户关闭选择")
+}
+
+func TestRightbarGeometryTracksVisibility(t *testing.T) {
+	const total, sidebar = float32(1180), float32(280)
+	closed := geomRightWidth(total, sidebar, false)
+	opened := geomRightWidth(total, sidebar, true)
+	if closed != 0 {
+		t.Fatalf("右栏关闭时宽度 = %v，期望 0", closed)
+	}
+	if opened <= 0 {
+		t.Fatalf("右栏打开时宽度 = %v，期望正数", opened)
+	}
+	if got, want := total-sidebar-closed, float32(900); got != want {
+		t.Fatalf("右栏关闭时主区宽度 = %v，期望 %v", got, want)
+	}
+	if got, want := total-sidebar-opened, float32(400); got != want {
+		t.Fatalf("右栏打开时主区宽度 = %v，期望 %v", got, want)
+	}
+}
+
+// TestGeometryMatchesOfficialColumns 直接钉住**壳传给插件的那份 Geometry**。
+//
+// 三条是 UIPLAN V4B 的验收算例，来自官方 computeColumns（`AppFrame.js`）：
+//
+//	1920 无轨迹 → 侧栏 280 / 中栏 1640 / 右栏 0
+//	1182 无轨迹 → 280 / 902 / 0
+//	1182 有轨迹 → 280 / 400 / 502
+//
+// 为什么要在单测里钉：以前这组数字只能在起窗口截图里用像素量，
+// 量出来的是"插件画成这样"，而不是"壳说成这样"。resize 时真正决定
+// 三栏宽的是这份传入值，它错一档，插件再怎么按官方求解也救不回来。
+func TestGeometryMatchesOfficialColumns(t *testing.T) {
+	cases := []struct {
+		name       string
+		width      float32
+		rightbarOn bool
+		wantRight  float32
+		wantMain   float32
+	}{
+		{"1920 无轨迹（右栏关）", 1920, false, 0, 1640},
+		{"1182 无轨迹（右栏关）", 1182, false, 0, 902},
+		{"1182 有轨迹（右栏开）", 1182, true, 502, 400},
+		{"1920 有轨迹（右栏开）", 1920, true, 864, 776},
+	}
+	for _, c := range cases {
+		g := buildGeometry(c.width, 832, 280, c.rightbarOn, true)
+		if g.SidebarWidth != 280 || g.RightWidth != c.wantRight || g.MainWidth != c.wantMain {
+			t.Fatalf("%s：得到 侧栏/右栏/中栏 = %v/%v/%v，期望 280/%v/%v",
+				c.name, g.SidebarWidth, g.RightWidth, g.MainWidth, c.wantRight, c.wantMain)
+		}
+		if g.Width != c.width || g.Height != 832 || g.BottomHeight != 24 {
+			t.Fatalf("%s：Width/Height/BottomHeight = %v/%v/%v，期望 %v/832/24",
+				c.name, g.Width, g.Height, g.BottomHeight, c.width)
+		}
+		// 三列之和必须严格等于视口，否则中间会空一条或把右栏挤出窗口。
+		if sum := g.SidebarWidth + g.MainWidth + g.RightWidth; sum != c.width {
+			t.Fatalf("%s：三列之和 = %v，期望 %v", c.name, sum, c.width)
+		}
+	}
+}
+
+// TestGeometryResizeSequence 是同一进程连续改尺寸的回归：1182 → 1920 → 1182。
+//
+// buildGeometry 是纯函数，这个测试防的是"以后有人把它改成带缓存/带字段的实现"——
+// 那时第二次算同一宽度会沿用中间态，而真机 resize 正是这个形状
+// （证据：tmp/v4b-shots/C-open-1182.png / C-open-1920.png / C-open-1182-back.png）。
+func TestGeometryResizeSequence(t *testing.T) {
+	steps := []struct {
+		width     float32
+		wantRight float32
+		wantMain  float32
+	}{
+		{1182, 502, 400},
+		{1920, 864, 776},
+		{1182, 502, 400}, // 缩回去必须回到第一档，不能留下 1920 的 864
+	}
+	for i, s := range steps {
+		g := buildGeometry(s.width, 832, 280, true, true)
+		if g.RightWidth != s.wantRight || g.MainWidth != s.wantMain {
+			t.Fatalf("第 %d 步 %v 宽：右栏/中栏 = %v/%v，期望 %v/%v",
+				i+1, s.width, g.RightWidth, g.MainWidth, s.wantRight, s.wantMain)
+		}
 	}
 }
 

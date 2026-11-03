@@ -61,24 +61,22 @@ func Load(configPath string, builtin pluginapi.Source, skip Skip) ([]pluginapi.P
 		return nil, err
 	}
 	if configPath == "" {
-		out := make([]pluginapi.Plugin, 0, len(all))
-		for _, p := range all {
-			if skip != nil && skip(p.ID()) {
-				continue
-			}
-			out = append(out, p)
-		}
-		return out, nil
+		return applySkip(all, skip), nil
 	}
 	cfg, found, err := readConfig(configPath)
 	if err != nil {
 		return nil, err
 	}
+	// **skip 必须在所有分支都生效**。早先这两条直接 `return all, nil`，
+	// 于是"配置了路径但文件不存在"（或配置里 plugins 为空）时，壳自己的那 4 个
+	// 实例（ds-core/ds-shell/ds-sidebar/ds-conversation）会被装两次——
+	// uikernel 立刻报重复 ID，而错误信息里只会说"插件 id 重复"，
+	// 很难联想到是"配置文件没找到"。
 	if !found {
-		return all, nil
+		return applySkip(all, skip), nil
 	}
 	if len(cfg.Plugins) == 0 {
-		return all, nil
+		return applySkip(all, skip), nil
 	}
 
 	byID := make(map[string]pluginapi.Plugin, len(all))
@@ -108,6 +106,18 @@ func Load(configPath string, builtin pluginapi.Source, skip Skip) ([]pluginapi.P
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// applySkip 过滤掉壳要自己注入实例的那几个。
+func applySkip(all []pluginapi.Plugin, skip Skip) []pluginapi.Plugin {
+	out := make([]pluginapi.Plugin, 0, len(all))
+	for _, p := range all {
+		if skip != nil && skip(p.ID()) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 func ids(ps []pluginapi.Plugin) []string {

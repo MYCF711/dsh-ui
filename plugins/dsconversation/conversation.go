@@ -144,8 +144,10 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Draw:      p.draw,
 			AfterDraw: p.afterDraw,
 		},
-		{ID: "approval", Slot: pluginapi.SlotMainBody, Order: 30, Draw: p.drawApproval},
 	}
+	// 审批条**不在这里画**：它属于"用户要做决定的地方"，由 ds-composer 在输入框
+	// 上方画（dscomposer/approval.go）。这里曾经也画一条气泡，结果同屏出现两条
+	// 「需要审批 bash」——两个入口、两套按钮，用户不知道该点哪个。
 }
 
 // draw 是布局阶段。
@@ -617,39 +619,6 @@ func (p *Plugin) drawTable(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewS
 		f.Text(fmt.Sprintf("… 另有 %d 行", len(v.Rows)-maxRows)).
 			FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 	}
-}
-
-// drawApproval 画审批气泡：先命令、后模型自述（并明确标不可信）。
-func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
-	t := p.theme
-	ap := env.Data.Approval
-	if ap == nil {
-		return
-	}
-	f.Column().FillWidth().Pad(12).Radius(t.Radii.LG).
-		Background(t.BgLayer2).Border(1, t.BorderL2).Gap(8).Children(func() {
-		f.Row().Gap(8).Items(flex.Center).Children(func() {
-			f.Text("需要审批").Bold().FontSize(t.Fonts.Caption).Color(t.LabelPrimary)
-			f.Text(ap.Tool).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
-			f.Spacer()
-		})
-		f.Text(ap.Cmd).Mono().FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
-		if ap.Reason != "" {
-			f.Text("模型自述（不可信）：" + ap.Reason).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-		}
-		f.Row().Gap(8).Justify(flex.End).Children(func() {
-			if f.Button(env.Tree.ID(env.Feat, "deny"), "拒绝").Outline().Small().Clicked() {
-				if env.Act.Deny != nil {
-					env.Act.Deny()
-				}
-			}
-			if f.Button(env.Tree.ID(env.Feat, "allow"), "允许").Small().Clicked() {
-				if env.Act.Allow != nil {
-					env.Act.Allow()
-				}
-			}
-		})
-	})
 }
 
 // layoutMarkdown 排版一条消息的 Markdown，返回高度。

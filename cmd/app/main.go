@@ -827,13 +827,18 @@ func newConfig(m *model) app.Config {
 		}
 		m.mu.Unlock()
 
-		// 主区宽度：壳算好交给插件，插件不该猜（侧栏 280 + 右栏 300 只有壳知道）。
-		const rightbarW = 300.0
+		// 主区宽度：壳算好交给插件，插件不该猜（侧栏与右栏的宽度只有壳知道）。
+		//
+		// 右栏**不能写死 300**：真实宽度是 geomRightWidth 算出来的（这个尺寸下
+		// 1180 宽的窗口右栏占 500），写死 300 会让插件以为主列比实际宽 200px，
+		// 于是按 600 排版、真主列只有 ~495，内容被卡片硬裁（省略号都不画）。
+		// 症状是审批条/长参数的末尾直接被切掉。
 		hasRightbar := showRightbar && m.kernel.Has(pluginapi.SlotRightbar)
-		mainWidth := bounds.Width - m.side.Width()
+		var rightbarW float32
 		if hasRightbar {
-			mainWidth -= rightbarW
+			rightbarW = geomRightWidth(bounds.Width, m.side.Width(), hasRightbar)
 		}
+		mainWidth := bounds.Width - m.side.Width() - rightbarW
 		if mainWidth < 320 {
 			mainWidth = 320
 		}

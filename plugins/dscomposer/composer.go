@@ -119,7 +119,7 @@ func (p *Plugin) submit(env *pluginapi.Env) {
 // 审批条不在（Approval == nil）就直接返回 false —— 输入框的 Enter 发送
 // 不能被抢掉：viva 的分发顺序是「先 OnKey → 没被处理才交给聚焦控件」，
 // 这里返回 true 就等于把 Enter 从 TextInput 手里拿走，所以门槛必须卡在
-// approvalVisible 上（见 approval_test.go 的 TestHandleKeyIgnoresWhenNotVisible）。
+// approvalVisible 上（见 approval_test.go 的 TestHandleKeyTakesEnterOnlyWhenVisible）。
 func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 	if ev.Release || ev.Modifiers != 0 {
 		return false

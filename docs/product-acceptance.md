@@ -22,12 +22,13 @@
 | 12 | 审批三选项（allow_once/allow_always/reject_once） | ✅ | `tmp/h13-3btn2.png`：`拒绝 / 这个会话里以后都允许 / 允许这一次` |
 | 13 | 审批超时（120s） | ✅ | 复用过期 requestId → `no_such_request（已应答或已超时）` |
 | 14 | **取消 turn** | ✅ | `key 4 handled=true` → `cancel 已发送 id=a0eaa207…`（停止键 ■ / 无审批时 Esc） |
-| 15 | 多会话不串流 | ✅ | A 窗口开着时向 B 发 `SWITCH-B-MARKER`，A 界面无该标记（`tmp/nc-A.png`） |
-| 16 | 切会话状态隔离 | ✅ | 切到 B 后用量 `17.1k`（A 是 `1110.6k`）（`tmp/nc-B.png`） |
+| 15 | 多会话不串流 | ✅ | **3 会话**（不止 2 个）：`docs/multi-session.md` —— A 界面不含 BETA/GAMMA；`tmp/ms-run-r2/p1-A-concurrent.png` |
+| 16 | 切会话状态隔离 | ✅ | 切到 B 后用量 `17.1k`（A 是 `1110.6k`）（`tmp/nc-B.png`）；3 会话 × 5 次起停，标题/消息区/用量三区 md5 同会话全等、跨会话互不相同 |
+| 16b | 反复切会话不涨内存 | ✅ | `docs/multi-session.md`：来回切 15 次 58.9–62.3 MB 振荡（首末 −3.4/−2.3/−0.9 MB）；常驻 5 点 59.0→59.8 后走平 |
 | 17 | 断线重连（单元级） | ✅ | `TestReconnect*` / `TestMultiSession*` 10/10 |
 | 18 | 断号检测（不整页刷新） | ✅ | `TestMultiSessionSeqGapIsReported`；真机曾经无限重连（已修） |
 | 19 | 会话续历史 | ✅ | 重启界面后 `session.load` 带回历史 |
-| 20 | 断线恢复（真机） | ⏳ | 子代理验证中，见 `docs/reconnect.md`（若有） |
+| 20 | 断线恢复（真机） | ⏳ | 子代理验证中，见 `docs/reconnect.md`（未出） |
 | 21 | 完整工作日 | ❌ 未验 | 需要连续数小时真实使用 |
 | 22 | 同任务 A/B（vs 官方） | ❌ 未验 | — |
 | 23 | 整进程树性能 | ✅ | `docs/perf.md`：界面 56.6–79 MB；宿主 serve 空载 11.8 MB；官方 1603.8 MB/9 进程 |

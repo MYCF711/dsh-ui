@@ -542,6 +542,14 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 				m.setStatus("宿主凭据已失效（多半是重启过）：请用新的 launch token 重新连接")
 			}
 			log.Printf("mux 订阅失败（%v），%s 后重试 session:%s", err, backoff, id)
+			// **必须让用户看见**。早先这里只 log 一行：宿主被杀 33 秒后，
+			// 界面右下角还亮着绿点写「已连接 · 就绪」——连接早断了，UI 在说谎。
+			// 只写一句"连不上宿主（重试中）"，别覆盖成"已发送"这类动作状态，
+			// 因为它描述的是连接层而不是这一轮 turn。
+			m.mu.Lock()
+			m.status = "连不上宿主，重试中…"
+			m.mu.Unlock()
+			m.inv.Invalidate()
 			select {
 			case <-ctx.Done():
 				return

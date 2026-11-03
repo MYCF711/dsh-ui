@@ -305,8 +305,10 @@ func (m *model) subscribe(id string) {
 	go func() {
 		ch, err := m.mux.Subscribe(ctx, "session:"+id, since)
 		if err != nil {
+			log.Printf("mux 订阅失败（退回 session.load）: %v", err)
 			return // 流不可用不致命：界面仍能靠 session.load 工作
 		}
+		log.Printf("mux 已订阅 session:%s since=%d", id, since)
 		for ev := range ch {
 			if ev.Kind == "gap" {
 				// 断号：按契约去补这一段，绝不整体刷新
@@ -333,6 +335,10 @@ func (m *model) applyEvent(id string, ev apiclient.Event) {
 	}
 	if d.Delta != "" {
 		m.streamText += d.Delta
+		if streamDebug > 0 {
+			streamDebug--
+			log.Printf("mux 增量 +%d 字（累计 %d）", len([]rune(d.Delta)), len([]rune(m.streamText)))
+		}
 	}
 	if d.Done {
 		if m.streamText != "" {
@@ -445,6 +451,9 @@ const demoWideCode = "超宽代码块验证（这一行 129 个字符，卡片�
 	"```\n\n" +
 	"上面那行应该能横向滚动，而不是被硬切。"
 
+// streamDebug 只打前几条增量，用来证明"是流出来的、不是重新 load 出来的"。
+var streamDebug = 3
+
 var (
 	winTitle     string
 	shotPath     string
@@ -555,6 +564,10 @@ func newConfig(m *model) app.Config {
 						f.Column().Grow(1).MinHeight(120).Children(func() {
 							drawSlot(f, m.kernel, pluginapi.SlotSidebarList, env)
 						})
+						if m.kernel.Has(pluginapi.SlotSidebarFooter) {
+							m.prims.Divider(f)
+							drawSlot(f, m.kernel, pluginapi.SlotSidebarFooter, env)
+						}
 					})
 
 					// ── 右栏：主区的每一块都是插件挂上来的 ──
@@ -676,6 +689,7 @@ func main() {
 	collapseAll := flag.Bool("collapse", false, "调试：启动时把所有工作区分组收起（截折叠态用）")
 	rightbarOn := flag.Bool("rightbar", true, "启动时是否展开右栏（-rightbar=false 收起来）")
 	token := flag.String("token", "", "宿主 launch token：给了就先 /connect 换 cookie（真宿主 dshd serve 必须给）")
+	shotWait := flag.Int("shot-wait", 4, "无头抓图前等多少秒（流式/发送类验证要给大一点）")
 	shot := flag.String("shot", "", "抓一张窗口图存到这个路径然后退出（窗口会挪到屏幕外，不弹给用户）")
 	flag.Parse()
 	renderLimit = *limit
@@ -782,7 +796,7 @@ func main() {
 	}
 
 	if shotPath != "" {
-		startShot(shotPath, 4*time.Second)
+		startShot(shotPath, time.Duration(*shotWait)*time.Second)
 	}
 
 	var canvas ui.Canvas

@@ -129,3 +129,5 @@
 | 2026-11-03 13:50 | 顺带发现 **H11**：`dshd serve` 的 stdout 除 `ready {...}` 还多打了一行 `policy deny…`，而它自己的注释写着"stdout 只放那一行 ready" | 已记进 §12 |
 | 2026-11-03 14:02 | **右栏可开合**（官方也有）：状态归壳（`Snapshot.ShowRightbar` + `Act.ToggleRightbar`），顶栏给了一个「轨迹 开/关」入口。按钮文字用"开/关"而不是 `▸/▾`——实测这个字号下两个三角几乎分不出来，两张截图看着一模一样 | `tmp/rb-on.png`（89.0 MB）/ `tmp/rb-off.png`（86.9 MB） |
 | 2026-11-03 14:02 | H10 排查再进一步（写进 §12）：`session.load` 404 **不是文件不存在**——create 落盘的文件我找到了，`filepath.Glob` 能命中，`session.list` 也列得出来；四种入参组合全是 404。建议宿主在 `resolve` 的三个 `ErrNoSuchSession` 返回前打一行 debug 日志 | 已在 `DSH-GO/AGENTS.md` §12 |
+| 2026-11-03 14:06 | **流式验真了**：`-smoke` 发一条，日志里 `mux 已订阅 session:… since=0` 之后是 `mux 增量 +1 字（累计 1/2/3）`——**是逐字流出来的，不是重新 load 出来的**。截图里回复按 Markdown 渲染（粗体/行内代码/列表/代码块） | `tmp/stream2.log`、`tmp/stream.png` |
+| 2026-11-03 14:06 | **左栏底部状态**（`sidebar.footer` 这个常量终于有人用了）：`193 个会话` + 壳给的提示，一行 22px。壳那边第一次真的 `drawSlot(SlotSidebarFooter)` | `tmp/footer-crop.png` |

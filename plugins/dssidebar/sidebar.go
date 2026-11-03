@@ -77,6 +77,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{ID: "header", Slot: pluginapi.SlotSidebarHeader, Order: 10, Draw: p.drawHeader},
 		{ID: "list", Slot: pluginapi.SlotSidebarList, Order: 20, Draw: p.drawList},
+		{ID: "footer", Slot: pluginapi.SlotSidebarFooter, Order: 30, Draw: p.drawFooter},
 	}
 }
 
@@ -99,6 +100,22 @@ func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
 	})
 	f.Field(&p.search, env.Tree.ID(env.Feat, "search"), "搜索", "过滤会话…").Small().
 		FillWidth().FontSize(t.Fonts.Caption)
+}
+
+// drawFooter 画左栏底部那一行：会话总数 + 连接状态。
+//
+// 数据全部来自快照，不自己发请求。状态文字太长就省略——底部这行只用来"扫一眼"。
+func (p *Plugin) drawFooter(f *flex.Frame, env *pluginapi.Env) {
+	t := p.theme
+	f.Row().WidthPercent(100).Height(22).Items(flex.Center).Gap(6).Children(func() {
+		f.Text(itoa(len(env.Data.Sessions))+" 个会话").
+			FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+		f.Spacer()
+		if env.Data.Status != "" {
+			f.Text(env.Data.Status).FontSize(t.Fonts.Tiny).
+				Color(t.LabelTertiary).Ellipsis().MaxWidth(p.width - 120)
+		}
+	})
 }
 
 // drawList 画分好组的会话列表。

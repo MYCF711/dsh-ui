@@ -137,3 +137,5 @@
 | 2026-11-03 14:33 | 踩坑两个：① 壳里的 `drawSlot` 还留着只有 `p.Draw` 的旧实现，`Children` 永远不被调用 → **窗口全黑**（连底色都没有），查了三轮才定位；② `draw` 建了一个填满的 Row 之后，`children` 里又包了一层 Column/Row，剩余高度被吃掉 | 现在 `drawSlot` → `kernel.DrawSlot`，壳不再自己遍历 |
 | 2026-11-03 14:35 | **工具卡照官方 `.callRow` 改**：官方那行只有 `border-radius: sm`，**没有边框色**；我之前画成了带 1px 描边的卡片。去掉 Border、底色降到 `BgLayer2`、内边距改横向 10 纵向 8 | `tmp/toolrow-crop.png` |
 | 2026-11-03 14:35 | **图元补齐到官方那套**：`ds-core` 新增 `Chip`（官方 `.chip`：inline-flex、gap 3、business-primary 文字）与 `Bubble`（官方 `.bubble`：radius xl + specific-bubble 底），顶栏模式徽标改用它。两个子代理并行开工：一个对齐消息流（气泡/工具卡/思考行），一个写第三方插件样例 `dsdemo` 并补文档 | `tmp/topbar.png`；**76.0 MB** |
+| 2026-11-03 14:36 | **L4 消息流：工具调用改成官方的一行式**（`.V4vHZW_callRow` + `.BE0jCW_*`）。原来每张卡常驻「命令/输出」两行，一屏只能看三四条；现在默认收起成**一行**：`16px leading 箭头 · 工具名 · 摘要`，点这行展开正文（缩进 22px）。高度估算同步改成收起 28px，否则虚拟化会把内容判成视口外 | `tmp/toolrow.png`；工作集 80.8 MB |
+| 2026-11-03 14:36 | 官方规格摘录（`dsh-client-ui-chat` 打包 CSS）：`.callRow{border-radius:sm}` **无边框色**、悬停才浅底；`.leading{16×16}` 放 chevron；`.label` 13/24、省略；展开体 `max-height:min(400px,50vh)` | 已按此实现 |

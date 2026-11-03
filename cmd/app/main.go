@@ -710,6 +710,13 @@ func (m *model) applyEvent(id string, ev apiclient.Event) {
 	// 后台只做一件事：什么都不做（水位也不前进，见 runSubscription）。
 	// 切回来时用旧水位重订，宿主把这段时间的事件重放一遍——用时间换正确。
 	if id != m.cur {
+		// 后台：不写前台视图，但**水位必须记**。
+		// 不记的话切回来时 since=0，只能从头重放整条 journal——实测就是这样
+		// （切走 2 秒、后台收了一轮，切回仍 since=0）。记水位不违反隔离：
+		// 它只是"我消费到哪了"，不是会话内容。
+		if ev.Seq > m.seqs[id] {
+			m.seqs[id] = ev.Seq
+		}
 		m.mu.Unlock()
 		return
 	}

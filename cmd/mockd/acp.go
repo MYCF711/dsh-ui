@@ -1,4 +1,4 @@
-// acp.go —— 把 dshd 的 ACP 流接进 mockd 的 /api/mux。
+// acp.go —— 把 dshd 的 ACP 流接进 mockd 的 /ws。
 //
 // 分工：acpclient.go 只管协议；这里只管"把 ACP 的 update 变成一条要推给界面的事件"。
 // muxHandler 仍然是唯一的写者 —— 这个文件只往 acpLive 里塞，不直接写 socket。

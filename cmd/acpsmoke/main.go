@@ -1,4 +1,4 @@
-// acpsmoke —— 端到端验证：订阅 /api/mux → 发 prompt → 收真实模型回答。
+// acpsmoke —— 端到端验证：订阅 /ws（H14 基线）→ 发 prompt → 收真实模型回答。
 //
 // 只用于验收，不是产品代码。跑完可以删。
 //
@@ -29,7 +29,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	wsURL := strings.Replace(*base, "http", "ws", 1) + "/api/mux"
+	wsURL := strings.Replace(*base, "http", "ws", 1) + "/ws"
 	c, _, err := websocket.Dial(ctx, wsURL, nil)
 	if err != nil {
 		log.Fatalf("连 mux 失败：%v", err)

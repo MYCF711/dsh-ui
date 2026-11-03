@@ -14,12 +14,12 @@ import (
 
 // TestPromptProducesStream 端到端验证：
 //
-//	session.prompt 发一句 → /api/mux 订阅 → 收到 >=10 个 delta 帧 → 回答写进 history
+//	session.prompt 发一句 → /ws 订阅 → 收到 >=10 个 delta 帧 → 回答写进 history
 //
 // 用 httptest 起真 handler，不走 main()。
 func TestPromptProducesStream(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/mux", muxHandler)
+	mux.HandleFunc("/ws", muxHandler)
 	mux.HandleFunc("/api/", route)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -44,7 +44,7 @@ func TestPromptProducesStream(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/api/mux"
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
 	c, _, err := websocket.Dial(ctx, wsURL, nil)
 	if err != nil {
 		t.Fatalf("ws dial: %v", err)

@@ -140,7 +140,7 @@ func main() {
 	acpDir := flag.String("acp-cwd", "D:/DeepSeek Harness/default-workspace/dsh-ui", "ACP 会话的工作目录")
 	flag.Parse()
 
-	// /api/mux 比 /api/ 长，ServeMux 会优先精确匹配到它，不影响 13 个一元 method。
+	// /ws 是流；/api/ 是一元 method 的兜底前缀，两者不冲突。
 	http.HandleFunc("/ws", muxHandler)
 	http.HandleFunc("/api/", route)
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -173,7 +173,7 @@ func main() {
 }
 
 // ---------------------------------------------------------------------------
-// /api/mux —— Transport 契约的流（docs/api-contract.md §2）
+// /ws —— Transport 契约的流（H14 基线：路径 /ws，帧 {seq,type,data,time}，见 docs/api-contract.md §2）
 //
 // 假数据，只为把客户端的三条路走一遍：
 //   - 收到 sub 后每 200ms 推一条 ev；kind 在 user/message 与 assistant/message 间交替；
@@ -613,7 +613,7 @@ func route(w http.ResponseWriter, r *http.Request) {
 		if acp != nil {
 			go runACPPrompt(id, p.Text) // 真模型：流事件会塞进 acpLive；结束时自己清 busy
 		} else {
-			enqueueReplyLocked(id, p.Text) // 假回答：排队等 /api/mux 的订阅者来取
+			enqueueReplyLocked(id, p.Text) // 假回答：排队等 /ws 的订阅者来取
 		}
 		nextN++
 		writeJSON(w, 200, envelope{Result: map[string]any{"turnId": fmt.Sprintf("t-%d", nextN), "accepted": true}})

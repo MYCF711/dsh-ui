@@ -67,22 +67,31 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 
 ---
 
-## 2. 流：`/api/mux`（WebSocket）
+## 2. 流：`/ws`（WebSocket，H14 唯一基线）
 
 ```
 客户端 → { "t":"sub", "topic":"session:<id>", "sinceSeq": 123 }
-服务端 → { "t":"ev", "topic":"...", "seq":124, "kind":"user/message", "data":{...} }
-服务端 → { "t":"gap", "topic":"...", "fromSeq":130, "toSeq":140, "reason":"..." }
+服务端 → { "seq":124, "type":"user/message", "data":{...}, "time":1793693560098 }
+服务端 → { "type":"pong" }
 ```
 
-| topic | 内容 |
+| 字段 | 说明 |
 |---|---|
-| `session:<id>` | 该会话的 v4 事件（62 种原始词汇） |
-| `turn:<id>` | 助手流式增量：`text-delta` / `reasoning-delta` / `tool-call-delta`，带 `revision` / `index` |
+| 路径 | **`/ws`**。`/api/mux` 是界面早期的自定形状，已废弃，不要留两套 |
+| 控制帧（客户端） | `t=sub` / `t=unsub` / `t=ping`（应用层心跳，不占用 WS 控制帧） |
+| 事件帧（服务端） | `{seq,type,data,time}`；**没有 topic 字段**——连接本身就是会话归属 |
+| `type` | v4 原始事件名，或 `pong`。不是 `{t:"ev",kind:…}` |
+| `seq` | 由宿主每会话 Transport journal 统一分配；`pong` 无 seq、不入日志 |
+| 连接粒度 | **一个会话一条连接**，不得在同连接混订多个会话 |
+| 服务端不发 gap | 断号由**客户端**按 `seq` 连续性自己发现，再调 `session.history` 补缺失区间 |
 
-**连续性规则（照抄官方语义，这是它做对的地方）**：
-- `seq` 必须连续；**断号发 `gap` 帧**，客户端用 `session.history` 补洞；
+**连续性规则**：
+- 客户端记录 `lastSeq`；收到 `seq != lastSeq+1` 时，把 `[lastSeq+1, seq-1]` 作为缺口交给调用方；
+- 调用方用 `session.history` 只补这一段（**不是**整页 `session.load`——`load` 是首屏视图投影）；
 - **绝不"重连就整体刷新"**（长会话会闪、滚动位置会丢）。
+
+> 2026-11-03 实测：真宿主 `/api/mux` 回 404（路径不对）、改 `/ws` 后回 401（`Mux` 没带 cookie）。
+> 两处都修掉才连上，见 `docs/progress.md`。
 
 ---
 

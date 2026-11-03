@@ -1,5 +1,5 @@
 // mockd 的流式回答：session.prompt 之后登记一条待推送的回答，
-// /api/mux 的订阅者按字符把它推出去。
+// /ws 的订阅者按字符把它推出去。
 //
 // 设计上刻意分成两半：
 //   - 登记（enqueueReplyLocked）：在 route 的锁内调用，只改 pending 表；

@@ -65,6 +65,24 @@ func (p *Plugin) commands() []Command {
 	if a.Cancel != nil {
 		out = append(out, Command{"打断当前 turn", "停止正在跑的这一轮", a.Cancel})
 	}
+	// 审批策略：四条命令，**值都来自宿主的白名单**（deny/ask/allow/auto）。
+	//
+	// 为什么不做成"一个循环切换"：用户没法从命令名看出下一个是什么。
+	// 四条明写，点哪个就是哪个。第五条的"恢复默认"要单独给——
+	// 没有它，用户设过一次就再也回不到宿主的 `--policy` 了。
+	if a.SetPermission != nil {
+		for _, c := range []struct{ label, hint, value string }{
+			{"权限：每次都问我", "写类工具每次都要点允许（ask）", "ask"},
+			{"权限：只读", "写类工具一律拒绝（deny）", "deny"},
+			{"权限：自动允许", "写类工具不问直接跑（allow）", "allow"},
+			{"权限：按模式自动", "由当前模式决定（auto）", "auto"},
+			{"权限：恢复默认", "回到宿主的 --policy，不留覆盖", ""},
+		} {
+			c := c // 闭包捕获：不这么做四条命令都会设成最后一个值
+			set := a.SetPermission
+			out = append(out, Command{c.label, c.hint, func() { set(c.value) }})
+		}
+	}
 	return out
 }
 

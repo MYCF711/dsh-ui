@@ -53,10 +53,12 @@ import (
 // cachedSession 是切换会话用的温缓存：切回来先显示它，再后台刷新。
 // 上限 5 个（约 3 MB/1000 条），超了就淘汰最久没碰的那个。
 type cachedSession struct {
-	msgs  []apiclient.Message
-	total int
-	title string
-	usage apiclient.Usage
+	msgs      []apiclient.Message
+	total     int
+	title     string
+	truncated bool
+	cwd       string
+	usage     apiclient.Usage
 	// 宿主 §12 H1/H4 的字段跟 usage 一起缓存：切回来时先显示上一次的真值，
 	// 而不是先掉回零值（那会让状态栏闪一下"没有数据"）。
 	usageTotal    apiclient.Usage
@@ -99,8 +101,9 @@ type model struct {
 	jobsPending bool
 	smokeFired  bool
 
-	// 待审批的请求（v1 只支持一条；工具名 + 命令 + 模型自述）
-	approval *approvalReq
+	// 待审批的请求（每会话一条）；前台指针只是 approvals[cur] 的发布副本。
+	approval  *approvalReq
+	approvals map[string]*approvalReq
 
 	// 每条助手消息一份 Markdown 文档 + 视图（按消息下标复用，避免每帧重建）
 	// 每个会话的滚动位置（只存 float32，不存 *ScrollState —— viva 要求"要的时候再取"）
@@ -132,10 +135,9 @@ type model struct {
 	// lastSeq 是**当前会话**已收到的最大 seq。per-session 的水位在 muxSub.lastSeq，
 	// 这里保留一份是为了"打开会话时给 since"和审批帧用，不要拿它当全局水位。
 	lastSeq int
-	// stream 归约当前这一回合的流式块（text / reasoning 交错到达）。
-	// 为什么交给 apiclient：事件名与 content 块的形状是**线上契约**，
-	// 归约规则（同 seq 更新、思考先于正文）也要在能被单测的地方。
-	stream apiclient.Stream
+	// streamStates 按会话保存 canonical Stream；前台 streamText/busy 只是发布副本。
+	// 后台帧也走同一套 apiclient 归约，切回不靠取消订阅或整页重放补内容。
+	streamStates map[string]*sessionStreamState
 
 	// ── 插件运行时（界面线的「一切皆插件」）──
 	// 壳只做三件事：装配插件、给槽位、把快照递进去。
@@ -314,40 +316,27 @@ func (m *model) openSession(id string) {
 	m.mu.Lock()
 	m.cur = id
 	m.pendingScroll = id
-	// 水位跟着会话走。不复位就会拿上一个会话的 seq 去判连续性：
-	// 切到 B 时 lastSeq 还是 A 的，B 的第一条事件要么被当成"断号"、
-	// 要么被 `ev.Seq > lastSeq` 直接丢掉——这是"多会话串流"的真正成因。
+	// 水位跟着会话走；后台事件已经持续归约，所以切回绝不取消订阅重放。
 	m.lastSeq = m.seqs[id]
-	// 切回来时把该会话的旧订阅掐掉重订一次：后台期间的事件没被消费，
-	// 只有"带着切走时的水位重新 sub"才能让宿主把它们重放出来。
-	// 水位已经在上一行取到 m.lastSeq 里，删 sub 不会丢它。
-	if sub := m.subs[id]; sub != nil {
-		if sub.cancel != nil {
-			sub.cancel()
-		}
-		delete(m.subs, id)
-	}
-	// 待审批也属于具体会话：切走时清掉，绝不能在 B 的界面上批准 A 的工具。
-	// （代价：切回来要等宿主重推该请求；宿主 120s 无应答会自己拒，不会永远挂着。）
-	m.approval = nil
+	// 审批同样按会话保存，恢复原 requestId/options，不在切换时丢请求。
+	m.approval = m.approvals[id]
 	hit := false
 	if cs, ok := m.cache[id]; ok {
-		m.msgs = cs.msgs
-		m.usage = cs.usage
-		m.usageTotal = cs.usageTotal
-		m.contextTokens = cs.contextTokens
-		m.modelName = cs.model
+		m.publishSessionLocked(id)
 		m.status = fmt.Sprintf("温缓存 · %d 条（总 %d）", len(cs.msgs), cs.total)
 		m.loading = false
 		hit = true
 	} else {
-		// 换成没缓存的会话时必须把上一份用量清掉：留着它就成了"这个会话的
-		// 数据"，而实际是上一个会话的——比不显示严重得多。
+		// 换成没缓存的会话时必须清掉上一份前台真值。
 		m.msgs = nil
 		m.usage = apiclient.Usage{}
 		m.usageTotal = apiclient.Usage{}
 		m.contextTokens = 0
 		m.modelName = ""
+		m.cwd = ""
+		state := m.streamStateLocked(id)
+		m.streamText = state.text
+		m.turnBusy = state.busy
 		m.loading = true
 		m.status = "加载 " + id + " …"
 	}
@@ -355,12 +344,14 @@ func (m *model) openSession(id string) {
 	m.mu.Unlock()
 	m.inv.Invalidate()
 
-	// **订阅之前**先同步 load 一次，只为了拿 lastSeq（宿主 journal 现在到哪了）。
-	//
-	// 为什么必须在这之前：load 会把会话内容整份给出来，如果随后订阅仍从 0 开始，
-	// 宿主会把整条 journal 重放一遍，客户端再按"流式载荷"解析一次并 merge——
-	// 实测「共 5 条」而宿主只有 4 条（user 提示和 tool 结果各多画一遍）。
-	// 这一次 load 是本地 HTTP，几毫秒到几十毫秒，只在切会话时发生一次。
+	if hit {
+		// 温切直接使用 canonical 缓存与仍在归约的订阅：不 load、不 refresh、
+		// 不取消重订，正在生成的正文和阅读位置都留在原会话状态里。
+		m.subscribe(id)
+		return
+	}
+
+	// 冷载先取 journal 基线再订阅，避免 load 后又从 0 重放整条 journal。
 	{
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		if r, _, err := m.loadSession(ctx, id, tailCount); err == nil {
@@ -369,20 +360,14 @@ func (m *model) openSession(id string) {
 				m.seqs[id] = r.LastSeq
 			}
 			if r.JournalEpoch > 0 {
-				m.epochs[id] = r.JournalEpoch // 顺带把世代也填上，订阅帧才带得出去
+				m.epochs[id] = r.JournalEpoch
 			}
 			m.lastSeq = m.seqs[id]
 			m.mu.Unlock()
 		}
 		cancel()
 	}
-
 	m.subscribe(id)
-	if hit {
-		// 有缓存就立刻可看，后台静默刷新
-		go m.refreshSession(id, true)
-		return
-	}
 	go m.refreshSession(id, false)
 }
 
@@ -398,74 +383,49 @@ func (m *model) refreshSession(id string, quiet bool) {
 		return
 	}
 	m.mu.Lock()
-	if m.msgMeta == nil {
-		m.msgMeta = map[string]map[string]pubapi.MessageMetadata{}
+	before := 0
+	if cache := m.cache[id]; cache != nil {
+		before = len(cache.msgs)
 	}
-	if m.msgMeta[id] == nil {
-		m.msgMeta[id] = map[string]pubapi.MessageMetadata{}
-	}
-	for key, value := range metadata {
-		m.msgMeta[id][key] = value
-	}
-	m.cache[id] = &cachedSession{msgs: r.Messages, total: r.Total, title: r.Title, usage: r.Usage,
-		usageTotal: r.UsageTotal, contextTokens: r.ContextTokens, model: r.Model, at: time.Now()}
+	// load 与 WS 可能并发完成：先并入 canonical 缓存，不能把飞行期间到达的
+	// 后台正文用一份较旧 tail 覆盖掉。当前/后台会话走完全相同的归并路径。
+	m.integrateLoadLocked(id, r, metadata)
 	m.evictLocked(id)
-	if m.cur == id { // 用户可能已经切走了
-		// **覆盖前先比条数**：`session.load` 给的是尾巴（`-tail` 默认 40 条），
-		// 而界面手里可能已经有更完整的一份（切走期间推来的、或上一轮 load 的）。
-		// 无条件替换会把尾巴之前的历史整段吃掉——实测切走后给 A 发新消息、
-		// 切回来时界面「共 2 条（总 2）」而宿主是 4 条。
-		//
-		// 规则：新快照**不比手里少**才允许整份替换；少了就合并（保留旧的、
-		// 按 seq 去重并入新的）。这样"刷新"永远不会让屏幕上少东西。
-		before := len(m.msgs)
-		if len(r.Messages) >= len(m.msgs) {
-			m.msgs = r.Messages
-		} else {
-			m.msgs = apiclient.MergeMessages(m.msgs, r.Messages)
+	if msgsDebug > 0 {
+		msgsDebug--
+		log.Printf("DBG load session:%s 宿主 tail=%d total=%d | 覆盖前 %d 条 → 之后 %d 条",
+			id, len(r.Messages), r.Total, before, len(m.cache[id].msgs))
+	}
+	if r.JournalEpoch > 0 {
+		m.epochs[id] = r.JournalEpoch
+	}
+	if r.LastSeq > m.seqs[id] {
+		m.seqs[id] = r.LastSeq
+		if id == m.cur {
+			m.lastSeq = r.LastSeq
 		}
-		if msgsDebug > 0 {
-			msgsDebug--
-			log.Printf("DBG load session:%s 宿主 tail=%d total=%d | 覆盖前 %d 条 → 之后 %d 条",
-				id, len(r.Messages), r.Total, before, len(m.msgs))
-		}
-		m.usage = r.Usage
-		// H1/H4/H5：真宿主给的字段原样带进快照；mockd 不给时是零值，
-		// 状态栏/顶栏据此整段不画。H1 的两个量是两件事，各自独立存。
-		m.usageTotal = r.UsageTotal
-		m.contextTokens = r.ContextTokens
-		m.modelName = r.Model
-		// 工作目录：插件拼文件路径的前提（workspace.list 只给 name）。
-		m.cwd = r.Cwd
-		// 水位基线：epoch 用来核对世代，lastSeq 是宿主那边已经到哪了。
-		if r.JournalEpoch > 0 {
-			m.epochs[id] = r.JournalEpoch
-		}
-		// **load 已经把 content 给全了**，水位就该跳到宿主当前末尾。
-		// 不跳的话订阅会从 0 起重放整条 journal，把刚 load 出来的
-		// user/message、tool/result 再按"流式载荷"解析一遍并 merge 进消息列表——
-		// 实测症状是"共 7 条"而宿主只有 4 条，提示和工具结果各多画一遍。
-		if r.LastSeq > m.seqs[id] {
-			m.seqs[id] = r.LastSeq
-			if id == m.cur {
-				m.lastSeq = r.LastSeq
-			}
-		}
-		// permission 是**进程级**的审批策略（不是会话 mode），每次 load 都刷新。
-		m.permission = r.Permission
+	}
+	// permission 是进程级审批策略，不是会话 mode。
+	m.permission = r.Permission
+	if m.cur == id {
 		if demoTool && len(m.msgs) > 0 {
-			// 注意：这里已经在 m.mu 内（refreshSession 的锁），不能再 Lock —— 会自死锁
-			m.approval = &approvalReq{Tool: "bash", Cmd: "git status --short",
+			req := &approvalReq{Tool: "bash", Cmd: "git status --short",
 				Reason: "想看一下当前工作区有没有未提交的改动"}
-			m.msgs = append(m.msgs,
+			m.approval = req
+			if m.approvals == nil {
+				m.approvals = map[string]*approvalReq{}
+			}
+			m.approvals[id] = req
+			m.cache[id].msgs = append(m.cache[id].msgs,
 				apiclient.Message{Seq: -2, Role: "tool", Tool: "bash",
 					Args:    "git status --short",
 					Summary: "exit 0 · 3 files changed · 用了 12 ms"},
 				apiclient.Message{Seq: -3, Role: "tool", Tool: "read",
 					Args:    "internal/apiclient/mux.go",
 					Summary: "1.2 KB · 78 行 · 读完了"},
-				// 带 129 字符单行代码的助手消息：验横向滚动（清单 3.3）
 				apiclient.Message{Seq: -4, Role: "assistant", Text: demoWideCode})
+			m.cache[id].total = len(m.cache[id].msgs)
+			m.publishSessionLocked(id)
 		}
 		m.syncRightbarLocked()
 		m.status = fmt.Sprintf("已连接 · %d 条（总 %d）", len(r.Messages), r.Total)
@@ -762,7 +722,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 						ep := int(m.epochs[id])
 						m.mu.Unlock()
 						n, err := apiclient.FillGap(ctx, m.cli, id, from, to, ep, func(f apiclient.Frame) {
-							m.applyEventAt(id, apiclient.Event{Kind: f.Type, Seq: f.Seq, Topic: "session:" + id, Data: f.Data}, f.Time)
+							m.applyHistoryFrame(id, f)
 						})
 						if err != nil {
 							log.Printf("history 补洞失败 session:%s [%d,%d]: %v", id, from, to, err)
@@ -828,16 +788,16 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 				break
 			}
 			m.applyEvent(id, ev)
-			// 水位只在**前台**会话上前进：后台会话不消费事件（见 applyEvent），
-			// 若这里也前进水位，切回来时就"跳过了没消费的那一段"——字会永久丢。
+			// 前台与后台都已经消费并归约这条帧，水位必须同步前进；否则后台
+			// 内容虽在缓存里，重连/切回仍会重复投递同一段 journal。
 			m.mu.Lock()
-			if id == m.cur {
-				if sub := m.subs[id]; sub != nil && ev.Seq > sub.lastSeq {
-					sub.lastSeq = ev.Seq
-				}
-				if ev.Seq > m.seqs[id] {
-					m.seqs[id] = ev.Seq // 水位独立存：切走删 subs 也不会丢
-				}
+			if sub := m.subs[id]; sub != nil && ev.Seq > sub.lastSeq {
+				sub.lastSeq = ev.Seq
+			}
+			if ev.Seq > m.seqs[id] {
+				m.seqs[id] = ev.Seq
+			}
+			if ev.Seq > 0 {
 				since = ev.Seq
 			}
 			m.mu.Unlock()
@@ -878,6 +838,13 @@ func (m *model) onJournalResetLocked(id string) int {
 		// 只清前台会话：别的会话的水位跟这条连接没关系，清掉就是丢别人的进度。
 		m.lastSeq = 0
 	}
+	state := m.streamStateLocked(id)
+	state.stream.Reset()
+	state.text = ""
+	state.busy = false
+	state.activeTurnID = ""
+	state.activeTurn = nil
+	m.publishSessionLocked(id)
 	return 0
 }
 
@@ -928,7 +895,11 @@ func (m *model) cancelTurn() {
 		}
 		log.Printf("cancel 已发送 id=%s", id)
 		m.mu.Lock()
-		m.turnBusy = false
+		state := m.streamStateLocked(id)
+		state.busy = false
+		state.activeTurnID = ""
+		state.activeTurn = nil
+		m.publishSessionLocked(id)
 		m.mu.Unlock()
 		m.setStatus("已取消")
 	}()
@@ -955,6 +926,11 @@ func (m *model) approve(requestID, optionID string) {
 		m.mu.Lock()
 		if m.approval != nil && m.approval.RequestID == requestID {
 			m.approval = nil
+		}
+		for session, pending := range m.approvals {
+			if pending != nil && pending.RequestID == requestID {
+				delete(m.approvals, session)
+			}
 		}
 		m.mu.Unlock()
 		m.inv.Invalidate()
@@ -1026,6 +1002,11 @@ func (m *model) decide(kind string) {
 		if m.approval != nil && m.approval.RequestID == req.RequestID {
 			m.approval = nil
 		}
+		for session, pending := range m.approvals {
+			if pending != nil && pending.RequestID == req.RequestID {
+				delete(m.approvals, session)
+			}
+		}
 		m.mu.Unlock()
 		m.inv.Invalidate()
 		m.setStatus(label)
@@ -1041,13 +1022,23 @@ func maxInt(a, b int) int {
 }
 
 func (m *model) applyEvent(id string, ev apiclient.Event) {
-	m.applyEventAt(id, ev, 0)
+	m.applyEventAt(id, ev, ev.Time)
+}
+
+// applyHistoryFrame 让 history 重放与 live WS 使用同一个保真 Event 边界，
+// 包括 Kind/Seq/Topic/Data/Time；不再另手写只有 Data 的事件。
+func (m *model) applyHistoryFrame(id string, frame apiclient.Frame) {
+	m.applyEvent(id, frame.Event("session:"+id))
 }
 
 func (m *model) applyEventAt(id string, ev apiclient.Event, envelopeTime int64) {
-	// 审批帧不是流事件，不能进 stream.Apply（那会把 tool-call 之类混进正文）。
-	// 它只对**当前会话**有意义：后台会话的审批等切回去再显示，
-	// 否则用户会在 A 的界面上批准 B 的工具——线上事故级别的错误。
+	// 兼容既有显式 envelope 测试入口；生产路径由 applyEvent 传入 ev.Time。
+	// 这是同一个信封真值，不是在 Event.Time==0 时重新猜 data.time。
+	if ev.Time == 0 {
+		ev.Time = envelopeTime
+	}
+	// 审批帧不是正文流；按会话保存完整原始 requestId/options，切回直接恢复，
+	// 不需要靠重订让宿主重推，也绝不会在 B 的前台显示 A 的请求。
 	if ev.Kind == "approval/request" {
 		req, err := apiclient.ParseApprovalRequest(ev.Data)
 		if err != nil {
@@ -1055,85 +1046,106 @@ func (m *model) applyEventAt(id string, ev apiclient.Event, envelopeTime int64) 
 			return
 		}
 		m.mu.Lock()
+		approval := &approvalReq{
+			RequestID: req.RequestID,
+			Tool:      req.Tool(),
+			Title:     req.ToolCall.Title,
+			Kind:      req.ToolCall.Kind,
+			Args:      req.Args(),
+			Cmd:       req.Command(),
+			Detail:    req.Detail(),
+			Options:   req.Options,
+		}
+		if m.approvals == nil {
+			m.approvals = map[string]*approvalReq{}
+		}
+		m.approvals[id] = approval
+		if m.seqs == nil {
+			m.seqs = map[string]int{}
+		}
+		if ev.Seq > m.seqs[id] {
+			m.seqs[id] = ev.Seq
+		}
 		isCur := id == m.cur
 		if isCur {
-			m.approval = &approvalReq{
-				RequestID: req.RequestID,
-				Tool:      req.Tool(),
-				Title:     req.ToolCall.Title,
-				Kind:      req.ToolCall.Kind,
-				Args:      req.Args(),
-				Cmd:       req.Command(),
-				Detail:    req.Detail(),
-				Options:   req.Options,
-			}
+			m.approval = approval
 			m.lastSeq = maxInt(m.lastSeq, ev.Seq)
 		}
 		m.mu.Unlock()
 		if isCur {
 			log.Printf("待审批 requestId=%s tool=%s options=%d", req.RequestID, req.Tool(), len(req.Options))
-			m.inv.Invalidate()
 		}
+		m.inv.Invalidate()
 		return
 	}
 
 	m.mu.Lock()
-	// **后台会话的帧不能写前台视图**。
-	//
-	// 以前切走就退订，所以这条没暴露；现在不退订了（方向是对的），
-	// 若还往 m.msgs / m.stream 里 merge，B 的字就会出现在 A 的列表里——
-	// 这就是"多会话串流"的真正落点，而且 A 的 cache 会被 B 的内容污染。
-	//
-	// 后台只做一件事：什么都不做（水位也不前进，见 runSubscription）。
-	// 切回来时用旧水位重订，宿主把这段时间的事件重放一遍——用时间换正确。
-	if id != m.cur {
-		// 后台：不写前台视图，但**水位必须记**。
-		// 不记的话切回来时 since=0，只能从头重放整条 journal——实测就是这样
-		// （切走 2 秒、后台收了一轮，切回仍 since=0）。记水位不违反隔离：
-		// 它只是"我消费到哪了"，不是会话内容。
-		if ev.Seq > m.seqs[id] {
-			m.seqs[id] = ev.Seq
-		}
-		m.mu.Unlock()
-		return
+	state := m.streamStateLocked(id)
+	cache := m.cachedSessionLocked(id)
+	turnID, turnNumber := eventTurnIdentity(ev)
+	if turnID != "" || turnNumber != nil {
+		state.activeTurnID = turnID
+		state.activeTurn = turnNumber
 	}
-	if ev.Seq > m.lastSeq {
+	if m.seqs == nil {
+		m.seqs = map[string]int{}
+	}
+	if ev.Seq > m.seqs[id] {
+		m.seqs[id] = ev.Seq
+	}
+	if id == m.cur && ev.Seq > m.lastSeq {
 		m.lastSeq = ev.Seq
 	}
 	if stoppedEvent(ev) && !ev.End() {
-		// 显式 stopped/interrupted 是终局：先让已有部分正文按既有 End 路径落条，
-		// 不把“点了取消”本身伪造成宿主 stopped。
+		// 显式 stopped/interrupted 先落已有部分正文；取消按钮本身不产生此帧。
 		end := ev
 		end.Kind = "turn/end"
-		if m.stream.Apply(end) {
-			m.msgs = apiclient.Merge(m.msgs, &m.stream)
-			m.streamText = ""
-			m.stream.Reset()
-			m.turnBusy = false
+		if state.stream.Apply(end) {
+			cache.msgs = apiclient.Merge(cache.msgs, &state.stream)
+			state.text = ""
+			state.stream.Reset()
+			state.busy = false
 		}
 	}
 	durableUserText := ""
-	if m.stream.Apply(ev) {
+	if state.stream.Apply(ev) {
 		if ev.Kind == "user/message" {
-			durableUserText = m.stream.Text()
+			durableUserText = state.stream.Text()
 		}
-		// 思考一有增量就落（边想边看）；正文等这段说完才落（流式期间由气泡显示）。
-		m.msgs = apiclient.Merge(m.msgs, &m.stream)
-		m.syncRightbarLocked()
-		if streamDebug > 0 && m.stream.Thinking() != "" && m.stream.Text() == "" {
+		before := len(cache.msgs)
+		cache.msgs = apiclient.Merge(cache.msgs, &state.stream)
+		if added := len(cache.msgs) - before; added > 0 {
+			cache.total += added
+		}
+		if cache.total < len(cache.msgs) {
+			cache.total = len(cache.msgs)
+		}
+		cache.at = time.Now()
+		if id == m.cur {
+			m.syncRightbarLocked()
+		}
+		if streamDebug > 0 && state.stream.Thinking() != "" && state.stream.Text() == "" {
 			streamDebug--
-			log.Printf("mux 思考增量（累计 %d 字）", len([]rune(m.stream.Thinking())))
+			log.Printf("mux 思考增量（累计 %d 字）", len([]rune(state.stream.Thinking())))
 		}
-		if m.stream.Done() {
-			m.streamText = ""
-			m.stream.Reset()
-			m.turnBusy = false
+		if state.stream.Done() {
+			state.text = ""
+			state.stream.Reset()
+			state.busy = false
+			state.activeTurnID = ""
+			state.activeTurn = nil
 		} else {
-			m.streamText = m.stream.Text()
+			state.text = state.stream.Text()
 		}
 	}
-	m.recordTurnEventsLocked(id, ev, envelopeTime)
-	m.reconcileOutgoingLocked(id, durableUserText)
+	if ev.End() || stoppedEvent(ev) {
+		state.busy = false
+		state.activeTurnID = ""
+		state.activeTurn = nil
+	}
+	m.recordTurnEventsLocked(id, ev)
+	m.reconcileOutgoingLocked(id, durableUserText, turnID)
+	m.publishSessionLocked(id)
 	m.mu.Unlock()
 	m.inv.Invalidate()
 }
@@ -1332,6 +1344,21 @@ func newConfig(m *model) app.Config {
 		}
 		turnEvents := append([]pubapi.TurnEvent(nil), m.turnEvents[cur]...)
 		outgoing := append([]pubapi.OutgoingMessage(nil), m.outgoing[cur]...)
+		total := len(msgs)
+		truncated := false
+		if cache := m.cache[cur]; cache != nil {
+			total = cache.total
+			truncated = cache.truncated
+			if total < len(msgs) {
+				total = len(msgs)
+			}
+		}
+		var activeTurnID string
+		var activeTurn *int64
+		if state := m.streamStates[cur]; state != nil {
+			activeTurnID = state.activeTurnID
+			activeTurn = cloneTurnNumber(state.activeTurn)
+		}
 		status := m.status
 		streamText := m.streamText
 		approval := m.approval
@@ -1345,6 +1372,7 @@ func newConfig(m *model) app.Config {
 		if renderLimit > 0 && len(msgs) > renderLimit {
 			status = fmt.Sprintf("%s（渲染末尾 %d / %d）", status, renderLimit, len(msgs))
 			msgs = msgs[len(msgs)-renderLimit:]
+			truncated = true
 		}
 		m.mu.Unlock()
 
@@ -1392,8 +1420,9 @@ func newConfig(m *model) app.Config {
 			Theme: m.theme,
 			Data: pluginapi.Snapshot{
 				Sessions: sessions, Cur: cur, Status: status,
-				Msgs: msgs, Total: len(msgs), Stream: streamText,
+				Msgs: msgs, Total: total, Stream: streamText, Truncated: truncated,
 				MessageMeta: metadata, TurnEvents: turnEvents, Outgoing: outgoing,
+				ActiveTurnID: activeTurnID, ActiveTurn: activeTurn,
 				Usage: pluginapi.Usage{
 					InputTokens:     usage.InputTokens,
 					OutputTokens:    usage.OutputTokens,
@@ -1718,6 +1747,8 @@ func main() {
 		outgoing:         map[string][]pubapi.OutgoingMessage{},
 		msgMeta:          map[string]map[string]pubapi.MessageMetadata{},
 		turnEvents:       map[string][]pubapi.TurnEvent{},
+		approvals:        map[string]*approvalReq{},
+		streamStates:     map[string]*sessionStreamState{},
 	}
 	// **先换 cookie，再拉数据**。
 	// 反过来（先 refreshList 再 Connect）的后果实测过：第一次 list 必然 401，
@@ -1854,6 +1885,32 @@ func main() {
 				go m.refreshJobs()
 			}
 			return jobs
+		},
+		// 审批策略：写宿主 <home>/state/session-permission.json。
+		// **异步、失败只写状态栏**——和 ConfigSet 同一个策略：插件不等待、不重试。
+		SetPermission: func(perm string) {
+			m.mu.Lock()
+			id := m.cur
+			m.mu.Unlock()
+			if id == "" {
+				// 没有当前会话就别发：宿主那边 `id` 必填，发了也是 400。
+				// 而且界面上看起来会像"改了但没用"。
+				m.setStatus("没有当前会话，改不了权限")
+				return
+			}
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := m.cli.SetSessionPermission(ctx, id, perm); err != nil {
+					m.setStatus("改权限失败: " + err.Error())
+					return
+				}
+				if perm == "" {
+					m.setStatus("权限已恢复默认")
+				} else {
+					m.setStatus("权限已设为 " + perm)
+				}
+			}()
 		},
 		FSRead: func(path string) (string, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

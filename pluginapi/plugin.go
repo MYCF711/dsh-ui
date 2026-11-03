@@ -327,6 +327,10 @@ type Snapshot struct {
 	TurnEvents []TurnEvent
 	// Outgoing 是当前会话尚未与 durable user event 对账的本地发送及失败草稿。
 	Outgoing []OutgoingMessage
+	// ActiveTurnID/ActiveTurn 是当前正在归约的真实 Turn 身份。缺真值时保持
+	// 零值；消息区只给身份完全匹配的 Turn 页脚标“进行中”，不猜最新一组。
+	ActiveTurnID string
+	ActiveTurn   *int64
 }
 
 // Usage 是 token 用量的界面视图。
@@ -496,6 +500,13 @@ type Actions struct {
 	// 插件画的时候不该把"这一帧没有"理解成"没有后台任务"。
 	// nil = 壳没接（老宿主）。
 	JobsList func() []Job
+
+	// SetPermission 改当前会话的审批策略（deny/ask/allow/auto）。
+	//
+	// **空串 = 清除覆盖**（回到宿主的 --policy）。宿主会白名单校验，
+	// 传没定义的值会 400——插件不该把"看起来合理的词"直接递过去。
+	// nil = 壳没接（老宿主）。
+	SetPermission func(perm string)
 
 	// Approve 回一次审批（H13 的 `session.approve`）。
 	//

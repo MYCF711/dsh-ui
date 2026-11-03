@@ -27,7 +27,7 @@
 | 16b | 反复切会话不涨内存 | ✅ | `docs/multi-session.md`：来回切 15 次 58.9–62.3 MB 振荡（首末 −3.4/−2.3/−0.9 MB）；常驻 5 点 59.0→59.8 后走平 |
 | 17 | 断线重连（链路剪断，宿主活着） | ✅ | `docs/reconnect.md`：`连接断开 → 带水位 5 重连 → 已订阅 since=5`，且**只发 `GET /ws`、不发 `session.load`**（没整页重载）；新二进制复现 `since=340/354` |
 | 17b | 断线重连（宿主**重启**） | ❌ 不能自愈 | 同文档：卡在**凭据**不是重连逻辑 —— cookie 在宿主内存里，重启即失效，界面 `-cookie` 只 SetCookies 一次、`runSubscription` 没有重新 /connect 的路径。退避正常（1/2/4/8/16/32s） |
-| 18 | 断号检测（不整页刷新） | 🟡 检测到但**没补洞** | 客户端会报「断号 [a,b]（待用 session.history 补洞）」并继续消费，但**实测 0 次调用 history**（用记录请求行的中继验证），缺段被永久跳过 |
+| 18 | 断号检测 + 补洞 | ✅ | 检测到断号后**真的调 `session.history` 只补 `[From,To]`**：真机 `mux 断号 [8,9] → history 补洞完成 补回 2 帧`；`FillGap` 三个单测（区间过滤、sinceSeq 开区间、409 冒泡） |
 | 19 | 会话续历史 | ✅ | 重启界面后 `session.load` 带回历史 |
 | 19b | 断线期间的数据 | ✅ 盘上有 / ❌ 界面没补 | 同文档：被杀那一轮完整落盘（子进程活过父进程 10.3s）；宿主活着时 `history{"sinceSeq":166}` → 200 + frames 167..277（**能补**）；重启后 → 409 `stale_epoch` |
 | 20 | 断线恢复（真机） | ⏳ | 子代理验证中，见 `docs/reconnect.md`（未出） |
@@ -55,6 +55,8 @@
 
 1. **完整工作日**：没有连续数小时的真实使用记录。这一步只能真的用，不能模拟。
 2. **断线恢复真机**：子代理在验（宿主重启 / 同端口重起），结论未回。
-3. **`session.history` 补洞**：宿主**已经回 frames 了**（实测 `history{"sinceSeq":166}` → 200 + frames 167..277），缺的是界面没接这个调用（实测 0 次）。另有三层跨线缺口（见 `docs/reconnect.md` §9）：sub 帧不带 `journalEpoch`、`LoadResult` 没有 journalEpoch/lastSeq、宿主 `FrameSub` 不重放 journal。
-4. **审批的 `allow_always` 效果**：按钮与回传都验了（`TestAllowAlwaysGetsItsOwnButton`），但"以后都允许"在宿主侧是否真的记住了，**未验**。
-5. **性能里没测到的 10 项**：GPU 显存、帧率、输入延迟、invalidate→重绘耗时、纯滚轮、真模型一轮内存、5 会话内容一致性、宿主整树、高 DPI、258ms 冷启动分解（见 `docs/perf.md` §9）。
+3. **宿主重启后自愈**：卡在凭据——cookie 存在宿主进程内存里，重启即失效，界面 `-cookie` 只 `SetCookies` 一次、`runSubscription` 没有重新 `/connect` 的路径。要有这条得先让重连能换凭据（跨线）。
+4. **journalEpoch（跨线，未接）**：sub 帧不带 `journalEpoch`、`LoadResult` 没有该字段 → 宿主 `session/reset` 分支对界面永不触发。凭据问题一旦解决，旧水位会撞上新 journal 的 `Publish` 过滤（`seq > sinceSeq`），**静默错位**。这条是目前最该补的跨线缺口。
+5. **宿主 `FrameSub` 不重放 journal**（`docs/reconnect.md` §2）：`frame.go:48` 注释说"可带 sinceSeq 重放"，实现只做世代检查 + pending 审批重放。"带水位重订"目前名不副实——靠客户端自己的 `history` 补洞兜住。
+6. **审批的 `allow_always` 效果**：按钮与回传都验了（`TestAllowAlwaysGetsItsOwnButton`），但"以后都允许"在宿主侧是否真的记住了，**未验**。
+7. **性能里没测到的 10 项**：GPU 显存、帧率、输入延迟、invalidate→重绘耗时、纯滚轮、真模型一轮内存、5 会话内容一致性、宿主整树、高 DPI、258ms 冷启动分解（见 `docs/perf.md` §9）。

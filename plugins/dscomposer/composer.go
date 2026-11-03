@@ -50,11 +50,14 @@ const (
 	cardPadTop = 8
 	cardGap    = 12
 
-	// .GRgSLq_input 先声明 min-height:36px，同一模块后面的规则覆盖为 52px；
-	// padding:4px 8px 0 14px。必须取最终生效的 52，不能只抄第一条。
-	inputMinHeight = 52
-	inputPadLeft   = 14
-	inputPadRight  = 8
+	// .GRgSLq_input{min-height:36px;padding:4px 8px 0 14px}
+	// 另一条 `.GRgSLq_hero .GRgSLq_input{min-height:52px}` **只在首屏（还没有会话）时**
+	// 生效——它是后代选择器，不是"后面的规则覆盖前面的"。两种状态差 16px 高度，
+	// 常驻取 52 会让有会话时的卡片高从 98 变成 114（实测 tmp/v3-1920-hero.png 对照）。
+	inputMinHeight     = 36
+	heroInputMinHeight = 52
+	inputPadLeft       = 14
+	inputPadRight      = 8
 
 	// .GRgSLq_row{padding:2px 8px 6px;gap:12px;justify-content:space-between;align-items:center}
 	rowPadTop    = 2
@@ -214,7 +217,12 @@ func (p *Plugin) drawInput(f *flex.Frame, env *pluginapi.Env, cardW float32) {
 	left := float32(inputPadLeft - fieldTextInset)
 	// 右边缘落在卡片外沿 -8（官方 padding-right:8）。
 	fieldW := cardW - inputPadLeft + fieldTextInset - inputPadRight
-	f.Row().FillWidth().Height(inputMinHeight).PadSides(0, 0, 0, left).
+	// 首屏（没有会话）用官方 hero 档 52，有会话时是 36。
+	inputH := float32(inputMinHeight)
+	if env.Data.Cur == "" {
+		inputH = heroInputMinHeight
+	}
+	f.Row().FillWidth().Height(inputH).PadSides(0, 0, 0, left).
 		Items(flex.Start).Children(func() {
 		field := f.Field(&p.field, env.Tree.ID(env.Feat, "composer"), "输入", placeholderText).
 			Width(fieldW).Height(fieldHeight).FontSize(t.Fonts.Body)
@@ -271,8 +279,11 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env) {
 	model, permission := hostLabels(env.Data)
 	status := activityLabel(env.Data)
 	running := env.Data.Stream != "" || env.Data.Busy
+	// 官方 `.GRgSLq_primary{transform:translateY(-2px)}`：viva 的 MarginY 不吃负值，
+	// 这里用**同样的视觉位移**实现——行高不变（2+34+6 == 0+34+8），把 2px 从
+	// 上内边距挪到下内边距，发送键就整体上移 2px，底距卡片底 = 6+2 = 8（官方值）。
 	f.Row().FillWidth().Height(rowPadTop+sendSize+rowPadBottom).
-		PadSides(rowPadTop, rowPadSide, rowPadBottom, rowPadSide).
+		PadSides(rowPadTop-sendLift, rowPadSide, rowPadBottom+sendLift, rowPadSide).
 		Items(flex.Center).Justify(flex.Between).Gap(cardGap).Children(func() {
 		// 官方 InputBar 的控件行分两簇：左簇是权限/模型这类"模式"，右簇是
 		// 活动状态 + 主按钮。**左簇内部的先后顺序我没找到确定的出处**：

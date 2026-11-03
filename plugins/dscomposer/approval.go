@@ -348,9 +348,9 @@ func approvalTextWidth(env *pluginapi.Env) float32 {
 //   - **不要 Mono()**。WrapLines 是按比例字宽量的（canvas.TextWidthWeight 不带字面），
 //     等宽字实际更宽，量出来"放得下"于是不省略，屏幕上还是硬切
 //     （同一份截图里比例字那行有省略号、等宽那行没有，对比出来的）。
-func oneLineText(f *flex.Frame, text string, width, size float32, color ui.Color) {
+func oneLineText(f *flex.Frame, text string, width, size, leading float32, color ui.Color) {
 	f.Row().FillWidth().Children(func() {
-		f.Text(text).MaxWidth(width).FontSize(size).Color(color).Ellipsis()
+		f.Text(text).MaxWidth(width).FontSize(size).LineHeight(leading).Color(color).Ellipsis()
 	})
 }
 
@@ -380,17 +380,17 @@ func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 				textW := approvalTextWidth(env)
 				f.Column().FillWidth().PadSides(12, 16, 0, 16).Gap(6).Children(func() {
 					if plan.Title != "" {
-						oneLineText(f, plan.Title, textW, t.Fonts.Title, t.LabelPrimary)
+						oneLineText(f, plan.Title, textW, t.Fonts.Title, 24, t.LabelPrimary)
 					}
 					// 参数摘要：宿主原样给的，只压成一行、超长省略号。
 					if plan.Args != "" {
-						oneLineText(f, plan.Args, textW, t.Fonts.Secondary, t.LabelTertiary)
+						oneLineText(f, plan.Args, textW, t.Fonts.Secondary, 20, t.LabelTertiary)
 					}
 					if plan.Detail != "" {
-						oneLineText(f, plan.Detail, textW, t.Fonts.Secondary, t.LabelCaption)
+						oneLineText(f, plan.Detail, textW, t.Fonts.Secondary, 20, t.LabelCaption)
 					}
 					if plan.Note != "" {
-						oneLineText(f, plan.Note, textW, t.Fonts.Tiny, t.LabelCaption)
+						oneLineText(f, plan.Note, textW, t.Fonts.Tiny, 16, t.LabelCaption)
 					}
 				})
 				f.Row().Gap(8).Items(flex.Center).Justify(flex.End).

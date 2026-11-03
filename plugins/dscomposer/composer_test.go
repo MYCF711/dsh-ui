@@ -218,16 +218,36 @@ func TestApprovalCardMatchesOfficialSurface(t *testing.T) {
 	ap := hostFrame()
 	canvas := renderComposer(t, p, pluginapi.Snapshot{Approval: &ap}, pluginapi.Actions{}, 902, 1182, "")
 	foundOuter, foundFill := false, false
+	var outer, composer ui.Rectangle
 	for _, r := range canvas.Rectangles() {
 		if r.Color == p.theme.Warn && closeEnough(r.Radius, 20) && closeEnough(r.Bounds.Width, 680) {
-			foundOuter = true
+			foundOuter, outer = true, r
 		}
 		if r.Color == p.theme.InputMajor && closeEnough(r.Radius, 19) && closeEnough(r.Bounds.Width, 678) {
 			foundFill = true
 		}
+		if r.Color == p.theme.InputMajor && closeEnough(r.Radius, 28) && closeEnough(r.Bounds.Width, 712) {
+			composer = r
+		}
 	}
 	if !foundOuter || !foundFill {
 		t.Fatalf("审批卡应为 Warn 1px 外框 + InputMajor 填充、radius-xl 20、内容宽 680；outer=%v fill=%v", foundOuter, foundFill)
+	}
+	// ApprovalPanel root bottom 12 + ConversationRoot composerStack gap 6 = 18。
+	if gap := composer.Bounds.Y - (outer.Bounds.Y + outer.Bounds.Height); !closeEnough(gap, 18) {
+		t.Errorf("审批卡到输入卡的净间距 = %.2f，官方 18", gap)
+	}
+	for _, text := range canvas.Texts() {
+		switch text.Value {
+		case ap.Title:
+			if !closeEnough(text.Bounds.Height, 24) {
+				t.Errorf("审批标题行高 = %.2f，官方 24", text.Bounds.Height)
+			}
+		case ap.Args:
+			if !closeEnough(text.Bounds.Height, 20) {
+				t.Errorf("审批参数行高 = %.2f，官方 20", text.Bounds.Height)
+			}
+		}
 	}
 }
 

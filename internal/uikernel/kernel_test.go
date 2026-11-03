@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/vivaui/viva/flex"
 )
 
 // fake 是最小插件：id / 提供 / 依赖 / 注册时做什么，都能配。
@@ -230,5 +231,49 @@ func TestProvideAfterDisposeIsIgnored(t *testing.T) {
 	scope.Provide("k2", "late")
 	if k.Get("k2") != nil {
 		t.Fatalf("Dispose 之后不该再写入能力，k2 = %v", k.Get("k2"))
+	}
+}
+
+// TestPaintersFilterBySlotAndSortByOrder 钉住「公开槽」的两条语义。
+//
+// 槽位是插件之间的公开契约：多个插件往同一个槽挂画，谁先画由 Order 定（小的先，
+// = 贴在上面）。这两条错了不会崩，只会"画出来的东西盖住别人"或者"少画一块"，
+// 排查时很难想到是排序问题。
+func TestPaintersFilterBySlotAndSortByOrder(t *testing.T) {
+	noop := func(*flex.Frame, *pluginapi.Env) {}
+	mk := func(id string, painters ...pluginapi.Painter) *fake {
+		return &fake{id: id, hasPanel: true, panels: painters}
+	}
+	k := New("t")
+	err := k.Load(
+		mk("late", pluginapi.Painter{Slot: pluginapi.Slot("main"), Order: 90, Draw: noop}),
+		mk("early", pluginapi.Painter{Slot: pluginapi.Slot("main"), Order: 10, Draw: noop}),
+		mk("mid", pluginapi.Painter{Slot: pluginapi.Slot("main"), Order: 50, Draw: noop}),
+		mk("bottom", pluginapi.Painter{Slot: pluginapi.Slot("bottom"), Order: 5, Draw: noop}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	main := k.Painters(pluginapi.Slot("main"))
+	if len(main) != 3 {
+		t.Fatalf("main 槽应有 3 块画，得到 %d", len(main))
+	}
+	got := []int{main[0].Order, main[1].Order, main[2].Order}
+	if got[0] != 10 || got[1] != 50 || got[2] != 90 {
+		t.Fatalf("同槽应按 Order 升序，得到 %v", got)
+	}
+
+	if bottom := k.Painters(pluginapi.Slot("bottom")); len(bottom) != 1 || bottom[0].Order != 5 {
+		t.Fatalf("bottom 槽应只有 1 块，得到 %+v", bottom)
+	}
+	if none := k.Painters(pluginapi.Slot("nowhere")); len(none) != 0 {
+		t.Fatalf("没人挂的槽应返回空，得到 %d", len(none))
+	}
+	if !k.Has(pluginapi.Slot("main")) {
+		t.Fatal("Has(main) 应为真（壳据此决定留白与分隔线）")
+	}
+	if k.Has(pluginapi.Slot("nowhere")) {
+		t.Fatal("Has(nowhere) 应为假")
 	}
 }

@@ -1,4 +1,4 @@
-// Package dsconversation 的「官方品牌标记」：DeepSeek 鲸鱼 SVG 路径。
+// Package dsbrand 的「官方品牌标记」：DeepSeek 鲸鱼 SVG 路径。
 //
 // 数据来源：安装态 asar 里 `@deepseek-ai/dsh-client-ui-primitives` 的
 // FISH_LOGO_PATH / FISH_LOGO_VIEWBOX（`D:/DeepSeek Harness/Desktop/resources/app.asar`）。
@@ -8,7 +8,7 @@
 // 为什么把 3.4KB 的路径抄进来而不是画个近似的符号：首屏 logo 是品牌面，
 // 用「🐋 文字」冒充出来的观感和官方差得太远，而且不同机器上 emoji 字体不一样。
 // 路径里只有 M / L / C / Z 四个绝对命令，解析器跟着就几行。
-package dsconversation
+package dsbrand
 
 import (
 	"sync"
@@ -17,9 +17,10 @@ import (
 )
 
 // fishViewBox 是官方 FISH_LOGO_VIEWBOX 原值。
+// FishViewBoxW/H 是官方 FISH_LOGO_VIEWBOX 的宽高，用来按比例算显示尺寸。
 const (
-	fishViewBoxW = 23.16
-	fishViewBoxH = 17.04
+	FishViewBoxW = 23.16
+	FishViewBoxH = 17.04
 )
 
 // fishLogoPath 是官方 FISH_LOGO_PATH 原文（3448 字节，未做任何改写）。
@@ -38,7 +39,8 @@ var (
 )
 
 // fishIcon 返回官方的鲸鱼标记（纯填充，viewBox 23.16 x 17.04）。
-func fishIcon() ui.Icon {
+// FishIcon 返回官方鲸鱼 logo 的矢量图标（首次调用解析一次并缓存）。
+func FishIcon() ui.Icon {
 	fishOnce.Do(func() {
 		commands, ok := parseSVGPath(fishLogoPath)
 		if !ok {
@@ -46,7 +48,7 @@ func fishIcon() ui.Icon {
 			// 但也不会崩、不会画半个形状。
 			return
 		}
-		fishCached = ui.Icon{ViewBox: fishViewBoxW, ViewHeight: fishViewBoxH, Commands: commands}
+		fishCached = ui.Icon{ViewBox: FishViewBoxW, ViewHeight: FishViewBoxH, Commands: commands}
 	})
 	return fishCached
 }

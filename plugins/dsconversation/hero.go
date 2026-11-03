@@ -1,6 +1,7 @@
 package dsconversation
 
 import (
+	"github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	"path"
 	"strings"
 
@@ -41,7 +42,7 @@ const (
 	// heroFishWidth 是官方 HeroFish 的 width（源码注释原文：「The hero fish (34px wide)」）。
 	heroFishWidth = 34
 	// heroFishHeight 由 viewBox 等比算出：34 * 17.04 / 23.16 = 25.02。
-	heroFishHeight = heroFishWidth * fishViewBoxH / fishViewBoxW
+	heroFishHeight = heroFishWidth * dsbrand.FishViewBoxH / dsbrand.FishViewBoxW
 
 	// heroPadX 是官方 root 的 `padding:0 24px`。
 	heroPadX = 24
@@ -134,7 +135,7 @@ func (p *Plugin) drawHero(f *flex.Frame, env *pluginapi.Env) {
 			p.heroBoxes.Headline = f.Row().FillWidth().Items(flex.Center).Justify(flex.Center).
 				Gap(heroHeadlineGapX).Children(func() {
 				// 品牌标记：官方 34px 宽的鲸鱼，纯填充，颜色 label-primary。
-				p.heroBoxes.Mark = f.Icon(fishIcon()).Width(heroFishWidth).Height(heroFishHeight).
+				p.heroBoxes.Mark = f.Icon(dsbrand.FishIcon()).Width(heroFishWidth).Height(heroFishHeight).
 					Color(t.LabelPrimary)
 
 				p.heroBoxes.TitleGroup = f.Row().Items(flex.Center).Gap(heroTitleGapX).Children(func() {

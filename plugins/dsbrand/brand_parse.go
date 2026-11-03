@@ -1,4 +1,4 @@
-package dsconversation
+package dsbrand
 
 import (
 	"strconv"

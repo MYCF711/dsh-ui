@@ -293,6 +293,29 @@ func (m *model) openSession(id string) {
 	m.syncRightbarLocked()
 	m.mu.Unlock()
 	m.inv.Invalidate()
+
+	// **订阅之前**先同步 load 一次，只为了拿 lastSeq（宿主 journal 现在到哪了）。
+	//
+	// 为什么必须在这之前：load 会把会话内容整份给出来，如果随后订阅仍从 0 开始，
+	// 宿主会把整条 journal 重放一遍，客户端再按"流式载荷"解析一次并 merge——
+	// 实测「共 5 条」而宿主只有 4 条（user 提示和 tool 结果各多画一遍）。
+	// 这一次 load 是本地 HTTP，几毫秒到几十毫秒，只在切会话时发生一次。
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		if r, err := m.cli.Load(ctx, id, tailCount); err == nil {
+			m.mu.Lock()
+			if r.LastSeq > m.seqs[id] {
+				m.seqs[id] = r.LastSeq
+			}
+			if r.JournalEpoch > 0 {
+				m.epochs[id] = r.JournalEpoch // 顺带把世代也填上，订阅帧才带得出去
+			}
+			m.lastSeq = m.seqs[id]
+			m.mu.Unlock()
+		}
+		cancel()
+	}
+
 	m.subscribe(id)
 	if hit {
 		// 有缓存就立刻可看，后台静默刷新

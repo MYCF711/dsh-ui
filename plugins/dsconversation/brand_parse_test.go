@@ -1,34 +1,35 @@
-package dsbrand
+package dsconversation
 
 import (
+	"github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	"math"
 	"testing"
 
 	"github.com/vivaui/viva/ui"
 )
 
-// TestFishLogoPathIsOfficialBytes 钉住"品牌路径就是官方那一串"。
+// TestBrandFishLogoPathIsOfficialBytes 钉住"品牌路径就是官方那一串"。
 //
 // 3448 是官方 FISH_LOGO_PATH 的字节数（从 asar 里
 // `@deepseek-ai/dsh-client-ui-primitives` 取出来的原文长度）。
 // 这条断言的意义：以后谁"顺手美化"这个字符串、或者从别处复制了近似形状，
 // 这里会立刻红——首屏 logo 是品牌面，不能靠肉眼看着像。
 func TestFishLogoPathIsOfficialBytes(t *testing.T) {
-	if got := len(FishLogoPath); got != 3448 {
-		t.Fatalf("FishLogoPath 长度 = %d，官方原文是 3448", got)
+	if got := len(dsbrand.FishLogoPath); got != 3448 {
+		t.Fatalf("dsbrand.FishLogoPath 长度 = %d，官方原文是 3448", got)
 	}
-	if FishLogoPath[0] != 'M' {
-		t.Fatalf("路径必须以 M 开头，实际 %q", FishLogoPath[:1])
+	if dsbrand.FishLogoPath[0] != 'M' {
+		t.Fatalf("路径必须以 M 开头，实际 %q", dsbrand.FishLogoPath[:1])
 	}
 }
 
 // TestFishViewBox 钉住官方 FISH_LOGO_VIEWBOX（23.16 x 17.04）。
 func TestFishViewBox(t *testing.T) {
-	if fishViewBoxW != 23.16 || fishViewBoxH != 17.04 {
-		t.Fatalf("viewBox = %v x %v，官方是 23.16 x 17.04", fishViewBoxW, fishViewBoxH)
+	if dsbrand.FishViewBoxW != 23.16 || dsbrand.FishViewBoxH != 17.04 {
+		t.Fatalf("viewBox = %v x %v，官方是 23.16 x 17.04", dsbrand.FishViewBoxW, dsbrand.FishViewBoxH)
 	}
 	// 34px 宽时官方高度 = 34 * 17.04 / 23.16 = 25.02。
-	got := heroFishWidth * fishAspect(fishViewBoxW, fishViewBoxH)
+	got := heroFishWidth * dsbrand.FishAspect(dsbrand.FishViewBoxW, dsbrand.FishViewBoxH)
 	want := float32(34 * 17.04 / 23.16)
 	if math.Abs(float64(got-want)) > 0.01 {
 		t.Fatalf("鱼高 = %v，want %v", got, want)
@@ -44,7 +45,7 @@ func TestFishViewBox(t *testing.T) {
 // 这个数字是"解析器真的把整条路径吃完了"的证据：少一条就是截断，
 // 多一条就是把坐标当成了命令。
 func TestParseFishPathCommandCounts(t *testing.T) {
-	commands, ok := parseSVGPath(FishLogoPath)
+	commands, ok := dsbrand.ParseSVGPath(dsbrand.FishLogoPath)
 	if !ok {
 		t.Fatal("官方路径解析失败")
 	}
@@ -73,7 +74,7 @@ func TestParseFishPathCommandCounts(t *testing.T) {
 // 坐标错位（比如把 C 的 6 个参数当成 2 个点）会让图形炸到画布外，
 // 而它照样"能画"——所以要看值域。
 func TestParseFishPathGeometry(t *testing.T) {
-	commands, ok := parseSVGPath(FishLogoPath)
+	commands, ok := dsbrand.ParseSVGPath(dsbrand.FishLogoPath)
 	if !ok {
 		t.Fatal("解析失败")
 	}
@@ -83,14 +84,14 @@ func TestParseFishPathGeometry(t *testing.T) {
 		if c.Kind == ui.PathCommandClose {
 			continue
 		}
-		if c.Point.X < 0 || c.Point.X > fishViewBoxW || c.Point.Y < 0 || c.Point.Y > fishViewBoxH {
+		if c.Point.X < 0 || c.Point.X > dsbrand.FishViewBoxW || c.Point.Y < 0 || c.Point.Y > dsbrand.FishViewBoxH {
 			t.Fatalf("第 %d 条命令的终点 (%v,%v) 出界（viewBox %v x %v）",
-				i, c.Point.X, c.Point.Y, fishViewBoxW, fishViewBoxH)
+				i, c.Point.X, c.Point.Y, dsbrand.FishViewBoxW, dsbrand.FishViewBoxH)
 		}
 		// 控制点允许出界：官方原路径里就有 -0.222916 这样的负控制点
 		// （SVG 允许控制点在形状外，曲线本身仍在框内）。留 3 个单位的余量。
 		for _, p := range []ui.Point{c.Control1, c.Control2} {
-			if p.X < -3 || p.X > fishViewBoxW+3 || p.Y < -3 || p.Y > fishViewBoxH+3 {
+			if p.X < -3 || p.X > dsbrand.FishViewBoxW+3 || p.Y < -3 || p.Y > dsbrand.FishViewBoxH+3 {
 				t.Fatalf("第 %d 条命令的控制点 (%v,%v) 离 viewBox 太远", i, p.X, p.Y)
 			}
 		}
@@ -109,8 +110,8 @@ func TestParseFishPathRejectsUnknownCommands(t *testing.T) {
 		"M",                   // 只有命令没有参数
 	}
 	for _, src := range cases {
-		if _, ok := parseSVGPath(src); ok {
-			t.Fatalf("parseSVGPath(%q) 应该失败", src)
+		if _, ok := dsbrand.ParseSVGPath(src); ok {
+			t.Fatalf("dsbrand.ParseSVGPath(%q) 应该失败", src)
 		}
 	}
 }
@@ -118,10 +119,10 @@ func TestParseFishPathRejectsUnknownCommands(t *testing.T) {
 // TestFishIcon 保证 fishIcon 返回的是"解析成功"的图标，
 // 而不是缓存了一个空 Icon（空 Icon 在 flex 里会被静默跳过——首屏就没 logo 了）。
 func TestFishIcon(t *testing.T) {
-	icon := fishIcon()
-	if icon.ViewBox != fishViewBoxW || icon.ViewHeight != fishViewBoxH {
+	icon := dsbrand.FishIcon()
+	if icon.ViewBox != dsbrand.FishViewBoxW || icon.ViewHeight != dsbrand.FishViewBoxH {
 		t.Fatalf("fishIcon 的 viewBox = %v x %v，want %v x %v",
-			icon.ViewBox, icon.ViewHeight, fishViewBoxW, fishViewBoxH)
+			icon.ViewBox, icon.ViewHeight, dsbrand.FishViewBoxW, dsbrand.FishViewBoxH)
 	}
 	if len(icon.Commands) != 80 {
 		t.Fatalf("fishIcon 命令数 = %d，want 80", len(icon.Commands))

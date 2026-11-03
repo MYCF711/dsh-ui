@@ -42,7 +42,7 @@ var (
 // FishIcon 返回官方鲸鱼 logo 的矢量图标（首次调用解析一次并缓存）。
 func FishIcon() ui.Icon {
 	fishOnce.Do(func() {
-		commands, ok := parseSVGPath(FishLogoPath)
+		commands, ok := ParseSVGPath(FishLogoPath)
 		if !ok {
 			// 解析失败就返回零值 Icon：f.Icon 什么都画不出来，
 			// 但也不会崩、不会画半个形状。

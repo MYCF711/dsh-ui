@@ -11,7 +11,8 @@ import (
 // 官方路径数过：4 个 M、71 个 C、1 个 L、4 个 Z。相对命令、弧线、二次曲线
 // 这里一律不支持——遇到就把整条路径作废（返回 false），而不是"画一半"：
 // 半个 logo 比没有 logo 更像 bug。要扩展时先确认官方路径真的换了形状。
-func parseSVGPath(d string) ([]ui.PathCommand, bool) {
+// ParseSVGPath 解析 M/L/C/Z 绝对命令子集（官方 logo 只用到这四个）。
+func ParseSVGPath(d string) ([]ui.PathCommand, bool) {
 	var (
 		out   []ui.PathCommand
 		nums  []float32
@@ -101,7 +102,8 @@ func parseSVGPath(d string) ([]ui.PathCommand, bool) {
 }
 
 // fishAspect 是官方 viewBox 的宽高比（34px 宽时高 25.02px）。
-func fishAspect(w, h float32) float32 {
+// FishAspect 按官方 viewBox 等比算高度（宽 * H / W）。
+func FishAspect(w, h float32) float32 {
 	if w <= 0 {
 		return 1
 	}

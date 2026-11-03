@@ -57,6 +57,6 @@
 2. **断线恢复真机**：子代理在验（宿主重启 / 同端口重起），结论未回。
 3. **宿主重启后自愈**：卡在凭据——cookie 存在宿主进程内存里，重启即失效，界面 `-cookie` 只 `SetCookies` 一次、`runSubscription` 没有重新 `/connect` 的路径。要有这条得先让重连能换凭据（跨线）。
 4. ~~**journalEpoch（跨线，未接）**~~ → **已接（2026-11-03 18:46）**：`LoadResult` 收 `journalEpoch/lastSeq`、sub 帧带 epoch、收到 `session/reset` 时丢旧水位重建基线。真机：首次订阅 `epoch=0`（按首次处理）、切回 `epoch=1`（宿主给的世代）。
-5. **宿主 `FrameSub` 不重放 journal**（`docs/reconnect.md` §2）：`frame.go:48` 注释说"可带 sinceSeq 重放"，实现只做世代检查 + pending 审批重放。"带水位重订"目前名不副实——靠客户端自己的 `history` 补洞兜住。
+5. ~~**宿主 `FrameSub` 不重放 journal**~~ → **已修（2026-11-03 18:52，未提交）**：先重放再 Subscribe，探针实测 `sinceSeq=2 → 收到 seq=3,4,5,…13`。改动在宿主工作区，等 commit 授权。
 6. **审批的 `allow_always` 效果**：按钮与回传都验了（`TestAllowAlwaysGetsItsOwnButton`），但"以后都允许"在宿主侧是否真的记住了，**未验**。
 7. **性能里没测到的 10 项**：GPU 显存、帧率、输入延迟、invalidate→重绘耗时、纯滚轮、真模型一轮内存、5 会话内容一致性、宿主整树、高 DPI、258ms 冷启动分解（见 `docs/perf.md` §9）。

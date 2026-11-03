@@ -602,14 +602,35 @@ func route(w http.ResponseWriter, r *http.Request) {
 		}})
 
 	case "session.history":
+		// H14 基线：**返回 journal 原始帧**（{seq,type,data,time}），不是 messages 投影。
+		//
+		// 为什么 mockd 也要按这个形状：客户端的补洞（FillGap）拿回来直接喂 applyEvent，
+		// 形状不对就没法验"断号之后真能补回来"。宿主实测就是这个形状
+		// （docs/reconnect.md：history{"sinceSeq":166} → frames 167..277）。
 		var p historyParams
 		_ = json.Unmarshal(params, &p)
-		h, ok := history[p.sessionID()]
-		if !ok {
-			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在: " + p.sessionID()})
+		if p.sessionID() == "" {
+			fail(w, 404, errObj{Code: "not_found", Message: "会话不存在"})
 			return
 		}
-		writeJSON(w, 200, envelope{Result: map[string]any{"messages": h, "nextBefore": nil}})
+		limit := p.Limit
+		if limit <= 0 {
+			limit = 10
+		}
+		frames := make([]map[string]any, 0, limit)
+		for i := p.SinceSeq + 1; i <= p.SinceSeq+limit; i++ {
+			frames = append(frames, map[string]any{
+				"seq":  i,
+				"type": "assistant/message",
+				"data": map[string]any{"text": fmt.Sprintf("补洞补回来的第 %d 条", i)},
+				"time": time.Now().UnixMilli(),
+			})
+		}
+		writeJSON(w, 200, envelope{Result: map[string]any{
+			"frames":       frames,
+			"lastSeq":      p.SinceSeq + len(frames),
+			"journalEpoch": 1,
+		}})
 
 	case "session.prompt":
 		var p promptParams

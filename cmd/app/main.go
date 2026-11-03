@@ -95,8 +95,14 @@ type model struct {
 
 	// 流式：每个会话一条独立订阅（H14：一个会话一条 WS 连接）。
 	// **切会话不退订**：后台会话的连接照收，只是不前台渲染。
-	mux        *apiclient.Mux
-	subs       map[string]*muxSub
+	mux  *apiclient.Mux
+	subs map[string]*muxSub
+	// seqs 是**每会话**已消费到哪一段（切走不丢）。
+	//
+	// 为什么必须独立存：subs 里那份会在切会话时被删掉（为的是重订重放），
+	// 删了水位就没了——实测切回已看过的会话时 since=0，等于从头重放一遍，
+	// 与"按水位续、不整页刷新"的契约相反。
+	seqs       map[string]int
 	streamText string
 	// turnBusy：当前会话有 turn 在跑。发 prompt 置 true，流结束/取消/失败置 false。
 	turnBusy bool
@@ -194,7 +200,7 @@ func (m *model) openSession(id string) {
 	// 水位跟着会话走。不复位就会拿上一个会话的 seq 去判连续性：
 	// 切到 B 时 lastSeq 还是 A 的，B 的第一条事件要么被当成"断号"、
 	// 要么被 `ev.Seq > lastSeq` 直接丢掉——这是"多会话串流"的真正成因。
-	m.lastSeq = m.lastSeqOfLocked(id)
+	m.lastSeq = m.seqs[id]
 	// 切回来时把该会话的旧订阅掐掉重订一次：后台期间的事件没被消费，
 	// 只有"带着切走时的水位重新 sub"才能让宿主把它们重放出来。
 	// 水位已经在上一行取到 m.lastSeq 里，删 sub 不会丢它。
@@ -432,8 +438,32 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 				// session.history（只补缺失区间），跟重连是两件事。这里先如实记下来，
 				// 继续消费后续事件（readLoop 已经把水位推进到断号后的 seq）。
 				if ev.Gap != nil {
-					log.Printf("mux 断号 session:%s [%d,%d]（待用 session.history 补洞；不整页刷新）",
-						id, ev.Gap.FromSeq, ev.Gap.ToSeq)
+					log.Printf("mux 断号 session:%s [%d,%d]，用 session.history 补这一段", id, ev.Gap.FromSeq, ev.Gap.ToSeq)
+					// 真补洞：只补缺失区间，补回来的帧直接喂 applyEvent
+					// （宿主 history 返回的就是 journal 原始帧，与 WS 同形状）。
+					//
+					// 补之前把水位压回到缺口起点——否则补回来的帧会被
+					// `ev.Seq > lastSeq` 当成过期的丢掉（那样就等于白补）。
+					from, to := ev.Gap.FromSeq, ev.Gap.ToSeq
+					if from > 0 && to >= from {
+						m.mu.Lock()
+						if m.seqs[id] >= from {
+							m.seqs[id] = from - 1
+						}
+						if id == m.cur {
+							m.lastSeq = from - 1
+						}
+						m.mu.Unlock()
+						n, err := apiclient.FillGap(ctx, m.cli, id, from, to, func(f apiclient.Frame) {
+							m.applyEvent(id, apiclient.Event{Kind: f.Type, Seq: f.Seq, Topic: "session:" + id, Data: f.Data})
+						})
+						if err != nil {
+							// 409 stale_epoch 之类：补不回来就别硬补，记下来（退回 load 也要用户看得见）。
+							log.Printf("history 补洞失败 session:%s [%d,%d]: %v（缺口保留，不整页刷新）", id, from, to, err)
+						} else {
+							log.Printf("history 补洞完成 session:%s 补回 %d 帧", id, n)
+						}
+					}
 				}
 				continue
 			}
@@ -444,6 +474,9 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 			if id == m.cur {
 				if sub := m.subs[id]; sub != nil && ev.Seq > sub.lastSeq {
 					sub.lastSeq = ev.Seq
+				}
+				if ev.Seq > m.seqs[id] {
+					m.seqs[id] = ev.Seq // 水位独立存：切走删 subs 也不会丢
 				}
 				since = ev.Seq
 			}
@@ -1101,6 +1134,12 @@ func main() {
 	// -keys-after：按键在启动后多少秒注入。审批这类场景要等模型先响应完
 	// （真宿主上从 prompt 到 approval/request 大约 3–5 秒），2.5 秒会按早了。
 	keysAfter := flag.Int("keys-after", 3, "调试：-keys 在启动后多少秒开始注入")
+	// -switch：按顺序切会话（逗号分隔的 id），每 switchEvery 秒切一个。
+	// 为什么要这个开关：侧栏在无头环境点不到，而"进程内切会话"和"进程重启"是
+	// 两种语义（后者每次都新建 model，前者要复用 mux/cache/stream 等状态）——
+	// 只有真在同一个进程里切，才能验出"切走时流没断、切回来内容还在"。
+	switchSeq := flag.String("switch", "", "调试：启动后按顺序切换会话（逗号分隔 id）")
+	switchEvery := flag.Int("switch-every", 3, "调试：-switch 每隔多少秒切一个")
 	rightbarOn := flag.Bool("rightbar", true, "启动时是否展开右栏（-rightbar=false 收起来）")
 	token := flag.String("token", "", "宿主 launch token：给了就先 /connect 换 cookie（真宿主 dshd serve 必须给）")
 	searchAtStart := flag.String("search", "", "调试：启动就把会话内搜索打开，并带上这个词（截搜索态用）")
@@ -1126,6 +1165,7 @@ func main() {
 
 	m := &model{cli: apiclient.New(*addr), status: "连接 " + *addr + " …", loading: true,
 		cache:        map[string]*cachedSession{},
+		seqs:         map[string]int{},
 		mux:          apiclient.NewMux(*addr),
 		scrollPos:    map[string]float32{},
 		showRightbar: *rightbarOn,
@@ -1233,6 +1273,25 @@ func main() {
 		Retry:    m.retryLast,
 	}
 	log.Printf("插件 %v，主题 %s", m.kernel.Order(), m.theme.Name)
+
+	if *switchSeq != "" {
+		go func(seq string, every time.Duration) {
+			ids := strings.Split(seq, ",")
+			time.Sleep(2 * time.Second) // 等首个会话加载完
+			for _, id := range ids {
+				id = strings.TrimSpace(id)
+				if id == "" {
+					continue
+				}
+				log.Printf("switch → %s", id)
+				m.openSession(id)
+				time.Sleep(every)
+			}
+			m.mu.Lock()
+			log.Printf("switch 结束后当前会话: %s", m.cur)
+			m.mu.Unlock()
+		}(*switchSeq, time.Duration(*switchEvery)*time.Second)
+	}
 
 	if *keysSeq != "" {
 		go func(seq string) {

@@ -65,6 +65,12 @@ func (s *Scope) Name() string { return s.name }
 
 // Provide 登记一个能力。键重复即装配错误（两个插件抢同一个键一定有一方是错的）。
 func (s *Scope) Provide(key string, value any) {
+	if s.disposed {
+		// 卸载之后**不许再往内核里写能力**：那会让"已经拆掉的插件"继续被别人
+		// Inject 到，等于卸载没卸干净。早先 disposed 只被写、从来没被读。
+		s.kernel.log.Warn("provide after dispose：已忽略", "plugin", s.name, "key", key)
+		return
+	}
 	s.kernel.provide[key] = s.name
 	s.kernel.values[key] = value
 	s.provides = append(s.provides, key)
@@ -75,10 +81,19 @@ func (s *Scope) Provide(key string, value any) {
 func (s *Scope) Inject(key string) any { return s.kernel.values[key] }
 
 // Effect 登记卸载时要跑的清理函数。
+//
+// 已经 Dispose 过之后再登记清理函数 = 这个资源已经没人会替你撤了，
+// 所以**立刻执行**而不是塞进列表（那个列表不会再被遍历）。
+// 直接丢弃是资源泄漏，而且泄漏得很安静——只有句柄/goroutine 慢慢涨才看得出来。
 func (s *Scope) Effect(fn func()) {
-	if fn != nil {
-		s.effects = append(s.effects, fn)
+	if fn == nil {
+		return
 	}
+	if s.disposed {
+		fn()
+		return
+	}
+	s.effects = append(s.effects, fn)
 }
 
 // Logf 打日志，前缀是插件名。

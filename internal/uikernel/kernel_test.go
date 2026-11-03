@@ -163,3 +163,72 @@ func TestScopeProvideInjectAndEffect(t *testing.T) {
 	}
 	_ = cleaned
 }
+
+// TestDisposeRunsEffectsInReverseOrder 钉住卸载顺序。
+//
+// 逆序不是审美：插件 B 依赖 A 提供的能力，卸载时先拆 B 再拆 A 才不会出现
+// "B 的清理函数用着 A 已经撤掉的资源"。同一插件内部的多个 Effect 同理。
+func TestDisposeRunsEffectsInReverseOrder(t *testing.T) {
+	k := New("t")
+	var order []string
+	mk := func(id string) *fake {
+		return &fake{id: id, onReg: func(ctx pluginapi.Context) {
+			ctx.Effect(func() { order = append(order, id+"-1") })
+			ctx.Effect(func() { order = append(order, id+"-2") })
+		}}
+	}
+	if err := k.Load(mk("a"), mk("b"), mk("c")); err != nil {
+		t.Fatal(err)
+	}
+	k.Dispose()
+	want := "c-2,c-1,b-2,b-1,a-2,a-1"
+	if got := strings.Join(order, ","); got != want {
+		t.Fatalf("卸载顺序 = %s，期望 %s（插件逆序 + 插件内 effects 逆序）", got, want)
+	}
+}
+
+// TestEffectAfterDisposeRunsImmediately 钉住"卸载后再登记清理函数"的口径。
+//
+// 那种清理函数永远等不到被遍历，唯一正确的做法是**立刻执行**。
+// 直接丢掉是资源泄漏，而且安静得只有句柄数慢慢涨才看得出来。
+func TestEffectAfterDisposeRunsImmediately(t *testing.T) {
+	k := New("t")
+	var lateRan bool
+	p := &fake{id: "p", onReg: func(ctx pluginapi.Context) {
+		ctx.Effect(func() { /* 装配期登记 */ })
+	}}
+	if err := k.Load(p); err != nil {
+		t.Fatal(err)
+	}
+	k.Dispose()
+
+	scope, ok := k.scopeOf("p")
+	if !ok {
+		t.Fatal("应能找到作用域")
+	}
+	scope.Effect(func() { lateRan = true })
+	if !lateRan {
+		t.Fatal("Dispose 之后登记的 Effect 必须立刻执行")
+	}
+}
+
+// TestProvideAfterDisposeIsIgnored 钉住"卸载后不许再写能力"。
+//
+// 否则"已经拆掉的插件"还能被别人 Inject 到，等于卸载没卸干净。
+func TestProvideAfterDisposeIsIgnored(t *testing.T) {
+	k := New("t")
+	p := &fake{id: "p", provides: []string{"k1"}}
+	if err := k.Load(p); err != nil {
+		t.Fatal(err)
+	}
+	if k.Get("k1") != "p" {
+		t.Fatal("装配期应能提供")
+	}
+	k.Dispose()
+
+	scope, _ := k.scopeOf("p")
+	scope.Provide("k2", "late")
+	if k.Get("k2") != nil {
+		t.Fatalf("Dispose 之后不该再写入能力，k2 = %v", k.Get("k2"))
+	}
+}

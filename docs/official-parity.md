@@ -70,7 +70,7 @@
 - ✅ `tool`（`dstool`：工具卡片 + 展开参数/结果）
 - ❌ `directory-picker-browse`
 - ❌ `directory-picker-native`
-- 🟡 `open-in-app`（`dsopen`：会话头部「打开」→ `OpenExternal(CWD)`；**文档预览的「用默认程序打开」那半没有**）
+- ✅ `open-in-app`（两半都有：`dsopen` 会话头部「打开」→ `OpenExternal(CWD)`；`dsfiles` 预览卡片「用默认程序打开」→ `OpenFile(file:…)`。官方的"split button（列出已装应用）"没有，我们是单个按钮）
 - ❌ `workspace`
 - ✅ `theme`（`dscore` 的 ds-dark / 明暗两套）
 - ✅ `shortcuts`（`dsshortcuts`：F1 键位表，**带守卫**——从 `plugins/` 的 AST 里扫出所有 `ui.KeyXxx`，表漏记一个就红；官方的"录制"和"本地改键"没做）
@@ -81,7 +81,7 @@
 - ✅ `layout`（`dsshell`：侧栏/中栏/右栏/底栏，可直接拖分隔线）
 - ✅ `sidebar-right`（`dsshell` 的 `SlotRightbar` + `ToggleRightbar` + `ui.rightbarWidth`；收起后 corner 可重开）
 
-## 合计：官方 55 个部件 —— ✅ 20 · 🟡 7 · ⬜ 3（不该有） · ❌ 25
+## 合计：官方 55 个部件 —— ✅ 21 · 🟡 6 · ⬜ 3（不该有） · ❌ 25
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），
 > 不是手填的。上一次手填的是"我们有 10 个 · 缺 53 个"——**已经错了很久**，

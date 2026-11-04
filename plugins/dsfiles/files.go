@@ -2,17 +2,24 @@
 //
 // 官方对应 `dsh-client-ui-sidebar-files` + `sidebar-documentpreview`。
 //
-// # 只做一层，因为宿主只给一层
+// # 一层还是一棵树：现在是树，但**薄**
 //
-// `workspace.list` 回的是 `{name,isDir,size}`——**没有 path，也没有"列子目录"的入参**。
-// 所以这里只列工作区**根目录的文件**（目录不列：点不进去，列出来就是骗人）。
-// 要做完整文件树，得先在宿主 `workspace.list` 上补 `path` 入参。
+// `workspace.list` 早年只回 `{name,isDir,size}` 且没有 path 入参，那时这里只能列根目录。
+// 后来宿主补了 `path` 入参，所以现在能进子目录（`curDir` 记住相对位置，"← 上一级"返回）。
+//
+// 仍然是"薄"的一层：没有缓存、没有排序、没有按需展开，进一次目录问一次宿主。
+// 壳的 `FSList` 是**异步缓存**（第一次问返回空，下一帧才有），所以
+// "这一帧没有条目"不等于"目录是空的"——那种情况什么都不画，等下一帧。
 //
 // # 路径怎么拼
 //
-// `Snapshot.CWD`（宿主的 `session.load.cwd`，会话自己的工作目录）+ "/" + name。
+// 绝对路径 = `Snapshot.CWD` + "/" + `curDir`（相对 CWD，可能为空）+ "/" + name。
 // **CWD 为空就别拼**——拼出来的 `/name` 会被 `fs.read` 当"文件不存在"，
 // 而界面上看起来像"这个文件读不了"，用户会去查文件，其实是我们没数据。
+//
+// ⚠️ 拼路径**只走 `dirPath` 一处**。这里真出过 bug：列表已经会进子目录了，
+// 但点文件时仍然用 `CWD + "/" + name`，于是子目录里的文件一律"读不出来"——
+// 而这个包当时**一个测试都没有**，所以它一直没被发现（2026-11-04 补的测试）。
 package dsfiles
 
 import (
@@ -75,11 +82,8 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 	if env.Data.CWD == "" || env.Act.FSList == nil {
 		return
 	}
-	// 目录路径 = CWD + "/" + curDir。**CWD 为空整块不画**（见文件头）。
-	dir := env.Data.CWD
-	if p.curDir != "" {
-		dir += "/" + p.curDir
-	}
+	// 目录路径 = dirPath(CWD, curDir)。**CWD 为空整块不画**（见文件头）。
+	dir := dirPath(env.Data.CWD, p.curDir)
 	names := env.Act.FSList(dir)
 	p.read = env.Act.FSRead
 	t := p.theme
@@ -135,7 +139,8 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 				}
 				p.sel = ""
 			} else {
-				p.open(env, env.Data.CWD, e.Name)
+				// 读的是**当前目录**里的文件，不是根目录里的同名文件。
+				p.open(env, dirPath(env.Data.CWD, p.curDir), e.Name)
 			}
 		}
 		if more > 0 {
@@ -190,7 +195,26 @@ func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
 	f.Column().Absolute().Top(56).Right(24).Width(520).Children(func() {
 		f.Column().Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
 			PadSides(16, 16, 14, 16).Gap(8).Children(func() {
-			f.Text(p.sel).FontSize(14).Color(t.LabelPrimary)
+			// 标题行：文件名 + 「用默认程序打开」。
+			//
+			// 官方 `open-in-app` 的这半句是 "the document preview's
+			// default-application controls for one file"——预览里得能把它交给
+			// 真正的编辑器/查看器，因为侧栏预览只有 20 行、16 KB。
+			//
+			// 三个前置条件缺一不画：**读成功了**（读不出来还去开，开的是同一个坏路径）、
+			// **壳接了 OpenFile**（老壳没有这个动作）、**有选中文件**。
+			f.Row().FillWidth().Items(flex.Center).Gap(8).Children(func() {
+				f.Text(p.sel).FontSize(14).Color(t.LabelPrimary).Grow(1)
+				if env.Act.OpenFile != nil && p.err == "" {
+					if f.Button(env.Tree.ID(env.Feat, "files-open-external"), "用默认程序打开").
+						Small().Clicked() {
+						if dst, err := fileURL(dirPath(env.Data.CWD, p.curDir) + "/" + p.sel); err == nil {
+							// 失败由壳写状态栏（它统一管反馈），插件不重复报。
+							_ = env.Act.OpenFile(dst)
+						}
+					}
+				}
+			})
 			if p.err != "" {
 				f.Text("读不出来：" + p.err).FontSize(12).Color(t.Error)
 			} else {

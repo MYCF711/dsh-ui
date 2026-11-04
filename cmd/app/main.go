@@ -37,6 +37,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsopen"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsquestions"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsschedule"
@@ -67,6 +68,7 @@ type cachedSession struct {
 	// 而不是先掉回零值（那会让状态栏闪一下"没有数据"）。
 	usageTotal    apiclient.Usage
 	contextTokens int64
+	contextWindow int64
 	model         string
 	at            time.Time
 }
@@ -176,6 +178,7 @@ type model struct {
 	// 零值/空串 = 不知道，界面据此整段不画（绝不拿 0 或 mode 冒充）。
 	usageTotal    apiclient.Usage
 	contextTokens int64
+	contextWindow int64
 	modelName     string
 	permission    string
 	// showRightbar 是当前会话的右栏开合（壳持有，插件只读）。
@@ -328,6 +331,28 @@ func (m *model) refreshList() {
 	}()
 }
 
+// publishContextWindowLocked 是 WP-C2 publishSessionLocked 的 STATS-WIRE 扩展：
+// 容量与占用一样按会话发布，后台会话的 load 不得改写前台容量。
+// 调用方必须持有 m.mu。
+func (m *model) publishContextWindowLocked(id string) {
+	if id != m.cur {
+		return
+	}
+	m.contextWindow = 0
+	if cache := m.cache[id]; cache != nil {
+		m.contextWindow = cache.contextWindow
+	}
+}
+
+// integrateLoadWithContextWindowLocked 复用 WP-C2 的 integrateLoadLocked 作为唯一
+// 正文归并路径，并在同一临界区补齐容量缓存。WP-C2 owner 文件保持不动。
+// 调用方必须持有 m.mu。
+func (m *model) integrateLoadWithContextWindowLocked(id string, result *apiclient.LoadResult, metadata map[string]pubapi.MessageMetadata) {
+	m.cachedSessionLocked(id).contextWindow = result.ContextWindow
+	m.integrateLoadLocked(id, result, metadata)
+	m.publishContextWindowLocked(id)
+}
+
 func (m *model) openSession(id string) {
 	// 切走之前记下当前会话滚到哪了
 	m.mu.Lock()
@@ -353,6 +378,7 @@ func (m *model) openSession(id string) {
 	hit := false
 	if cs, ok := m.cache[id]; ok {
 		m.publishSessionLocked(id)
+		m.publishContextWindowLocked(id)
 		m.status = fmt.Sprintf("温缓存 · %d 条（总 %d）", len(cs.msgs), cs.total)
 		m.loading = false
 		hit = true
@@ -362,6 +388,7 @@ func (m *model) openSession(id string) {
 		m.usage = apiclient.Usage{}
 		m.usageTotal = apiclient.Usage{}
 		m.contextTokens = 0
+		m.contextWindow = 0
 		m.modelName = ""
 		m.cwd = ""
 		state := m.streamStateLocked(id)
@@ -419,7 +446,7 @@ func (m *model) refreshSession(id string, quiet bool) {
 	}
 	// load 与 WS 可能并发完成：先并入 canonical 缓存，不能把飞行期间到达的
 	// 后台正文用一份较旧 tail 覆盖掉。当前/后台会话走完全相同的归并路径。
-	m.integrateLoadLocked(id, r, metadata)
+	m.integrateLoadWithContextWindowLocked(id, r, metadata)
 	m.evictLocked(id)
 	if msgsDebug > 0 {
 		msgsDebug--
@@ -1437,6 +1464,7 @@ func newConfig(m *model) app.Config {
 		// H1/H4/H5：会话语义的真值原样带进快照，插件自己决定画不画。
 		usageTotal := m.usageTotal
 		contextTokens := m.contextTokens
+		contextWindow := m.contextWindow
 		modelName := m.modelName
 		permission := m.permission
 		showRightbar := m.showRightbar
@@ -1512,6 +1540,7 @@ func newConfig(m *model) app.Config {
 					HasRate:         usageTotal.HasRate,
 				},
 				ContextTokens: contextTokens,
+				ContextWindow: contextWindow,
 				Model:         modelName,
 				Permission:    permission,
 				Approval:      approvalView,

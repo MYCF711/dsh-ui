@@ -57,7 +57,17 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		return
 	}
 	t := p.theme
-	f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(16, 16, 6, 6).Children(func() {
+	// ⚠️ `PadSides(top, right, bottom, left)`——不是"横、竖"。
+	//
+	// 这里原来写的是 `PadSides(16, 16, 6, 6)`，看着像"左右 16、上下 6"，
+	// 按真实签名读出来是**上 16、右 16、下 6、左 6**：上边被撑开一倍，
+	// 左边只剩 6，于是这一行的文字比输入框里的文字更贴边、也更靠下。
+	//
+	// 判据不是"我觉得好看"，是全仓的写法：其它每一条 `PadSides` 都是
+	// `PadSides(10,16,10,16)` / `PadSides(14,16,14,16)` / `PadSides(14,14,12,14)`
+	// 这种**四个数两两对称**的形状。这一条是唯一一条两个方向都不对称的，
+	// 而它出现在一个只画一行字的部件里——那不像设计，像把顺序写串了。
+	f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(6, 16, 6, 16).Children(func() {
 		// 一个小圆点表示"这里有个正在进行的目标"——用中性色，
 		// 不用绿（绿在状态栏已经表示"连着宿主"，复用会混淆）。
 		f.Row().Width(4).Height(4).Radius(2).Background(t.LabelTertiary)

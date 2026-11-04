@@ -1,0 +1,76 @@
+=== RUN   TestButtonLivesInTheHeaderTitleRowAtBothSizes
+=== RUN   TestButtonLivesInTheHeaderTitleRowAtBothSizes/1182x832
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_header_test.go:133: 1182x832 按钮 y=96.5..120.5 不在标题行 22..52 里——它是另起了一行、落到正文区
+=== RUN   TestButtonLivesInTheHeaderTitleRowAtBothSizes/1920x1032
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_header_test.go:133: 1920x1032 按钮 y=96.5..120.5 不在标题行 22..52 里——它是另起了一行、落到正文区
+--- FAIL: TestButtonLivesInTheHeaderTitleRowAtBothSizes (0.02s)
+    --- FAIL: TestButtonLivesInTheHeaderTitleRowAtBothSizes/1182x832 (0.02s)
+    --- FAIL: TestButtonLivesInTheHeaderTitleRowAtBothSizes/1920x1032 (0.00s)
+=== RUN   TestButtonDoesNotCoverTheRightbarCorner
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:24:18 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_header_test.go:178: 找不到按钮：texts=["项目" "/" "会话一" "对话" "轨迹"]
+--- FAIL: TestButtonDoesNotCoverTheRightbarCorner (0.00s)
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/绝对路径_+_OpenFile
+    open_test.go:88: CWD="D:\\ws\\proj" 时应画 1 个矩形，实际 0 个：[]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/带空格与中文的绝对路径
+    open_test.go:88: CWD="D:\\工作 区\\项目" 时应画 1 个矩形，实际 0 个：[]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/POSIX_绝对路径
+    open_test.go:88: CWD="/home/me/ws" 时应画 1 个矩形，实际 0 个：[]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/两种动作都在也只画一个
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/空_CWD
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/相对路径
+    open_test.go:88: CWD="ws\\proj" 时应画 0 个矩形，实际 1 个：[{Bounds:{X:0 Y:0 Width:56 Height:24} Color:{Red:0.17254902 Green:0.17254902 Blue:0.18039216 Alpha:1} Radius:12 Layer:0 ClipOf:{X:0 Y:0 Width:0 Height:0} HasClip:false}]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/单段目录名
+    open_test.go:88: CWD="proj" 时应画 0 个矩形，实际 1 个：[{Bounds:{X:0 Y:0 Width:56 Height:24} Color:{Red:0.17254902 Green:0.17254902 Blue:0.18039216 Alpha:1} Radius:12 Layer:0 ClipOf:{X:0 Y:0 Width:0 Height:0} HasClip:false}]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/点开头
+    open_test.go:88: CWD=".\\proj" 时应画 0 个矩形，实际 1 个：[{Bounds:{X:0 Y:0 Width:56 Height:24} Color:{Red:0.17254902 Green:0.17254902 Blue:0.18039216 Alpha:1} Radius:12 Layer:0 ClipOf:{X:0 Y:0 Width:0 Height:0} HasClip:false}]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/上游目录
+    open_test.go:88: CWD="..\\proj" 时应画 0 个矩形，实际 1 个：[{Bounds:{X:0 Y:0 Width:56 Height:24} Color:{Red:0.17254902 Green:0.17254902 Blue:0.18039216 Alpha:1} Radius:12 Layer:0 ClipOf:{X:0 Y:0 Width:0 Height:0} HasClip:false}]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/只有盘符没有根
+    open_test.go:88: CWD="D:ws" 时应画 0 个矩形，实际 1 个：[{Bounds:{X:0 Y:0 Width:56 Height:24} Color:{Red:0.17254902 Green:0.17254902 Blue:0.18039216 Alpha:1} Radius:12 Layer:0 ClipOf:{X:0 Y:0 Width:0 Height:0} HasClip:false}]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/首尾带空白
+    open_test.go:88: CWD=" D:\\ws " 时应画 0 个矩形，实际 1 个：[{Bounds:{X:0 Y:0 Width:56 Height:24} Color:{Red:0.17254902 Green:0.17254902 Blue:0.18039216 Alpha:1} Radius:12 Layer:0 ClipOf:{X:0 Y:0 Width:0 Height:0} HasClip:false}]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/只有_OpenExternal（错的动作）
+    open_test.go:88: CWD="D:\\ws" 时应画 0 个矩形，实际 1 个：[{Bounds:{X:0 Y:0 Width:56 Height:24} Color:{Red:0.17254902 Green:0.17254902 Blue:0.18039216 Alpha:1} Radius:12 Layer:0 ClipOf:{X:0 Y:0 Width:0 Height:0} HasClip:false}]
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/没有打开动作
+--- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/绝对路径_+_OpenFile (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/带空格与中文的绝对路径 (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/POSIX_绝对路径 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/两种动作都在也只画一个 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/空_CWD (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/相对路径 (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/单段目录名 (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/点开头 (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/上游目录 (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/只有盘符没有根 (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/首尾带空白 (0.00s)
+    --- FAIL: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/只有_OpenExternal（错的动作） (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/没有打开动作 (0.00s)
+=== RUN   TestClickHandsTheExactCWDtoOpenFileAsAFileLink
+    open_test.go:122: 点击后 OpenFile 被调 0 次，want 1；urls=[D:\ws\项目 一]
+--- FAIL: TestClickHandsTheExactCWDtoOpenFileAsAFileLink (0.00s)
+=== RUN   TestClickErrorsStayInsideTheShell
+    open_test.go:146: 打开动作没有停在 OpenFile：OpenExternal 被调 1 次
+--- FAIL: TestClickErrorsStayInsideTheShell (0.00s)
+=== RUN   TestNoActionNoButton
+--- PASS: TestNoActionNoButton (0.00s)
+FAIL
+FAIL	github.com/MYCF711/dsh-ui/plugins/dsopen	0.052s
+FAIL
+EXIT=1

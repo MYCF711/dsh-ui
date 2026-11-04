@@ -1,0 +1,281 @@
+=== RUN   TestButtonLivesInTheHeaderTitleRowAtBothSizes
+=== RUN   TestButtonLivesInTheHeaderTitleRowAtBothSizes/1182x832
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+=== RUN   TestButtonLivesInTheHeaderTitleRowAtBothSizes/1920x1032
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+--- PASS: TestButtonLivesInTheHeaderTitleRowAtBothSizes (0.02s)
+    --- PASS: TestButtonLivesInTheHeaderTitleRowAtBothSizes/1182x832 (0.02s)
+    --- PASS: TestButtonLivesInTheHeaderTitleRowAtBothSizes/1920x1032 (0.00s)
+=== RUN   TestButtonDoesNotCoverTheRightbarCorner
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+--- PASS: TestButtonDoesNotCoverTheRightbarCorner (0.00s)
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/绝对路径_+_OpenFile
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/带空格与中文的绝对路径
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/POSIX_绝对路径
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/两种动作都在也只画一个
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/空_CWD
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/相对路径
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/单段目录名
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/点开头
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/上游目录
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/只有盘符没有根
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/首尾带空白
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/只有_OpenExternal（错的动作）
+=== RUN   TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/没有打开动作
+--- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/绝对路径_+_OpenFile (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/带空格与中文的绝对路径 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/POSIX_绝对路径 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/两种动作都在也只画一个 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/空_CWD (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/相对路径 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/单段目录名 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/点开头 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/上游目录 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/只有盘符没有根 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/首尾带空白 (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/只有_OpenExternal（错的动作） (0.00s)
+    --- PASS: TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction/没有打开动作 (0.00s)
+=== RUN   TestClickHandsTheExactCWDtoOpenFileAsAFileLink
+--- PASS: TestClickHandsTheExactCWDtoOpenFileAsAFileLink (0.00s)
+=== RUN   TestClickErrorsStayInsideTheShell
+--- PASS: TestClickErrorsStayInsideTheShell (0.00s)
+=== RUN   TestNoActionNoButton
+--- PASS: TestNoActionNoButton (0.00s)
+=== RUN   TestButtonTextIsDrawn
+--- PASS: TestButtonTextIsDrawn (0.00s)
+=== RUN   TestOpenButtonHeadlessCapture
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_visual_test.go:59: OPEN_VISUAL path=C:\Users\ADMINI~1\AppData\Local\Temp\TestOpenButtonHeadlessCapture4106695135\001\open-in-app-plugin-1182x832.png bytes=21183 button={X:1066 Y:25 Width:56 Height:24}
+--- PASS: TestOpenButtonHeadlessCapture (0.11s)
+=== RUN   TestFileURLShape
+--- PASS: TestFileURLShape (0.00s)
+=== RUN   TestAbsoluteCWDIsNotGuessed
+--- PASS: TestAbsoluteCWDIsNotGuessed (0.00s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dsopen	0.169s
+=== RUN   TestContextWindowLoadCompactionAndABAIsolation
+--- PASS: TestContextWindowLoadCompactionAndABAIsolation (0.00s)
+=== RUN   TestContextWindowUnknownSessionAndJournalReset
+--- PASS: TestContextWindowUnknownSessionAndJournalReset (0.00s)
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown
+--- PASS: TestShellLiveApplyEventUsesCanonicalEventTime (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown (0.00s)
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback
+--- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback (0.00s)
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8323500784961\003\conversation-file-refs-1182x832.png size=1182x832 bytes=46953
+    file_refs_headless_test.go:29: FILEREFS_CLICK size=1182x832 relative="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8323500784961\\001\\交付 文件.txt" absolute="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8323500784961\\002\\绝对 文件.txt" unknown_hit=false
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10321715747702\003\conversation-file-refs-1920x1032.png size=1920x1032 bytes=67868
+    file_refs_headless_test.go:29: FILEREFS_CLICK size=1920x1032 relative="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10321715747702\\001\\交付 文件.txt" absolute="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10321715747702\\002\\绝对 文件.txt" unknown_hit=false
+--- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence (0.32s)
+    --- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832 (0.18s)
+    --- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032 (0.14s)
+=== RUN   TestFrameChromeLayoutUsesFortyPixelClientCaption
+--- PASS: TestFrameChromeLayoutUsesFortyPixelClientCaption (0.00s)
+=== RUN   TestConfigureFrameWindowUsesVivaNativeControls
+--- PASS: TestConfigureFrameWindowUsesVivaNativeControls (0.00s)
+=== RUN   TestFrameChromeCaptionDragAndMenuControls
+--- PASS: TestFrameChromeCaptionDragAndMenuControls (0.00s)
+=== RUN   TestFrameChromeMenuDismissRestoresEditorFocusAndSelection
+=== RUN   TestFrameChromeMenuDismissRestoresEditorFocusAndSelection/Escape
+=== RUN   TestFrameChromeMenuDismissRestoresEditorFocusAndSelection/外点
+--- PASS: TestFrameChromeMenuDismissRestoresEditorFocusAndSelection (0.00s)
+    --- PASS: TestFrameChromeMenuDismissRestoresEditorFocusAndSelection/Escape (0.00s)
+    --- PASS: TestFrameChromeMenuDismissRestoresEditorFocusAndSelection/外点 (0.00s)
+=== RUN   TestFrameChromeApplicationMenuRunsOnlyRealActions
+--- PASS: TestFrameChromeApplicationMenuRunsOnlyRealActions (0.00s)
+=== RUN   TestFrameChromeEditMenuUsesRealSelectionAndClipboard
+=== RUN   TestFrameChromeEditMenuUsesRealSelectionAndClipboard/复制保持正文并写真实剪贴板
+=== RUN   TestFrameChromeEditMenuUsesRealSelectionAndClipboard/剪切写剪贴板并删除所选
+=== RUN   TestFrameChromeEditMenuUsesRealSelectionAndClipboard/粘贴读取真实剪贴板并替换所选
+=== RUN   TestFrameChromeEditMenuUsesRealSelectionAndClipboard/删除全选撤销重做都是编辑器动作
+--- PASS: TestFrameChromeEditMenuUsesRealSelectionAndClipboard (0.00s)
+    --- PASS: TestFrameChromeEditMenuUsesRealSelectionAndClipboard/复制保持正文并写真实剪贴板 (0.00s)
+    --- PASS: TestFrameChromeEditMenuUsesRealSelectionAndClipboard/剪切写剪贴板并删除所选 (0.00s)
+    --- PASS: TestFrameChromeEditMenuUsesRealSelectionAndClipboard/粘贴读取真实剪贴板并替换所选 (0.00s)
+    --- PASS: TestFrameChromeEditMenuUsesRealSelectionAndClipboard/删除全选撤销重做都是编辑器动作 (0.00s)
+=== RUN   TestFrameChromeClipboardFailureDoesNotMutateEditor
+--- PASS: TestFrameChromeClipboardFailureDoesNotMutateEditor (0.00s)
+=== RUN   TestParseWinSize
+--- PASS: TestParseWinSize (0.00s)
+=== RUN   TestParseKeys
+--- PASS: TestParseKeys (0.00s)
+=== RUN   TestIsAuthErr
+--- PASS: TestIsAuthErr (0.00s)
+=== RUN   TestApprovalOptionsConversion
+--- PASS: TestApprovalOptionsConversion (0.00s)
+=== RUN   TestMaxInt
+--- PASS: TestMaxInt (0.00s)
+=== RUN   TestRightbarDefaultsClosedWithoutToolTrajectory
+--- PASS: TestRightbarDefaultsClosedWithoutToolTrajectory (0.01s)
+=== RUN   TestRightbarDefaultsClosedEvenWithToolTrajectory
+--- PASS: TestRightbarDefaultsClosedEvenWithToolTrajectory (0.00s)
+=== RUN   TestRightbarSessionStateDoesNotLeak
+--- PASS: TestRightbarSessionStateDoesNotLeak (0.00s)
+=== RUN   TestRightbarGeometryTracksVisibility
+--- PASS: TestRightbarGeometryTracksVisibility (0.00s)
+=== RUN   TestGeometryMatchesOfficialColumns
+--- PASS: TestGeometryMatchesOfficialColumns (0.00s)
+=== RUN   TestGeometryResizeSequence
+--- PASS: TestGeometryResizeSequence (0.00s)
+=== RUN   TestGeometryRightbarVanishesWhenNoRoom
+--- PASS: TestGeometryRightbarVanishesWhenNoRoom (0.00s)
+=== RUN   TestFirstLoadedMessagesGetFollowUpFrame
+--- PASS: TestFirstLoadedMessagesGetFollowUpFrame (0.00s)
+=== RUN   TestOpenInAppButtonLivesInHeaderAtBothSizes
+=== RUN   TestOpenInAppButtonLivesInHeaderAtBothSizes/1182x832
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_header_test.go:167: OPEN_IN_APP_BUTTON size=1182x832 button={X:1066 Y:25 Width:56 Height:24} titleRow=22..52 corner={X:1130 Y:23 Width:28 Height:28}
+=== RUN   TestOpenInAppButtonLivesInHeaderAtBothSizes/1920x1032
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_header_test.go:167: OPEN_IN_APP_BUTTON size=1920x1032 button={X:1804 Y:25 Width:56 Height:24} titleRow=22..52 corner={X:1868 Y:23 Width:28 Height:28}
+--- PASS: TestOpenInAppButtonLivesInHeaderAtBothSizes (0.02s)
+    --- PASS: TestOpenInAppButtonLivesInHeaderAtBothSizes/1182x832 (0.01s)
+    --- PASS: TestOpenInAppButtonLivesInHeaderAtBothSizes/1920x1032 (0.01s)
+=== RUN   TestOpenInAppButtonDisappearsWithoutARealTarget
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+--- PASS: TestOpenInAppButtonDisappearsWithoutARealTarget (0.01s)
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1182x832
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:17 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_headless_test.go:28: OPEN_IN_APP_HIT size=1182x832 button={X:1066 Y:25 Width:56 Height:24} corner={X:1130 Y:23 Width:28 Height:28} tabs={X:312 Y:62 Width:26 Height:25}
+    open_in_app_headless_test.go:28: OPEN_IN_APP_CAPTURE path=testdata\open-in-app\open-in-app-1182x832.png size=1182x832 bytes=29960 status=已打开目录
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1920x1032
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_headless_test.go:28: OPEN_IN_APP_HIT size=1920x1032 button={X:1804 Y:25 Width:56 Height:24} corner={X:1868 Y:23 Width:28 Height:28} tabs={X:312 Y:62 Width:26 Height:25}
+    open_in_app_headless_test.go:28: OPEN_IN_APP_CAPTURE path=testdata\open-in-app\open-in-app-1920x1032.png size=1920x1032 bytes=50642 status=已打开目录
+--- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence (0.19s)
+    --- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1182x832 (0.10s)
+    --- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1920x1032 (0.09s)
+=== RUN   TestOpenLocalRoutesDirectoryAndFileToDifferentRealOpeners
+--- PASS: TestOpenLocalRoutesDirectoryAndFileToDifferentRealOpeners (0.00s)
+=== RUN   TestOpenLocalDirectoryFailureIsVisibleInTheStatusBar
+--- PASS: TestOpenLocalDirectoryFailureIsVisibleInTheStatusBar (0.00s)
+=== RUN   TestOpenFileRejectsBarePathsBeforeAnyOSCall
+--- PASS: TestOpenFileRejectsBarePathsBeforeAnyOSCall (0.00s)
+=== RUN   TestNoTwoPanelsShareOneSlotAndOrder
+--- PASS: TestNoTwoPanelsShareOneSlotAndOrder (0.00s)
+=== RUN   TestJournalResetZeroesEveryWatermark
+--- PASS: TestJournalResetZeroesEveryWatermark (0.00s)
+=== RUN   TestJournalResetOfBackgroundSessionKeepsForegroundWatermark
+--- PASS: TestJournalResetOfBackgroundSessionKeepsForegroundWatermark (0.00s)
+=== RUN   TestJournalResetToleratesMissingState
+--- PASS: TestJournalResetToleratesMissingState (0.00s)
+=== RUN   TestResolveThemeMode
+--- PASS: TestResolveThemeMode (0.00s)
+=== RUN   TestUnknownModeChangesNothing
+--- PASS: TestUnknownModeChangesNothing (0.00s)
+=== RUN   TestApplySwapsTheSameObject
+2026/11/04 14:25:18 主题：light（实际 light）
+--- PASS: TestApplySwapsTheSameObject (0.00s)
+=== RUN   TestSwitchBackAndForth
+2026/11/04 14:25:18 主题：light（实际 light）
+2026/11/04 14:25:18 主题：dark（实际 dark）
+--- PASS: TestSwitchBackAndForth (0.00s)
+=== RUN   TestQueueFromConfigDoesNotPersist
+--- PASS: TestQueueFromConfigDoesNotPersist (0.00s)
+=== RUN   TestSystemAppearanceOnlyRequeuesInSystemMode
+2026/11/04 14:25:18 主题：light（实际 light）
+--- PASS: TestSystemAppearanceOnlyRequeuesInSystemMode (0.00s)
+=== RUN   TestWPC1FilePathFromExplicitLinkOnly
+--- PASS: TestWPC1FilePathFromExplicitLinkOnly (0.00s)
+=== RUN   TestWPC1OpenExternalFailureIsVisible
+--- PASS: TestWPC1OpenExternalFailureIsVisible (0.00s)
+=== RUN   TestWPC1LoadPreservesOriginalTimeAndStoppedWithoutInventingThem
+--- PASS: TestWPC1LoadPreservesOriginalTimeAndStoppedWithoutInventingThem (0.00s)
+=== RUN   TestWPC1TurnErrorAndExplicitStoppedSurviveStreamReduction
+--- PASS: TestWPC1TurnErrorAndExplicitStoppedSurviveStreamReduction (0.00s)
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:18 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC1HeadlessRealActionsAndTwoSizeEvidence1182x8322684645685\002\conversation-1182x832.png size=1182x832 bytes=41390
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:18 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 14:25:18 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC1HeadlessRealActionsAndTwoSizeEvidence1920x1032273680066\002\conversation-1920x1032.png size=1920x1032 bytes=64168
+--- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence (0.29s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832 (0.13s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032 (0.16s)
+=== RUN   TestWPC1SendFailureKeepsDraftAndDoesNotBorrowTransportIdentity
+--- PASS: TestWPC1SendFailureKeepsDraftAndDoesNotBorrowTransportIdentity (0.01s)
+=== RUN   TestWPC1OutgoingDoesNotReconcileAgainstHistoricalSameText
+--- PASS: TestWPC1OutgoingDoesNotReconcileAgainstHistoricalSameText (0.00s)
+=== RUN   TestWPC2BackgroundFramesReduceIntoTheirOwnSessionCache
+--- PASS: TestWPC2BackgroundFramesReduceIntoTheirOwnSessionCache (0.00s)
+=== RUN   TestWPC2DuplicateOutgoingTextIsNotReconciledByTextAlone
+--- PASS: TestWPC2DuplicateOutgoingTextIsNotReconciledByTextAlone (0.00s)
+=== RUN   TestWPC2OutgoingExactTurnReconcilesOnlyOneMatchingEcho
+--- PASS: TestWPC2OutgoingExactTurnReconcilesOnlyOneMatchingEcho (0.00s)
+=== RUN   TestWPC2ABAStreamingSwitchKeepsCanonicalStateWithoutReload
+2026/11/04 14:25:18 待审批 requestId=perm-A-original tool=execute options=2
+--- PASS: TestWPC2ABAStreamingSwitchKeepsCanonicalStateWithoutReload (0.00s)
+=== RUN   TestWPC2TruncatedLoadPublishesMissingPrependTruth
+--- PASS: TestWPC2TruncatedLoadPublishesMissingPrependTruth (0.00s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/cmd/app	0.908s
+TEST_EXIT=0

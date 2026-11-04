@@ -1,0 +1,33 @@
+=== RUN   TestOpenInAppButtonLivesInHeaderAtBothSizes
+=== RUN   TestOpenInAppButtonLivesInHeaderAtBothSizes/1182x832
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_header_test.go:149: 1182x832 按钮 y=96.5..120.5 不在标题行 22..52 里（旧实现落在正文区 y=96.5）
+=== RUN   TestOpenInAppButtonLivesInHeaderAtBothSizes/1920x1032
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_header_test.go:149: 1920x1032 按钮 y=96.5..120.5 不在标题行 22..52 里（旧实现落在正文区 y=96.5）
+--- FAIL: TestOpenInAppButtonLivesInHeaderAtBothSizes (0.03s)
+    --- FAIL: TestOpenInAppButtonLivesInHeaderAtBothSizes/1182x832 (0.02s)
+    --- FAIL: TestOpenInAppButtonLivesInHeaderAtBothSizes/1920x1032 (0.00s)
+=== RUN   TestOpenInAppButtonDisappearsWithoutARealTarget
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:26:35 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_header_test.go:203: 相对 CWD 时仍然画着按钮：{X:292 Y:96.5 Width:56 Height:24}；texts=["deepseek" "HARNESS" "+" "新会话" "▦" "插件" "◷" "自动化任务" "工作区" "⌕" "▾" "▾" "001" "1" "会话一" "1 个会话" "001" "/" "会话一" "对话" "轨迹" "打开"]
+--- FAIL: TestOpenInAppButtonDisappearsWithoutARealTarget (0.00s)
+FAIL
+FAIL	github.com/MYCF711/dsh-ui/cmd/app	0.083s
+FAIL
+EXIT=1

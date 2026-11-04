@@ -1,0 +1,69 @@
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1182x832
+2026/11/04 14:25:20 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:20 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:20 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:20 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:20 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:20 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_headless_test.go:28: OPEN_IN_APP_HIT size=1182x832 button={X:1066 Y:25 Width:56 Height:24} corner={X:1130 Y:23 Width:28 Height:28} tabs={X:312 Y:62 Width:26 Height:25}
+    open_in_app_headless_test.go:28: OPEN_IN_APP_CAPTURE path=cmd\app\testdata\open-in-app\open-in-app-1182x832.png size=1182x832 bytes=29960 status=已打开目录
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1920x1032
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_headless_test.go:28: OPEN_IN_APP_HIT size=1920x1032 button={X:1804 Y:25 Width:56 Height:24} corner={X:1868 Y:23 Width:28 Height:28} tabs={X:312 Y:62 Width:26 Height:25}
+    open_in_app_headless_test.go:28: OPEN_IN_APP_CAPTURE path=cmd\app\testdata\open-in-app\open-in-app-1920x1032.png size=1920x1032 bytes=50642 status=已打开目录
+--- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence (0.27s)
+    --- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1182x832 (0.16s)
+    --- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1920x1032 (0.11s)
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1182x832
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_headless_test.go:28: OPEN_IN_APP_HIT size=1182x832 button={X:1066 Y:25 Width:56 Height:24} corner={X:1130 Y:23 Width:28 Height:28} tabs={X:312 Y:62 Width:26 Height:25}
+    open_in_app_headless_test.go:28: OPEN_IN_APP_CAPTURE path=cmd\app\testdata\open-in-app\open-in-app-1182x832.png size=1182x832 bytes=29960 status=已打开目录
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1920x1032
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_headless_test.go:28: OPEN_IN_APP_HIT size=1920x1032 button={X:1804 Y:25 Width:56 Height:24} corner={X:1868 Y:23 Width:28 Height:28} tabs={X:312 Y:62 Width:26 Height:25}
+    open_in_app_headless_test.go:28: OPEN_IN_APP_CAPTURE path=cmd\app\testdata\open-in-app\open-in-app-1920x1032.png size=1920x1032 bytes=50642 status=已打开目录
+--- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence (0.18s)
+    --- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1182x832 (0.08s)
+    --- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1920x1032 (0.10s)
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1182x832
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_headless_test.go:28: OPEN_IN_APP_HIT size=1182x832 button={X:1066 Y:25 Width:56 Height:24} corner={X:1130 Y:23 Width:28 Height:28} tabs={X:312 Y:62 Width:26 Height:25}
+    open_in_app_headless_test.go:28: OPEN_IN_APP_CAPTURE path=cmd\app\testdata\open-in-app\open-in-app-1182x832.png size=1182x832 bytes=29960 status=已打开目录
+=== RUN   TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1920x1032
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:21 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_in_app_headless_test.go:28: OPEN_IN_APP_HIT size=1920x1032 button={X:1804 Y:25 Width:56 Height:24} corner={X:1868 Y:23 Width:28 Height:28} tabs={X:312 Y:62 Width:26 Height:25}
+    open_in_app_headless_test.go:28: OPEN_IN_APP_CAPTURE path=cmd\app\testdata\open-in-app\open-in-app-1920x1032.png size=1920x1032 bytes=50642 status=已打开目录
+--- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence (0.18s)
+    --- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1182x832 (0.08s)
+    --- PASS: TestOpenInAppHeadlessRealClickAndTwoSizeEvidence/1920x1032 (0.09s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/cmd/app	0.672s
+TEST_EXIT=0

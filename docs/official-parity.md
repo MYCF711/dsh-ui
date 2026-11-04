@@ -22,7 +22,7 @@
 
 ### 侧栏类（6）
 
-- ✅ `sidebar`（`dssidebar`：工作区分组 + 搜索 + 状态点 + **两次点击删除会话**——宿主早就有 `session.delete`，界面一直没接；宿主还给了 `session.fork` / `session.compact`，界面仍未接）
+- ✅ `sidebar`（`dssidebar`：工作区分组 + 搜索 + 状态点 + **两次点击删除会话**——宿主早就有 `session.delete`，界面一直没接；`session.compact` 已接（F2「压缩上下文」）；**`session.fork` 仍未接**）
 - ❌ `sidebar-browser`
 - ✅ `sidebar-documentpreview`（`dsfiles` 的预览浮层；16KB 上限、20 行截断）
 - ✅ `sidebar-files`（`dsfiles`；`workspace.list(path)` + `fs.read`，可进子目录）

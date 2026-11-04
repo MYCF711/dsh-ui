@@ -26,7 +26,7 @@
 - ✅ `sidebar-documentpreview`（`dsfiles` 的预览浮层；16KB 上限、20 行截断）
 - ✅ `sidebar-files`（`dsfiles`；`workspace.list(path)` + `fs.read`，可进子目录）
 - ❌ `sidebar-right`
-- ❌ `sidebar-terminal`
+- ✅ `sidebar-terminal`（`dsterminal`：F5 面板 + F6 发命令，宿主 `terminal.*` + `internal/ansi`）
 
 ### composer 控件（7）
 
@@ -47,16 +47,16 @@
 ### 会话能力（13）
 
 - ❌ `agent-preset`
-- ❌ `approval`
-- ❌ `chat`
+- ✅ `approval`（审批条 + 三按钮；允许/拒绝走真实 `session.approve`）
+- ✅ `chat`（`dsconversation` 的消息区；不等于官方的细分能力）
 - ✅ `conversation`
-- ❌ `goal`
+- ✅ `goal`（`dsgoal`：GoalBar 停靠 composer 上方，数据来自宿主 `session.setGoal`）
 - ❌ `plan`
-- ❌ `schedule`
-- ❌ `jobs`
+- ✅ `schedule`（`dsschedule`：侧栏「定时任务」，宿主 `schedule.list`）
+- ✅ `jobs`（`dsjobs`：侧栏「后台任务」，宿主 `jobs.list` + 5 秒轮询）
 - ❌ `subagent`
 - ❌ `skill`
-- ❌ `user-questions`
+- ✅ `user-questions`（`dsquestions`：F7/F8 或点击选选项）
 - ❌ `workflow-run`
 - ❌ `message-feedback`
 
@@ -64,20 +64,20 @@
 
 - ❌ `reference`
 - ❌ `renderer`
-- ❌ `deliverables`
-- ❌ `trajectory`
-- ❌ `tool`
+- 🟡 `deliverables`（`dsdeliverables`：**1/4**，见末尾「仍然缺」第 6 条）
+- ✅ `trajectory`（`dsrightbar`：按轮分组的轨迹栏）
+- ✅ `tool`（`dstool`：工具卡片 + 展开参数/结果）
 - ❌ `directory-picker-browse`
 - ❌ `directory-picker-native`
 - ❌ `open-in-app`
 - ❌ `workspace`
-- ❌ `theme`
-- ❌ `shortcuts`
+- ✅ `theme`（`dscore` 的 ds-dark / 明暗两套）
+- ✅ `shortcuts`（`dsshortcuts`：F1 键位表）
 - ❌ `secret-mask`
 - ❌ `session`
 - ❌ `cordis`
 - ❌ `brand-official`
-- ❌ `layout`
+- ✅ `layout`（`dsshell`：侧栏/中栏/右栏/底栏，可直接拖分隔线）
 - ❌ `sidebar-right`
 
 ## 合计：官方 55 个 · 我们有 10 个 · **缺 53 个**

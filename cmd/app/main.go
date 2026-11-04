@@ -2136,6 +2136,7 @@ func main() {
 			return c.Content, nil
 		},
 		OpenSession:    m.openSession,
+		DeleteSession:  m.deleteSession,
 		NewSession:     m.newSession,
 		Send:           m.sendText,
 		Copy:           func(text string) { _ = m.copyText(text) },

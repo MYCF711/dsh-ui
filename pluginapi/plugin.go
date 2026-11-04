@@ -438,7 +438,16 @@ type ApprovalOption struct {
 // nil 的动作表示当前不可用，插件要自己判断（别假设一定有）。
 type Actions struct {
 	OpenSession func(id string)
-	NewSession  func()
+	// DeleteSession 删掉一个会话（宿主 `session.delete`，**从磁盘上删**）。
+	//
+	// 这是**破坏性动作**：壳只负责发请求和报结果，**要不要确认由插件自己决定**——
+	// 壳不知道插件当时是把删除做成一次点击还是两次确认。所以插件调用它之前，
+	// 必须已经问过用户。
+	//
+	// nil = 壳没接（老壳）。插件这时不该画删除入口——画一个点了没反应的东西，
+	// 比不画更让人以为"删掉了"。
+	DeleteSession func(id string)
+	NewSession    func()
 	// Notify 让插件在状态栏说一句话（"已复制"这类反馈）。
 	// 插件不直接写状态栏：状态栏是另一个插件的地盘。
 	//

@@ -374,9 +374,12 @@ func probeWindowControls(hwnd syscall.Handle) error {
 // probe=true 时还点击本进程的最小化/最大化/还原/关闭按钮并读取 OS 状态。
 func startShot(m *model, path string, delay time.Duration, report string, probe bool) {
 	go func() {
-		hwnd := waitOwnWindow("dsh-ui", 10*time.Second)
+		// 认窗的串**不写字面量**：默认取 productName（brand.go），被 `-title` 覆盖时
+		// 取覆盖后的标题——否则并行多实例跑无头截图时，找的是默认名，永远等不到窗口。
+		needle := windowTitleNeedle()
+		hwnd := waitOwnWindow(needle, 10*time.Second)
 		if hwnd == 0 {
-			log.Print("shot: 没等到窗口")
+			log.Printf("shot: 没等到窗口（标题含 %q）", needle)
 			os.Exit(2)
 		}
 		moveOffscreen(hwnd)
@@ -388,7 +391,7 @@ func startShot(m *model, path string, delay time.Duration, report string, probe 
 			}
 			time.Sleep(300 * time.Millisecond)
 		}
-		if !captureWindow("dsh-ui", path, 8*time.Second) {
+		if !captureWindow(needle, path, 8*time.Second) {
 			log.Print("shot: 抓取失败")
 			os.Exit(2)
 		}

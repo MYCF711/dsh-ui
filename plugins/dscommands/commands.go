@@ -24,6 +24,14 @@ type Command struct {
 	Action func()
 }
 
+// settingsServiceKey 是设置浮层（`plugins/dssettings`）提供的"打开我"能力。
+//
+// 这里写字面量而**不 import 那个包**：插件之间不互相 import 是本仓的硬规矩
+// （依赖方向永远是 插件 → 契约），跨插件协作只走服务键。
+// 键名与 `dssettings.ServiceKey` 必须一致——它由 dssettings 的注释和
+// `docs/settings.md` 同时钉住；改一边就会在下面 `Inject` 处静默失效。
+const settingsServiceKey = "ui.settings.open"
+
 // Plugin 持有面板状态。
 type Plugin struct {
 	theme  *pluginapi.Theme
@@ -32,6 +40,13 @@ type Plugin struct {
 	shown  bool
 	query  []rune // 输入过滤（只有一个字符串，不做多字段）
 	cursor int    // 当前选中项
+
+	// openSettings 是设置浮层的**真实打开动作**（`ui.settings.open`）。
+	//
+	// nil = 这个壳没装 dssettings（或它 Provide 的值类型不对）→ 命令表里
+	// 一条「设置」都不出现。**它不是包级注册表，也不是可选项的替代品**：
+	// 有服务就必须能点开真浮层，没有服务就一行都不画。
+	openSettings func()
 }
 
 func (*Plugin) ID() string { return "ds-commands" }
@@ -45,6 +60,16 @@ func (*Plugin) Requires() []string {
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	// 设置浮层是**可选**能力：没装就 Inject 到 nil，一行都不加，绝不当依赖。
+	// 用 comma-ok 而不是裸断言：别人 Provide 成别的类型（或 typed nil）时，
+	// 这里必须安静地当作"没有"，而不是在装配期 panic 把整个壳带走。
+	//
+	// 值必须是 `func() bool`：dssettings 的契约是"调一次 = 真的打开浮层，
+	// 返回这一帧有没有可操作的东西"。命令面板不关心返回值（点了就有反馈走
+	// 状态栏），所以包成 `func()` 给 Command.Action。
+	if fn, ok := ctx.Inject(settingsServiceKey).(func() bool); ok && fn != nil {
+		p.openSettings = func() { fn() }
+	}
 	// Actions 不在 Context 里（它是每帧从 Env 给的），所以命令表在 draw 时现取。
 	return nil
 }
@@ -252,6 +277,19 @@ func (p *Plugin) commands() []Command {
 			"整份复制成新会话并切过去（不是从某条消息往后）",
 			a.ForkSession,
 		})
+	}
+
+	// 设置：**只在设置浮层真的装了的时候**才有这一行（它 Provide 了
+	// `ui.settings.open`）。动作就是那个服务的本体——`dssettings.Open()`，
+	// 和 Shift+F2 走同一条路径，不是命令面板另造一个"打开设置"的假动作。
+	//
+	// **必须是最后一条**：命令按位置选（`scripts/accept-theme.sh` 用 ↓×9 选
+	// 「主题：浅色」），往中间插会把后面所有命令整体挪一位。这条比 ForkSession
+	// 更晚加，所以它在最后；新命令继续往后加。
+	//
+	// 服务缺失时**零新增、零 panic**：`openSettings` 为 nil 就什么都不 append。
+	if p.openSettings != nil {
+		out = append(out, Command{"设置", "外观 / 模型 / 权限 / 会话", p.openSettings})
 	}
 	return out
 }

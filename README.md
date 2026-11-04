@@ -1,8 +1,11 @@
-# dsh-ui · 界面线（独立仓库）
+# DSH GO GUI · 界面线（独立仓库）
 
 > **这是 dsh-go 的界面线，不是宿主。** 宿主在 `../DSH-GO`（`PLAN.md`），界面在这里。
 > 两条线只在一个地方握手：**Transport 契约**（HTTP `/api` + WS `remote.mux` + `ViewSpec`）。
 > 本仓的第一件事不是写产品，是 **3 天 spike**——见 `PLAN.md`。
+>
+> **产品名是 `DSH GO GUI`，产物是 `dshgogui.exe`**（`cmd/app/brand.go` 一根常量）。
+> 窗口标题、内核名、无头截图认窗都引用它；`-title` 仍可覆盖，用于并行多实例。
 
 ---
 
@@ -34,6 +37,9 @@ go run ./cmd/mockd -sessions "D:/DeepSeek Harness/home/sessions"     -acp "../DS
 
 # 3) 界面
 go run ./cmd/app            # 或 go run ./cmd/app -tail 40 -demo
+
+# 4) 构建产物叫 dshgogui.exe，先认身份再跑（只打一行就退出，不连宿主）
+go build -o tmp/dshgogui.exe ./cmd/app && ./tmp/dshgogui.exe --version   # DSH GO GUI dev
 ```
 
 ### 一条命令复跑验收

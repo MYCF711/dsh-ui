@@ -1,14 +1,15 @@
-# AGENTS.md · dsh-ui
+# AGENTS.md · DSH GO GUI（界面线）
 
 > 用 Go + Viva 重写 DSH 的**原生界面线**。宿主在 `../DSH-GO`；本仓独立构建，不是宿主仓里的 TypeScript `ui/`。
+> **产品名 `DSH GO GUI`、产物 `dshgogui.exe`**：`cmd/app/brand.go` 是唯一来源，窗口标题 / 内核名 / 无头认窗都引用它；`--version` 打 `DSH GO GUI <版本>`。
 > 目标：极限性能、极限占用、还原 DSH 原生使用体验、逐部件插件化。Web 兼容只能是可关闭的过渡件。
 > 决策依据：`../DSH-GO/UIPLAN.md` 顶部用户原话、§2.10；本仓 `PLAN.md` §8。
 
 ## 0. 开工先读
 
-1. 读 `PLAN.md` 的“当前执行口径”和 §8，再读 `docs/progress.md`、`docs/plugin-api.md` 的最新段落与相关源码。早期 E1–E3 spike 已完成选型，**不要重做 spike，不要按旧 60 MB 线或“失败退 WebView”改变路线**。
+1. 读 `PLAN.md` “当前执行口径”和 §8，再读 `docs/progress.md`、`docs/plugin-api.md` 最新段与相关源码。E1–E3 已完成选型，**不重做 spike、不按旧 60 MB 线、不退 WebView**。
 2. 当前优先级是：**H14 契约门 → 真宿主闭环与流式连续性**；**U1.5 官方首屏外观基线与 U1/U2 并行提前**，再做插件底座、逐部件和完整工作日。H14 迁移已有提交，先核源码不重复实现；不得等全部链路完成才补官方外观。
-3. 历史 ✅ 只表示当时某一层有证据。装配成功、静态插件样例、JSON 只读部件、ACP 成功、mockd 成功，都不能单独证明真实 Transport 产品链路完成。
+3. 历史 ✅ 只证明当时一层。装配、静态插件、只读 JSON、ACP、mockd 成功都不等于真实 Transport 链路。
 4. 完成记录写清版本、命令、退出码、输入、实际断言与未验证项；截图必须能对应被测功能，不能用“气泡消失”代替真实审批。
 
 ## 1. 架构与证据边界
@@ -71,9 +72,6 @@ H14 只用真实 apiclient 对契约夹具验合成 text/reasoning/tool/approval
 
 ```bash
 export PATH="/c/Program Files/Go/bin:$PATH"
-export PATH="$(go env GOPATH)/bin:$PATH"
-export GOPROXY=https://goproxy.cn,direct
-cd "D:/DeepSeek Harness/default-workspace/dsh-ui"
 CGO_ENABLED=0 go build ./...
 go vet ./...
 go test ./...

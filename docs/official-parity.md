@@ -73,7 +73,7 @@
 - 🟡 `open-in-app`（`dsopen`：会话头部「打开」→ `OpenExternal(CWD)`；**文档预览的「用默认程序打开」那半没有**）
 - ❌ `workspace`
 - ✅ `theme`（`dscore` 的 ds-dark / 明暗两套）
-- ✅ `shortcuts`（`dsshortcuts`：F1 键位表）
+- ✅ `shortcuts`（`dsshortcuts`：F1 键位表，**带守卫**——从 `plugins/` 的 AST 里扫出所有 `ui.KeyXxx`，表漏记一个就红；官方的"录制"和"本地改键"没做）
 - 🟡 `secret-mask`（`internal/secretmask` + `dsconversation/mask.go`：用户消息**显示**遮罩。只用户消息、只显示，复制仍是原文）
 - ⬜ `session`（**N/A**：官方的 *"Session Controller adapter for React"* 是 React 适配层；我们的会话状态在壳里）
 - ❌ `cordis`

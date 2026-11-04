@@ -97,7 +97,7 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 
 ---
 
-## 3. 方法清单（**14 个**）
+## 3. 方法清单（**25 个**）
 
 > 2026-11-03 核对：按宿主 `internal/transport` 里实际注册的 method 字符串逐个数，
 > 是 14 个（`session.approve` 是 H13 加的，文档长期写着 13 个，漏的就是它）。
@@ -230,9 +230,16 @@ kind 只取 v4 词汇表里那几个，宿主明确写了"不新造 kind"。
 | `session/reset` 清三份水位 + 局部 `since=0` | `model.onJournalResetLocked`（`cmd/app/main.go`） | `TestJournalResetZeroesEveryWatermark`、`TestJournalResetOfBackgroundSessionKeepsForegroundWatermark`、`TestJournalResetToleratesMissingState`（`cmd/app/reset_watermark_test.go`） |
 | history 请求带 `journalEpoch`（且分批每批都带） | `apiclient.History` / `apiclient.FillGap`（`internal/apiclient/history.go`） | `TestHistorySendsJournalEpoch`、`TestFillGapForwardsEpoch`（`internal/apiclient/history_test.go`，httptest 抓请求 body） |
 
-> 快照 `testdata/api.snapshot.json` 仍是 v1 旧形状（`stream.path=/api/mux`、服务端帧用
-> `kind`、history 返回 `messages`、缺 `session.approve`）。本次只改了实现与本文，
-> **没有动快照**——整份重写归契约 owner（`DSH-GO` W0 / 本仓 W2），两边要一起改。
+> 快照 `testdata/api.snapshot.json` 已按真宿主当前实现重写成 **v2**（2026-11-04）：
+> `stream` 段改成真形状 `{seq,type,data,time}` 并写明"服务端不发 gap 帧"，
+> 方法表补齐到 25 个（含 `session.approve` / `session.compact` / `session.setGoal` 等）。
+>
+> v1 那段是**错的**，不只是旧：它写 `{t:"ev", kind, topic}` + 服务端发 `gap` 帧，
+> 而真形状没有任何一个字段对得上——照它写客户端会解析 `kind` 而永远拿不到 `type`，
+> 并一直等一个不会来的 gap 帧。
+>
+> 两条守卫钉住它：`TestSnapshotCoversEveryCalledMethod`（客户端调的每个方法快照必须收录）
+> 与 `TestSnapshotStreamIsNotTheAbandonedShape`（旧的流形状不许回来）。
 
 ### 第二批（5 个，U1 之后）
 

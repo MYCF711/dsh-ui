@@ -1,8 +1,8 @@
 {
   "$schema": "dsh-ui/api-contract@1",
-  "version": 1,
+  "version": 2,
   "input_style": "flat",
-  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method> 便于将来加兼容映射。入参一律平铺：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构（../DSH-GO/internal/transport/server.go）。{\"params\":{…}} 只有 cmd/mockd 为历史脚本继续收，新代码不许发——套一层会让参数全部解成零值，症状是 list 正常、load 404、prompt 子进程参数为空",
+  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method>。入参一律**平铺**：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构。v2（2026-11-04）按真宿主当前实现重写：stream 段原来的 {t:ev,kind,topic} + gap 帧是**错的**，真形状是 {seq,type,data,time} 且服务端不发 gap；方法表补齐到 25 个。",
   "envelope": {
     "request": {
       "style": "flat",
@@ -34,70 +34,77 @@
       {
         "t": "sub",
         "topic": "string",
-        "sinceSeq": "int?"
+        "sinceSeq": "int?",
+        "journalEpoch": "int64?",
+        "note": "两个水位要一起带；只带一个会让宿主补出一段错位数据"
       },
       {
         "t": "unsub",
         "topic": "string"
       },
       {
-        "t": "ping"
+        "t": "ping",
+        "note": "应用层心跳，不占用 WS 控制帧"
       }
     ],
     "server_frames": [
       {
-        "t": "ev",
-        "topic": "string",
         "seq": "int",
-        "kind": "string",
-        "data": "object"
-      },
-      {
-        "t": "gap",
-        "topic": "string",
-        "fromSeq": "int",
-        "toSeq": "int",
-        "reason": "需要重新拉 history"
-      },
-      {
-        "t": "pong"
+        "type": "string",
+        "data": "object",
+        "time": "int64",
+        "note": "type 是 v4 原始事件名；**没有 topic 字段**——连接本身就是会话归属；也不是 {t:ev,kind}"
       }
     ],
-    "topics": {
-      "session:<id>": "该会话的 v4 事件（62 种原始词汇，不另造）",
-      "turn:<id>": "助手流式增量：text-delta / reasoning-delta / tool-call-delta，带 revision/index"
-    },
-    "continuity": "seq 连续；断号发 gap 帧，客户端按 session.history 补洞，不整体刷新"
+    "control_frames": [
+      {
+        "type": "pong",
+        "note": "无 seq、不入 journal"
+      },
+      {
+        "type": "session/reset",
+        "data": {
+          "journalEpoch": "int64",
+          "lastSeq": "int"
+        },
+        "note": "无 seq；收到就重建基线（清水位 → 重新 load → 按新基线 resub），不是 sinceSeq=0 重连"
+      }
+    ],
+    "no_gap_frames": "服务端**不发** gap 帧：断号由客户端按 seq 连续性自己发现，再调 session.history 补洞",
+    "types": [
+      "turn/start",
+      "turn/end",
+      "turn/done",
+      "turn/error",
+      "user/message",
+      "assistant/message",
+      "tool/call",
+      "tool/result",
+      "system/message",
+      "developer/message",
+      "approval/request",
+      "approval/timeout",
+      "approval/cancel",
+      "session/reset",
+      "pong"
+    ],
+    "turn_end_shape": "{\"turn\":5,\"reason\":{\"kind\":\"completed|error|aborted|blocked|max-tokens|interrupted|forked\",\"error\":{\"message\":\"…\"},\"reason\":\"…\"}} —— 结局和失败原因都在 reason 里面"
   },
   "methods": {
     "session.list": {
       "batch": 1,
       "req": {},
-      "req_note": "宿主忽略 body（handler 不读 r.Body）；客户端传 {} 即可",
       "resp": {
         "sessions": [
           {
             "id": "string",
             "title": "string",
             "cwd": "string",
-            "updatedAt": "RFC3339",
-            "mode": "string"
+            "updatedAt": "RFC3339"
           }
-        ],
-        "next": "string?"
-      }
-    },
-    "session.create": {
-      "batch": 1,
-      "req": {
-        "mode": "string=default"
+        ]
       },
-      "req_note": "宿主只解 mode；cwd/title 客户端会发但目前没有任何一侧读（尚未实现）",
-      "resp": {
-        "id": "string",
-        "createdAt": "RFC3339",
-        "mode": "string"
-      }
+      "req_note": "宿主不读 body"
     },
     "session.load": {
       "batch": 1,
@@ -107,34 +114,42 @@
         "tailMessages": "int=200",
         "limit": "int=200"
       },
-      "req_note": "两个 id 名字、两个条数名字都收；sessionId 优先于 id，limit 优先于 tailMessages（target：打开会话含尾页）",
       "resp": {
-        "id": "string",
-        "title": "string",
-        "cwd": "string",
-        "mode": "string",
         "messages": [
           "Message"
         ],
+        "total": "int",
         "truncated": "bool",
-        "total": "int"
-      }
+        "model": "string?",
+        "goal": "string?",
+        "permission": "string?",
+        "contentWidth": "int",
+        "usageTotal": "UsageMsg?",
+        "contextTokens": "int",
+        "contextWindow": "int",
+        "journalEpoch": "int64",
+        "lastSeq": "int",
+        "cwd": "string"
+      },
+      "req_note": "两个 id 名字、两个条数名字都收；sessionId 优先于 id，limit 优先于 tailMessages"
     },
     "session.history": {
       "batch": 1,
       "req": {
         "sessionId": "string",
         "id": "string",
-        "sinceSeq": "int?",
-        "limit": "int=200"
+        "sinceSeq": "int=0",
+        "limit": "int=200",
+        "journalEpoch": "int64=0"
       },
-      "req_note": "断号后按 sinceSeq 补洞；beforeSeq 是旧快照里的猜名，两边都没有实现",
       "resp": {
-        "messages": [
-          "Message"
+        "frames": [
+          "ServerFrame"
         ],
-        "nextBefore": "int?"
-      }
+        "lastSeq": "int",
+        "journalEpoch": "int64"
+      },
+      "req_note": "返回**原始帧**，不是抽过 text 的 messages；sinceSeq 是开区间（传 166 从 167 起）；journalEpoch 对不上回 409 stale_epoch"
     },
     "session.prompt": {
       "batch": 1,
@@ -143,11 +158,11 @@
         "id": "string",
         "text": "string"
       },
-      "req_note": "宿主只读 text；attachments 不在契约里（旧快照的猜名，未实现）",
       "resp": {
-        "turnId": "string",
-        "accepted": "bool"
-      }
+        "accepted": "bool",
+        "turnId": "string"
+      },
+      "req_note": "宿主只读 text；回答走 WS，这个 HTTP 立刻返回"
     },
     "session.cancel": {
       "batch": 1,
@@ -157,85 +172,8 @@
       },
       "resp": {
         "cancelled": "bool"
-      }
-    },
-    "session.delete": {
-      "batch": 2,
-      "req": {
-        "sessionId": "string"
       },
-      "req_note": "宿主只认 sessionId（没有 id 别名）；mockd 仍是 501",
-      "resp": {
-        "deleted": "bool"
-      }
-    },
-    "session.fork": {
-      "batch": 2,
-      "req": {
-        "sessionId": "string",
-        "title": "string?"
-      },
-      "req_note": "宿主只认 sessionId/title；fromSeq 是旧快照里的猜名，未实现",
-      "resp": {
-        "id": "string",
-        "parentSession": "string"
-      }
-    },
-    "workspace.list": {
-      "batch": 1,
-      "req": {},
-      "resp": {
-        "roots": [
-          {
-            "path": "string",
-            "name": "string",
-            "isGit": "bool"
-          }
-        ]
-      }
-    },
-    "fs.read": {
-      "batch": 2,
-      "req": {
-        "path": "string"
-      },
-      "req_note": "宿主只解 path；maxBytes 未实现（大小上限在宿主侧，不由协议层定）",
-      "resp": {
-        "path": "string",
-        "content": "string",
-        "truncated": "bool",
-        "size": "int"
-      }
-    },
-    "fs.write": {
-      "batch": 2,
-      "req": {
-        "path": "string",
-        "content": "string"
-      },
-      "req_note": "宿主只解 path/content；createDirs 未实现（协议层不建目录）",
-      "resp": {
-        "path": "string",
-        "bytes": "int"
-      }
-    },
-    "config.get": {
-      "batch": 1,
-      "req": {},
-      "req_note": "宿主不读 body（整份配置原样返回）；keys 过滤尚未实现",
-      "resp": {
-        "values": "object"
-      }
-    },
-    "config.set": {
-      "batch": 2,
-      "req": {
-        "values": "object"
-      },
-      "req_note": "values 是扁平的 key → string 表；只覆盖给出的 key",
-      "resp": {
-        "ok": "bool"
-      }
+      "req_note": "幂等：没有 turn 在跑也回 true"
     },
     "session.approve": {
       "batch": 2,
@@ -246,12 +184,237 @@
       "resp": {
         "accepted": "bool",
         "optionId": "string"
+      },
+      "req_note": "optionId 只接受 allow_once / allow_always / reject_once（下划线）"
+    },
+    "session.create": {
+      "batch": 1,
+      "req": {
+        "mode": "string=default"
+      },
+      "resp": {
+        "sessionId": "string"
+      },
+      "req_note": "宿主**只解 mode**；cwd/title 客户端会发，宿主目前不读 → 别用它做'在某个目录新建会话'"
+    },
+    "session.delete": {
+      "batch": 2,
+      "req": {
+        "sessionId": "string",
+        "id": "string"
+      },
+      "resp": {
+        "deleted": "bool"
+      },
+      "req_note": "两个名字都收（handlers_extra 的 fillID）；怕丢就两个都发"
+    },
+    "session.fork": {
+      "batch": 2,
+      "req": {
+        "sessionId": "string",
+        "id": "string",
+        "title": "string?"
+      },
+      "resp": {
+        "sessionId": "string"
+      },
+      "req_note": "**整份复制**，没有切点参数；空会话会失败（500 '源会话没有可继承的 surface'）；title 宿主目前不消费"
+    },
+    "session.compact": {
+      "batch": 2,
+      "req": {
+        "sessionId": "string",
+        "id": "string",
+        "keep": "int=6"
+      },
+      "resp": {
+        "compacted": "bool",
+        "from": "int64",
+        "to": "int64",
+        "shadowed": "int",
+        "summaryChars": "int"
+      },
+      "req_note": "keep<=0 用宿主默认 6；没内容可压时回 200 + compacted=false（**不是失败**）"
+    },
+    "session.setGoal": {
+      "batch": 2,
+      "req": {
+        "id": "string",
+        "goal": "string"
+      },
+      "resp": {
+        "ok": "bool"
+      },
+      "req_note": "超过 maxGoalLen 会被宿主截断，不报错"
+    },
+    "session.setModel": {
+      "batch": 2,
+      "req": {
+        "id": "string",
+        "model": "string"
+      },
+      "resp": {
+        "ok": "bool"
+      },
+      "req_note": "空串 = 清除覆盖"
+    },
+    "session.setPermission": {
+      "batch": 2,
+      "req": {
+        "id": "string",
+        "permission": "string"
+      },
+      "resp": {
+        "ok": "bool"
+      },
+      "req_note": "白名单 deny/ask/allow/auto；空串 = 清除覆盖；非法值 400 并给白名单 hint"
+    },
+    "workspace.list": {
+      "batch": 1,
+      "req": {
+        "path": "string?"
+      },
+      "resp": {
+        "entries": [
+          {
+            "name": "string",
+            "isDir": "bool",
+            "size": "int64"
+          }
+        ]
+      },
+      "req_note": "path 为空 = 宿主进程工作目录；给了就列那个目录（只列顶层）"
+    },
+    "fs.read": {
+      "batch": 1,
+      "req": {
+        "path": "string"
+      },
+      "resp": {
+        "path": "string",
+        "content": "string",
+        "size": "int64"
+      },
+      "req_note": "宿主只解 path"
+    },
+    "fs.write": {
+      "batch": 2,
+      "req": {
+        "path": "string",
+        "content": "string"
+      },
+      "resp": {
+        "written": "bool"
+      },
+      "req_note": "宿主只解 path/content；不建目录"
+    },
+    "config.get": {
+      "batch": 1,
+      "req": {},
+      "resp": {
+        "values": "object",
+        "config": "object"
+      },
+      "req_note": "两个键都回同一份（历史原因）"
+    },
+    "config.set": {
+      "batch": 2,
+      "req": {
+        "values": "object"
+      },
+      "resp": {
+        "updated": "int"
+      },
+      "req_note": "values 是扁平 key→string；只覆盖给出的 key"
+    },
+    "models.list": {
+      "batch": 1,
+      "req": {},
+      "resp": {
+        "models": [
+          {
+            "id": "string",
+            "ownedBy": "string"
+          }
+        ]
+      },
+      "req_note": "来自网关 /v1/models"
+    },
+    "jobs.list": {
+      "batch": 1,
+      "req": {},
+      "resp": {
+        "jobs": [
+          {
+            "id": "string",
+            "command": "string",
+            "done": "bool"
+          }
+        ]
+      },
+      "req_note": "宿主缓存的那份（子进程 @@JOBS@@ 推上来的），不是实时"
+    },
+    "jobs.output": {
+      "batch": 2,
+      "req": {
+        "id": "string",
+        "waitMs": "int=0"
+      },
+      "resp": {
+        "…": "见 ../DSH-GO/internal/transport/handlers_jobs.go 的 JobOutput"
+      },
+      "req_note": "只在轮次进行中可用（每轮一个子进程，跑完就退）"
+    },
+    "schedule.list": {
+      "batch": 1,
+      "req": {},
+      "resp": {
+        "schedules": [
+          {
+            "id": "string",
+            "title": "string",
+            "kind": "string",
+            "nextAt": "RFC3339"
+          }
+        ]
       }
+    },
+    "terminal.open": {
+      "batch": 1,
+      "req": {
+        "cwd": "string?"
+      },
+      "resp": {
+        "id": "string"
+      },
+      "req_note": "一次会话一个就够"
+    },
+    "terminal.input": {
+      "batch": 1,
+      "req": {
+        "id": "string",
+        "data": "string"
+      },
+      "resp": {
+        "ok": "bool"
+      },
+      "req_note": "原样写，要换行自己带"
+    },
+    "terminal.output": {
+      "batch": 1,
+      "req": {
+        "id": "string",
+        "since": "int"
+      },
+      "resp": {
+        "…": "见 ../DSH-GO/internal/transport/handlers_terminal.go 的 TerminalOutput"
+      },
+      "req_note": "增量"
     }
   },
   "counts": {
-    "total": 14,
-    "batch1": 8,
-    "batch2": 6
+    "total": 25,
+    "batch1": 15,
+    "batch2": 10
   }
 }

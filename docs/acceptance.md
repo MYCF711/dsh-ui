@@ -23,7 +23,8 @@ bash scripts/accept-all.sh --only theme,session-ops
 2. **共享的宿主二进制会被没退出的旧宿主锁住**（Windows），锁住之后
    "编不出新二进制"，整个验收停在第一步。现在每条脚本都认 `DSHGO_BIN` 环境变量，
    `accept-all.sh` 每轮编到**自己的目录**里再传进去。
-   > 2026-11-04 起产物名统一：宿主一律 `dshd.exe`、界面一律 `dshgogui.exe`，
+   > 2026-11-04 起产物名统一：宿主一律 `dshgo.exe`、界面一律 **`DSH GUI GO.exe`**
+   > （产品名全程、带空格、分大小写；命令行一律加引号），
    > 实例用 `--home` 区分。以前每条脚本各编一个名字（`dshd-acc` / `dshd-goal` /
    > `dshd-term` / `dshd-serve`），34 个进程混在任务管理器里时人分不清谁是谁。
 3. **`accept-chain` 的 bin-check 会红**：它验的是共享路径上的二进制，
@@ -33,7 +34,7 @@ bash scripts/accept-all.sh --only theme,session-ops
    而那个脚本的 `SRC_ROOTS`（`cmd` / `internal` / `modules` / `codecs`）是**相对当前目录**扫的。
    在界面仓里跑它，等于拿**界面**的源码去比**宿主**的二进制——前几轮它一直绿，
    只是碰巧 mtime 顺序让它过了。2026-11-04 真红了一次才看出来：
-   报「`dshgo.exe` 比 `cmd\app\headless_windows.go` 旧」，那是界面的文件。
+   报「`dshgo.exe` 比 `cmdpp\headless_windows.go` 旧」，那是界面的文件。
    现在改成 `(cd ../DSH-GO && python scripts/bin-check.py "$BIN_ABS")`，
    红了就是真陈旧（实测报出 `cmd\dshd\main.go` 更新，重建后 OK=11 FAIL=0）。
 

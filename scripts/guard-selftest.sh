@@ -155,22 +155,39 @@ expect_red "插件没 import" "TestEveryPluginDirIsImported"
 restore cmd/app/main.go
 
 echo
-echo "== 对照组：副本原样时五组守卫都必须是绿的 =="
-# 没有这一段，把五个守卫全改成"永远失败"也能过上面五条——那就从"假绿"翻到"假红"。
-GUARDS='TestEveryHandledKeyIsDocumented|TestNoTwoPanelsShareOneSlotAndOrder|TestSnapshotCoversEveryCalledMethod|TestEveryUsedActionIsWired|TestEveryPluginDirIsImported'
+echo "== 6. VERSIONINFO 守卫（brand.go 改了、入库的 .syso 没跟着重新生成） =="
+# 这是本仓真撞过的形态：改名之后 build/链接/运行/单测全绿，只有
+# `(Get-Item exe).VersionInfo` 里还是旧名字 —— 而"任务管理器描述列"正是它的唯一用途。
+python - "$iso" <<'PY'
+import io, sys
+p = sys.argv[1] + '/cmd/app/brand.go'
+s = io.open(p, encoding='utf-8').read()
+import re
+s2, n = re.subn(r'const productName = "[^"]*"', 'const productName = "DSH GUI GO 改过了"', s, count=1)
+if n != 1:
+    sys.exit('找不到 productName 常量，用例失效')
+io.open(p, 'w', encoding='utf-8', newline='').write(s2)
+PY
+expect_red "改了产品名但没重生成 .syso" "TestVersionInfoResourceMatchesBrand"
+restore cmd/app/brand.go
+
+echo
+echo "== 对照组：副本原样时六组守卫都必须是绿的 =="
+# 没有这一段，把六个守卫全改成"永远失败"也能过上面六条——那就从"假绿"翻到"假红"。
+GUARDS='TestEveryHandledKeyIsDocumented|TestNoTwoPanelsShareOneSlotAndOrder|TestSnapshotCoversEveryCalledMethod|TestEveryUsedActionIsWired|TestEveryPluginDirIsImported|TestVersionInfoResourceMatchesBrand'
 out=$(cd "$iso" && CGO_ENABLED=0 go test ./... -run "$GUARDS" -count=1 -v 2>&1)
 rc=$?
-# 先确认四条**都真的跑了**——一条都没跑到时 `go test` 也是 exit 0。
+# 先确认六条**都真的跑了**——一条都没跑到时 `go test` 也是 exit 0。
 missing=""
-for g in TestEveryHandledKeyIsDocumented TestNoTwoPanelsShareOneSlotAndOrder TestSnapshotCoversEveryCalledMethod TestEveryUsedActionIsWired TestEveryPluginDirIsImported; do
+for g in TestEveryHandledKeyIsDocumented TestNoTwoPanelsShareOneSlotAndOrder TestSnapshotCoversEveryCalledMethod TestEveryUsedActionIsWired TestEveryPluginDirIsImported TestVersionInfoResourceMatchesBrand; do
   ran_a_test "$out" "$g" || missing="$missing $g"
 done
 if [ -n "$missing" ]; then
-  chk "对照组：五条守卫都跑到" 1 "没跑到：$missing"
+  chk "对照组：六条守卫都跑到" 1 "没跑到：$missing"
 else
-  chk "对照组：五条守卫都跑到" 0
+  chk "对照组：六条守卫都跑到" 0
 fi
-chk "原样副本上五组守卫全绿" "$rc" "$(printf '%s\n' "$out" | grep -E '^(FAIL|--- FAIL)' | head -2 | tr '\n' ' ')"
+chk "原样副本上六组守卫全绿" "$rc" "$(printf '%s\n' "$out" | grep -E '^(FAIL|--- FAIL)' | head -2 | tr '\n' ' ')"
 
 echo
 echo "----- 合计 OK=$ok FAIL=$bad"

@@ -24,6 +24,7 @@ package dsquestions
 
 import (
 	"encoding/json"
+	"strconv"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
@@ -162,27 +163,40 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		f.Text(q.Question).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
 		for i, opt := range q.Options {
 			opt := opt
+			send := env.Act.Send
 			key := ""
 			if i == 0 {
 				key = "F7"
 			} else if i == 1 {
 				key = "F8"
 			}
-			f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(8, 8, 7, 7).
+			// **`.Hit(id, label)` 之后 `.Clicked()` 才有效**——viva 的点击模型是
+			// "先给元素一个 id，再问它这一帧有没有被点"。我第一版用 `.OnClick(...)`
+			// 搜不到就以为 flex 没有点击 API，**那是搜错了名字**：
+			// 真正的入口是 `Hit`/`Clicked`，`dscore.ListRow` 也是这么用的。
+			row := f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(8, 8, 7, 7).
 				Radius(t.Radii.MD).Background(t.InputMajor).
-				Children(func() {
-					if key != "" {
-						// 把键位写在选项上：**能按的键要写出来**，否则只有读代码的人知道。
-						// 第三项之后没有键——所以就**不写**，也不假装能选。
-						f.Text(key).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+				Hit(env.Tree.ID(env.Feat, "opt-"+strconv.Itoa(i)), opt.Label)
+			if row.Clicked() {
+				if send != nil {
+					// 点选项 = 发那句话。**不带问题文本**：agent 能看到自己问过什么，
+					// 再复述一遍只会让对话更啰嗦。
+					send(opt.Label)
+				}
+			}
+			row.Children(func() {
+				if key != "" {
+					// 把键位写在选项上：**能按的键要写出来**，否则只有读代码的人知道。
+					// 第三项之后没有键——所以就**不写**，也不假装能选。
+					f.Text(key).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+				}
+				f.Column().Gap(2).Grow(1).Children(func() {
+					f.Text(opt.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
+					if opt.Description != "" {
+						f.Text(opt.Description).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 					}
-					f.Column().Gap(2).Grow(1).Children(func() {
-						f.Text(opt.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
-						if opt.Description != "" {
-							f.Text(opt.Description).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-						}
-					})
 				})
+			})
 		}
 	})
 }

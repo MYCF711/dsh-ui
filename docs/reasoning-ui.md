@@ -190,11 +190,18 @@ $ REASONING_CAPTURE_DIR="$PWD/plugins/dsconversation/testdata/reasoning-ui" \
 --- PASS: TestReasoningOnlyAssistantStillPaints (0.00s)
 ```
 
+> **2026-11-04 补记（入库时）**：这四张图原来**一条都不在仓库里** —— 文档写着尺寸和
+> 哈希，文件却从没入库，链接全是坏的（`scripts/doc-links.py` 就是这轮被这件事催出来的）。
+> 补跑 `REASONING_CAPTURE_DIR=testdata/reasoning-ui go test -run Reasoning` 重新生成并入库：
+> **字节数与文档完全一致**（26 029 / 35 870 / 47 077 / 56 552），三张哈希也一致；
+> 只有 1920 宽展开态那张与原文尾部不同（原文 `…f30c9c9f`，本机连跑两次都是 `…f30c9cf6`），
+> 已按本机实测更新。结论：这四张**在本机逐字节可复现**，但那一张不是跨机器可复现。
+
 | 证据 | 尺寸 | 字节 | sha256（前 16 位） | 画面 |
 |---|---|---|---|---|
 | [reasoning-collapsed-1182x832.png](../plugins/dsconversation/testdata/reasoning-ui/reasoning-collapsed-1182x832.png) | 1182×832 | 26 029 | `65a33a6bd0bc8552…` | 收起：`▸ 思考 · 想了 7 秒 · 最近完成段落第一行`；无开头段落、无签名 |
 | [reasoning-expanded-1182x832.png](../plugins/dsconversation/testdata/reasoning-ui/reasoning-expanded-1182x832.png) | 1182×832 | 35 870 | `9df2257c1c1c5c7c…` | 展开：签名原文 + 开头/中间/最后一段全部可见 |
-| [reasoning-collapsed-1920x1032.png](../plugins/dsconversation/testdata/reasoning-ui/reasoning-collapsed-1920x1032.png) | 1920×1032 | 47 077 | `19c56715f30c9c9f…` | 同上，宽屏 |
+| [reasoning-collapsed-1920x1032.png](../plugins/dsconversation/testdata/reasoning-ui/reasoning-collapsed-1920x1032.png) | 1920×1032 | 47 077 | `19c56715f30c9cf6…` | 同上，宽屏 |
 | [reasoning-expanded-1920x1032.png](../plugins/dsconversation/testdata/reasoning-ui/reasoning-expanded-1920x1032.png) | 1920×1032 | 56 552 | `1e7e5cffbe614f6d…` | 同上，宽屏 |
 
 命中路径（不是内部布尔，是真实 HitTest）：

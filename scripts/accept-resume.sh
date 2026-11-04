@@ -13,6 +13,24 @@ chk() { if [ "$2" -eq 0 ]; then echo "PASS  $1"; ok=$((ok+1)); else echo "FAIL  
 
 H=tmp/resm-home-$$; rm -rf "$H"
 "$BIN" serve --home "$H" --policy allow > tmp/resm.txt 2> tmp/resm.log &
+SRV=$!
+# **退出就回收自己起的那个宿主**：正常结束、断言失败、Ctrl+C、被 TERM 都一样。
+#
+# 为什么必须有：这些脚本原来起了 serve 就再也没人管它。异常或 Ctrl+C 之后宿主留成孤儿，
+# 下一次跑会撞两件事——① Windows 上它还锁着 exe，"编不出新二进制"，整个验收停在第一步；
+# ② 它占着旧的 home，下一轮读到的可能是别人的会话。
+# 2026-11-04 现场：`dshd-acc.exe` 积了 7 个 6 小时前的残留（宿主侧同一形态查出来 34 个）。
+#
+# 只回收 **$!** 那一个 PID，不按镜像名扫——按名字杀会连带别人的宿主。
+#
+# 一个要知道的延迟：bash 收到 TERM/INT 时会把 trap **推迟到当前那条命令结束**
+#（一次 curl 或 sleep 的时长），所以回收可能晚几秒到几十秒（实测最长约 20 秒）。
+# 真正跑不到 trap 的是**硬杀**（Windows TerminateProcess）——那种情况靠
+# `accept-all.sh` 每轮自己编二进制兜底，下一轮不会因为"exe 被锁"直接停在第一步。
+cleanup() { kill "$SRV" 2>/dev/null; wait "$SRV" 2>/dev/null; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 sleep 6
 U=$(grep -o 'http://[^"]*' tmp/resm.txt | head -1)
 T=$(grep -o '"token":"[^"]*' tmp/resm.txt | cut -d'"' -f4)

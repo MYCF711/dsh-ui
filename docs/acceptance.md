@@ -27,6 +27,29 @@ bash scripts/accept-all.sh --only theme,session-ops
    而合跑时没人负责先编。现在 `accept-all.sh` 在跑之前编一次，`bin-check` 才有意义
    （它验的是"绝不拿陈旧二进制跑真机"，不是"文件存在"）。
 
+### 进程回收：每条脚本退出时杀掉**自己起的那个宿主**
+
+四条脚本（`approval` / `cancel` / `resume` / `chain`）原来起了 `serve` 就再也没人管它。
+异常或 Ctrl+C 之后宿主留成孤儿，下一次跑会撞两件事：**Windows 上它还锁着 exe**
+（"编不出新二进制"，验收停在第一步）、以及**它占着旧的 home**（下一轮可能读到别人的会话）。
+
+2026-11-04 现场：`dshd-acc.exe` 积了 **7 个 6 小时前的残留**；宿主侧同一形态查出 **34 个**孤儿
+（他们那边已经用 `_proc.py` 连进程树一起收）。
+
+现在每条脚本 `SRV=$!` + `trap cleanup EXIT` + `INT/TERM → exit 130/143`，
+**只回收 `$!` 那一个 PID**，不按镜像名扫（按名字杀会连带别人的宿主）。
+
+实测：
+
+```
+正常跑完 accept-approval  → 残留 0
+中途 kill -TERM           → 第 20 秒回收干净（0）
+```
+
+**一个要知道的延迟**：bash 收到 TERM/INT 时会把 trap 推迟到**当前那条命令结束**
+（一次 curl 或 sleep 的时长），所以回收可能晚几秒到几十秒。真正跑不到 trap 的是
+**硬杀**（Windows `TerminateProcess`）——那种情况靠 `accept-all.sh` 每轮自己编二进制兜底。
+
 ### 守卫反证：`scripts/guard-selftest.sh`（在合跑里排第一）
 
 规矩是"**守卫必须可反证**"。但反证一直是**人做的事**：写守卫时手工改一次、看它红、再改回来。

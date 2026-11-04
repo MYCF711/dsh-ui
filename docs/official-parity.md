@@ -101,7 +101,18 @@
 3. **`sidebar-terminal`** —— 官方侧栏能开终端
 4. **`reference`（`@` 文件引用）** —— 要改 `dscomposer`，而它现在有**别人的未提交改动**（`composer.go` + 两个未跟踪测试），按 §4 不碰
 5. **`jobs.output` 的界面消费** —— 宿主侧通了，但**只在轮次进行中可用**（每轮一个子进程，跑完就退）；做成"点开看输出"会是**大多数时候点了报错**的按钮，所以没做
-6. **`deliverables`** —— 只做了「写过的文件」（证据只是工具参数里的路径痕迹，**不叫"交付物"**）
+6. **`deliverables`** —— **只做了 1/4**。官方包的 description 写得很清楚：
+   > Changed-files card with per-file comparison tabs, delivery cards, and clickable final-response file references
+
+   | 官方能力 | 我们 |
+   |---|---|
+   | Changed-files card | ✅ `dsdeliverables`（从 `write`/`edit` 工具参数提路径） |
+   | **per-file comparison tabs**（点文件看 diff） | ❌ 需要宿主提供「改之前长什么样」——`fs.read` 只给当前内容，没有历史 |
+   | **delivery cards** | ❌ 不清楚它的触发条件（可能是回复里显式的交付声明） |
+   | **clickable final-response file references** | ❌ 回复里的路径不可点 |
+
+   **最值得补的是第 4 项**：它不需要新数据源，只需要在渲染 assistant 文本时识别路径。
+   第 2 项要动宿主（`git diff` 或文件快照），第 3 项连语义都还没弄清。
 
 ## 说明
 

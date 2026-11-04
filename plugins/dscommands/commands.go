@@ -246,9 +246,21 @@ func (p *Plugin) filtered() []Command {
 
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
-		ID:    "command-panel",
-		Slot:  pluginapi.SlotShellOverlay,
-		Order: 96, // 比快捷键面板（95）再高一档
+		ID:   "command-panel",
+		Slot: pluginapi.SlotShellOverlay,
+		// 99 = **模态那一档**。`shell.overlay` 这个槽位的分层约定：
+		//
+		//	10   常驻提示条（ds-demo）
+		//	50   侧栏的插件面板
+		//	95   键位表（F1）
+		//	96   交付物面板 / 97 文件预览 / 98 终端 —— 都是"面板"
+		//	99   模态（F2 命令面板）：开着的模态该在一切面板之上
+		//
+		// 这里原来是 96，和 `ds-deliverables` 的交付物面板**撞在一起**了。
+		// 同槽同 Order 的两个面，谁在上面由**装配顺序**决定——那不是设计，是巧合；
+		// 现象是"两个面板都开着时一个盖住另一个"，不崩不报错。
+		// 由 `cmd/app/panels_order_test.go` 守着，不许再撞。
+		Order: 99,
 		Draw:  p.draw,
 	}}
 }

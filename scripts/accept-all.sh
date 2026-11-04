@@ -46,6 +46,9 @@ mkdir -p "$OUT"
 
 # 名字 | 脚本 | 需要真模型(1/0)
 SUITE=(
+  # 守卫反证放最前：它跑得快，而且**它红的时候后面的绿都不算数**
+  #（守卫自己没被反证过，它报的"通过"就只是一句话）。
+  "guard-selftest|scripts/guard-selftest.sh|0"
   "probe-selftest|scripts/e2e-probe-selftest.sh|0"
   "theme|scripts/accept-theme.sh|0"
   "session-ops|scripts/accept-session-ops.sh|1"

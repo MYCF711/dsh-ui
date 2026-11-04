@@ -11,7 +11,7 @@ bash scripts/accept-all.sh --fast     # 跳过要真模型的那几条（约 2 �
 bash scripts/accept-all.sh --only theme,session-ops
 ```
 
-它依次跑 8 条脚本，最后给一张表。**判据只有退出码**——各脚本自己的汇总格式不一样
+它依次跑 9 条脚本（含守卫反证），最后给一张表。**判据只有退出码**——各脚本自己的汇总格式不一样
 （`OK=n FAIL=m` / `PASS=n FAIL=m`），去解析那些字符串只会引入一类新的脆弱。
 
 第一次合跑就抓到三件事，都修在这里面了：
@@ -26,6 +26,28 @@ bash scripts/accept-all.sh --only theme,session-ops
 3. **`accept-chain` 的 bin-check 会红**：它验的是共享路径上的二进制，
    而合跑时没人负责先编。现在 `accept-all.sh` 在跑之前编一次，`bin-check` 才有意义
    （它验的是"绝不拿陈旧二进制跑真机"，不是"文件存在"）。
+
+### 守卫反证：`scripts/guard-selftest.sh`（在合跑里排第一）
+
+规矩是"**守卫必须可反证**"。但反证一直是**人做的事**：写守卫时手工改一次、看它红、再改回来。
+人一旦省了这一步，守卫就退化成一句安慰——而它照样绿，谁也不知道它什么都没看。
+
+第 74 轮真撞到过：那条 Action 接线守卫的第一版只认 `*ast.Ident`，漏掉了仓里最常见的
+`env.Act.X`，只扫到 16 个字段（真值 32），**把接线拆掉它也不红**。
+
+这条脚本把"弄坏"自动化：在 `git archive HEAD` 出来的**隔离副本**里，每条守卫各弄坏一处，
+要求它当场红。
+
+| 用例 | 怎么弄坏 | 要求谁红 |
+|---|---|---|
+| 键位表 | 从 `bindings` 里删掉 F5 那一行（F5 在 `dsterminal` 里真的被处理） | `TestEveryHandledKeyIsDocumented` |
+| 槽位 Order | 把命令面板改回 `Order: 96`（和交付物面板撞） | `TestNoTwoPanelsShareOneSlotAndOrder` |
+| 契约快照 | 从快照的 methods 里删掉 `session.approve` | `TestSnapshotCoversEveryCalledMethod` |
+| Action 接线 | 拆掉 `OpenFile: m.openFile` | `TestEveryUsedActionIsWired` |
+| **对照组** | 副本原样 | 四组**全部绿** |
+
+最后那行对照组不是陪衬：没有它，把四个守卫全改成"永远失败"也能过前四条 ——
+那就从"假绿"翻到了"假红"。
 
 ## 怎么跑
 

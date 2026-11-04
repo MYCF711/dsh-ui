@@ -462,3 +462,42 @@ func (c *Client) Compact(ctx context.Context, id string, keep int) (CompactResul
 	}
 	return out, nil
 }
+
+// Fork 是 session.fork：**把整条会话复制成一个新分支**，返回新会话 id。
+//
+// # 它不是"从某条消息往后分支"
+//
+// 宿主 `serveFork` 是把源会话整份 `session.Fork(...)` 到新 id（同一个 cwd），
+// **没有切点参数**。所以界面上不能把它画在某条消息旁边当成"从这条开始分支"——
+// 那会让人以为后半段被丢掉了，实际整段都在。文案必须说"整份复制"。
+//
+// # title 目前宿主不消费
+//
+// handler 解 `title` 并传给 `opt.Fork`，但 `serveFork` 的实现里没用它
+// （新会话标题由复制逻辑自己定）。所以传空就不发这个键——
+// 发一个宿主不看的字段，只会让下一个人以为"改标题走这里"。
+func (c *Client) Fork(ctx context.Context, id, title string) (string, error) {
+	if id == "" {
+		return "", errors.New("session.fork 需要会话 id")
+	}
+	params := map[string]any{"sessionId": id, "id": id}
+	if title != "" {
+		params["title"] = title
+	}
+	var out struct {
+		SessionID string `json:"sessionId"`
+		ID        string `json:"id"`
+	}
+	if err := c.Call(ctx, "session.fork", params, &out); err != nil {
+		return "", err
+	}
+	if out.SessionID != "" {
+		return out.SessionID, nil
+	}
+	if out.ID != "" {
+		return out.ID, nil
+	}
+	// 200 但没有新 id：绝不当成成功——调用方会去开一个空 id 的会话，
+	// 而界面上看起来像"分支出来了但打不开"。
+	return "", errors.New("宿主回了 200 但没有新会话 id")
+}

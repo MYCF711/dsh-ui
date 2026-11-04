@@ -31,6 +31,7 @@ func scriptedActions(onCompact func()) pluginapi.Actions {
 		// 权限命令在主题**之后**；压缩在最后。
 		SetPermission:  func(string) {},
 		CompactSession: onCompact,
+		ForkSession:    func() {},
 	}
 }
 
@@ -94,6 +95,7 @@ func TestCommandTableOrderIsStable(t *testing.T) {
 		"主题：深色", "主题：浅色", "主题：跟随系统",
 		"权限：每次都问我", "权限：只读", "权限：自动允许", "权限：按模式自动", "权限：恢复默认",
 		"压缩上下文",
+		"分支这个会话",
 	}
 	if len(names) != len(want) {
 		t.Fatalf("命令 %d 条，want %d：\n  实际 %v", len(names), len(want), names)

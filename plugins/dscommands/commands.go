@@ -241,6 +241,18 @@ func (p *Plugin) commands() []Command {
 			a.CompactSession,
 		})
 	}
+
+	// 分支会话：**整份复制**，不是"从某条消息往后"。
+	//
+	// 文案必须写清"复制"：宿主 `serveFork` 没有切点参数，整条会话都带过去。
+	// 写成"从这里分支"会让人以为后半段被丢了。
+	if a.ForkSession != nil {
+		out = append(out, Command{
+			"分支这个会话",
+			"整份复制成新会话并切过去（不是从某条消息往后）",
+			a.ForkSession,
+		})
+	}
 	return out
 }
 

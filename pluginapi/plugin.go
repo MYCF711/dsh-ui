@@ -438,6 +438,16 @@ type ApprovalOption struct {
 // nil 的动作表示当前不可用，插件要自己判断（别假设一定有）。
 type Actions struct {
 	OpenSession func(id string)
+	// ForkSession **把当前会话整份复制成一个新分支**，并切过去。
+	//
+	// 为什么不收 id：和 CompactSession 一样，永远是"对正在看的这个会话做"。
+	//
+	// ⚠️ 它不是"从某条消息往后分支"：宿主 `serveFork` 没有切点参数，
+	// 整份复制。所以界面文案必须说"复制"，不能画在某条消息旁边说"从这里分支"。
+	//
+	// nil = 壳没接。插件这时不该画入口。
+	ForkSession func()
+
 	// CompactSession 压缩**当前**会话：把较早的消息折成一段摘要。
 	//
 	// 为什么不收 id：这一条永远是"对正在看的这个会话做"，而壳知道是哪个；

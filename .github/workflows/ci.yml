@@ -19,6 +19,20 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # 放第一个：它最快（不到 1 秒），失败原因永远清楚。
+      # 本仓在此之前**没有 gofmt 门禁**，于是提交里躺着两个格式不对的文件
+      # （`plugins/dsfiles/files.go`、`plugins/dsshortcuts/overlay_test.go`），
+      # 谁也没发现——不是有人故意不格式化，是没有任何东西会说出来。
+      - name: gofmt
+        shell: bash
+        run: |
+          out=$(gofmt -l cmd internal plugins pluginapi)
+          if [ -n "$out" ]; then
+            echo "以下文件没格式化（gofmt -w 一下）："
+            printf '%s\n' "$out"
+            exit 1
+          fi
+
       # CGO_ENABLED=0：本仓刻意不依赖 C 工具链（purego 走的是运行期 dlopen，
       # 不是 cgo）。开着 cgo 反而会让 runner 上的 go test -race 之外的东西变慢，
       # 也让"本机绿、CI 红"多一类来源。

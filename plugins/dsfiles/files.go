@@ -207,7 +207,10 @@ func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
-// parentDir 去掉最后一段（`a/b` → `a`，`a` → ``）。
+// parentDir 去掉最后一段（`a/b` → `a`）；没有斜杠时返回空串。
+// 注意「空串」是一个**真实返回值**，不是错误：根目录的上一层就是没有。
+// 原来这里写成 `a` → 空，末尾那对空反引号被 gofmt 改成了中文引号——
+// 空的反引号代码段在文档注释里没有意义，换个说法比跟 gofmt 较劲便宜。
 func parentDir(d string) string {
 	for i := len(d) - 1; i >= 0; i-- {
 		if d[i] == '/' {

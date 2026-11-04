@@ -54,7 +54,7 @@ PASS  jobs.list 可用
 |---|---|
 | ~~审批（allow/deny）~~ | ✅ **Round 53 补上了**：`scripts/accept-approval.sh`，5 PASS / 0 FAIL |
 | ~~取消（turn 中断）~~ | ✅ **Round 54 补上了**：`scripts/accept-cancel.sh`，4 PASS / 0 FAIL |
-| **续历史 / 断线恢复** | 要真的杀连接再重连；脚本里做会变慢且不稳。Round 12 单独验过（10 个多会话与重连测试 PASS） |
+| ~~续历史 / 断线恢复~~ | ✅ **Round 55 补上了**：`scripts/accept-resume.sh`，6 PASS / 0 FAIL |
 | **界面** | 这个脚本**只验宿主 HTTP**。界面侧的证据在 `tmp/*.png`（21 个插件齐全）和 e2e（22 PASS） |
 
 ## 这一份的定位
@@ -161,3 +161,54 @@ session.cancel → {"error":{"message":"没有这一轮"}}
 
 `"没有这一轮"` 读起来像"取消这个功能坏了"，实际是**取消得太晚**。
 这和上一轮 `approval/request` 那次一样：**先怀疑自己的用法，再怀疑链路**。
+
+---
+
+# 续历史 / 断线恢复（`scripts/accept-resume.sh`）
+
+## 结果
+
+```
+PASS  原连接看到完整历史（8 帧，lastSeq=8）
+PASS  历史里有 tool 帧
+PASS  重连沿用原 cookie（token 是一次性的）
+PASS  历史 append-only（h1 是 h2 的前缀）
+PASS  sinceSeq=7 只补回后几帧（不是整段重发）
+PASS  两条连接的 journalEpoch 一致
+----- 合计 OK=6 FAIL=0
+```
+
+## 这个脚本踩了三个坑，每个都像"链路坏了"
+
+**① 想用同一个 token 再换一个 cookie → 401**
+
+第一版模拟重连的写法是"再 `connect` 一次拿新 cookie"。**实查：`/connect` 的 token 是一次性的。**
+
+这符合实际：**重连时浏览器本地那条 cookie 并没有丢，丢的是连接**。
+所以脚本改成复制 cookie 文件。
+
+**② `since` 参数被静默忽略，回了全量**
+
+传 `{"since": 7}`，结果**回了全部 8 帧**。查契约发现参数名是 **`sinceSeq`**。
+
+**这种错最难发现**：它不报错，只是**行为不对**——如果不是专门验"只补回几帧"，
+会一直以为补洞是好的（因为它确实给了你要的数据，只是给多了）。
+
+**③ 拿两个不同时间点的快照比相等**
+
+第一版判据是"h1 的帧序 == h2 的帧序"，结果 FAIL。
+
+**但 h1 是轮询期间抓的**（那时 turn 还没完，7 帧），**h2 是之后抓的**（10 帧）。
+**两个时间点的快照本来就不该相等。**
+
+正确判据是 **h2 以 h1 为前缀** —— 这恰恰是 **journal append-only 的直接推论**，
+而且失败了就说明真的有人改写了历史。
+
+## 这一条验到的
+
+| 事实 | 靠什么验的 |
+|---|---|
+| `/connect` 的 token 一次性 | 第二次 connect 得 401 |
+| 历史只增不改（append-only） | h1 是 h2 的前缀 |
+| `sinceSeq` 真的按水位补洞 | `sinceSeq=7` 只回 seq 8 之后的帧 |
+| 两条连接看同一份 journal | `journalEpoch` 相等 |

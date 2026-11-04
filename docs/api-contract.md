@@ -168,6 +168,27 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 （`server.go:417` `firstNonZero(in.Limit, in.TailMessages)`）。
 只认一个就是静默 404 —— 这是 H9/H10 的成因，别再加第三个名字。
 
+### `turn/end` 的载荷：**结局在 `reason` 里面**
+
+一轮跑完（或失败、被取消）宿主统一写 `turn/end`，形状是
+`{"turn":5,"reason":{"kind":"…"}}`（`session.TurnEndData`）：
+
+| `reason.kind` | 还有谁 | 界面记成 |
+|---|---|---|
+| `completed` / `max-tokens` | — | **done**（"按预期结束"） |
+| `error` / `blocked` | `reason.error.message`（失败原因原文） | **error** |
+| `aborted` / `interrupted` | `reason.reason`（一句原因） | **stopped** |
+
+kind 只取 v4 词汇表里那几个，宿主明确写了"不新造 kind"。
+
+> **2026-11-04 的真缺陷**：界面原来只读**顶层**的 `error` 字符串和
+> `stopped/interrupted` 布尔。宿主 M371 把结局统一到 `turn/end{reason:{kind}}` 之后，
+> 失败的轮次既不是 stopped 也不是 error，落到兜底那个 `turn/done || turn/end` 分支，
+> **被记成 done** —— 界面上一次失败的轮次显示成"跑完了"，而且原因一个字都没有。
+>
+> 这类错不崩、不报错，只是把**错误状态伪装成正常状态**。`cmd/app/turn_end_test.go`
+> 现在把三种 kind 逐条钉住（含旧形状 `turn/error` 的兼容）。
+
 ### 3.1 `journalEpoch`：水位属于哪一代（U0 收口）
 
 一个会话的 journal 会**换代**（宿主重启换了内存里的 journal，或会话被重建）。

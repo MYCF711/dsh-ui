@@ -59,6 +59,48 @@ type terminalData struct {
 	Interrupted bool   `json:"interrupted"`
 }
 
+// turnEndReason 是 v4 `turn/end` 的**真实**载荷形状（宿主 `session.TurnEndData`）：
+//
+//	{"turn":5,"reason":{"kind":"error","error":{"name":"Error","message":"…"}}}
+//	{"turn":5,"reason":{"kind":"aborted","reason":"这一轮被取消…"}}
+//	{"turn":5,"reason":{"kind":"completed"}}
+//
+// kind 取值只有 v4 词汇表里的那几个：completed / max-tokens / aborted /
+// blocked / error / interrupted / forked（宿主 `turnEndForExit` 的注释写死"不新造 kind"）。
+//
+// ⚠️ `kind` 和失败原因都在 **reason 里面**，不在顶层。第一版只读顶层的
+// `error string`，于是宿主 M371 之后失败轮次落到"既不是 stopped 也不是 error"
+// 的兜底分支，被记成 **done**——界面上一次失败的轮次显示成"跑完了"。
+type turnEndReason struct {
+	Turn   *int64 `json:"turn"`
+	Kind   string `json:"kind"` // 兼容顶层 kind（旧形状）
+	Reason *struct {
+		Kind   string `json:"kind"`
+		Reason string `json:"reason"`
+		Error  *struct {
+			Name    string `json:"name"`
+			Message string `json:"message"`
+		} `json:"error"`
+	} `json:"reason"`
+}
+
+// outcome 把两种形状统一成 (kind, 失败/中止的原因原文)。
+func (d turnEndReason) outcome() (string, string) {
+	kind, detail := d.Kind, ""
+	if d.Reason != nil {
+		if d.Reason.Kind != "" {
+			kind = d.Reason.Kind
+		}
+		switch {
+		case d.Reason.Error != nil && d.Reason.Error.Message != "":
+			detail = d.Reason.Error.Message
+		case d.Reason.Reason != "":
+			detail = d.Reason.Reason
+		}
+	}
+	return kind, detail
+}
+
 func stoppedEvent(ev apiclient.Event) bool {
 	switch ev.Kind {
 	case "turn/stopped", "turn/cancelled", "turn/canceled", "turn/interrupted":
@@ -78,19 +120,27 @@ func (m *model) recordTurnEventsLocked(id string, ev apiclient.Event) {
 	}
 	var data terminalData
 	_ = json.Unmarshal(ev.Data, &data)
-	appendEvent := func(kind string) {
-		key := id + ":" + kind + ":local:" + strconv.Itoa(len(m.turnEvents[id]))
+	var end turnEndReason
+	_ = json.Unmarshal(ev.Data, &end)
+	kind, detail := end.outcome()
+	// 旧形状把原因放在顶层 `error` 字符串里；新形状在 reason 里。
+	if detail == "" && data.Error != "" {
+		detail = data.Error
+	}
+	appendEvent := func(evKind, detail string) {
+		key := id + ":" + evKind + ":local:" + strconv.Itoa(len(m.turnEvents[id]))
 		m.turnEvents[id] = append(m.turnEvents[id], pubapi.TurnEvent{
-			Key: key, Kind: kind, TurnID: data.TurnID, Turn: cloneTurnNumber(data.Turn), Error: data.Error, Time: ev.Time,
+			Key: key, Kind: evKind, TurnID: data.TurnID, Turn: cloneTurnNumber(data.Turn), Error: detail, Time: ev.Time,
 		})
 	}
-	if ev.Kind == "turn/error" {
-		appendEvent("error")
-	}
-	if stoppedEvent(ev) {
-		appendEvent("stopped")
-	} else if ev.Kind == "turn/done" || ev.Kind == "turn/end" {
+	// 三种结局**互斥**，按 v4 的 kind 分派；`turn/error` 是旧形状，一并认。
+	switch {
+	case ev.Kind == "turn/error" || kind == "error" || kind == "blocked":
+		appendEvent("error", detail)
+	case stoppedEvent(ev) || kind == "aborted" || kind == "interrupted":
+		appendEvent("stopped", detail)
+	case ev.Kind == "turn/done" || ev.Kind == "turn/end":
 		// done 只进入 Turn 页脚；WP-C1 的独立错误/停止卡仍保持原样。
-		appendEvent("done")
+		appendEvent("done", "")
 	}
 }

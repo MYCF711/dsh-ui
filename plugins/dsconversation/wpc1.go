@@ -78,7 +78,10 @@ func (p *Plugin) drawTurnEvents(f *flex.Frame, env *pluginapi.Env) {
 		case "error":
 			f.Column().WidthPercent(100).Pad(8).Gap(4).Radius(t.Radii.SM).Background(t.BgLayer1).Children(func() {
 				f.Row().Gap(8).Items(flex.Center).Children(func() {
-					f.Text("turn/error").FontSize(t.Fonts.Caption).Color(t.Error)
+					// 标题是**给人看的**，不是协议词。旁边那个"已停止"卡一直是这么写的，
+					// 只有这张卡漏了，把 `turn/error` 直接端到用户面前——他看不懂，
+					// 而且这四个字看起来像界面坏了。协议词要留就留在日志里。
+					f.Text("这一轮失败了").FontSize(t.Fonts.Caption).Color(t.Error)
 					if event.TurnID != "" {
 						f.Text(event.TurnID).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 					}

@@ -2,6 +2,7 @@ package dstool
 
 import (
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // 这个文件就是「按工具类型分派」的那张表：每种工具一个 Renderer。
@@ -18,9 +19,8 @@ func bashRenderer() Renderer {
 		Tool: "bash",
 		Head: func(c Card) (string, string) {
 			title, summary := defaultHead(c)
-			if c.Summary != "" {
-				// 宿主给了摘要（bash 的摘要里本来就有 exit 0）就照用。
-				// 抽取前后的截图一致靠的就是这一条。
+			if c.Summary != "" || viewOverridesArgs(c.View) {
+				// 宿主摘要/结构化结果优先；bash 摘要里的 exit 原样保留。
 				return title, summary
 			}
 			// 没有摘要：从参数里取命令，而不是把整段 JSON 摆上去。
@@ -65,16 +65,14 @@ type fileSpec struct {
 	keys []string
 }
 
-// fileRenderers 返回文件类工具的分派项。
-//
-// **edit 的 diff 还没做**：宿主没给出统一的 oldString/newString 形状，
-// 界面自己猜字段名就是在编契约（AGENTS §2）。现在 edit 和 read 一样只显示路径，
-// 等宿主那边定下参数形状再加——那时代码只需要换一个 Body。
+// fileRenderers 返回文件类工具的分派项。路径同时消费现有 filePath 与真实工具
+// 参数 file_path；read/write/edit 都保留 offset/limit 行范围真值。
+// edit 只有 old/new 两类字段同时存在时才画真实旧/新内容，缺任一方都不伪造 diff。
 func fileRenderers() []Renderer {
 	specs := []fileSpec{
-		{tool: "read", primary: []string{"filePath", "path", "file"}, keys: []string{"filePath", "path", "offset", "limit"}},
-		{tool: "edit", primary: []string{"filePath", "path", "file"}, keys: []string{"filePath", "path"}},
-		{tool: "write", primary: []string{"filePath", "path", "file"}, keys: []string{"filePath", "path"}},
+		{tool: "read", primary: []string{"filePath", "file_path", "path", "file"}, keys: []string{"filePath", "file_path", "path", "file", "offset", "limit"}},
+		{tool: "edit", primary: []string{"filePath", "file_path", "path", "file"}, keys: []string{"filePath", "file_path", "path", "file", "offset", "limit"}},
+		{tool: "write", primary: []string{"filePath", "file_path", "path", "file"}, keys: []string{"filePath", "file_path", "path", "file", "offset", "limit"}},
 		{tool: "list", primary: []string{"path", "dir"}, keys: []string{"path", "dir"}},
 		{tool: "glob", primary: []string{"pattern", "glob"}, keys: []string{"pattern", "path", "glob"}},
 		{tool: "grep", primary: []string{"pattern", "query"}, keys: []string{"pattern", "query", "path", "glob", "include"}},
@@ -92,10 +90,10 @@ func fileRenderer(spec fileSpec) Renderer {
 		Tool: spec.tool,
 		Head: func(c Card) (string, string) {
 			title, summary := defaultHead(c)
-			if c.Summary != "" {
+			if c.Summary != "" || viewOverridesArgs(c.View) {
 				return title, summary
 			}
-			// 没有摘要：显示参数里最"像标题"的那一个（路径或模式）。
+			// 没有宿主结果：显示参数里最"像标题"的那一个（路径或模式）。
 			if p := firstArg(parseArgs(c.Args), spec.primary...); p != "" {
 				return title, p
 			}
@@ -125,6 +123,9 @@ func fileRenderer(spec fileSpec) Renderer {
 				// 参数不是 JSON（或没有认得的键）：退回原文，别把内容吞掉。
 				b.Frame.Text(b.Card.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
 			}
+			if spec.tool == "edit" {
+				drawEditDiff(b, args)
+			}
 			if b.Card.Summary != "" {
 				b.Frame.Text(b.Card.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
 			}
@@ -132,10 +133,34 @@ func fileRenderer(spec fileSpec) Renderer {
 	}
 }
 
+// drawEditDiff 只展示参数里真实存在的旧/新内容，不计算或编造宿主未提供的
+// unified diff、行号、增删统计。两个键同时缺失或只来一个时都整段隐藏。
+func drawEditDiff(b *BodyCtx, args map[string]string) {
+	oldValue, hasOld := presentArg(args, "old_string", "oldString")
+	newValue, hasNew := presentArg(args, "new_string", "newString")
+	if !hasOld || !hasNew {
+		return
+	}
+	t := b.Env.Theme
+	for _, field := range []struct {
+		label string
+		value string
+		color ui.Color
+	}{
+		{label: "旧内容", value: oldValue, color: t.LabelTertiary},
+		{label: "新内容", value: newValue, color: t.LabelSecondary},
+	} {
+		b.Frame.Column().WidthPercent(100).Gap(2).Children(func() {
+			b.Frame.Text(field.label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			b.Frame.Text(field.value).Mono().FontSize(t.Fonts.Tiny).Color(field.color).MaxLines(6)
+		})
+	}
+}
+
 // argLabel 是参数名的中文标签。键是宿主真会给的那些名字（见 fileSpec）。
 func argLabel(key string) string {
 	switch key {
-	case "filePath", "path", "file", "dir":
+	case "filePath", "file_path", "path", "file", "dir":
 		return "路径"
 	case "pattern":
 		return "模式"

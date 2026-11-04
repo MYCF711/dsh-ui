@@ -35,10 +35,9 @@ const ServiceKey = "ui.tool-card"
 // 刻意不含 Snapshot / Actions / 锁：工具卡没有任何"用户点了会改状态"的动作，
 // 它只有一个自己的展开状态，那个状态在 Service 里。
 type Card struct {
-	// Seq 是这条工具消息的 v4 序号，也是展开状态的键（切会话后依然有效）。
-	// 同一条消息在流式期间 seq 可能还没到（0），那时多条工具会共用 0 ——
-	// 宿主给了就按宿主给，没给就是"这一帧所有工具一起展开"，
-	// 不编一个假序号出来（编了就会和真实消息撞键）。
+	// Seq 只是 dstool.Service 现有的局部 int 渲染键，不是 v4 seq。
+	// ds-conversation 用 CallID/MessageKey 分配它，因此同参交错调用、Seq=0 与
+	// 跨会话同序号都不会共享展开状态；本包不反向编造宿主消息身份。
 	Seq int
 	// Tool 是工具名（bash / read / glob …），分派就认它。
 	Tool string
@@ -46,6 +45,9 @@ type Card struct {
 	Args string
 	// Summary 是宿主给的一行摘要（bash 的 "exit 0 · …" 就在这）。
 	Summary string
+	// Status 是消息流依据显式结果、原始终局或活动 Turn 算出的真值状态。
+	// Neutral 不画徽标；渲染器不得仅凭 Args 或工具名补一个 preparing/running。
+	Status Status
 	// View 是宿主声明的结构化结果（card / table / plain）。
 	// 有它就优先画它——"不认识 == 没声明"，不猜工具语义。
 	View *apiclient.ViewSpec
@@ -144,8 +146,14 @@ func (s *Cards) Render(f *flex.Frame, env *pluginapi.Env, c Card) {
 	r, known := s.renderers[c.Tool]
 
 	title, summary := s.head(c)
+	status := statusLabel(c.Status)
 
 	width := contentWidth(env)
+	summaryWidth := width - 120
+	if status != "" {
+		// 给有真值的状态徽标留位；neutral 完全不占这一格。
+		summaryWidth -= 64
+	}
 
 	// 标题行：点它展开。结构逐字沿用抽取前的那一段（像素对比见 tmp/tool-*.png）。
 	head := f.Row().WidthPercent(100).PadX(4).PadY(2).Radius(t.Radii.SM).
@@ -163,7 +171,11 @@ func (s *Cards) Render(f *flex.Frame, env *pluginapi.Env, c Card) {
 		if summary != "" {
 			f.Text("·").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 			f.Text(summarize(summary, 120)).FontSize(t.Fonts.Secondary).
-				Color(t.LabelTertiary).MaxWidth(width - 120).Ellipsis()
+				Color(t.LabelTertiary).MaxWidth(summaryWidth).Ellipsis()
+		}
+		if status != "" {
+			f.Spacer()
+			s.badge(f, status, statusColor(t, c.Status))
 		}
 	})
 	if head.Clicked() {
@@ -217,9 +229,15 @@ func (s *Cards) Height(seq int, view *apiclient.ViewSpec) float32 {
 	return 70
 }
 
-// defaultHead 是"宿主给了什么就显示什么"的标题规则，与抽取前逐字相同。
-//
-// 顺序很重要：工具名 → （没名字才用 View.Title）；摘要 → （没摘要才用参数原文）。
+// viewOverridesArgs 报告 View 是否带有可直接展示的结果内容。纯 Badge 是状态声明，
+// 仍保留参数派生的命令/路径；一旦宿主给了 Body/Fields/Rows，就不再让参数原文
+// （尤其 edit 的 old/new）抢在结构化结果前面。
+func viewOverridesArgs(view *apiclient.ViewSpec) bool {
+	return view != nil && (view.Body != "" || len(view.Fields) > 0 || len(view.Columns) > 0 || len(view.Rows) > 0)
+}
+
+// defaultHead 的顺序是：工具名 → （没名字才用 View.Title）；
+// Summary → 有内容的 View → 参数原文。宿主显式结果优先于界面从参数派生的摘要。
 func defaultHead(c Card) (title, summary string) {
 	title = c.Tool
 	if title == "" && c.View != nil {
@@ -227,7 +245,11 @@ func defaultHead(c Card) (title, summary string) {
 	}
 	summary = c.Summary
 	if summary == "" {
-		summary = c.Args
+		if viewOverridesArgs(c.View) {
+			summary = c.View.Body
+		} else {
+			summary = c.Args
+		}
 	}
 	return title, summary
 }
@@ -242,7 +264,7 @@ func (s *Cards) head(c Card) (title, summary string) {
 	if r, ok := s.renderers[c.Tool]; ok && r.Head != nil {
 		title, summary = r.Head(c)
 	}
-	if c.View != nil && c.View.Badge == "error" {
+	if c.View != nil && c.View.Badge == "error" && summary != "" {
 		summary = "错误：" + summary
 	}
 	return title, summary

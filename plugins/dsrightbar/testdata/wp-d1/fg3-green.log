@@ -1,0 +1,16 @@
+=== RUN   TestConversationTabsReallyClickAndRememberSession
+2026/11/04 08:52:21 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 08:52:21 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 08:52:21 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 08:52:21 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 08:52:21 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 08:52:21 INFO 插件已装配 id=ds-composer provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 08:52:21 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    frame_interaction_test.go:229: FG3_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestConversationTabsReallyClickAndRememberSession2137121792\001\frame-header-chat-1182x832.png size=1182x832 bytes=26916 view=chat header=76 title=30 tabs=25 corner=28 top=10 gap=20
+    frame_interaction_test.go:234: FG3_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestConversationTabsReallyClickAndRememberSession2137121792\001\frame-header-trajectory-1182x832.png size=1182x832 bytes=30642 view=trajectory header=76 title=30 tabs=25 corner=28 top=10 gap=20
+    frame_interaction_test.go:238: FG3_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestConversationTabsReallyClickAndRememberSession2137121792\001\frame-header-chat-1920x1032.png size=1920x1032 bytes=47668 view=chat header=76 title=30 tabs=25 corner=28 top=10 gap=20
+    frame_interaction_test.go:243: FG3_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestConversationTabsReallyClickAndRememberSession2137121792\001\frame-header-trajectory-1920x1032.png size=1920x1032 bytes=51022 view=trajectory header=76 title=30 tabs=25 corner=28 top=10 gap=20
+--- PASS: TestConversationTabsReallyClickAndRememberSession (0.41s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dstopbar	0.454s
+EXIT=0

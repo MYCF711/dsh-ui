@@ -122,6 +122,23 @@ else
   fail "非法模式没有被拒"
 fi
 
+echo "== 5. -theme system 必须真的跟着系统 =="
+# 判据不写死"应该浅"或"应该深"——那是**这台机器此刻的设置**说了算。
+# 所以先问系统要答案，再看程序给的答案对不对：
+#   Windows 的「选择默认应用模式」= HKCU\…\Themes\Personalize\AppsUseLightTheme
+#   1 = 浅色，0 = 深色，读不到 = 系统不说（程序该退回深色）。
+regkey='HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+apps_light=$(reg query "$regkey" //v AppsUseLightTheme 2>/dev/null | grep -oE '0x[0-9a-fA-F]+' | head -1)
+case "$apps_light" in
+  0x1) want_theme=light; want_png=light; sys_says="浅色（AppsUseLightTheme=0x1）" ;;
+  0x0) want_theme=dark;  want_png=dark;  sys_says="深色（AppsUseLightTheme=0x0）" ;;
+  *)   want_theme=dark;  want_png=dark;  sys_says="读不到（程序应退回深色）" ;;
+esac
+echo "     系统当前：$sys_says"
+# 启动那条路不走 applyPendingTheme（那是"运行时切换"才用的），所以日志是装配后的
+# 「主题 ds-dark / ds-light」；截图亮度是第二个不相干的证据。
+run system "$want_png" "主题 ds-$want_theme" -theme system
+
 echo
 echo "----- 合计 OK=$ok FAIL=$bad"
 [ "$bad" -eq 0 ] || exit 1

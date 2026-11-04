@@ -152,3 +152,46 @@ func TestQueueFromConfigDoesNotPersist(t *testing.T) {
 		t.Errorf("requestTheme 应当落盘 ui.theme=%q，实际 %v", themeLight, got)
 	}
 }
+
+// TestSystemAppearanceOnlyRequeuesInSystemMode 是"跟随系统"的另一半。
+//
+// 系统明暗变了要不要跟，取决于**用户当前选的模式**：
+//   - 模式是 system  → 跟（重新排一次）
+//   - 用户手动选了深/浅 → **不跟**。他的选择比系统的默认更明确，
+//     系统一变化就把它冲掉，等于用户的选择"自己会跑"。
+//
+// 为什么这样测：真正的触发来自 `app.WatchSystemAppearance`，而它在测试里不会响
+// ——除非去改操作系统的深浅设置，那是在动用户的桌面。所以把回调抽成方法直接调，
+// 验的是**回调里的判断**，不验"系统那边会不会响"（那由 viva 负责，也验不了）。
+func TestSystemAppearanceOnlyRequeuesInSystemMode(t *testing.T) {
+	m := newThemeModel(t)
+
+	// ① 用户选了浅色：系统再怎么变都不该被冲掉。
+	m.queueTheme(themeLight)
+	m.applyPendingTheme()
+	drainPending(m)
+	m.onSystemAppearanceChanged()
+	if got := takePending(m); got != "" {
+		t.Errorf("模式是 light 时，系统变化不该重排主题（排入了 %q）", got)
+	}
+
+	// ② 模式是 system：应当重排一次。
+	m.mu.Lock()
+	m.themeMode = themeSystem
+	m.pendingTheme = ""
+	m.mu.Unlock()
+	m.onSystemAppearanceChanged()
+	if got := takePending(m); got != themeSystem {
+		t.Errorf("模式是 system 时，系统变化应当重排 system（排入了 %q，want %q）", got, themeSystem)
+	}
+}
+
+func drainPending(m *model) { _ = takePending(m) }
+
+func takePending(m *model) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mode := m.pendingTheme
+	m.pendingTheme = ""
+	return mode
+}

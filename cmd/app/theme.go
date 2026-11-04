@@ -97,15 +97,21 @@ var systemWatchOnce sync.Once
 // 系统再变也不该把他的选择冲掉。
 func (m *model) ensureSystemWatch() {
 	systemWatchOnce.Do(func() {
-		app.WatchSystemAppearance(func() {
-			m.mu.Lock()
-			mode := m.themeMode
-			m.mu.Unlock()
-			if mode == themeSystem {
-				m.queueTheme(themeSystem)
-			}
-		})
+		app.WatchSystemAppearance(m.onSystemAppearanceChanged)
 	})
+}
+
+// onSystemAppearanceChanged 是系统明暗变化时的回调。
+//
+// 单独抽成方法只为一个原因：**这样它能被单测直接调**。装在回调里的匿名函数
+// 在测试里没法触发——除非去改操作系统的深浅设置，而那是在动用户的桌面。
+func (m *model) onSystemAppearanceChanged() {
+	m.mu.Lock()
+	mode := m.themeMode
+	m.mu.Unlock()
+	if mode == themeSystem {
+		m.queueTheme(themeSystem)
+	}
 }
 
 // applyPendingTheme 消费排队的主题。**必须在 UI 线程（Paint）里调。**

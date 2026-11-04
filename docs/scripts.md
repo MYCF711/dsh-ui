@@ -34,7 +34,7 @@
 | `scripts/accept-resume.sh` | 续历史 / 断线恢复：换一条连接按 `sinceSeq` 补洞 | 同上 | ❌（要真模型） |
 | `scripts/accept-chain.sh` | 整链终验：一个真 `dshd` + 临时 home，逐项打勾 | 同上 | ❌（要真模型） |
 | `scripts/e2e-workday.sh` | 「连续使用」的自动化版本（22 项）：建会话 → 发 prompt → 工具 → 审批 → 取消 | 同上 | ❌（要真模型 + 真窗口） |
-| `scripts/e2e-probe-selftest.sh` | 给 e2e 断言层做反证：每条探针在坏输入上必须红 | 由 `accept-all.sh` 首位串跑 | ❌（依赖 e2e 夹具） |
+| `scripts/e2e-probe-selftest.sh` | 给 e2e 断言层做反证：每条探针在坏输入上必须红 | 由 `accept-all.sh` **第二位**串跑（第一位是守卫反证） | ❌（依赖 e2e 夹具） |
 
 ## 本地手动跑的：证据 / 测量类
 
@@ -50,6 +50,23 @@
 | `scripts/visual-diff.py` | 对同尺寸 PNG 做确定性区域测量与逐像素 diff | 视觉回归核对时 | ❌ |
 | `scripts/e2e-probe.py` | e2e 探针的断言层（每条 PASS 都必须能变红） | 被 `e2e-workday.sh` / `e2e-probe-selftest.sh` 调用 | ❌ |
 | `scripts/smoke-u1.ps1` | U1 的冒烟（PowerShell；`-Acp` 走 ACP 分支） | 手动冒烟时 | ❌ |
+
+## 谁调谁（调用关系，2026-11-04 实测）
+
+```
+accept-all.sh ──┬─ guard-selftest.sh            （第一位：守卫自己没被反证过时，后面的绿都不算数）
+                ├─ e2e-probe-selftest.sh ── e2e-probe.py
+                ├─ accept-theme.sh
+                ├─ accept-session-ops.sh
+                ├─ accept-approval.sh
+                ├─ accept-cancel.sh
+                ├─ accept-resume.sh
+                ├─ accept-chain.sh ── ../DSH-GO/scripts/bin-check.py   （在宿主仓里跑）
+                └─ e2e-workday.sh ── e2e-probe.py
+```
+
+`perf-*.sh` / `slot-proof.sh` / `shot.py` / `visual-diff.py` / `smoke-u1.ps1` **不在任何链路里**，
+是独立取证工具——所以它们的行必须写清"什么时候跑"，否则就是没人跑。
 
 ## 归属说明
 

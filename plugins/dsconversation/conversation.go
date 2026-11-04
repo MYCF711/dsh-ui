@@ -21,6 +21,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
 	"github.com/MYCF711/dsh-ui/plugins/dstool"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
@@ -58,11 +59,13 @@ type Plugin struct {
 
 	// Markdown 文档与视图按消息下标复用：只有文本或宽度变了才重排。
 	// 每帧重建是 111 MB 那一版的教训。
-	docs    []markdown.Document
-	views   []components.MarkdownView
-	texts   []string
-	widths  []float32
-	heights []float32
+	docs     []markdown.Document
+	views    []components.MarkdownView
+	texts    []string
+	rendered []string // 链接改写后的正文缓存键。
+	linkKeys []string // fake URL 相同但 CWD/目的地变化时仍必须更新映射。
+	widths   []float32
+	heights  []float32
 
 	looked bool
 	look   components.MarkdownLook
@@ -372,7 +375,7 @@ func (p *Plugin) drawStreaming(f *flex.Frame, env *pluginapi.Env) {
 		width = f.Bounds().Width
 	}
 	streamIndex := len(env.Data.Msgs)
-	h := p.layoutMarkdown(env.Canvas, streamIndex, env.Data.Stream, width-40)
+	h := p.layoutAssistantMarkdown(env.Canvas, streamIndex, env.Data.Stream, width-40, env.Data)
 	f.Column().FillWidth().Pad(8).Radius(t.Radii.MD).Children(func() {
 		f.Row().Gap(6).Items(flex.Center).Children(func() {
 			f.Text("助手").FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
@@ -439,7 +442,9 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 			// 官方的 82%/748px 是相对**会话内容列**算的，而槽位里拿不到列宽；
 			// viva 的文字会自然换行，气泡按内容宽度收缩，所以不需要像素上限（见验收说明）。
 			p.prims.Bubble(f, func() {
-				f.Wrap(msg.Text).FontSize(t.Fonts.Body)
+				// 用户粘进来的凭据在这里遮掉（见 mask.go）；**只遮显示**，
+				// 复制与落盘的仍是原文。
+				f.Wrap(userDisplayText(msg)).FontSize(t.Fonts.Body)
 			})
 		})
 		p.drawMessageMeta(f, env, msg, key)
@@ -454,7 +459,7 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 			return
 		}
 		w := width - 40
-		h := p.layoutMarkdown(env.Canvas, i, msg.Text, w)
+		h := p.layoutAssistantMarkdown(env.Canvas, i, msg.Text, w, env.Data)
 		p.slots = append(p.slots, mdSlot{idx: i, key: key, box: f.Slot().Height(h)})
 		p.drawActions(f, env, msg, i, i == len(env.Data.Msgs)-1, key)
 		p.drawMessageMeta(f, env, msg, key)
@@ -606,10 +611,22 @@ func (p *Plugin) toolCards() dstool.Service {
 	return p.tools
 }
 
-// layoutMarkdown 排版一条消息的 Markdown，返回高度。
-//
-// MarkdownView.Layout 很贵：只有文本或宽度变了才重排。
+// layoutMarkdown 保留 MDSTREAM 的无附加文件上下文排版入口。
 func (p *Plugin) layoutMarkdown(canvas *ui.Canvas, i int, text string, width float32) float32 {
+	return p.layoutMarkdownWithFiles(canvas, i, text, width, nil, "")
+}
+
+// layoutAssistantMarkdown 复用 dsdeliverables 的工具参数路径，不新增数据源。
+func (p *Plugin) layoutAssistantMarkdown(canvas *ui.Canvas, i int, text string, width float32, data pluginapi.Snapshot) float32 {
+	return p.layoutMarkdownWithFiles(canvas, i, text, width, dsdeliverables.WrittenPaths(data.Msgs), data.CWD)
+}
+
+// layoutMarkdownWithFiles 排版一条消息的 Markdown，返回高度。
+//
+// MarkdownView.Layout 很贵：正文、宽度、CWD 或已知路径导致的改写结果不变时，
+// 仍复用同一 Document/MarkdownView。rendered 把链接上下文纳入缓存键，避免切到
+// 同文本但不同工作区的会话后仍打开旧绝对路径。
+func (p *Plugin) layoutMarkdownWithFiles(canvas *ui.Canvas, i int, text string, width float32, writtenPaths []string, cwd string) float32 {
 	if p.codeBlocks == nil {
 		p.codeBlocks = map[int][]messageCode{}
 	}
@@ -620,13 +637,18 @@ func (p *Plugin) layoutMarkdown(canvas *ui.Canvas, i int, text string, width flo
 		p.docs = append(p.docs, markdown.Document{})
 		p.views = append(p.views, components.MarkdownView{})
 		p.texts = append(p.texts, "")
+		p.rendered = append(p.rendered, "")
+		p.linkKeys = append(p.linkKeys, "")
 		p.widths = append(p.widths, -1)
 		p.heights = append(p.heights, 0)
 	}
-	if p.texts[i] != text || p.widths[i] != width {
+	rewritten, files := rewriteAssistantFileLinks(text, writtenPaths, cwd)
+	linkKey := fileLinkCacheKey(files)
+	if p.texts[i] != text || p.rendered[i] != rewritten || p.linkKeys[i] != linkKey || p.widths[i] != width {
 		p.texts[i] = text
+		p.rendered[i] = rewritten
+		p.linkKeys[i] = linkKey
 		p.widths[i] = width
-		rewritten, files := rewriteExplicitFileLinks(text)
 		p.fileLinks[i] = files
 		p.docs[i].Parse(rewritten)
 		p.views[i].Layout(canvas, components.MarkdownStyle{
@@ -739,8 +761,14 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32, key strin
 	if perLine < 8 {
 		perLine = 8
 	}
+	// 量的是**画出来的那份**：用户消息会遮凭据，遮完比原件短，
+	// 按原件估高会多留一截空白（虚拟化的高度估算必须和绘制同源）。
+	text := m.Text
+	if m.Role == "user" {
+		text = userDisplayText(m)
+	}
 	lines := 0
-	for _, para := range strings.Split(m.Text, "\n") {
+	for _, para := range strings.Split(text, "\n") {
 		n := float64(len([]rune(para)))
 		l := int(math.Ceil(n / perLine))
 		if l < 1 {

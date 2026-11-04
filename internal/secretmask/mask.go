@@ -56,8 +56,24 @@ func Mask(s string) string {
 
 // maskBearer 处理 `Bearer <token>`。
 //
-// 只认 `Bearer ` 后面**紧跟的连续非空白**，长度 ≥ 20 才算——
+// 只认 `Bearer ` 后面**紧跟的连续非空白**，而且必须**全是 ASCII 且长度 ≥ 20**——
 // 否则 "Bearer 认证" 这种正常句子会被误伤。
+//
+// # 为什么要加 ASCII 那一条（2026-11-04 真缺陷）
+//
+// 原判据只有"非空白连续、长度 ≥ 20"，而那个长度是**字节数**。
+// 中文一个字 3 字节，于是 `用 Bearer 认证就行，不要用 Basic` 里的
+// `认证就行，不要用` 只有 8 个字、却算 24 字节 ≥ 20，**被当成 token 遮了**：
+//
+//	"用 Bearer 认证**************\x81用 Basic"
+//
+// 两个后果，第二个更严重：
+//   - 正常中文被吞掉（正是本包开头说的"多遮"那次）；
+//   - 遮罩按**字节**切首尾，把一个三字节的汉字从中间切开，**输出不是合法 UTF-8**
+//     （那个 `\x81`）——渲染层拿到它是什么表现，取决于它心情。
+//
+// 真实凭据（JWT、PAT、`sk-…`）全是 ASCII，所以"必须全 ASCII"既不误伤真凭据，
+// 又把整类中文散文挡在门外。长度判据顺带也不再需要区分字节和字符。
 func maskBearer(s string) string {
 	const kw = "Bearer "
 	var b strings.Builder
@@ -76,7 +92,7 @@ func maskBearer(s string) string {
 		for end < len(s) && !isSpace(s[end]) {
 			end++
 		}
-		if end-start >= 20 {
+		if end-start >= 20 && isASCII(s[start:end]) {
 			b.WriteString(maskOne(s[start:end]))
 		} else {
 			b.WriteString(s[start:end])
@@ -84,6 +100,19 @@ func maskBearer(s string) string {
 		i = end
 	}
 	return b.String()
+}
+
+// isASCII 报告这段字节是不是全 ASCII。
+//
+// 判据不是"含不含中文"，是"有没有任何 ≥ 0x80 的字节"——凭据的字符集是
+// ASCII 的一个子集，出现任何高位字节就说明这不是凭据。
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 // maskTokens 处理有前缀的凭据和"够长且高熵"的串。
@@ -142,11 +171,25 @@ func looksLikeSecret(w string) bool {
 }
 
 // maskOne 保留首尾、中间打星号。
+// maskOne 把中间换成星号，保留首尾。
+//
+// **按 rune 切，不按字节切**：按字节切会把一个多字节字符从中间劈开，
+// 输出不是合法 UTF-8（`Bearer` 那条路上真发生过，见 maskBearer 的注释）。
+// 当前两个调用方传进来的都是 ASCII（`looksLikeSecret` 只认 token 字节、
+// `maskBearer` 加了 ASCII 闸），所以这次改动对现在的行为是恒等的——
+// 它挡的是"以后有人放宽了字符集"。
+//
+// 也就是说：**输入什么长度，输出什么长度**（星号一个换一个）。
+// 这一条被 `plugins/dsconversation` 依赖着——虚拟化的高度估算按长度算，
+// 遮罩要是会改长度，估算就会和绘制错位。那个包里有测试钉住它。
 func maskOne(w string) string {
-	if len(w) <= keepHead+keepTail {
-		return strings.Repeat("*", len(w))
+	r := []rune(w)
+	if len(r) <= keepHead+keepTail {
+		return strings.Repeat("*", len(r))
 	}
-	return w[:keepHead] + strings.Repeat("*", len(w)-keepHead-keepTail) + w[len(w)-keepTail:]
+	return string(r[:keepHead]) +
+		strings.Repeat("*", len(r)-keepHead-keepTail) +
+		string(r[len(r)-keepTail:])
 }
 
 func isSpace(c byte) bool {

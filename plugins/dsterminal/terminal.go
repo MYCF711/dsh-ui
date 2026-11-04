@@ -33,6 +33,10 @@ type Plugin struct {
 	open bool
 	// act 由 draw 每帧刷新（和 dscommands 同款）：HandleKey 里要借 Notify 的重绘副作用。
 	act pluginapi.Actions
+
+	// field 是终端命令输入框。**值类型**：写成 *flex.Field 又忘了 new，
+	// Fields() 会返回一个 nil 元素，flex.Fields(...) 里直接 panic（dscomposer 踩过）。
+	field flex.Field
 }
 
 func (*Plugin) ID() string { return "ds-terminal" }
@@ -58,6 +62,9 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	}}
 }
 
+// Fields 把输入框登记给壳（viva 只把登记过的 Field 当输入焦点候选）。
+func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.field} }
+
 // Toggle 打开 / 关掉面板。
 func (p *Plugin) Toggle() { p.open = !p.open }
 
@@ -67,6 +74,31 @@ func (p *Plugin) Toggle() { p.open = !p.open }
 // 而 viva 的 OnKey **不送字母键**（字母走文本输入框），所以只能用功能键。
 // F5 在剩下的里面最靠前、也最不容易误触。
 func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+	// F6：把输入框里那行发给终端。
+	//
+	// **用 F6 而不是 Enter**：Enter 是输入框自己的提交键，这层拿不到
+	// （viva 的 OnKey 只送功能键/方向/Enter 的**空文本**）。
+	// 让用户在框里打字、按 F6 执行，比抢 Enter 更不容易和 composer 打架。
+	if ev.Key == ui.KeyF6 {
+		if !p.open {
+			return false
+		}
+		line := strings.TrimSpace(p.field.Text())
+		if line == "" {
+			return true // 空行按了也不做事，但算消费掉（否则会冒泡成别的键）
+		}
+		p.field.SetText("")
+		if p.act.TerminalOpen != nil && p.act.TerminalInput != nil {
+			if id := p.act.TerminalOpen(); id != "" {
+				// 补换行：终端是行缓冲的，不带换行它不会执行。
+				p.act.TerminalInput(id, line+"\n")
+			}
+		}
+		if p.act.Notify != nil {
+			p.act.Notify("已发送: " + line)
+		}
+		return true
+	}
 	if ev.Key != ui.KeyF5 {
 		return false
 	}
@@ -130,6 +162,8 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 				}
 				f.Text(ln).FontSize(12).Color(t.LabelSecondary)
 			}
+			// 输入框：F6 执行。**放在输出下面**——终端本来就是"上面输出、下面敲命令"。
+			f.Field(&p.field, env.Tree.ID(env.Feat, "terminal"), "命令", "输入后按 F6 执行")
 		})
 	})
 }

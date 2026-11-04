@@ -1613,6 +1613,8 @@ func parseKeys(seq string) []ui.Key {
 			out = append(out, ui.KeyF1)
 		case "f2":
 			out = append(out, ui.KeyF2)
+		case "f6":
+			out = append(out, ui.KeyF6)
 		case "f5":
 			// 终端面板（dsterminal）。**这个键名以前没有**——
 			// 加了插件的键位却忘了让 `-keys` 认识它，截图时按键就静默无效。

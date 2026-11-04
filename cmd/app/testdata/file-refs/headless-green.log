@@ -1,0 +1,52 @@
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832
+2026/11/04 09:54:17 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 09:54:17 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 09:54:17 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-file-refs-isolated\cmd\app\testdata\file-refs\conversation-file-refs-1182x832.png size=1182x832 bytes=46883
+    file_refs_headless_test.go:29: FILEREFS_CLICK size=1182x832 relative="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8323734767115\\001\\交付 文件.txt" absolute="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8323734767115\\002\\绝对 文件.txt" unknown_hit=false
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 09:54:18 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-file-refs-isolated\cmd\app\testdata\file-refs\conversation-file-refs-1920x1032.png size=1920x1032 bytes=67749
+    file_refs_headless_test.go:29: FILEREFS_CLICK size=1920x1032 relative="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x1032107191746\\001\\交付 文件.txt" absolute="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x1032107191746\\002\\绝对 文件.txt" unknown_hit=false
+--- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence (0.30s)
+    --- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832 (0.15s)
+    --- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032 (0.15s)
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 09:54:18 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-file-refs-isolated\cmd\app\testdata\file-refs\conversation-file-refs-1182x832.png size=1182x832 bytes=46861
+    file_refs_headless_test.go:29: FILEREFS_CLICK size=1182x832 relative="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8321938088190\\001\\交付 文件.txt" absolute="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8321938088190\\002\\绝对 文件.txt" unknown_hit=false
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 09:54:18 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-file-refs-isolated\cmd\app\testdata\file-refs\conversation-file-refs-1920x1032.png size=1920x1032 bytes=67973
+    file_refs_headless_test.go:29: FILEREFS_CLICK size=1920x1032 relative="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10323860754159\\001\\交付 文件.txt" absolute="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10323860754159\\002\\绝对 文件.txt" unknown_hit=false
+--- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence (0.32s)
+    --- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832 (0.17s)
+    --- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032 (0.15s)
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 09:54:18 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-file-refs-isolated\cmd\app\testdata\file-refs\conversation-file-refs-1182x832.png size=1182x832 bytes=46935
+    file_refs_headless_test.go:29: FILEREFS_CLICK size=1182x832 relative="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x832910785386\\001\\交付 文件.txt" absolute="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x832910785386\\002\\绝对 文件.txt" unknown_hit=false
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 09:54:18 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 09:54:18 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-file-refs-isolated\cmd\app\testdata\file-refs\conversation-file-refs-1920x1032.png size=1920x1032 bytes=67822
+    file_refs_headless_test.go:29: FILEREFS_CLICK size=1920x1032 relative="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10321778472211\\001\\交付 文件.txt" absolute="C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10321778472211\\002\\绝对 文件.txt" unknown_hit=false
+--- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence (0.21s)
+    --- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832 (0.09s)
+    --- PASS: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032 (0.12s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/cmd/app	0.891s
+
+EXIT=0

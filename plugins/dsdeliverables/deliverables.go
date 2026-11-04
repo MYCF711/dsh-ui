@@ -85,11 +85,10 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	}
 }
 
-// paths 从消息流里提取"写过的文件"。
-//
-// 只看 `tool` 角色的消息，且工具名在 writeTools 里、参数是 JSON 对象、
-// 里面有 `filePath` 或 `path` 字符串。**取不到就跳过**，不猜。
-func paths(msgs []apiclient.Message) []string {
+// WrittenPaths 从消息流里提取 write/edit 工具参数明确写过的路径。
+// 返回值是按首次出现排序的新切片，调用方可以只读使用，不会共享插件内部状态。
+// 它不从助手正文、bash 命令或文件系统猜测任何额外路径。
+func WrittenPaths(msgs []apiclient.Message) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, m := range msgs {
@@ -110,6 +109,9 @@ func paths(msgs []apiclient.Message) []string {
 	}
 	return out
 }
+
+// paths 保留本包原有绘制与测试入口；跨插件复用统一走 WrittenPaths。
+func paths(msgs []apiclient.Message) []string { return WrittenPaths(msgs) }
 
 // draw 画「写过的文件」区。没有就整块不画。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {

@@ -53,7 +53,7 @@ PASS  jobs.list 可用
 | 项 | 为什么没验 |
 |---|---|
 | ~~审批（allow/deny）~~ | ✅ **Round 53 补上了**：`scripts/accept-approval.sh`，5 PASS / 0 FAIL |
-| **取消（turn 中断）** | 需要一轮足够长的生成；没有可靠的时间窗 |
+| ~~取消（turn 中断）~~ | ✅ **Round 54 补上了**：`scripts/accept-cancel.sh`，4 PASS / 0 FAIL |
 | **续历史 / 断线恢复** | 要真的杀连接再重连；脚本里做会变慢且不稳。Round 12 单独验过（10 个多会话与重连测试 PASS） |
 | **界面** | 这个脚本**只验宿主 HTTP**。界面侧的证据在 `tmp/*.png`（21 个插件齐全）和 e2e（22 PASS） |
 
@@ -114,3 +114,50 @@ approval/request → tool/call write {appr-demo.txt}   ← 它也要批准
 **`同一个 requestId 不能重复批准`** —— 第二次回同一个 `requestId` 得到
 `no_such_request`（404）。这条**幂等保护**是刻意留的：没有它，
 一个点两下的界面会把同一个 tool call 执行两次。
+
+---
+
+# 取消整链（`scripts/accept-cancel.sh`）
+
+## 结果
+
+```
+PASS  turn 真的开始了（turn/start 帧）
+PASS  session.cancel 被接受
+PASS  取消后 turn 收尾（done/error/cancelled）
+PASS  取消后帧数基本不再增长（3 → 3）
+----- 合计 OK=4 FAIL=0
+帧序：turn/start user/message turn/error
+```
+
+**取消的收尾帧是 `turn/error`**，不是 `turn/done`，也没有单独的 `cancelled` 类型。
+这不奇怪：**从消费方看，"这一轮没跑完"就是错误**。但**判据不能只认 `error`**——
+把它写成 `done|error|cancelled` 三种都算，是因为**收尾的具体措辞是契约的实现细节**，
+而**"这一轮不再产出"才是要验的东西**（第四条正是在验这个）。
+
+## 脚本踩的坑
+
+**① 「发个长 prompt 等它慢慢生成」这个假设是错的**
+
+第一版让模型"从 1 数到 300"，然后 `sleep 2` 再取消。结果：
+
+```
+session.cancel → {"error":{"message":"没有这一轮"}}
+帧序：turn/start user/message assistant/message turn/end turn/done
+```
+
+**模型两秒内就 turn/end 了**（它只回了一条消息就收工）。`cancel` 打在一个
+已经结束的 turn 上，得到"没有这一轮"。
+
+**修法不是加长 sleep，是换一个真的会挂住的动作**：
+
+```
+"用 bash 工具执行 sleep 30，等它跑完再告诉我结果。"
+```
+
+**工具执行期间 turn 会一直挂着**——那才是可中断的窗口。
+
+**② 收到的错误像链路故障，其实是用法错误**
+
+`"没有这一轮"` 读起来像"取消这个功能坏了"，实际是**取消得太晚**。
+这和上一轮 `approval/request` 那次一样：**先怀疑自己的用法，再怀疑链路**。

@@ -2181,6 +2181,7 @@ func main() {
 		OpenSession:    m.openSession,
 		DeleteSession:  m.deleteSession,
 		CompactSession: m.compactSession,
+		ForkSession:    m.forkSession,
 		NewSession:     m.newSession,
 		Send:           m.sendText,
 		Copy:           func(text string) { _ = m.copyText(text) },

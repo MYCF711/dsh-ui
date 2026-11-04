@@ -72,7 +72,7 @@
 - ❌ `directory-picker-native`
 - ✅ `open-in-app`（两半都有：`dsopen` 会话头部「打开」→ `OpenExternal(CWD)`；`dsfiles` 预览卡片「用默认程序打开」→ `OpenFile(file:…)`。官方的"split button（列出已装应用）"没有，我们是单个按钮）
 - ❌ `workspace`
-- ✅ `theme`（`dscore` 的 ds-dark / 明暗两套）
+- ✅ `theme`（`dscore` 的 ds-dark / ds-light 两套 + **运行时切换**：F2 命令面板三条 深色/浅色/跟随系统，`-theme` 也收 `system`；官方的 "Appearance 设置行" 我们没有，入口在命令面板）
 - ✅ `shortcuts`（`dsshortcuts`：F1 键位表，**带守卫**——从 `plugins/` 的 AST 里扫出所有 `ui.KeyXxx`，表漏记一个就红；官方的"录制"和"本地改键"没做）
 - 🟡 `secret-mask`（`internal/secretmask` + `dsconversation/mask.go`：用户消息**显示**遮罩。只用户消息、只显示，复制仍是原文）
 - ⬜ `session`（**N/A**：官方的 *"Session Controller adapter for React"* 是 React 适配层；我们的会话状态在壳里）

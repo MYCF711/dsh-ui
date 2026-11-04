@@ -544,6 +544,18 @@ type Actions struct {
 	// nil = 壳没接（老宿主）。
 	SetPermission func(perm string)
 
+	// SetTheme 换主题：`dark` / `light` / `system`（跟着操作系统走）。
+	//
+	// 官方把这件事做成 Appearance 设置行（`dsh-client-ui-theme`：
+	// "light/dark/system state"）；我们还没有设置面，所以入口在命令面板。
+	//
+	// **运行时立刻生效，不用重启**：壳是就地改那个 `*Theme` 对象，
+	// 所有插件手里是同一个指针，下一帧就是新颜色。
+	//
+	// 传不认识的模式**不改**（壳会把原因写状态栏）——悄悄忽略比显示一个
+	// 用户以为生效了的名字好。nil = 壳还没接线。
+	SetTheme func(mode string)
+
 	// Approve 回一次审批（H13 的 `session.approve`）。
 	//
 	//	requestID ← Approval.RequestID，optionID ← Approval.Options[].OptionID

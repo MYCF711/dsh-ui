@@ -214,7 +214,13 @@ func round32(v float32) float32 {
 
 // Plugin 实现 pluginapi.Plugin / Panels。
 type Plugin struct {
-	theme pluginapi.Theme
+	// theme 是**指针**，和其它所有插件一致。
+	//
+	// 这里原来是值类型（`theme pluginapi.Theme`），是壳唯一一处复制主题的地方。
+	// 复制之后「运行时换主题」就只换一半：插件拿的是指针、跟着变；
+	// 壳自己画的三栏底色和分隔线是旧的那份，于是界面变成"新主题的部件 + 旧主题的框"。
+	// 换指针就是为了让「改主题」只有一个动作：原地改 `*Theme`。
+	theme *pluginapi.Theme
 	prims pluginapi.Primitives
 
 	// SidebarWidth 侧栏默认宽度（官方默认 280）。
@@ -283,7 +289,7 @@ func (*Plugin) Requires() []string {
 
 // Register 实现 pluginapi.Plugin。
 func (p *Plugin) Register(ctx pluginapi.Context) error {
-	p.theme = *ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
+	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	if p.SidebarWidth <= 0 {
 		p.SidebarWidth = 280

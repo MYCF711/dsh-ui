@@ -1,0 +1,157 @@
+=== RUN   TestActivityPillRequiresOfficialWholeLogStats
+=== RUN   TestActivityPillRequiresOfficialWholeLogStats/projection_缺席
+=== RUN   TestActivityPillRequiresOfficialWholeLogStats/没有_assistant_step
+=== RUN   TestActivityPillRequiresOfficialWholeLogStats/唯一_turn_与_assistant_step
+=== RUN   TestActivityPillRequiresOfficialWholeLogStats/decode_真值速率
+=== RUN   TestActivityPillRequiresOfficialWholeLogStats/缺_decodeMs_不编速率
+--- PASS: TestActivityPillRequiresOfficialWholeLogStats (0.00s)
+    --- PASS: TestActivityPillRequiresOfficialWholeLogStats/projection_缺席 (0.00s)
+    --- PASS: TestActivityPillRequiresOfficialWholeLogStats/没有_assistant_step (0.00s)
+    --- PASS: TestActivityPillRequiresOfficialWholeLogStats/唯一_turn_与_assistant_step (0.00s)
+    --- PASS: TestActivityPillRequiresOfficialWholeLogStats/decode_真值速率 (0.00s)
+    --- PASS: TestActivityPillRequiresOfficialWholeLogStats/缺_decodeMs_不编速率 (0.00s)
+=== RUN   TestWindowMessagesNeverBecomeOfficialTurnsOrSteps
+--- PASS: TestWindowMessagesNeverBecomeOfficialTurnsOrSteps (0.00s)
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket/projection_缺席
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket/缺_uncachedInput
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket/缺_cacheRead
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket/缺_cacheWrite
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket/分母为零
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket/官方三项分母
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket/真实零命中不是未知
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket/全命中
+=== RUN   TestCacheHitPercentNeedsEveryDenominatorBucket/部分命中不四舍五入成一百
+--- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket (0.00s)
+    --- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket/projection_缺席 (0.00s)
+    --- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket/缺_uncachedInput (0.00s)
+    --- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket/缺_cacheRead (0.00s)
+    --- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket/缺_cacheWrite (0.00s)
+    --- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket/分母为零 (0.00s)
+    --- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket/官方三项分母 (0.00s)
+    --- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket/真实零命中不是未知 (0.00s)
+    --- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket/全命中 (0.00s)
+    --- PASS: TestCacheHitPercentNeedsEveryDenominatorBucket/部分命中不四舍五入成一百 (0.00s)
+=== RUN   TestContextPercentNeedsUsedTokensAndWindow
+=== RUN   TestContextPercentNeedsUsedTokensAndWindow/projection_缺席
+=== RUN   TestContextPercentNeedsUsedTokensAndWindow/只有_usedTokens
+=== RUN   TestContextPercentNeedsUsedTokensAndWindow/只有_contextWindow
+=== RUN   TestContextPercentNeedsUsedTokensAndWindow/容量为零
+=== RUN   TestContextPercentNeedsUsedTokensAndWindow/真实占用
+=== RUN   TestContextPercentNeedsUsedTokensAndWindow/真实零占用不是未知
+=== RUN   TestContextPercentNeedsUsedTokensAndWindow/官方上限一百
+--- PASS: TestContextPercentNeedsUsedTokensAndWindow (0.00s)
+    --- PASS: TestContextPercentNeedsUsedTokensAndWindow/projection_缺席 (0.00s)
+    --- PASS: TestContextPercentNeedsUsedTokensAndWindow/只有_usedTokens (0.00s)
+    --- PASS: TestContextPercentNeedsUsedTokensAndWindow/只有_contextWindow (0.00s)
+    --- PASS: TestContextPercentNeedsUsedTokensAndWindow/容量为零 (0.00s)
+    --- PASS: TestContextPercentNeedsUsedTokensAndWindow/真实占用 (0.00s)
+    --- PASS: TestContextPercentNeedsUsedTokensAndWindow/真实零占用不是未知 (0.00s)
+    --- PASS: TestContextPercentNeedsUsedTokensAndWindow/官方上限一百 (0.00s)
+=== RUN   TestConnectionStatePriority
+=== RUN   TestConnectionStatePriority/连接正常
+=== RUN   TestConnectionStatePriority/待审批
+=== RUN   TestConnectionStatePriority/断线优先于审批
+--- PASS: TestConnectionStatePriority (0.00s)
+    --- PASS: TestConnectionStatePriority/连接正常 (0.00s)
+    --- PASS: TestConnectionStatePriority/待审批 (0.00s)
+    --- PASS: TestConnectionStatePriority/断线优先于审批 (0.00s)
+=== RUN   TestOfficialDockGeometryDoesNotReuseLegacy24OrCaption40
+--- PASS: TestOfficialDockGeometryDoesNotReuseLegacy24OrCaption40 (0.00s)
+=== RUN   TestPanelsSeparateComposerDockFromConnectionBottom
+--- PASS: TestPanelsSeparateComposerDockFromConnectionBottom (0.00s)
+=== RUN   TestWholeLogUsageDoesNotDependOnTail
+--- PASS: TestWholeLogUsageDoesNotDependOnTail (0.00s)
+=== RUN   TestCompactionOnlyChangesRawContext
+--- PASS: TestCompactionOnlyChangesRawContext (0.00s)
+=== RUN   TestSessionSnapshotsDoNotReuseNumbers
+--- PASS: TestSessionSnapshotsDoNotReuseNumbers (0.00s)
+=== RUN   TestTok
+=== RUN   TestTok/零
+=== RUN   TestTok/三位数原样
+=== RUN   TestTok/整一千
+=== RUN   TestTok/六千五
+=== RUN   TestTok/分位进位到整位
+=== RUN   TestTok/十万级
+=== RUN   TestTok/百万门槛
+=== RUN   TestTok/一百五十万
+--- PASS: TestTok (0.00s)
+    --- PASS: TestTok/零 (0.00s)
+    --- PASS: TestTok/三位数原样 (0.00s)
+    --- PASS: TestTok/整一千 (0.00s)
+    --- PASS: TestTok/六千五 (0.00s)
+    --- PASS: TestTok/分位进位到整位 (0.00s)
+    --- PASS: TestTok/十万级 (0.00s)
+    --- PASS: TestTok/百万门槛 (0.00s)
+    --- PASS: TestTok/一百五十万 (0.00s)
+=== RUN   TestFmt1
+=== RUN   TestFmt1/零
+=== RUN   TestFmt1/小于半
+=== RUN   TestFmt1/正好半
+=== RUN   TestFmt1/小数进满到整数
+=== RUN   TestFmt1/负数夹到零
+=== RUN   TestFmt1/普通两位
+=== RUN   TestFmt1/速率常见值
+--- PASS: TestFmt1 (0.00s)
+    --- PASS: TestFmt1/零 (0.00s)
+    --- PASS: TestFmt1/小于半 (0.00s)
+    --- PASS: TestFmt1/正好半 (0.00s)
+    --- PASS: TestFmt1/小数进满到整数 (0.00s)
+    --- PASS: TestFmt1/负数夹到零 (0.00s)
+    --- PASS: TestFmt1/普通两位 (0.00s)
+    --- PASS: TestFmt1/速率常见值 (0.00s)
+=== RUN   TestRate
+--- PASS: TestRate (0.00s)
+=== RUN   TestItoa
+=== RUN   TestItoa/零
+=== RUN   TestItoa/个位
+=== RUN   TestItoa/多位
+=== RUN   TestItoa/负数
+--- PASS: TestItoa (0.00s)
+    --- PASS: TestItoa/零 (0.00s)
+    --- PASS: TestItoa/个位 (0.00s)
+    --- PASS: TestItoa/多位 (0.00s)
+    --- PASS: TestItoa/负数 (0.00s)
+=== RUN   TestUsageKnownGatesTokenDisplay
+=== RUN   TestUsageKnownGatesTokenDisplay/全零：不显示
+=== RUN   TestUsageKnownGatesTokenDisplay/只有缓存读：仍不显示
+=== RUN   TestUsageKnownGatesTokenDisplay/有上下文总量：显示
+=== RUN   TestUsageKnownGatesTokenDisplay/有累计输入：显示
+=== RUN   TestUsageKnownGatesTokenDisplay/有累计输出：显示
+--- PASS: TestUsageKnownGatesTokenDisplay (0.00s)
+    --- PASS: TestUsageKnownGatesTokenDisplay/全零：不显示 (0.00s)
+    --- PASS: TestUsageKnownGatesTokenDisplay/只有缓存读：仍不显示 (0.00s)
+    --- PASS: TestUsageKnownGatesTokenDisplay/有上下文总量：显示 (0.00s)
+    --- PASS: TestUsageKnownGatesTokenDisplay/有累计输入：显示 (0.00s)
+    --- PASS: TestUsageKnownGatesTokenDisplay/有累计输出：显示 (0.00s)
+=== RUN   TestUsageSegments
+=== RUN   TestUsageSegments/全零：整段不画
+=== RUN   TestUsageSegments/宿主_whole-log_total_+_原始上下文
+=== RUN   TestUsageSegments/只有原始上下文：保留_token_数但没有容量就不画百分比
+=== RUN   TestUsageSegments/上下文为零是未知：不拿_whole-log_total_顶替
+=== RUN   TestUsageSegments/旧_total_字段缺席时保留可证明_input_output
+=== RUN   TestUsageSegments/只有_input_真值：不把未知_output_补成零
+=== RUN   TestUsageSegments/只有_output_真值：不把未知_input_补成零
+=== RUN   TestUsageSegments/旧_mockd_路径：UsageTotal_全零时退回_Usage_但不冒充_decode_速率
+=== RUN   TestUsageSegments/旧_Usage_只有缓存读：既没有总量也没有缓存分母
+--- PASS: TestUsageSegments (0.00s)
+    --- PASS: TestUsageSegments/全零：整段不画 (0.00s)
+    --- PASS: TestUsageSegments/宿主_whole-log_total_+_原始上下文 (0.00s)
+    --- PASS: TestUsageSegments/只有原始上下文：保留_token_数但没有容量就不画百分比 (0.00s)
+    --- PASS: TestUsageSegments/上下文为零是未知：不拿_whole-log_total_顶替 (0.00s)
+    --- PASS: TestUsageSegments/旧_total_字段缺席时保留可证明_input_output (0.00s)
+    --- PASS: TestUsageSegments/只有_input_真值：不把未知_output_补成零 (0.00s)
+    --- PASS: TestUsageSegments/只有_output_真值：不把未知_input_补成零 (0.00s)
+    --- PASS: TestUsageSegments/旧_mockd_路径：UsageTotal_全零时退回_Usage_但不冒充_decode_速率 (0.00s)
+    --- PASS: TestUsageSegments/旧_Usage_只有缓存读：既没有总量也没有缓存分母 (0.00s)
+=== RUN   TestFG5HeadlessDockAndConnection
+2026/11/04 03:17:36 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 03:17:36 INFO 插件已装配 id=ds-composer provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 03:17:36 INFO 插件已装配 id=ds-statusbar provides=[] requires="[ui.theme ui.primitives]"
+    visual_test.go:170: FG5_CAPTURE path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dsstatusbar\testdata\fg5-dock-1920x1032.png size=1920x1032 bytes=45998 dock=(x 12.0 y 970.0 w 1896.0 h 26.0) cardCenter=960.0 connection=就绪
+    visual_test.go:171: FG5_CAPTURE path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dsstatusbar\testdata\fg5-dock-1182x832.png size=1182x832 bytes=24816 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=就绪
+    visual_test.go:179: FG5_CAPTURE path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dsstatusbar\testdata\fg5-disconnected-1182x832.png size=1182x832 bytes=25671 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=已断开
+    visual_test.go:213: FG5_SESSION_ISOLATION A->B->empty passed; empty dock box absent
+--- PASS: TestFG5HeadlessDockAndConnection (0.38s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dsstatusbar	0.426s

@@ -1,0 +1,14 @@
+# github.com/MYCF711/dsh-ui/plugins/dsstatusbar [github.com/MYCF711/dsh-ui/plugins/dsstatusbar.test]
+plugins\dsstatusbar\metrics_test.go:16:10: undefined: sessionStats
+plugins\dsstatusbar\metrics_test.go:20:43: undefined: sessionStats
+plugins\dsstatusbar\metrics_test.go:21:52: undefined: sessionStats
+plugins\dsstatusbar\metrics_test.go:22:41: undefined: sessionStats
+plugins\dsstatusbar\metrics_test.go:23:47: undefined: sessionStats
+plugins\dsstatusbar\metrics_test.go:27:14: undefined: activityText
+plugins\dsstatusbar\metrics_test.go:47:11: undefined: tokenUsage
+plugins\dsstatusbar\metrics_test.go:54:10: undefined: tokenUsage
+plugins\dsstatusbar\metrics_test.go:58:39: undefined: tokenUsage
+plugins\dsstatusbar\metrics_test.go:59:35: undefined: tokenUsage
+plugins\dsstatusbar\metrics_test.go:59:35: too many errors
+FAIL	github.com/MYCF711/dsh-ui/plugins/dsstatusbar [build failed]
+FAIL

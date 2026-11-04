@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
@@ -63,16 +64,19 @@ const (
 	// headerRule 是官方 header 的 `border-bottom:.5px solid border-l3`。
 	headerRule = 0.5
 
-	titleRowHeight    = 30
-	titleClusterGap   = 10
-	crumbsGap         = 4
-	crumbMaxWidth     = 220
-	crumbPadX         = 8
-	crumbPadY         = 4
-	utilitiesGap      = 8
-	utilitiesMarginLX = 20
-	cornerMarginLX    = 8
-	cornerMarginRX    = -16
+	titleRowHeight     = 30
+	activeHeaderHeight = 76
+	tabsHeight         = 25
+	tabsMarginTop      = 10
+	tabsGap            = 20
+	tabRuleHeight      = 2
+	titleClusterGap    = 10
+	crumbsGap          = 4
+	crumbMaxWidth      = 220
+	crumbPadX          = 8
+	crumbPadY          = 4
+	cornerMarginLX     = 8
+	cornerMarginRX     = -16
 )
 
 // Plugin 实现 pluginapi.Plugin / Panels。
@@ -80,19 +84,22 @@ type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
 
-	// headerBoxes 保存本帧关键容器几何，供官方 50/40/10px 高度回归测试使用。
+	// headerBoxes 保存本帧关键容器几何，供官方 76/40/10px 高度回归测试使用。
 	headerBoxes headerBoxes
+	// views 只保存用户明确选择过的会话视图；缺省永远是 chat。
+	views map[string]string
 }
 
 type headerBoxes struct {
-	Root, Body, TitleRow, Corner, Divider flex.Box
+	Root, Body, TitleRow, Tabs, ChatTab, TrajectoryTab, Corner, Divider flex.Box
 }
 
 // ID 实现 pluginapi.Plugin。
 func (*Plugin) ID() string { return "ds-topbar" }
 
-// Provides 实现 pluginapi.Plugin。
-func (*Plugin) Provides() []string { return nil }
+// Provides 实现 pluginapi.Plugin。view store 是两个插件间的最小适配，
+// 不需要改动公共 pluginapi，也不伪装成宿主 Transport 数据。
+func (*Plugin) Provides() []string { return []string{viewapi.ServiceKey} }
 
 // Requires 实现 pluginapi.Plugin。
 func (*Plugin) Requires() []string {
@@ -103,7 +110,30 @@ func (*Plugin) Requires() []string {
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	if p.views == nil {
+		p.views = map[string]string{}
+	}
+	ctx.Provide(viewapi.ServiceKey, p)
 	return nil
+}
+
+// Active 实现 viewapi.Store。未知/空会话不继承其他会话的选择。
+func (p *Plugin) Active(sessionID string) string {
+	if view := p.views[sessionID]; viewapi.Known(view) {
+		return view
+	}
+	return viewapi.Chat
+}
+
+// Select 实现 viewapi.Store。只有两个有真实 painter 的官方视图可选。
+func (p *Plugin) Select(sessionID, view string) {
+	if sessionID == "" || !viewapi.Known(view) {
+		return
+	}
+	if p.views == nil {
+		p.views = map[string]string{}
+	}
+	p.views[sessionID] = view
 }
 
 // Panels 实现 pluginapi.Panels。
@@ -136,7 +166,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 
-	title, cwd, mode := titleOf(env)
+	title, cwd, _ := titleOf(env)
 	hasSession := env.Data.Cur != "" && title != ""
 	active := len(env.Data.Msgs) > 0 || env.Data.Stream != "" || env.Data.Busy
 
@@ -162,15 +192,15 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			return
 		}
 
-		p.headerBoxes.Body = f.Column().WidthPercent(100).
-			PadSides(headerPadTop, headerPadRight, headerPadBottom, headerPadLeft).
+		p.headerBoxes.Body = f.Column().WidthPercent(100).MinHeight(activeHeaderHeight).
+			PadSides(headerPadTop, headerPadRight, 0, headerPadLeft).
 			Children(func() {
 				p.headerBoxes.TitleRow = f.Row().WidthPercent(100).MinHeight(titleRowHeight).
 					Items(flex.Center).Gap(0).Children(func() {
 					p.drawTitleCluster(f, title, cwd)
-					p.drawUtilities(f, env, mode)
 					p.drawCorner(f, env)
 				})
+				p.drawTabs(f, env)
 			})
 
 		// 官方 header 的下划线：`.5px solid border-l3`，横跨整列（含左右内边距）。
@@ -195,29 +225,39 @@ func (p *Plugin) drawTitleCluster(f *flex.Frame, title, cwd string) {
 	})
 }
 
-// drawUtilities 画官方 headerUtilities：只放真实宿主数据，拿不到就整段不出现。
-func (p *Plugin) drawUtilities(f *flex.Frame, env *pluginapi.Env, mode string) {
+// drawTabs 画官方 ViewTabs：只有 chat / trajectory 两个有真实 painter 的页签。
+// 点击只改当前会话的本地 view store，不 OpenSession、不 reload、不 Cancel、不写 draft。
+func (p *Plugin) drawTabs(f *flex.Frame, env *pluginapi.Env) {
+	p.headerBoxes.Tabs = f.Row().WidthPercent(100).Height(tabsHeight).
+		MarginSides(tabsMarginTop, 0, 0, 0).Gap(tabsGap).Children(func() {
+		p.headerBoxes.ChatTab = p.drawTab(f, env, viewapi.Chat, "对话")
+		p.headerBoxes.TrajectoryTab = p.drawTab(f, env, viewapi.Trajectory, "轨迹")
+	})
+}
+
+func (p *Plugin) drawTab(f *flex.Frame, env *pluginapi.Env, view, label string) flex.Box {
 	t := p.theme
-	f.Row().Items(flex.Center).Gap(utilitiesGap).
-		MarginSides(0, 0, 0, utilitiesMarginLX).Children(func() {
-		if mode != "" {
-			f.Text(mode).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
-				Color(t.LabelTertiary).MaxLines(1).Ellipsis()
-		}
-		// 条数：只在真的加载过消息时显示，0 条不显示「共 0 条」。
-		if env.Data.Total > 0 {
-			f.Text("共 " + itoa(env.Data.Total) + " 条").
-				FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
-				Color(t.LabelCaption)
-		}
-		// 宿主 §12 H4/H5：模型名与审批策略。空串 = 不知道 → 整段不画。
-		// 窄列（主列 < 700）放不下这一整行，宁可整段不画也不留半个字在边上。
-		if host := hostLabel(env.Data.Model, env.Data.Permission); host != "" && env.MainWidth >= 700 {
-			f.Text("·").FontSize(t.Fonts.Caption).Color(t.LabelDimmed).Shrink(0)
-			f.Text(host).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
-				Color(t.LabelTertiary).MaxLines(1).Ellipsis()
+	active := p.Active(env.Data.Cur) == view
+	box := f.Column().Height(tabsHeight).
+		Hit(env.Tree.ID(env.Feat, "view-"+view), label).Children(func() {
+		f.Row().Grow(1).Items(flex.Center).Children(func() {
+			text := f.Text(label).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
+				MaxLines(1).Ellipsis()
+			if active {
+				text.Color(t.LabelPrimary).Weight(ui.WeightMedium)
+			} else {
+				text.Color(t.LabelTertiary)
+			}
+		})
+		rule := f.Row().WidthPercent(100).Height(tabRuleHeight)
+		if active {
+			rule.Background(t.BorderL4)
 		}
 	})
+	if box.Clicked() {
+		p.Select(env.Data.Cur, view)
+	}
+	return box
 }
 
 // drawCorner 画官方 headerCorner：最右角的那一个控件（右栏开合）。
@@ -227,19 +267,15 @@ func (p *Plugin) drawCorner(f *flex.Frame, env *pluginapi.Env) {
 		Children(func() {
 			// slot 不存在时开关没有可见效果，必须整颗隐藏；blank Session 也只在
 			// action 与 slot 都真实存在时保留官方 corner 入口。
-			available := env.Act.ToggleRightbar != nil && env.Has != nil && env.Has(pluginapi.SlotRightbar)
+			available := !env.Data.ShowRightbar && env.Act.ToggleRightbar != nil &&
+				env.Has != nil && env.Has(pluginapi.SlotRightbar)
 			if !available {
 				return
 			}
-			label := "打开右侧边栏"
-			if env.Data.ShowRightbar {
-				label = "收起右侧边栏"
-			}
-			// 官方 ExpandButton 是 28px 小按钮 + 15px 面板图标。这里保留开/关
-			// 两个方向，因为当前 ds-rightbar 尚无自己的收起按钮，不能删掉唯一出口。
+			// 官方 ExpandButton 只在收起时出现；展开态由 ds-rightbar 的 PanelChrome 收起。
 			p.headerBoxes.Corner = f.Row().Width(28).Height(28).Radius(t.Radii.SM).
 				Items(flex.Center).Justify(flex.Center).HoverBackground(t.Hover).
-				Hit(env.Tree.ID(env.Feat, "toggle-rightbar"), label).Children(func() {
+				Hit(env.Tree.ID(env.Feat, "toggle-rightbar"), "打开右侧边栏").Children(func() {
 				f.Icon(rightbarPanelIcon).Width(15).Height(15).Color(t.LabelSecondary)
 			})
 			if p.headerBoxes.Corner.Clicked() {
@@ -280,23 +316,6 @@ func (p *Plugin) crumb(f *flex.Frame, text string, current bool) {
 	b.Color(t.LabelTertiary)
 }
 
-// hostLabel 返回顶栏上「宿主给的」那一段文字（§12 H4 模型 / H5 审批策略）。
-//
-// 空串（含只有空白）= 宿主不知道 → 返回空串，这里**绝不**补默认值：
-// 顶栏上写一个看起来专业的假模型名，比空着糟糕得多。
-// permission 是 deny/ask/allow/auto，**不是会话 mode**，所以前面带上"审批"二字，
-// 免得和旁边的 mode 徽标混成一个东西。
-func hostLabel(model, permission string) string {
-	var parts []string
-	if m := strings.TrimSpace(model); m != "" {
-		parts = append(parts, m)
-	}
-	if p := strings.TrimSpace(permission); p != "" {
-		parts = append(parts, "审批 "+p)
-	}
-	return strings.Join(parts, " · ")
-}
-
 // titleOf 从快照里找出当前会话的标题 / cwd / mode。
 //
 // 顺序：会话标题 → cwd 最后一段 → 空串。空串由调用方翻译成「未选择会话」，
@@ -331,29 +350,6 @@ func workspaceOf(cwd string) string {
 		return c
 	}
 	return base
-}
-
-// itoa 避免为一个数字 import strconv；这个包只依赖 flex + 契约。
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var buf [12]byte
-	i := len(buf)
-	for n > 0 && i > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg && i > 0 {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }
 
 var (

@@ -5,7 +5,7 @@
 ## 一句话
 
 `mockd -acp <dshd.exe>` 之后，界面发一条消息会**真的走模型**：
-`session.prompt` → ACP `session/prompt` → 模型 → 流式 chunk → `/api/mux` → 界面。
+`session.prompt` → ACP `session/prompt` → 模型 → 流式 chunk → `/ws` → 界面。
 
 ## 怎么起
 
@@ -71,7 +71,7 @@ dshd: manifest 指定的模块 "subagent" 没有编译进二进制；
 
 修：`runACPPrompt` 的 `defer` 里清（它是唯一的结束点）。
 
-## ACP 与我们的 `/api/mux` 怎么对应
+## ACP 与我们的 `/ws` 怎么对应
 
 | ACP update | mux 帧 |
 |---|---|

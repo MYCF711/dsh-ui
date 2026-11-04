@@ -72,10 +72,15 @@ const (
 	// height:28px、radius sm、padding:0 4px 0 8px、gap:4px、13px、颜色 label-secondary；
 	// 模型 max-width:min(360px,45cqw) 且 font-weight:400，权限 max-width:220px 且 500。
 	// 它们是**两个**组件、两份 CSS，不是同一个 .GRgSLq_select（那条是别的场景）。
-	chipHeight   = 28
-	chipPadLeft  = 8
-	chipPadRight = 8 // 官方的 4px + 12px chevron；我们没有下拉，折成 8
-	chipMaxW     = 220
+	chipHeight       = 28
+	chipPadLeft      = 8
+	chipPadRight     = 8 // 只读态不画 chevron；保留 8px 右侧留白，不画 4+12 的假箭头位
+	chipGap          = 4
+	permissionIconWH = 14
+	permissionChipW  = 220
+	modelChipMaxW    = 360
+	modelCardRatio   = 0.45
+	primaryIconWH    = 16
 	// .GRgSLq_pending{width:8px;height:8px;border-radius:50%}
 	busyDotSize = 8
 
@@ -102,12 +107,19 @@ const (
 )
 
 // Plugin 实现 pluginapi.Plugin / Panels / Fields / KeyHandler。
+type composerControlBoxes struct {
+	Permission flex.Box
+	Model      flex.Box
+	Primary    flex.Box
+}
+
 type Plugin struct {
 	theme *pluginapi.Theme
 	// field 是值类型：用 &p.field 取地址。写成 *flex.Field 又忘了 new，
 	// Fields() 就会返回一个 nil 元素，flex.Fields(...) 里直接 panic（踩过）。
-	prims pluginapi.Primitives
-	field flex.Field
+	prims    pluginapi.Primitives
+	field    flex.Field
+	controls composerControlBoxes // 本帧真实布局矩形，供几何验收；零值矩形 = 控件未画
 
 	// lastData / lastAct 是绘制期快照，按键时要用。
 	// HandleKey 没有 env 参数，只能记住上一帧（与 ds-conversation 同一做法）。
@@ -201,7 +213,7 @@ func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, column float32) {
 			Shadow(ui.ShadowXS).
 			PadSides(cardPadTop, 0, 0, 0).Gap(cardGap).Children(func() {
 			p.drawInput(f, env, w)
-			p.drawControls(f, env)
+			p.drawControls(f, env, w)
 		})
 	})
 }
@@ -275,10 +287,12 @@ func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
 // drawControls 按官方层级画底部控件行：permission 在左 tools；model、activity、
 // primary 依次在右 trailing。命令/附件没有真实 Action，不画加号；model/permission
 // 只有当前真值、没有目录与切换 Action，因此都是只读文本而不是假下拉。
-func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32) {
+	p.controls = composerControlBoxes{}
 	model, permission := hostLabels(env.Data)
 	status := activityLabel(env.Data)
 	running := env.Data.Stream != "" || env.Data.Busy
+	t := p.theme
 	// 官方 `.GRgSLq_primary{transform:translateY(-2px)}`：viva 的 MarginY 不吃负值，
 	// 这里用**同样的视觉位移**实现——行高不变（2+34+6 == 0+34+8），把 2px 从
 	// 上内边距挪到下内边距，发送键就整体上移 2px，底距卡片底 = 6+2 = 8（官方值）。
@@ -287,16 +301,21 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env) {
 		Items(flex.Center).Justify(flex.Between).Gap(cardGap).Children(func() {
 		// 官方 DOM 的左 modes 只有 permission/plan；model 属于右 standardControls。
 		if permission != "" {
-			p.hostChip(f, permission, permissionChipWeight)
+			icon, hasIcon := permissionIconFor(strings.TrimSpace(env.Data.Permission), t.LabelSecondary)
+			p.controls.Permission = p.hostChip(f, permission, permissionChipWeight, permissionChipW, icon, hasIcon)
 		}
 		// 即使左边为空，Spacer 也把右侧 trailing 固定到卡片右缘。
 		f.Spacer()
 		f.Row().Items(flex.Center).Gap(cardGap).Children(func() {
 			if model != "" {
-				p.hostChip(f, model, modelChipWeight)
+				maxW := cardW * modelCardRatio
+				if maxW > modelChipMaxW {
+					maxW = modelChipMaxW
+				}
+				p.controls.Model = p.hostChip(f, model, modelChipWeight, maxW, ui.Icon{}, false)
 			}
 			if status != "" {
-				p.hostChip(f, status, modelChipWeight)
+				p.hostChip(f, status, modelChipWeight, permissionChipW, ui.Icon{}, false)
 			}
 			if running {
 				p.busyDot(f)
@@ -331,14 +350,25 @@ func activityLabel(s pluginapi.Snapshot) string {
 //	                 max-width:220px}
 //
 // **不接点击、不画 chevron、没有 hover 底**：宿主只给了"现在是哪一个"，既没有候选
-// 列表也没有切换动作，画成能点的样子就是骗人（更别说那个下拉箭头）。省下来的
-// chevron 位（12px + 4px 右内边距）折成 8px 的右内边距，见 chipPadRight。
-func (p *Plugin) hostChip(f *flex.Frame, label string, weight float32) {
+// 列表也没有切换动作，画成能点的样子就是骗人（更别说那个下拉箭头）。只有官方
+// ModelSelect 的 catalog + selection mutation 都存在时，才可另实现按钮与 chevron；
+// 当前 pluginapi 没有这两条契约，所以这里始终是只读真值。
+func (p *Plugin) hostChip(f *flex.Frame, label string, weight, maxW float32, icon ui.Icon, hasIcon bool) flex.Box {
 	t := p.theme
-	f.Row().Height(chipHeight).Radius(t.Radii.SM).PadSides(0, chipPadRight, 0, chipPadLeft).
-		Items(flex.Center).Children(func() {
-		f.Row().MaxWidth(chipMaxW - chipPadLeft - chipPadRight).Children(func() {
-			f.Text(label).FontSize(t.Fonts.Secondary).Weight(weight).
+	textMax := maxW - chipPadLeft - chipPadRight
+	if hasIcon {
+		textMax -= permissionIconWH + chipGap
+	}
+	if textMax < 0 {
+		textMax = 0
+	}
+	return f.Row().Height(chipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
+		PadSides(0, chipPadRight, 0, chipPadLeft).Items(flex.Center).Gap(chipGap).Children(func() {
+		if hasIcon {
+			f.Icon(icon).Size(permissionIconWH, permissionIconWH).Color(t.LabelSecondary)
+		}
+		f.Row().MaxWidth(textMax).Children(func() {
+			f.Text(label).FontSize(t.Fonts.Secondary).LineHeight(20).Weight(weight).
 				Color(t.LabelSecondary).Ellipsis()
 		})
 	})
@@ -359,25 +389,43 @@ func (p *Plugin) busyDot(f *flex.Frame) {
 // 官方 fill = --dsw-alias-button-info-fill = deepseek-400/500，正好是主题里的 Info
 // （深色 deepseek-400、浅色 deepseek-500，逐档一致）；前景色官方写死 #fff，
 // 我们没有 "on-info" 令牌，取对比度最高的那一档，见 onInfo()。
+// 图标是官方 16 viewBox 的填充路径，不再依赖 ↑/■ 的字体字形。
 func (p *Plugin) sendButton(f *flex.Frame, env *pluginapi.Env, running bool) {
 	t := p.theme
 	id := env.Tree.ID(env.Feat, "send")
-	glyph, size, label := "↑", float32(14), "发送"
+	icon, label := primarySendIcon, "发送"
+	disabled := strings.TrimSpace(p.field.Text()) == "" || env.Act.Send == nil
 	if running {
 		id = env.Tree.ID(env.Feat, "stop")
-		glyph, size, label = "■", float32(10), "停止"
+		icon, label = primaryStopIcon, "停止"
+		disabled = env.Act.Cancel == nil
 	}
-	clicked := f.Row().Size(sendSize, sendSize).Radius(ui.RadiusFull).Background(t.Info).
-		Items(flex.Center).Justify(flex.Center).MarginY(-sendLift).
-		HoverBackground(t.Info).Hit(id, label).Children(func() {
-		f.Text(glyph).FontSize(size).Color(onInfo(t))
+	fill, foreground := t.Info, onInfo(t)
+	if disabled {
+		// .GRgSLq_primary:disabled{opacity:.4}；底色和矢量一起降 alpha。
+		fill.Alpha *= 0.4
+		foreground.Alpha *= 0.4
+	}
+	button := f.Row().Size(sendSize, sendSize).Radius(ui.RadiusFull).Background(fill).
+		Items(flex.Center).Justify(flex.Center).MarginY(-sendLift)
+	if !disabled {
+		button = button.HoverBackground(t.Info)
+	}
+	p.controls.Primary = button
+	clicked := button.HitWith(id, label, ui.HitOptions{
+		Role: ui.RoleButton, Disabled: disabled,
+		// 官方 onMouseDown=keepDraftFocus；鼠标动作不抢编辑器/IME 焦点。
+		// 键盘仍走输入框 Enter 发送、Esc 停止，审批按钮保持自己的焦点语义。
+		SkipFocus: true,
+	}).Children(func() {
+		f.Icon(icon).Size(primaryIconWH, primaryIconWH).Color(foreground)
 	}).Clicked()
-	if clicked {
+	if clicked && !disabled {
 		p.clickSend(env, running)
 	}
 }
 
-// clickSend 是发送键的唯一出口：真发（Send）或真停（Cancel）。动作没接就什么都不做。
+// clickSend 是发送键的唯一出口：真发（Send）或真停（Cancel）。动作没接就返回 false。
 func (p *Plugin) clickSend(env *pluginapi.Env, running bool) bool {
 	if running {
 		if env.Act.Cancel == nil {
@@ -386,22 +434,20 @@ func (p *Plugin) clickSend(env *pluginapi.Env, running bool) bool {
 		env.Act.Cancel()
 		return true
 	}
-	p.submit(env)
-	return true
+	return p.submit(env)
 }
 
 // submit 把非空文本交给壳，然后清空自己。
 //
-// 空文本不提交：让壳去判空等于把"没说话也发了一条"的风险留给上游。
-func (p *Plugin) submit(env *pluginapi.Env) {
+// 空文本不提交；Send 没接时既不调动作也不清草稿，避免一次无效点击把输入弄丢。
+func (p *Plugin) submit(env *pluginapi.Env) bool {
 	text := strings.TrimSpace(p.field.Text())
-	if text == "" {
-		return
+	if text == "" || env.Act.Send == nil {
+		return false
 	}
-	if env.Act.Send != nil {
-		env.Act.Send(text)
-	}
+	env.Act.Send(text)
 	p.field.SetText("")
+	return true
 }
 
 // composerColumn 取本帧主列宽度；审批与输入卡必须共用同一个官方 column 语义。
@@ -439,13 +485,30 @@ func cardWidth(column float32) float32 {
 
 // hostLabels 把宿主真值翻成两枚标签的文字。空串 = 宿主没说 = 这一枚不画。
 //
-// 不做任何"猜"：不拿会话 Mode 冒充权限、不给未知模型补默认名。
-// 权限前面加"审批"两个字，是为了让裸值（ask / deny / allow / auto）读得懂——
-// 顶栏用的是同一个措辞（plugins/dstopbar 的 hostLabel）。
+// 官方 preset 的中文产品名逐字来自 permission-presets/locales。当前宿主 H5 给的
+// 却是进程 policy（deny/ask/allow/auto），不是 preset：allow 表示审批闸全部自动放行，
+// 对应官方“完全权限”的可读文案；ask/deny 没有官方 preset 等价物，因此使用明确的
+// 审批语义“逐次询问/全部拒绝”，不把它们冒充“工作区内修改/仅可查看”。
+// host auto 是“终端询问、非终端拒绝”（cmd/dshd makeAskFunc），不是官方 auto-review，
+// 因而写“自动审批”，不写“自动审查”。未知非空值原样只读，不拿 Mode 顶替。
 func hostLabels(s pluginapi.Snapshot) (model, permission string) {
 	model = strings.TrimSpace(s.Model)
-	if p := strings.TrimSpace(s.Permission); p != "" {
-		permission = "审批 " + p
+	switch value := strings.TrimSpace(s.Permission); value {
+	case "":
+	case "read-only":
+		permission = "仅可查看"
+	case "workspace-write":
+		permission = "工作区内修改"
+	case "danger-full-access", "allow":
+		permission = "完全权限"
+	case "ask":
+		permission = "逐次询问"
+	case "deny":
+		permission = "全部拒绝"
+	case "auto":
+		permission = "自动审批"
+	default:
+		permission = value
 	}
 	return model, permission
 }

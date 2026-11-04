@@ -114,7 +114,8 @@ func TestComposerCardMatchesOfficialGeometry(t *testing.T) {
 
 func TestPrimaryButtonMatchesOfficialSizeAndColor(t *testing.T) {
 	p := &Plugin{}
-	canvas := renderComposer(t, p, pluginapi.Snapshot{}, pluginapi.Actions{}, 902, 1182, "")
+	p.field.SetText("draft")
+	canvas := renderComposer(t, p, pluginapi.Snapshot{}, pluginapi.Actions{Send: func(string) {}}, 902, 1182, "")
 	primary, ok := largestSurface(canvas, p.theme.Info)
 	if !ok {
 		t.Fatal("发送键应使用官方 button-info-fill 对应的 theme.Info")
@@ -129,32 +130,36 @@ func TestPrimaryButtonMatchesOfficialSizeAndColor(t *testing.T) {
 
 func TestComposerShowsHostTruthInOfficialSeats(t *testing.T) {
 	p := &Plugin{}
+	p.field.SetText("draft")
 	data := pluginapi.Snapshot{Model: "deepseek-v4-pro", Permission: "ask", Status: "已连接"}
-	canvas := renderComposer(t, p, data, pluginapi.Actions{}, 902, 1182, "")
+	canvas := renderComposer(t, p, data, pluginapi.Actions{Send: func(string) {}}, 902, 1182, "")
 	var values []string
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)
 	}
 	joined := strings.Join(values, "\n")
-	for _, want := range []string{"deepseek-v4-pro", "ask", "已连接"} {
+	for _, want := range []string{"deepseek-v4-pro", "逐次询问", "已连接"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("composer 没显示宿主真值 %q；实际文本：%q", want, joined)
 		}
 	}
 	// 官方控件层级：permission 在左 tools；model、activity、primary 依次在右 trailing。
-	var modelX, permissionX, statusX, primaryX float32 = -1, -1, -1, -1
+	var modelX, permissionX, statusX float32 = -1, -1, -1
 	for _, text := range canvas.Texts() {
 		switch text.Value {
 		case "deepseek-v4-pro":
 			modelX = text.Bounds.X
-		case "审批 ask":
+		case "逐次询问":
 			permissionX = text.Bounds.X
 		case "已连接":
 			statusX = text.Bounds.X
-		case "↑":
-			primaryX = text.Bounds.X
 		}
 	}
+	primary, ok := largestSurface(canvas, p.theme.Info)
+	if !ok {
+		t.Fatal("找不到 34px 主按钮")
+	}
+	primaryX := primary.Bounds.X
 	if !(permissionX >= 0 && permissionX < modelX && modelX < statusX && statusX < primaryX) {
 		t.Errorf("控件顺序应为 permission < model < status < primary；x=%v/%v/%v/%v",
 			permissionX, modelX, statusX, primaryX)

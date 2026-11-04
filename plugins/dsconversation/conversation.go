@@ -40,6 +40,7 @@ const markdownBudget = 30
 // mdSlot 是「先占位、布局后再画」的一个槽。
 type mdSlot struct {
 	idx int
+	key string
 	box flex.Box
 }
 
@@ -70,15 +71,29 @@ type Plugin struct {
 	// bodyBox 是消息流滚动区的盒子：AfterDraw 覆画 Markdown 时，
 	// 裁剪区必须用它（视口矩形），不能用 env.Bounds（那是整窗——
 	// 会把消息画到顶栏/输入区上面去）。
-	bodyBox flex.Box
+	bodyBox   flex.Box
+	bodyRect  ui.Rect
+	bodyReady bool
+	// turnBoxes 仅属于本帧；turnAnchors 是 AfterDraw 提取的上一帧矩形值，
+	// 不把失效的 flex.Box 带到下一帧。
+	turnBoxes   map[string]flex.Box
+	turnAnchors map[string]ui.Rect
 	// collapsedOnce 记录调试开关下被用户手动收起过的，避免压不住点击。
-	collapsedOnce map[int]bool
+	collapsedOnce map[string]bool
 	// lastAct / lastMsgs / lastApproval 是绘制期快照，按键时要用。
 	lastAct  pluginapi.Actions
 	lastMsgs []apiclient.Message
-	// expanded 记录哪些思考块被展开（键是消息 seq，切会话后依然有效）。
+	// expanded 记录哪些思考块被展开（键是 MessageKey，状态不跨会话串用）。
 	// 缺省全收起：真实语料里思考比正文多八倍，默认展开会把消息流淹没。
-	expanded map[int]bool
+	expanded map[string]bool
+	// codeBlocks / fileLinks 与 Markdown 缓存同下标。代码块保留自己的 wrap/横滚
+	// 状态；文件链接只来自显式 file: Markdown destination 的映射。
+	codeBlocks map[int][]messageCode
+	fileLinks  map[int]map[string]string
+	// toolKeys 把 MessageKey 适配到 dstool.Service 当前的 int 局部键。
+	// 这只改变渲染状态编号，Renderer 分派与工具数据仍由原 service 负责。
+	toolKeys    map[string]int
+	nextToolKey int
 	// SearchOpen / SearchQuery 是调试开关：启动就带着搜索词打开（截搜索态用）。
 	SearchOpen  bool
 	SearchQuery string
@@ -190,13 +205,23 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	msgs := env.Data.Msgs
 	p.slots = p.slots[:0]
+	p.bodyReady = false
 	p.lastAct = env.Act
 	p.lastMsgs = env.Data.Msgs
 	if p.expanded == nil {
-		p.expanded = map[int]bool{}
+		p.expanded = map[string]bool{}
 	}
 	if p.collapsedOnce == nil {
-		p.collapsedOnce = map[int]bool{}
+		p.collapsedOnce = map[string]bool{}
+	}
+	if p.codeBlocks == nil {
+		p.codeBlocks = map[int][]messageCode{}
+	}
+	if p.fileLinks == nil {
+		p.fileLinks = map[int]map[string]string{}
+	}
+	if p.toolKeys == nil {
+		p.toolKeys = map[string]int{}
 	}
 	if !p.initialized {
 		p.initialized = true
@@ -206,7 +231,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		}
 	}
 
-	if len(msgs) == 0 && env.Data.Stream == "" && !env.Data.Busy {
+	if len(msgs) == 0 && env.Data.Stream == "" && !env.Data.Busy && len(env.Data.Outgoing) == 0 && len(env.Data.TurnEvents) == 0 {
 		// 官方首屏（HeroShell）：没有会话 / 会话为空时，主区正中是
 		// 「鲸鱼标记 + 探索未至之境 + 预览版」。见 hero.go。
 		// Busy 也属于真实活动：已发送、正文尚未到达时不能退回欢迎区。
@@ -237,7 +262,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	if p.searchOn {
 		p.drawSearchBar(f, env)
 	}
-	if len(vis) == 0 {
+	if len(vis) == 0 && len(msgs) > 0 {
 		f.Row().FillWidth().Pad(16).Children(func() {
 			f.Text("没有匹配「" + p.searchField.Text() + "」的消息").
 				FontSize(t.Fonts.Secondary).Color(t.LabelCaption)
@@ -247,11 +272,36 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 
 	// 每个会话一个滚动 id：否则切会话时滚动位置会串（viva flex/scroll.go:174）。
 	scrID := env.Tree.ID(env.Feat, "msgs-"+env.Data.Cur)
+	var scrollState *flex.ScrollState
+	if env.Scroll != nil {
+		scrollState = env.Scroll(scrID)
+	}
+
+	// Turn 导航只从当前已加载且带真实身份的消息段生成；搜索态不把过滤后的
+	// 局部内容冒充完整 Turn。锚点来自上一帧真实布局，未加载历史没有入口。
+	var turns []loadedTurn
+	if q == "" {
+		turns = buildLoadedTurns(env.Data, vis)
+	}
+	p.drawTurnNavigation(f, env, scrID, turns)
+	p.turnBoxes = map[string]flex.Box{}
+	starts := map[int]loadedTurn{}
+	ends := map[int]loadedTurn{}
+	for _, turn := range turns {
+		starts[turn.start] = turn
+		ends[turn.end] = turn
+	}
+
 	// 内容列必须**显式给宽度**：ScrollArea 里用 FillWidth 时宽度算不出来，
 	// 元素会被推到父容器外面（踩过两次：一次是消息画到侧栏上，一次是现在这样）。
 	// 用百分比而不是像素：像素得先知道列宽，而槽位里拿不到。
 	p.bodyBox = f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip().Children(func() {
 		f.Column().WidthPercent(100).Gap(6).Children(func() {
+			if env.Data.Truncated {
+				f.Row().WidthPercent(100).Pad(8).Children(func() {
+					f.Text("更早内容未加载 · loadOlder 未提供").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+				})
+			}
 			p.drawStreaming(f, env)
 
 			// 视口虚拟化：先算每条的估算高度和累计位置，视口外的只放 Slot
@@ -261,16 +311,14 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			offs := make([]float32, len(vis))
 			var acc float32
 			for k, i := range vis {
-				heights[k] = p.estimateMsgHeight(msgs[i], w0)
+				heights[k] = p.estimateMsgHeight(msgs[i], w0, messageRenderKey(env, msgs[i], i))
 				offs[k] = acc
 				acc += heights[k] + 6
 			}
 
 			var vpOffset, vpHeight float32
-			if env.Scroll != nil {
-				if st := env.Scroll(scrID); st != nil {
-					vpOffset = st.Offset
-				}
+			if scrollState != nil {
+				vpOffset = scrollState.Offset
 			}
 			vpHeight = f.Bounds().Height - 220
 			if vpHeight < 240 {
@@ -279,14 +327,34 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			const overscan = 800.0
 
 			for k, i := range vis {
+				if turn, ok := starts[i]; ok {
+					p.drawTurnHeader(f, env, turn)
+				}
 				if offs[k]+heights[k] < vpOffset-overscan || offs[k] > vpOffset+vpHeight+overscan {
 					f.Slot().Height(heights[k])
-					continue
+				} else {
+					p.drawMessage(f, env, i, width)
 				}
-				p.drawMessage(f, env, i, width)
+				if turn, ok := ends[i]; ok {
+					p.drawTurnFooter(f, env, turn)
+				}
 			}
+			p.drawTurnEvents(f, env)
+			p.drawOutgoing(f, env)
 		})
 	})
+
+	p.bodyReady = true
+	// Follow(true) 只在用户明确位于底部时跟随；用户回看后新帧不会改写 Offset。
+	// 回底入口只在确有内容且当前非底部时出现，点击才显式恢复 Follow。
+	hasContent := len(msgs) > 0 || env.Data.Stream != "" || len(env.Data.Outgoing) > 0 || len(env.Data.TurnEvents) > 0
+	if hasContent && scrollState != nil && !scrollState.AtEnd() {
+		f.Row().WidthPercent(100).Justify(flex.End).PadY(2).Children(func() {
+			if f.Button(env.Tree.ID(env.Feat, "return-bottom-"+env.Data.Cur), "回到底部").Small().Clicked() {
+				scrollState.ScrollToEnd()
+			}
+		})
+	}
 }
 
 // drawStreaming 画「正在流式输出」的那一条。
@@ -310,7 +378,7 @@ func (p *Plugin) drawStreaming(f *flex.Frame, env *pluginapi.Env) {
 			f.Text("助手").FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
 			f.Spinner()
 		})
-		p.slots = append(p.slots, mdSlot{idx: streamIndex, box: f.Slot().Height(h)})
+		p.slots = append(p.slots, mdSlot{idx: streamIndex, key: env.Data.Cur + "\x00stream", box: f.Slot().Height(h)})
 	})
 }
 
@@ -351,13 +419,16 @@ func roleKind(role string) msgKind {
 func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width float32) {
 	t := p.theme
 	msg := env.Data.Msgs[i]
+	key := messageRenderKey(env, msg, i)
 
 	switch roleKind(msg.Role) {
 	case kindThinking:
-		p.drawThinking(f, env, msg)
+		p.drawThinking(f, env, msg, key)
+		p.drawMessageMeta(f, env, msg, key)
 
 	case kindTool:
-		p.drawTool(f, env, msg)
+		p.drawTool(f, env, msg, key)
+		p.drawMessageMeta(f, env, msg, key)
 
 	case kindUser:
 		// 用户消息：右对齐气泡（官方 .LOmM4q_userStack：
@@ -371,6 +442,7 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 				f.Wrap(msg.Text).FontSize(t.Fonts.Body)
 			})
 		})
+		p.drawMessageMeta(f, env, msg, key)
 
 	default:
 		// 助手消息：平铺，老消息降级成纯文本（LOD）。
@@ -378,12 +450,14 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 			f.Column().WidthPercent(100).Children(func() {
 				f.Wrap(msg.Text).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
 			})
+			p.drawMessageMeta(f, env, msg, key)
 			return
 		}
 		w := width - 40
 		h := p.layoutMarkdown(env.Canvas, i, msg.Text, w)
-		p.slots = append(p.slots, mdSlot{idx: i, box: f.Slot().Height(h)})
-		p.drawActions(f, env, msg, i, i == len(env.Data.Msgs)-1)
+		p.slots = append(p.slots, mdSlot{idx: i, key: key, box: f.Slot().Height(h)})
+		p.drawActions(f, env, msg, i, i == len(env.Data.Msgs)-1, key)
+		p.drawMessageMeta(f, env, msg, key)
 	}
 }
 
@@ -393,7 +467,7 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 // 只在"有正文的助手消息"下面画，而且是 Ghost 小按钮——它不该抢正文的注意力。
 //
 // index 是这条消息在当前消息列表里的下标：反馈记录按它归属（见 feedback.go）。
-func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, index int, last bool) {
+func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, index int, last bool, key string) {
 	t := p.theme
 	if strings.TrimSpace(msg.Text) == "" {
 		return
@@ -406,14 +480,14 @@ func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Me
 		marginTop = 16
 	}
 	f.Row().WidthPercent(100).Items(flex.Center).MarginSides(marginTop, 0, 0, -6).Children(func() {
-		if env.Act.Copy != nil && f.Button(env.Tree.ID(env.Feat, "copy-"+itoa(msg.Seq)), "复制").
+		if env.Act.Copy != nil && f.Button(env.Tree.ID(env.Feat, "copy-"+key), "复制").
 			Ghost().Small().Clicked() {
 			env.Act.Copy(text)
 		}
 		// 👍/👎 夹在「复制」和「重试」之间——官方图标动作行的次序就是
 		// copy → feedback → branch，这里照摆。
 		p.drawFeedback(f, env, index)
-		if last && env.Act.Retry != nil && f.Button(env.Tree.ID(env.Feat, "retry-"+itoa(msg.Seq)), "重试").
+		if last && env.Act.Retry != nil && f.Button(env.Tree.ID(env.Feat, "retry-"+key), "重试").
 			Ghost().Small().Clicked() {
 			env.Act.Retry()
 		}
@@ -425,9 +499,9 @@ func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Me
 //
 // 官方也是这个交互（折叠的思考），但官方把它做得更轻：一行灰字 + 一个小箭头。
 // 这里保持同样的克制——收起时只占一行，不抢正文的注意力。
-func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message) {
+func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, key string) {
 	t := p.theme
-	open := p.expanded[msg.Seq] || (p.ExpandAllThinking && !p.collapsedOnce[msg.Seq])
+	open := p.expanded[key] || (p.ExpandAllThinking && !p.collapsedOnce[key])
 
 	arrow := "▸"
 	if open {
@@ -439,16 +513,16 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 	// 标题 13px。高度用 MinHeight + PadY 撑，不用 Height(x).Shrink(0)——那会塌成 0 高。
 	if f.Row().WidthPercent(100).MinHeight(24).PadX(4).Radius(t.Radii.SM).
 		Items(flex.Center).Gap(6).HoverBackground(t.Hover).
-		Hit(env.Tree.ID(env.Feat, "think-"+itoa(msg.Seq)), "").Children(func() {
+		Hit(env.Tree.ID(env.Feat, "think-"+key), "").Children(func() {
 		// 左侧 16px 展开位（和工具行同一个位置，视线不用跳）
 		f.Row().Width(16).Items(flex.Center).Children(func() {
 			f.Text(arrow).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		})
 		f.Text(label).FontSize(t.Fonts.Secondary).Color(t.LabelCaption).Ellipsis()
 	}).Clicked() {
-		p.expanded[msg.Seq] = !open
+		p.expanded[key] = !open
 		if p.ExpandAllThinking {
-			p.collapsedOnce[msg.Seq] = open
+			p.collapsedOnce[key] = open
 		}
 	}
 
@@ -502,9 +576,11 @@ func itoa(n int) string {
 //
 // 这个切分是这一轮的重点：改某一种工具的长相，不用碰消息流一行代码
 // （也不用再跑一遍消息流的截图）。
-func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message) {
+func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, key string) {
 	p.toolCards().Render(f, env, dstool.Card{
-		Seq:     msg.Seq,
+		// dstool 当前以 int 作为内部展开键；MessageKey 在本插件内映射成
+		// 唯一的会话局部 int，避免 Seq=0 或跨会话同 Seq 共用状态。
+		Seq:     p.toolRenderID(key),
 		Tool:    msg.Tool,
 		Args:    msg.Args,
 		Summary: msg.Summary,
@@ -533,6 +609,12 @@ func (p *Plugin) toolCards() dstool.Service {
 //
 // MarkdownView.Layout 很贵：只有文本或宽度变了才重排。
 func (p *Plugin) layoutMarkdown(canvas *ui.Canvas, i int, text string, width float32) float32 {
+	if p.codeBlocks == nil {
+		p.codeBlocks = map[int][]messageCode{}
+	}
+	if p.fileLinks == nil {
+		p.fileLinks = map[int]map[string]string{}
+	}
 	for len(p.docs) <= i {
 		p.docs = append(p.docs, markdown.Document{})
 		p.views = append(p.views, components.MarkdownView{})
@@ -543,20 +625,32 @@ func (p *Plugin) layoutMarkdown(canvas *ui.Canvas, i int, text string, width flo
 	if p.texts[i] != text || p.widths[i] != width {
 		p.texts[i] = text
 		p.widths[i] = width
-		p.docs[i].Parse(text)
-		p.heights[i] = p.views[i].Layout(canvas, components.MarkdownStyle{
+		rewritten, files := rewriteExplicitFileLinks(text)
+		p.fileLinks[i] = files
+		p.docs[i].Parse(rewritten)
+		p.views[i].Layout(canvas, components.MarkdownStyle{
 			Size: p.theme.Fonts.Body, Highlight: mdlite.Highlight,
 		}, &p.docs[i], width)
 	}
+	p.rebuildCodeBlocks(canvas, i, width)
+	p.heights[i] = p.views[i].Height() + p.markdownExtraHeight(i)
 	return p.heights[i]
 }
 
 // afterDraw 是覆画阶段：把排好版的 Markdown 画到占位上。
 func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
+	// 只把布局后的矩形值交给下一帧 Turn 导航；flex.Box 自身随 Frame 复用，
+	// 跨帧保存会在下一帧索引到错误节点。
+	if p.bodyReady {
+		p.bodyRect = p.bodyBox.Rect()
+	}
+	p.turnAnchors = make(map[string]ui.Rect, len(p.turnBoxes))
+	for key, box := range p.turnBoxes {
+		p.turnAnchors[key] = box.Rect()
+	}
 	if len(p.slots) == 0 {
 		return
 	}
-	look := p.markdownLook()
 	bounds := env.Bounds
 	// 裁剪区必须是**消息流滚动区自己的视口**，不能用 env.Bounds（整窗）。
 	// 踩过的坑：ScrollArea 里 slot 的 Y 是屏幕坐标（滚出去就是负数），
@@ -582,15 +676,7 @@ func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
 			clip.X, clip.Y = r.X, bounds.Y
 			clip.Width, clip.Height = bounds.Width-r.X-24, bounds.Height
 		}
-		p.views[slot.idx].Paint(canvas, components.MarkdownPaint{
-			Look: look,
-			X:    r.X,
-			Y:    r.Y,
-			// 裁剪右边界用**消息区视口**的右边，不是窗口右边：用整窗的话
-			// 宽表格/宽代码会横穿右栏（实测 1180 宽时表格直接画到「轨迹」上面）。
-			// 留 24px 给滚动条，否则会看见贴边碎片。
-			Clip: clip,
-		})
+		p.paintMarkdown(canvas, env, slot, r, clip)
 	}
 }
 
@@ -616,14 +702,14 @@ func (p *Plugin) markdownLook() components.MarkdownLook {
 // estimateMsgHeight 估算一条消息占多高（只看字符数与换行，不排版）。
 //
 // 估算偏大不会错位，偏小会让滚动跳——所以宁可大一点。
-func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32) float32 {
+func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32, key string) float32 {
 	const lineH = 22.0
 	const gapPad = 28.0
 	if width < 120 {
 		width = 120
 	}
 	if m.Role == "thinking" {
-		open := p.expanded[m.Seq] || (p.ExpandAllThinking && !p.collapsedOnce[m.Seq])
+		open := p.expanded[key] || (p.ExpandAllThinking && !p.collapsedOnce[key])
 		if !open {
 			return 26 // 收起时只占一行
 		}
@@ -646,7 +732,7 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32) float32 {
 	}
 	if m.Role == "tool" {
 		// 工具卡占多高由 ds-tool 自己说了算：它知道这种工具展开后画几行。
-		return p.toolCards().Height(m.Seq, m.View)
+		return p.toolCards().Height(p.toolRenderID(key), m.View)
 	}
 	perLine := float64(width) / (14 * 0.62)
 	if perLine < 8 {

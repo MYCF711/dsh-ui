@@ -41,6 +41,16 @@ import (
 //	.GAkraW_searchExpanded{height:30px}            ← searchHeight
 //	.wtg9ga_root{--dsh-sidebar-inline-padding:12px} ← sidebarInline
 //	--dsh-workspace-indent: depth * 12px           ← indentStep
+//
+// 搜索结果卡（官方 `Rows.module.css`，类名前缀 `wnFoaW`；只有搜索态才用）：
+//
+//	.wnFoaW_searchResultRow{…;min-height:48px;flex-direction:column;padding:4px 8px} ← searchResultHeight
+//	.wnFoaW_searchResultTitle{…;margin-left:4px;font-size:14px;line-height:20px}    ← searchTitleLineHeight
+//	.wnFoaW_searchResultMeta{…;gap:6px;margin-left:20px}                            ← searchMetaMarginLeft/Gap
+//	.wnFoaW_searchResultWorkspace{font-size:12px;line-height:17px;max-width:40%}    ← searchMetaLineHeight/Percent
+//	.wnFoaW_searchResultSnippet{font-size:12px;line-height:17px;flex:1}             ← 同上
+//	.GAkraW_searchTree>[role=treeitem]+[role=treeitem]{margin-top:2px}              ← rowGap（复用）
+//	.GAkraW_empty{padding:16px 12px;font-size:13px}                                 ← emptyStatePadY/X
 const (
 	sessionRowHeight  = 32
 	groupRowHeight    = 34
@@ -56,6 +66,26 @@ const (
 	searchHeight      = 30
 	sidebarInline     = 12
 	indentStep        = 12
+
+	// 官方 searchResultRow 那一档。
+	searchResultHeight    = 48
+	searchTitleLineHeight = 20
+	searchMetaLineHeight  = 17
+	searchMetaMarginLeft  = 20
+	searchMetaGap         = 6
+	searchWorkspaceMaxPct = 40
+	emptyStatePadX        = 12
+	emptyStatePadY        = 16
+)
+
+// 官方兜底文案（`dsh-client-ui-workspace` 的 zh 字典原文）。
+//
+// 卡片上的空值**必须**用这两条，而不是我们分组态那套自造词：官方 JSX 写死了
+// `result.title || t("session.untitled")` 与 `result.workspace || t("group.ungrouped")`。
+const (
+	officialUntitled    = "未命名"   // t("session.untitled")
+	officialUngrouped   = "未分组"   // t("group.ungrouped")
+	officialSearchEmpty = "无匹配会话" // t("search.noMatches")
 )
 
 // 两个调试 flag 注册在**本插件**里，不在 cmd/app：
@@ -76,7 +106,12 @@ type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
 
-	search flex.Field
+	search         flex.Field
+	searchExpanded bool
+	frameBoxes     frameBoxes
+	activePanel    string
+	// extensionRoutes 只接收当前实际存在、带 Draw 的扩展面板；主题鱼/压缩没有硬编码入口。
+	extensionRoutes []panelRoute
 	// lastOrder / lastCur / act 是绘制期留下的快照，按键时要用：
 	// "下一个会话"是哪个只有分组和过滤之后才知道，壳不该替它算。
 	lastOrder []string
@@ -122,6 +157,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	// 覆盖用户正在敲的内容（否则搜索框永远只能显示这一个词）。
 	if *flagFilter != "" {
 		p.search.SetText(*flagFilter)
+		p.searchExpanded = true
 	}
 	p.debug = *flagDebug
 	p.width = 280 // 官方 cols.sidebar = 280（不含分隔线）
@@ -134,54 +170,14 @@ func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.search} }
 // Width 返回侧栏占的宽度。
 func (p *Plugin) Width() float32 { return p.width }
 
-// Panels 实现 pluginapi.Panels：头部、列表两块。
+// Panels 实现 pluginapi.Panels：品牌/导航、工作区列表、footer 与真实主区路由。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{ID: "header", Slot: pluginapi.SlotSidebarHeader, Order: 10, Draw: p.drawHeader},
-		{ID: "list", Slot: pluginapi.SlotSidebarList, Order: 20, Draw: p.drawList},
+		{ID: "list", Slot: pluginapi.SlotSidebarList, Order: 20, Draw: p.drawWorkspace},
 		{ID: "footer", Slot: pluginapi.SlotSidebarFooter, Order: 30, Draw: p.drawFooter},
+		{ID: "active-panel", Slot: pluginapi.SlotShellOverlay, Order: 50, Draw: p.drawActivePanel},
 	}
-}
-
-// drawHeader 画「新会话 + 搜索」。
-//
-// 搜索框几何照官方会话浏览器的**展开态**（`WorkspaceBrowser.module.css`）：
-//
-//	.GAkraW_searchExpanded{border:.5px solid var(--dsw-alias-border-l4);
-//	  border-radius:var(--dsw-radius-md);width:calc(100% + 4px);height:30px;
-//	  color:var(--dsw-alias-label-caption);background:0 0;margin-inline:-2px;
-//	  padding:0 4px 0 0}
-//	.GAkraW_searchInput{font-size:13px;line-height:18px;
-//	  color:var(--dsw-alias-label-primary)}
-//	.GAkraW_searchInput::placeholder{color:var(--dsw-alias-label-tertiary)}
-//
-// 原来是 viva 的 `.Small()`（28px 高、无描边），和官方不是一回事。
-//
-// 宽度 `calc(100% + 4px)` + `margin-inline:-2px` 也要照抄：官方这个框比内容列
-// **左右各宽 2px**，所以它的左右边缘和下面的会话行（行宽 = 侧栏内宽 + 12）
-// 不是同一根线——不抄的话搜索框会比官方窄 4px，肉眼看不出来，但按图量就对不上。
-func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
-	t := p.theme
-	f.Row().FillWidth().Height(38).Items(flex.Center).Gap(8).Children(func() {
-		if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "new"), "+", false) {
-			if env.Act.NewSession != nil {
-				env.Act.NewSession()
-			}
-		}
-		f.Spacer()
-		if f.Button(env.Tree.ID(env.Feat, "collapse"), "全部收起").Small().Ghost().Clicked() {
-			// 一键收起/展开所有分组。必须用**独立**的 allCollapsed 开关：
-			// 早先是 for k := range p.collapsed { 翻转 }，只翻已经点过的组，
-			// 一个都没点过时按下去什么都不会发生（等于死按钮）。
-			p.toggleAll()
-		}
-	})
-	// 搜索框宽 = 侧栏内宽 256 + 4 = 260（官方 width:calc(100% + 4px)）。
-	inner := p.width - 2*sidebarInline
-	f.Field(&p.search, env.Tree.ID(env.Feat, "search"), "搜索", "过滤会话…").
-		Width(inner+4).Height(searchHeight).Radius(t.Radii.MD).Border(0.5, t.BorderL4).
-		MarginSides(0, -2, 0, -2).
-		FontSize(t.Fonts.Secondary)
 }
 
 // drawFooter 画左栏底部那一行：会话总数 + 连接状态。
@@ -210,10 +206,16 @@ func (p *Plugin) drawFooter(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
-// drawList 画分好组的会话列表。
+// drawList 画会话列表：有过滤词走**搜索结果卡**，没有才走分组树。
 func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
-	t := p.theme
 	q := normalizeQuery(p.search.Text())
+	if q != "" {
+		// 官方搜索态是另一棵平铺的树（`SearchResults` + `searchResultRow`），
+		// 不是"分组列表里少了几行"：所以这里整个换掉绘制路径，连分组头都不画。
+		p.drawSearch(f, env, q)
+		return
+	}
+	t := p.theme
 
 	groups, order := groupByWorkspace(env.Data.Sessions, q)
 	p.known = append(p.known[:0], order...)
@@ -247,11 +249,9 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 		// （official-specs §6 遗留第 2 条）。
 		f.Column().Width(inner).Gap(0).PadSides(0, 0, listBottomPadding, 0).Children(func() {
 			if len(order) == 0 {
-				msg := "没有会话"
-				if q != "" {
-					msg = "没有匹配的会话"
-				}
-				f.Text(msg).FontSize(t.Fonts.Caption).Color(t.LabelCaption).Pad(8)
+				// 走到这里只可能是"宿主一个会话都没有"：有过滤词时上面已经分流到
+				// 搜索结果卡（那条路有官方的「无匹配会话」空态）。
+				f.Text("没有会话").FontSize(t.Fonts.Caption).Color(t.LabelCaption).Pad(8)
 				return
 			}
 			for gi, key := range order {
@@ -276,6 +276,122 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 			}
 		})
 	})
+}
+
+// drawSearch 画官方搜索态：一棵**平铺**的结果树（没有工作区分组头、没有折叠）。
+//
+// 官方 `SearchResults` 的容器就是同一个 `.GAkraW_list`（padding-bottom:16px），
+// 结果之间是 `.GAkraW_searchTree>[role=treeitem]+[role=treeitem]{margin-top:2px}`
+// ——和会话行的行距同一档，所以复用 rowGap。
+//
+// 键盘顺序 = 这一步画出来的卡片顺序（`lastOrder`），与分组态共用同一个字段，
+// HandleKey 和点击因此不需要为搜索态写第二套分支。
+func (p *Plugin) drawSearch(f *flex.Frame, env *pluginapi.Env, q string) {
+	t := p.theme
+	results := searchResults(env.Data.Sessions, q)
+	p.lastCur = env.Data.Cur
+	p.act = env.Act
+	p.lastOrder = p.lastOrder[:0]
+	for i := range results {
+		p.lastOrder = append(p.lastOrder, results[i].ID)
+	}
+	p.logSearchSnapshot(env, q, results)
+
+	// 与分组态同一套宽度口径（侧栏内宽 + 吃掉右侧 12px 内边距），见 drawList。
+	inner := p.width - sidebarInline
+	scrID := env.Tree.ID(env.Feat, "sidebar-scroll")
+	f.ScrollArea(scrID).Width(inner).Grow(1).MinHeight(120).Clip().Children(func() {
+		f.Column().Width(inner).Gap(0).PadSides(0, 0, listBottomPadding, 0).Children(func() {
+			if len(results) == 0 {
+				// 官方 .GAkraW_empty{color:var(--dsw-alias-label-tertiary);padding:16px 12px;font-size:13px}
+				// 配 `search.noMatches`「无匹配会话」。
+				f.Text(officialSearchEmpty).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary).
+					PadSides(emptyStatePadY, emptyStatePadX, emptyStatePadY, emptyStatePadX)
+				return
+			}
+			f.Column().Width(inner).Gap(rowGap).Children(func() {
+				for i := range results {
+					p.drawSearchCard(f, env, results[i])
+				}
+			})
+		})
+	})
+}
+
+// searchCardBoxes 是画一张结果卡时真正用到的矩形。
+//
+// 生产路径丢弃返回值（`p.drawSearchCard(...)` 当语句用，不分配）；测试拿它量
+// 卡片内部几何：标题行 20、元信息行 17、元信息左缩进 20、workspace 上限 40%。
+// 没有 snippet 真值时 Snippet 是零值盒子，所以另给一个 HasSnippet 布尔，
+// 测试不需要去碰空盒子的 Rect()。
+type searchCardBoxes struct {
+	Card       flex.Box
+	Heading    flex.Box
+	Title      flex.Box
+	Dot        flex.Box
+	Meta       flex.Box
+	Workspace  flex.Box
+	Snippet    flex.Box
+	HasSnippet bool
+}
+
+// drawSearchCard 画一条官方 `searchResultRow`：两行、48px 的结果卡。
+//
+//	button.searchResultRow              ← 卡片本体（命中区域 = 整张卡）
+//	  div.searchResultHeading           ← 标题行：活动点槽 + 标题
+//	  div.searchResultMeta              ← 元信息行：workspace +（有真值才有的）snippet
+//
+// 容器复用 dscore 的 `ListRow` 图元（悬停/选中/命中与分组行走同一条路）：
+// 它给的是 radius-md(12)、padding 0 8、垂直居中，而官方 searchResultRow 是
+// radius-lg(16)、padding 4px 8px、align-items:stretch——圆角差 4px、内容顶距差
+// 约 1.5px，都在本轮 8px 门槛内；要对齐就得改 plugins/dscore 的图元（不在本轮
+// 允许改动的路径里），所以如实记在 docs/visual-search-result.md 的缺口里。
+//
+// 第二行的时间**不画**：官方 searchResultRow 里没有时间元素，卡片只有
+// 标题 + workspace + snippet 两行；分组行的时间不受影响。
+func (p *Plugin) drawSearchCard(f *flex.Frame, env *pluginapi.Env, r searchResult) searchCardBoxes {
+	t := p.theme
+	active := r.ID == env.Data.Cur
+	// 与分组态同一套 ID（`s-<会话ID>`）：点击/键盘/选中都不需要第二条通路。
+	id := env.Tree.ID(env.Feat, "s-"+r.ID)
+	var out searchCardBoxes
+	card := p.prims.ListRow(f, id, active, searchResultHeight, func() {
+		f.Column().FillWidth().Children(func() {
+			out.Heading = f.Row().FillWidth().Height(searchTitleLineHeight).Items(flex.Center).Gap(0).
+				Children(func() {
+					// 图标槽 16×20（官方 .wnFoaW_slot）。里面只放当前会话的正向活动真值：
+					// 规则与分组行完全一致，别的卡片一律留空。
+					f.Row().Width(slotWidth).Height(slotHeight).Shrink(0).
+						Items(flex.Center).Justify(flex.Center).Children(func() {
+						if active && (env.Data.Busy || env.Data.Stream != "") {
+							out.Dot = p.prims.Dot(f, t.Info, 6)
+						}
+					})
+					out.Title = f.Text(r.Title).FontSize(t.Fonts.Body).
+						LineHeight(searchTitleLineHeight).Ellipsis().Grow(1).Color(t.LabelPrimary).
+						MarginSides(0, titleMarginRight, 0, titleMarginLeft)
+				})
+			out.Meta = f.Row().FillWidth().Height(searchMetaLineHeight).Items(flex.Center).
+				Gap(searchMetaGap).MarginSides(0, 0, 0, searchMetaMarginLeft).Children(func() {
+				out.Workspace = f.Text(r.Workspace).FontSize(t.Fonts.Caption).
+					LineHeight(searchMetaLineHeight).Color(t.LabelTertiary).
+					MaxWidthPercent(searchWorkspaceCap(r.HasSnippet)).Shrink(0).Ellipsis()
+				// snippet 是有真值才有的元素（官方 `result.snippet !== void 0`）：
+				// 拿不到真值就整段不画，不留占位、不拼摘要。
+				if r.HasSnippet {
+					out.HasSnippet = true
+					out.Snippet = f.Text(r.Snippet).FontSize(t.Fonts.Caption).
+						LineHeight(searchMetaLineHeight).Color(t.LabelSecondary).Grow(1).Ellipsis()
+				}
+			})
+		})
+	})
+	out.Card = card
+	if card.Clicked() && env.Act.OpenSession != nil {
+		p.activePanel = ""
+		env.Act.OpenSession(r.ID)
+	}
+	return out
 }
 
 // drawSession 画一条会话行：缩进 + 图标槽 + 标题 + 相对时间。
@@ -335,8 +451,103 @@ func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Sess
 		}
 	})
 	if row.Clicked() && env.Act.OpenSession != nil {
+		p.activePanel = ""
 		env.Act.OpenSession(s.ID)
 	}
+}
+
+// searchResult 是一条搜索结果卡的数据面，逐项对齐官方 `SearchResultItem` 的
+// `props.result`（`{id,title,workspace,snippet,…}`）：渲染层只认这里，不自己回头
+// 去猜标题或工作区。
+//
+// snippet 的契约缺口（本轮查证，不许自己造）：
+//
+//   - 官方那条真值来自 **Host 全文检索结果页**（`deriveSearchResults` 里只有
+//     `content.items` 带 `snippet`）；同一批本地元信息命中（标题/工作区名）
+//     一个都没有这个字段，官方 JSX 也是 `result.snippet !== void 0` 才画。
+//   - 我们的 `apiclient.Session` 只有 `ID/Title/Cwd/UpdatedAt/Mode`；
+//     `pluginapi.Snapshot` 里有 `Sessions/Cur/Search/Status/Msgs/…`，
+//     没有逐会话片段；`../DSH-GO/docs/transport-contract.md` 与两份
+//     `testdata/api.snapshot.json` 里 grep 不到任何 `snippet`。
+//   - 所以 **HasSnippet 永远是 false**：卡片不画片段行，也不拿标题/cwd 拼一个
+//     假摘要。宿主将来提供这个字段时，这里是唯一的接入点（在 searchResults 里填）。
+type searchResult struct {
+	ID         string
+	Title      string // 真值；空 → 官方 session.untitled「未命名」
+	Workspace  string // 由真实 cwd 推导；空 → 官方 group.ungrouped「未分组」
+	Snippet    string // 宿主真值；HasSnippet 为 true 才画
+	HasSnippet bool
+	UpdatedAt  string // 只给 -sidebar-debug 的取证日志用
+}
+
+// searchResults 把宿主快照变成搜索结果卡：过滤 → 按最近更新降序 → 映射成卡片数据。
+//
+// 过滤条件与分组态共用 matchesQuery，避免"列表里有、搜索里没有"这种两条路漂移。
+// 排序与分组态共用 newerSession：官方搜索结果也是按 recency 排的
+// （`deriveSearchResults` 里 `orderByRecency`）。
+func searchResults(sessions []apiclient.Session, q string) []searchResult {
+	matched := make([]apiclient.Session, 0, len(sessions))
+	for _, s := range sessions {
+		if matchesQuery(s, q) {
+			matched = append(matched, s)
+		}
+	}
+	sort.SliceStable(matched, func(i, j int) bool { return newerSession(matched[i], matched[j]) })
+	out := make([]searchResult, 0, len(matched))
+	for _, s := range matched {
+		out = append(out, searchResult{
+			ID:        s.ID,
+			Title:     cardTitle(s.Title),
+			Workspace: cardWorkspace(workspaceKey(s.Cwd)),
+			UpdatedAt: s.UpdatedAt,
+			// Snippet / HasSnippet 故意留零值：宿主契约里没有这条真值，见类型注释。
+		})
+	}
+	return out
+}
+
+// matchesQuery 是唯一的命中判据：标题或真实 cwd 包含过滤词（大小写不敏感）。
+//
+// 官方本地命中也是"标题 或 工作区名"（`sessionTitle(summary).includes(q) ||
+// labelOf(summary).includes(q)`），工作区名由 cwd 推导，所以这里是等价的。
+func matchesQuery(s apiclient.Session, q string) bool {
+	return q == "" || strings.Contains(strings.ToLower(s.Title+" "+s.Cwd), q)
+}
+
+// cardTitle 是官方 `result.title || t("session.untitled")`。
+func cardTitle(title string) string {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return officialUntitled
+	}
+	return title
+}
+
+// cardWorkspace 是官方 `result.workspace || t("group.ungrouped")`。
+//
+// 注意它与分组头用的 displayWorkspace 兜底词**不同**：分组头那套是分组态自己
+// 的措辞（本轮不回退、不动），卡片这一档照官方字典原文来。
+func cardWorkspace(key string) string {
+	if key == "" {
+		return officialUngrouped
+	}
+	return displayWorkspace(key)
+}
+
+// searchWorkspaceCap 是工作区名在元信息行里的宽度上限（百分比）。
+//
+// 官方两条规则：
+//
+//	.wnFoaW_searchResultWorkspace{max-width:40%;flex:none}
+//	.wnFoaW_searchResultWorkspace:only-child{max-width:100%}
+//
+// 也就是说：**这一行只有工作区名时**（本地命中没有 snippet，正是我们唯一的情形）
+// 它可以吃满整行；和 snippet 并排时才缩到 40%。
+func searchWorkspaceCap(hasSnippet bool) float32 {
+	if hasSnippet {
+		return searchWorkspaceMaxPct
+	}
+	return 100
 }
 
 // groupByWorkspace 按 cwd 分组；组内、组间都按最近更新降序。
@@ -348,7 +559,7 @@ func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Sess
 func groupByWorkspace(sessions []apiclient.Session, q string) (map[string][]apiclient.Session, []string) {
 	groups := map[string][]apiclient.Session{}
 	for _, s := range sessions {
-		if q != "" && !strings.Contains(strings.ToLower(s.Title+" "+s.Cwd), q) {
+		if !matchesQuery(s, q) {
 			continue
 		}
 		key := workspaceKey(s.Cwd)
@@ -443,6 +654,37 @@ func (p *Plugin) logSnapshot(env *pluginapi.Env, q string,
 	}
 	p.lastSig = sig
 	log.Printf("ds-sidebar: 可见行=%d %s", rows, sig)
+}
+
+// logSearchSnapshot 在 -sidebar-debug 下把搜索这一帧的真值打印出来。
+//
+// 它证明的是"结果卡上的字都来自宿主快照"：每条结果的原样 ID、标题、由真实 cwd
+// 推导的工作区、时间，以及**片段有没有真值**（没有就是 none，不是空串）。
+func (p *Plugin) logSearchSnapshot(env *pluginapi.Env, q string, results []searchResult) {
+	if !p.debug {
+		return
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "搜索=%q 结果=%d 会话=%d 当前=%q busy=%v 流=%d",
+		q, len(results), len(env.Data.Sessions), env.Data.Cur, env.Data.Busy,
+		len([]rune(env.Data.Stream)))
+	for _, r := range results {
+		snippet := "none" // 宿主没有这条真值：画面上整段不画
+		if r.HasSnippet {
+			snippet = fmt.Sprintf("%q", r.Snippet)
+		}
+		fmt.Fprintf(&b, " |卡 %q 标题=%q 工作区=%q 时间=%q 片段=%s 选中=%v",
+			r.ID, r.Title, r.Workspace, r.UpdatedAt, snippet, r.ID == env.Data.Cur)
+	}
+	if len(results) == 0 {
+		b.WriteString(" |（无匹配）")
+	}
+	sig := b.String()
+	if sig == p.lastSig {
+		return
+	}
+	p.lastSig = sig
+	log.Printf("ds-sidebar: %s", sig)
 }
 
 // workspaceKey 是分组的键：cwd 去掉尾部分隔符。
@@ -598,6 +840,12 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		return false // 带修饰键的是别的意图（留给别的插件）
 	}
 	switch ev.Key {
+	case ui.KeyEscape:
+		if p.searchExpanded {
+			p.search.SetText("")
+			p.searchExpanded = false
+			return true
+		}
 	case ui.KeyUp:
 		return p.move(-1)
 	case ui.KeyDown:
@@ -630,6 +878,7 @@ func (p *Plugin) moveTo(i int) bool {
 	if i < 0 || i >= len(p.lastOrder) || p.act.OpenSession == nil {
 		return false
 	}
+	p.activePanel = ""
 	p.act.OpenSession(p.lastOrder[i])
 	return true
 }

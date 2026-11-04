@@ -1,0 +1,2 @@
+$ CGO_ENABLED=0 go build -o /tmp/fg5-app.exe ./cmd/app
+build_exit=0

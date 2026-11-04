@@ -1,24 +1,39 @@
-// Package dsstatusbar 是「底部状态栏」的移植。
+// Package dsstatusbar 提供 composer 下方的真值指标与独立连接状态。
 //
-// 官方对应物是 `dsh-client-ui-layout` 里那一行状态条（右侧显示会话名 / 轮次 /
-// token 速率）。我们放上去的都是**真算得出来**的东西：
+// 官方 Activity/Usage/ContextMeter 属于 conversation.composer.dock，不是出厂
+// shell.bottom。本插件利用现有 main.composer 槽，在 ds-composer(order10) 后以
+// dock(order20) 画到输入卡之后；连接状态仍保留 shell.bottom，不把绿点冒充上下文环。
 //
-//	轮数 / 步数    数 env.Data.Msgs 里的 assistant / tool 条数
-//	累计 ↑ ↓      宿主 §12 H1 的 usageTotal（全会话累计，不随 tail 切页变化）
-//	tok/s          宿主只给用量不给耗时，用事件墙钟时间的差算（见 mockd/realsession.go）
-//	上下文         宿主 §12 H1 的 contextTokens（最近一条 assistant 的 totalTokens）
-//
-// 累计与上下文是**两件事**：累计一直涨，上下文会随压缩回落。不相加、不互相顶替。
-//
-// 明确的克制：所有用量字段的零值都表示**不知道**——`Usage.Known()` 为假、
-// `ContextTokens == 0`、`UsageTotal` 全零时**一个字都不显示**。
-// 显示「↑0 ↓0」「上下文 0」比不显示更糟：用户会以为模型真的没消耗。
+// 真值边界：
+//   - 不从 assistant/tool 消息数推“轮/步”，只接受 whole-log sessionStats；
+//   - totalTokens 与可证明的 input/output 保留，旧墙钟速率不冒充 decode 速率；
+//   - cacheRead 没有官方三项分母时不显示缓存率；
+//   - ContextTokens 只显示原始 token 数，缺 contextWindow 时不显示百分比或环。
 package dsstatusbar
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
-	"github.com/vivaui/viva/ui"
+)
+
+// 官方 InputBar/StatsPills 几何。24 是旧 shell.bottom，40 是 FG-1 caption；
+// 它们都不是 dock 高度。官方 dock = padding-top4 + pill(20 行高 + 上下 padding1) = 26。
+const (
+	dockPaddingTop float32 = 4
+	dockGap        float32 = 12
+	pillLineHeight float32 = 20
+	pillPadY       float32 = 1
+	pillPadX       float32 = 8
+	pillGap        float32 = 6
+	pillHeight             = pillLineHeight + 2*pillPadY
+
+	// 与 ds-composer 共用“官方 clearance16 - dsshell 已给12 = 4”的净边距。
+	// 这是现有槽集成的第二个出处；壳层净 padding 改动时必须同步复核。
+	dockComposerClearance float32 = 16
+	dockShellMainPad      float32 = 12
+
+	contextMeterSize   float32 = 14
+	contextMeterStroke float32 = 2
 )
 
 // Plugin 实现 pluginapi.Plugin / Panels。
@@ -45,128 +60,158 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	return nil
 }
 
-// Panels 实现 pluginapi.Panels。
+// Panels 把统计与连接状态拆到各自应在的位置。Order20 保证 dock 跟在
+// ds-composer 的卡片(order10) 后；这不是对官方 conversation.composer.dock
+// 槽契约的冒名声明，而是现有 main.composer 槽内的等价布局集成。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
-		{ID: "bar", Slot: pluginapi.SlotShellBottom, Order: 10, Draw: p.draw},
+		{ID: "dock", Slot: pluginapi.SlotMainComposer, Order: 20, Draw: func(f *flex.Frame, env *pluginapi.Env) {
+			p.drawDock(f, env)
+		}},
+		{ID: "connection", Slot: pluginapi.SlotShellBottom, Order: 10, Draw: p.draw},
 	}
 }
 
-// bar 是 dscore 那个「底部整行」图元的可选能力。
-//
-// 为什么不写进 pluginapi.Primitives：那份契约是跨线共用的（`pluginapi/plugin.go`），
-// 改它要两边一起动；而这里只是"dscore 正好多提供了一个画法"。
-// 类型断言拿得到就用，拿不到就退回自己画——插件之间只认契约，不认具体类型。
+// dockHeight 是官方 dock 的内容高度；没有任何真值段时返回 0，不留黑带。
+func dockHeight(segments []string) float32 {
+	if len(segments) == 0 {
+		return 0
+	}
+	return dockPaddingTop + pillHeight
+}
+
+// drawDock 在输入卡之后画现有 Snapshot 能证明的用量段。Activity、缓存率和
+// ContextMeter 百分比只有各自 projection 到位后才能加入，不能在这里拿消息凑数。
+func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env) flex.Box {
+	// 官方 composer dock 是 session 作用域；空会话时即便上游残留了旧数字也不画。
+	if env.Data.Cur == "" {
+		return flex.Box{}
+	}
+	segments := usageSegments(env.Data)
+	height := dockHeight(segments)
+	if height == 0 {
+		return flex.Box{}
+	}
+	extra := dockComposerClearance - dockShellMainPad
+	if extra < 0 {
+		extra = 0
+	}
+	return f.Row().FillWidth().Height(height).
+		PadSides(dockPaddingTop, extra, 0, extra).
+		Items(flex.Center).Justify(flex.Center).Gap(dockGap).Children(func() {
+		for _, segment := range segments {
+			p.pill(f, segment)
+		}
+	})
+}
+
+// pill 是官方 PlainPill：12px secondary 降档文字、20px 行高、padding 1px 8px。
+// 没有真实弹层数据时不接点击、不画 hover，避免给出可展开假象。
+func (p *Plugin) pill(f *flex.Frame, label string) {
+	t := p.theme
+	f.Row().Height(pillHeight).Radius(t.Radii.SM).
+		PadSides(pillPadY, pillPadX, pillPadY, pillPadX).
+		Items(flex.Center).Gap(pillGap).Children(func() {
+		f.Text(label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
+	})
+}
+
+// connectionTone 是连接状态的颜色语义，不与 ContextMeter 混用。
+type connectionTone uint8
+
+const (
+	connectionReady connectionTone = iota
+	connectionApproval
+	connectionDisconnected
+)
+
+// connectionState 保持断线 > 待审批 > 就绪的既有真值优先级。
+func connectionState(data pluginapi.Snapshot) (string, connectionTone) {
+	switch {
+	case data.Disconnected:
+		return "已断开", connectionDisconnected
+	case data.Approval != nil:
+		return "待审批", connectionApproval
+	default:
+		return "就绪", connectionReady
+	}
+}
+
+// bar 是 dscore 那个底部整行图元的可选能力，只服务连接状态。
 type bar interface {
 	StatusBarRow(f *flex.Frame, height float32, body func()) flex.Box
 }
 
-// draw 画一整条状态栏。
-//
-// 宽度分配：左边的数字段全部 Shrink(0)（不许被压缩，否则最后一个字会被切掉——
-// 实测 "571.3k" 显示成 "571.3"），右边只留一段可省略的 Status，
-// 空间不够时压缩的永远是它。
-//
-// 整行的壳（背景、0.5px 分隔线、左内边距）交给 prims，这里只排内容：
-// 官方 bottomRow 是横跨三列的整行，内容从 `--dsh-sidebar-inline-padding`(12)
-// 开始，不是从窗口中间开始。
+// draw 画独立连接状态行。统计指标已经移到 composer 后，不再占这条全宽行的左侧。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
-
-	turns, steps := 0, 0
-	for i := range env.Data.Msgs {
-		switch env.Data.Msgs[i].Role {
-		case "assistant":
-			turns++
-		case "tool":
-			steps++
-		}
-	}
-
-	// 状态点：**连不上宿主时不能说"就绪"**——那是连接层的断言，
-	// 绿点亮着而连接早断了，比卡住更误导（用户在等一个不会来的回复）。
-	// 优先级：断线 > 待审批 > 就绪。
-	dotColor, dotLabel := t.Success, "就绪"
-	switch {
-	case env.Data.Disconnected:
-		dotColor, dotLabel = t.Error, "已断开"
-	case env.Data.Approval != nil:
-		dotColor, dotLabel = t.Warn, "待审批"
+	label, tone := connectionState(env.Data)
+	dotColor := t.Success
+	switch tone {
+	case connectionDisconnected:
+		dotColor = t.Error
+	case connectionApproval:
+		dotColor = t.Warn
 	}
 
 	h := env.Geometry.BottomHeight
 	if h <= 0 {
 		h = 24
 	}
-
 	p.bar(f, h, func() {
-		if turns+steps > 0 {
-			p.num(f, itoa(turns)+" 轮 · "+itoa(steps)+" 步", t.LabelTertiary)
-		}
-		if segs := usageSegments(env.Data); len(segs) > 0 {
-			p.sep(f)
-			for i, s := range segs {
-				if i > 0 {
-					p.sep(f)
-				}
-				p.num(f, s, t.LabelTertiary)
-			}
-		}
 		f.Spacer()
 		if env.Data.Status != "" {
-			// 唯一可压缩的一段：太长就省略，状态栏不该抢主区的注意力。
 			f.Text(env.Data.Status).FontSize(t.Fonts.Caption).
 				Color(t.LabelTertiary).Ellipsis().MaxWidth(240)
 		}
 		f.Row().Gap(6).Items(flex.Center).Shrink(0).Children(func() {
 			p.prims.Dot(f, dotColor, 6)
-			f.Text(dotLabel).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			f.Text(label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		})
 	})
 }
 
-// usageSegments 决定「用量那一段」画哪几块文字，返回按顺序要画的段
-// （不含中间的 · 分隔点）。返回空 = 整段不画。
+// usageSegments 决定 dock 当前能显示的真值段，返回空 = 整段不占位。
 //
-// 数据有两条来源，语义**不同**，不许混用：
-//
-//	真宿主 §12 H1   UsageTotal（全会话累计，一直涨）+ ContextTokens（当前占用，压缩后回落）
-//	mockd           Usage（旧的一份合计；它的 TotalTokens 是最后一次 assistant 的 totalTokens）
-//
-// 规则三条：
-//
-//	① 累计 ↑↓ 与上下文各自独立判断，谁有值画谁——**不相加，也不拿一个顶替另一个**；
-//	② ContextTokens 为 0 表示"不知道"，不是"上下文里有 0 个 token"，所以不画；
-//	③ UsageTotal 全零时才退回旧 Usage（兼容 mockd）；两者都没有就整段不画。
+// UsageTotal 是真宿主 whole-log 累计，totalTokens 由宿主按 input+output 合计；
+// 旧 mockd Usage.TotalTokens 则是最后一次 assistant 的上下文占用，两者不能互换。
+// ContextTokens 与累计相互独立，压缩后允许回落；缺 contextWindow 时只画原始数量。
 func usageSegments(d pluginapi.Snapshot) []string {
 	in, out := d.UsageTotal.InputTokens, d.UsageTotal.OutputTokens
-	perSec, hasRate := d.UsageTotal.TokPerSec, d.UsageTotal.HasRate
+	total := d.UsageTotal.TotalTokens
 	ctx := d.ContextTokens
-	if !d.UsageTotal.Known() {
+	wholeLog := d.UsageTotal.Known()
+	if !wholeLog {
 		in, out = d.Usage.InputTokens, d.Usage.OutputTokens
-		perSec, hasRate = d.Usage.TokPerSec, d.Usage.HasRate
-		// 旧路径里 TotalTokens 就是"最后一次 usage 的 totalTokens"，
-		// 语义正好是上下文占用，可以退过去；真宿主的 UsageTotal 则**不是**。
+		// 旧 Usage 没有 whole-log total；它的 TotalTokens 只能退回原始上下文数量。
+		total = 0
 		if ctx == 0 {
 			ctx = d.Usage.TotalTokens
 		}
 	}
-	var segs []string
-	// 只有 input/output 任一有值才画 ↑↓：旧路径可能只给了 TotalTokens，
-	// 那时画 "↑0 ↓0" 就是编数字。
-	if in > 0 || out > 0 {
-		segs = append(segs, "↑"+tok(in)+" ↓"+tok(out))
-		if hasRate && perSec > 0 {
-			segs = append(segs, rate(perSec))
+
+	var segments []string
+	if wholeLog && total > 0 {
+		segments = append(segments, "总量 "+tok(total))
+	} else {
+		// total 字段缺席时保留可证明的 input/output；零值在当前 Snapshot 里表示
+		// 未知，所以只画有真值的一侧，不能给另一侧补 ↓0 / ↑0。
+		switch {
+		case in > 0 && out > 0:
+			segments = append(segments, "↑"+tok(in)+" ↓"+tok(out))
+		case in > 0:
+			segments = append(segments, "↑"+tok(in))
+		case out > 0:
+			segments = append(segments, "↓"+tok(out))
 		}
 	}
 	if ctx > 0 {
-		segs = append(segs, "上下文 "+tok(ctx))
+		segments = append(segments, "上下文 "+tok(ctx))
 	}
-	return segs
+	return segments
 }
 
-// bar 调 dscore 的整行图元；拿不到就自己画一条等价的（保证插件仍能单独跑）。
+// bar 调 dscore 的整行图元；拿不到就自己画一条等价的连接状态行。
 func (p *Plugin) bar(f *flex.Frame, height float32, body func()) {
 	if sb, ok := p.prims.(bar); ok {
 		sb.StatusBarRow(f, height, body)
@@ -177,19 +222,6 @@ func (p *Plugin) bar(f *flex.Frame, height float32, body func()) {
 		f.Row().FillWidth().Height(0.5).Background(t.BorderL2)
 		f.Row().FillWidth().FillHeight().PadX(12).Items(flex.Center).Gap(6).Children(body)
 	})
-}
-
-// num 画一个不可压缩的数字段。
-func (p *Plugin) num(f *flex.Frame, s string, c ui.Color) {
-	f.Text(s).FontSize(p.theme.Fonts.Caption).Color(c).PadX(2).Shrink(0)
-}
-
-// sep 画一个间隔点。左右各 6px 照官方 `.hNGZaa_sep{margin:0 6px}`。
-//
-// 官方那个 `--dsw-alias-separator-primary` 在打包产物里只有引用、没有定义
-// （app.asar 里 grep 不到它的赋值），所以退到现有的最弱一档文字色。
-func (p *Plugin) sep(f *flex.Frame) {
-	f.Text("·").FontSize(p.theme.Fonts.Caption).Color(p.theme.LabelDimmed).PadX(6).Shrink(0)
 }
 
 // tok 把 token 数压成「6.5k / 1.2M」这种短写法。
@@ -204,7 +236,7 @@ func tok(n int64) string {
 	}
 }
 
-// rate 是 token 速率，一位小数。
+// rate 是官方 decodeTokens/decodeMs 速率的显示格式。
 func rate(v float64) string { return fmt1(v) + " tok/s" }
 
 // fmt1 是一位小数格式化（不引 fmt：这一层保持极简依赖）。
@@ -230,7 +262,7 @@ func itoa(n int) string {
 	if neg {
 		n = -n
 	}
-	var buf [12]byte
+	var buf [24]byte
 	i := len(buf)
 	for n > 0 && i > 0 {
 		i--

@@ -46,6 +46,21 @@ func (o *Overflow) Draw(
 	label string,
 	draw func(content ui.Rect),
 ) components.ScrollAreaGeometry {
+	return o.DrawInteractive(canvas, theme, bounds, contentWidth, contentHeight, ui.ID{}, id, label, draw)
+}
+
+// DrawInteractive 比 Draw 多一个可聚焦视口 ID。宿主把这个 ID 对应的
+// ui.ScrollEvent 转发给组件（例如 CodeBlock.HandleScroll），即可由真实
+// hit-test 路由横向手势；没有视口 ID 时行为与旧 Draw 完全一致。
+func (o *Overflow) DrawInteractive(
+	canvas *ui.Canvas,
+	theme ui.Theme,
+	bounds ui.Rect,
+	contentWidth, contentHeight float32,
+	viewportID, scrollbarID ui.ID,
+	label string,
+	draw func(content ui.Rect),
+) components.ScrollAreaGeometry {
 	if bounds.Width <= 0 || bounds.Height <= 0 {
 		return components.ScrollAreaGeometry{Bounds: bounds}
 	}
@@ -54,7 +69,8 @@ func (o *Overflow) Draw(
 		Height: contentHeight,
 	}).
 		Offset(o.OffsetX, 0).
-		HorizontalScrollbar(id, label, "").
+		Viewport(viewportID, label).
+		HorizontalScrollbar(scrollbarID, label, "").
 		ReserveScrollbars()
 
 	geo := area.BeginContent()

@@ -1,0 +1,8 @@
+--- FAIL: TestUsageSegments (0.00s)
+    --- FAIL: TestUsageSegments/只有_input_真值：不把未知_output_补成零 (0.00s)
+        statusbar_test.go:208: 用量段 = "↑100 ↓0"，want "↑100"
+    --- FAIL: TestUsageSegments/只有_output_真值：不把未知_input_补成零 (0.00s)
+        statusbar_test.go:208: 用量段 = "↑0 ↓50"，want "↓50"
+FAIL
+FAIL	github.com/MYCF711/dsh-ui/plugins/dsstatusbar	0.092s
+FAIL

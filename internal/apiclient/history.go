@@ -25,6 +25,52 @@ type Frame struct {
 	Time int64           `json:"time,omitempty"`
 }
 
+// UnmarshalJSON 只从 canonical 帧解析时间真值。信封 time 存在时优先；
+// 只有它完全缺失，才读取契约兼容的 data.time。非法类型、零和负数都表示未知，
+// 不吞掉事件的其他字段，也不退而猜测另一处时间。
+func (f *Frame) UnmarshalJSON(raw []byte) error {
+	var wire struct {
+		Seq  int             `json:"seq"`
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data,omitempty"`
+		Time json.RawMessage `json:"time"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return err
+	}
+	f.Seq = wire.Seq
+	f.Type = wire.Type
+	f.Data = wire.Data
+	f.Time = canonicalEventTime(wire.Time, wire.Data)
+	return nil
+}
+
+func canonicalEventTime(envelope, data json.RawMessage) int64 {
+	if len(envelope) > 0 {
+		return positiveEventTime(envelope)
+	}
+	var payload struct {
+		Time json.RawMessage `json:"time"`
+	}
+	if len(data) == 0 || json.Unmarshal(data, &payload) != nil {
+		return 0
+	}
+	return positiveEventTime(payload.Time)
+}
+
+func positiveEventTime(raw json.RawMessage) int64 {
+	var value int64
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil || value <= 0 {
+		return 0
+	}
+	return value
+}
+
+// Event 把 history 原始帧保真转换为流事件，供补洞与重放复用同一时刻。
+func (f Frame) Event(topic string) Event {
+	return Event{Kind: f.Type, Seq: f.Seq, Topic: topic, Data: f.Data, Time: f.Time}
+}
+
 // HistoryResult 是 session.history 的返回。
 type HistoryResult struct {
 	Frames       []Frame `json:"frames"`

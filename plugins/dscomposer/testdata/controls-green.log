@@ -1,0 +1,148 @@
+=== RUN   TestApprovalInvisibleWithoutApproval
+--- PASS: TestApprovalInvisibleWithoutApproval (0.00s)
+=== RUN   TestApprovalBarShowsHostValues
+--- PASS: TestApprovalBarShowsHostValues (0.00s)
+=== RUN   TestApprovalToolFromTitleWhenToolMissing
+--- PASS: TestApprovalToolFromTitleWhenToolMissing (0.00s)
+=== RUN   TestApproveForwardsOriginalIDs
+--- PASS: TestApproveForwardsOriginalIDs (0.00s)
+=== RUN   TestRejectForwardsOriginalIDs
+--- PASS: TestRejectForwardsOriginalIDs (0.00s)
+=== RUN   TestWeirdIDsAreNotRewritten
+--- PASS: TestWeirdIDsAreNotRewritten (0.00s)
+=== RUN   TestNoOptionMeansNoCallback
+--- PASS: TestNoOptionMeansNoCallback (0.00s)
+=== RUN   TestLegacyFallbackCallsAllowDeny
+--- PASS: TestLegacyFallbackCallsAllowDeny (0.00s)
+=== RUN   TestClipRunesKeepsUTF8
+--- PASS: TestClipRunesKeepsUTF8 (0.00s)
+=== RUN   TestLongArgsStayOneLine
+--- PASS: TestLongArgsStayOneLine (0.00s)
+=== RUN   TestLegacyCmdStillShown
+--- PASS: TestLegacyCmdStillShown (0.00s)
+=== RUN   TestHandleKeyTakesEnterOnlyWhenVisible
+--- PASS: TestHandleKeyTakesEnterOnlyWhenVisible (0.00s)
+=== RUN   TestAllowAlwaysGetsItsOwnButton
+--- PASS: TestAllowAlwaysGetsItsOwnButton (0.00s)
+=== RUN   TestNoSecondAllowWhenHostGivesOne
+--- PASS: TestNoSecondAllowWhenHostGivesOne (0.00s)
+=== RUN   TestCardHeightFollowsHeroAndActiveStates
+=== RUN   TestCardHeightFollowsHeroAndActiveStates/首屏（没有会话）
+=== RUN   TestCardHeightFollowsHeroAndActiveStates/有会话
+--- PASS: TestCardHeightFollowsHeroAndActiveStates (0.00s)
+    --- PASS: TestCardHeightFollowsHeroAndActiveStates/首屏（没有会话） (0.00s)
+    --- PASS: TestCardHeightFollowsHeroAndActiveStates/有会话 (0.00s)
+=== RUN   TestComposerCardMatchesOfficialGeometry
+=== RUN   TestComposerCardMatchesOfficialGeometry/1920_hero
+=== RUN   TestComposerCardMatchesOfficialGeometry/1920_active
+=== RUN   TestComposerCardMatchesOfficialGeometry/1182_hero
+=== RUN   TestComposerCardMatchesOfficialGeometry/1182_active
+--- PASS: TestComposerCardMatchesOfficialGeometry (0.00s)
+    --- PASS: TestComposerCardMatchesOfficialGeometry/1920_hero (0.00s)
+    --- PASS: TestComposerCardMatchesOfficialGeometry/1920_active (0.00s)
+    --- PASS: TestComposerCardMatchesOfficialGeometry/1182_hero (0.00s)
+    --- PASS: TestComposerCardMatchesOfficialGeometry/1182_active (0.00s)
+=== RUN   TestPrimaryButtonMatchesOfficialSizeAndColor
+--- PASS: TestPrimaryButtonMatchesOfficialSizeAndColor (0.00s)
+=== RUN   TestComposerShowsHostTruthInOfficialSeats
+--- PASS: TestComposerShowsHostTruthInOfficialSeats (0.00s)
+=== RUN   TestComposerUnknownFieldsAndUnsupportedControlsStayHidden
+--- PASS: TestComposerUnknownFieldsAndUnsupportedControlsStayHidden (0.00s)
+=== RUN   TestSendButtonPreservesTrimAndClearBehavior
+--- PASS: TestSendButtonPreservesTrimAndClearBehavior (0.00s)
+=== RUN   TestStopButtonPreservesCancelBehavior
+--- PASS: TestStopButtonPreservesCancelBehavior (0.00s)
+=== RUN   TestEscapeWithoutApprovalPreservesCancelRoute
+--- PASS: TestEscapeWithoutApprovalPreservesCancelRoute (0.00s)
+=== RUN   TestApprovalCardMatchesOfficialSurface
+--- PASS: TestApprovalCardMatchesOfficialSurface (0.00s)
+=== RUN   TestActivityLabelTruthAndEmptyStates
+=== RUN   TestActivityLabelTruthAndEmptyStates/未知整段隐藏
+=== RUN   TestActivityLabelTruthAndEmptyStates/宿主状态原样
+=== RUN   TestActivityLabelTruthAndEmptyStates/Busy_推导运行
+=== RUN   TestActivityLabelTruthAndEmptyStates/Stream_推导运行
+=== RUN   TestActivityLabelTruthAndEmptyStates/真状态优先于推导
+--- PASS: TestActivityLabelTruthAndEmptyStates (0.00s)
+    --- PASS: TestActivityLabelTruthAndEmptyStates/未知整段隐藏 (0.00s)
+    --- PASS: TestActivityLabelTruthAndEmptyStates/宿主状态原样 (0.00s)
+    --- PASS: TestActivityLabelTruthAndEmptyStates/Busy_推导运行 (0.00s)
+    --- PASS: TestActivityLabelTruthAndEmptyStates/Stream_推导运行 (0.00s)
+    --- PASS: TestActivityLabelTruthAndEmptyStates/真状态优先于推导 (0.00s)
+=== RUN   TestApprovalButtonsPreserveOriginalIDsThroughLayout
+=== RUN   TestApprovalButtonsPreserveOriginalIDsThroughLayout/允许这一次
+=== RUN   TestApprovalButtonsPreserveOriginalIDsThroughLayout/以后都允许
+=== RUN   TestApprovalButtonsPreserveOriginalIDsThroughLayout/拒绝
+--- PASS: TestApprovalButtonsPreserveOriginalIDsThroughLayout (0.00s)
+    --- PASS: TestApprovalButtonsPreserveOriginalIDsThroughLayout/允许这一次 (0.00s)
+    --- PASS: TestApprovalButtonsPreserveOriginalIDsThroughLayout/以后都允许 (0.00s)
+    --- PASS: TestApprovalButtonsPreserveOriginalIDsThroughLayout/拒绝 (0.00s)
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels/read-only
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels/workspace-write
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels/danger-full-access
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels/allow
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels/ask
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels/deny
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels/auto
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels/host-custom-policy
+=== RUN   TestPermissionTruthUsesChineseProductAndPolicyLabels/__
+--- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels (0.00s)
+    --- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels/read-only (0.00s)
+    --- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels/workspace-write (0.00s)
+    --- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels/danger-full-access (0.00s)
+    --- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels/allow (0.00s)
+    --- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels/ask (0.00s)
+    --- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels/deny (0.00s)
+    --- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels/auto (0.00s)
+    --- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels/host-custom-policy (0.00s)
+    --- PASS: TestPermissionTruthUsesChineseProductAndPolicyLabels/__ (0.00s)
+=== RUN   TestKnownPermissionHasVectorIconBesideLabel
+=== RUN   TestKnownPermissionHasVectorIconBesideLabel/read-only
+=== RUN   TestKnownPermissionHasVectorIconBesideLabel/workspace-write
+=== RUN   TestKnownPermissionHasVectorIconBesideLabel/danger-full-access
+=== RUN   TestKnownPermissionHasVectorIconBesideLabel/allow
+=== RUN   TestKnownPermissionHasVectorIconBesideLabel/ask
+=== RUN   TestKnownPermissionHasVectorIconBesideLabel/deny
+=== RUN   TestKnownPermissionHasVectorIconBesideLabel/auto
+--- PASS: TestKnownPermissionHasVectorIconBesideLabel (0.00s)
+    --- PASS: TestKnownPermissionHasVectorIconBesideLabel/read-only (0.00s)
+    --- PASS: TestKnownPermissionHasVectorIconBesideLabel/workspace-write (0.00s)
+    --- PASS: TestKnownPermissionHasVectorIconBesideLabel/danger-full-access (0.00s)
+    --- PASS: TestKnownPermissionHasVectorIconBesideLabel/allow (0.00s)
+    --- PASS: TestKnownPermissionHasVectorIconBesideLabel/ask (0.00s)
+    --- PASS: TestKnownPermissionHasVectorIconBesideLabel/deny (0.00s)
+    --- PASS: TestKnownPermissionHasVectorIconBesideLabel/auto (0.00s)
+=== RUN   TestModelReadOnlyHasNoDropdownSemantics
+--- PASS: TestModelReadOnlyHasNoDropdownSemantics (0.00s)
+=== RUN   TestModelTriggerUsesOfficialWiderMaxWidth
+--- PASS: TestModelTriggerUsesOfficialWiderMaxWidth (0.00s)
+=== RUN   TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea
+=== RUN   TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea/发送
+=== RUN   TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea/停止
+--- PASS: TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea (0.00s)
+    --- PASS: TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea/发送 (0.00s)
+    --- PASS: TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea/停止 (0.00s)
+=== RUN   TestPrimaryDisabledTruthAndDraftSafety
+=== RUN   TestPrimaryDisabledTruthAndDraftSafety/空草稿禁发
+=== RUN   TestPrimaryDisabledTruthAndDraftSafety/无Send保留草稿
+=== RUN   TestPrimaryDisabledTruthAndDraftSafety/无Cancel停止禁用
+--- PASS: TestPrimaryDisabledTruthAndDraftSafety (0.00s)
+    --- PASS: TestPrimaryDisabledTruthAndDraftSafety/空草稿禁发 (0.00s)
+    --- PASS: TestPrimaryDisabledTruthAndDraftSafety/无Send保留草稿 (0.00s)
+    --- PASS: TestPrimaryDisabledTruthAndDraftSafety/无Cancel停止禁用 (0.00s)
+=== RUN   TestControlsHeadlessGeometryAndCapture
+=== RUN   TestControlsHeadlessGeometryAndCapture/1920-hero
+    controls_visual_test.go:140: COMPOSER_VISUAL path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dscomposer\testdata\visual-v4-1920-hero.png bytes=42983 card={x:332 y:906 w:952 h:114 r:28} primary={w:34 h:34 right:8 bottom:8}
+=== RUN   TestControlsHeadlessGeometryAndCapture/1920-active
+    controls_visual_test.go:140: COMPOSER_VISUAL path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dscomposer\testdata\visual-v4-1920-active.png bytes=44312 card={x:332 y:922 w:952 h:98 r:28} primary={w:34 h:34 right:8 bottom:8}
+=== RUN   TestControlsHeadlessGeometryAndCapture/1182-hero
+    controls_visual_test.go:140: COMPOSER_VISUAL path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dscomposer\testdata\visual-v4-1182-hero.png bytes=21810 card={x:83 y:706 w:712 h:114 r:28} primary={w:34 h:34 right:8 bottom:8}
+=== RUN   TestControlsHeadlessGeometryAndCapture/1182-active
+    controls_visual_test.go:140: COMPOSER_VISUAL path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dscomposer\testdata\visual-v4-1182-active.png bytes=23333 card={x:83 y:722 w:712 h:98 r:28} primary={w:34 h:34 right:8 bottom:8}
+--- PASS: TestControlsHeadlessGeometryAndCapture (0.45s)
+    --- PASS: TestControlsHeadlessGeometryAndCapture/1920-hero (0.19s)
+    --- PASS: TestControlsHeadlessGeometryAndCapture/1920-active (0.09s)
+    --- PASS: TestControlsHeadlessGeometryAndCapture/1182-hero (0.08s)
+    --- PASS: TestControlsHeadlessGeometryAndCapture/1182-active (0.08s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dscomposer	0.512s

@@ -86,7 +86,19 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 		t.Fatal(err)
 	}
 	for _, seq := range expand {
-		hit, ok := findToolHit(session.Snapshot(), tree.ID(feat, "tool-"+itoa(seq)))
+		// dstool 的 int 只是内部局部键；测试仍按输入消息的 v4 seq 选人，
+		// 再走与产品相同的 MessageKey 适配，不能假定交互 id 仍是裸 seq。
+		renderID := 0
+		for i, msg := range data.Msgs {
+			if msg.Role == "tool" && msg.Seq == seq {
+				renderID = p.toolRenderID(messageRenderKey(&pluginapi.Env{Data: data}, msg, i))
+				break
+			}
+		}
+		if renderID == 0 {
+			t.Fatalf("测试输入没有工具消息 seq=%d", seq)
+		}
+		hit, ok := findToolHit(session.Snapshot(), tree.ID(feat, "tool-"+itoa(renderID)))
 		if !ok {
 			t.Fatalf("没有工具消息 seq=%d 的标题行命中区；hits=%+v", seq, session.Snapshot().Hits)
 		}
@@ -101,7 +113,7 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 		if err := session.Driver().Pump(); err != nil {
 			t.Fatal(err)
 		}
-		if !p.toolCards().Open(seq) {
+		if !p.toolCards().Open(renderID) {
 			t.Fatalf("点了 seq=%d 的标题行，工具卡没有展开", seq)
 		}
 	}

@@ -1,0 +1,9 @@
+--- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels (0.00s)
+    --- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels/auto (0.00s)
+        controls_test.go:69: permission "auto" 显示为 "自动审查"，want "自动审批"
+--- FAIL: TestKnownPermissionHasVectorIconBesideLabel (0.00s)
+    --- FAIL: TestKnownPermissionHasVectorIconBesideLabel/auto (0.00s)
+        controls_test.go:93: 已知权限 "auto" 应显示中文真值 "自动审批"
+FAIL
+FAIL	github.com/MYCF711/dsh-ui/plugins/dscomposer	11.217s
+FAIL

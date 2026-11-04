@@ -1,0 +1,222 @@
+//go:build darwin || windows || linux
+
+package dsstatusbar
+
+import (
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dscomposer"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/headless"
+	"github.com/vivaui/viva/ui"
+)
+
+// TestFG5HeadlessDockAndConnection 用真实 composer、ds-core 与 flex 布局验收。
+// FG5_CAPTURE_DIR 非空时保留 PNG；默认也在临时目录完成相同实画断言。
+func TestFG5HeadlessDockAndConnection(t *testing.T) {
+	dir := os.Getenv("FG5_CAPTURE_DIR")
+	if dir == "" {
+		dir = t.TempDir()
+	} else if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	status := &Plugin{}
+	composer := &dscomposer.Plugin{}
+	kernel := uikernel.New("fg5-headless")
+	if err := kernel.Load(&dscore.Plugin{Dark: true}, composer, status); err != nil {
+		t.Fatal(err)
+	}
+	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
+	tree := &ui.Tree{}
+	feat := tree.Feature("fg5-headless")
+	data := pluginapi.Snapshot{
+		Cur: "fg5-real-layout", Status: "已连接",
+		UsageTotal:    pluginapi.Usage{InputTokens: 12000, OutputTokens: 345, TotalTokens: 12345},
+		ContextTokens: 2000,
+		// 这些窗口消息必须不能变成官方轮/步。
+		Msgs: []apiclient.Message{{Role: "assistant"}, {Role: "assistant"}, {Role: "tool"}},
+	}
+	var (
+		view        flex.View
+		invalidator app.Invalidator
+		dockBox     flex.Box
+	)
+	config := app.Config{
+		Title: "fg5-headless", Width: 1920, Height: 1032, Tree: tree,
+		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
+	}
+	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		canvas.Fill(bounds, theme.BgBase)
+		env := &pluginapi.Env{
+			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
+			Bounds: bounds, MainWidth: size.Width,
+			Geometry: pluginapi.Geometry{
+				Width: size.Width, Height: size.Height,
+				MainWidth: size.Width, BottomHeight: 24,
+			},
+			Has: kernel.Has,
+		}
+		dockBox = flex.Box{}
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+			f.Column().FillWidth().FillHeight().Children(func() {
+				f.Row().Grow(1)
+				// 与 dsshell 中栏一致：先 Pad(12)，再按 Order 画 composer 和 dock。
+				f.Column().FillWidth().Pad(12).Gap(8).Children(func() {
+					for _, painter := range kernel.Painters(pluginapi.SlotMainComposer) {
+						if painter.ID == "dock" {
+							dockBox = status.drawDock(f, env)
+							continue
+						}
+						painter.Draw(f, env)
+					}
+				})
+				for _, painter := range kernel.Painters(pluginapi.SlotShellBottom) {
+					painter.Draw(f, env)
+				}
+			})
+		})
+		for _, painter := range kernel.AllPainters() {
+			if painter.AfterDraw != nil {
+				painter.AfterDraw(canvas, env)
+			}
+		}
+	}
+	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	assertFrame := func(width, height int, name string, disconnected bool) {
+		t.Helper()
+		if err := session.Resize(width, height); err != nil {
+			t.Fatal(err)
+		}
+		snapshot := session.Snapshot()
+		for _, want := range []string{"总量 12.3k", "上下文 2.0k"} {
+			if !session.HasText(want) {
+				t.Fatalf("%s 缺真值文本 %q；texts=%q", name, want, session.Texts())
+			}
+		}
+		joined := strings.Join(session.Texts(), " ")
+		for _, banned := range []string{" 轮", " 步", "tok/s", "缓存命中", "%"} {
+			if strings.Contains(joined, banned) {
+				t.Fatalf("%s 出现未供真值的指标 %q；texts=%q", name, banned, joined)
+			}
+		}
+		wantConnection := "就绪"
+		wantColor := theme.Success
+		if disconnected {
+			wantConnection = "已断开"
+			wantColor = theme.Error
+			if session.HasText("就绪") {
+				t.Fatalf("%s 断线后仍显示就绪", name)
+			}
+		}
+		if !session.HasText(wantConnection) {
+			t.Fatalf("%s 缺连接状态 %q；texts=%q", name, wantConnection, session.Texts())
+		}
+		var connectionDot bool
+		var card app.Primitive
+		for _, primitive := range snapshot.Primitives {
+			if primitive.Bounds.Width == 6 && primitive.Bounds.Height == 6 && primitive.Color == wantColor {
+				connectionDot = true
+			}
+			if primitive.Color == theme.InputMajor && primitive.Bounds.Width*primitive.Bounds.Height > card.Bounds.Width*card.Bounds.Height {
+				card = primitive
+			}
+		}
+		if !connectionDot {
+			t.Fatalf("%s 没有实画正确连接状态点", name)
+		}
+		dock := dockBox.Rect()
+		if closeEnoughFG5(dock.Height, 0) {
+			t.Fatalf("%s dock 未实画", name)
+		}
+		if !closeEnoughFG5(dock.Height, 26) {
+			t.Fatalf("%s dock 高 = %.2f，官方 26（不是旧 24/标题栏 40）", name, dock.Height)
+		}
+		if card.Bounds.Width <= 0 || dock.Y < card.Bounds.Y+card.Bounds.Height {
+			t.Fatalf("%s dock 不在 composer 卡片下方：card=%+v dock=%+v", name, card.Bounds, dock)
+		}
+		cardCenter := card.Bounds.X + card.Bounds.Width/2
+		dockCenter := dock.X + dock.Width/2
+		if math.Abs(float64(cardCenter-dockCenter)) > 0.01 {
+			t.Fatalf("%s 卡片与 dock 不同轴：cardCenter=%.2f dockCenter=%.2f", name, cardCenter, dockCenter)
+		}
+		path := filepath.Join(dir, name)
+		if err := session.Screenshot(path); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(path)
+		if err != nil || info.Size() == 0 {
+			t.Fatalf("%s 截图为空：path=%s info=%v err=%v", name, path, info, err)
+		}
+		t.Logf("FG5_CAPTURE path=%s size=%dx%d bytes=%d dock=(x %.1f y %.1f w %.1f h %.1f) cardCenter=%.1f connection=%s",
+			path, width, height, info.Size(), dock.X, dock.Y, dock.Width, dock.Height, cardCenter, wantConnection)
+	}
+
+	assertFrame(1920, 1032, "fg5-dock-1920x1032.png", false)
+	assertFrame(1182, 832, "fg5-dock-1182x832.png", false)
+
+	data.Disconnected = true
+	data.Status = "连不上宿主，重试中…"
+	invalidator.Invalidate()
+	if err := session.Driver().Pump(); err != nil {
+		t.Fatal(err)
+	}
+	assertFrame(1182, 832, "fg5-disconnected-1182x832.png", true)
+
+	// 同一真实窗口切到 B：只能出现 B 的 whole-log 数字，不能残留 A。
+	data = pluginapi.Snapshot{
+		Cur: "session-b", Status: "已连接",
+		UsageTotal: pluginapi.Usage{TotalTokens: 777}, ContextTokens: 100,
+	}
+	invalidator.Invalidate()
+	if err := session.Driver().Pump(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"总量 777", "上下文 100"} {
+		if !session.HasText(want) {
+			t.Fatalf("切到 B 后缺 B 的真值 %q；texts=%q", want, session.Texts())
+		}
+	}
+	for _, stale := range []string{"总量 12.3k", "上下文 2.0k", "已断开"} {
+		if session.HasText(stale) {
+			t.Fatalf("切到 B 后仍显示 A/断线残留 %q", stale)
+		}
+	}
+
+	// 空会话即便上游错误地残留 usage，session-scoped dock 也不能创建盒子。
+	data = pluginapi.Snapshot{UsageTotal: aUsageForStaleTest(), ContextTokens: 2000}
+	invalidator.Invalidate()
+	if err := session.Driver().Pump(); err != nil {
+		t.Fatal(err)
+	}
+	if session.HasText("总量 12.3k") || session.HasText("上下文 2.0k") {
+		t.Fatalf("空会话显示了残留 usage；texts=%q", session.Texts())
+	}
+	if dockBox != (flex.Box{}) {
+		t.Fatal("空会话仍创建了 dock 盒子")
+	}
+	t.Log("FG5_SESSION_ISOLATION A->B->empty passed; empty dock box absent")
+}
+
+func aUsageForStaleTest() pluginapi.Usage {
+	return pluginapi.Usage{InputTokens: 12000, OutputTokens: 345, TotalTokens: 12345}
+}
+
+func closeEnoughFG5(got, want float32) bool {
+	return math.Abs(float64(got-want)) <= 0.01
+}

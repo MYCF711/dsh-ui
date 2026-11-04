@@ -80,11 +80,25 @@ func TestActiveHeaderUsesOfficialCrumbTypography(t *testing.T) {
 	canvas, _ := drawTopbarVisualTest(t, pluginapi.Snapshot{
 		Cur: "s1", Sessions: []apiclient.Session{{ID: "s1", Title: "真实会话"}},
 		Msgs: []apiclient.Message{{Role: "user", Text: "hi"}}, Total: 1,
+		Model: "real-model", Permission: "ask",
 	}, true)
 	title := topbarTestText(t, canvas, "真实会话")
 	if title.Style.Size != 14 || title.Bounds.Height != 20 || title.Style.Weight != ui.WeightMedium {
 		t.Errorf("官方当前 crumb 应为 14/20/500，实际 size=%v line=%v weight=%v",
 			title.Style.Size, title.Bounds.Height, title.Style.Weight)
+	}
+	for _, legacy := range []string{"共 1 条", "real-model · 审批 ask"} {
+		if topbarHasText(canvas, legacy) {
+			t.Errorf("active Header 不应重复 composer/旧占位信息 %q", legacy)
+		}
+	}
+	for _, tab := range []string{"对话", "轨迹"} {
+		if !topbarHasRightbarControl(canvas, tab) {
+			t.Errorf("active Header 缺少可点击的 %q 页签", tab)
+		}
+	}
+	if topbarHasText(canvas, "主题鱼") || topbarHasText(canvas, "团队") || topbarHasText(canvas, "子智能体") {
+		t.Error("没有扩展/团队/子智能体真值时不得画对应标签")
 	}
 }
 
@@ -112,14 +126,26 @@ func TestHeaderGeometryMatchesOfficialBlankActiveAndSessionless(t *testing.T) {
 	activeData := blankData
 	activeData.Msgs = []apiclient.Message{{Role: "user", Text: "hi"}}
 	activeData.Total = 1
-	_, active := drawTopbarVisualTest(t, activeData, true)
-	if got := active.headerBoxes.Root.Rect().Height; got != 50.5 {
-		t.Errorf("active 无 tabs Header 高 = %v，官方 50+0.5=50.5", got)
+	activeCanvas, active := drawTopbarVisualTest(t, activeData, true)
+	if got := active.headerBoxes.Body.Rect().Height; got != 76 {
+		t.Errorf("active Header 高 = %v，官方 76", got)
+	}
+	if got := active.headerBoxes.Root.Rect().Height; got != 76.5 {
+		t.Errorf("active Header+分割线高 = %v，官方 76+0.5=76.5", got)
+	}
+	if got := active.headerBoxes.TitleRow.Rect().Height; got != 30 {
+		t.Errorf("active titleRow 高 = %v，官方 30", got)
 	}
 	if got := active.headerBoxes.Divider.Rect().Height; got != 0.5 {
 		t.Errorf("active 分割线 = %v，官方 0.5", got)
 	}
-	t.Logf("V1_GEOMETRY active root=%+v body=%+v titleRow=%+v corner=%+v divider=%+v",
+	for _, label := range []string{"对话", "轨迹"} {
+		hit := topbarTestHit(t, activeCanvas, label)
+		if hit.Bounds.Height != 25 {
+			t.Errorf("%s 页签高 = %v，官方 25", label, hit.Bounds.Height)
+		}
+	}
+	t.Logf("FG3_GEOMETRY active root=%+v body=%+v titleRow=%+v corner=%+v divider=%+v",
 		active.headerBoxes.Root.Rect(), active.headerBoxes.Body.Rect(),
 		active.headerBoxes.TitleRow.Rect(), active.headerBoxes.Corner.Rect(), active.headerBoxes.Divider.Rect())
 
@@ -129,6 +155,27 @@ func TestHeaderGeometryMatchesOfficialBlankActiveAndSessionless(t *testing.T) {
 	}
 	t.Logf("V1_GEOMETRY sessionless root=%+v body=%+v",
 		sessionless.headerBoxes.Root.Rect(), sessionless.headerBoxes.Body.Rect())
+}
+
+func TestCornerOnlyExpandsCollapsedRightbar(t *testing.T) {
+	canvas, _ := drawTopbarVisualTest(t, pluginapi.Snapshot{
+		Cur: "s1", Sessions: []apiclient.Session{{ID: "s1", Title: "active"}},
+		Msgs: []apiclient.Message{{Role: "user", Text: "hi"}}, ShowRightbar: true,
+	}, true)
+	if topbarHasRightbarControl(canvas, "打开右侧边栏") || topbarHasRightbarControl(canvas, "收起右侧边栏") {
+		t.Error("官方 ExpandButton 只在右栏收起时出现；展开态应由右栏自己的 PanelChrome 收起")
+	}
+}
+
+func topbarTestHit(t *testing.T, canvas *ui.Canvas, label string) ui.Hit {
+	t.Helper()
+	for _, hit := range canvas.Hits() {
+		if hit.Label == label {
+			return hit
+		}
+	}
+	t.Fatalf("顶栏缺少命中区 %q；实际命中：%+v", label, canvas.Hits())
+	return ui.Hit{}
 }
 
 func topbarHasRightbarControl(canvas *ui.Canvas, label string) bool {

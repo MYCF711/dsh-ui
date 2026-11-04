@@ -38,6 +38,7 @@ type Event struct {
 	Seq   int             // 事件序号；Kind=="gap" 时为 0
 	Topic string          // 所属话题
 	Data  json.RawMessage // 事件载荷
+	Time  int64           // canonical 帧时间（epoch 毫秒）；0 = 未知，不用本地墙钟补
 	Gap   *GapInfo        // 仅 Kind=="gap"
 }
 
@@ -96,12 +97,8 @@ func (m *Mux) muxURL() (string, error) {
 //
 // `type` 是 v4 原始事件名；心跳回包是 `{"type":"pong"}`。
 // 没有 topic 字段——连接本身就是会话归属。
-type serverFrame struct {
-	Seq  int             `json:"seq"`
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data,omitempty"`
-	Time int64           `json:"time,omitempty"`
-}
+// WS 与 session.history 复用 Frame 的 canonical 解码，避免两条路径的时间规则漂移。
+type serverFrame = Frame
 
 type clientFrame struct {
 	T        string `json:"t"`
@@ -224,7 +221,7 @@ func (m *Mux) readLoop(ctx context.Context, conn *websocket.Conn, topic string, 
 			// session/reset 也走这里：它没有 seq（不代表某个事件），但必须交给
 			// 调用方——否则客户端不知道"你手里的水位作废了，重新 load"，
 			// 会拿旧水位继续订阅，被宿主按 seq>sinceSeq 静默过滤。
-			out <- Event{Kind: f.Type, Seq: 0, Topic: topic, Data: f.Data}
+			out <- Event{Kind: f.Type, Seq: 0, Topic: topic, Data: f.Data, Time: f.Time}
 			continue
 		}
 		// 重复 / 倒退的 seq：调用方已经消费过这一号，**静默丢弃**。
@@ -243,8 +240,8 @@ func (m *Mux) readLoop(ctx context.Context, conn *websocket.Conn, topic string, 
 			}}
 		}
 		last = f.Seq
-		// topic 用客户端订阅的那个：服务端帧不带 topic。
-		out <- Event{Kind: f.Type, Seq: f.Seq, Topic: topic, Data: f.Data}
+		// topic 用客户端订阅的那个：服务端帧不带 topic；Data/Time 原样保真。
+		out <- f.Event(topic)
 	}
 }
 

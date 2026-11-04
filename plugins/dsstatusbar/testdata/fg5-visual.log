@@ -1,0 +1,11 @@
+=== RUN   TestFG5HeadlessDockAndConnection
+2026/11/04 03:20:19 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 03:20:19 INFO 插件已装配 id=ds-composer provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 03:20:19 INFO 插件已装配 id=ds-statusbar provides=[] requires="[ui.theme ui.primitives]"
+    visual_test.go:170: FG5_CAPTURE path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dsstatusbar\testdata\fg5-dock-1920x1032.png size=1920x1032 bytes=45998 dock=(x 12.0 y 970.0 w 1896.0 h 26.0) cardCenter=960.0 connection=就绪
+    visual_test.go:171: FG5_CAPTURE path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dsstatusbar\testdata\fg5-dock-1182x832.png size=1182x832 bytes=24816 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=就绪
+    visual_test.go:179: FG5_CAPTURE path=D:\DeepSeek Harness\default-workspace\dsh-ui\plugins\dsstatusbar\testdata\fg5-disconnected-1182x832.png size=1182x832 bytes=25671 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=已断开
+    visual_test.go:213: FG5_SESSION_ISOLATION A->B->empty passed; empty dock box absent
+--- PASS: TestFG5HeadlessDockAndConnection (0.32s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dsstatusbar	0.382s

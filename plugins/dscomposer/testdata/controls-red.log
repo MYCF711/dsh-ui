@@ -1,0 +1,39 @@
+--- FAIL: TestComposerShowsHostTruthInOfficialSeats (0.00s)
+    composer_test.go:141: composer 没显示宿主真值 "逐次询问"；实际文本："说点什么…（Enter 发送）\n审批 ask\ndeepseek-v4-pro\n已连接\n↑\n说点什么…（Enter 发送）"
+    composer_test.go:162: 控件顺序应为 permission < model < status < primary；x=-1/576.3/711.55/753
+--- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels (0.00s)
+    --- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels/read-only (0.00s)
+        controls_test.go:69: permission "read-only" 显示为 "审批 read-only"，want "仅可查看"
+    --- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels/workspace-write (0.00s)
+        controls_test.go:69: permission "workspace-write" 显示为 "审批 workspace-write"，want "工作区内修改"
+    --- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels/danger-full-access (0.00s)
+        controls_test.go:69: permission "danger-full-access" 显示为 "审批 danger-full-access"，want "完全权限"
+    --- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels/allow (0.00s)
+        controls_test.go:69: permission "allow" 显示为 "审批 allow"，want "完全权限"
+    --- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels/ask (0.00s)
+        controls_test.go:69: permission "ask" 显示为 "审批 ask"，want "逐次询问"
+    --- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels/deny (0.00s)
+        controls_test.go:69: permission "deny" 显示为 "审批 deny"，want "全部拒绝"
+    --- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels/auto (0.00s)
+        controls_test.go:69: permission "auto" 显示为 "审批 auto"，want "自动审查"
+    --- FAIL: TestPermissionTruthUsesChineseProductAndPolicyLabels/host-custom-policy (0.00s)
+        controls_test.go:69: permission "host-custom-policy" 显示为 "审批 host-custom-policy"，want "host-custom-policy"
+--- FAIL: TestKnownPermissionHasVectorIconBesideLabel (0.00s)
+    controls_test.go:80: 已知宿主 policy 应显示中文真值“逐次询问”
+--- FAIL: TestModelTriggerUsesOfficialWiderMaxWidth (0.00s)
+    controls_test.go:118: 模型仍被权限的 220px 上限压住：文本宽 204.00，官方模型 trigger 应取 360px 档
+--- FAIL: TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea (0.00s)
+    --- FAIL: TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea/发送 (0.00s)
+        controls_test.go:152: 仍在依赖字体 glyph "↑"，必须改官方 16 viewBox 矢量
+    --- FAIL: TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea/停止 (0.00s)
+        controls_test.go:152: 仍在依赖字体 glyph "■"，必须改官方 16 viewBox 矢量
+--- FAIL: TestPrimaryDisabledTruthAndDraftSafety (0.00s)
+    --- FAIL: TestPrimaryDisabledTruthAndDraftSafety/空草稿禁发 (0.00s)
+        controls_test.go:177: 空草稿必须呈现官方 disabled 语义：{ID:{scope:2 name:2147483649} Bounds:{X:753 Y:56 Width:34 Height:34} Label:发送 Value: Hint: Scope:{scope:0 name:0} Layer:0 Role:1 Cursor:0 CursorImage:<nil> Disabled:false FocusableDisabled:false Checked:false Mixed:false Selected:false Expanded:false Expandable:false Multiline:false ReadOnly:false Secure:false Focusable:true Description: Level:0 PosInSet:0 SetSize:0 Live:0 Range:{Now:0 Min:0 Max:0 Step:0 Set:false} SkipTab:false Autofocus:false Block:false Container:false IsLabel:false Backdrop:false MovesWindow:false PassSecondary:false PassPrimary:false TextBounds:{X:0 Y:0 Width:0 Height:0} TextSize:0 TextColor:{Red:0 Green:0 Blue:0 Alpha:0} HideNativeOverlays:false NavigationKeys:false Placement:<nil>} found=true
+    --- FAIL: TestPrimaryDisabledTruthAndDraftSafety/无Send保留草稿 (0.00s)
+        controls_test.go:190: Send=nil 必须 disabled，不能是假可点：{ID:{scope:2 name:2147483649} Bounds:{X:753 Y:56 Width:34 Height:34} Label:发送 Value: Hint: Scope:{scope:0 name:0} Layer:0 Role:1 Cursor:0 CursorImage:<nil> Disabled:false FocusableDisabled:false Checked:false Mixed:false Selected:false Expanded:false Expandable:false Multiline:false ReadOnly:false Secure:false Focusable:true Description: Level:0 PosInSet:0 SetSize:0 Live:0 Range:{Now:0 Min:0 Max:0 Step:0 Set:false} SkipTab:false Autofocus:false Block:false Container:false IsLabel:false Backdrop:false MovesWindow:false PassSecondary:false PassPrimary:false TextBounds:{X:0 Y:0 Width:0 Height:0} TextSize:0 TextColor:{Red:0 Green:0 Blue:0 Alpha:0} HideNativeOverlays:false NavigationKeys:false Placement:<nil>} found=true
+    --- FAIL: TestPrimaryDisabledTruthAndDraftSafety/无Cancel停止禁用 (0.00s)
+        controls_test.go:202: Cancel=nil 时停止必须 disabled：{ID:{scope:2 name:2147483649} Bounds:{X:753 Y:56 Width:34 Height:34} Label:停止 Value: Hint: Scope:{scope:0 name:0} Layer:0 Role:1 Cursor:0 CursorImage:<nil> Disabled:false FocusableDisabled:false Checked:false Mixed:false Selected:false Expanded:false Expandable:false Multiline:false ReadOnly:false Secure:false Focusable:true Description: Level:0 PosInSet:0 SetSize:0 Live:0 Range:{Now:0 Min:0 Max:0 Step:0 Set:false} SkipTab:false Autofocus:false Block:false Container:false IsLabel:false Backdrop:false MovesWindow:false PassSecondary:false PassPrimary:false TextBounds:{X:0 Y:0 Width:0 Height:0} TextSize:0 TextColor:{Red:0 Green:0 Blue:0 Alpha:0} HideNativeOverlays:false NavigationKeys:false Placement:<nil>} found=true
+FAIL
+FAIL	github.com/MYCF711/dsh-ui/plugins/dscomposer	0.037s
+FAIL

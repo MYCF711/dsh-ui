@@ -1,0 +1,2 @@
+$ go vet ./plugins/dsstatusbar
+vet_exit=0

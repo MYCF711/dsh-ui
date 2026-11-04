@@ -29,6 +29,14 @@ import (
 	"github.com/coder/websocket"
 )
 
+// WSPath 是流端点的路径。
+//
+// 抽成常量只有一个原因：`testdata/api.snapshot.json` 里也写着它，而**没有任何测试
+// 把两边对起来过**——于是快照里一直躺着废弃的 `/api/mux`，代码里一直是 `/ws`，
+// 谁也没发现。照那份快照写客户端的人会连错地址，而且错得毫无提示。
+// 现在 `TestSnapshotStreamPathMatchesClient` 把常量与快照钉在一起，改一边就红。
+const WSPath = "/ws"
+
 // Event 是流上的一条消息。
 //
 // Kind 为 "gap" 时 Seq 无意义，看 Gap 字段：调用方应当用 session.history
@@ -87,7 +95,7 @@ func (m *Mux) muxURL() (string, error) {
 	default:
 		return "", fmt.Errorf("Base 的 scheme 必须是 http/https/ws/wss，收到 %q", u.Scheme)
 	}
-	u.Path = strings.TrimRight(u.Path, "/") + "/ws"
+	u.Path = strings.TrimRight(u.Path, "/") + WSPath
 	return u.String(), nil
 }
 

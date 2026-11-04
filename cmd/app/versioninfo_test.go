@@ -28,11 +28,15 @@ import (
 // 2026-11-04 真撞到：改名成 `DSH GO GUI` / `dshgogui.exe` 之后，仓库里那个 .syso
 // 还是上一版生成的，于是
 //
-//	(Get-Item tmp/dshgogui.exe).VersionInfo
+//	(Get-Item "tmp/dshgogui.exe").VersionInfo
 //	  ProductName      : DSH GUI GO        ← 旧名字
 //	  OriginalFilename : dsh-gui.exe       ← 旧名字
 //
 // 而所有测试都是绿的。
+//
+// 同一天晚些时候产品名再改成**全程** `DSH GUI GO` / `DSH GUI GO.exe`（用户口径：
+// 「exe 要写产品名，而且要全程」）。这一次重生成 .syso 是改 brand.go 的固定一步，
+// 不用等守卫来抓——但它仍是"忘了重生成"唯一会响的地方。
 //
 // # 判据
 //

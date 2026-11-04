@@ -1879,9 +1879,11 @@ func itoaLocal(n int) string {
 }
 
 func main() {
-	// `-h` 打的是产品名与产物名：否则人对着 "Usage of app.exe" 还得猜这是哪个程序。
+	// `-h` 打的是产品名：否则人对着 "Usage of app.exe" 还得猜这是哪个程序。
+	// 产物名不用再重复一遍——它**就是**产品名加 `.exe`（brand.go 的 binaryName），
+	// 再打一次只会得到「DSH GUI GO dev（DSH GUI GO.exe）」这种同义反复。
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "%s %s（%s.exe）\n\n参数：\n", productName, version, binaryName)
+		fmt.Fprintf(flag.CommandLine.Output(), "%s %s\n\n参数：\n", productName, version)
 		flag.PrintDefaults()
 	}
 	// --version：只读打印一行然后退出。它是**查身份**用的（哪个产物、哪一版），
@@ -1921,7 +1923,7 @@ func main() {
 	chromeProbe := flag.Bool("chrome-probe", false, "与 -shot 同用：点击本进程窗口控制并断言 OS 状态，最后从关闭钮退出")
 	winSize := flag.String("size", "", "调试：窗口初始尺寸 WxH（如 1600x900）；空 = 1180x800。验证几何在不同宽度下是否成立")
 	flag.Parse()
-	// 版本查询排在所有参数校验之前：`dshgogui.exe --version` 不管别的参数写成什么，
+	// 版本查询排在所有参数校验之前：`"DSH GUI GO.exe" --version` 不管别的参数写成什么，
 	// 都只该打印一行就退（退出码 0），否则脚本里那句"先确认产物是哪一版"会被
 	// 别的 flag 的合法性检查带成判红。
 	if *showVersion {

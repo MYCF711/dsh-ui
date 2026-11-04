@@ -1,7 +1,7 @@
-# AGENTS.md · DSH GO GUI（界面线）
+# AGENTS.md · DSH GUI GO（界面线）
 
 > 用 Go + Viva 重写 DSH 的**原生界面线**。宿主在 `../DSH-GO`；本仓独立构建，不是宿主仓里的 TypeScript `ui/`。
-> **产品名 `DSH GO GUI`、产物 `dshgogui.exe`**：`cmd/app/brand.go` 是唯一来源，窗口标题 / 内核名 / 无头认窗都引用它；`--version` 打 `DSH GO GUI <版本>`。
+> 产品名/产物名 `DSH GUI GO` / `DSH GUI GO.exe` 唯一定义在 `cmd/app/brand.go`，窗口标题/内核名/无头认窗都引用它。名字**全程、带空格、整体加引号**；不允许 `DSH GO GUI`/`dshgogui`/`dsh-ui` 旧名。
 > 目标：极限性能、极限占用、还原 DSH 原生使用体验、逐部件插件化。Web 兼容只能是可关闭的过渡件。
 > 决策依据：`../DSH-GO/UIPLAN.md` 顶部用户原话、§2.10；本仓 `PLAN.md` §8。
 
@@ -56,14 +56,14 @@ H14 只用真实 apiclient 对契约夹具验合成 text/reasoning/tool/approval
 
 ### P1.5 · 官方首屏外观基线（与 P0/P1 并行）
 
-对照官方同尺寸截图和 `docs/official-specs.md`，先补品牌/导航/工作区、真实会话行、居中欢迎区、完整 composer、模型/权限/附件控件及右栏默认关闭。1920×1032 与 1182×832 各留证据，关键容器几何偏差 ≤8px，字体/行高用官方令牌；未知值隐藏，不做死按钮或静态假还原。
+对照官方同尺寸截图和 `docs/official-specs.md`，补品牌/导航/工作区、会话行、欢迎区、composer、模型/权限/附件控件及右栏默认关闭。两尺寸留证，关键容器偏差≤8px，字体/行高用官方令牌；未知隐藏，不做死按钮。
 
 ## 4. 并行与安全
 
 - Lead 只拆包/派单/验收：≥2 个独立 READY 同轮派给子代理或有上下文成员；派后不 wait/poll，完成方主动通知。验收后更新 `../DSH-GO/UIPLAN.md` §4.1 并派下一项，表空先补项。
 - 任务书写 owner/paths/rev/依赖/验收/证据；独立插件目录并行，`cmd/app`、契约、uikernel、apiclient、快照串行，同文件单写者。
 - 改前重读；遇 `FS_STALE_VERSION` 或并发变化先合并。不得 `git checkout --`/reset 覆盖别人，不移动/删除兄弟仓或共享源码目录来造失败分支。
-- 不按镜像名杀 `dshd.exe`/`app.exe`，不碰其他会话进程；测试只回收自己启动且记录归属的 PID。不得重启/关闭 DSH 或 magpie，不写 profiles/asar/原始会话。
+- 不按镜像名杀 `dshgo.exe`/`DSH GUI GO.exe`，不碰其他会话进程；测试只回收自己启动且记录归属的 PID。不得重启/关闭 DSH 或 magpie，不写 profiles/asar/原始会话。
 - 测试用临时 home、OS 分配端口与无头窗口；不向用户弹窗，不抢现有 GUI 地址。
 - 每轮在 `docs/progress.md` 追加“实现/证据/未验证/下一步”，不要只写 ALL GREEN。
 - 推 `MYCF711/dsh-ui` 或其他远端前先得到用户当次确认。

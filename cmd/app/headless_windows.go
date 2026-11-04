@@ -6,7 +6,8 @@
 // 用 GDI 的 PrintWindow(PW_RENDERFULLCONTENT) 可以让窗口自己把内容画到
 // 一个内存位图上，再存成 PNG——不需要窗口可见地停在屏幕上。
 //
-// 用法： ./app.exe -addr http://127.0.0.1:7788 -shot docs/x.png
+// 用法： "./DSH GUI GO.exe" -addr http://127.0.0.1:7788 -shot docs/x.png
+// （产物名带空格，所以整条路径要加引号。）
 // 抓完直接 os.Exit(0)，不留窗口。
 package main
 

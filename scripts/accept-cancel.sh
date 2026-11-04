@@ -3,12 +3,16 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export PATH="/c/Program Files/Go/bin:$PATH"
+# 宿主二进制路径可覆盖：默认是共享的 tmp/dshd-acc.exe。
+# 为什么要能覆盖：那个文件会被**没退出的旧宿主**锁住（Windows），于是"编不出新二进制"，
+# 整个验收直接停在第一步。`accept-all.sh` 每次编到自己那一轮的目录里再传进来。
+BIN="${DSHD_ACC:-tmp/dshd-acc.exe}"
 ok=0; fail=0
 chk() { if [ "$2" -eq 0 ]; then echo "PASS  $1"; ok=$((ok+1)); else echo "FAIL  $1  ${3:-}"; fail=$((fail+1)); fi; }
 
 H=tmp/canc-home-$$; rm -rf "$H"
 # **allow**：取消要验的是"中断"，不是审批——把审批卡在中间会让它变成又一个审批测试。
-./tmp/dshd-acc.exe serve --home "$H" --policy allow > tmp/canc.txt 2> tmp/canc.log &
+"$BIN" serve --home "$H" --policy allow > tmp/canc.txt 2> tmp/canc.log &
 sleep 6
 U=$(grep -o 'http://[^"]*' tmp/canc.txt | head -1)
 T=$(grep -o '"token":"[^"]*' tmp/canc.txt | cut -d'"' -f4)
@@ -63,6 +67,8 @@ print(len(d.get('frames') or []))
 ")
 [ "$N2" -le "$((N1 + 1))" ]; chk "取消后帧数基本不再增长（$N1 → $N2）" "$?"
 
+# **退出码就是判据**：FAIL 非零必须以非零退出，否则调用方（`&&`、CI、`accept-all.sh`）会把一次失败的验收当成通过。
+# 这一行原来写的是无条件 `exit 0` —— 脚本明明打了 FAIL=1，却对调用方说"我过了"。
 echo "----- 合计 OK=$ok FAIL=$fail"
 echo "帧序：$(types)"
-exit 0
+[ "$fail" -eq 0 ] || exit 1

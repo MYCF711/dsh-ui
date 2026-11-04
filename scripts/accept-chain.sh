@@ -3,15 +3,19 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export PATH="/c/Program Files/Go/bin:$PATH"
+# 宿主二进制路径可覆盖：默认是共享的 tmp/dshd-acc.exe。
+# 为什么要能覆盖：那个文件会被**没退出的旧宿主**锁住（Windows），于是"编不出新二进制"，
+# 整个验收直接停在第一步。`accept-all.sh` 每次编到自己那一轮的目录里再传进来。
+BIN="${DSHD_ACC:-tmp/dshd-acc.exe}"
 U=""; ok=0; fail=0
 # $2 是 grep/curl 的退出码：**0 = 成功**。第一版写成比较 "1"，于是全反了。
 chk() { if [ "$2" -eq 0 ]; then echo "PASS  $1"; ok=$((ok+1)); else echo "FAIL  $1  ${3:-}"; fail=$((fail+1)); fi; }
 
-python ../DSH-GO/scripts/bin-check.py tmp/dshd-acc.exe >/dev/null 2>&1
+python ../DSH-GO/scripts/bin-check.py "$BIN" >/dev/null 2>&1
 chk "二进制与源码一致（bin-check）" "$?"
 
 H=tmp/acc-home-$$; rm -rf "$H"
-./tmp/dshd-acc.exe serve --home "$H" --policy ask > tmp/acc.txt 2> tmp/acc.log &
+"$BIN" serve --home "$H" --policy ask > tmp/acc.txt 2> tmp/acc.log &
 sleep 6
 U=$(grep -o 'http://[^"]*' tmp/acc.txt | head -1)
 T=$(grep -o '"token":"[^"]*' tmp/acc.txt | cut -d'"' -f4)
@@ -61,6 +65,8 @@ chk "models.list 可用" "$?"
 curl -s -b tmp/acc.ck -XPOST $U/api/jobs.list -d '{}' | grep -q '"jobs"'
 chk "jobs.list 可用" "$?"
 
+# **退出码就是判据**：FAIL 非零必须以非零退出，否则调用方（`&&`、CI、`accept-all.sh`）会把一次失败的验收当成通过。
+# 这一行原来写的是无条件 `exit 0` —— 脚本明明打了 FAIL=1，却对调用方说"我过了"。
 echo "----- 合计 OK=$ok FAIL=$fail"
 echo "$U" > tmp/acc-url.txt
-exit 0
+[ "$fail" -eq 0 ] || exit 1

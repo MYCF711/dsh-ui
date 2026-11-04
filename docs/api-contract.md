@@ -148,6 +148,21 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 `allow_always` 是真生效的：宿主会记住「这个会话的 bash 以后都允许」，下一次直接
 `早先已选择「以后都允许」，本轮自动放行`，不再推 `approval/request`。
 
+### `approval/timeout` 与 `approval/cancel`：宿主会主动告诉你"这条作废了"
+
+120s 到点，宿主**按拒绝结算**并推一帧 `approval/timeout`（`serve_approval.go`，
+**载荷与 `approval/request` 同一形状**，所以能解出是哪一条 `requestId`）。
+`approval/cancel` 语义相同，都在 WS 白名单里。
+
+界面必须**据此清掉审批条**：不清的话它会一直挂着，用户点下去得到 404
+（`no such request`），而更糟的是他一直以为"还有东西等着我处理"。这叫**僵尸审批条**。
+
+两条实现约束（2026-11-04 补，`cmd/app/approval_timeout_test.go` 钉住）：
+
+- **只清"正是那一条"**：迟到的超时帧不该把后一个还没答的审批一起抹掉
+  （载荷里的 `requestId` 对不上就留着）。
+- **载荷解不出 `requestId` 时仍然要清**：留一条点不动的审批条，比多清一次更糟。
+
 别名（同一个字段两个名字）**两边都收**，冲突时的取法逐字对齐宿主：
 `sessionId` 优先于 `id`（`server.go:395` `fillID`），`limit` 优先于 `tailMessages`
 （`server.go:417` `firstNonZero(in.Limit, in.TailMessages)`）。

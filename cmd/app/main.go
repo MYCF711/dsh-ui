@@ -1147,6 +1147,49 @@ func (m *model) applyEventAt(id string, ev apiclient.Event, envelopeTime int64) 
 	if ev.Time == 0 {
 		ev.Time = envelopeTime
 	}
+	// 审批**作废**：宿主的超时按拒绝结算并推这一帧（serve_approval.go），
+	// 再 approve 过去只会拿到 404 `no_such_request`。
+	//
+	// 不清的话审批条会一直挂在界面上——用户点它得到"请求已失效"，
+	// 而更糟的是他一直以为"还有东西等着我处理"。这是**僵尸审批条**。
+	//
+	// 只清"正是那一条"的：迟到的超时帧不该把后一个还没答的审批一起抹掉。
+	if ev.Kind == "approval/timeout" || ev.Kind == "approval/cancel" {
+		// 载荷和 approval/request **同一形状**（宿主 emit 的是同一份 payload），
+		// 所以复用同一个解析器，不另写一份"只读 requestId"的结构——
+		// 两份解析器迟早会漂，而漂了的表现是"超时帧认不出是哪一条"。
+		//
+		// 解不开就当"宿主没说是哪一条"——那种情况仍然要清：
+		// 留一条点不动的审批条，比多清一次更糟。
+		requestID := ""
+		if req, err := apiclient.ParseApprovalRequest(ev.Data); err == nil {
+			requestID = req.RequestID
+		}
+		m.mu.Lock()
+		cur := m.approvals[id]
+		matched := cur != nil && (requestID == "" || cur.RequestID == requestID)
+		if matched {
+			delete(m.approvals, id)
+			if id == m.cur {
+				m.approval = nil
+			}
+		}
+		if m.seqs == nil {
+			m.seqs = map[string]int{}
+		}
+		if ev.Seq > m.seqs[id] {
+			m.seqs[id] = ev.Seq
+		}
+		isCur := id == m.cur
+		m.mu.Unlock()
+		if matched && isCur {
+			m.setStatus("审批已超时（宿主已作废这条请求，按拒绝处理）")
+			log.Printf("审批作废 kind=%s requestId=%s", ev.Kind, requestID)
+		}
+		m.inv.Invalidate()
+		return
+	}
+
 	// 审批帧不是正文流；按会话保存完整原始 requestId/options，切回直接恢复，
 	// 不需要靠重订让宿主重推，也绝不会在 B 的前台显示 A 的请求。
 	if ev.Kind == "approval/request" {

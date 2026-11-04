@@ -145,7 +145,7 @@ func newDragFixture(t *testing.T, width, height float32) *dragFixture {
 	})
 	f := &dragFixture{
 		t:      t,
-		plugin: &Plugin{theme: *theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280},
+		plugin: &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280},
 		theme:  theme,
 		tree:   tree,
 		canvas: canvas,

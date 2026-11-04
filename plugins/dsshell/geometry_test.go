@@ -25,7 +25,7 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			theme := dscore.Dark()
-			p := &Plugin{theme: *theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280}
+			p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280}
 			tree := &ui.Tree{}
 			feat := tree.Feature("shell-geometry-test")
 			canvas := &ui.Canvas{}
@@ -99,7 +99,7 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 // 防止只改求解器却仍在 drawRightbar 里硬塞 300px。
 func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 	theme := dscore.Dark()
-	p := &Plugin{theme: *theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280}
+	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280}
 	tree := &ui.Tree{}
 	canvas := &ui.Canvas{}
 	canvas.SetTree(tree)

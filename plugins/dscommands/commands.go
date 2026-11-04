@@ -188,6 +188,25 @@ func (p *Plugin) commands() []Command {
 		)
 	}
 
+	// 主题：深 / 浅 / 跟随系统。**运行时就能换，不用重启**。
+	//
+	// 官方把这条放在 Appearance 设置行里；我们的设置面还没有，先落在命令面板，
+	// 和模型/权限同一档——"改一个值、立刻看到结果"。
+	//
+	// 为什么是三条而不是一个循环切换：和权限那边同一个理由，
+	// 用户没法从"切换主题"这个名字看出下一个是什么。
+	if a.SetTheme != nil {
+		for _, c := range []struct{ label, hint, value string }{
+			{"主题：深色", "官方深色令牌（ds-dark）", "dark"},
+			{"主题：浅色", "官方浅色令牌（ds-light）", "light"},
+			{"主题：跟随系统", "系统切浅色就浅色、切深色就深色", "system"},
+		} {
+			c := c // 闭包捕获：不这么做三条都会设成最后一个
+			set := a.SetTheme
+			out = append(out, Command{c.label, c.hint, func() { set(c.value) }})
+		}
+	}
+
 	// 审批策略：四条命令，**值都来自宿主的白名单**（deny/ask/allow/auto）。
 	//
 	// 为什么不做成"一个循环切换"：用户没法从命令名看出下一个是什么。

@@ -170,6 +170,10 @@ type model struct {
 
 	mu           sync.Mutex
 	chromeLayout frameChromeLayout // 由 Paint 写入，原生截图报告在 mu 下读取。
+	// themeMode 是用户选的模式（dark/light/system），pendingTheme 是"排着队、
+	// 等下一帧 Paint 去消费"的那一个。见 theme.go 里为什么必须排队。
+	themeMode    string
+	pendingTheme string
 	sessions     []apiclient.Session
 	cur          string
 	msgs         []apiclient.Message
@@ -255,6 +259,14 @@ func (m *model) refreshList() {
 		m.mu.Lock()
 		uiConfig = cfg
 		m.mu.Unlock()
+
+		// 上次在命令面板里选的主题：没有显式 `-theme` 就恢复它。
+		// 只排队（不落盘）——这是"读回来"，再写回去只会多一次无意义的写。
+		if !themeExplicit {
+			if v, ok := cfg["ui.theme"]; ok && validThemeMode(v) {
+				m.queueTheme(v)
+			}
+		}
 
 		// 定时任务：读 <home>/state/schedules/，失败就算了（只是界面上的一块）。
 		//
@@ -1344,17 +1356,20 @@ var msgsDebug = 0 // -debug 时置为 N：打 N 条 load 诊断（宿主 tail/to
 var streamDebug = 3
 
 var (
-	winTitle     string
-	shotPath     string
-	theme        ui.Theme          // 由 dscore 的令牌算出来，启动时赋值（见 main）
-	renderLimit  int               // 0 = 不限制
-	forceSession string            // 非空则启动后直接打开
-	tailCount    int               // session.load 的 tailMessages
-	wsDown       bool              // WS 订阅当前连不上（状态栏据此把绿点换成「已断开」）
-	uiConfig     map[string]string // 宿主 config.get 的缓存（插件同步读，壳后台刷新）
-	demoTool     bool              // 在消息列表里插假的工具卡
-	smokeSend    bool              // 启动后自动发一条
-	promptText   string            // -prompt 覆盖 smoke 文本
+	winTitle string
+	shotPath string
+	theme    ui.Theme // 由 dscore 的令牌算出来，启动时赋值（见 main）
+	// themeExplicit：用户显式给了 -theme。给了就不再被 ui-config 里的 ui.theme 覆盖——
+	// 命令行是"这一次我要这样"，配置文件是"上次我选过这样"，前者优先。
+	themeExplicit bool
+	renderLimit   int               // 0 = 不限制
+	forceSession  string            // 非空则启动后直接打开
+	tailCount     int               // session.load 的 tailMessages
+	wsDown        bool              // WS 订阅当前连不上（状态栏据此把绿点换成「已断开」）
+	uiConfig      map[string]string // 宿主 config.get 的缓存（插件同步读，壳后台刷新）
+	demoTool      bool              // 在消息列表里插假的工具卡
+	smokeSend     bool              // 启动后自动发一条
+	promptText    string            // -prompt 覆盖 smoke 文本
 )
 
 // drawSlot 把一个槽位上的插件按序画出来。
@@ -1421,6 +1436,9 @@ func newConfig(m *model) app.Config {
 				}
 			}
 		}
+		// 主题：**在这一帧开画之前**消费排队的那一个。
+		// 放这里是因为它写包级 `theme` 变量，而只有绘制线程可以写。
+		m.applyPendingTheme()
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.Background)
 		contentBounds := bounds
@@ -1798,7 +1816,7 @@ func main() {
 	limit := flag.Int("limit", 0, "只渲染最后 N 条消息（0 = 全部）；用于量视口虚拟化的收益")
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
 	openFile := flag.String("open-file", "", "无头截图用：启动后直接打开这个文件名的预览（走 dsfiles.Open，不模拟鼠标）")
-	themeName := flag.String("theme", "dark", "主题：dark / light（light 用 dscore.Light()，与官方浅色令牌同源）")
+	themeName := flag.String("theme", "dark", "主题：dark / light / system（system 跟着操作系统的明暗走）")
 	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	prompt := flag.String("prompt", "", "调试：-smoke 时发这条文本（默认 smoke-<时间>）；验工具卡/审批用")
@@ -1917,7 +1935,18 @@ func main() {
 	// 白名单模式下，cs-shell 必须永远是第一个：它负责切三栏。
 	// 少了它，其余部件会各自独占整个窗口（实测：白名单里漏掉 ds-shell，
 	// 侧栏和消息流就上下堆在一起了）。
-	plugins = append(plugins, fixedFirst(*pluginConfig, *themeName)...)
+	// 主题模式：`system` 要在这里**解析成明/暗**再交给 dscore 插件——
+	// 插件构造主题时只知道"深还是浅"，"跟着系统"是壳这一层的事。
+	if !validThemeMode(*themeName) {
+		log.Fatalf("--theme 只能是 dark|light|system，收到 %q", *themeName)
+	}
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "theme" {
+			themeExplicit = true
+		}
+	})
+	_, resolvedTheme := resolveThemeMode(*themeName)
+	plugins = append(plugins, fixedFirst(*pluginConfig, resolvedTheme)...)
 	if err := m.kernel.Load(orderPlugins(plugins)...); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}
@@ -2130,6 +2159,10 @@ func main() {
 		SetDraft:  func(text string) { m.draft.SetText(text) },
 		Retry:     m.retryLast,
 		RetrySend: m.retrySend,
+
+		// 主题：dark / light / system。**排队到下一帧 Paint 去改**（见 theme.go）。
+		// 命令面板、将来的设置页都走这一个入口。
+		SetTheme: m.requestTheme,
 	}
 	log.Printf("插件 %v，主题 %s", m.kernel.Order(), m.theme.Name)
 

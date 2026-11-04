@@ -36,6 +36,12 @@ func (m *model) loadSession(ctx context.Context, id string, tail int) (*apiclien
 		if err := json.Unmarshal(encoded, &extra); err != nil {
 			return nil, nil, err
 		}
+		// 只有思考、没有正文的那条回答：v4 里它是一条正文为空的 assistant 消息。
+		// 实时路径落成 role=thinking，重载路径必须**同一条规则**——
+		// 不翻的话，切回会话时它就是一个空气泡（或者干脆不见了）。
+		if thinking, ok := apiclient.ReasoningOnlyThinking(msg); ok {
+			msg = thinking
+		}
 		index := len(result.Messages)
 		result.Messages = append(result.Messages, msg)
 		if extra.Time != 0 || extra.Stopped {

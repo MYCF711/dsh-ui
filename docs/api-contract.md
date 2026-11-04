@@ -113,6 +113,24 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 | `session.list` | 会话列表 | —（宿主忽略 body；`cwd`/`limit`/`cursor` 尚未实现） |
 | `session.create` | 新建 | `mode`（`cwd`/`title` 客户端会发，宿主暂不读） |
 | `session.load` | 打开会话（含尾页） | `id` / `sessionId`、`tailMessages` / `limit` |
+
+### `session.load` 返回的 `messages[].reasoning`
+
+宿主**只在正文为空时**才带这个键（`transport_source.go`："有正文时思考是草稿，
+不是已经给用户的回答"）。所以拿到非空 `reasoning` 就等价于 `text == ""`。
+
+界面必须按 `role=thinking` 渲染它——**和实时流同一条规则**
+（`Stream.Messages()` 也是把思考落成 thinking）。不这么做的话，同一个回答
+在两条路径上长得不一样：
+
+```
+正在跑：       看到一个思考块
+切回来之后：   正文是空的 → 空气泡，或者干脆不见了
+```
+
+转换点只有一个：`apiclient.ReasoningOnlyThinking`（在载入解码里调用，见
+`cmd/app/wpc1_data.go`）。刻意只认"正文为空 + reasoning 非空"这一种形状——
+宿主根本不会发别的形状，多认一种就等于自己发明渲染规则。
 | `session.history` | 断号补洞（**原始 frames**，不是 messages 投影） | `id` / `sessionId`、`sinceSeq`、`limit`、`journalEpoch` |
 | `session.prompt` | 发消息 | `id` / `sessionId`、`text` |
 | `session.cancel` | 取消 turn | `id` / `sessionId` |

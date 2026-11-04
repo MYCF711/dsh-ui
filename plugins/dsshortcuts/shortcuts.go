@@ -28,15 +28,23 @@ type Binding struct {
 }
 
 // bindings 是全部真实键位。改动这里之前先确认对应插件里那行 HandleKey 还在。
+//
+// **这张表必须覆盖代码里所有 HandleKey 吃掉的键**——不是"记得的键"。
+// 这条规矩由 shortcuts_guard_test.go 卡住：从 plugins/ 下扫 `ui.KeyX`，
+// 表里少一个就红。写这条守卫的原因见那个文件的开头。
 var bindings = []Binding{
 	{"↑ / ↓", "上下选会话（焦点在侧栏时）", "plugins/dssidebar"},
 	{"Home / End", "跳到第一个 / 最后一个会话", "plugins/dssidebar"},
 	{"Enter", "发送输入框里的内容", "plugins/dscomposer"},
 	{"Esc", "拒绝当前审批请求（reject_once）", "plugins/dscomposer/approval.go"},
 	{"Esc", "关闭搜索框（搜索打开时）", "plugins/dsconversation"},
-	{"Esc / 停止键", "打断当前正在跑的 turn", "cmd/app（Cancel 接线）"},
-	{"F12", "收起 / 展开右上角的插件提示条", "plugins/dsdemo"},
+	{"Esc / 停止键", "打断当前正在跑的 turn", "plugins/dscomposer（Cancel 接线）"},
 	{"F1", "打开 / 关闭这份键位表", "plugins/dsshortcuts"},
+	{"F2", "命令面板：模型 / 权限 / 反馈记录 / 栏宽", "plugins/dscommands"},
+	{"F5", "打开 / 关闭终端面板", "plugins/dsterminal"},
+	{"F6", "把终端输入框里的命令发出去", "plugins/dsterminal"},
+	{"F7 / F8", "选第 1 / 第 2 个选项（提问条出现时）", "plugins/dsquestions"},
+	{"F12", "收起 / 展开右上角的插件提示条", "plugins/dsdemo"},
 }
 
 // Plugin 只有「显示 / 收起」一个状态。

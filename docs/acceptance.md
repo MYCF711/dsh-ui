@@ -52,7 +52,7 @@ PASS  jobs.list 可用
 
 | 项 | 为什么没验 |
 |---|---|
-| **审批（allow/deny）** | 需要模型真的调一个写类工具。`--policy ask` 下这依赖模型的自主决定，不能保证触发。**但**：Round 13 已经用点名工具的 prompt 验过完整闭环（`tmp/h13-allow2.png` / `tmp/h13-deny.png`） |
+| ~~审批（allow/deny）~~ | ✅ **Round 53 补上了**：`scripts/accept-approval.sh`，5 PASS / 0 FAIL |
 | **取消（turn 中断）** | 需要一轮足够长的生成；没有可靠的时间窗 |
 | **续历史 / 断线恢复** | 要真的杀连接再重连；脚本里做会变慢且不稳。Round 12 单独验过（10 个多会话与重连测试 PASS） |
 | **界面** | 这个脚本**只验宿主 HTTP**。界面侧的证据在 `tmp/*.png`（21 个插件齐全）和 e2e（22 PASS） |
@@ -65,3 +65,52 @@ PASS  jobs.list 可用
 **它不能证明**：界面长什么样、模型每次都会调工具、断线之后能恢复。
 
 **两者不能互相替代。**
+
+---
+
+# 审批整链（`scripts/accept-approval.sh`）
+
+> Round 52 把这一项列为"没验"，理由是"依赖模型自主决定"。**Round 53 补上了。**
+
+## 结果
+
+```
+PASS  收到 approval/request（requestId 非空）
+PASS  approval 帧带选项（optionId 非空）
+PASS  session.approve 被接受（allow_once）
+（本轮共批准 2 次）
+PASS  批准之后写工具真的跑了
+PASS  同一个 requestId 不能重复批准（no_such_request）
+----- 合计 OK=5 FAIL=0
+```
+
+## 脚本自己踩的两个坑（都值得记）
+
+**① 帧类型是 `approval/request`，不是 `approval`**
+
+契约里用的是 **v4 原词**，带斜杠。我第一版按 `type=='approval'` 匹配，
+**一次都没命中**，于是轮询整整 80 秒直到审批超时——**而超时的表现是
+`tool/result: Error: 用户拒绝了 write`**，看起来像"审批链路坏了"，
+实际是**我的判断条件写错了**。
+
+**② 「批准一次」这个假设是错的**
+
+第一版批准一次就去验"写工具跑了吗"，结果 FAIL。
+
+看 journal 才明白：**模型在一个 turn 里发起了两个工具调用**——
+
+```
+approval/request → tool/call ls -la appr-demo.txt    ← 第一次批准后跑了
+approval/request → tool/call write {appr-demo.txt}   ← 它也要批准
+```
+
+**每个工具调用都要单独批。** 改成循环批准之后，`（本轮共批准 2 次）`，
+写工具才真的执行。
+
+**这不是链路的问题，是脚本对"一次 turn 有几次审批"的假设错了。**
+
+## 顺带验到的
+
+**`同一个 requestId 不能重复批准`** —— 第二次回同一个 `requestId` 得到
+`no_such_request`（404）。这条**幂等保护**是刻意留的：没有它，
+一个点两下的界面会把同一个 tool call 执行两次。

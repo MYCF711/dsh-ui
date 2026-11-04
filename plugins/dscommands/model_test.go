@@ -96,3 +96,42 @@ func TestNoModelsMeansNoModelCommands(t *testing.T) {
 		}
 	}
 }
+
+// TestSameNameDifferentChannelKeepsChannel 验**不同渠道的同名模型**要保留完整 id。
+//
+// 实测过：`group/deepseek-v4.1-flash-1017` 和 `streamlake/deepseek-v4.1-flash-1017`
+// 去掉渠道前缀之后一模一样，面板里会出现**两条看着完全相同的「模型：…」**。
+// 用户点哪个都对，但他没法知道自己在点哪个。
+func TestSameNameDifferentChannelKeepsChannel(t *testing.T) {
+	p := &Plugin{}
+	p.act = pluginapi.Actions{
+		ModelsList: func() []pluginapi.Model {
+			return []pluginapi.Model{
+				{ID: "group/deepseek-v4.1-flash-1017", OwnedBy: "wps-lingxi"},
+				{ID: "streamlake/deepseek-v4.1-flash-1017", OwnedBy: "streamlake"},
+				{ID: "group/kimi-k3.1-pro", OwnedBy: "wps-lingxi"}, // 这个不重名
+			}
+		},
+		SetModel: func(string) {},
+	}
+	var names []string
+	for _, c := range p.commands() {
+		if strings.HasPrefix(c.Name, "模型：") && !strings.Contains(c.Name, "恢复默认") {
+			names = append(names, c.Name)
+		}
+	}
+	if len(names) != 3 {
+		t.Fatalf("应当 3 条，实际 %d：%v", len(names), names)
+	}
+	// 重名的两条带渠道
+	if names[0] != "模型：group/deepseek-v4.1-flash-1017" {
+		t.Fatalf("重名模型要保留完整 id，实际 %q", names[0])
+	}
+	if names[1] != "模型：streamlake/deepseek-v4.1-flash-1017" {
+		t.Fatalf("重名模型要保留完整 id，实际 %q", names[1])
+	}
+	// 不重名的仍是短名（全保留渠道会让面板变吵）
+	if names[2] != "模型：kimi-k3.1-pro" {
+		t.Fatalf("不重名的应当用短名，实际 %q", names[2])
+	}
+}

@@ -9,6 +9,7 @@
 package dscommands
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
@@ -59,6 +60,28 @@ func shortModel(id string) string {
 	return id
 }
 
+// disambiguate 处理**不同渠道有同名模型**的情况。
+//
+// 实测：`group/deepseek-v4.1-flash-1017` 和 `streamlake/deepseek-v4.1-flash-1017`
+// 去掉渠道前缀之后一模一样，命令面板里会出现**两条看着完全相同的「模型：…」**。
+// 用户点哪个都对，但他没法知道自己在点哪个——所以重名的保留完整 id。
+//
+// 只有重名的才变长：绝大多数模型名是唯一的，全保留渠道会让面板变吵。
+func disambiguate(ids []string) []string {
+	short := make([]string, len(ids))
+	count := map[string]int{}
+	for i, id := range ids {
+		short[i] = shortModel(id)
+		count[short[i]]++
+	}
+	for i := range short {
+		if count[short[i]] > 1 {
+			short[i] = ids[i] // 重名：退回完整 id（带渠道）
+		}
+	}
+	return short
+}
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -101,10 +124,17 @@ func (p *Plugin) commands() []Command {
 			if len(shown) > maxModels {
 				shown = shown[:maxModels]
 			}
-			for _, m := range shown {
+			labels := disambiguate(func() []string {
+				ids := make([]string, len(shown))
+				for i, m := range shown {
+					ids[i] = m.ID
+				}
+				return ids
+			}())
+			for i, m := range shown {
 				m := m // 闭包捕获（同下面权限命令的坑）
 				out = append(out, Command{
-					"模型：" + shortModel(m.ID),
+					"模型：" + labels[i],
 					m.OwnedBy,
 					func() { set(m.ID) },
 				})
@@ -118,6 +148,44 @@ func (p *Plugin) commands() []Command {
 			}
 			out = append(out, Command{"模型：恢复默认", hint, func() { set("") }})
 		}
+	}
+
+	// 布局宽度：**原地加减**而不是"打开设置面板"。
+	//
+	// 为什么不做设置面板：宿主的 `config.get/set` 是通用 KV，但**真正被消费的键
+	// 只有两个**（`ui.sidebarWidth` / `ui.rightbarWidth`）。一个只放得下两个数字的
+	// 面板是空壳，而"宽一点/窄一点"本身已经够表达意图。
+	//
+	// **拖动分隔线才是主路径**（dsshell 支持），这里给的是没有鼠标时的手段。
+	if a.ConfigGet != nil && a.ConfigSet != nil {
+		bump := func(key string, delta, fallback int) func() {
+			return func() {
+				cur := fallback
+				if v, ok := a.ConfigGet()[key]; ok {
+					if n, err := strconv.Atoi(v); err == nil && n > 0 {
+						cur = n
+					}
+				}
+				next := cur + delta
+				// 和 dsshell 的拖动限制对齐：太窄放不下内容、太宽会把中栏挤没。
+				if next < 180 {
+					next = 180
+				}
+				if next > 600 {
+					next = 600
+				}
+				a.ConfigSet(map[string]string{key: strconv.Itoa(next)})
+				if a.Notify != nil {
+					a.Notify(key + " = " + strconv.Itoa(next))
+				}
+			}
+		}
+		out = append(out,
+			Command{"侧栏宽一点", "当前值 +40（也可以直接拖分隔线）", bump("ui.sidebarWidth", 40, 264)},
+			Command{"侧栏窄一点", "当前值 -40", bump("ui.sidebarWidth", -40, 264)},
+			Command{"右栏宽一点", "当前值 +40（也可以直接拖分隔线）", bump("ui.rightbarWidth", 40, 420)},
+			Command{"右栏窄一点", "当前值 -40", bump("ui.rightbarWidth", -40, 420)},
+		)
 	}
 
 	// 审批策略：四条命令，**值都来自宿主的白名单**（deny/ask/allow/auto）。

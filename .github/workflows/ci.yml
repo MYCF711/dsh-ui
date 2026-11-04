@@ -48,6 +48,13 @@ jobs:
         shell: bash
         run: python scripts/doc-links.py --check
 
+      # `scripts/` 下每个脚本都要在 docs/scripts.md 里有一行「谁跑、什么时候跑」。
+      # 规则来自 AGENTS：「写了不跑的探针等于没有」——一个没人知道该什么时候跑的脚本，
+      # 下个月就只剩一个文件名了。
+      - name: 脚本索引
+        shell: bash
+        run: python scripts/scripts-index.py --check
+
       # 守卫必须可反证 —— 这件事原来靠人记得手工拆一次看它红不红，
       # 而人一定会忘（第 74 轮真撞到：Action 接线守卫的第一版只认 `*ast.Ident`，
       # 漏了仓里最常见的 `env.Act.X`，拆掉接线它也不红）。

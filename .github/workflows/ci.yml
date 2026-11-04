@@ -33,6 +33,13 @@ jobs:
             exit 1
           fi
 
+      # 账本一致性：docs/official-parity.md 的合计行必须是**数出来的**。
+      # 只防"合计与条目不一致"，防不了"条目写错"——那要靠人对着代码核。
+      # 但它至少让"补完一个部件忘了改合计"这件事有个东西会说。
+      - name: parity 账本一致
+        shell: bash
+        run: python scripts/parity-count.py --check
+
       # CGO_ENABLED=0：本仓刻意不依赖 C 工具链（purego 走的是运行期 dlopen，
       # 不是 cgo）。开着 cgo 反而会让 runner 上的 go test -race 之外的东西变慢，
       # 也让"本机绿、CI 红"多一类来源。

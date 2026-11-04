@@ -41,6 +41,8 @@ LINK = re.compile(r'\]\(([^)\s]+)\)')
 
 SKIP_SCHEMES = ('http://', 'https://', '#', 'mailto:', 'file:')
 
+ROOT = os.path.abspath(os.getcwd())
+
 
 def is_local_evidence(target):
     """本机证据：干净检出里没有是**正常**的，不该判成坏链。
@@ -96,7 +98,10 @@ def main():
             resolved = os.path.normpath(os.path.join(base, target))
             if os.path.exists(resolved):
                 continue
-            if is_local_evidence(target):
+            # 跨仓：`../../DSH-GO/docs/…` 要两个仓并排检出才指得着。
+            # 单仓检出（CI 就是）里它必然不存在 —— 和 `tmp/` 一样只记 WARN。
+            outside = not os.path.abspath(resolved).startswith(ROOT + os.sep)
+            if outside or is_local_evidence(target):
                 warns.append((path, target))
             else:
                 errors.append((path, target, resolved))

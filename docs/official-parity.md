@@ -1,7 +1,8 @@
-# 官方部件清单 vs 我们的（差 6 倍）
+# 官方部件清单 vs 我们的
 
 > 来源：`tmp/official/` 下从官方 asar 提取的 `@deepseek-ai/dsh-client-ui-*` 包（59 个）。
-> 我们只有 10 个插件——**"几何对齐 ≠ 像官方"**，差距在功能面。
+> 我们有 **22 个插件目录**，对上官方 55 个部件里的 20 个（+ 7 个只做了一半）。
+> **"几何对齐 ≠ 像官方"**，差距在功能面。
 
 ## 官方 59 个部件（按用途分组）
 
@@ -25,7 +26,7 @@
 - ❌ `sidebar-browser`
 - ✅ `sidebar-documentpreview`（`dsfiles` 的预览浮层；16KB 上限、20 行截断）
 - ✅ `sidebar-files`（`dsfiles`；`workspace.list(path)` + `fs.read`，可进子目录）
-- ❌ `sidebar-right`
+- ✅ `sidebar-right`（`dsshell` 的 `SlotRightbar` + `ToggleRightbar` + `ui.rightbarWidth`；收起后 corner 可重开）
 - ✅ `sidebar-terminal`（`dsterminal`：F5 面板 + F6 发命令，宿主 `terminal.*` + `internal/ansi`）
 
 ### composer 控件（7）
@@ -34,9 +35,9 @@
 - ✅ `permission-presets`（F2 命令面板 5 条；宿主 `session.setPermission` + 白名单）
 - ❌ `attachment`
 - ✅ `commands`（F2 命令面板；A 类时做的）
-- ❌ `input-trigger`
+- 🟡 `input-trigger`（`dscomposer` 的 `@` 候选菜单；`/` 走 F2。**不是通用的候选弹层管道**，见末尾第 4 条）
 - ❌ `entry-customization`
-- ❌ `deepseek-model-label-1017`
+- ⬜ `deepseek-model-label-1017`（**N/A**：官方是 1017 那次发布的临时角标，不是产品能力）
 
 ### 插件体系（3）
 
@@ -58,29 +59,33 @@
 - ❌ `skill`
 - ✅ `user-questions`（`dsquestions`：F7/F8 或点击选选项）
 - ❌ `workflow-run`
-- ❌ `message-feedback`
+- 🟡 `message-feedback`（`dsconversation/feedback.go`：每条助手消息 👍/👎 + 落盘 `feedback.<会话>.<下标>`；**没有官方的反馈弹窗与文字原因**）
 
 ### 内容呈现（17）
 
 - 🟡 `reference`（`dscomposer` 的 `@` 补全：识别 + 候选 + 补全做了，**变成引用块没做**，见末尾第 4 条）
-- ❌ `renderer`
+- ⬜ `renderer`（**N/A**：官方的 *"Browser UI renderer: React slot bindings"* 是 React 专用；我们是 Go+Viva，槽位绑定在 `internal/uikernel`）
 - 🟡 `deliverables`（`dsdeliverables`：**1/4**，见末尾「仍然缺」第 6 条）
 - ✅ `trajectory`（`dsrightbar`：按轮分组的轨迹栏）
 - ✅ `tool`（`dstool`：工具卡片 + 展开参数/结果）
 - ❌ `directory-picker-browse`
 - ❌ `directory-picker-native`
-- ❌ `open-in-app`
+- 🟡 `open-in-app`（`dsopen`：会话头部「打开」→ `OpenExternal(CWD)`；**文档预览的「用默认程序打开」那半没有**）
 - ❌ `workspace`
 - ✅ `theme`（`dscore` 的 ds-dark / 明暗两套）
 - ✅ `shortcuts`（`dsshortcuts`：F1 键位表）
-- ❌ `secret-mask`
-- ❌ `session`
+- 🟡 `secret-mask`（`internal/secretmask` + `dsconversation/mask.go`：用户消息**显示**遮罩。只用户消息、只显示，复制仍是原文）
+- ⬜ `session`（**N/A**：官方的 *"Session Controller adapter for React"* 是 React 适配层；我们的会话状态在壳里）
 - ❌ `cordis`
-- ❌ `brand-official`
+- 🟡 `brand-official`（`dsbrand`：官方鲸鱼 logo 矢量 + `ui.brand` 可整体替换；**"sidebar slots occupants"那层没有**）
 - ✅ `layout`（`dsshell`：侧栏/中栏/右栏/底栏，可直接拖分隔线）
-- ❌ `sidebar-right`
+- ✅ `sidebar-right`（`dsshell` 的 `SlotRightbar` + `ToggleRightbar` + `ui.rightbarWidth`；收起后 corner 可重开）
 
-## 合计：官方 55 个 · 我们有 10 个 · **缺 53 个**
+## 合计：官方 55 个部件 —— ✅ 20 · 🟡 7 · ⬜ 3（不该有） · ❌ 25
+
+> 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），
+> 不是手填的。上一次手填的是"我们有 10 个 · 缺 53 个"——**已经错了很久**，
+> 因为每次补完一个部件都没人回头改这个数。所以这次把它写成"数出来的"。
 
 ## 缺的里面，用户最能直接感知的
 
@@ -268,3 +273,33 @@ fs.read 无法调用
 | `sidebar-documentpreview` | 只差上面那个"工作区根"（有根就能读、能预览） |
 
 **结论**：B 类 6 个**全部**卡在宿主侧。界面这边能做的只有"等"——所以我不会假装在推进它们。
+
+---
+
+## 2026-11-04 账本审计：九处从 ❌ 改掉
+
+起因是补 `@` 补全时发现清单上 `secret-mask` 还写着 ❌——**而它两个提交前就接好线了**。
+顺手把剩下的 ❌ 逐条对着代码核了一遍，九处不对。
+
+| 部件 | 原来 | 现在 | 依据 |
+|---|---|---|---|
+| `secret-mask` | ❌ | 🟡 | `internal/secretmask` + `dsconversation/mask.go`：用户消息**显示**遮罩（只用户消息、只显示） |
+| `message-feedback` | ❌ | 🟡 | `dsconversation/feedback.go`：每条助手消息 👍/👎，落盘 `feedback.<会话>.<下标>`；**没有反馈弹窗** |
+| `open-in-app` | ❌ | 🟡 | `plugins/dsopen/open.go`：会话头部「打开」→ `OpenExternal(CWD)`；**文档预览那半没做** |
+| `brand-official` | ❌ | 🟡 | `plugins/dsbrand/brand.go`：官方 logo 矢量 + `ui.brand` 可替换；**sidebar slots occupants 没做** |
+| `input-trigger` | ❌ | 🟡 | `plugins/dscomposer/mention.go`：`@` 候选菜单；`/` 走 F2。**不是通用候选弹层管道** |
+| `sidebar-right` | ❌ | ✅ | `SlotRightbar` + `ToggleRightbar` + `ui.rightbarWidth` + 收起后 corner 重开 |
+| `session` | ❌ | ⬜ | 官方原文是 *"Session Controller adapter **for React**"*——React 适配层，我们没有也不需要 |
+| `renderer` | ❌ | ⬜ | 官方原文是 *"Browser UI renderer: **React** slot bindings"*——同上 |
+| `deepseek-model-label-1017` | ❌ | ⬜ | 官方原文是 *"**Temporary** 1017 release badge"*——一次发布的临时角标，不是产品能力 |
+
+**为什么能错这么久**：清单是手写的，而每补完一个部件时，
+"把清单那一行改掉"从来不是任务的一部分——它总被当成收尾的杂事。
+于是账本只会往"比实际更差"的方向漂，而且漂了没人发现（因为没人会去"测试"文档）。
+
+**现在怎么防**：`python scripts/parity-count.py --check`（CI 里跑）。
+合计那一行是**数出来的**，条目和合计对不上就红。守卫本身做过反证：
+把 `attachment` 临时改成 ✅ → `FAIL 合计行和条目对不上`，改回去 → `PASS`。
+
+⚠️ 这一条只防"合计与条目不一致"，**防不了"条目写错"**——
+上面那九处是人对代码核出来的，脚本做不到。所以状态行仍然要靠人诚实。

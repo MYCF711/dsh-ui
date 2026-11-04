@@ -28,6 +28,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // askTool 是宿主那个工具的名字（`modules/tool/ask`）。
@@ -51,6 +52,10 @@ type Question struct {
 type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
+	// act 由 draw 每帧刷新：HandleKey 里没有 env，只能靠它。
+	act pluginapi.Actions
+	// cur 是当前显示的那条问题（draw 填、HandleKey 读）。
+	cur Question
 }
 
 func (*Plugin) ID() string { return "ds-questions" }
@@ -102,6 +107,36 @@ func pending(msgs []apiclient.Message) []Question {
 	return nil
 }
 
+// HandleKey 绑 F7 / F8：直接选第 1 / 第 2 个选项。
+//
+// # 为什么用键盘而不是点击
+//
+// `flex` 那层没有点击 API（全仓 grep 确认过 `OnClick`/`OnPress`/`OnTap` 都没有），
+// 而 `ui.Canvas.ClickedIn` 需要把每一行注册进一个 `ui.Scope`——
+// 那不是"给一个问题条加个按钮"，是改 flex 的行模型。
+//
+// 键盘选择是**真的能按**的：F7/F8 在别处没被占用（F1 快捷键 / F2 命令 /
+// F5 终端 / F6 终端发送 / F12 demo）。等 flex 有了点击，再补鼠标那条路。
+func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+	if len(p.cur.Options) == 0 || p.act.Send == nil {
+		return false
+	}
+	idx := -1
+	switch ev.Key {
+	case ui.KeyF7:
+		idx = 0
+	case ui.KeyF8:
+		idx = 1
+	default:
+		return false
+	}
+	if idx >= len(p.cur.Options) {
+		return false // 没那么多选项：不消费，让键冒泡
+	}
+	p.act.Send(p.cur.Options[idx].Label)
+	return true
+}
+
 // draw 画问题条。没有待答问题就整块不画。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	qs := pending(env.Data.Msgs)
@@ -113,6 +148,8 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	// 但面板空间有限；把三个问题叠起来会谁都看不清。
 	// 用户答完第一条，下一帧会显示剩下的（因为 Msgs 变了）。
 	q := qs[0]
+	p.cur = q
+	p.act = env.Act
 
 	f.Column().FillWidth().PadSides(16, 16, 8, 4).Gap(6).Children(func() {
 		f.Row().Items(flex.Center).Gap(6).Children(func() {
@@ -123,11 +160,22 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			f.Text("在等你回答").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		})
 		f.Text(q.Question).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
-		for _, opt := range q.Options {
+		for i, opt := range q.Options {
 			opt := opt
+			key := ""
+			if i == 0 {
+				key = "F7"
+			} else if i == 1 {
+				key = "F8"
+			}
 			f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(8, 8, 7, 7).
 				Radius(t.Radii.MD).Background(t.InputMajor).
 				Children(func() {
+					if key != "" {
+						// 把键位写在选项上：**能按的键要写出来**，否则只有读代码的人知道。
+						// 第三项之后没有键——所以就**不写**，也不假装能选。
+						f.Text(key).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+					}
 					f.Column().Gap(2).Grow(1).Children(func() {
 						f.Text(opt.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
 						if opt.Description != "" {

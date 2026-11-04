@@ -1620,6 +1620,10 @@ func parseKeys(seq string) []ui.Key {
 			out = append(out, ui.KeyF1)
 		case "f2":
 			out = append(out, ui.KeyF2)
+		case "f7":
+			out = append(out, ui.KeyF7)
+		case "f8":
+			out = append(out, ui.KeyF8)
 		case "f6":
 			out = append(out, ui.KeyF6)
 		case "f5":

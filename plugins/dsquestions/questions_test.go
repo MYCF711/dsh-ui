@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/vivaui/viva/ui"
 )
 
 func toolMsg(args string) apiclient.Message {
@@ -72,5 +74,47 @@ func TestNoPendingOnBadArgs(t *testing.T) {
 func TestNoPendingOnEmpty(t *testing.T) {
 	if got := pending(nil); got != nil {
 		t.Fatalf("空消息流不该有东西，实际 %+v", got)
+	}
+}
+
+// TestF7F8PickOptions 验 F7/F8 分别选第 1/第 2 个选项，并且发的是**标签**。
+//
+// 发标签而不是"选项 id"：用户回答就是下一条普通 prompt，
+// agent 那边只认自然语言——发个 `opt-1` 它会当成一个新问题。
+func TestF7F8PickOptions(t *testing.T) {
+	var sent []string
+	p := &Plugin{}
+	p.act = pluginapi.Actions{Send: func(s string) { sent = append(sent, s) }}
+	p.cur = Question{Options: []Option{{Label: "A"}, {Label: "B"}}}
+
+	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF7}) {
+		t.Fatal("F7 应当被消费")
+	}
+	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF8}) {
+		t.Fatal("F8 应当被消费")
+	}
+	if len(sent) != 2 || sent[0] != "A" || sent[1] != "B" {
+		t.Fatalf("发的应当是 A 然后 B，实际 %v", sent)
+	}
+}
+
+// TestF8WithoutSecondOptionNotConsumed 验只有 1 个选项时 F8 **不被消费**。
+//
+// 不消费的话，这个键会在这里"消失"，别的插件再也收不到。
+func TestF8WithoutSecondOptionNotConsumed(t *testing.T) {
+	p := &Plugin{}
+	p.act = pluginapi.Actions{Send: func(string) {}}
+	p.cur = Question{Options: []Option{{Label: "唯一一个"}}}
+	if p.HandleKey(ui.KeyEvent{Key: ui.KeyF8}) {
+		t.Fatal("没有第二个选项时不该消费 F8")
+	}
+}
+
+// TestNoOptionsNotConsumed 验没有待答问题时 F7/F8 都不消费。
+func TestNoOptionsNotConsumed(t *testing.T) {
+	p := &Plugin{}
+	p.act = pluginapi.Actions{Send: func(string) {}}
+	if p.HandleKey(ui.KeyEvent{Key: ui.KeyF7}) {
+		t.Fatal("没有问题时不该消费 F7")
 	}
 }

@@ -135,6 +135,59 @@ else
   B=""
 fi
 
+echo "== 3c. 有内容的会话上 compact：真的压了 =="
+# 3b 之后会话里已经有 user + assistant（可能还有 tool），够压了。
+# 这一条要**调一次模型**生成摘要，所以放最后、并给宽松的超时。
+if [ "${got_msg:-0}" -gt 0 ]; then
+  code=$(curl -s -b "$work/ck" -XPOST "$U/api/session.compact"     -d "{\"sessionId\":\"$A\",\"id\":\"$A\",\"keep\":1}"     -o "$work/compact-real.json" -w '%{http_code}' --max-time 120)
+  okflag=$(jq_ "$work/compact-real.json" 'bool((d or {}).get("compacted"))' 2>/dev/null)
+  if [ "$code" != "200" ]; then
+    msg=$(jq_ "$work/compact-real.json" '((raw.get("error") or {}).get("message") or "")' 2>/dev/null | tr -d '"')
+    fail_msg="HTTP $code ${msg}"
+    echo "  FAIL  有内容的会话上 compact 回 200（实际 $fail_msg）"
+    fail=$((fail + 1))
+  elif [ "$okflag" != "true" ]; then
+    # 会话太短、宿主判断"不值得压"（`MinToCompact=2`：至少要折叠两条）。
+    # 这**不是失败**，但也不能记 PASS——那会把"没验到"说成"验到了"。
+    #
+    # 所以先补两轮，让它够长，再试一次。补不上就 SKIP（说清为什么）。
+    for _ in 1 2; do
+      python -c "
+import json
+json.dump({'id':'$A','text':'只回复两个字：收到'},open('$work/p2.json','w',encoding='utf-8'),ensure_ascii=False)
+"
+      curl -s -b "$work/ck" -XPOST "$U/api/session.prompt" --data-binary "@$work/p2.json" -o /dev/null
+      for _ in $(seq 1 15); do
+        api session.history "{\"sessionId\":\"$A\",\"id\":\"$A\",\"sinceSeq\":0}" "$work/h2.json" > /dev/null
+        n=$(jq_ "$work/h2.json" 'sum(1 for f in ((d or {}).get("frames") or []) if f.get("type")=="assistant/message")' 2>/dev/null)
+        [ "${n:-0}" -ge 2 ] && break
+        sleep 2
+      done
+    done
+    code=$(curl -s -b "$work/ck" -XPOST "$U/api/session.compact"       -d "{\"sessionId\":\"$A\",\"id\":\"$A\",\"keep\":1}"       -o "$work/compact-real.json" -w '%{http_code}' --max-time 120)
+    okflag=$(jq_ "$work/compact-real.json" 'bool((d or {}).get("compacted"))' 2>/dev/null)
+    if [ "$okflag" = "true" ]; then
+      shadowed=$(jq_ "$work/compact-real.json" 'int((d or {}).get("shadowed") or 0)' 2>/dev/null)
+      chars=$(jq_ "$work/compact-real.json" 'int((d or {}).get("summaryChars") or 0)' 2>/dev/null)
+      chk "补两轮之后真压了（折叠 $shadowed 条，摘要 $chars 字）"         $([ "${shadowed:-0}" -gt 0 ] && [ "${chars:-0}" -gt 0 ]; echo $?)
+      code=$(api session.load "{\"sessionId\":\"$A\",\"id\":\"$A\",\"limit\":200}" "$work/load-after.json")
+      chk "压完还能 load（HTTP $code）" $([ "$code" = "200" ]; echo $?)
+      compacted_for_real=1
+    else
+      skp "补两轮之后宿主仍判断不值得压（compacted=false）——真压路径本轮未验"
+    fi
+  else
+    shadowed=$(jq_ "$work/compact-real.json" 'int((d or {}).get("shadowed") or 0)' 2>/dev/null)
+    chars=$(jq_ "$work/compact-real.json" 'int((d or {}).get("summaryChars") or 0)' 2>/dev/null)
+    chk "真压了（compacted=true，折叠 $shadowed 条，摘要 $chars 字）"       $([ "${shadowed:-0}" -gt 0 ] && [ "${chars:-0}" -gt 0 ]; echo $?)
+    # 压完会话必须还能打开——压缩是投影，不是删会话。
+    code=$(api session.load "{\"sessionId\":\"$A\",\"id\":\"$A\",\"limit\":200}" "$work/load-after.json")
+    chk "压完还能 load（HTTP $code）" $([ "$code" = "200" ]; echo $?)
+  fi
+else
+  skp "3b 没跑出会话，compact 的真压路径未验"
+fi
+
 echo "== 4. 删分支 =="
 if [ -z "${B:-}" ]; then
   skp "没有分支可删（3b 没跑出会话）"

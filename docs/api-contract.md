@@ -260,8 +260,13 @@ kind 只取 v4 词汇表里那几个，宿主明确写了"不新造 kind"。
 |---|---|---|
 | `session.delete` 一个不存在的 id | **404** + 错误信封（带 `code`） | 原样报出来（404 与 500 是两件事） |
 | `session.compact` 一个**还没消息**的会话 | **200** + `compacted=false` | 这是正常结局，**不许当失败** |
+| `session.compact` 一个**太短**的会话（可折叠的不足 2 条） | **200** + `compacted=false` | 同上。`keep` 越大、会话越短，越容易"不值得压" |
 | `session.fork` 一个**还没消息**的会话 | **500** + `分支失败：源会话没有可继承的 surface` | 壳**先自己拦住**（`forkGuard`），给一句人话 |
 | `session.fork` 一个有内容的会话 | 200 + 新 `sessionId`，列表里真有两条 | 刷列表再切过去 |
+
+`compact` 那条也有一个实测细节：宿主的 `MinToCompact=2` ——**可折叠的消息不足两条时它就不压**，
+回 200 + `compacted=false`。所以验收脚本里要先给会话补两轮再压，否则永远只看得到"不值得压"。
+真压过一次的结果是 `shadowed=4`、`summaryChars=1108`，压完 `session.load` 照常 200（压缩是投影，不是删会话）。
 
 `fork` 那条的两个细节值得记：状态码是 **500 不是 400**（宿主只把 `ErrNoSuchSession`
 映射成 404，其余一律 500），而"源会话没有可继承的 surface"是内部术语，用户看不懂。

@@ -2137,6 +2137,7 @@ func main() {
 		},
 		OpenSession:    m.openSession,
 		DeleteSession:  m.deleteSession,
+		CompactSession: m.compactSession,
 		NewSession:     m.newSession,
 		Send:           m.sendText,
 		Copy:           func(text string) { _ = m.copyText(text) },

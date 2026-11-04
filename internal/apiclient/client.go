@@ -419,3 +419,40 @@ func (c *Client) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// CompactResult 是 `session.compact` 的结果（宿主 transport.CompactResult 的同形）。
+//
+// `Shadowed` 是"折进摘要里的条数"、`SummaryChars` 是摘要字数——
+// 这两个数就是界面能给用户的全部真相：压缩到底发生了没有、代价多大。
+type CompactResult struct {
+	Compacted    bool  `json:"compacted"`
+	From         int64 `json:"from,omitempty"`
+	To           int64 `json:"to,omitempty"`
+	Shadowed     int   `json:"shadowed,omitempty"`
+	SummaryChars int   `json:"summaryChars,omitempty"`
+}
+
+// Compact 是 session.compact：把较早的消息折成一段摘要（v4 日志**不改写**，
+// 被折进去的那些只是"不再投影到前台"）。
+//
+// keep 是"保留最近几条原样"。传 0 = 用宿主默认（6）——**不要在这里替用户决定**：
+// 宿主那边 `if req.Keep <= 0 { req.Keep = 6 }`，两边各写一个默认值就会分叉，
+// 而分叉的表现是"界面以为保留 6 条，实际保留了别的数"。
+//
+// 请求体两个键都发，理由同 Delete：宿主两种写法都认，少发一个就是 400。
+//
+// 这条会**调一次模型**（生成摘要），所以调用方要给足超时，且不要把失败当"没有内容可压缩"。
+func (c *Client) Compact(ctx context.Context, id string, keep int) (CompactResult, error) {
+	var out CompactResult
+	if id == "" {
+		return out, errors.New("session.compact 需要会话 id")
+	}
+	params := map[string]any{"sessionId": id, "id": id}
+	if keep > 0 {
+		params["keep"] = keep
+	}
+	if err := c.Call(ctx, "session.compact", params, &out); err != nil {
+		return out, err
+	}
+	return out, nil
+}

@@ -225,6 +225,22 @@ func (p *Plugin) commands() []Command {
 			out = append(out, Command{c.label, c.hint, func() { set(c.value) }})
 		}
 	}
+
+	// 压缩上下文：把较早的消息折成摘要（v4 日志不改写，只是不再投影到前台）。
+	//
+	// **插在最后**是刻意的：命令是按位置选的（键盘 ↓ 第几个），往中间插一条
+	// 会让后面所有命令的"第几个"整体挪一位——`scripts/accept-theme.sh` 就是
+	// 用位置选「主题：浅色」的。新命令一律往后加，位置只在真需要分组时才动。
+	//
+	// 不需要二次确认：它不是删除（宿主的 `shadowed` 只是"折进摘要"）。
+	// 但**它会调一次模型**，所以文案里要写清楚，别让人以为是免费的。
+	if a.CompactSession != nil {
+		out = append(out, Command{
+			"压缩上下文",
+			"折叠较早的消息成摘要（会调一次模型）",
+			a.CompactSession,
+		})
+	}
 	return out
 }
 

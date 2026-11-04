@@ -1,0 +1,32 @@
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-reading-1182x832.png size=1182x832 bytes=59828
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-turn-navigation-1182x832.png size=1182x832 bytes=58862
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-reading-1920x1032.png size=1920x1032 bytes=88745
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-turn-navigation-1920x1032.png size=1920x1032 bytes=87857
+--- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence (0.60s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832 (0.28s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032 (0.32s)
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-reading-1182x832.png size=1182x832 bytes=59828
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-turn-navigation-1182x832.png size=1182x832 bytes=58862
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-reading-1920x1032.png size=1920x1032 bytes=88745
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-turn-navigation-1920x1032.png size=1920x1032 bytes=87857
+--- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence (0.60s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832 (0.30s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032 (0.30s)
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-reading-1182x832.png size=1182x832 bytes=59828
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-turn-navigation-1182x832.png size=1182x832 bytes=58862
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-reading-1920x1032.png size=1920x1032 bytes=88745
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc2-rebase\cmd\app\testdata\wp-c2\conversation-turn-navigation-1920x1032.png size=1920x1032 bytes=87857
+--- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence (0.29s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832 (0.15s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032 (0.15s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dsconversation	1.581s

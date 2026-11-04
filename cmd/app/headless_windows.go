@@ -11,6 +11,7 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/png"
 	"log"
@@ -18,6 +19,9 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/ui"
 )
 
 var (
@@ -37,6 +41,11 @@ var (
 	procGetDC              = user32.NewProc("GetDC")
 	procReleaseDC          = user32.NewProc("ReleaseDC")
 	procGetWindowDC        = user32.NewProc("GetWindowDC")
+	procPostMessageW       = user32.NewProc("PostMessageW")
+	procGetDpiForWindow    = user32.NewProc("GetDpiForWindow")
+	procIsZoomed           = user32.NewProc("IsZoomed")
+	procIsWindow           = user32.NewProc("IsWindow")
+	procGetClientRect      = user32.NewProc("GetClientRect")
 
 	procCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
@@ -280,26 +289,130 @@ func lower(s string) string {
 	return string(b)
 }
 
+func windowLogicalSize(hwnd syscall.Handle) ui.Size {
+	var bounds rect
+	procGetClientRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&bounds)))
+	dpi := uint32(96)
+	if procGetDpiForWindow.Find() == nil {
+		if value, _, _ := procGetDpiForWindow.Call(uintptr(hwnd)); value != 0 {
+			dpi = uint32(value)
+		}
+	}
+	scale := float32(dpi) / 96
+	return ui.Size{Width: float32(bounds.Right-bounds.Left) / scale, Height: float32(bounds.Bottom-bounds.Top) / scale}
+}
+
+// postClientClick 只向本进程 HWND 投递一次真实窗口鼠标消息，让 Viva 自己的
+// hit/click 路由触发 WindowActions；不调用 ShowWindow 冒充按钮动作。
+func postClientClick(hwnd syscall.Handle, x, y float32) error {
+	dpi := uint32(96)
+	if procGetDpiForWindow.Find() == nil {
+		if value, _, _ := procGetDpiForWindow.Call(uintptr(hwnd)); value != 0 {
+			dpi = uint32(value)
+		}
+	}
+	dx, dy := int32(x*float32(dpi)/96), int32(y*float32(dpi)/96)
+	point := uintptr(uint16(dx)) | uintptr(uint16(dy))<<16
+	if ok, _, _ := procPostMessageW.Call(uintptr(hwnd), 0x0201, 1, point); ok == 0 { // WM_LBUTTONDOWN
+		return fmt.Errorf("PostMessage WM_LBUTTONDOWN 失败")
+	}
+	if ok, _, _ := procPostMessageW.Call(uintptr(hwnd), 0x0202, 0, point); ok == 0 { // WM_LBUTTONUP
+		return fmt.Errorf("PostMessage WM_LBUTTONUP 失败")
+	}
+	return nil
+}
+
+func waitWindowState(hwnd syscall.Handle, want func() bool) bool {
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if want() {
+			return true
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+	return want()
+}
+
+func probeWindowControls(hwnd syscall.Handle) error {
+	size := windowLogicalSize(hwnd)
+	y := frameCaptionHeight / 2
+	minimizeX := size.Width - 3*app.WindowControlWidth + app.WindowControlWidth/2
+	if err := postClientClick(hwnd, minimizeX, y); err != nil {
+		return err
+	}
+	if !waitWindowState(hwnd, func() bool { value, _, _ := procIsIconic.Call(uintptr(hwnd)); return value != 0 }) {
+		return fmt.Errorf("点击最小化后 IsIconic 未变为 true")
+	}
+	log.Print("chrome-probe: 最小化按钮 → IsIconic=true")
+	procShowWindow.Call(uintptr(hwnd), 9) // SW_RESTORE；恢复是为了继续验收，不是模拟最小化动作。
+	if !waitWindowState(hwnd, func() bool { value, _, _ := procIsIconic.Call(uintptr(hwnd)); return value == 0 }) {
+		return fmt.Errorf("最小化后 SW_RESTORE 未恢复")
+	}
+
+	maximizeX := size.Width - 2*app.WindowControlWidth + app.WindowControlWidth/2
+	if err := postClientClick(hwnd, maximizeX, y); err != nil {
+		return err
+	}
+	if !waitWindowState(hwnd, func() bool { value, _, _ := procIsZoomed.Call(uintptr(hwnd)); return value != 0 }) {
+		return fmt.Errorf("点击最大化后 IsZoomed 未变为 true")
+	}
+	log.Print("chrome-probe: 最大化按钮 → IsZoomed=true")
+	// 最大化后客户区宽度已变，还原按钮随右缘移动；不能继续用旧 x。
+	size = windowLogicalSize(hwnd)
+	maximizeX = size.Width - 2*app.WindowControlWidth + app.WindowControlWidth/2
+	if err := postClientClick(hwnd, maximizeX, y); err != nil {
+		return err
+	}
+	if !waitWindowState(hwnd, func() bool { value, _, _ := procIsZoomed.Call(uintptr(hwnd)); return value == 0 }) {
+		return fmt.Errorf("点击还原后 IsZoomed 未变为 false")
+	}
+	log.Print("chrome-probe: 还原按钮 → IsZoomed=false")
+	return nil
+}
+
 // startShot 在后台等窗口起来、抓一张图、然后退出进程。
-//
-// delay 是"等界面把第一屏画出来"的时间，不是加载时间——窗口 300ms 就出来了，
-// 但真实会话的数据是异步拉的，所以给 4 秒。
-func startShot(path string, delay time.Duration) {
+// probe=true 时还点击本进程的最小化/最大化/还原/关闭按钮并读取 OS 状态。
+func startShot(m *model, path string, delay time.Duration, report string, probe bool) {
 	go func() {
-		// 先等窗口出现，**立刻**挪到屏幕外——不能让用户先看到一个弹窗再等 4 秒。
 		hwnd := waitOwnWindow("dsh-ui", 10*time.Second)
 		if hwnd == 0 {
 			log.Print("shot: 没等到窗口")
 			os.Exit(2)
 		}
 		moveOffscreen(hwnd)
-		time.Sleep(delay) // 再等界面把真实会话拉回来
-
-		if captureWindow("dsh-ui", path, 8*time.Second) {
-			log.Printf("shot: 已保存 %s · 工作集 %.1f MB", path, workingSetMB())
+		time.Sleep(delay)
+		if probe {
+			if err := probeWindowControls(hwnd); err != nil {
+				log.Printf("chrome-probe: %v", err)
+				os.Exit(2)
+			}
+			time.Sleep(300 * time.Millisecond)
+		}
+		if !captureWindow("dsh-ui", path, 8*time.Second) {
+			log.Print("shot: 抓取失败")
+			os.Exit(2)
+		}
+		log.Printf("shot: 已保存 %s · 工作集 %.1f MB", path, workingSetMB())
+		if err := m.writeFrameChromeReport(report); err != nil {
+			log.Printf("chrome-report: %v", err)
+			os.Exit(2)
+		}
+		if report != "" {
+			log.Printf("chrome-report: 已保存 %s", report)
+		}
+		if !probe {
 			os.Exit(0)
 		}
-		log.Print("shot: 抓取失败")
-		os.Exit(2)
+		size := windowLogicalSize(hwnd)
+		closeX := size.Width - app.WindowControlWidth/2
+		if err := postClientClick(hwnd, closeX, frameCaptionHeight/2); err != nil {
+			log.Printf("chrome-probe: %v", err)
+			os.Exit(2)
+		}
+		if !waitWindowState(hwnd, func() bool { value, _, _ := procIsWindow.Call(uintptr(hwnd)); return value == 0 }) {
+			log.Print("chrome-probe: 点击关闭后本进程 HWND 仍存在")
+			os.Exit(2)
+		}
+		log.Print("chrome-probe: 关闭按钮 → IsWindow=false")
 	}()
 }

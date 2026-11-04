@@ -1,0 +1,16 @@
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832
+2026/11/04 05:28:11 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 05:28:11 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 05:28:11 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc1-rebase2\cmd\app\testdata\wp-c1\conversation-1182x832.png size=1182x832 bytes=40230
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032
+2026/11/04 05:28:11 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 05:28:11 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 05:28:11 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\dsh-ui-wpc1-rebase2\cmd\app\testdata\wp-c1\conversation-1920x1032.png size=1920x1032 bytes=63255
+--- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence (0.64s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832 (0.40s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032 (0.24s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/cmd/app	0.703s

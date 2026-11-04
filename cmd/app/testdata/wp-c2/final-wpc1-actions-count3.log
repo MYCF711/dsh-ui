@@ -1,0 +1,46 @@
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832
+2026/11/04 07:05:20 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 07:05:20 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 07:05:20 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC1HeadlessRealActionsAndTwoSizeEvidence1182x8322446828867\002\conversation-1182x832.png size=1182x832 bytes=41390
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032
+2026/11/04 07:05:20 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 07:05:20 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 07:05:20 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC1HeadlessRealActionsAndTwoSizeEvidence1920x10323802434092\002\conversation-1920x1032.png size=1920x1032 bytes=64168
+--- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence (0.49s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832 (0.26s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032 (0.23s)
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832
+2026/11/04 07:05:20 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 07:05:20 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 07:05:20 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC1HeadlessRealActionsAndTwoSizeEvidence1182x8323490805403\002\conversation-1182x832.png size=1182x832 bytes=41390
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032
+2026/11/04 07:05:20 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 07:05:20 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 07:05:20 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC1HeadlessRealActionsAndTwoSizeEvidence1920x10322268178433\002\conversation-1920x1032.png size=1920x1032 bytes=64168
+--- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence (0.36s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832 (0.13s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032 (0.23s)
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832
+2026/11/04 07:05:21 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 07:05:21 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 07:05:21 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC1HeadlessRealActionsAndTwoSizeEvidence1182x8323692128960\002\conversation-1182x832.png size=1182x832 bytes=41390
+=== RUN   TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032
+2026/11/04 07:05:21 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 07:05:21 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 07:05:21 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    wpc1_headless_test.go:38: WPC1_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC1HeadlessRealActionsAndTwoSizeEvidence1920x10321876026406\002\conversation-1920x1032.png size=1920x1032 bytes=64168
+--- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence (0.37s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1182x832 (0.20s)
+    --- PASS: TestWPC1HeadlessRealActionsAndTwoSizeEvidence/1920x1032 (0.17s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/cmd/app	1.288s
+
+EXIT=0

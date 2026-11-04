@@ -1,0 +1,28 @@
+?   	github.com/MYCF711/dsh-ui/cmd/acpsmoke	[no test files]
+ok  	github.com/MYCF711/dsh-ui/cmd/app	1.475s
+ok  	github.com/MYCF711/dsh-ui/cmd/mockd	10.081s
+?   	github.com/MYCF711/dsh-ui/cmd/plugingen	[no test files]
+ok  	github.com/MYCF711/dsh-ui/internal/apiclient	8.967s
+ok  	github.com/MYCF711/dsh-ui/internal/mdlite	1.051s
+?   	github.com/MYCF711/dsh-ui/internal/pluginapi	[no test files]
+ok  	github.com/MYCF711/dsh-ui/internal/uidecl	0.403s
+ok  	github.com/MYCF711/dsh-ui/internal/uikernel	0.303s
+ok  	github.com/MYCF711/dsh-ui/internal/uiplugins	0.277s
+ok  	github.com/MYCF711/dsh-ui/pluginapi	0.119s
+?   	github.com/MYCF711/dsh-ui/plugins/dsbrand	[no test files]
+?   	github.com/MYCF711/dsh-ui/plugins/dscommands	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dscomposer	1.643s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsconversation	1.583s
+?   	github.com/MYCF711/dsh-ui/plugins/dscore	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dsdecl	0.425s
+?   	github.com/MYCF711/dsh-ui/plugins/dsdemo	[no test files]
+?   	github.com/MYCF711/dsh-ui/plugins/dsfiles	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dsrightbar	1.591s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsshell	1.409s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsshortcuts	0.918s
+ok  	github.com/MYCF711/dsh-ui/plugins/dssidebar	1.168s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsstatusbar	1.134s
+ok  	github.com/MYCF711/dsh-ui/plugins/dstool	0.667s
+ok  	github.com/MYCF711/dsh-ui/plugins/dstopbar	1.111s
+?   	github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi	[no test files]
+?   	github.com/MYCF711/dsh-ui/tmp/dumplog	[no test files]

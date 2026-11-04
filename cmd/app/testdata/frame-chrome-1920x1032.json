@@ -1,0 +1,37 @@
+{
+  "size": {
+    "Width": 1920,
+    "Height": 1032
+  },
+  "customTitlebar": true,
+  "nativeControls": true,
+  "caption": {
+    "X": 0,
+    "Y": 0,
+    "Width": 1920,
+    "Height": 40
+  },
+  "content": {
+    "X": 0,
+    "Y": 40,
+    "Width": 1920,
+    "Height": 992
+  },
+  "application": {
+    "X": 48,
+    "Y": 6,
+    "Width": 48,
+    "Height": 28
+  },
+  "edit": {
+    "X": 98,
+    "Y": 6,
+    "Width": 48,
+    "Height": 28
+  },
+  "menuFontSize": 14,
+  "menuGap": 2,
+  "menuHorizontalPad": 10,
+  "menuRadius": 6,
+  "contentHeightPlus40": 1032
+}

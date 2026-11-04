@@ -1,0 +1,14 @@
+ok  	github.com/MYCF711/dsh-ui/internal/apiclient	8.350s
+ok  	github.com/MYCF711/dsh-ui/pluginapi	0.300s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsconversation	3.315s
+?   	github.com/MYCF711/dsh-ui/plugins/dscore	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dstool	1.756s
+?   	github.com/MYCF711/dsh-ui/plugins/dsbrand	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dssidebar	1.376s
+?   	github.com/MYCF711/dsh-ui/plugins/dsfiles	[no test files]
+?   	github.com/MYCF711/dsh-ui/plugins/dsschedule	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dsdeliverables	0.201s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsjobs	0.077s
+ok  	github.com/MYCF711/dsh-ui/cmd/app	3.096s
+
+EXIT=0

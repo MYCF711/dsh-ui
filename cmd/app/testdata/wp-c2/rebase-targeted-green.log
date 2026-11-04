@@ -1,0 +1,50 @@
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown
+--- PASS: TestShellLiveApplyEventUsesCanonicalEventTime (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown (0.00s)
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback
+--- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback (0.00s)
+=== RUN   TestWPC1LoadPreservesOriginalTimeAndStoppedWithoutInventingThem
+--- PASS: TestWPC1LoadPreservesOriginalTimeAndStoppedWithoutInventingThem (0.01s)
+=== RUN   TestWPC1TurnErrorAndExplicitStoppedSurviveStreamReduction
+--- PASS: TestWPC1TurnErrorAndExplicitStoppedSurviveStreamReduction (0.00s)
+=== RUN   TestWPC2BackgroundFramesReduceIntoTheirOwnSessionCache
+--- PASS: TestWPC2BackgroundFramesReduceIntoTheirOwnSessionCache (0.00s)
+=== RUN   TestWPC2DuplicateOutgoingTextIsNotReconciledByTextAlone
+--- PASS: TestWPC2DuplicateOutgoingTextIsNotReconciledByTextAlone (0.00s)
+=== RUN   TestWPC2OutgoingExactTurnReconcilesOnlyOneMatchingEcho
+--- PASS: TestWPC2OutgoingExactTurnReconcilesOnlyOneMatchingEcho (0.00s)
+=== RUN   TestWPC2ABAStreamingSwitchKeepsCanonicalStateWithoutReload
+2026/11/04 06:43:28 待审批 requestId=perm-A-original tool=execute options=2
+--- PASS: TestWPC2ABAStreamingSwitchKeepsCanonicalStateWithoutReload (0.03s)
+=== RUN   TestWPC2TruncatedLoadPublishesMissingPrependTruth
+--- PASS: TestWPC2TruncatedLoadPublishesMissingPrependTruth (0.00s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/cmd/app	0.108s
+testing: warning: no tests to run
+PASS
+ok  	github.com/MYCF711/dsh-ui/pluginapi	0.061s [no tests to run]
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1182x8322349777052\001\conversation-reading-1182x832.png size=1182x832 bytes=59828
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1182x8322349777052\002\conversation-turn-navigation-1182x832.png size=1182x832 bytes=58862
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1920x103890007320\001\conversation-reading-1920x1032.png size=1920x1032 bytes=88745
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1920x103890007320\002\conversation-turn-navigation-1920x1032.png size=1920x1032 bytes=87857
+--- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence (0.41s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832 (0.24s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032 (0.17s)
+=== RUN   TestWPC2LoadedTurnShellFooterAndMissingPrependTruth
+--- PASS: TestWPC2LoadedTurnShellFooterAndMissingPrependTruth (0.02s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dsconversation	0.500s

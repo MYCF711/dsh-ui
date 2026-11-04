@@ -1,0 +1,144 @@
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown
+--- PASS: TestShellLiveApplyEventUsesCanonicalEventTime (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown (0.00s)
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback
+--- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback (0.00s)
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown
+--- PASS: TestShellLiveApplyEventUsesCanonicalEventTime (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown (0.00s)
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback
+--- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback (0.00s)
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins
+=== RUN   TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown
+--- PASS: TestShellLiveApplyEventUsesCanonicalEventTime (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/envelope_wins (0.00s)
+    --- PASS: TestShellLiveApplyEventUsesCanonicalEventTime/zero_remains_unknown (0.00s)
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown
+=== RUN   TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback
+--- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/canonical_envelope (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/zero_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/invalid_envelope_stays_unknown (0.00s)
+    --- PASS: TestShellHistoryReplayUsesFrameEventWithoutSecondTimeGuess/missing_envelope_uses_apiclient_fallback (0.00s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/cmd/app	0.119s
+=== RUN   TestCanonicalEventTime
+=== RUN   TestCanonicalEventTime/envelope_优先于同时存在的_data.time
+=== RUN   TestCanonicalEventTime/仅在_envelope_缺失时读取合法_data.time
+=== RUN   TestCanonicalEventTime/两处都缺失就是未知
+=== RUN   TestCanonicalEventTime/零_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/负_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/字符串_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/null_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/小数_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/零_data.time_是未知
+=== RUN   TestCanonicalEventTime/负_data.time_是未知
+=== RUN   TestCanonicalEventTime/字符串_data.time_不猜测
+=== RUN   TestCanonicalEventTime/null_data.time_不猜测
+=== RUN   TestCanonicalEventTime/小数_data.time_不猜测
+--- PASS: TestCanonicalEventTime (0.03s)
+    --- PASS: TestCanonicalEventTime/envelope_优先于同时存在的_data.time (0.01s)
+    --- PASS: TestCanonicalEventTime/仅在_envelope_缺失时读取合法_data.time (0.00s)
+    --- PASS: TestCanonicalEventTime/两处都缺失就是未知 (0.00s)
+    --- PASS: TestCanonicalEventTime/零_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/负_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/字符串_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/null_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/小数_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/零_data.time_是未知 (0.00s)
+    --- PASS: TestCanonicalEventTime/负_data.time_是未知 (0.00s)
+    --- PASS: TestCanonicalEventTime/字符串_data.time_不猜测 (0.00s)
+    --- PASS: TestCanonicalEventTime/null_data.time_不猜测 (0.00s)
+    --- PASS: TestCanonicalEventTime/小数_data.time_不猜测 (0.00s)
+=== RUN   TestHistoryLiveAndReplayPreserveSameEventTime
+--- PASS: TestHistoryLiveAndReplayPreserveSameEventTime (0.01s)
+=== RUN   TestCanonicalEventTime
+=== RUN   TestCanonicalEventTime/envelope_优先于同时存在的_data.time
+=== RUN   TestCanonicalEventTime/仅在_envelope_缺失时读取合法_data.time
+=== RUN   TestCanonicalEventTime/两处都缺失就是未知
+=== RUN   TestCanonicalEventTime/零_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/负_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/字符串_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/null_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/小数_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/零_data.time_是未知
+=== RUN   TestCanonicalEventTime/负_data.time_是未知
+=== RUN   TestCanonicalEventTime/字符串_data.time_不猜测
+=== RUN   TestCanonicalEventTime/null_data.time_不猜测
+=== RUN   TestCanonicalEventTime/小数_data.time_不猜测
+--- PASS: TestCanonicalEventTime (0.02s)
+    --- PASS: TestCanonicalEventTime/envelope_优先于同时存在的_data.time (0.00s)
+    --- PASS: TestCanonicalEventTime/仅在_envelope_缺失时读取合法_data.time (0.00s)
+    --- PASS: TestCanonicalEventTime/两处都缺失就是未知 (0.00s)
+    --- PASS: TestCanonicalEventTime/零_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/负_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/字符串_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/null_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/小数_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/零_data.time_是未知 (0.00s)
+    --- PASS: TestCanonicalEventTime/负_data.time_是未知 (0.00s)
+    --- PASS: TestCanonicalEventTime/字符串_data.time_不猜测 (0.00s)
+    --- PASS: TestCanonicalEventTime/null_data.time_不猜测 (0.00s)
+    --- PASS: TestCanonicalEventTime/小数_data.time_不猜测 (0.00s)
+=== RUN   TestHistoryLiveAndReplayPreserveSameEventTime
+--- PASS: TestHistoryLiveAndReplayPreserveSameEventTime (0.00s)
+=== RUN   TestCanonicalEventTime
+=== RUN   TestCanonicalEventTime/envelope_优先于同时存在的_data.time
+=== RUN   TestCanonicalEventTime/仅在_envelope_缺失时读取合法_data.time
+=== RUN   TestCanonicalEventTime/两处都缺失就是未知
+=== RUN   TestCanonicalEventTime/零_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/负_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/字符串_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/null_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/小数_envelope_不回退_data
+=== RUN   TestCanonicalEventTime/零_data.time_是未知
+=== RUN   TestCanonicalEventTime/负_data.time_是未知
+=== RUN   TestCanonicalEventTime/字符串_data.time_不猜测
+=== RUN   TestCanonicalEventTime/null_data.time_不猜测
+=== RUN   TestCanonicalEventTime/小数_data.time_不猜测
+--- PASS: TestCanonicalEventTime (0.04s)
+    --- PASS: TestCanonicalEventTime/envelope_优先于同时存在的_data.time (0.01s)
+    --- PASS: TestCanonicalEventTime/仅在_envelope_缺失时读取合法_data.time (0.00s)
+    --- PASS: TestCanonicalEventTime/两处都缺失就是未知 (0.00s)
+    --- PASS: TestCanonicalEventTime/零_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/负_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/字符串_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/null_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/小数_envelope_不回退_data (0.00s)
+    --- PASS: TestCanonicalEventTime/零_data.time_是未知 (0.00s)
+    --- PASS: TestCanonicalEventTime/负_data.time_是未知 (0.01s)
+    --- PASS: TestCanonicalEventTime/字符串_data.time_不猜测 (0.00s)
+    --- PASS: TestCanonicalEventTime/null_data.time_不猜测 (0.00s)
+    --- PASS: TestCanonicalEventTime/小数_data.time_不猜测 (0.00s)
+=== RUN   TestHistoryLiveAndReplayPreserveSameEventTime
+--- PASS: TestHistoryLiveAndReplayPreserveSameEventTime (0.00s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/internal/apiclient	0.213s
+
+EXIT=0

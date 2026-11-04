@@ -1,0 +1,34 @@
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1182x8321408856511\001\conversation-reading-1182x832.png size=1182x832 bytes=59828
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1182x8321408856511\002\conversation-turn-navigation-1182x832.png size=1182x832 bytes=58862
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1920x103229824618\001\conversation-reading-1920x1032.png size=1920x1032 bytes=88745
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1920x103229824618\002\conversation-turn-navigation-1920x1032.png size=1920x1032 bytes=87857
+--- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence (0.51s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832 (0.29s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032 (0.21s)
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1182x8324114946464\001\conversation-reading-1182x832.png size=1182x832 bytes=59828
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1182x8324114946464\002\conversation-turn-navigation-1182x832.png size=1182x832 bytes=58862
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1920x103314757774\001\conversation-reading-1920x1032.png size=1920x1032 bytes=88745
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1920x103314757774\002\conversation-turn-navigation-1920x1032.png size=1920x1032 bytes=87857
+--- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence (0.33s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832 (0.17s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032 (0.16s)
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1182x832567244709\001\conversation-reading-1182x832.png size=1182x832 bytes=59828
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1182x832567244709\002\conversation-turn-navigation-1182x832.png size=1182x832 bytes=58862
+=== RUN   TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=reading path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1920x1033177869158\001\conversation-reading-1920x1032.png size=1920x1032 bytes=88745
+    wpc2_headless_test.go:27: WPC2_CAPTURE phase=turn-navigation path=C:\Users\ADMINI~1\AppData\Local\Temp\TestWPC2TurnNavigationReadingPositionAndPrependEvidence1920x1033177869158\002\conversation-turn-navigation-1920x1032.png size=1920x1032 bytes=87857
+--- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence (0.29s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1182x832 (0.14s)
+    --- PASS: TestWPC2TurnNavigationReadingPositionAndPrependEvidence/1920x1032 (0.16s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dsconversation	1.186s
+
+EXIT=0

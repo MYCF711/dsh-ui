@@ -9,12 +9,14 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -145,7 +147,7 @@ func TestRightbarDefaultsClosedWithoutToolTrajectory(t *testing.T) {
 	}
 }
 
-func TestRightbarOpensWithToolTrajectory(t *testing.T) {
+func TestRightbarDefaultsClosedEvenWithToolTrajectory(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"tools","messages":[{"seq":1,"role":"tool","tool":"bash","summary":"exit 0"}],"total":1}`))
@@ -159,8 +161,8 @@ func TestRightbarOpensWithToolTrajectory(t *testing.T) {
 		cur:    "tools",
 	}
 	m.refreshSession("tools", false)
-	if !m.showRightbar {
-		t.Fatal("真实 role=tool 轨迹加载后右栏未自动打开")
+	if m.showRightbar {
+		t.Fatal("含真实 role=tool 轨迹的历史会话首次打开仍应默认收起右栏")
 	}
 }
 
@@ -187,16 +189,16 @@ func TestRightbarSessionStateDoesNotLeak(t *testing.T) {
 	assertOpen(true, "empty 用户打开")
 
 	show("tools", apiclient.Message{Role: "tool", Tool: "bash"})
-	assertOpen(true, "tools 自动打开")
-	m.toggleRightbar() // 用户在 tools 明确关闭
-	assertOpen(false, "tools 用户关闭")
+	assertOpen(false, "tools 有历史轨迹也默认收起")
+	m.toggleRightbar() // 用户在 tools 明确打开
+	assertOpen(true, "tools 用户打开")
 
 	show("fresh", apiclient.Message{Role: "assistant", Text: "另一个空会话"})
 	assertOpen(false, "fresh 不继承 empty 的打开状态")
 	show("empty", apiclient.Message{Role: "assistant", Text: "无工具"})
 	assertOpen(true, "返回 empty 恢复它自己的选择")
 	show("tools", apiclient.Message{Role: "tool", Tool: "bash"})
-	assertOpen(false, "返回 tools 保留用户关闭选择")
+	assertOpen(true, "返回 tools 保留用户打开选择")
 }
 
 func TestRightbarGeometryTracksVisibility(t *testing.T) {
@@ -315,5 +317,84 @@ func TestGeometryRightbarVanishesWhenNoRoom(t *testing.T) {
 	g := buildGeometry(1182, 832, 280, false, false)
 	if g.RightWidth != 0 || g.MainWidth != 902 {
 		t.Fatalf("右栏关应是 280/902/0，得到 %.0f/%.0f/%.0f", g.SidebarWidth, g.MainWidth, g.RightWidth)
+	}
+}
+
+// TestFirstLoadedMessagesGetFollowUpFrame 复现 G7 首载空白，不依赖 OS 窗口。
+//
+// Viva 的 Follow 在布局末尾才把 Offset 移到尾部，而消息插件在声明阶段已经
+// 用旧 Offset 做了视口虚拟化。第一批消息因此需要两帧：第一帧确定内容高度，
+// 第二帧才按尾部 Offset 实画消息。空消息 Hero 帧不得提前消费 pendingScroll。
+func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
+	const id = "first-load"
+	m := &model{
+		cur:           id,
+		pendingScroll: id,
+		scrollPos:     map[string]float32{},
+	}
+
+	// 首开先画的是空消息 Hero；此时还没有 ScrollArea 的内容高度。
+	if m.applyPendingScroll() {
+		t.Fatal("空消息 Hero 帧没有可虚拟化的消息，不应请求补帧")
+	}
+	if m.pendingScroll != id {
+		t.Fatal("空消息首帧消费了 pendingScroll；首批消息布局后不会再有恢复/补帧机会")
+	}
+
+	m.msgs = make([]apiclient.Message, 20)
+	for i := range m.msgs {
+		m.msgs[i] = apiclient.Message{Seq: i + 1, Role: "assistant", Text: fmt.Sprintf("message-%02d", i+1)}
+	}
+	scrID := tree.ID(home, "msgs-"+id)
+	draw := func() (*ui.Canvas, bool) {
+		t.Helper()
+		canvas := &ui.Canvas{}
+		canvas.SetMeasurer(func(value string, size, weight float32) float32 {
+			return float32(len(value)) * size / 2
+		})
+		m.view.Draw(canvas, ui.LightTheme(), ui.Rect{Width: 100, Height: 100}, func(f *flex.Frame) {
+			f.Column().Fill().Children(func() {
+				f.ScrollArea(scrID).Grow(1).Follow(true).Children(func() {
+					// 与 dsconversation 相同的声明期虚拟化时序：Offset 是上一帧的值。
+					offset := m.view.ScrollState(scrID).Offset
+					for i := range m.msgs {
+						y := float32(i * 30)
+						if y+30 < offset || y > offset+100 {
+							f.Slot().Height(30)
+							continue
+						}
+						f.Text(m.msgs[i].Text).Height(30)
+					}
+				})
+			})
+		})
+		repaint := m.applyPendingScroll()
+		return canvas, repaint
+	}
+	hasLast := func(canvas *ui.Canvas) bool {
+		for _, text := range canvas.Texts() {
+			if text.Value == "message-20" {
+				return true
+			}
+		}
+		return false
+	}
+
+	first, repaint := draw()
+	if hasLast(first) {
+		t.Fatal("测试支架失效：第一批消息在旧 Offset 下不应直接实画尾消息")
+	}
+	if !repaint {
+		t.Fatal("首批消息布局后没有请求补帧；尾部占位会定格成空白中栏")
+	}
+	if m.pendingScroll != "" {
+		t.Fatal("首批消息完成布局后 pendingScroll 仍未消费")
+	}
+	second, again := draw() // 产品路径由 cfg.Paint 里的 Invalidate 请求这一次重绘。
+	if again {
+		t.Fatal("pendingScroll 已消费，不应每帧都要求重绘")
+	}
+	if !hasLast(second) {
+		t.Fatal("Follow 已移动到尾部后，补帧仍没有实画尾消息")
 	}
 }

@@ -40,6 +40,14 @@ jobs:
         shell: bash
         run: python scripts/parity-count.py --check
 
+      # 文档里的相对链接必须指得着。这条是被一件事催出来的：
+      # `docs/reasoning-ui.md` 承诺了四张两尺寸证据图（连字节数和 sha256 都写了），
+      # 而那四张**一条都没入库**——链接全是坏的，正文读起来却像验过了。
+      # `tmp/` 下的本机证据只记 WARN，不进退出码：干净检出里本来就没有它们。
+      - name: 文档链接
+        shell: bash
+        run: python scripts/doc-links.py --check
+
       # 守卫必须可反证 —— 这件事原来靠人记得手工拆一次看它红不红，
       # 而人一定会忘（第 74 轮真撞到：Action 接线守卫的第一版只认 `*ast.Ident`，
       # 漏了仓里最常见的 `env.Act.X`，拆掉接线它也不红）。

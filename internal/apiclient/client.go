@@ -53,6 +53,12 @@ type Message struct {
 	Tool    string `json:"tool,omitempty"`
 	Args    string `json:"args,omitempty"`
 	Summary string `json:"summary,omitempty"`
+	// Reasoning 是**只有思考、没有正文**的那条回答的思考块。
+	//
+	// 宿主只在正文为空时才带它（`transport_source.go` 的注释：有正文时思考是草稿，
+	// 不是已经给用户的回答）。所以拿到非空的 Reasoning 就意味着
+	// `Text == ""` —— 这条消息要按思考块显示，见 ReasoningOnlyThinking。
+	Reasoning string `json:"reasoning,omitempty"`
 	// View 是工具对这块结果的显示声明（形状逐字对齐宿主 spi.ViewSpec）。
 	// 界面按 Kind 选渲染器；不认识就退化成 Text——不认识 == 没声明。
 	View *ViewSpec `json:"view,omitempty"`

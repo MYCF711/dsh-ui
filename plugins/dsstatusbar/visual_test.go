@@ -43,6 +43,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 		Cur: "fg5-real-layout", Status: "已连接",
 		UsageTotal:    pluginapi.Usage{InputTokens: 12000, OutputTokens: 345, TotalTokens: 12345},
 		ContextTokens: 2000,
+		ContextWindow: 10000,
 		// 这些窗口消息必须不能变成官方轮/步。
 		Msgs: []apiclient.Message{{Role: "assistant"}, {Role: "assistant"}, {Role: "tool"}},
 	}
@@ -98,22 +99,34 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 	}
 	defer session.Close()
 
-	assertFrame := func(width, height int, name string, disconnected bool) {
+	assertFrame := func(width, height int, name, wantTotal, wantContext string, disconnected bool) {
 		t.Helper()
 		if err := session.Resize(width, height); err != nil {
 			t.Fatal(err)
 		}
 		snapshot := session.Snapshot()
-		for _, want := range []string{"总量 12.3k", "上下文 2.0k"} {
+		for _, want := range []string{wantTotal, wantContext} {
 			if !session.HasText(want) {
 				t.Fatalf("%s 缺真值文本 %q；texts=%q", name, want, session.Texts())
 			}
 		}
 		joined := strings.Join(session.Texts(), " ")
-		for _, banned := range []string{" 轮", " 步", "tok/s", "缓存命中", "%"} {
+		for _, banned := range []string{" 轮", " 步", "tok/s", "缓存命中"} {
 			if strings.Contains(joined, banned) {
 				t.Fatalf("%s 出现未供真值的指标 %q；texts=%q", name, banned, joined)
 			}
+		}
+		if !strings.Contains(wantContext, "%") && strings.Contains(joined, "%") {
+			t.Fatalf("%s 容量未知/异常却出现百分比；texts=%q", name, joined)
+		}
+		var contextTexts []string
+		for _, text := range session.Texts() {
+			if strings.HasPrefix(text, "上下文 ") {
+				contextTexts = append(contextTexts, text)
+			}
+		}
+		if len(contextTexts) != 1 || contextTexts[0] != wantContext {
+			t.Fatalf("%s 上下文文本残留或重复：got=%q want=%q", name, contextTexts, wantContext)
 		}
 		wantConnection := "就绪"
 		wantColor := theme.Success
@@ -167,16 +180,52 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 			path, width, height, info.Size(), dock.X, dock.Y, dock.Width, dock.Height, cardCenter, wantConnection)
 	}
 
-	assertFrame(1920, 1032, "fg5-dock-1920x1032.png", false)
-	assertFrame(1182, 832, "fg5-dock-1182x832.png", false)
-
-	data.Disconnected = true
-	data.Status = "连不上宿主，重试中…"
-	invalidator.Invalidate()
-	if err := session.Driver().Pump(); err != nil {
-		t.Fatal(err)
+	setData := func(next pluginapi.Snapshot) {
+		t.Helper()
+		data = next
+		invalidator.Invalidate()
+		if err := session.Driver().Pump(); err != nil {
+			t.Fatal(err)
+		}
 	}
-	assertFrame(1182, 832, "fg5-disconnected-1182x832.png", true)
+
+	// 同一真实 flex/canvas 窗口覆盖两种尺寸、已知/未知/异常容量与压缩回落。
+	assertFrame(1920, 1032, "stats-wire-known-1920x1032.png", "总量 12.3k", "上下文 2.0k · 20%", false)
+	assertFrame(1182, 832, "stats-wire-known-1182x832.png", "总量 12.3k", "上下文 2.0k · 20%", false)
+	unknown := data
+	unknown.ContextWindow = 0
+	setData(unknown)
+	assertFrame(1920, 1032, "stats-wire-unknown-1920x1032.png", "总量 12.3k", "上下文 2.0k", false)
+	assertFrame(1182, 832, "stats-wire-unknown-1182x832.png", "总量 12.3k", "上下文 2.0k", false)
+	overCapacity := data
+	overCapacity.ContextTokens = 12000
+	overCapacity.ContextWindow = 10000
+	setData(overCapacity)
+	assertFrame(1920, 1032, "stats-wire-over-capacity-1920x1032.png", "总量 12.3k", "上下文 12.0k / 10.0k（超出容量）", false)
+	assertFrame(1182, 832, "stats-wire-over-capacity-1182x832.png", "总量 12.3k", "上下文 12.0k / 10.0k（超出容量）", false)
+	compacted := data
+	compacted.ContextTokens = 500
+	compacted.ContextWindow = 10000
+	setData(compacted)
+	assertFrame(1920, 1032, "stats-wire-compacted-1920x1032.png", "总量 12.3k", "上下文 500 · 5%", false)
+	assertFrame(1182, 832, "stats-wire-compacted-1182x832.png", "总量 12.3k", "上下文 500 · 5%", false)
+
+	// A→B→A：每个会话只显示自己的 used/capacity，不能把 A 的 10k 套到 B 的 32k。
+	setData(pluginapi.Snapshot{
+		Cur: "session-b", Status: "已连接",
+		UsageTotal: pluginapi.Usage{TotalTokens: 777}, ContextTokens: 8000, ContextWindow: 32000,
+	})
+	assertFrame(1920, 1032, "stats-wire-session-b-1920x1032.png", "总量 777", "上下文 8.0k · 25%", false)
+	assertFrame(1182, 832, "stats-wire-session-b-1182x832.png", "总量 777", "上下文 8.0k · 25%", false)
+	setData(compacted)
+	assertFrame(1920, 1032, "stats-wire-session-a-return-1920x1032.png", "总量 12.3k", "上下文 500 · 5%", false)
+	assertFrame(1182, 832, "stats-wire-session-a-return-1182x832.png", "总量 12.3k", "上下文 500 · 5%", false)
+
+	disconnected := compacted
+	disconnected.Disconnected = true
+	disconnected.Status = "连不上宿主，重试中…"
+	setData(disconnected)
+	assertFrame(1182, 832, "stats-wire-disconnected-1182x832.png", "总量 12.3k", "上下文 500 · 5%", true)
 
 	// 同一真实窗口切到 B：只能出现 B 的 whole-log 数字，不能残留 A。
 	data = pluginapi.Snapshot{

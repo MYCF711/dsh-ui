@@ -1,0 +1,21 @@
+=== RUN   TestFG5HeadlessDockAndConnection
+2026/11/04 08:52:06 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 08:52:07 INFO 插件已装配 id=ds-composer provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 08:52:07 INFO 插件已装配 id=ds-statusbar provides=[] requires="[ui.theme ui.primitives]"
+    visual_test.go:193: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-known-1920x1032.png size=1920x1032 bytes=46288 dock=(x 12.0 y 970.0 w 1896.0 h 26.0) cardCenter=960.0 connection=就绪
+    visual_test.go:194: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-known-1182x832.png size=1182x832 bytes=25093 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=就绪
+    visual_test.go:198: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-unknown-1920x1032.png size=1920x1032 bytes=45998 dock=(x 12.0 y 970.0 w 1896.0 h 26.0) cardCenter=960.0 connection=就绪
+    visual_test.go:199: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-unknown-1182x832.png size=1182x832 bytes=24816 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=就绪
+    visual_test.go:204: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-over-capacity-1920x1032.png size=1920x1032 bytes=46694 dock=(x 12.0 y 970.0 w 1896.0 h 26.0) cardCenter=960.0 connection=就绪
+    visual_test.go:205: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-over-capacity-1182x832.png size=1182x832 bytes=25428 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=就绪
+    visual_test.go:210: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-compacted-1920x1032.png size=1920x1032 bytes=46170 dock=(x 12.0 y 970.0 w 1896.0 h 26.0) cardCenter=960.0 connection=就绪
+    visual_test.go:211: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-compacted-1182x832.png size=1182x832 bytes=24976 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=就绪
+    visual_test.go:218: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-session-b-1920x1032.png size=1920x1032 bytes=46218 dock=(x 12.0 y 970.0 w 1896.0 h 26.0) cardCenter=960.0 connection=就绪
+    visual_test.go:219: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-session-b-1182x832.png size=1182x832 bytes=25024 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=就绪
+    visual_test.go:221: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-session-a-return-1920x1032.png size=1920x1032 bytes=46170 dock=(x 12.0 y 970.0 w 1896.0 h 26.0) cardCenter=960.0 connection=就绪
+    visual_test.go:222: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-session-a-return-1182x832.png size=1182x832 bytes=24976 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=就绪
+    visual_test.go:228: FG5_CAPTURE path=C:\Users\Administrator\AppData\Local\Temp\stats-wire-final2-captures\stats-wire-disconnected-1182x832.png size=1182x832 bytes=25831 dock=(x 12.0 y 770.0 w 1158.0 h 26.0) cardCenter=591.0 connection=已断开
+    visual_test.go:262: FG5_SESSION_ISOLATION A->B->empty passed; empty dock box absent
+--- PASS: TestFG5HeadlessDockAndConnection (1.12s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dsstatusbar	1.167s

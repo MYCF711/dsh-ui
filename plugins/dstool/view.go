@@ -28,11 +28,9 @@ func (s *Cards) drawView(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewSpe
 			f.Text(v.Title).Mono().Bold().FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
 			f.Spacer()
 			if v.Badge != "" {
-				color := t.Success
-				if v.Badge == "error" {
-					color = t.Error
-				}
-				s.badge(f, v.Badge, color)
+				// Badge 原文照画，但只有明确的 ok 是绿色、error 是红色；
+				// preparing/running/stopped/耗时等不能被统一涂成“成功”。
+				s.badge(f, v.Badge, statusColor(t, Status(v.Badge)))
 			}
 		})
 	}

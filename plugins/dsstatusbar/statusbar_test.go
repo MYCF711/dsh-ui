@@ -135,9 +135,10 @@ func TestUsageKnownGatesTokenDisplay(t *testing.T) {
 	}
 }
 
-// TestUsageSegments 钉住 dock 的现有宿主真值。官方 sessionStats/cache/contextWindow
-// 尚未进入 Snapshot，所以这里只保留 whole-log total、可证明的 input/output 和原始
-// ContextTokens；绝不能从消息窗口补轮/步，也不能补缓存率、上下文百分比或 decode 速率。
+// TestUsageSegments 钉住 dock 的现有宿主真值。官方 sessionStats/cache 尚未进入
+// Snapshot，所以这里只保留 whole-log total、可证明的 input/output 和原始 ContextTokens；
+// 绝不能从消息窗口补轮/步，也不能补缓存率或 decode 速率。contextWindow 的百分比见
+// context_window_test.go。
 func TestUsageSegments(t *testing.T) {
 	cases := []struct {
 		name   string

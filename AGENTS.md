@@ -1,103 +1,82 @@
 # AGENTS.md · dsh-ui
 
-> 用 Go 重写 DSH 的**界面线**。宿主在 `../DSH-GO`（那份 `AGENTS.md` 管宿主，本文件管这里）。
-> 目标态：**原生**（把 Electron/Chromium/npm 那套踹开）；**Web 兼容层是可拆卸的过渡件**。
-> 上游依据：`../DSH-GO/UIPLAN.md` §2.9 / §2.9.1 / §2.10。
+> 用 Go + Viva 重写 DSH 的**原生界面线**。宿主在 `../DSH-GO`；本仓独立构建，不是宿主仓里的 TypeScript `ui/`。
+> 目标：极限性能、极限占用、还原 DSH 原生使用体验、逐部件插件化。Web 兼容只能是可关闭的过渡件。
+> 决策依据：`../DSH-GO/UIPLAN.md` 顶部用户原话、§2.10；本仓 `PLAN.md` §8。
 
----
+## 0. 开工先读
 
-## 0. 这条线的驱动方式（用户 2026-11-03 定的规则）
+1. 读 `PLAN.md` 的“当前执行口径”和 §8，再读 `docs/progress.md`、`docs/plugin-api.md` 的最新段落与相关源码。早期 E1–E3 spike 已完成选型，**不要重做 spike，不要按旧 60 MB 线或“失败退 WebView”改变路线**。
+2. 当前优先级是：**H14 契约门 → 真宿主闭环与流式连续性**；**U1.5 官方首屏外观基线与 U1/U2 并行提前**，再做插件底座、逐部件和完整工作日。H14 迁移已有提交，先核源码不重复实现；不得等全部链路完成才补官方外观。
+3. 历史 ✅ 只表示当时某一层有证据。装配成功、静态插件样例、JSON 只读部件、ACP 成功、mockd 成功，都不能单独证明真实 Transport 产品链路完成。
+4. 完成记录写清版本、命令、退出码、输入、实际断言与未验证项；截图必须能对应被测功能，不能用“气泡消失”代替真实审批。
 
-> **「goal 随便你自己写。定时任务和 goal 是为了唤醒你继续这个项目，不用给我汇报。」**
+## 1. 架构与证据边界
 
-翻译成可执行的三条：
+L0 壳→L1 运行时→L2 根本依赖→L3 框架→L4 部件→L5 第三方。公开契约在 `pluginapi/`，槽位在 `internal/uikernel`。已有部件不等于官方包全部行为完成。编译期 Go、JSON 只读、WASM/Web 通道不得混称。mockd 只作过渡；产品只经 `internal/apiclient`，插件不读 v4 日志。历史数字不代替当前 UI+dshd 整树实测。
 
-| # | 规则 |
-|---|---|
-| 1 | **goal 由我自己写、自己改、自己续**。不必等用户点头，也不必把 goal 当成"向用户交差"的凭证 |
-| 2 | **定时任务的唯一用途是唤醒我继续干活**。每轮直接做，不做"给用户汇报"的简报任务；用户要看时自己会问 |
-| 3 | 只有三种情况值得打断用户：**要他拍板**、**要他动手**（真机测输入法/拖窗口这类我做不到的）、**真卡死了** |
+**硬前提**：`CGO_ENABLED=0` 可构建，不引入 cgo。
 
----
+## 2. 跨线需求唯一通道
 
-## 1. 现状（2026-11-03）
+宿主侧需求一律写入 `../DSH-GO/docs/transport-contract.md`，写清字段/语义、为什么需要、提供端与消费端分别怎么验。不要只在对话或本仓文档里口头提。
 
-**架构：一切皆插件。** 壳 `cmd/app` 只做三件事——装配插件、给槽位、递一帧快照；
-七个插件挂在它上面，装配顺序由 `Requires` 拓扑排序决定，缺一个键**启动即失败**。
+- 改契约先同步 `../DSH-GO/internal/transport/testdata/api.snapshot.json` 与本仓 `testdata/api.snapshot.json`，再改两边实现。
+- 快照目前不等于完整契约：入参别名、HTTP 信封、错误、WS 连续性、审批都要补行为测试。
+- 宿主字段缺失时界面显示“未知”或整段隐藏，**绝不编 0、不拿 mode 冒充权限、不用 mockd 的自有字段假装宿主已经提供**。
+- H 表某项 ✅ 不自动表示界面消费完成；本仓仍须核对自己的 struct、事件归约和实际画面。
 
-| 插件 | 移植的官方部件 | 说明 |
-|---|---|---|
-| `ds-core` | `dsh-client-ui-primitives`（打包在 `index-*.js` 里） | **根本依赖插件**：照抄官方 `--dsw-static-*` / `--dsw-alias-*` 深/浅两套令牌 + `ListRow`/`SectionHeader`/`Badge`/`Dot`/`Divider` |
-| `ds-sidebar` | `dsh-client-ui-session` | 按 cwd 分组（可折叠/有计数）、搜索、相对时间、`↑↓/Home/End` 切会话 |
-| `ds-conversation` | `chat` + `conversation` + `approval` | 用户气泡 / 助手平铺 / 可折叠思考块 / 工具卡（按 `ViewSpec` 分 card·table·plain）/ 审批气泡 / Markdown 两阶段绘制 |
-| `ds-composer` | `chat` 的 composer | 自己持有 `flex.Field` 并实现 `pluginapi.Fields` |
-| `ds-statusbar` | `layout` 状态行 | `N 轮 · M 步 · ↑in ↓out · tok/s · 上下文`；没有 usage 时**一个字都不显示** |
-| `ds-topbar` | `layout` | 标题 / 模式 / 共 N 条 |
-| `ds-rightbar` | `plan` + `goal`（只取真实有的数据） | 工具调用时间线，最近 80 条 |
+## 3. 当前工作单（按依赖顺序）
 
-- 契约：`internal/pluginapi`（零实现）、运行时 `internal/uikernel`、移植手册 `docs/plugin-api.md`。
-- 数据源：`cmd/mockd` 解真实 v4 日志（会话 / 工具调用 / usage / reasoning）。
-- 实测：`CGO_ENABLED=0` 可编译；`-s -w` 后 **9.08 MB**；工作集 **≈86 MB**（`-tail 20/60/200` 基本不变 → 视口虚拟化有效）。
+### P0-A · 先过 H14 契约门
 
-**硬前提**：Viva 靠 `purego`，**不能引入 cgo**。`CGO_ENABLED=0` 必须一直能编过。
+详细唯一契约读 `../DSH-GO/docs/transport-contract.md`：HTTP 裸参数、`/ws`、`{seq,type,data,time}`、每会话独立 WS + journal、原始 history frames、journalEpoch/reset。唯一 owner 冻结两份快照/golden 后，宿主与 UI 才能并行实现；共享 apiclient/mockd/快照不多人同时改。
 
----
+H14 只用真实 apiclient 对契约夹具验合成 text/reasoning/tool/approval 重放、两会话不串流与 stale_epoch；**真实生成归 H6，真实审批执行归 H13**，不得在契约门里循环前置。迁移已有提交，先核最新实现，不重复施工。
 
-## 2. 跨线需求：**唯一通道是 `DSH-GO/AGENTS.md` §12**
+### P0-B · H14 后验真实链路
 
-界面线要宿主侧多做一步的东西（多一个字段、少一次丢数据），**写进 `../DSH-GO/AGENTS.md` §12 那张表**，
-不要在对话里口头提——宿主线的会话读的是那份文件，看不到这个会话的聊天记录。
+- 先 `/connect` 成功，再 list/load/subscribe；HTTP 与 WS 同 cookie。用同一新 dshd、临时 home、真实 ready 地址/token，验 create → list → load → prompt → text/reasoning/tool → cancel → 第二轮 → 再 load，不用旧二进制或 mockd 代替。
+- 每会话独立订阅、journalEpoch/seq、revision/index、流正文与缓存；后台继续收数据，切回不重播、不串流、不丢字。
+- 断号只调 history 补原始 frames，不整页刷新；epoch 变化必须 reset 后重建基线。消费原始 v4 text/reasoning/tool，结束帧不丢。
+- A 生成时切 B 再回 A，最终内容与一直停留一致；5 会话切换按 `PLAN.md` 性能口径复测。
 
-| 谁 | 做什么 |
-|---|---|
-| 界面线 | 需求进 §12 表：**要什么字段/语义**、**为什么界面需要**、**怎么验**。有替代做法的写清替代方案 |
-| 宿主线 | 做完把状态改 ✅ 并在 `CHANGELOG.md` 记一行；没做保持 ⏳ 并写卡点 |
-| 界面线 | 表里还是 ⏳ 的，界面**显示「未知 / 整段不显示」，绝不编数据**（假数字比没有更糟） |
-| 两边 | 改契约（字段名/形状）先改 `testdata/api.snapshot.json`，再改代码 |
+### P0-C · 真审批与字段消费
 
-> 当前 7 条（H1 usage / H2 事件时间 / H3 ViewSpec 透传 / H4 model / H5 权限 / H6 reasoning 增量 / H7 content 落法）
-> 界面侧代码都已写好并跑通，数据源暂由 `cmd/mockd` 提供；宿主一提供，**渲染代码一行不用改**。
+- Allow/Deny 必须经 Transport 原样回传 requestId/optionId；允许后工具真的继续，拒绝后不执行，取消/超时也有真实结果。设计见 `../DSH-GO/docs/h13-approval.md`，本地气泡消失不算完成。
+- LoadResult/Message 消费 model、permission、contentWidth、time、usage；顶栏/状态栏使用真值，未知隐藏，不拿 mode 冒充权限。
+- 跨仓记录含 dshd_rev、ui_rev、配置、启动/清理命令、真实断言、证据路径和未验项。
 
----
+### P1 · 插件生态底座
 
-## 3. 下一步（按顺序）
+1. **授权树**：父槽显式允许子槽；未声明、越权、重复 single、循环挂载注册期 fail-loud，公开槽必须实画。
+2. **禁用/替换/卸载**：强制的是基础能力而非具体实现；替换不改壳，重复 id 不静默装两份；Dispose 撤销 painter、输入、服务、goroutine，无残留。
+3. **外部通道**：编译期 Go、JSON 只读、WASM/可关闭 Web 分别写能力、权限和证据，不混称完整生态。
 
-1. 等 H1–H7：宿主侧提供后把数据源从 `cmd/mockd` 切到 `internal/transport`（渲染层不动）。
-2. 消息级操作补可见入口的展开态：目前只有「复制 / 重试」两个 Ghost 按钮。
-3. 推 `MYCF711/dsh-ui` 私有仓库 —— **先问用户确认，不自己推**。
+### P1.5 · 官方首屏外观基线（与 P0/P1 并行）
 
----
+对照官方同尺寸截图和 `docs/official-specs.md`，先补品牌/导航/工作区、真实会话行、居中欢迎区、完整 composer、模型/权限/附件控件及右栏默认关闭。1920×1032 与 1182×832 各留证据，关键容器几何偏差 ≤8px，字体/行高用官方令牌；未知值隐藏，不做死按钮或静态假还原。
 
-## 4. 红线
+## 4. 并行与安全
 
-1. **`CGO_ENABLED=0` 能编过**（一次都不能破）。
-2. **界面不直读会话日志**，历史只能经 Transport（对齐 `DSH-GO/AGENTS.md` R7）。
-   —— `cmd/mockd` 是**假宿主**，它读日志是它的职责；插件里一行都碰不到日志。
-3. 数字一律实测；估算标"估算"；没跑过写"未验证"。
-4. **不重启/不关闭正在运行的 DSH**；不写 `D:/DeepSeek Harness/home/profiles/`；asar 与存量会话只读。
-5. 每轮产出写 `docs/`，并在 `docs/progress.md` 追加一行。
-6. **插件里不许写十六进制色号**：颜色问 `theme`，形状问 `prims`。写死一处，换主题就漏一块。
+- Lead 只拆包/派单/验收：≥2 个独立 READY 同轮派给子代理或有上下文成员；派后不 wait/poll，完成方主动通知。验收后更新 `../DSH-GO/UIPLAN.md` §4.1 并派下一项，表空先补项。
+- 任务书写 owner/paths/rev/依赖/验收/证据；独立插件目录并行，`cmd/app`、契约、uikernel、apiclient、快照串行，同文件单写者。
+- 改前重读；遇 `FS_STALE_VERSION` 或并发变化先合并。不得 `git checkout --`/reset 覆盖别人，不移动/删除兄弟仓或共享源码目录来造失败分支。
+- 不按镜像名杀 `dshd.exe`/`app.exe`，不碰其他会话进程；测试只回收自己启动且记录归属的 PID。不得重启/关闭 DSH 或 magpie，不写 profiles/asar/原始会话。
+- 测试用临时 home、OS 分配端口与无头窗口；不向用户弹窗，不抢现有 GUI 地址。
+- 每轮在 `docs/progress.md` 追加“实现/证据/未验证/下一步”，不要只写 ALL GREEN。
+- 推 `MYCF711/dsh-ui` 或其他远端前先得到用户当次确认。
 
----
-
-## 5. 本机环境
+## 5. 常用验证
 
 ```bash
-export PATH="/c/Program Files/Go/bin:$(go env GOPATH)/bin:$PATH"   # go 1.27.3 + viva v0.2.3
+export PATH="/c/Program Files/Go/bin:$PATH"
+export PATH="$(go env GOPATH)/bin:$PATH"
 export GOPROXY=https://goproxy.cn,direct
 cd "D:/DeepSeek Harness/default-workspace/dsh-ui"
+CGO_ENABLED=0 go build ./...
+go vet ./...
+go test ./...
 ```
 
-**验证界面用无头，别弹窗给用户**：
-
-```bash
-CGO_ENABLED=0 go build -o tmp/app.exe ./cmd/app
-./tmp/app.exe -addr http://127.0.0.1:7788 -tail 60 -session <id> \
-  -shot docs/x.png          # 窗口一起就挪到屏幕外，PrintWindow 抓图后退出，日志里有工作集
-```
-
-调试开关（都在 `cmd/app`）：`-shot`（无头抓图）、`-keys down,down,up`（注入按键走插件的
-`HandleKey`，验证键盘路由）、`-collapse`（侧栏全收起）、`-expand-think`（思考块全展开）、`-title`。
-
-**写 Go 源码别用 bash heredoc**：反斜杠/换行会被吞（踩过三次）。用 `write` 工具或 `python`，
-源码里的换行一律用常量 `nlChar`，不写字面量。
+无头抓图只用于对应视觉断言。`-keys` 只验证插件路由，不证明 OS 键盘；`-demo` 不证明宿主审批。Go 源码用 write/edit，不用 bash heredoc 拼接。

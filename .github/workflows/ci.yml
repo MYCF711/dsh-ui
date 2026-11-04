@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    # 本仓是 Go + Viva 的 Windows 原生界面：视觉测试用 Viva 的 headless 后端渲染成 PNG，
+    # 不依赖打开的窗口，所以在 runner 上能跑。换到 linux 会连 purego 的加载路径一起变，
+    # 那不是"换个系统验一遍"，是换了一个构建目标——先别动。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # CGO_ENABLED=0：本仓刻意不依赖 C 工具链（purego 走的是运行期 dlopen，
+      # 不是 cgo）。开着 cgo 反而会让 runner 上的 go test -race 之外的东西变慢，
+      # 也让"本机绿、CI 红"多一类来源。
+      - name: build
+        shell: bash
+        run: CGO_ENABLED=0 go build ./...
+
+      - name: vet
+        shell: bash
+        run: CGO_ENABLED=0 go vet ./...
+
+      - name: test
+        shell: bash
+        run: CGO_ENABLED=0 go test ./... -count=1
+
+      # HEAD 单独能不能编译，跟"我的工作树能不能编译"是两件事。
+      # 这个仓历史上真的发生过：工作树绿了好几天，HEAD 是红的。
+      - name: 干净检出单独编译
+        shell: bash
+        run: bash scripts/headcheck.sh

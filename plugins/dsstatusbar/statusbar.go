@@ -8,7 +8,7 @@
 //   - 不从 assistant/tool 消息数推“轮/步”，只接受 whole-log sessionStats；
 //   - totalTokens 与可证明的 input/output 保留，旧墙钟速率不冒充 decode 速率；
 //   - cacheRead 没有官方三项分母时不显示缓存率；
-//   - ContextTokens 只显示原始 token 数，缺 contextWindow 时不显示百分比或环。
+//   - ContextTokens 是占用、ContextWindow 是容量；只有容量为正且占用不超容量时显示真实百分比。
 package dsstatusbar
 
 import (
@@ -175,7 +175,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 //
 // UsageTotal 是真宿主 whole-log 累计，totalTokens 由宿主按 input+output 合计；
 // 旧 mockd Usage.TotalTokens 则是最后一次 assistant 的上下文占用，两者不能互换。
-// ContextTokens 与累计相互独立，压缩后允许回落；缺 contextWindow 时只画原始数量。
+// ContextTokens 与累计相互独立，压缩后允许回落；缺 ContextWindow 时只画原始数量。
 func usageSegments(d pluginapi.Snapshot) []string {
 	in, out := d.UsageTotal.InputTokens, d.UsageTotal.OutputTokens
 	total := d.UsageTotal.TotalTokens
@@ -185,7 +185,9 @@ func usageSegments(d pluginapi.Snapshot) []string {
 		in, out = d.Usage.InputTokens, d.Usage.OutputTokens
 		// 旧 Usage 没有 whole-log total；它的 TotalTokens 只能退回原始上下文数量。
 		total = 0
-		if ctx == 0 {
+		if ctx == 0 && d.ContextWindow <= 0 {
+			// 旧 mockd 没有容量字段才允许走兼容值；正容量必须搭配显式 ContextTokens，
+			// 否则会把另一条旧 Usage 总量冒充成当前占用并算出假百分比。
 			ctx = d.Usage.TotalTokens
 		}
 	}
@@ -205,10 +207,35 @@ func usageSegments(d pluginapi.Snapshot) []string {
 			segments = append(segments, "↓"+tok(out))
 		}
 	}
-	if ctx > 0 {
-		segments = append(segments, "上下文 "+tok(ctx))
+	if segment := contextSegment(ctx, d.ContextWindow); segment != "" {
+		segments = append(segments, segment)
 	}
 	return segments
+}
+
+// contextSegment 分开处理占用与容量：未知容量保留原始占用，超容量/负占用明确
+// 说明异常；现有组件没有 ContextMeter 圆弧能力，因此只增加真实百分比，不伪造环。
+func contextSegment(used, window int64) string {
+	if used < 0 {
+		return "上下文 " + tok(used) + "（异常）"
+	}
+	if used == 0 && window <= 0 {
+		return ""
+	}
+	raw := "上下文 " + tok(used)
+	if window <= 0 {
+		return raw
+	}
+	if used > window {
+		return raw + " / " + tok(window) + "（超出容量）"
+	}
+	percent := contextPercent(&contextPressure{
+		UsedTokens: &used, ContextWindow: &window,
+	})
+	if percent == "" {
+		return raw
+	}
+	return raw + " · " + percent
 }
 
 // bar 调 dscore 的整行图元；拿不到就自己画一条等价的连接状态行。

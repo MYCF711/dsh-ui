@@ -85,3 +85,15 @@ tmp/__pycache__/
 # 它们会被 `go build ./...` 当成本模块的包编进去，让全树构建直接失败
 # （2026-11-03 真的发生过：tmp/v3-composer-*.go 重名声明挡住在跑的两个代理）。
 tmp/*.go
+
+# 验收/调试时在 tmp/ 里现写的脚本与夹具（正式脚本在 scripts/）
+tmp/*.sh
+tmp/*.ck
+tmp/*.patch
+tmp/*.ps1
+tmp/*.addr
+# 测试用的探针二进制（14 MB，本地 build 出来即可，不进仓库）
+/cmd/app/testdata/*.exe
+# 演示输出的文本
+/appr-demo.txt
+/tmp-deliv-demo.txt

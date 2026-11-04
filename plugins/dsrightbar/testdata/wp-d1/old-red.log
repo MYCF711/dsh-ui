@@ -1,0 +1,16 @@
+COMMAND=CGO_ENABLED=0 go test ./plugins/dsrightbar -run ^TestWPD1 -count=1 -v
+BASE=HEAD:rightbar.go without wpd1.go and wpd1_visual_test.go
+=== RUN   TestWPD1SearchRealFieldCoversLoadedTurnStepToolArgsResultAndError
+    wpd1_test.go:89: 没有明确当前窗口边界：["轨迹" "3 次" "▸" "第 1 轮 · 2 次工具" "▾" "第 2 轮 · 1 次工具" "BetaTool" "error" "beta output"]
+--- FAIL: TestWPD1SearchRealFieldCoversLoadedTurnStepToolArgsResultAndError (0.01s)
+=== RUN   TestWPD1StepInspectAndTurnSelectionUseRealClicks
+    wpd1_test.go:172: Step 不可选择/展开：headless: no control labelled "Turn 1 · Step 7 · AlphaTool"；texts=["轨迹" "2 次" "▾" "第 1 轮 · 2 次工具" "AlphaTool" "first raw line second raw line" "OtherTool" "other inspect result"]
+--- FAIL: TestWPD1StepInspectAndTurnSelectionUseRealClicks (0.00s)
+=== RUN   TestWPD1ThousandStepsSearchesAllButLayoutsOnlyVisibleRows
+    wpd1_test.go:254: 1000 条首屏实际布局工具行 = 80；应只布局可见/overscan 行而不是 80/1000 条
+--- FAIL: TestWPD1ThousandStepsSearchesAllButLayoutsOnlyVisibleRows (0.00s)
+FAIL
+FAIL	github.com/MYCF711/dsh-ui/plugins/dsrightbar	0.066s
+FAIL
+
+EXIT=1

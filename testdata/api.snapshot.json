@@ -28,7 +28,7 @@
     "internal": "宿主内部错误"
   },
   "stream": {
-    "path": "/api/mux",
+    "path": "/ws",
     "transport": "websocket",
     "client_frames": [
       {

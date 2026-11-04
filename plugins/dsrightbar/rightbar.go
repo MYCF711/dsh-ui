@@ -45,6 +45,15 @@ type Plugin struct {
 	// 不写 ConfigSet 是刻意的——这条是**看的时候的临时视图状态**，不是配置，
 	// 写盘会让「我上次收起过」变成跨机器、跨安装的持久事实。
 	turnOpen map[string]bool
+
+	// WP-D1：主区与右栏各有真实输入框，避免同屏时共享 Field.id 抢焦点。
+	// 查询、展开与选择都只作用于当前已加载 Snapshot，不触发任何历史请求。
+	searchField     flex.Field
+	mainSearchField flex.Field
+	stepOpen        map[string]bool
+	selectedTurn    map[string]string
+	selectedStep    map[string]string
+	lastSearch      map[string]string
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -110,7 +119,6 @@ func (p *Plugin) drawTimeline(f *flex.Frame, env *pluginapi.Env, data pluginapi.
 	for i := range groups {
 		total += len(groups[i].calls)
 	}
-	shown, hidden := clipGroups(groups, maxEntries)
 
 	f.Row().WidthPercent(100).MinHeight(28).Items(flex.Center).Gap(6).Children(func() {
 		f.Text("轨迹").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
@@ -129,31 +137,7 @@ func (p *Plugin) drawTimeline(f *flex.Frame, env *pluginapi.Env, data pluginapi.
 		}
 	})
 	p.prims.Divider(f)
-
-	if total == 0 {
-		msg := "本会话还没有工具调用"
-		if data.Cur == "" {
-			msg = "先选一个会话"
-		}
-		f.Column().WidthPercent(100).Grow(1).Justify(flex.Center).Items(flex.Center).PadX(12).Children(func() {
-			f.Text(msg).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
-				Color(t.LabelTertiary).TextCenter()
-		})
-		return
-	}
-
-	scrID := env.Tree.ID(env.Feat, scrollKey+data.Cur)
-	f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip().Children(func() {
-		f.Column().WidthPercent(100).Gap(2).Children(func() {
-			if hidden > 0 {
-				f.Text("… 更早的 " + itoa(hidden) + " 次未显示").
-					FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
-			}
-			for i := range shown {
-				p.drawTurnGroup(f, env, data.Cur, scrollKey, shown[i], i == len(shown)-1)
-			}
-		})
-	})
+	p.drawTrajectoryWorkspace(f, env, data, scrollKey, groups, total)
 }
 
 // drawTurnGroup 画一组 turn：可点的组头 + （展开时）这一组的工具条目。
@@ -225,6 +209,11 @@ type turnGroup struct {
 	// hostKey 是宿主真的给了的 turn 身份（Turn 优先、TurnID 次之）；空 = 没给。
 	hostKey string
 	calls   []apiclient.Message
+	// indices 与 calls 对齐，保留消息在当前已加载 Snapshot.Msgs 里的原始下标。
+	// 搜索过滤后仍用同一个 MessageKey/Time，绝不拿过滤后的下标冒充身份。
+	indices []int
+	// totalCalls 仅在搜索过滤时用于组头「命中/总数」；零值兼容旧测试构造的组。
+	totalCalls int
 	// skip 是组内被 maxEntries 砍掉的前段条数（条目数上限是全局的，
 	// 一组自己就超过上限时只能组内切，切了就要说出来）。
 	skip int
@@ -265,7 +254,12 @@ func groupTurns(msgs []apiclient.Message) []turnGroup {
 			groups = append(groups, g)
 			cur = len(groups) - 1
 		}
+		if groups[cur].hostKey == "" {
+			groups[cur].hostKey = host
+		}
 		groups[cur].calls = append(groups[cur].calls, m)
+		groups[cur].indices = append(groups[cur].indices, i)
+		groups[cur].totalCalls = len(groups[cur].calls)
 	}
 	return groups
 }

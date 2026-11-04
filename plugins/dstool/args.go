@@ -58,6 +58,17 @@ func firstArg(args map[string]string, keys ...string) string {
 	return ""
 }
 
+// presentArg 与 firstArg 不同：空字符串也是调用方显式提供的真值（例如新建文件
+// 的 old_string=""），所以同时返回值与“字段是否存在”。
+func presentArg(args map[string]string, keys ...string) (string, bool) {
+	for _, key := range keys {
+		if value, ok := args[key]; ok {
+			return value, true
+		}
+	}
+	return "", false
+}
+
 // command 从参数里取命令。
 //
 // 参数是 JSON 时**只认里面的键**：解出来了却没有 command，返回空串——

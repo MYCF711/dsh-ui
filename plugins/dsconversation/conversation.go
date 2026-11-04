@@ -584,6 +584,7 @@ func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Messa
 		Tool:    msg.Tool,
 		Args:    msg.Args,
 		Summary: msg.Summary,
+		Status:  toolStatus(msg, key, env.Data),
 		View:    msg.View,
 	})
 }
@@ -596,11 +597,11 @@ func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Messa
 // （dsshortcuts/overlay_test.go、dstopbar/frame_interaction_test.go），
 // 列进 Requires 会让它们装配失败，而那两个文件不在本轮边界内。
 //
-// 兜底不是第二套画法：用的还是 dstool 自己的渲染器，只是没有 ds-core 的
-// 徽标（prims 为 nil）。**画法只有一份**，不存在"抽出去了但没真用"。
+// 兜底不是第二套画法：用的还是 dstool 自己的渲染器，并复用本插件已注入的
+// ds-core 图元；只有 prims 也为 nil 时徽标才隐藏。**画法只有一份**。
 func (p *Plugin) toolCards() dstool.Service {
 	if p.tools == nil {
-		p.tools = dstool.New(nil)
+		p.tools = dstool.New(p.prims)
 	}
 	return p.tools
 }

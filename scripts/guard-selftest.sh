@@ -40,6 +40,10 @@ fi
 cleanup() { [ "${KEEP:-0}" = "1" ] || rm -rf "$iso"; }
 trap cleanup EXIT
 echo "== 隔离副本：$iso =="
+# ⚠️ 这个副本来自 `git archive HEAD`——**验的是提交里的守卫，不是工作树里的**。
+# 所以新写的守卫必须先提交，才能被它验到；否则 `-run` 一条都匹配不到，
+# 而 `go test` 在零匹配时仍然 exit 0（这条自检的"跑没跑到"判据就是为这个加的）。
+
 
 # 恢复副本里的某个文件（每条用例之后都要复位，否则后一条会踩前一条的改动）
 restore() { (cd "$root" && git archive HEAD "$1") | tar -x -C "$iso"; }
@@ -61,7 +65,7 @@ expect_red() {
   out=$(cd "$iso" && CGO_ENABLED=0 go test ./... -run "$testname" -count=1 -v 2>&1)
   rc=$?
   if ! ran_a_test "$out" "$testname"; then
-    chk "$name：用例根本没跑到" 1 "输出里没有『=== RUN $testname』——-run 没匹配到，这个用例是空转的"
+    chk "$name：用例根本没跑到" 1 "输出里没有『=== RUN $testname』——-run 没匹配到，这个用例是空转的。""如果这条守卫是刚写的还没提交：**先提交它**（本脚本验的是 HEAD，不是工作树），再跑这条自检"
     printf '%s\n' "$out" | tail -3 | sed 's/^/        /'
     return 1
   fi
@@ -135,22 +139,38 @@ expect_red "OpenFile 没接线" "TestEveryUsedActionIsWired"
 restore cmd/app/main.go
 
 echo
-echo "== 对照组：副本原样时四组守卫都必须是绿的 =="
-# 没有这一段，把四个守卫全改成"永远失败"也能过上面四条——那就从"假绿"翻到"假红"。
-GUARDS='TestEveryHandledKeyIsDocumented|TestNoTwoPanelsShareOneSlotAndOrder|TestSnapshotCoversEveryCalledMethod|TestEveryUsedActionIsWired'
+echo "== 5. 插件装配守卫（目录在、import 没写） =="
+# 挑一个**空导入**（`_ "…/plugins/dsgoal"`）：删掉它不会让编译失败，
+# 所以这里红的必须是守卫本身，而不是"编译不过"。
+python - "$iso" <<'PY'
+import io, sys, re
+p = sys.argv[1] + '/cmd/app/main.go'
+s = io.open(p, encoding='utf-8').read()
+s2 = re.sub(r'\n\t_ "github\.com/MYCF711/dsh-ui/plugins/dsgoal"\n', '\n', s, count=1)
+if s2 == s:
+    sys.exit('找不到 dsgoal 的空导入，用例失效')
+io.open(p, 'w', encoding='utf-8', newline='').write(s2)
+PY
+expect_red "插件没 import" "TestEveryPluginDirIsImported"
+restore cmd/app/main.go
+
+echo
+echo "== 对照组：副本原样时五组守卫都必须是绿的 =="
+# 没有这一段，把五个守卫全改成"永远失败"也能过上面五条——那就从"假绿"翻到"假红"。
+GUARDS='TestEveryHandledKeyIsDocumented|TestNoTwoPanelsShareOneSlotAndOrder|TestSnapshotCoversEveryCalledMethod|TestEveryUsedActionIsWired|TestEveryPluginDirIsImported'
 out=$(cd "$iso" && CGO_ENABLED=0 go test ./... -run "$GUARDS" -count=1 -v 2>&1)
 rc=$?
 # 先确认四条**都真的跑了**——一条都没跑到时 `go test` 也是 exit 0。
 missing=""
-for g in TestEveryHandledKeyIsDocumented TestNoTwoPanelsShareOneSlotAndOrder TestSnapshotCoversEveryCalledMethod TestEveryUsedActionIsWired; do
+for g in TestEveryHandledKeyIsDocumented TestNoTwoPanelsShareOneSlotAndOrder TestSnapshotCoversEveryCalledMethod TestEveryUsedActionIsWired TestEveryPluginDirIsImported; do
   ran_a_test "$out" "$g" || missing="$missing $g"
 done
 if [ -n "$missing" ]; then
-  chk "对照组：四条守卫都跑到" 1 "没跑到：$missing"
+  chk "对照组：五条守卫都跑到" 1 "没跑到：$missing"
 else
-  chk "对照组：四条守卫都跑到" 0
+  chk "对照组：五条守卫都跑到" 0
 fi
-chk "原样副本上四组守卫全绿" "$rc" "$(printf '%s\n' "$out" | grep -E '^(FAIL|--- FAIL)' | head -2 | tr '\n' ' ')"
+chk "原样副本上五组守卫全绿" "$rc" "$(printf '%s\n' "$out" | grep -E '^(FAIL|--- FAIL)' | head -2 | tr '\n' ' ')"
 
 echo
 echo "----- 合计 OK=$ok FAIL=$bad"

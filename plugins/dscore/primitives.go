@@ -165,16 +165,34 @@ func (p *Primitives) StatusBarRow(f *flex.Frame, height float32, body func()) fl
 }
 
 // itoa 避免为了一个数字去 import strconv（这一层要保持极简依赖）。
+//
+// 两处刻意写宽：
+//   - 缓冲区按 int64 的最多位数（19 + 符号）给，原来 [8]byte 在 ≥10^8 时
+//     会**静默截掉高位**（`itoa(100000000)` 返回 "00000000"，不报错）；
+//   - 负数正常带符号，原来 `for n > 0` 直接不进循环，返回空串。
+//
+// 这两个边界现在都够不到（计数都先被 `> 0` 挡住），但"够不到"不是"不会变"——
+// 一个不报错但返回错数字的辅助函数，比一个会 panic 的更难查。
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
 	}
-	var buf [8]byte
+	neg := n < 0
+	var buf [21]byte
 	i := len(buf)
-	for n > 0 && i > 0 {
+	// 用无符号位运算取绝对值：MinInt64 取负会溢出，按位处理不会。
+	u := uint64(n)
+	if neg {
+		u = -u
+	}
+	for u > 0 {
 		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
+		buf[i] = byte('0' + u%10)
+		u /= 10
+	}
+	if neg {
+		i--
+		buf[i] = '-'
 	}
 	return string(buf[i:])
 }

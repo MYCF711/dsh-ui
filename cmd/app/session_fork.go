@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"time"
+
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 )
 
 // forkSession 是 `session.fork` 的壳侧接线。
@@ -18,10 +20,10 @@ import (
 // 不切的话用户会以为没成功（列表里多一条，但他还在原来那条上）。
 func (m *model) forkSession() {
 	m.mu.Lock()
-	id := m.cur
+	id, msgs := m.cur, m.msgs
 	m.mu.Unlock()
-	if id == "" {
-		m.setStatus("没有当前会话，分支不了")
+	if why := forkGuard(id, msgs); why != "" {
+		m.setStatus(why)
 		return
 	}
 	m.setStatus("复制会话中…")
@@ -41,4 +43,26 @@ func (m *model) forkSession() {
 		m.refreshList()
 		m.openSession(newID)
 	}()
+}
+
+// forkGuard 返回"现在不能分支"的原因；空串表示可以。
+//
+// # 空会话为什么不能分支
+//
+// 宿主 `serveFork` 要继承 source 的 surface，一个还没有任何消息的会话没有 surface，
+// 它会回 `500 分支失败：源会话没有可继承的 surface`。那句是内部术语，
+// 用户看不懂；而且他也没做错什么——只是这个会话还是空的。
+//
+// **这不是猜宿主行为**：真宿主实测过，见 `scripts/accept-session-ops.sh` 第 3 段
+// （空会话 fork 被拒、有内容的会话 fork 成功、列表变两条）。
+//
+// 抽成纯函数是为了能单测：`forkSession` 里那一段要起 goroutine 发 HTTP，测不了。
+func forkGuard(cur string, msgs []apiclient.Message) string {
+	if cur == "" {
+		return "没有当前会话，分支不了"
+	}
+	if len(msgs) == 0 {
+		return "这个会话还是空的，没有可分支的内容"
+	}
+	return ""
 }

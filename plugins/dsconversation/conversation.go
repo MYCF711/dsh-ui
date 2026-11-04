@@ -426,7 +426,7 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 
 	switch roleKind(msg.Role) {
 	case kindThinking:
-		p.drawThinking(f, env, msg, key)
+		p.drawThinking(f, env, msg, key, i)
 		p.drawMessageMeta(f, env, msg, key)
 
 	case kindTool:
@@ -504,7 +504,7 @@ func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Me
 //
 // 官方也是这个交互（折叠的思考），但官方把它做得更轻：一行灰字 + 一个小箭头。
 // 这里保持同样的克制——收起时只占一行，不抢正文的注意力。
-func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, key string) {
+func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, key string, index int) {
 	t := p.theme
 	open := p.expanded[key] || (p.ExpandAllThinking && !p.collapsedOnce[key])
 
@@ -512,7 +512,18 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 	if open {
 		arrow = "▾"
 	}
-	label := "思考 · " + humanRunes(len([]rune(msg.Text))) + " 字"
+	// 收起行 = 标题 · 真实时长 · 最近完成段落的第一行。
+	// 时长未知时整段不出现（thinkingElapsedFor 负责判断有没有起止真值）；
+	// 预览为空（比如整段只有签名）时退回真实字数，行本身绝不因此消失。
+	label := "思考"
+	if seconds, ok := thinkingElapsedFor(env.Data, index); ok {
+		label += " · 想了 " + itoa(seconds) + " 秒"
+	}
+	if preview := reasoningPreview(msg.Text); preview != "" {
+		label += " · " + preview
+	} else {
+		label += " · " + humanRunes(len([]rune(msg.Text))) + " 字"
+	}
 
 	// 官方折叠行（如 .LOmM4q_compactionRow）：高 24、radius sm、左侧 16px 展开位、
 	// 标题 13px。高度用 MinHeight + PadY 撑，不用 Height(x).Shrink(0)——那会塌成 0 高。
@@ -537,7 +548,7 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 	// 展开态：浅底盒子，不描边（官方 callRow / compactionBody 都没有边框色）。
 	f.Column().WidthPercent(100).Pad(8).Radius(t.Radii.SM).Background(t.BgLayer1).
 		Children(func() {
-			f.Wrap(msg.Text).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			f.Wrap(reasoningBodyText(msg)).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		})
 }
 

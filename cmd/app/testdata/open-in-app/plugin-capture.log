@@ -1,0 +1,11 @@
+=== RUN   TestOpenButtonHeadlessCapture
+2026/11/04 14:25:22 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 14:25:22 INFO 插件已装配 id=ds-shell provides=[] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:22 INFO 插件已装配 id=ds-topbar provides=[ui.conversation-view] requires="[ui.theme ui.primitives]"
+2026/11/04 14:25:22 INFO 插件已装配 id=ds-open provides=[] requires=[ui.theme]
+2026/11/04 14:25:22 INFO 插件已装配 id=ds-rightbar provides=[] requires="[ui.theme ui.primitives ui.conversation-view]"
+    open_visual_test.go:59: OPEN_VISUAL path=..\..\cmd\app\testdata\open-in-app\open-in-app-plugin-1182x832.png bytes=21183 button={X:1066 Y:25 Width:56 Height:24}
+--- PASS: TestOpenButtonHeadlessCapture (0.12s)
+PASS
+ok  	github.com/MYCF711/dsh-ui/plugins/dsopen	0.156s
+TEST_EXIT=0

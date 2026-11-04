@@ -34,16 +34,32 @@ func (m *model) openExternal(destination string) error {
 	return nil
 }
 
+// openFile 打开一条显式 file: 链接指向的本地路径。文件与目录都走这里：
+//
+//   - 常规文件 → Viva `app.OpenPath`（平台默认程序；driver 运行记录 LastOpenedPath）
+//   - 目录     → 平台文件管理器（见 open_local.go：`app.OpenPath` 明确拒绝目录，
+//     拿它去开工作目录只会得到一条 `is not a regular file`）
+//
+// 失败只写既有状态栏——一处动作失败该只有一处提示。
 func (m *model) openFile(destination string) error {
 	path, err := filePathFromLink(destination)
+	isDir := false
 	if err == nil {
-		err = openPath(path)
+		isDir, err = openLocal(path)
 	}
 	if err != nil {
-		m.setStatus("打开文件失败: " + err.Error())
+		if isDir {
+			m.setStatus("打开目录失败: " + err.Error())
+		} else {
+			m.setStatus("打开文件失败: " + err.Error())
+		}
 		return err
 	}
-	m.setStatus("已打开文件")
+	if isDir {
+		m.setStatus("已打开目录")
+	} else {
+		m.setStatus("已打开文件")
+	}
 	return nil
 }
 

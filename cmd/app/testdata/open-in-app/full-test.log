@@ -1,0 +1,38 @@
+?   	github.com/MYCF711/dsh-ui/cmd/acpsmoke	[no test files]
+ok  	github.com/MYCF711/dsh-ui/cmd/app	2.797s
+ok  	github.com/MYCF711/dsh-ui/cmd/mockd	9.892s
+?   	github.com/MYCF711/dsh-ui/cmd/plugingen	[no test files]
+ok  	github.com/MYCF711/dsh-ui/internal/ansi	0.093s
+ok  	github.com/MYCF711/dsh-ui/internal/apiclient	5.917s
+ok  	github.com/MYCF711/dsh-ui/internal/mdlite	1.644s
+?   	github.com/MYCF711/dsh-ui/internal/pluginapi	[no test files]
+ok  	github.com/MYCF711/dsh-ui/internal/secretmask	0.121s
+ok  	github.com/MYCF711/dsh-ui/internal/uidecl	0.270s
+ok  	github.com/MYCF711/dsh-ui/internal/uikernel	0.232s
+ok  	github.com/MYCF711/dsh-ui/internal/uiplugins	0.168s
+ok  	github.com/MYCF711/dsh-ui/pluginapi	0.135s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsbrand	0.091s
+ok  	github.com/MYCF711/dsh-ui/plugins/dscommands	0.141s
+ok  	github.com/MYCF711/dsh-ui/plugins/dscomposer	2.306s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsconversation	2.931s
+ok  	github.com/MYCF711/dsh-ui/plugins/dscore	0.073s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsdecl	0.136s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsdeliverables	0.076s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsdemo	0.077s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsfiles	1.324s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsgoal	1.310s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsjobs	0.094s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsopen	1.320s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsquestions	0.283s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsrightbar	2.549s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsschedule	0.430s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsshell	1.079s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsshortcuts	0.862s
+ok  	github.com/MYCF711/dsh-ui/plugins/dssidebar	0.877s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsstatusbar	2.248s
+ok  	github.com/MYCF711/dsh-ui/plugins/dsterminal	0.050s
+ok  	github.com/MYCF711/dsh-ui/plugins/dstool	0.324s
+ok  	github.com/MYCF711/dsh-ui/plugins/dstopbar	0.747s
+?   	github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi	[no test files]
+?   	github.com/MYCF711/dsh-ui/tmp/dumplog	[no test files]
+TEST_EXIT=0

@@ -28,8 +28,8 @@ export GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
 export CGO_ENABLED=0
 
 OUT="${OUT:-tmp/u2-slot-proof}"
-APP="${APP:-tmp/u2-app.exe}"
-SERVE="${SERVE:-tmp/dshd-serve.exe}"
+APP="${APP:-tmp/dshgogui.exe}"
+SERVE="${SERVE:-tmp/dshgo.exe}"
 HOST_SRC="${HOST_SRC:-../DSH-GO}"
 BASE_PNG="${BASE_PNG:-tmp/u2-base.png}"
 F1_PNG="${F1_PNG:-tmp/u2-f1.png}"

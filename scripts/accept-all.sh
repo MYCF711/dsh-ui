@@ -67,19 +67,23 @@ want() {
 
 echo "== 前置 0：把验收用的宿主二进制编出来 =="
 # `accept-chain.sh` / `accept-approval.sh` / `accept-resume.sh` 用的是**共享路径**
-# `tmp/dshd-acc.exe`，而它们各自都会验一次"这个二进制与源码一致"——
+# `tmp/dshgo.exe`，而它们各自都会验一次"这个二进制与源码一致"——
 # 不先编，那条断言就会红（第一次合跑就是这么红的：链上 10 过 1 红）。
 # 在这里编一次，全部脚本共用，也保证"绝不拿陈旧二进制跑真机"。
-# 编到**本轮自己的目录**里，并通过 `DSHD_ACC` 传给各脚本。
-# 共享的 `tmp/dshd-acc.exe` 会被没退出的旧宿主锁住（Windows 上就编不进去），
+# 编到**本轮自己的目录**里，并通过 `DSHGO_BIN` 传给各脚本。
+# 共享的 `tmp/dshgo.exe` 会被没退出的旧宿主锁住（Windows 上就编不进去），
 # 一旦锁住整个验收停在第一步——这个坑今天就撞到了（七个 6 小时前的残留宿主）。
-ACC_BIN="$OUT/dshd-acc.exe"
-if ! (cd ../DSH-GO && CGO_ENABLED=0 go build -o "../dsh-ui/$ACC_BIN" ./cmd/dshd); then
-  echo "  FAIL  编不出 $ACC_BIN——后面的真机脚本没有意义"
+#
+# **产物名就是宿主自己的名字（`dshd.exe`），不是 `dshd-acc.exe` 这类按脚本起的别名**：
+# 出问题时进程表是唯一的现场，34 个进程里一眼要能分出"这是宿主、那是界面"，
+# 多实例靠 `--home` 区分，不靠文件名（本次事故的正因之一就是每条脚本各起一个名字）。
+HOST_BIN="$OUT/dshd.exe"
+if ! (cd ../DSH-GO && CGO_ENABLED=0 go build -o "../dsh-ui/$HOST_BIN" ./cmd/dshd); then
+  echo "  FAIL  编不出 $HOST_BIN——后面的真机脚本没有意义"
   exit 1
 fi
-export DSHD_ACC="$ACC_BIN"
-echo "  PASS  已编 $ACC_BIN（本轮专用）"
+export DSHGO_BIN="$HOST_BIN"
+echo "  PASS  已编 $HOST_BIN（本轮专用）"
 
 echo "== 前置：模型网关 =="
 gw=$(curl.exe -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3425/v1/models 2>/dev/null)

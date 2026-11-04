@@ -56,14 +56,18 @@ if [ -d "$OUT" ] && [ -n "$(ls -A "$OUT" 2>/dev/null)" ]; then
 fi
 mkdir -p "$OUT"
 
-# 两个二进制放在**本次运行自己的目录**里，不用 tmp/dshd-serve.exe 那种共享路径：
+# 两个二进制放在**本次运行自己的目录**里，不用 tmp/ 那种共享路径：
 # Windows 上正在运行的 exe 会被锁，而并行会话也会用同一个 tmp/ 路径起宿主
-# （实测撞到过：`open ../dsh-ui/tmp/dshd-serve.exe: The process cannot access the file`,
+# （实测撞到过：`open ../dsh-ui/tmp/dshgo.exe: The process cannot access the file`,
 # 占着它的是**别的会话**的宿主，既不能杀也不该杀）。每次跑自己的副本，互不影响。
+#
+# **名字就是产品的名字**：宿主 `dshd.exe`、界面 `dshgogui.exe`。
+# 以前这里叫 `dshd-serve.exe` / `app-e2e.exe`——每个脚本一套别名，
+# 进程表里 34 个进程就分不清谁是谁（用户就是这么被坑的）。区分实例靠 `--home`。
 BIN="$OUT/bin"
 mkdir -p "$BIN"
-SERVE="$BIN/dshd-serve.exe"
-APP="$BIN/app-e2e.exe"
+SERVE="$BIN/dshd.exe"
+APP="$BIN/dshgogui.exe"
 pass=0
 fail=0
 skip=0
@@ -107,7 +111,7 @@ POST() {
 cleanup() {
   # 按端口回收宿主：MSYS 的 `$!` 和 Windows 的 PID 不是一回事，
   # `taskkill //PID "$SERVE_PID"` 会静默失败——上一版就是这样漏下一个宿主，
-  # 下一轮 `go build -o tmp/dshd-serve.exe` 直接撞「文件被占用」。
+  # 下一轮 `go build -o tmp/dshgo.exe` 直接撞「文件被占用」。
   # 端口是 OS 分配给**本脚本刚起的那个**宿主的，按它找 PID 才算有归属。
   if [ -n "${URL:-}" ]; then
     local port="${URL##*:}" pid
@@ -128,7 +132,7 @@ trap cleanup EXIT
 step "构建（两个二进制都重建：验的必须是当前源码）"
 CGO_ENABLED=0 go build -o "$APP" ./cmd/app || { echo "界面构建失败"; exit 1; }
 (cd ../DSH-GO && CGO_ENABLED=0 go build -o "../dsh-ui/$SERVE" ./cmd/dshd) || {
-  echo "宿主构建失败（若提示「文件被占用」，是上一轮的宿主没被回收：scripts 的 cleanup 按端口杀；也可先 tasklist 查 dshd-serve.exe 的 --home 再只杀自己那个）"
+  echo "宿主构建失败（若提示「文件被占用」，是上一轮的宿主没被回收：scripts 的 cleanup 按端口杀；也可先 tasklist 查 dshd.exe 的 --home 再只杀自己那个）"
   exit 1
 }
 echo "  界面 $(stat -c%s "$APP") 字节 / 宿主 $(stat -c%s "$SERVE") 字节"

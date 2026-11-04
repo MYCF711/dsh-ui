@@ -21,9 +21,9 @@ bash scripts/accept-all.sh --only theme,session-ops
    现在 `[ "$fail" -eq 0 ] || exit 1`，并且 `accept-all.sh` 另加一道判据：
    汇总行里 `FAIL=[1-9]` 也算红（防的是同一个坑换个人踩）。
 2. **共享的宿主二进制会被没退出的旧宿主锁住**（Windows），锁住之后
-   "编不出新二进制"，整个验收停在第一步。现在每条脚本都认 `DSHD_BIN` 环境变量，
+   "编不出新二进制"，整个验收停在第一步。现在每条脚本都认 `DSHGO_BIN` 环境变量，
    `accept-all.sh` 每轮编到**自己的目录**里再传进去。
-   > 2026-11-04 起产物名统一：宿主一律 `dshd.exe`、界面一律 `dsh-gui.exe`，
+   > 2026-11-04 起产物名统一：宿主一律 `dshd.exe`、界面一律 `dshgogui.exe`，
    > 实例用 `--home` 区分。以前每条脚本各编一个名字（`dshd-acc` / `dshd-goal` /
    > `dshd-term` / `dshd-serve`），34 个进程混在任务管理器里时人分不清谁是谁。
 3. **`accept-chain` 的 bin-check 会红**：它验的是共享路径上的二进制，

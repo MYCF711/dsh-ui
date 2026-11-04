@@ -45,8 +45,8 @@ REAL_HOME="${PERF_REAL_HOME:-D:/DeepSeek Harness/home}"   # 只读来源，只�
 MAX_SESSION_MB="${PERF_MAX_SESSION_MB:-12}"               # 单份大会话的上限（太大会把测量变成 I/O 测量）
 SESSIONS="${PERF_SESSIONS:-4}"                            # 复制几份「不同 id」的真实大会话（D1 切会话要用）
 WORK="${PERF_WORK:-tmp/perf-run}"
-APP="${PERF_APP:-tmp/perf-app.exe}"
-SERVE="${PERF_SERVE:-tmp/dshd-serve.exe}"
+APP="${PERF_APP:-tmp/dshgogui.exe}"
+SERVE="${PERF_SERVE:-tmp/dshgo.exe}"
 
 log() { printf '%s\n' "$*" >&2; }
 
@@ -58,7 +58,7 @@ mkdir -p "$WORK"
 # big-template / big-sessions.json / search-word.txt 是准备物，保留（重算要几十秒）。
 for _d in A B1 B2 C D1 D2 T trend; do rm -rf "$WORK/$_d"; done
 if [ ! -x "$SERVE" ]; then
-  log "== 构建真宿主 tmp/dshd-serve.exe（来自 ../DSH-GO）"
+  log "== 构建真宿主 $SERVE（来自 ../DSH-GO）"
   ( cd ../DSH-GO && CGO_ENABLED=0 go build -o "../dsh-ui/$SERVE" ./cmd/dshd )
 fi
 log "== 构建界面 $APP"
@@ -699,10 +699,13 @@ fi
 
 # ── 4. 汇总（markdown 表；同时落一份 $WORK/summary.md） ──────────────────
 {
-"$PY" - "$WORK" "$ROOT" "$APP_SHA" "$SERVE_SHA" "$GIT_HEAD" "$GIT_DIRTY" "$IDLE" "$KEYS" <<'SUMMARY'
+"$PY" - "$WORK" "$ROOT" "$APP_SHA" "$SERVE_SHA" "$GIT_HEAD" "$GIT_DIRTY" "$IDLE" "$KEYS" "$APP" "$SERVE" <<'SUMMARY'
 import glob, json, os, statistics, sys
 
-work, repo, app_sha, serve_sha, head, dirty, idle, keys = sys.argv[1:9]
+# 二进制路径也从外面传进来：报告里写死的名字一旦和实际产物不一致，
+# 这份基线就变成"看不出量的是哪个二进制"的废纸（PERF_APP/PERF_SERVE 可覆盖）。
+(work, repo, app_sha, serve_sha, head, dirty, idle, keys,
+ app_path, serve_path) = sys.argv[1:11]
 work = os.path.join(repo, work)
 
 
@@ -763,8 +766,8 @@ for label, name, key, note in [
 print()
 print("## dsh-ui 性能/内存基线（实测）")
 print()
-print("- 界面二进制：`tmp/perf-app.exe` sha256 `%s`" % app_sha[:16])
-print("- 宿主二进制：`tmp/dshd-serve.exe` sha256 `%s`" % serve_sha[:16])
+print("- 界面二进制：`%s` sha256 `%s`" % (app_path, app_sha[:16]))
+print("- 宿主二进制：`%s` sha256 `%s`" % (serve_path, serve_sha[:16]))
 print("- git：`%s`（未提交改动 %s 个文件）" % (head, dirty))
 print()
 print("| 场景 | 中位数 | 最小 | 最大 | 采样次数 | 单位 | 口径 |")

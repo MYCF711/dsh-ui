@@ -56,13 +56,17 @@ func TestParseKeys(t *testing.T) {
 		t.Fatalf("解析出 %d 个键，期望 %d", len(keys), len(want))
 	}
 	for i := range want {
-		if keys[i] != want[i] {
-			t.Fatalf("第 %d 个键 = %v，期望 %v", i, keys[i], want[i])
+		if keys[i].Key != want[i] || keys[i].Modifiers != 0 {
+			t.Fatalf("第 %d 个键 = %+v，期望 %v（无修饰键）", i, keys[i], want[i])
 		}
 	}
 	// 大小写与空白都要容忍（命令行手写时常见的）
-	if got := parseKeys(" DOWN , Esc "); len(got) != 2 || got[0] != ui.KeyDown || got[1] != ui.KeyEscape {
+	if got := parseKeys(" DOWN , Esc "); len(got) != 2 || got[0].Key != ui.KeyDown || got[1].Key != ui.KeyEscape {
 		t.Fatalf("大小写/空白容忍失败：%v", got)
+	}
+	// Shift+F2 是设置浮层的入口：**修饰键必须保留**，否则注入的按键只会打开命令面板。
+	if got := parseKeys("shift+f2"); len(got) != 1 || got[0].Key != ui.KeyF2 || got[0].Modifiers != ui.ModifierShift {
+		t.Fatalf("shift+f2 应解析成带 Shift 的 F2，得到 %+v", got)
 	}
 	// 不认识的键静默跳过，不 panic
 	if got := parseKeys("down,bogus,up"); len(got) != 2 {

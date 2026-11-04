@@ -40,6 +40,18 @@ jobs:
         shell: bash
         run: python scripts/parity-count.py --check
 
+      # 守卫必须可反证 —— 这件事原来靠人记得手工拆一次看它红不红，
+      # 而人一定会忘（第 74 轮真撞到：Action 接线守卫的第一版只认 `*ast.Ident`，
+      # 漏了仓里最常见的 `env.Act.X`，拆掉接线它也不红）。
+      # 这一步在 `git archive HEAD` 的隔离副本里给每条守卫各弄坏一处，要求它当场红，
+      # 外加"原样副本必须全绿"的对照组。
+      #
+      # 它只跑 `go test` + `git archive`，不需要窗口、不需要模型、不需要宿主，
+      # 所以能进 CI（`accept-all.sh` 里另外四条要真桌面的进不了）。
+      - name: 守卫可反证
+        shell: bash
+        run: bash scripts/guard-selftest.sh
+
       # CGO_ENABLED=0：本仓刻意不依赖 C 工具链（purego 走的是运行期 dlopen，
       # 不是 cgo）。开着 cgo 反而会让 runner 上的 go test -race 之外的东西变慢，
       # 也让"本机绿、CI 红"多一类来源。

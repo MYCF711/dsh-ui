@@ -517,6 +517,18 @@ type Actions struct {
 	// SetModel 改当前会话的模型覆盖（空串 = 清除）。
 	SetModel func(id string)
 
+	// TerminalOpen 起一条长连接 shell，返回它的 id（空 = 开不了）。
+	//
+	// **一次会话一个就够**：这个面板不是终端模拟器，是"看一眼命令在跑什么"。
+	TerminalOpen func() string
+	// TerminalInput 往终端写一段（**原样**，要换行自己带）。
+	TerminalInput func(id, data string)
+	// TerminalRead 取终端**累计**的可读文本（壳已剥掉 ANSI），并推进内部水位。
+	//
+	// 返回的是"到目前为止的全部"（不是增量）——插件画的时候要能整段重绘，
+	// 让它自己维护增量只会多一处可能对不上的状态。
+	TerminalRead func(id string) string
+
 	// SetPermission 改当前会话的审批策略（deny/ask/allow/auto）。
 	//
 	// **空串 = 清除覆盖**（回到宿主的 --policy）。宿主会白名单校验，

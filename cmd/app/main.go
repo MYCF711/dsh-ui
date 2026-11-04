@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/MYCF711/dsh-ui/internal/ansi"
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
@@ -41,6 +42,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsterminal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dstool"
 	_ "github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
@@ -97,6 +99,14 @@ type model struct {
 	// **它靠轮询刷新**：宿主那边是子进程推上来的一份快照，不会主动通知界面。
 	// 所以壳每隔一会儿问一次（见 refreshJobs 的调用点），而不是等事件。
 	jobs []pluginapi.Job
+	// termID/termText/termNext 是这个会话的长连接终端。
+	// **只有一份**：面板不是终端模拟器，是"看一眼命令在跑什么"；
+	// 多开会让"哪个是哪个"变成一个新的问题，而那不是当前要解决的问题。
+	termID      string
+	termText    string // 已剥掉 ANSI 的可读文本（累计）
+	termNext    int    // 增量水位
+	termPending bool
+
 	// models 是可选模型清单（宿主 models.list 的投影），启动拉一次。
 	models []pluginapi.Model
 	// jobsPending 防重入：刷新在途时不再发第二次请求（每帧都可能问）。
@@ -278,6 +288,8 @@ func (m *model) refreshList() {
 				if !pending {
 					m.refreshJobs()
 				}
+				// 终端和后台任务同一个 ticker：都是"隔一会儿问一次"的形状。
+				m.refreshTerminal()
 			}
 		}()
 	}()
@@ -490,6 +502,45 @@ func (m *model) newSession() {
 
 		m.openSession(id)
 	}()
+}
+
+// refreshTerminal 拉一次终端增量，剥掉 ANSI 之后拼到累计文本上。
+//
+// **只有内容真变了才重绘**（和 refreshJobs 同一个理由）：轮询每 2 秒一次，
+// 无脑 Invalidate 会让空闲的终端也每 2 秒重画一遍。
+func (m *model) refreshTerminal() {
+	m.mu.Lock()
+	id := m.termID
+	since := m.termNext
+	pending := m.termPending
+	if !pending {
+		m.termPending = true
+	}
+	m.mu.Unlock()
+	if id == "" || pending {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := m.cli.TerminalOutput(ctx, id, since)
+
+	m.mu.Lock()
+	m.termPending = false
+	if err != nil {
+		m.mu.Unlock()
+		return // 拉失败就留着上一次的，别把面板清空
+	}
+	changed := out.Output != ""
+	if changed {
+		m.termText += ansi.Strip(out.Output)
+	}
+	m.termNext = out.Next
+	m.mu.Unlock()
+
+	if changed {
+		m.inv.Invalidate()
+	}
 }
 
 // refreshJobs 拉一次后台任务清单，**只有内容真变了才重绘**。
@@ -1562,6 +1613,10 @@ func parseKeys(seq string) []ui.Key {
 			out = append(out, ui.KeyF1)
 		case "f2":
 			out = append(out, ui.KeyF2)
+		case "f5":
+			// 终端面板（dsterminal）。**这个键名以前没有**——
+			// 加了插件的键位却忘了让 `-keys` 认识它，截图时按键就静默无效。
+			out = append(out, ui.KeyF5)
 		case "f12":
 			out = append(out, ui.KeyF12)
 		case "home":
@@ -1929,6 +1984,44 @@ func main() {
 					m.setStatus("模型已设为 " + modelID)
 				}
 			}()
+		},
+		// 终端：一次会话一个。**读走缓存**（后台轮询填充），不在这里发 HTTP——
+		// 插件每帧都会调 Read，同步发请求会卡住绘制。
+		TerminalOpen: func() string {
+			m.mu.Lock()
+			id := m.termID
+			m.mu.Unlock()
+			if id != "" {
+				return id
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			newID, err := m.cli.TerminalOpen(ctx, "")
+			if err != nil {
+				log.Printf("开终端失败: %v", err)
+				m.setStatus("开终端失败: " + err.Error())
+				return ""
+			}
+			log.Printf("终端已开: %s", newID)
+			m.mu.Lock()
+			m.termID, m.termText, m.termNext = newID, "", 0
+			m.mu.Unlock()
+			go m.refreshTerminal()
+			return newID
+		},
+		TerminalInput: func(id, data string) {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := m.cli.TerminalInput(ctx, id, data); err != nil {
+					m.setStatus("写终端失败: " + err.Error())
+				}
+			}()
+		},
+		TerminalRead: func(id string) string {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			return m.termText
 		},
 		// 审批策略：写宿主 <home>/state/session-permission.json。
 		// **异步、失败只写状态栏**——和 ConfigSet 同一个策略：插件不等待、不重试。

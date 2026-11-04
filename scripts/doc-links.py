@@ -43,8 +43,25 @@ SKIP_SCHEMES = ('http://', 'https://', '#', 'mailto:', 'file:')
 
 
 def is_local_evidence(target):
-    """指向 `tmp/` 的链接是本机证据：gitignored，干净检出里没有是正常的。"""
-    return target.startswith('tmp/') or target.startswith('/tmp/') or '/tmp/' in target
+    """本机证据：干净检出里没有是**正常**的，不该判成坏链。
+
+    三种：
+
+    - `tmp/…`：仓内的临时目录，gitignored；
+    - **绝对路径**（`C:/Users/...`、`/c/...`）：某些文档直接把施工时的本机路径写了进去。
+      它对别人毫无意义，但那是"文档该改"的问题，不是"链接今天坏了"。
+      2026-11-04 CI 上真撞到：本地 0 条坏链，CI 上 `docs/visual-v4b.md` 报了 8 条 ——
+      它们全指向 `C:/Users/Administrator/AppData/Local/Temp/…`。
+    - `file:` 开头（在解析前就被跳过，这里兜一下）。
+    """
+    if target.startswith(('tmp/', '/tmp/', 'file:')) or '/tmp/' in target:
+        return True
+    # 盘符路径（C:/ D:\）与 POSIX 绝对路径
+    if len(target) >= 3 and target[1] == ':' and target[2] in ('/', chr(92)):
+        return True
+    if target.startswith('/') and not target.startswith('//'):
+        return True
+    return False
 
 
 def main():

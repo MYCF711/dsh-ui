@@ -3,6 +3,30 @@
 > 脚本：`scripts/accept-chain.sh`（可复跑）。
 > 这一份是**一次真实运行**的记录，不是"应该能通过"的清单。
 
+## 一条命令跑全部：`scripts/accept-all.sh`
+
+```
+bash scripts/accept-all.sh            # 全跑（约 12 分钟）
+bash scripts/accept-all.sh --fast     # 跳过要真模型的那几条（约 2 分钟）
+bash scripts/accept-all.sh --only theme,session-ops
+```
+
+它依次跑 8 条脚本，最后给一张表。**判据只有退出码**——各脚本自己的汇总格式不一样
+（`OK=n FAIL=m` / `PASS=n FAIL=m`），去解析那些字符串只会引入一类新的脆弱。
+
+第一次合跑就抓到三件事，都修在这里面了：
+
+1. **四条脚本的退出码是假的**：`accept-approval` / `accept-cancel` / `accept-resume` /
+   `accept-chain` 结尾都是无条件 `exit 0`——**打了 `FAIL=1` 却对调用方说"我过了"**。
+   现在 `[ "$fail" -eq 0 ] || exit 1`，并且 `accept-all.sh` 另加一道判据：
+   汇总行里 `FAIL=[1-9]` 也算红（防的是同一个坑换个人踩）。
+2. **共享的 `tmp/dshd-acc.exe` 会被没退出的旧宿主锁住**（Windows），锁住之后
+   "编不出新二进制"，整个验收停在第一步。现在每条脚本都认 `DSHD_ACC` 环境变量，
+   `accept-all.sh` 每轮编到**自己的目录**里再传进去。
+3. **`accept-chain` 的 bin-check 会红**：它验的是共享路径上的二进制，
+   而合跑时没人负责先编。现在 `accept-all.sh` 在跑之前编一次，`bin-check` 才有意义
+   （它验的是"绝不拿陈旧二进制跑真机"，不是"文件存在"）。
+
 ## 怎么跑
 
 ```bash

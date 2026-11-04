@@ -66,9 +66,14 @@ def main():
 
     try:
         have_files = tracked_scripts()
-    except Exception as e:
-        print('跑不了 git ls-files：%s' % e)
-        return 2
+    except Exception:
+        # 解压出来的副本（`git archive | tar -x`，没有 .git）里跑不了 `git ls-files`。
+        # 那种情况下**分不出"已入库"和"未入库"**：一律要求会让工作树里的新脚本误报，
+        # 一律放过又等于不查。所以明说"跳过"，并把原因打出来——
+        # 这条检查的落点是 CI（真 checkout），副本里跳过不影响它。
+        print('NOTE  这里不是 git 仓库（解压出来的副本？）→ 跳过：'
+              '分不出哪些脚本已入库。这条检查在真 checkout / CI 里才有意义。')
+        return 0
 
     have_rows = indexed()
     missing = [n for n in have_files if n not in have_rows]

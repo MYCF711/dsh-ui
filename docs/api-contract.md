@@ -223,6 +223,22 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 | `fs.write` | `path`、`content` | 501 |
 | `config.set` | `values`（扁平 key→string 表） | 501 |
 
+### 真宿主上这三个的实测行为（`scripts/accept-session-ops.sh`，12 PASS）
+
+界面侧对 `session.delete` / `session.fork` / `session.compact` 各有客户端单测，但那测的是**桩**。
+真宿主跑一遍才知道的几件事：
+
+| 场景 | 宿主实际回的 | 界面怎么办 |
+|---|---|---|
+| `session.delete` 一个不存在的 id | **404** + 错误信封（带 `code`） | 原样报出来（404 与 500 是两件事） |
+| `session.compact` 一个**还没消息**的会话 | **200** + `compacted=false` | 这是正常结局，**不许当失败** |
+| `session.fork` 一个**还没消息**的会话 | **500** + `分支失败：源会话没有可继承的 surface` | 壳**先自己拦住**（`forkGuard`），给一句人话 |
+| `session.fork` 一个有内容的会话 | 200 + 新 `sessionId`，列表里真有两条 | 刷列表再切过去 |
+
+`fork` 那条的两个细节值得记：状态码是 **500 不是 400**（宿主只把 `ErrNoSuchSession`
+映射成 404，其余一律 500），而"源会话没有可继承的 surface"是内部术语，用户看不懂。
+所以界面在**发请求之前**就判断 `len(Msgs)==0`，不让他看到那句。
+
 > 宿主已经实现了 `session.approve`（`requestId` / `optionId`，H13），但快照 v1 的 13 个
 > method 里还没有它。要补进契约时**两边快照一起改**（`AGENTS.md` §2），别只在实现里加。
 

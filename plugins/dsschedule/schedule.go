@@ -64,10 +64,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	f.Column().FillWidth().Gap(2).PadY(4).Children(func() {
 		f.Text("定时任务").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		for _, it := range shown {
-			title := it.Title
-			if title == "" {
-				title = it.Kind // 没起标题就显示种类（daily/weekly/every）
-			}
+			title := title(it)
 			f.Row().FillWidth().Items(flex.Center).Gap(6).Children(func() {
 				f.Text(title).FontSize(12).Color(t.LabelSecondary).Grow(1).Ellipsis()
 				// 下次时间用最暗的色：它是参考信息，不该抢任务名的注意力。
@@ -78,6 +75,23 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			f.Text("还有 " + itoa(more) + " 条").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
 	})
+}
+
+// title 取这条任务的显示名。
+//
+// **没起标题就退回种类**（daily/weekly/every）：显示一行空白比显示 `daily` 更糟——
+// 空白让人以为数据坏了，`daily` 至少说明"这是一条每天的任务"。
+//
+// 抽成函数而不是留在 draw 里，是因为它是这块**唯一能单测的判断**
+// （其余都是绘制）。抽出来之后 `TestTitleFallsBackToKind` 才能钉住它。
+func title(it pluginapi.ScheduleItem) string {
+	if it.Title != "" {
+		return it.Title
+	}
+	if it.Kind != "" {
+		return it.Kind
+	}
+	return "(未命名)"
 }
 
 // shortTime 把 `2026-11-05T09:00:00+08:00` 缩成 `11-05 09:00`。

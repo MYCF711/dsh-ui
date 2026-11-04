@@ -119,6 +119,9 @@ type LoadResult struct {
 	// ContextTokens 是**最近一条** assistant 的 totalTokens，即"现在上下文占多少"。
 	// 与 UsageTotal 是两件事：累计一直涨，上下文会随压缩回落。
 	ContextTokens int64 `json:"contextTokens"`
+	// ContextWindow 是宿主 session.load 给的上下文容量上限；0 = 未知。
+	// 它不是累计用量，也不能由 ContextTokens 反推；只有它为正时才可计算占用百分比。
+	ContextWindow int64 `json:"contextWindow"`
 	// Model 是最近一次 request/context 的模型名；空 = 不知道。
 	Model string `json:"model"`
 	// Permission 是这一进程真正的审批策略（deny/ask/allow/auto），不是 mode。

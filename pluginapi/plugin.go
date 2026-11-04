@@ -312,8 +312,12 @@ type Snapshot struct {
 	// 不许相加、不许互相替代。零值 = 不知道，插件要整段不画。
 	UsageTotal Usage
 	// ContextTokens 是宿主 §12 H1 给的**最近一条** assistant 的 totalTokens，
-	// 也就是"当前上下文占多少"。0 = 不知道（不是 0 个 token），不许显示"上下文 0"。
+	// 也就是"当前上下文占多少"。没有正容量时 0 仍按未知处理，不单独显示"上下文 0"。
 	ContextTokens int64
+	// ContextWindow 是宿主 session.load 给的上下文容量上限；0 = 未知。
+	// 只有 ContextWindow>0 且 ContextTokens>=0 时才可计算真实占用百分比；
+	// used>capacity 是异常，不得钳成 100%。
+	ContextWindow int64
 	// Model 是宿主 §12 H4 给的最近一次 request/context 的模型名。
 	// 空串 = 不知道；插件不许拿自己的默认值冒充。
 	Model string

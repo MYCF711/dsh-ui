@@ -517,6 +517,10 @@ type Actions struct {
 	// SetModel 改当前会话的模型覆盖（空串 = 清除）。
 	SetModel func(id string)
 
+	// Goal 读这条会话当前在做的事（壳缓存，来自 session.load 的投影）。
+	// 空 = 没设过，插件据此不画目标条。
+	Goal func() string
+
 	// TerminalOpen 起一条长连接 shell，返回它的 id（空 = 开不了）。
 	//
 	// **一次会话一个就够**：这个面板不是终端模拟器，是"看一眼命令在跑什么"。

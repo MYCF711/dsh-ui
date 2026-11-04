@@ -35,6 +35,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsschedule"
@@ -99,6 +100,9 @@ type model struct {
 	// **它靠轮询刷新**：宿主那边是子进程推上来的一份快照，不会主动通知界面。
 	// 所以壳每隔一会儿问一次（见 refreshJobs 的调用点），而不是等事件。
 	jobs []pluginapi.Job
+	// goal 是这条会话当前在做的事（session.load 的投影）。
+	// 空 = 没设过，GoalBar 不画。
+	goal string
 	// termID/termText/termNext 是这个会话的长连接终端。
 	// **只有一份**：面板不是终端模拟器，是"看一眼命令在跑什么"；
 	// 多开会让"哪个是哪个"变成一个新的问题，而那不是当前要解决的问题。
@@ -432,6 +436,8 @@ func (m *model) refreshSession(id string, quiet bool) {
 	}
 	// permission 是进程级审批策略，不是会话 mode。
 	m.permission = r.Permission
+	// goal 跟 permission 同款：来自 load 的投影，空串表示没设过。
+	m.goal = r.Goal
 	if m.cur == id {
 		if demoTool && len(m.msgs) > 0 {
 			req := &approvalReq{Tool: "bash", Cmd: "git status --short",
@@ -1986,6 +1992,12 @@ func main() {
 					m.setStatus("模型已设为 " + modelID)
 				}
 			}()
+		},
+		// 目标条：读壳缓存。**同步**——它只有一行文本，不值得为它做轮询。
+		Goal: func() string {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			return m.goal
 		},
 		// 终端：一次会话一个。**读走缓存**（后台轮询填充），不在这里发 HTTP——
 		// 插件每帧都会调 Read，同步发请求会卡住绘制。

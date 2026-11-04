@@ -123,6 +123,9 @@ type LoadResult struct {
 	Model string `json:"model"`
 	// Permission 是这一进程真正的审批策略（deny/ask/allow/auto），不是 mode。
 	Permission string `json:"permission"`
+	// Goal 是这条会话当前在做的事（宿主 session-goal.json 的投影）。
+	// 空 = 没设过，界面不画 GoalBar。
+	Goal string `json:"goal,omitempty"`
 	// ContentWidth 是宿主知道的会话内容列宽；0 = 不知道（界面自己算）。
 	ContentWidth int `json:"contentWidth"`
 	// JournalEpoch/LastSeq 是**订阅水位基线**（H14）：

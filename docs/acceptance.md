@@ -20,9 +20,12 @@ bash scripts/accept-all.sh --only theme,session-ops
    `accept-chain` 结尾都是无条件 `exit 0`——**打了 `FAIL=1` 却对调用方说"我过了"**。
    现在 `[ "$fail" -eq 0 ] || exit 1`，并且 `accept-all.sh` 另加一道判据：
    汇总行里 `FAIL=[1-9]` 也算红（防的是同一个坑换个人踩）。
-2. **共享的 `tmp/dshd-acc.exe` 会被没退出的旧宿主锁住**（Windows），锁住之后
-   "编不出新二进制"，整个验收停在第一步。现在每条脚本都认 `DSHD_ACC` 环境变量，
+2. **共享的宿主二进制会被没退出的旧宿主锁住**（Windows），锁住之后
+   "编不出新二进制"，整个验收停在第一步。现在每条脚本都认 `DSHD_BIN` 环境变量，
    `accept-all.sh` 每轮编到**自己的目录**里再传进去。
+   > 2026-11-04 起产物名统一：宿主一律 `dshd.exe`、界面一律 `dsh-gui.exe`，
+   > 实例用 `--home` 区分。以前每条脚本各编一个名字（`dshd-acc` / `dshd-goal` /
+   > `dshd-term` / `dshd-serve`），34 个进程混在任务管理器里时人分不清谁是谁。
 3. **`accept-chain` 的 bin-check 会红**：它验的是共享路径上的二进制，
    而合跑时没人负责先编。现在 `accept-all.sh` 在跑之前编一次，`bin-check` 才有意义
    （它验的是"绝不拿陈旧二进制跑真机"，不是"文件存在"）。
@@ -49,6 +52,12 @@ bash scripts/accept-all.sh --only theme,session-ops
 **一个要知道的延迟**：bash 收到 TERM/INT 时会把 trap 推迟到**当前那条命令结束**
 （一次 curl 或 sleep 的时长），所以回收可能晚几秒到几十秒。真正跑不到 trap 的是
 **硬杀**（Windows `TerminateProcess`）——那种情况靠 `accept-all.sh` 每轮自己编二进制兜底。
+
+### 守卫反证：`scripts/guard-selftest.sh`（在合跑里排第一，**CI 里也跑**）
+
+这条**不需要窗口、不需要模型、不需要宿主** —— 只跑 `go test` + `git archive`，
+所以它进了 CI（`.github/workflows/ci.yml` 的「守卫可反证」一步）；
+`accept-all.sh` 里另外几条要真桌面的进不了。
 
 ### 守卫反证：`scripts/guard-selftest.sh`（在合跑里排第一）
 

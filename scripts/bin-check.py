@@ -14,9 +14,14 @@ approval_stdio + WS 推送——整条结论是错的，浪费了一轮。
     python scripts/bin-check.py --warn     # 只警告不失败（CI 里给提示用）
 
 映射（二进制 → 源码目录）：
-    tmp/dshd-serve.exe      → ../DSH-GO/cmd/dshd, ../DSH-GO/internal, ../DSH-GO/modules, ../DSH-GO/codecs
-    tmp/app*.exe            → cmd/app, internal, plugins, pluginapi
+    tmp/dshd*.exe           → ../DSH-GO/cmd/dshd, ../DSH-GO/internal, ../DSH-GO/modules, ../DSH-GO/codecs
+    tmp/dshgogui*.exe        → cmd/app, internal, plugins, pluginapi
+    tmp/app*.exe            → 同上（`app.exe` 是旧名，历史产物还在 tmp/ 里，照样体检）
     tmp/mockd*.exe          → cmd/mockd, internal
+
+**名字是统一的两根**：界面 `dshgogui.exe`、宿主 `dshd.exe`。
+以前每个脚本各编一个名字（`dshd-acc` / `dshd-goal` / `dshd-term` / `dshd-serve`……），
+于是这份体检得靠前缀碰运气去猜哪个对应哪份源码——现在前缀就是产品名。
 """
 from __future__ import annotations
 
@@ -28,14 +33,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 GO_EXT = {".go", ".mod", ".sum"}
 
-# 二进制 → 它吃哪些源码目录（相对 dsh-ui 根；.. 表示兄弟仓）
+# 二进制前缀 → 它吃哪些源码目录（相对 dsh-ui 根；.. 表示兄弟仓）
 MAPPING: dict[str, list[str]] = {
-    "tmp/dshd-serve.exe": [
+    "tmp/dshgo": [
         "../DSH-GO/cmd/dshd", "../DSH-GO/internal",
         "../DSH-GO/modules", "../DSH-GO/codecs", "../DSH-GO/go.mod",
     ],
+    "tmp/dshgogui": ["cmd/app", "internal", "plugins", "pluginapi", "go.mod"],
     "tmp/app": ["cmd/app", "internal", "plugins", "pluginapi", "go.mod"],
     "tmp/mockd": ["cmd/mockd", "internal", "go.mod"],
+}
+
+# 前缀 → 重建它的 go 包。**不能从文件名推**：`dshgogui` 拆前缀会得到 `dsh`（不存在的包），
+# 那条提示是坏了之后人照着敲的第一条命令，错一个字就会让人以为"源码没了"。
+PKG: dict[str, str] = {
+    "tmp/dshgo": "./cmd/dshd",
+    "tmp/dshgogui": "./cmd/app",
+    "tmp/app": "./cmd/app",
+    "tmp/mockd": "./cmd/mockd",
 }
 
 
@@ -63,7 +78,7 @@ def newest_source_mtime(paths: list[str]) -> tuple[float, str]:
     return newest, where
 
 
-def check_one(exe: Path, sources: list[str]) -> tuple[bool, str]:
+def check_one(exe: Path, sources: list[str], pkg: str) -> tuple[bool, str]:
     if not exe.exists():
         return True, f"{exe.name}: 不存在（跳过）"
     src_mtime, where = newest_source_mtime(sources)
@@ -73,9 +88,10 @@ def check_one(exe: Path, sources: list[str]) -> tuple[bool, str]:
     if exe_mtime + 1.0 >= src_mtime:  # 1s 容差：同一次构建里 mtime 可能同秒
         return True, f"{exe.name}: OK（二进制比最新源码新）"
     delta = src_mtime - exe_mtime
+    rel = exe.relative_to(ROOT) if str(exe).startswith(str(ROOT)) else exe
     return False, (
         f"{exe.name}: **陈旧 {delta/60:.0f} 分钟**——源码 {where} 比它新。\n"
-        f"    重建：CGO_ENABLED=0 go build -o {exe.relative_to(ROOT) if str(exe).startswith(str(ROOT)) else exe} ./cmd/{exe.stem.split('-')[0]}"
+        f"    重建：CGO_ENABLED=0 go build -o {rel} {pkg}"
     )
 
 
@@ -90,7 +106,12 @@ def main() -> int:
     checked = 0
     # 默认只查"真机验收会用到"的那几个；tmp/ 里几十个历史调试产物打出来全是噪音，
     # 噪音大了这条检查就没人看了——那还不如不做。
-    default_names = {"dshd-serve.exe", "app-real.exe", "mockd-ap.exe"}
+    # 前两个是统一命名后的正式产物；后三个是旧名，留着是为了让历史产物不会
+    # 因为"改名了所以不在名单里"而静默逃过体检。
+    default_names = {
+        "dshd.exe", "dshgogui.exe",
+        "dshd-serve.exe", "app-real.exe", "mockd-ap.exe",
+    }
     for pattern, sources in MAPPING.items():
         base = ROOT / pattern
         cands = [base] if base.exists() else sorted(base.parent.glob(base.name + "*.exe"))
@@ -100,7 +121,7 @@ def main() -> int:
             if not exe.is_file():
                 continue
             checked += 1
-            good, msg = check_one(exe, sources)
+            good, msg = check_one(exe, sources, PKG[pattern])
             print(("  OK   " if good else "  STALE ") + msg)
             if not good:
                 failures += 1

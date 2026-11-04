@@ -41,6 +41,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsquestions"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsschedule"
+	"github.com/MYCF711/dsh-ui/plugins/dssettings"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
@@ -161,12 +162,15 @@ type model struct {
 	// ── 插件运行时（界面线的「一切皆插件」）──
 	// 壳只做三件事：装配插件、给槽位、把快照递进去。
 	// 部件怎么分组、怎么排序、展开还是收起，全是插件自己的事。
-	kernel  *uikernel.Kernel
-	theme   *pluginapi.Theme
-	prims   pluginapi.Primitives
-	side    *dssidebar.Plugin
-	actions pluginapi.Actions
-	chrome  frameChrome
+	kernel *uikernel.Kernel
+	theme  *pluginapi.Theme
+	prims  pluginapi.Primitives
+	side   *dssidebar.Plugin
+	// settings 是设置浮层。壳持有实例只为一件事：`-open-settings` 无头截图要调它，
+	// 以及把它排在装配顺序最前（HandleKey 第一个拿到键才能先关掉自己）。
+	settings *dssettings.Plugin
+	actions  pluginapi.Actions
+	chrome   frameChrome
 
 	mu           sync.Mutex
 	chromeLayout frameChromeLayout // 由 Paint 写入，原生截图报告在 mu 下读取。
@@ -1697,44 +1701,65 @@ func newConfig(m *model) app.Config {
 	return cfg
 }
 
-// parseKeys 把 "down,up" 翻成 ui.Key（只认导航键，够验证路由用）。
-func parseKeys(seq string) []ui.Key {
-	var out []ui.Key
-	for _, name := range strings.Split(seq, ",") {
-		switch strings.TrimSpace(strings.ToLower(name)) {
-		case "down":
-			out = append(out, ui.KeyDown)
-		case "up":
-			out = append(out, ui.KeyUp)
-		case "f1":
-			out = append(out, ui.KeyF1)
-		case "f2":
-			out = append(out, ui.KeyF2)
-		case "f7":
-			out = append(out, ui.KeyF7)
-		case "f8":
-			out = append(out, ui.KeyF8)
-		case "f6":
-			out = append(out, ui.KeyF6)
-		case "f5":
-			// 终端面板（dsterminal）。**这个键名以前没有**——
-			// 加了插件的键位却忘了让 `-keys` 认识它，截图时按键就静默无效。
-			out = append(out, ui.KeyF5)
-		case "f12":
-			out = append(out, ui.KeyF12)
-		case "home":
-			out = append(out, ui.KeyHome)
-		case "end":
-			out = append(out, ui.KeyEnd)
-		case "esc":
-			out = append(out, ui.KeyEscape)
-		case "enter":
-			// 审批条可见时 Enter = 允许（dscomposer 的 HandleKey 只在可见时接管）。
-			// 加它不是为了别的：验「允许之后宿主真的执行工具」必须有办法按下允许。
-			out = append(out, ui.KeyEnter)
+// parseKeys 把 "down,shift+f2" 翻成按键事件（只认导航键，够验证路由用）。
+//
+// 为什么返回 KeyEvent 而不是 ui.Key：**修饰键也是路由的一部分**。
+// 设置浮层的入口是 Shift+F2，而普通 F2 是命令面板——只翻键名会把 Shift 丢掉，
+// 注入的按键就永远打不开设置，而"打不开"看起来会像"插件没装/没接上"。
+func parseKeys(seq string) []ui.KeyEvent {
+	var out []ui.KeyEvent
+	for _, raw := range strings.Split(seq, ",") {
+		name := strings.TrimSpace(strings.ToLower(raw))
+		var mods ui.Modifiers
+		if rest, ok := strings.CutPrefix(name, "shift+"); ok {
+			mods, name = ui.ModifierShift, rest
 		}
+		key, ok := keyFromName(name)
+		if !ok {
+			continue
+		}
+		out = append(out, ui.KeyEvent{Key: key, Modifiers: mods})
 	}
 	return out
+}
+
+// keyFromName 只认 `-keys` 用得上的键名（不是完整的键表）。
+//
+// 加插件键位的同一条规矩：插件吃哪个键，这里就得认识哪个名字，
+// 否则截图时按键静默无效（F5 加的时候踩过）。
+func keyFromName(name string) (ui.Key, bool) {
+	switch name {
+	case "down":
+		return ui.KeyDown, true
+	case "up":
+		return ui.KeyUp, true
+	case "f1":
+		return ui.KeyF1, true
+	case "f2":
+		return ui.KeyF2, true
+	case "f5":
+		// 终端面板（dsterminal）。
+		return ui.KeyF5, true
+	case "f6":
+		return ui.KeyF6, true
+	case "f7":
+		return ui.KeyF7, true
+	case "f8":
+		return ui.KeyF8, true
+	case "f12":
+		return ui.KeyF12, true
+	case "home":
+		return ui.KeyHome, true
+	case "end":
+		return ui.KeyEnd, true
+	case "esc":
+		return ui.KeyEscape, true
+	case "enter":
+		// 审批条可见时 Enter = 允许（dscomposer 的 HandleKey 只在可见时接管）。
+		// 加它不是为了别的：验「允许之后宿主真的执行工具」必须有办法按下允许。
+		return ui.KeyEnter, true
+	}
+	return 0, false
 }
 
 // fixedFirst 返回必须常驻的结构性插件。
@@ -1854,18 +1879,27 @@ func itoaLocal(n int) string {
 }
 
 func main() {
+	// `-h` 打的是产品名与产物名：否则人对着 "Usage of app.exe" 还得猜这是哪个程序。
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "%s %s（%s.exe）\n\n参数：\n", productName, version, binaryName)
+		flag.PrintDefaults()
+	}
+	// --version：只读打印一行然后退出。它是**查身份**用的（哪个产物、哪一版），
+	// 不能反过来去连宿主、建窗口——那种"顺手做点事"的版本查询会让脚本多等几十秒。
+	showVersion := flag.Bool("version", false, "只打印版本（"+productName+" <版本>）然后退出")
 	pluginConfig := flag.String("plugins", "", "插件配置文件（JSON 白名单；空=全装）")
 	addr := flag.String("addr", "http://127.0.0.1:7788", "Transport base URL")
 	limit := flag.Int("limit", 0, "只渲染最后 N 条消息（0 = 全部）；用于量视口虚拟化的收益")
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
 	openFile := flag.String("open-file", "", "无头截图用：启动后直接打开这个文件名的预览（走 dsfiles.Open，不模拟鼠标）")
+	openSettings := flag.Bool("open-settings", false, "无头截图用：启动后直接打开设置浮层（走 dssettings.Open，不模拟热键）；产品入口是 Shift+F2")
 	themeName := flag.String("theme", "dark", "主题：dark / light / system（system 跟着操作系统的明暗走）")
 	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
 	prompt := flag.String("prompt", "", "调试：-smoke 时发这条文本（默认 smoke-<时间>）；验工具卡/审批用")
 	cookie := flag.String("cookie", "", "调试：直接用这条会话 cookie（形如 dshd_session=…），跳过 /connect。token 一次性时用来与 curl 共用同一个宿主")
 	demo := flag.Bool("demo", false, "在消息列表里插一条假的工具卡，验证渲染")
-	title := flag.String("title", "dsh-ui", "窗口标题（并行跑多个实例时用来区分）")
+	title := flag.String("title", productName, "窗口标题（并行跑多个实例时用来区分；默认就是产品名）")
 	keysSeq := flag.String("keys", "", "调试：启动后依次注入按键（down,up,home,end,esc,enter），走的是插件的 HandleKey，用来验证键盘路由")
 	expandThink := flag.Bool("expand-think", false, "调试：把思考块默认展开（截展开态用）")
 	collapseAll := flag.Bool("collapse", false, "调试：启动时把所有工作区分组收起（截折叠态用）")
@@ -1887,6 +1921,13 @@ func main() {
 	chromeProbe := flag.Bool("chrome-probe", false, "与 -shot 同用：点击本进程窗口控制并断言 OS 状态，最后从关闭钮退出")
 	winSize := flag.String("size", "", "调试：窗口初始尺寸 WxH（如 1600x900）；空 = 1180x800。验证几何在不同宽度下是否成立")
 	flag.Parse()
+	// 版本查询排在所有参数校验之前：`dshgogui.exe --version` 不管别的参数写成什么，
+	// 都只该打印一行就退（退出码 0），否则脚本里那句"先确认产物是哪一版"会被
+	// 别的 flag 的合法性检查带成判红。
+	if *showVersion {
+		fmt.Printf("%s %s\n", productName, version)
+		return
+	}
 	if (*chromeProbe || *chromeReport != "") && *shot == "" {
 		log.Fatal("-chrome-probe / -chrome-report 必须与 -shot 同用")
 	}
@@ -1954,10 +1995,11 @@ func main() {
 	// 装插件：先根本依赖（ds-core：设计令牌 + 基础组件），再依赖它的部件。
 	// 装配器按 Requires 排序；ds-sidebar 少一个键就直接报错，不会静默少画一块。
 	m.side = &dssidebar.Plugin{CollapseAll: *collapseAll}
+	m.settings = &dssettings.Plugin{}
 	// ds-core（令牌 + 图元）与 ds-shell（三栏）是结构性的：它们不在白名单里也要装，
 	// 否则其余部件没有令牌可 Inject、或者各自独占整个窗口。
 	// 这两条不许被 ui-plugins.json 关掉——配置管的是"装哪些部件"，不是"要不要有地基"。
-	m.kernel = uikernel.New("dsh-ui")
+	m.kernel = uikernel.New(productName)
 
 	// 插件从哪来：**壳不认识任何具体插件**。
 	// 内置的自己在 init 里 pluginapi.Register 报到（blank import 即接入）；
@@ -1965,7 +2007,7 @@ func main() {
 	// 需要壳注入运行期状态的少数几个（侧栏实例、搜索开关）在这里补。
 	plugins, err := uiplugins.Load(*pluginConfig, pluginapi.Builtin(), func(id string) bool {
 		// 这两个实例由壳自己 append（壳要读它们的 Fields/Width/搜索开关）。
-		return id == "ds-sidebar" || id == "ds-conversation" || id == "ds-core" || id == "ds-shell"
+		return id == "ds-sidebar" || id == "ds-conversation" || id == "ds-core" || id == "ds-shell" || id == "ds-settings"
 	})
 	if err != nil {
 		log.Fatalf("插件来源加载失败: %v", err)
@@ -1990,6 +2032,11 @@ func main() {
 	})
 	_, resolvedTheme := resolveThemeMode(*themeName)
 	plugins = append(plugins, fixedFirst(*pluginConfig, resolvedTheme)...)
+	// 设置浮层排在**装配顺序最前**：按键是按装配顺序转发的，第一个返回 true 的赢。
+	// 它只吃 Shift+F2 和"浮层开着时的 Esc/↑↓/Enter"，其余一律放行；
+	// 排在最前才能保证浮层开着时 Esc 先关浮层，而不是被 composer 当成"停止 turn"。
+	// 排在后面则相反：composer 先看到 Esc，浮层永远关不掉。
+	plugins = append([]pluginapi.Plugin{m.settings}, plugins...)
 	if err := m.kernel.Load(orderPlugins(plugins)...); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}
@@ -2247,12 +2294,25 @@ func main() {
 			log.Printf("-open-file 给了 %q，但没找到 ds-files 插件", name)
 		}(*openFile)
 	}
+	// 设置浮层：截图路径没有鼠标/热键，只能调插件的公开入口。
+	// 它和 Shift+F2 走的是**同一个** Open()，不是测试专用实现。
+	if *openSettings {
+		go func() {
+			time.Sleep(time.Duration(*keysAfter) * time.Second)
+			if m.settings == nil || !m.settings.Open() {
+				log.Printf("-open-settings：这一帧没有任何真实设置动作，浮层不打开")
+				return
+			}
+			m.inv.Invalidate()
+			log.Printf("设置浮层已打开")
+		}()
+	}
 	if *keysSeq != "" {
 		go func(seq string) {
 			time.Sleep(time.Duration(*keysAfter) * time.Second) // 等会话列表/消息/审批帧到位
-			for _, name := range parseKeys(seq) {
-				ok := m.kernel.HandleKey(ui.KeyEvent{Key: name})
-				log.Printf("key %v handled=%v", name, ok)
+			for _, ev := range parseKeys(seq) {
+				ok := m.kernel.HandleKey(ev)
+				log.Printf("key %v mods=%v handled=%v", ev.Key, ev.Modifiers, ok)
 				// **注入路径必须自己重绘**：它直接调 kernel.HandleKey，绕过了
 				// cfg.OnKey 里那句 Invalidate。插件把 shown 切成 true 之后，
 				// 一帧都不会再画——日志 handled=true 而屏幕上什么都没有。

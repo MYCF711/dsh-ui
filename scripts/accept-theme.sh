@@ -45,7 +45,9 @@ pass() { echo "  PASS  $*"; ok=$((ok + 1)); }
 fail() { echo "  FAIL  $*"; bad=$((bad + 1)); }
 
 echo "== 构建 =="
-if ! CGO_ENABLED=0 go build -o "$work/app.exe" ./cmd/app; then
+# 产物名跟产品走（`dshgogui.exe`，见 cmd/app/brand.go 的 binaryName）；
+# 不再是 `app.exe`——进程表里"app"这个名字谁都能叫，认不出是哪一个程序。
+if ! CGO_ENABLED=0 go build -o "$work/dshgogui.exe" ./cmd/app; then
   echo "  FAIL  build 不过"
   exit 1
 fi
@@ -73,7 +75,7 @@ run() {
   #
   # 顺带说明：没有宿主在跑时 `ConfigSet` 是失败的（HTTP 打不通，失败只写状态栏），
   # 所以这个脚本**不会**把 `ui.theme` 真的落盘、也就不会污染下一次普通启动。
-  timeout 90 "$work/app.exe" -shot "$png" -shot-wait 9 "$@" >"$log" 2>&1
+  timeout 90 "$work/dshgogui.exe" -shot "$png" -shot-wait 9 "$@" >"$log" 2>&1
   local rc=$?
   if [ $rc -ne 0 ]; then
     fail "$name：进程退出码 $rc"
@@ -115,7 +117,7 @@ run toggle light "主题：light" -theme dark \
   -keys f2,down,down,down,down,down,down,down,down,down,enter -keys-after 3
 
 echo "== 4. 不认识的模式必须当场拒 =="
-timeout 30 "$work/app.exe" -theme sepia -shot "$work/bad.png" >"$work/bad.log" 2>&1
+timeout 30 "$work/dshgogui.exe" -theme sepia -shot "$work/bad.png" >"$work/bad.log" 2>&1
 if [ $? -ne 0 ] && grep -q "只能是 dark|light|system" "$work/bad.log"; then
   pass "非法模式被拒（并写清了合法值）"
 else

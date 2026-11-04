@@ -4,10 +4,12 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 export PATH="/c/Program Files/Go/bin:$PATH"
-# 宿主二进制路径可覆盖：默认是共享的 tmp/dshd-acc.exe。
+# 宿主二进制路径可覆盖：默认是共享的 tmp/dshgo.exe。
 # 为什么要能覆盖：那个文件会被**没退出的旧宿主**锁住（Windows），于是"编不出新二进制"，
 # 整个验收直接停在第一步。`accept-all.sh` 每次编到自己那一轮的目录里再传进来。
-BIN="${DSHD_ACC:-tmp/dshd-acc.exe}"
+# **不再给每个脚本另起名字**（`dshd-acc.exe` / `dshd-goal.exe` / `dshd-term.exe` 那种）：
+# 进程表是唯一的现场，统一叫 `dshd.exe`、实例用 `--home` 区分。
+BIN="${DSHGO_BIN:-tmp/dshgo.exe}"
 ok=0; fail=0
 chk() { if [ "$2" -eq 0 ]; then echo "PASS  $1"; ok=$((ok+1)); else echo "FAIL  $1  ${3:-}"; fail=$((fail+1)); fi; }
 

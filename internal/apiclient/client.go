@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -385,4 +386,36 @@ func (c *Client) Prompt(ctx context.Context, id, text string) (string, error) {
 		return "", err
 	}
 	return r.TurnID, nil
+}
+
+// Delete 是 session.delete：**从磁盘上**删掉一个会话。
+//
+// 契约（宿主 handlers_extra.go）：
+//   - 缺 id → 400；会话不存在 → 404；删失败 → 500（三种要分开处理，
+//     404 是"换个 id 重试"，500 是"这次没删掉"）。
+//   - 成功回 `{"deleted": true}`。
+//
+// 两个键都发：宿主同时认 `sessionId` 和 `id`（"界面那边两种写法都有"），
+// 但**只发一种**时它对不上就是 400 —— 多发一个键没有代价，少发一个才有。
+//
+// 这是**破坏性动作**：调用方必须先让用户确认过。
+func (c *Client) Delete(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("session.delete 需要会话 id")
+	}
+	var r struct {
+		Deleted bool `json:"deleted"`
+	}
+	if err := c.Call(ctx, "session.delete", map[string]any{
+		"sessionId": id,
+		"id":        id,
+	}, &r); err != nil {
+		return err
+	}
+	if !r.Deleted {
+		// 200 但没有 deleted:true —— 别当成删成功。宁可让用户再点一次，
+		// 也不要让他以为删了、实际上还在。
+		return errors.New("宿主回了 200 但没有 deleted:true")
+	}
+	return nil
 }

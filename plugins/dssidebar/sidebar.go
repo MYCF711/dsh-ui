@@ -110,6 +110,12 @@ type Plugin struct {
 	searchExpanded bool
 	frameBoxes     frameBoxes
 	activePanel    string
+	// pendingDelete 是"已经点过一次 ×、等第二次确认"的会话 id。
+	//
+	// 删除是**破坏性**的（宿主那边是从磁盘上删），所以做成两次点击。
+	// 为什么不弹确认框：这个界面里没有对话框，为了一个确认去造一个组件
+	// 不比"同一行再点一次"更好——而且两次点的都是同一个位置，误触的概率更低。
+	pendingDelete string
 	// extensionRoutes 只接收当前实际存在、带 Draw 的扩展面板；主题鱼/压缩没有硬编码入口。
 	extensionRoutes []panelRoute
 	// lastOrder / lastCur / act 是绘制期留下的快照，按键时要用：
@@ -420,6 +426,10 @@ func (p *Plugin) drawSearchCard(f *flex.Frame, env *pluginapi.Env, r searchResul
 func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Session) {
 	t := p.theme
 	active := s.ID == env.Data.Cur
+	// 删除入口只在壳接了 DeleteSession 时才画：老壳没这条线时，
+	// 画一个点了没反应的东西，比不画更让人以为"删掉了"。
+	canDelete := env.Act.DeleteSession != nil
+	confirming := canDelete && p.pendingDelete == s.ID
 	title := strings.TrimSpace(s.Title)
 	if title == "" {
 		title = "（无标题）"
@@ -445,14 +455,59 @@ func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Sess
 		f.Text(title).FontSize(t.Fonts.Body).LineHeight(titleLineHeight).
 			Ellipsis().Grow(1).Color(t.LabelPrimary).
 			MarginSides(0, titleMarginRight, 0, titleMarginLeft)
-		if stamp := relativeTime(s.UpdatedAt); stamp != "" {
-			f.Text(stamp).FontSize(10).LineHeight(timeLineHeight).
-				Color(t.LabelTertiary).Shrink(0)
+		// 时间位在确认态下换成「确认?」：**同一个位置**，不新增宽度。
+		// 换成弹窗或者把整行变色的话，行宽会跳，列表会跟着抖一下。
+		if stamp := relativeTime(s.UpdatedAt); stamp != "" || confirming {
+			text, color := stamp, t.LabelTertiary
+			if confirming {
+				text, color = "确认?", t.Error
+			}
+			f.Text(text).FontSize(10).LineHeight(timeLineHeight).
+				Color(color).Shrink(0)
+		}
+		if canDelete {
+			p.drawDeleteBox(f, env, s, confirming)
 		}
 	})
 	if row.Clicked() && env.Act.OpenSession != nil {
+		// 打开别的会话就取消"待确认删除"：用户已经把注意力挪走了，
+		// 留着一个待确认状态，下一次误点会直接删掉。
+		p.pendingDelete = ""
 		p.activePanel = ""
 		env.Act.OpenSession(s.ID)
+	}
+}
+
+// drawDeleteBox 画行尾那个 ×，并处理"两次点击"。
+//
+// 嵌套命中是**安全的**：事件目标是这个 × 时，外层行自己的 `Clicked()` 是 false
+// （实测过，见 sidebar_test.go 的 TestDeleteBoxDoesNotAlsoOpenTheSession）。
+// 所以点删除不会顺手把会话切过去。
+func (p *Plugin) drawDeleteBox(f *flex.Frame, env *pluginapi.Env, s apiclient.Session, confirming bool) {
+	t := p.theme
+	color := t.LabelCaption
+	label := "×"
+	if confirming {
+		color = t.Error
+	}
+	box := f.Row().Width(16).Height(16).Shrink(0).
+		Items(flex.Center).Justify(flex.Center).
+		HoverBackground(t.Hover).
+		Hit(env.Tree.ID(env.Feat, "del-"+s.ID), "删除这个会话").
+		Children(func() {
+			f.Text(label).FontSize(t.Fonts.Tiny).Color(color)
+		})
+	if box.Clicked() {
+		if confirming {
+			del := env.Act.DeleteSession
+			p.pendingDelete = ""
+			del(s.ID)
+			return
+		}
+		p.pendingDelete = s.ID
+		if env.Act.Notify != nil {
+			env.Act.Notify("再点一次就删掉这个会话")
+		}
 	}
 }
 

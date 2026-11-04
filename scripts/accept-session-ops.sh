@@ -37,14 +37,14 @@ rm -rf "$work"
 mkdir -p "$work"
 
 echo "== 构建宿主（当前源码） =="
-if ! (cd ../DSH-GO && CGO_ENABLED=0 go build -o "$OLDPWD/$work/dshd.exe" ./cmd/dshd); then
+if ! (cd ../DSH-GO && CGO_ENABLED=0 go build -o "$OLDPWD/$work/dshgo.exe" ./cmd/dshd); then
   echo "  FAIL  宿主 build 不过"
   exit 1
 fi
 echo "  PASS  宿主 build"
 
 H="$work/home"
-"$work/dshd.exe" serve --home "$H" --policy allow > "$work/serve.txt" 2> "$work/serve.log" &
+"$work/dshgo.exe" serve --home "$H" --policy allow > "$work/serve.txt" 2> "$work/serve.log" &
 PID=$!
 cleanup() {
   kill "$PID" 2>/dev/null

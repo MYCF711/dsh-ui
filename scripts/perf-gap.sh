@@ -59,11 +59,11 @@ REAL_HOME="${PERF_GAP_REAL_HOME:-D:/DeepSeek Harness/home}"
 HOST_REPO="${PERF_GAP_HOST_REPO:-../DSH-GO}"
 HOST_REV="${PERF_GAP_HOST_REV:-4f7c885}"
 UI_REV="${PERF_GAP_UI_REV:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
-APP="${PERF_GAP_APP:-$WORK/bin/dshgogui.exe}"
-# 宿主也叫 `dshd.exe`：**版本写在目录上，不写在文件名上**。
+APP="${PERF_GAP_APP:-$WORK/bin/DSH GUI GO.exe}"
+# 宿主也叫 `dshgo.exe`：**版本写在目录上，不写在文件名上**。
 # 以前是 `dshd-4f7c885.exe`——每换一个 rev 就多一个镜像名，进程表里就成了
-# "dshd.exe / dshd-acc.exe / dshd-4f7c885.exe" 混排，人要逐个猜它们是谁。
-SERVE="${PERF_GAP_SERVE:-$WORK/bin/host-$HOST_REV/dshd.exe}"
+# "dshgo.exe / dshd-acc.exe / dshd-4f7c885.exe" 混排，人要逐个猜它们是谁。
+SERVE="${PERF_GAP_SERVE:-$WORK/bin/host-$HOST_REV/dshgo.exe}"
 TPL="$WORK/home-template"
 LOAD_MAX="${PERF_GAP_LOAD_MAX:-70}"
 LOAD_STRICT="${PERF_GAP_LOAD_STRICT:-0}"

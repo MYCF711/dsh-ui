@@ -61,13 +61,15 @@ mkdir -p "$OUT"
 # （实测撞到过：`open ../dsh-ui/tmp/dshgo.exe: The process cannot access the file`,
 # 占着它的是**别的会话**的宿主，既不能杀也不该杀）。每次跑自己的副本，互不影响。
 #
-# **名字就是产品的名字**：宿主 `dshd.exe`、界面 `dshgogui.exe`。
+# **名字就是产品的名字**：宿主 `dshgo.exe`、界面 `DSH GUI GO.exe`。
+# 界面这一根含空格、分大小写（产品名全程，用户口径），所以下面每一处调用
+# 都必须整体加引号——`$APP` 已经带引号，别再拼出裸路径。
 # 以前这里叫 `dshd-serve.exe` / `app-e2e.exe`——每个脚本一套别名，
 # 进程表里 34 个进程就分不清谁是谁（用户就是这么被坑的）。区分实例靠 `--home`。
 BIN="$OUT/bin"
 mkdir -p "$BIN"
-SERVE="$BIN/dshd.exe"
-APP="$BIN/dshgogui.exe"
+SERVE="$BIN/dshgo.exe"
+APP="$BIN/DSH GUI GO.exe"
 pass=0
 fail=0
 skip=0
@@ -132,7 +134,7 @@ trap cleanup EXIT
 step "构建（两个二进制都重建：验的必须是当前源码）"
 CGO_ENABLED=0 go build -o "$APP" ./cmd/app || { echo "界面构建失败"; exit 1; }
 (cd ../DSH-GO && CGO_ENABLED=0 go build -o "../dsh-ui/$SERVE" ./cmd/dshd) || {
-  echo "宿主构建失败（若提示「文件被占用」，是上一轮的宿主没被回收：scripts 的 cleanup 按端口杀；也可先 tasklist 查 dshd.exe 的 --home 再只杀自己那个）"
+  echo "宿主构建失败（若提示「文件被占用」，是上一轮的宿主没被回收：scripts 的 cleanup 按端口杀；也可先 tasklist 查 dshgo.exe 的 --home 再只杀自己那个）"
   exit 1
 }
 echo "  界面 $(stat -c%s "$APP") 字节 / 宿主 $(stat -c%s "$SERVE") 字节"

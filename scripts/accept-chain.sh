@@ -7,14 +7,20 @@ export PATH="/c/Program Files/Go/bin:$PATH"
 # 为什么要能覆盖：那个文件会被**没退出的旧宿主**锁住（Windows），于是"编不出新二进制"，
 # 整个验收直接停在第一步。`accept-all.sh` 每次编到自己那一轮的目录里再传进来。
 # **不再给每个脚本另起名字**（`dshd-acc.exe` / `dshd-goal.exe` / `dshd-term.exe` 那种）：
-# 进程表是唯一的现场，统一叫 `dshd.exe`、实例用 `--home` 区分。
+# 进程表是唯一的现场，统一叫 `dshgo.exe`、实例用 `--home` 区分。
 BIN="${DSHGO_BIN:-tmp/dshgo.exe}"
 U=""; ok=0; fail=0
 # $2 是 grep/curl 的退出码：**0 = 成功**。第一版写成比较 "1"，于是全反了。
 chk() { if [ "$2" -eq 0 ]; then echo "PASS  $1"; ok=$((ok+1)); else echo "FAIL  $1  ${3:-}"; fail=$((fail+1)); fi; }
 
-python ../DSH-GO/scripts/bin-check.py "$BIN" >/dev/null 2>&1
-chk "二进制与源码一致（bin-check）" "$?"
+# bin-check 必须**在宿主仓里跑**：它扫的 `SRC_ROOTS`（cmd / internal / modules / codecs）
+# 是**相对当前目录**的。以前这行在界面仓里调它，等于拿**界面**的源码去比**宿主**二进制——
+# 这个检查从来没测过任何东西，只是碰巧 mtime 顺序让它绿而已。
+# 2026-11-04 真红了一次：报「dshgo.exe 比 cmdpp\headless_windows.go 旧」——
+# 那是界面的文件，跟这个宿主二进制没有任何关系。
+BIN_ABS="$(cd "$(dirname "$BIN")" && pwd)/$(basename "$BIN")"
+(cd ../DSH-GO && python scripts/bin-check.py "$BIN_ABS" >/dev/null 2>&1)
+chk "二进制与源码一致（bin-check，在宿主仓里跑）" "$?"
 
 H=tmp/acc-home-$$; rm -rf "$H"
 "$BIN" serve --home "$H" --policy ask > tmp/acc.txt 2> tmp/acc.log &

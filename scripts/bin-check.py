@@ -15,11 +15,14 @@ approval_stdio + WS 推送——整条结论是错的，浪费了一轮。
 
 映射（二进制 → 源码目录）：
     tmp/dshd*.exe           → ../DSH-GO/cmd/dshd, ../DSH-GO/internal, ../DSH-GO/modules, ../DSH-GO/codecs
-    tmp/dshgogui*.exe        → cmd/app, internal, plugins, pluginapi
+    tmp/DSH GUI GO*.exe     → cmd/app, internal, plugins, pluginapi
     tmp/app*.exe            → 同上（`app.exe` 是旧名，历史产物还在 tmp/ 里，照样体检）
     tmp/mockd*.exe          → cmd/mockd, internal
 
-**名字是统一的两根**：界面 `dshgogui.exe`、宿主 `dshd.exe`。
+**名字是统一的两根**：界面 `DSH GUI GO.exe`、宿主 `dshgo.exe`。
+界面这一根**含空格、分大小写**，就是产品名本身（用户口径：「exe 要写产品名，
+而且要全程」）；进程表里看到的就是它，所以这里也必须是它，写成 `dshgogui`
+那些旧前缀会让新产物**静默逃过体检**。
 以前每个脚本各编一个名字（`dshd-acc` / `dshd-goal` / `dshd-term` / `dshd-serve`……），
 于是这份体检得靠前缀碰运气去猜哪个对应哪份源码——现在前缀就是产品名。
 """
@@ -39,16 +42,17 @@ MAPPING: dict[str, list[str]] = {
         "../DSH-GO/cmd/dshd", "../DSH-GO/internal",
         "../DSH-GO/modules", "../DSH-GO/codecs", "../DSH-GO/go.mod",
     ],
-    "tmp/dshgogui": ["cmd/app", "internal", "plugins", "pluginapi", "go.mod"],
+    "tmp/DSH GUI GO": ["cmd/app", "internal", "plugins", "pluginapi", "go.mod"],
     "tmp/app": ["cmd/app", "internal", "plugins", "pluginapi", "go.mod"],
     "tmp/mockd": ["cmd/mockd", "internal", "go.mod"],
 }
 
-# 前缀 → 重建它的 go 包。**不能从文件名推**：`dshgogui` 拆前缀会得到 `dsh`（不存在的包），
+# 前缀 → 重建它的 go 包。**不能从文件名推**：`DSH GUI GO` 里没有任何包路径信息
+# （前缀切一刀只会得到 `DSH`，那是个不存在的包），
 # 那条提示是坏了之后人照着敲的第一条命令，错一个字就会让人以为"源码没了"。
 PKG: dict[str, str] = {
     "tmp/dshgo": "./cmd/dshd",
-    "tmp/dshgogui": "./cmd/app",
+    "tmp/DSH GUI GO": "./cmd/app",
     "tmp/app": "./cmd/app",
     "tmp/mockd": "./cmd/mockd",
 }
@@ -91,7 +95,7 @@ def check_one(exe: Path, sources: list[str], pkg: str) -> tuple[bool, str]:
     rel = exe.relative_to(ROOT) if str(exe).startswith(str(ROOT)) else exe
     return False, (
         f"{exe.name}: **陈旧 {delta/60:.0f} 分钟**——源码 {where} 比它新。\n"
-        f"    重建：CGO_ENABLED=0 go build -o {rel} {pkg}"
+        f'    重建：CGO_ENABLED=0 go build -o "{rel}" {pkg}'
     )
 
 
@@ -109,7 +113,7 @@ def main() -> int:
     # 前两个是统一命名后的正式产物；后三个是旧名，留着是为了让历史产物不会
     # 因为"改名了所以不在名单里"而静默逃过体检。
     default_names = {
-        "dshd.exe", "dshgogui.exe",
+        "dshgo.exe", "DSH GUI GO.exe",
         "dshd-serve.exe", "app-real.exe", "mockd-ap.exe",
     }
     for pattern, sources in MAPPING.items():

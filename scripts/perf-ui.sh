@@ -45,7 +45,7 @@ REAL_HOME="${PERF_REAL_HOME:-D:/DeepSeek Harness/home}"   # 只读来源，只�
 MAX_SESSION_MB="${PERF_MAX_SESSION_MB:-12}"               # 单份大会话的上限（太大会把测量变成 I/O 测量）
 SESSIONS="${PERF_SESSIONS:-4}"                            # 复制几份「不同 id」的真实大会话（D1 切会话要用）
 WORK="${PERF_WORK:-tmp/perf-run}"
-APP="${PERF_APP:-tmp/dshgogui.exe}"
+APP="${PERF_APP:-tmp/DSH GUI GO.exe}"
 SERVE="${PERF_SERVE:-tmp/dshgo.exe}"
 
 log() { printf '%s\n' "$*" >&2; }
@@ -275,7 +275,10 @@ def main():
     ap.add_argument("--ready-marker", default="", help="app stderr 里出现它就当作「连上了」")
     ap.add_argument("--until-exit", action="store_true", help="等 app 自己退出（-shot 场景）")
     ap.add_argument("--observe", type=float, default=0.0, help="ready 之后再观察多少秒")
-    ap.add_argument("--win-title", default="dsh-ui")
+    # 窗口标题的默认值是**产品名全程**（cmd/app/brand.go 的 productName，
+    # 也是 `-title` 的默认值）。这里是**大小写不敏感的子串匹配**，写成 `dsh-ui`
+    # 那类旧名字不会报错，只会一个窗口都枚举不到 → 截图/几何全空。
+    ap.add_argument("--win-title", default="DSH GUI GO")
     ap.add_argument("--expect-sessions", type=int, default=None, help="home 里应该有几个会话（多了=被别的客户端污染）")
     ap.add_argument("--series", action="store_true", help="把每次内存采样也写进 JSON（进程内趋势用）")
     ap.add_argument("--timeout", type=float, default=45.0)
@@ -629,14 +632,14 @@ fi
 
 if have_scenario A; then
   run_case A "$RUNS" --args "-addr {URL} -token {TOKEN} -shot-wait 0" \
-    --shot "shot.png" --shot-wait 0 --until-exit --win-title dsh-ui
+    --shot "shot.png" --shot-wait 0 --until-exit --win-title "DSH GUI GO"
   # 废图（160x28 = 抓图时窗口处于最小化态）不算有效采样：补一次
   for f in "$WORK"/A/*.json; do
     [ -f "$f" ] || continue
     if ! "$PY" -c "import json,sys;sys.exit(0 if (json.load(open(sys.argv[1],encoding='utf-8')).get('shot') or {}).get('valid') else 1)" "$f" 2>/dev/null; then
       n=$(basename "$f" .json)
       log "   [A] 第 $n 次是废图（160x28），补一次"
-      "$PY" "$WORK/helper.py" --repo "$ROOT" --work "$WORK/A/retry$n" --serve "$SERVE" --app "$APP" --out "$WORK/A/retry$n.json" --args "-addr {URL} -token {TOKEN}" --shot "shot.png" --shot-wait 0 --until-exit --win-title dsh-ui >/dev/null 2>"$WORK/A/retry$n.stderr" || true
+      "$PY" "$WORK/helper.py" --repo "$ROOT" --work "$WORK/A/retry$n" --serve "$SERVE" --app "$APP" --out "$WORK/A/retry$n.json" --args "-addr {URL} -token {TOKEN}" --shot "shot.png" --shot-wait 0 --until-exit --win-title "DSH GUI GO" >/dev/null 2>"$WORK/A/retry$n.stderr" || true
     fi
   done
 fi

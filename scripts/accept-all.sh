@@ -74,10 +74,10 @@ echo "== 前置 0：把验收用的宿主二进制编出来 =="
 # 共享的 `tmp/dshgo.exe` 会被没退出的旧宿主锁住（Windows 上就编不进去），
 # 一旦锁住整个验收停在第一步——这个坑今天就撞到了（七个 6 小时前的残留宿主）。
 #
-# **产物名就是宿主自己的名字（`dshd.exe`），不是 `dshd-acc.exe` 这类按脚本起的别名**：
+# **产物名就是宿主自己的名字（`dshgo.exe`），不是 `dshd-acc.exe` 这类按脚本起的别名**：
 # 出问题时进程表是唯一的现场，34 个进程里一眼要能分出"这是宿主、那是界面"，
 # 多实例靠 `--home` 区分，不靠文件名（本次事故的正因之一就是每条脚本各起一个名字）。
-HOST_BIN="$OUT/dshd.exe"
+HOST_BIN="$OUT/dshgo.exe"
 if ! (cd ../DSH-GO && CGO_ENABLED=0 go build -o "../dsh-ui/$HOST_BIN" ./cmd/dshd); then
   echo "  FAIL  编不出 $HOST_BIN——后面的真机脚本没有意义"
   exit 1

@@ -1,0 +1,23 @@
+# 统一用 LF。
+#
+# 不加这个文件时，Windows runner 上的 `core.autocrlf` 默认是 true：
+# checkout 会把所有 Go 源码转成 CRLF，而 **gofmt 只认 LF**。
+# 于是 `gofmt -l` 会把每一个文件都报成"没格式化"——一条**永远红的假门禁**。
+#
+# 2026-11-04 真的红了一次：CI 列出 30+ 个文件，而本地 `gofmt -l` 干干净净。
+# 差别的来源不是代码，是 checkout 的换行策略（本地 `core.autocrlf=input`、
+# runner 上是 `true`）。查证方式：把同一份文件转成 CRLF 再跑 `gofmt -l`，
+# 它确实会被报出来。
+#
+# 这个仓的索引里本来就是全 LF（`git ls-files --eol | grep i/crlf` 为 0），
+# 所以这条只是把工作树钉成和索引一致，不改任何既有内容。
+* text=auto eol=lf
+
+# 二进制显式声明：`text=auto` 靠嗅探也能认出来，但写死一句
+# 就不必在下一次"某张 PNG 恰好全是合法 UTF-8 字节"时再想一遍。
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.dll binary
+*.zip binary

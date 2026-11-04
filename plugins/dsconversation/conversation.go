@@ -439,7 +439,9 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 			// 官方的 82%/748px 是相对**会话内容列**算的，而槽位里拿不到列宽；
 			// viva 的文字会自然换行，气泡按内容宽度收缩，所以不需要像素上限（见验收说明）。
 			p.prims.Bubble(f, func() {
-				f.Wrap(msg.Text).FontSize(t.Fonts.Body)
+				// 用户粘进来的凭据在这里遮掉（见 mask.go）；**只遮显示**，
+				// 复制与落盘的仍是原文。
+				f.Wrap(userDisplayText(msg)).FontSize(t.Fonts.Body)
 			})
 		})
 		p.drawMessageMeta(f, env, msg, key)
@@ -739,8 +741,15 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32, key strin
 	if perLine < 8 {
 		perLine = 8
 	}
+	// 量的是**画出来的那份**。遮罩长度不变（见 secretmask/maskOne），
+	// 所以这一步现在不改结果；留着是因为"量的和画的是同一份"这条约束
+	// 不该靠"恰好等长"来维持——哪天遮罩改成塌缩，这里就该跟着错位。
+	text := m.Text
+	if m.Role == "user" {
+		text = userDisplayText(m)
+	}
 	lines := 0
-	for _, para := range strings.Split(m.Text, "\n") {
+	for _, para := range strings.Split(text, "\n") {
 		n := float64(len([]rune(para)))
 		l := int(math.Ceil(n / perLine))
 		if l < 1 {

@@ -8,9 +8,9 @@
 // 实际上布局一直是好的——缺的是切换之后的那一次重绘（HandleKey 跑在绘制之外）。
 // 这个测试把两条路径都钉住：
 //
-//	- `-keys` 路径：直接调 kernel.HandleKey（不经过 OnKey），只靠插件自己的
-//	  Actions.Notify 请求重绘 → 面板必须出现；
-//	- 真按键路径：session.Keys("f1")/("escape") 经过 OnKey → 面板出现/消失。
+//   - `-keys` 路径：直接调 kernel.HandleKey（不经过 OnKey），只靠插件自己的
+//     Actions.Notify 请求重绘 → 面板必须出现；
+//   - 真按键路径：session.Keys("f1")/("escape") 经过 OnKey → 面板出现/消失。
 package dsshortcuts
 
 import (

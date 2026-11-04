@@ -101,8 +101,16 @@ func ParseSVGPath(d string) ([]ui.PathCommand, bool) {
 	return out, true
 }
 
-// fishAspect 是官方 viewBox 的宽高比（34px 宽时高 25.02px）。
-// FishAspect 按官方 viewBox 等比算高度（宽 * H / W）。
+// FishAspect 返回 viewBox 的**高宽比**：显示高度 = 显示宽度 × FishAspect(W, H)。
+//
+// 用法就一行（官方 `ui-conversation` 的 HeroFish）：
+//
+//	height = 34 * VIEWBOX.height / VIEWBOX.width   →  34 * FishAspect(23.16, 17.04) ≈ 25.02
+//
+// 所以它是"乘在宽度上的系数"，不是"给宽度直接算出高度"。
+// 曾经有一条注释写成了后者，读起来像 `FishAspect(34, …)` 就能得 25.02——
+// 实际会得到 0.5 左右。名字和实现对，注释错了；而且**这个函数是有调用方的**
+// （`dsconversation/brand_parse_test.go` 用它验首屏鱼高），删之前一定先 grep。
 func FishAspect(w, h float32) float32 {
 	if w <= 0 {
 		return 1

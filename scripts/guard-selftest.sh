@@ -45,17 +45,32 @@ echo "== 隔离副本：$iso =="
 restore() { (cd "$root" && git archive HEAD "$1") | tar -x -C "$iso"; }
 
 # expect_red <用例名> <测试名> —— 在副本里跑一个测试，**要求它失败**
+# ran_a_test <输出> <测试名> —— 输出里必须真的出现过 `=== RUN <测试名>`。
+#
+# 为什么需要这一步：`go test -run <名字>` 在**一条都没匹配到**时仍然 **exit 0**。
+# 于是"名字写错/匹配不到"和"跑了且绿"在退出码上分不出来——对照组会空转着绿。
+ran_a_test() {
+  printf '%s' "$1" | grep -qE "^=== RUN[[:space:]]+$2(/|$)"
+}
+
+# expect_red <用例名> <测试名> —— 在副本里跑一个测试，**要求它真的跑到、并且失败**
 expect_red() {
   local name="$1" testname="$2"
   local out rc
-  out=$(cd "$iso" && CGO_ENABLED=0 go test ./... -run "$testname" -count=1 2>&1)
+  # -v 是为了拿到 `=== RUN`；没有它，"没跑到"和"跑了且绿"在输出上分不出来。
+  out=$(cd "$iso" && CGO_ENABLED=0 go test ./... -run "$testname" -count=1 -v 2>&1)
   rc=$?
-  if [ $rc -eq 0 ]; then
-    chk "$name：弄坏之后守卫**仍然绿**" 1 "守卫没达到弄坏必红（$testname 没跑或判据失效）"
+  if ! ran_a_test "$out" "$testname"; then
+    chk "$name：用例根本没跑到" 1 "输出里没有『=== RUN $testname』——-run 没匹配到，这个用例是空转的"
+    printf '%s\n' "$out" | tail -3 | sed 's/^/        /'
     return 1
   fi
-  if ! echo "$out" | grep -qE "^(FAIL|--- FAIL)"; then
-    chk "$name：失败但不是守卫报的" 1 "$(echo "$out" | tail -2 | tr '\n' ' ')"
+  if [ $rc -eq 0 ]; then
+    chk "$name：弄坏之后守卫仍然绿" 1 "守卫没达到弄坏必红（$testname 跑了，但没报错）"
+    return 1
+  fi
+  if ! printf '%s\n' "$out" | grep -qE "^(FAIL|--- FAIL)"; then
+    chk "$name：失败但不是守卫报的" 1 "$(printf '%s\n' "$out" | tail -2 | tr '\n' ' ')"
     return 1
   fi
   chk "$name：弄坏 → 守卫红" 0
@@ -122,10 +137,20 @@ restore cmd/app/main.go
 echo
 echo "== 对照组：副本原样时四组守卫都必须是绿的 =="
 # 没有这一段，把四个守卫全改成"永远失败"也能过上面四条——那就从"假绿"翻到"假红"。
-out=$(cd "$iso" && CGO_ENABLED=0 go test ./... \
-  -run 'TestEveryHandledKeyIsDocumented|TestNoTwoPanelsShareOneSlotAndOrder|TestSnapshotCoversEveryCalledMethod|TestEveryUsedActionIsWired' \
-  -count=1 2>&1)
-chk "原样副本上四组守卫全绿" "$?" "$(echo "$out" | grep -E '^(FAIL|--- FAIL)' | head -2 | tr '\n' ' ')"
+GUARDS='TestEveryHandledKeyIsDocumented|TestNoTwoPanelsShareOneSlotAndOrder|TestSnapshotCoversEveryCalledMethod|TestEveryUsedActionIsWired'
+out=$(cd "$iso" && CGO_ENABLED=0 go test ./... -run "$GUARDS" -count=1 -v 2>&1)
+rc=$?
+# 先确认四条**都真的跑了**——一条都没跑到时 `go test` 也是 exit 0。
+missing=""
+for g in TestEveryHandledKeyIsDocumented TestNoTwoPanelsShareOneSlotAndOrder TestSnapshotCoversEveryCalledMethod TestEveryUsedActionIsWired; do
+  ran_a_test "$out" "$g" || missing="$missing $g"
+done
+if [ -n "$missing" ]; then
+  chk "对照组：四条守卫都跑到" 1 "没跑到：$missing"
+else
+  chk "对照组：四条守卫都跑到" 0
+fi
+chk "原样副本上四组守卫全绿" "$rc" "$(printf '%s\n' "$out" | grep -E '^(FAIL|--- FAIL)' | head -2 | tr '\n' ' ')"
 
 echo
 echo "----- 合计 OK=$ok FAIL=$bad"

@@ -1,0 +1,140 @@
+// Package dsquestions 在 composer 上方显示 agent 正在等回答的问题。
+//
+// 官方 `dsh-client-ui-user-questions`：*Web ask_user_question composer takeover
+// and plan-review presentation UI*。
+//
+// # 它是怎么工作的（宿主那边的契约决定了这里能做什么）
+//
+// `ask_user_question` 是**唯一一个"结果不是结果"的工具**：它设 `Result.Stop`，
+// agent 循环在这一步收尾、把控制权交回人。所以：
+//   - 它**不阻塞**等一个答案（没有可以回写的通道）
+//   - 用户回答 = **下一条普通 prompt**
+//
+// 于是界面能做的是：把问题**显示出来**、把选项变成**可点的按钮**，
+// 点了就发那句话。这和"接管 composer"在观感上一样，实现上简单得多。
+//
+// # 什么时候不显示
+//
+// 看消息流里 `ask_user_question` 之后**有没有 user 消息**：
+//   - 没有 → 正在等（显示）
+//   - 有   → 已经答过了（不显示）
+//
+// 不这么判断的话，一个答完的问题会永远挂在输入框上方。
+package dsquestions
+
+import (
+	"encoding/json"
+
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/vivaui/viva/flex"
+)
+
+// askTool 是宿主那个工具的名字（`modules/tool/ask`）。
+const askTool = "ask_user_question"
+
+// Option 是一个候选答案。
+type Option struct {
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
+// Question 是一条待答问题（宿主 schema 的投影）。
+type Question struct {
+	ID          string   `json:"id"`
+	Question    string   `json:"question"`
+	Header      string   `json:"header"`
+	Options     []Option `json:"options"`
+	MultiSelect bool     `json:"multi_select"`
+}
+
+type Plugin struct {
+	theme *pluginapi.Theme
+	prims pluginapi.Primitives
+}
+
+func (*Plugin) ID() string { return "ds-questions" }
+
+func (*Plugin) Provides() []string { return nil }
+
+func (*Plugin) Requires() []string {
+	return []string{pluginapi.KeyTheme, pluginapi.KeyPrimitives}
+}
+
+func (p *Plugin) Register(ctx pluginapi.Context) error {
+	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
+	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	return nil
+}
+
+func (p *Plugin) Panels() []pluginapi.Painter {
+	return []pluginapi.Painter{{
+		ID:   "questions-bar",
+		Slot: pluginapi.SlotMainComposer,
+		// Order 3 < GoalBar 的 5 < composer 的 10：最上面是问题，然后是目标，然后是输入框。
+		// **等回答的时候问题比目标更紧急**——所以它在更上面。
+		Order: 3,
+		Draw:  p.draw,
+	}}
+}
+
+// pending 找出"最后一条提问之后还没被回答"的问题。
+//
+// 从后往前扫：`ask_user_question` 是最近的、且它之后没有 user 消息 → 正在等。
+func pending(msgs []apiclient.Message) []Question {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		m := msgs[i]
+		if m.Role == "user" {
+			// 提问之后已经有人说过话 → 答过了（或本来就是更早的会话）
+			return nil
+		}
+		if m.Role != "tool" || m.Tool != askTool {
+			continue
+		}
+		var args struct {
+			Questions []Question `json:"questions"`
+		}
+		if json.Unmarshal([]byte(m.Args), &args) != nil {
+			return nil // 参数不是 JSON：宁可不显示，也不画半截
+		}
+		return args.Questions
+	}
+	return nil
+}
+
+// draw 画问题条。没有待答问题就整块不画。
+func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+	qs := pending(env.Data.Msgs)
+	if len(qs) == 0 {
+		return
+	}
+	t := p.theme
+	// **一次只显示第一条**：宿主 schema 说"一次问全，别挤成多轮"，
+	// 但面板空间有限；把三个问题叠起来会谁都看不清。
+	// 用户答完第一条，下一帧会显示剩下的（因为 Msgs 变了）。
+	q := qs[0]
+
+	f.Column().FillWidth().PadSides(16, 16, 8, 4).Gap(6).Children(func() {
+		f.Row().Items(flex.Center).Gap(6).Children(func() {
+			p.prims.Dot(f, t.LabelPrimary, 5)
+			if q.Header != "" {
+				f.Text(q.Header).FontSize(t.Fonts.Caption).Color(t.LabelPrimary)
+			}
+			f.Text("在等你回答").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		})
+		f.Text(q.Question).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
+		for _, opt := range q.Options {
+			opt := opt
+			f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(8, 8, 7, 7).
+				Radius(t.Radii.MD).Background(t.InputMajor).
+				Children(func() {
+					f.Column().Gap(2).Grow(1).Children(func() {
+						f.Text(opt.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
+						if opt.Description != "" {
+							f.Text(opt.Description).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+						}
+					})
+				})
+		}
+	})
+}

@@ -37,6 +37,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsquestions"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsschedule"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"

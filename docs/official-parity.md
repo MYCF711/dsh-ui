@@ -8,11 +8,11 @@
 
 ### 设置类（11）
 
-- ❌ `settings`
+- 🟡 `settings`（`dssettings` 浮层：F2 命令面板末行「设置」/ Shift+F2 直达，Esc 关闭。**不是官方的 11 页树**——它只把壳真接上了的动作摊成四块：外观 / 模型 / 权限 / 会话。缺一个 Action 就整块不画，当前值不知道就一行都不标选中）
 - ❌ `settings-account`
 - ❌ `settings-agent-loop`
-- ❌ `settings-general`
-- ❌ `settings-models`
+- 🟡 `settings-general`（只有**主题**：深 / 浅 / 跟随系统，走 `Actions.SetTheme`，选完当场生效。语言、启动行为、快捷键这些通用项没有入口）
+- 🟡 `settings-models`（列出**真实**网关模型（`models.list`，带 owned_by）+ 「恢复默认」；没有 provider/密钥/默认模型这些配置项，也不能在这里看用量）
 - ❌ `settings-plugin-inventory`
 - ❌ `settings-plugins`
 - ❌ `settings-session-log`
@@ -81,7 +81,7 @@
 - ✅ `layout`（`dsshell`：侧栏/中栏/右栏/底栏，可直接拖分隔线）
 - ✅ `sidebar-right`（`dsshell` 的 `SlotRightbar` + `ToggleRightbar` + `ui.rightbarWidth`；收起后 corner 可重开）
 
-## 合计：官方 55 个部件 —— ✅ 21 · 🟡 6 · ⬜ 3（不该有） · ❌ 25
+## 合计：官方 55 个部件 —— ✅ 21 · 🟡 9 · ⬜ 3（不该有） · ❌ 22
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），
 > 不是手填的。上一次手填的是"我们有 10 个 · 缺 53 个"——**已经错了很久**，

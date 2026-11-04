@@ -29,6 +29,13 @@ bash scripts/accept-all.sh --only theme,session-ops
 3. **`accept-chain` 的 bin-check 会红**：它验的是共享路径上的二进制，
    而合跑时没人负责先编。现在 `accept-all.sh` 在跑之前编一次，`bin-check` 才有意义
    （它验的是"绝不拿陈旧二进制跑真机"，不是"文件存在"）。
+4. **那条 bin-check 一度"在跑、但结论没有意义"**：它调的是 `../DSH-GO/scripts/bin-check.py`，
+   而那个脚本的 `SRC_ROOTS`（`cmd` / `internal` / `modules` / `codecs`）是**相对当前目录**扫的。
+   在界面仓里跑它，等于拿**界面**的源码去比**宿主**的二进制——前几轮它一直绿，
+   只是碰巧 mtime 顺序让它过了。2026-11-04 真红了一次才看出来：
+   报「`dshgo.exe` 比 `cmd\app\headless_windows.go` 旧」，那是界面的文件。
+   现在改成 `(cd ../DSH-GO && python scripts/bin-check.py "$BIN_ABS")`，
+   红了就是真陈旧（实测报出 `cmd\dshd\main.go` 更新，重建后 OK=11 FAIL=0）。
 
 ### 进程回收：每条脚本退出时杀掉**自己起的那个宿主**
 

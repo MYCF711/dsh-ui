@@ -62,7 +62,7 @@
 
 ### 内容呈现（17）
 
-- ❌ `reference`
+- 🟡 `reference`（`dscomposer` 的 `@` 补全：识别 + 候选 + 补全做了，**变成引用块没做**，见末尾第 4 条）
 - ❌ `renderer`
 - 🟡 `deliverables`（`dsdeliverables`：**1/4**，见末尾「仍然缺」第 6 条）
 - ✅ `trajectory`（`dsrightbar`：按轮分组的轨迹栏）
@@ -99,7 +99,24 @@
 1. **`attachment`** —— 没有附件入口（画了就是死按钮，所以没画）
 2. **`settings*`（9 个）** —— 完全没有设置界面，改配置只能改 JSON
 3. **`sidebar-terminal`** —— 官方侧栏能开终端
-4. **`reference`（`@` 文件引用）** —— 要改 `dscomposer`，而它现在有**别人的未提交改动**（`composer.go` + 两个未跟踪测试），按 §4 不碰
+4. **`reference`（`@` 文件引用）** —— **做了一半**（`plugins/dscomposer/mention.go`）。
+   官方是两个包：`input-trigger`（"Input trigger pipeline: '/' and '@' detection,
+   candidate menu, pick routing to registered sources"）和 `reference`（"Unified Web
+   @file and @session reference source"）。
+
+   | 官方那一层 | 我们 |
+   |---|---|
+   | `@` 识别 + 候选菜单 + 选中补全 | ✅ 敲 `@` 后按前缀列候选（目录在前、大小写不敏感），点一行或按 Enter 补进草稿 |
+   | 候选来自"注册的 source" | 🟡 只接了**文件**（`Actions.FSList`，和侧栏文件树同一个接口）。**没有会话引用**（官方 `@` 也能引会话/subagent） |
+   | 把 `@path` 变成**引用块** | ❌ 补全出来的是**纯文本**，跟着 prompt 一起发出去 |
+
+   **最后一行是这一项只能记 🟡 的原因**：补全不是引用。引用要有身份（附件 id、
+   会话 id），要进宿主的独立字段——而现在的 Transport 契约里没有"附件/引用"这个概念。
+   要真做，得先加跨仓契约（`session.prompt` 收 `references`，或 `attachment.*` 一族），
+   那是宿主线的活。
+
+   为什么仍然值得做：**它现在就有用**。模型看见 `@plugins/dsopen/open.go` 会自己去 read，
+   而用户少打一长串路径、也少打错。只是别把它说成"做到了 @ 引用"。
 5. **`jobs.output` 的界面消费** —— 宿主侧通了，但**只在轮次进行中可用**（每轮一个子进程，跑完就退）；做成"点开看输出"会是**大多数时候点了报错**的按钮，所以没做
 6. **`deliverables`** —— **只做了 1/4**。官方包的 description 写得很清楚：
    > Changed-files card with per-file comparison tabs, delivery cards, and clickable final-response file references
@@ -165,7 +182,7 @@
 |---|---|---|
 | `sidebar-files` | `fs.read` / `fs.write` / `workspace.list` | **目录列举**（`workspace.list` 只给顶层） |
 | `sidebar-documentpreview` | `fs.read` | 只需要渲染 |
-| `reference` | — | 需要 `@` 文件引用的语法约定 |
+| `reference` | `workspace.list`（已用） | 补全够用；**变成引用块**要新增"附件/引用"契约 |
 | `deliverables` | `fs.write` | 需要"哪些是交付物"的约定 |
 | `jobs` | 后台任务概念已有 | 需要 `jobs.list`/`jobs.output` 的跨线方法 |
 | `schedule` | 无 | 需要定时任务的存储与方法 |
@@ -245,7 +262,7 @@ fs.read 无法调用
 | 部件 | 阻塞 |
 |---|---|
 | `deliverables` | 没有"哪些文件算交付物"的约定——`fs.write` 只知道写了什么，不知道哪个是交付品 |
-| `reference` | 没有 `@` 引用的语法与解析约定（官方在 composer 里把 `@path` 变成引用块） |
+| `reference` | 补全已做（`workspace.list` 够用）；**引用块**缺的是"附件/引用"这一层契约——没有身份、没有独立字段，`@path` 只能是一段文本 |
 | `jobs` | 没有 `jobs.list` / `jobs.output` 这两个方法 |
 | `schedule` | 完全没有定时任务的存储与方法 |
 | `sidebar-documentpreview` | 只差上面那个"工作区根"（有根就能读、能预览） |

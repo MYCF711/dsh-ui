@@ -140,6 +140,14 @@ type Plugin struct {
 	// logf 是插件的日志出口（注册期拿到的 Context.Logf）。
 	// 只用来记"用户点了哪一项"，一行一次，不进绘制热路径。
 	logf func(format string, args ...any)
+
+	// mentionRows / mentionRef 是上一帧算出来的 `@` 候选（见 mention.go）。
+	//
+	// 为什么按键路径要靠上一帧：HandleKey 没有 env，而候选要靠 FSList（在 Actions 里）。
+	// 和 lastData / lastAct 同一个做法——只读上一帧的结果，不自己攒状态。
+	// 空 = 没有菜单，Enter 必须原样让回去（不然消息发不出去）。
+	mentionRows []pluginapi.FSEntry
+	mentionRef  atRef
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -192,6 +200,9 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	f.Column().FillWidth().PadX(extra).Gap(6).Children(func() {
 		// 审批条：Approval == nil 时这里什么都不画（不留空框）。
 		p.drawApproval(f, env)
+		// `@` 候选菜单：位置在输入卡片**上方**，和 GoalBar / 问题条同一条约定
+		// （越靠近输入框的东西越紧急）。没有候选就整块不画。
+		p.drawMention(f, env, column)
 		p.drawCard(f, env, column)
 	})
 }
@@ -539,6 +550,14 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		return false
 	}
 	if !approvalVisible(p.lastData) {
+		// `@` 候选菜单开着时，Enter 是**补全**，不是发送（见 mention.go）。
+		//
+		// 门禁卡死在"这一帧确实有候选"上：没有候选就原样让回去。
+		// 让回去的代价是零；吃掉的代价是**这条消息再也发不出去**，
+		// 而且用户看到的是"我按了 Enter 什么都没发生"——没有任何提示。
+		if ev.Key == ui.KeyEnter && p.acceptMention() {
+			return true
+		}
 		// 没有审批时 Esc 退而求其次 = **停止当前 turn**（官方也是这个直觉）。
 		// 不做这一条的话，无头环境里根本没法触发停止键——它是个按钮，
 		// 注入不了鼠标事件；而"能停"是产品级链路的必选项（宿主 §0.6）。

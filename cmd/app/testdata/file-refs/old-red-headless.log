@@ -1,0 +1,21 @@
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832
+2026/11/04 09:39:34 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 09:39:34 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 09:39:34 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8323219483241\003\conversation-file-refs-1182x832.png size=1182x832 bytes=45680
+    file_refs_headless_test.go:29: 已知相对路径不可点击：headless: no control labelled "交付 文件.txt#L24-L30"；texts=["已加载 1 个 Turn" "Turn · turn-file-refs" "▸" "write" "·" "交付 文件.txt" "▸" "edit" "·" "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8323219483241\\002\\绝对 文件.txt" "Turn · turn-file-refs" "已完成" "点击 交付 文件.txt#L24-L30 或 C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1182x8323219483241\\002\\绝对 文件.txt#L7-L9。" "未知 缺失.txt 与普通文本不点击；URL" "https://example.com/" "交付%20文件.txt 不变成文件。" "行内码" "交付 文件.txt" "不链化。" "text" "折行" "复制" "交付 文件.txt"]
+=== RUN   TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032
+2026/11/04 09:39:35 INFO 插件已装配 id=ds-core provides="[ui.theme ui.primitives]" requires=[]
+2026/11/04 09:39:35 INFO ds-conversation: 警告：没有 ui.tool-card（ds-tool 未装配），工具卡走兜底渲染器
+2026/11/04 09:39:35 INFO 插件已装配 id=ds-conversation provides=[] requires="[ui.theme ui.primitives]"
+    file_refs_headless_test.go:29: FILEREFS_CAPTURE path=C:\Users\ADMINI~1\AppData\Local\Temp\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10321498634111\003\conversation-file-refs-1920x1032.png size=1920x1032 bytes=66306
+    file_refs_headless_test.go:29: 已知相对路径不可点击：headless: no control labelled "交付 文件.txt#L24-L30"；texts=["已加载 1 个 Turn" "Turn · turn-file-refs" "▸" "write" "·" "交付 文件.txt" "▸" "edit" "·" "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10321498634111\\002\\绝对 文件.txt" "Turn · turn-file-refs" "已完成" "点击 交付 文件.txt#L24-L30 或 C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\TestFileRefsHeadlessRealClickAndTwoSizeEvidence1920x10321498634111\\002\\绝对 文件.txt#L7-L9。" "未知 缺失.txt 与普通文本不点击；URL" "https://example.com/" "交付%20文件.txt 不变成文件。" "行内码" "交付 文件.txt" "不链化。" "text" "折行" "复制" "交付 文件.txt"]
+--- FAIL: TestFileRefsHeadlessRealClickAndTwoSizeEvidence (0.45s)
+    --- FAIL: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1182x832 (0.35s)
+    --- FAIL: TestFileRefsHeadlessRealClickAndTwoSizeEvidence/1920x1032 (0.10s)
+FAIL
+FAIL	github.com/MYCF711/dsh-ui/cmd/app	0.525s
+FAIL
+
+EXIT=1

@@ -65,7 +65,7 @@
 
 - 🟡 `reference`（`dscomposer` 的 `@` 补全：识别 + 候选 + 补全做了，**变成引用块没做**，见末尾第 4 条）
 - ⬜ `renderer`（**N/A**：官方的 *"Browser UI renderer: React slot bindings"* 是 React 专用；我们是 Go+Viva，槽位绑定在 `internal/uikernel`）
-- 🟡 `deliverables`（`dsdeliverables`：**1/4**，见末尾「仍然缺」第 6 条）
+- 🟡 `deliverables`（`dsdeliverables` + `dsconversation`：**2/4**，见末尾「仍然缺」第 6 条）
 - ✅ `trajectory`（`dsrightbar`：按轮分组的轨迹栏）
 - ✅ `tool`（`dstool`：工具卡片 + 展开参数/结果）
 - ❌ `directory-picker-browse`
@@ -131,7 +131,7 @@
    | Changed-files card | ✅ `dsdeliverables`（从 `write`/`edit` 工具参数提路径） |
    | **per-file comparison tabs**（点文件看 diff） | ❌ 需要宿主提供「改之前长什么样」——`fs.read` 只给当前内容，没有历史 |
    | **delivery cards** | ❌ 不清楚它的触发条件（可能是回复里显式的交付声明） |
-   | **clickable final-response file references** | ❌ 回复里的路径不可点 |
+   | **clickable final-response file references** | ✅ 回复正文里"工具真写过的路径"变成可点链接（`dsconversation/file_refs.go`：只认 `write`/`edit` 参数里的明确路径，不猜 bash/未知路径/URL/行内码/围栏代码；`#L24-L30` 留在显示与 fragment，不进文件路径） |
 
    **最值得补的是第 4 项**：它不需要新数据源，只需要在渲染 assistant 文本时识别路径。
    第 2 项要动宿主（`git diff` 或文件快照），第 3 项连语义都还没弄清。

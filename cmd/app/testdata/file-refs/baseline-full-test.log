@@ -1,0 +1,39 @@
+?   	github.com/MYCF711/dsh-ui/cmd/acpsmoke	[no test files]
+ok  	github.com/MYCF711/dsh-ui/cmd/app	(cached)
+ok  	github.com/MYCF711/dsh-ui/cmd/mockd	(cached)
+?   	github.com/MYCF711/dsh-ui/cmd/plugingen	[no test files]
+ok  	github.com/MYCF711/dsh-ui/internal/ansi	(cached)
+ok  	github.com/MYCF711/dsh-ui/internal/apiclient	(cached)
+ok  	github.com/MYCF711/dsh-ui/internal/mdlite	(cached)
+?   	github.com/MYCF711/dsh-ui/internal/pluginapi	[no test files]
+ok  	github.com/MYCF711/dsh-ui/internal/secretmask	(cached)
+ok  	github.com/MYCF711/dsh-ui/internal/uidecl	(cached)
+ok  	github.com/MYCF711/dsh-ui/internal/uikernel	(cached)
+ok  	github.com/MYCF711/dsh-ui/internal/uiplugins	(cached)
+ok  	github.com/MYCF711/dsh-ui/pluginapi	(cached)
+?   	github.com/MYCF711/dsh-ui/plugins/dsbrand	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dscommands	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dscomposer	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dsconversation	(cached)
+?   	github.com/MYCF711/dsh-ui/plugins/dscore	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dsdecl	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dsdeliverables	(cached)
+?   	github.com/MYCF711/dsh-ui/plugins/dsdemo	[no test files]
+?   	github.com/MYCF711/dsh-ui/plugins/dsfiles	[no test files]
+?   	github.com/MYCF711/dsh-ui/plugins/dsgoal	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dsjobs	(cached)
+?   	github.com/MYCF711/dsh-ui/plugins/dsopen	[no test files]
+ok  	github.com/MYCF711/dsh-ui/plugins/dsquestions	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dsrightbar	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dsschedule	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dsshell	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dsshortcuts	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dssidebar	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dsstatusbar	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dsterminal	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dstool	(cached)
+ok  	github.com/MYCF711/dsh-ui/plugins/dstopbar	(cached)
+?   	github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi	[no test files]
+?   	github.com/MYCF711/dsh-ui/tmp/dumplog	[no test files]
+
+EXIT=0

@@ -41,6 +41,15 @@ var writeTools = map[string]bool{
 
 // Plugin 无状态：每帧从 Msgs 现算。
 type Plugin struct {
+	// preview 是正在浮层里预览的那个文件（相对路径）。
+	// 空 = 没在预览。**只在本次打开期间有效**：切会话不清，
+	// 因为"我刚点了哪个文件"和"我在哪个会话"是两件事。
+	preview string
+	// previewText 是读到的内容；空且 preview 非空 = 还没读到。
+	previewText string
+	// scrolling 是 FSRead 的最近一份（Draw 时刷新给 Clicked 分支用）。
+	scrolling func(string) (string, error)
+
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
 }
@@ -60,12 +69,20 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 }
 
 func (p *Plugin) Panels() []pluginapi.Painter {
-	return []pluginapi.Painter{{
-		ID:    "deliverables-list",
-		Slot:  pluginapi.SlotSidebarFooter,
-		Order: 60, // dsfiles(40) → dsschedule(50) → 这里
-		Draw:  p.draw,
-	}}
+	return []pluginapi.Painter{
+		{
+			ID:    "deliverables-list",
+			Slot:  pluginapi.SlotSidebarFooter,
+			Order: 60, // dsfiles(40) → dsschedule(50) → 这里
+			Draw:  p.draw,
+		},
+		{
+			ID:    "deliverables-preview",
+			Slot:  pluginapi.SlotShellOverlay,
+			Order: 96, // 和 files-preview 同一层，靠左错开一点
+			Draw:  p.drawPreview,
+		},
+	}
 }
 
 // paths 从消息流里提取"写过的文件"。
@@ -110,14 +127,85 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 
 	f.Column().FillWidth().Gap(2).PadY(4).Children(func() {
 		f.Text("写过的文件").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		for _, path := range shown {
+		for i, path := range shown {
+			path := path
 			// 只显示文件名：侧栏窄，完整路径会被 Ellipsis 截成"…本.jsp"这种没用的东西。
 			name := filepath.Base(path)
-			f.Text(name).FontSize(12).Color(t.LabelSecondary).Ellipsis()
+			// **可点**：viva 的点击模型是"先 Hit 给 id，再问 Clicked"。
+			// 点了就在右边的浮层里看内容——这是这块唯一有真实数据源的动作
+			// （`fs.read` 一直在，而"文件的 diff"要宿主提供历史，那是另一件事）。
+			row := f.Row().FillWidth().Items(flex.Center).Gap(6).PadSides(4, 4, 2, 2).
+				Hit(env.Tree.ID(env.Feat, "deliv-"+itoa(i)), name)
+			if row.Clicked() {
+				p.preview = path
+				p.previewText = ""
+				p.scrolling = env.Act.FSRead
+			}
+			row.Children(func() {
+				f.Text(name).FontSize(12).Color(t.LabelSecondary).Ellipsis()
+			})
 		}
 		if more > 0 {
 			f.Text("还有 " + itoa(more) + " 个").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
+	})
+}
+
+// maxPreviewLines 浮层里最多显示几行。
+//
+// 60 行：够看清一个函数或一段配置，又不至于把整屏占满。
+// 完整文件该在编辑器里看——这个浮层的作用是"是不是我改的那个文件"。
+const maxPreviewLines = 60
+
+// drawPreview 在浮层里显示被点中的那个文件。
+//
+// # 只读一次
+//
+// `FSRead` 是**同步**的（壳里是发 HTTP 等结果）。每帧都读会把绘制卡死，
+// 所以在"点了新文件"的时候读一次、缓存在 `previewText` 里。
+// 代价是文件在别处被改了这里不会自动更新——**能接受**：
+// 这是"看一眼改了什么"的浮层，不是编辑器。
+func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
+	if p.preview == "" {
+		return
+	}
+	if p.previewText == "" && env.Act.FSRead != nil {
+		// 读失败也记成一句话，否则每帧都会重试一次失败的 HTTP。
+		if text, err := env.Act.FSRead(p.preview); err == nil {
+			p.previewText = text
+		} else {
+			p.previewText = "（读不到：" + err.Error() + "）"
+		}
+	}
+	// 按行切：**只认 \n**，不处理 \r\n——文件预览不是协议解析，
+	// 多一个 \r 顶多让行尾多一个看不见的字符，不值得为它加分支。
+	lines := strings.Split(strings.TrimRight(p.previewText, "\n"), "\n")
+	if len(lines) > maxPreviewLines {
+		lines = lines[:maxPreviewLines]
+	}
+
+	t := p.theme
+	f.Column().Absolute().Top(56).Left(280).Width(720).Children(func() {
+		f.Column().Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
+			PadSides(14, 14, 12, 14).Gap(4).Children(func() {
+			f.Row().FillWidth().Items(flex.Center).Gap(8).Children(func() {
+				f.Text(filepath.Base(p.preview)).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Grow(1).Ellipsis()
+				// 关：**必须有个关的办法**，否则浮层一直挡着侧栏。
+				closeRow := f.Row().PadSides(4, 4, 2, 2).Hit(env.Tree.ID(env.Feat, "deliv-close"), "关闭预览")
+				if closeRow.Clicked() {
+					p.preview, p.previewText = "", ""
+				}
+				closeRow.Children(func() {
+					f.Text("关闭").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+				})
+			})
+			for _, ln := range lines {
+				if ln == "" {
+					ln = " "
+				}
+				f.Text(ln).FontSize(11).Color(t.LabelSecondary)
+			}
+		})
 	})
 }
 

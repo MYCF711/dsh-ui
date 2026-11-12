@@ -46,7 +46,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -131,8 +130,8 @@ func (p *grProduct) paint(t *testing.T, snap pluginapi.Snapshot, pressEnter bool
 		canvas.BeginEventPass(p.tree.ID(p.feat, "composer"))
 		defer canvas.EndEventPass()
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		uikernel.FirstScreenWithMeasure(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.dispatched[slot]++
 			p.kernel.DrawSlot(f, slot, env)
@@ -402,8 +401,8 @@ func TestRealChainGROfficialComposer(t *testing.T) {
 			Has:      func(slot pluginapi.Slot) bool { return product.kernel.Has(slot) },
 		}
 		bindSend(shotEnv)
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		var view ui.Page
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, shotEnv, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, shotEnv)
 			})

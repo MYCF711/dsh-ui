@@ -22,7 +22,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -80,12 +79,12 @@ func (h *statsDialogHarness) frame(t *testing.T, bounds ui.Rect, data pluginapi.
 	if click != "" {
 		canvas.BeginEventPass(h.tree.ID(h.feat, click))
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(h.theme), bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(h.theme), bounds, func(f ui.C) {
 		// 产品形状：dock 在输入卡片下方、贴着主区底部。用 Spacer 把它压到底，
 		// 这样弹窗的"向上展开"路径（官方首选方向）才是被验收的那一条。
-		f.Column().FillWidth().FillHeight().Children(func() {
-			f.Spacer()
+		ui.Column(f).FillWidth().FillHeight().Children(func() {
+			ui.Spacer(f)
 			h.drawSlot(f, env, uikernel.OffConvComposer)
 		})
 	})
@@ -100,7 +99,7 @@ func (h *statsDialogHarness) frame(t *testing.T, bounds ui.Rect, data pluginapi.
 	return canvas
 }
 
-func (h *statsDialogHarness) drawSlot(f *flex.Frame, env *pluginapi.Env, slot pluginapi.Slot) {
+func (h *statsDialogHarness) drawSlot(f ui.C, env *pluginapi.Env, slot pluginapi.Slot) {
 	for _, painter := range h.kernel.Painters(slot) {
 		if painter.Draw != nil {
 			painter.Draw(f, env)

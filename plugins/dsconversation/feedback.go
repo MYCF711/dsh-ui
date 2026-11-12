@@ -33,7 +33,6 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -131,7 +130,7 @@ func (p *Plugin) toggleFeedback(act pluginapi.Actions, session string, index int
 // 悬停底色与之一致（t.Hover == viva 主题的 Muted，Ghost 按钮悬停用的就是它）。
 // 颜色取 t.LabelPrimary：官方这里是 label-tertiary，但本排的"复制/重试"是
 // Ghost 按钮（前景 = t.LabelPrimary），同一排用同一个颜色才不会一半深一半浅。
-func (p *Plugin) drawFeedback(f *flex.Frame, env *pluginapi.Env, index int) {
+func (p *Plugin) drawFeedback(f ui.C, env *pluginapi.Env, index int) {
 	t := p.theme
 	session := env.Data.Cur
 	if session == "" {
@@ -154,10 +153,10 @@ func (p *Plugin) drawFeedback(f *flex.Frame, env *pluginapi.Env, index int) {
 			label = "取消标记"
 		}
 		id := env.Tree.ID(env.Feat, "feedback-"+value+"-"+itoa(index))
-		if f.Row().Width(feedbackHitSize).Height(feedbackHitSize).
+		if ui.Row(f).Width(feedbackHitSize).Height(feedbackHitSize).
 			Radius(t.Radii.SM).Items(ui.Center).Justify(ui.Center).
 			Hover(ui.Look{}.Background(t.Hover)).Hit(id, label).Children(func() {
-			f.Icon(thumbIcon(up, active)).Width(feedbackIconSize).
+			ui.Icon(f, thumbIcon(up, active)).Width(feedbackIconSize).
 				Height(feedbackIconSize).Color(t.LabelPrimary)
 		}).Clicked() {
 			p.toggleFeedback(env.Act, session, index, value)

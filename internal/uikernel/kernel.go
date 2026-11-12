@@ -16,8 +16,8 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/ui"
 )
 
 // Kernel 是插件运行时的根。
@@ -249,11 +249,11 @@ func (k *Kernel) AllPainters() []pluginapi.Painter {
 //
 // 深度上限是防御性的：插件写错成自引用（槽 A 的 Children 又画槽 A）会无限递归，
 // 这里直接截断——宁可少画一层，也不要把窗口卡死。
-func (k *Kernel) DrawSlot(f *flex.Frame, slot pluginapi.Slot, env *pluginapi.Env) {
+func (k *Kernel) DrawSlot(f ui.C, slot pluginapi.Slot, env *pluginapi.Env) {
 	k.drawSlot(f, slot, env, 0)
 }
 
-func (k *Kernel) drawSlot(f *flex.Frame, slot pluginapi.Slot, env *pluginapi.Env, depth int) {
+func (k *Kernel) drawSlot(f ui.C, slot pluginapi.Slot, env *pluginapi.Env, depth int) {
 	if depth > 8 {
 		return
 	}

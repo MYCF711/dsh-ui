@@ -18,7 +18,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -27,13 +26,13 @@ import (
 //
 // 用 flex.View.Draw 而不是手搓 Frame：popup/absolute 这些位置规则只有在真正的
 // 布局+绘制里才成立，手搓的 Frame 量不到"菜单贴在 trigger 上方 8px"。
-func renderContainer(t *testing.T, width, height float32, env *pluginapi.Env, body func(f *flex.Frame)) *gfx.Canvas {
+func renderContainer(t *testing.T, width, height float32, env *pluginapi.Env, body func(f ui.C)) *gfx.Canvas {
 	t.Helper()
 	if env == nil {
 		env = containerEnv(width, height)
 	}
 	canvas := env.Canvas
-	var view flex.View
+	var view ui.Page
 	view.Draw(canvas, dscore.VivaTheme(dscore.Dark()), env.Bounds, body)
 	return canvas
 }
@@ -138,7 +137,7 @@ func TestModelMenuFourStates(t *testing.T) {
 			}
 
 			env := containerEnv(bounds.Width, bounds.Height)
-			canvas := renderContainer(t, bounds.Width, bounds.Height, env, func(f *flex.Frame) {
+			canvas := renderContainer(t, bounds.Width, bounds.Height, env, func(f ui.C) {
 				DrawModelMenu(f, env, opts)
 			})
 
@@ -242,7 +241,7 @@ func TestModelMenuIsDrawnAboveAnchor(t *testing.T) {
 		Providers: []ModelProviderOption{{Provider: "deepseek", DisplayName: "DeepSeek"}},
 		Dispatch:  func(pluginapi.Slot) {},
 	}
-	canvas := renderContainer(t, bounds.Width, bounds.Height, env, func(f *flex.Frame) {
+	canvas := renderContainer(t, bounds.Width, bounds.Height, env, func(f ui.C) {
 		DrawModelMenu(f, env, opts)
 	})
 	rects := canvas.Rectangles()
@@ -320,7 +319,7 @@ func TestCommandNodeFourStates(t *testing.T) {
 				},
 			}
 			drawn := 0
-			canvas := renderContainer(t, 1182, 832, env, func(f *flex.Frame) {
+			canvas := renderContainer(t, 1182, 832, env, func(f ui.C) {
 				drawn = DrawCommandNodes(f, env, opts)
 			})
 			if drawn != tc.wantDraw {
@@ -372,7 +371,7 @@ func TestGenericCommandCardSummaryRules(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := containerEnv(800, 600)
-			canvas := renderContainer(t, 800, 600, env, func(f *flex.Frame) {
+			canvas := renderContainer(t, 800, 600, env, func(f ui.C) {
 				DrawCommandNodes(f, env, CommandNodeOptions{
 					Theme: menuTheme(), Width: 700, Bounds: env.Bounds,
 					Nodes:    []CommandNode{tc.node},
@@ -406,7 +405,7 @@ func TestGenericCommandCardExpandableOnlyWithMultilineBody(t *testing.T) {
 				Expanded: true,
 			}
 			env := containerEnv(800, 600)
-			canvas := renderContainer(t, 800, 600, env, func(f *flex.Frame) {
+			canvas := renderContainer(t, 800, 600, env, func(f ui.C) {
 				DrawCommandNodes(f, env, CommandNodeOptions{
 					Theme: menuTheme(), Width: 700, Bounds: env.Bounds,
 					Nodes:    []CommandNode{node},

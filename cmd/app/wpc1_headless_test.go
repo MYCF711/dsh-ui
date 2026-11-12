@@ -22,7 +22,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -105,7 +104,7 @@ func runWPC1Headless(t *testing.T, width, height int) {
 	tree := &gfx.Tree{}
 	feat := tree.Feature("wpc1-headless")
 	var (
-		view        flex.View
+		view        ui.Page
 		invalidator app.Invalidator
 	)
 	// 快照每帧重建并在锁内拷贝：插件拿到的必须是**这一帧的副本**。
@@ -139,7 +138,7 @@ func runWPC1Headless(t *testing.T, width, height int) {
 			Bounds: bounds, MainWidth: current.Width,
 			Scroll: view.ScrollState,
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			painter.Draw(f, env)
 		})
 		painter.AfterDraw(canvas, env)

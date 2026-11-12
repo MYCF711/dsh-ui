@@ -8,7 +8,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -28,7 +27,7 @@ func drawStreamingMarkdownTest(t *testing.T, p *Plugin, data pluginapi.Snapshot)
 	const width = float32(900)
 	tree := &gfx.Tree{}
 	canvas := newHeroTestCanvas(tree)
-	var view flex.View
+	var view ui.Page
 	f := view.Begin(canvas, dscore.VivaTheme(theme), ui.Rect{Width: width, Height: 700})
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("mdstream-test"), Canvas: canvas,

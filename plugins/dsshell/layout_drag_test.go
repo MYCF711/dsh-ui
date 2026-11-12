@@ -5,7 +5,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -174,18 +173,18 @@ func newDragFixture(t *testing.T, width, height float32) *dragFixture {
 func (f *dragFixture) paint() {
 	f.canvas.Reset()
 	f.boxes = map[pluginapi.Slot]ui.Box{}
-	var view flex.View
-	view.Draw(f.canvas, dscore.VivaTheme(f.theme), f.bounds, func(fr *flex.Frame) {
+	var view ui.Page
+	view.Draw(f.canvas, dscore.VivaTheme(f.theme), f.bounds, func(fr ui.C) {
 		f.plugin.children(fr, f.env, func(slot pluginapi.Slot) {
 			switch slot {
 			case pluginapi.SlotMainBody:
-				f.boxes[slot] = fr.Slot().FillWidth()
+				f.boxes[slot] = ui.Slot(fr).FillWidth()
 			case pluginapi.SlotRightbar:
-				f.boxes[slot] = fr.Slot().FillWidth().FillHeight()
+				f.boxes[slot] = ui.Slot(fr).FillWidth().FillHeight()
 			case pluginapi.SlotShellBottom:
-				f.boxes[slot] = fr.Slot().FillWidth().FillHeight()
+				f.boxes[slot] = ui.Slot(fr).FillWidth().FillHeight()
 			default:
-				f.boxes[slot] = fr.Slot().FillWidth()
+				f.boxes[slot] = ui.Slot(fr).FillWidth()
 			}
 		})
 	})
@@ -198,10 +197,10 @@ func (f *dragFixture) event(kind gfx.PointerEventKind, target gfx.ID, x float32)
 		Kind: kind, Button: gfx.PointerButtonPrimary, X: x, Y: 120, Target: target,
 	}, ui.Size{Width: f.bounds.Width, Height: f.bounds.Height}, func(c *gfx.Canvas, size ui.Size) {
 		// DeliverPointer 已经 Reset/BeginFrame，这里不再自己开帧。
-		var view flex.View
-		view.Draw(c, dscore.VivaTheme(f.theme), f.bounds, func(fr *flex.Frame) {
+		var view ui.Page
+		view.Draw(c, dscore.VivaTheme(f.theme), f.bounds, func(fr ui.C) {
 			f.plugin.children(fr, f.env, func(slot pluginapi.Slot) {
-				fr.Slot().FillWidth()
+				ui.Slot(fr).FillWidth()
 			})
 		})
 	})
@@ -384,10 +383,10 @@ func (f *dragFixture) event2(kind gfx.PointerEventKind, button gfx.PointerButton
 	return f.canvas.DeliverPointer(gfx.PointerEvent{
 		Kind: kind, Button: button, X: x, Y: 120, Target: target,
 	}, ui.Size{Width: f.bounds.Width, Height: f.bounds.Height}, func(c *gfx.Canvas, size ui.Size) {
-		var view flex.View
-		view.Draw(c, dscore.VivaTheme(f.theme), f.bounds, func(fr *flex.Frame) {
+		var view ui.Page
+		view.Draw(c, dscore.VivaTheme(f.theme), f.bounds, func(fr ui.C) {
 			f.plugin.children(fr, f.env, func(slot pluginapi.Slot) {
-				fr.Slot().FillWidth()
+				ui.Slot(fr).FillWidth()
 			})
 		})
 	})

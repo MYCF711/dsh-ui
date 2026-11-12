@@ -16,7 +16,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -57,7 +56,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 		Msgs: []apiclient.Message{{Role: "assistant"}, {Role: "assistant"}, {Role: "tool"}},
 	}
 	var (
-		view        flex.View
+		view        ui.Page
 		invalidator app.Invalidator
 		dockBox     ui.Box
 	)
@@ -78,11 +77,11 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 			Has: kernel.Has,
 		}
 		dockBox = ui.Box{}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
-			f.Column().FillWidth().FillHeight().Children(func() {
-				f.Row().Grow(1)
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+			ui.Column(f).FillWidth().FillHeight().Children(func() {
+				ui.Row(f).Grow(1)
 				// 与 dsshell 中栏一致：先 Pad(12)，再按 Order 画 composer 和 dock。
-				f.Column().FillWidth().Pad(12).Gap(8).Children(func() {
+				ui.Column(f).FillWidth().Pad(12).Gap(8).Children(func() {
 					for _, painter := range kernel.Painters(pluginapi.SlotMainComposer) {
 						if painter.ID == "dock" {
 							dockBox = status.drawDock(f, env)
@@ -93,7 +92,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 				})
 				// 连接指示的官方座位：`sidebar.settings`（官方左栏默认 280 宽）。
 				// 这里模拟骨架在 footArea 里 dispatch 那个槽（不再有 shell.bottom 整行）。
-				f.Row().Width(280).Height(connRowHeight + 2*connRowMarginY).Children(func() {
+				ui.Row(f).Width(280).Height(connRowHeight + 2*connRowMarginY).Children(func() {
 					for _, painter := range kernel.Painters(uikernel.OffSidebarSettings) {
 						painter.Draw(f, env)
 					}

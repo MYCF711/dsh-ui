@@ -48,7 +48,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -123,8 +122,8 @@ func (p *heRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, click strin
 	if click != "" {
 		canvas.BeginEventPass(p.tree.ID(p.feat, click))
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.kernel.DrawSlot(f, slot, env)
 		})
@@ -435,8 +434,8 @@ func heCapture(t *testing.T, p *heRealProduct, snap pluginapi.Snapshot, path str
 			Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 			Has:      func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
 		}
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(p.theme), bounds, func(f *flex.Frame) {
+		var view ui.Page
+		view.Draw(canvas, dscore.VivaTheme(p.theme), bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 				p.kernel.DrawSlot(f, slot, env)
 			})

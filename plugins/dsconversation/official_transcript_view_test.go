@@ -16,7 +16,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -42,8 +41,8 @@ func renderTranscript(t *testing.T, entries []TranscriptEntry, vp TranscriptView
 		Theme: theme, Tree: tree, Feat: tree.Feature("transcript-view-test"),
 		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
-	var fv flex.View
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f *flex.Frame) {
+	var fv ui.Page
+	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		view.Draw(f, env, vp, entries)
 	})
 	// 覆画阶段：代码块（banner / 高亮 / 横滚视口 / 复制按钮）要等布局
@@ -400,8 +399,8 @@ func TestApprovalCardGeometryAndDisabled(t *testing.T) {
 		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	var boxes ApprovalBoxes
-	var fv flex.View
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f *flex.Frame) {
+	var fv ui.Page
+	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		boxes = view.DrawApprovalCard(f, env, pluginapi.Approval{
 			RequestID: "",
 			Title:     "需要审批 bash",

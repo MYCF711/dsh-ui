@@ -48,7 +48,6 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -124,7 +123,7 @@ func (p *Plugin) modelSlotAvailable() (known bool, failure string, list []ModelP
 //	左内边距 = 容器 gap + 左占位（8 = 4 + 4）
 //	右内边距：可用态 4 = 4 + 0（chevron 已经吃掉 padding 右侧的 4）；
 //	          降级态 8 = 4 + 4（没有 chevron，补回官方的视觉留白）
-func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawModelSlot(f ui.C, env *pluginapi.Env) {
 	if f == nil || env == nil {
 		return
 	}
@@ -144,14 +143,14 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 
 	if !available {
 		// 降级：只读 chip（宿主真值 / 「未知」）——不画 chevron、不给命中区。
-		f.Row().Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
+		ui.Row(f).Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
 			Items(ui.Center).Gap(modelChipGap).Children(func() {
-			f.Row().Width(inset(modelChipPadLeft))
-			f.Row().MaxWidth(maxW - modelChipPadLeft - modelChipPadRightBare).Children(func() {
-				f.Text(label).FontSize(modelChipFont).LineHeight(modelChipLine).
+			ui.Row(f).Width(inset(modelChipPadLeft))
+			ui.Row(f).MaxWidth(maxW - modelChipPadLeft - modelChipPadRightBare).Children(func() {
+				ui.Text(f, label).FontSize(modelChipFont).LineHeight(modelChipLine).
 					Weight(gfx.WeightRegular).Color(t.LabelSecondary).Ellipsis()
 			})
-			f.Row().Width(inset(modelChipPadRightBare))
+			ui.Row(f).Width(inset(modelChipPadRightBare))
 		})
 		return
 	}
@@ -161,7 +160,7 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 	if textMax < 0 {
 		textMax = 0
 	}
-	chip := f.Row().Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
+	chip := ui.Row(f).Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
 		Items(ui.Center).Gap(modelChipGap)
 	if open {
 		// `.trigger[aria-expanded=true]{background:interactive-bg-hover}`（:34-38）。
@@ -170,13 +169,13 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 		chip = chip.Hover(ui.Look{}.Background(t.Hover))
 	}
 	chip = chip.Children(func() {
-		f.Row().Width(inset(modelChipPadLeft))
-		f.Row().MaxWidth(textMax).Children(func() {
-			f.Text(label).FontSize(modelChipFont).LineHeight(modelChipLine).
+		ui.Row(f).Width(inset(modelChipPadLeft))
+		ui.Row(f).MaxWidth(textMax).Children(func() {
+			ui.Text(f, label).FontSize(modelChipFont).LineHeight(modelChipLine).
 				Weight(gfx.WeightRegular).Color(t.LabelSecondary).Ellipsis()
 		})
-		f.Icon(chevronDownIcon()).Size(modelChevronSize, modelChevronSize).Color(t.LabelSecondary)
-		f.Row().Width(inset(modelChipPadRight))
+		ui.Icon(f, chevronDownIcon()).Size(modelChevronSize, modelChevronSize).Color(t.LabelSecondary)
+		ui.Row(f).Width(inset(modelChipPadRight))
 	})
 	// 官方 trigger 是 button（`aria-haspopup` + 展开态）；点它开/关菜单。
 	chip = chip.HitWith(env.Tree.ID(env.Feat, "model-menu-trigger"), zhModelMenuAria,

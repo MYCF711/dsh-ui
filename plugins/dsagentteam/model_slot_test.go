@@ -18,7 +18,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -90,12 +89,12 @@ func (h *modelSlotHarness) paint(t *testing.T, snap pluginapi.Snapshot, click st
 	if click != "" {
 		canvas.BeginEventPass(h.tree.ID(h.feat, click))
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		// 把 trigger 放在窗口下半部（模拟它真实的位置：composer 在底部）。
 		// 顶部贴边的话 `Popup.Above` 会被窗口边界夹住，"菜单在 trigger 上方"
 		// 这条就测不出来了。
-		f.Column().FillWidth().FillHeight().PadSides(triggerTop, 0, 0, triggerLeft).Children(func() {
+		ui.Column(f).FillWidth().FillHeight().PadSides(triggerTop, 0, 0, triggerLeft).Children(func() {
 			// 与内核同一个顺序：Draw（trigger）→ Children（菜单 + 子槽派发）。
 			h.painter.Draw(f, env)
 			h.painter.Children(f, env, func(slot pluginapi.Slot) {

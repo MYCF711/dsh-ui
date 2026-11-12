@@ -13,7 +13,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -38,7 +37,7 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	tree := &gfx.Tree{}
 	feat := tree.Feature("fg2-headless")
-	var view flex.View
+	var view ui.Page
 	config := app.Config{Title: "fg2-sidebar", Width: 1920, Height: 1032, Tree: tree, WindowMode: app.WindowFrameless}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
@@ -56,7 +55,7 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 			Has: kernel.Has,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

@@ -36,7 +36,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
@@ -177,7 +176,7 @@ func NewOfficialTranscriptView(theme *pluginapi.Theme, prims pluginapi.Primitive
 //
 // 入参 entries 必须是**已经投影好的**节点（projection 层负责帧 → 节点）；
 // 本函数不解析 journal、不发请求、不猜数据。
-func (v *OfficialTranscriptView) Draw(f *flex.Frame, env *pluginapi.Env, vp TranscriptViewport, entries []TranscriptEntry) {
+func (v *OfficialTranscriptView) Draw(f ui.C, env *pluginapi.Env, vp TranscriptViewport, entries []TranscriptEntry) {
 	t := v.Theme
 	if t == nil && env != nil {
 		t = env.Theme
@@ -202,17 +201,17 @@ func (v *OfficialTranscriptView) Draw(f *flex.Frame, env *pluginapi.Env, vp Tran
 	drawChatView := func() {
 		// ── ChatView.frame（container-type:inline-size，给浮动控件做断点）──
 		// 宿主滚动口存在时官方降级 flex:0 0 auto;min-height:auto;height:auto
-		v.Boxes.Frame = f.Column().FillWidth().Grow(1).MinHeight(0)
+		v.Boxes.Frame = ui.Column(f).FillWidth().Grow(1).MinHeight(0)
 		v.Boxes.Frame.Children(func() {
 			// ── ChatView.root[data-chat-following-tail]（overflow-y:clip）──
-			v.Boxes.Root = f.Column().FillWidth().Grow(1).MinHeight(0).Clip()
+			v.Boxes.Root = ui.Column(f).FillWidth().Grow(1).MinHeight(0).Clip()
 			v.Boxes.Root.Children(func() {
 				// ── ChatView.scroll（自滚动口；宿主口内降级 overflow-y:visible）──
 				if !vp.HostScroll && !vp.SelfID.IsZero() {
-					v.Boxes.Scroll = f.ScrollArea(vp.SelfID).FillWidth().Grow(1).MinHeight(0).
+					v.Boxes.Scroll = ui.Scroll(f).FillWidth().Grow(1).MinHeight(0).
 						PadSides(ChatScrollPad, ChatScrollPad+ComposerSideClearance, ChatScrollPad, ChatScrollPad+ComposerSideClearance)
 				} else {
-					v.Boxes.Scroll = f.Column().FillWidth().Grow(1).MinHeight(0).
+					v.Boxes.Scroll = ui.Column(f).FillWidth().Grow(1).MinHeight(0).
 						PadSides(ChatScrollPad, ChatScrollPad+ComposerSideClearance, ChatScrollPad, ChatScrollPad+ComposerSideClearance)
 				}
 				// 代码块的裁剪视口就是自滚动口：横滚内容只能裁在列内，
@@ -220,7 +219,7 @@ func (v *OfficialTranscriptView) Draw(f *flex.Frame, env *pluginapi.Env, vp Tran
 				v.codeClipBox, v.codeClipOK = v.Boxes.Scroll, true
 				v.Boxes.Scroll.Children(func() {
 					// ── ChatView.column（唯一行序容器，max-width: chat-content-width）──
-					v.Boxes.Column = f.Column().FillWidth().MinHeight(0)
+					v.Boxes.Column = ui.Column(f).FillWidth().MinHeight(0)
 					v.Boxes.Column.Children(func() {
 						// ── 「加载更早」那一行（官方 `.hint` / `.older`）──
 						// 它画在 flow 槽**之前**：官方 `.column` 的直接子级里它是
@@ -228,7 +227,7 @@ func (v *OfficialTranscriptView) Draw(f *flex.Frame, env *pluginapi.Env, vp Tran
 						// 五态的判据全部来自 `Snapshot.History`（壳算好的），这里不猜。
 						v.Boxes.Older, v.Boxes.HistoryState = v.drawHistoryRow(f, env, env.Data.History)
 						// ── flow 槽（display:contents：保留布局但不保留盒模型）──
-						v.Boxes.Flow = f.Column().FillWidth()
+						v.Boxes.Flow = ui.Column(f).FillWidth()
 						v.Boxes.Flow.Children(func() {
 							v.Boxes.Rows = v.Boxes.Rows[:0]
 							for _, entry := range entries {
@@ -251,7 +250,7 @@ func (v *OfficialTranscriptView) Draw(f *flex.Frame, env *pluginapi.Env, vp Tran
 	// 官方：flex:1;flex-direction:column;min-height:0;margin-right:2px;overflow-y:auto
 	//      scrollbar-gutter:stable（Viva 没有该能力 → 见几何表 deviation 行）
 	if vp.HostScroll && !vp.HostID.IsZero() {
-		v.Boxes.ScrollBody = f.ScrollArea(vp.HostID).FillWidth().Grow(1).MinHeight(0).
+		v.Boxes.ScrollBody = ui.Scroll(f).FillWidth().Grow(1).MinHeight(0).
 			MarginSides(0, ScrollBodyMarginRight, 0, 0)
 		v.Boxes.ScrollBody.Children(drawChatView)
 		return
@@ -260,8 +259,8 @@ func (v *OfficialTranscriptView) Draw(f *flex.Frame, env *pluginapi.Env, vp Tran
 }
 
 // drawRow 画一条节点（官方 `.flowItem` 外壳 + kind 分派）。
-func (v *OfficialTranscriptView) drawRow(f *flex.Frame, env *pluginapi.Env, e TranscriptEntry) RowBox {
-	row := f.Column().FillWidth().MinWidth(0)
+func (v *OfficialTranscriptView) drawRow(f ui.C, env *pluginapi.Env, e TranscriptEntry) RowBox {
+	row := ui.Column(f).FillWidth().MinWidth(0)
 	row.Children(func() {
 		switch e.Kind {
 		case ChatNodeUser:
@@ -311,24 +310,24 @@ func (v *OfficialTranscriptView) drawRow(f *flex.Frame, env *pluginapi.Env, e Tr
 // ── 逐种节点 ───────────────────────────────────────────────────────────
 
 // drawUser 画 §5.1 用户消息：右对齐行 + 内容栈 + 气泡 + 附件行 + 引用摘要。
-func (v *OfficialTranscriptView) drawUser(f *flex.Frame, env *pluginapi.Env, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawUser(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Justify(ui.End).Gap(UserRowGap).Children(func() {
-		stack := f.Column().Items(ui.End).Gap(UserStackGap).MinWidth(0).
+	ui.Row(f).FillWidth().Justify(ui.End).Gap(UserRowGap).Children(func() {
+		stack := ui.Column(f).Items(ui.End).Gap(UserStackGap).MinWidth(0).
 			MaxWidthPercent(UserStackWidthCap * 100)
 		stack.Children(func() {
 			if e.Data.Text != "" {
-				f.Text(e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+				ui.Text(f, e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
 			}
 			// 引用摘要（.referenceSummary：13px / 18px + delta-secondary，label-tertiary）
 			if len(e.Data.References) > 0 {
-				f.Text(strings.Join(e.Data.References, " · ")).
+				ui.Text(f, strings.Join(e.Data.References, " · ")).
 					FontSize(ReferenceSummaryFontSize).LineHeight(ReferenceSummaryLineHeight).
 					Color(t.LabelTertiary).Ellipsis()
 			}
 			// 附件行（.attachmentRow：右对齐、wrap、gap 8）
 			if len(e.Data.Attachments) > 0 {
-				f.Row().Justify(ui.End).Gap(AttachmentRowGap).Children(func() {
+				ui.Row(f).Justify(ui.End).Gap(AttachmentRowGap).Children(func() {
 					for _, attachment := range e.Data.Attachments {
 						v.drawAttachment(f, attachment)
 					}
@@ -339,26 +338,26 @@ func (v *OfficialTranscriptView) drawUser(f *flex.Frame, env *pluginapi.Env, e T
 }
 
 // drawAttachment 画一个附件：图片走 64×64 瓦片，文件走 240×64 卡片。
-func (v *OfficialTranscriptView) drawAttachment(f *flex.Frame, attachment TranscriptAttachment) {
+func (v *OfficialTranscriptView) drawAttachment(f ui.C, attachment TranscriptAttachment) {
 	t := v.Theme
 	if attachment.Image {
 		// 图片瓦片（MessageImage.tile）：64×64，多图时降级。
-		f.Slot().Size(ImageTileSize, ImageTileSize).Radius(t.Radii.SM).Border(0.5, t.BorderL2)
+		ui.Slot(f).Size(ImageTileSize, ImageTileSize).Radius(t.Radii.SM).Border(0.5, t.BorderL2)
 		return
 	}
-	card := f.Row().Size(FileCardWidth, FileCardMinHeight).Gap(FileCardGap).Radius(t.Radii.LG).
+	card := ui.Row(f).Size(FileCardWidth, FileCardMinHeight).Gap(FileCardGap).Radius(t.Radii.LG).
 		Border(0.5, t.BorderL2).PadSides(FileCardPadY, FileCardPadX, FileCardPadY, FileCardPadX)
 	card.Children(func() {
-		f.Slot().Size(FileIconSize, FileIconSize)
-		f.Column().MinWidth(0).Children(func() {
+		ui.Slot(f).Size(FileIconSize, FileIconSize)
+		ui.Column(f).MinWidth(0).Children(func() {
 			name := attachment.Name
 			if name == "" {
 				name = UnknownText
 			}
-			f.Text(name).FontSize(FileNameFontSize).LineHeight(FileNameLineHeight).
+			ui.Text(f, name).FontSize(FileNameFontSize).LineHeight(FileNameLineHeight).
 				Weight(gfx.WeightMedium).Color(t.LabelPrimary).Ellipsis()
 			if attachment.Meta != "" {
-				f.Text(attachment.Meta).FontSize(FileMetaFontSize).LineHeight(FileMetaLineHeight).
+				ui.Text(f, attachment.Meta).FontSize(FileMetaFontSize).LineHeight(FileMetaLineHeight).
 					Color(t.LabelTertiary).Ellipsis()
 			}
 		})
@@ -369,12 +368,12 @@ func (v *OfficialTranscriptView) drawAttachment(f *flex.Frame, attachment Transc
 //
 // 与 user 的差别：行距是 `calc(44px + delta)`（保住 Turn 尾槽），
 // 且行上带 `data-pending-steering`（Host 权威待入）。
-func (v *OfficialTranscriptView) drawSteering(f *flex.Frame, env *pluginapi.Env, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawSteering(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Justify(ui.End).Gap(UserRowGap).
+	ui.Row(f).FillWidth().Justify(ui.End).Gap(UserRowGap).
 		MarginSides(ChatFlowGapSteeringBatch-ChatFlowGapDefault, 0, 0, 0).Children(func() {
-		f.Column().Items(ui.End).Gap(UserStackGap).MinWidth(0).Children(func() {
-			f.Text(e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelSecondary)
+		ui.Column(f).Items(ui.End).Gap(UserStackGap).MinWidth(0).Children(func() {
+			ui.Text(f, e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelSecondary)
 		})
 	})
 }
@@ -384,36 +383,36 @@ func (v *OfficialTranscriptView) drawSteering(f *flex.Frame, env *pluginapi.Env,
 // 官方 `DisclosureRow` 的精确几何**未取证**（`ui-primitives` 没有 rc.2 src），
 // 见几何表 derived 行——按包自身 CSS 注释的"leading 16 + gap 6 + 13/24 标题"
 // 二手证据摆位，**不得反推像素**。
-func (v *OfficialTranscriptView) drawDisclosureRow(f *flex.Frame, e TranscriptEntry, title, subtitle string) {
+func (v *OfficialTranscriptView) drawDisclosureRow(f ui.C, e TranscriptEntry, title, subtitle string) {
 	t := v.Theme
-	row := f.Row().FillWidth().Items(ui.Center).Gap(CompactionLeadingGap).PadY(2)
+	row := ui.Row(f).FillWidth().Items(ui.Center).Gap(CompactionLeadingGap).PadY(2)
 	row.Children(func() {
-		f.Slot().Size(CompactionLeading, CompactionLeading)
-		f.Text(title).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
+		ui.Slot(f).Size(CompactionLeading, CompactionLeading)
+		ui.Text(f, title).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
 		if subtitle != "" {
-			f.Slot().Size(ContextSepSize, ContextSepSize)
-			f.Text(subtitle).FontSize(t.Fonts.Caption).Color(t.LabelCaption).Ellipsis()
+			ui.Slot(f).Size(ContextSepSize, ContextSepSize)
+			ui.Text(f, subtitle).FontSize(t.Fonts.Caption).Color(t.LabelCaption).Ellipsis()
 		}
 		if e.Data.Text != "" {
-			f.Text(e.Data.Text).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary).Ellipsis()
+			ui.Text(f, e.Data.Text).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary).Ellipsis()
 		}
 	})
 }
 
 // drawTurnTrigger 画 §5.4 记录型唤醒 / 续写回执。
-func (v *OfficialTranscriptView) drawTurnTrigger(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawTurnTrigger(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	card := f.Column().FillWidth().Border(0.5, t.BorderL1).Radius(t.Radii.XL)
+	card := ui.Column(f).FillWidth().Border(0.5, t.BorderL1).Radius(t.Radii.XL)
 	card.Children(func() {
-		header := f.Row().FillWidth().Items(ui.Center).Gap(TurnTriggerHeaderGap).
+		header := ui.Row(f).FillWidth().Items(ui.Center).Gap(TurnTriggerHeaderGap).
 			PadSides(TurnTriggerHeaderPadY, TurnTriggerHeaderPadX, TurnTriggerHeaderPadY, TurnTriggerHeaderPadX)
 		header.Children(func() {
-			f.Text(triggerTitle(e)).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
-			f.Text(e.TimeText()).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Text(f, triggerTitle(e)).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
+			ui.Text(f, e.TimeText()).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		})
 		if e.Data.Text != "" {
-			f.Row().FillWidth().PadSides(0, TurnTriggerHeaderPadX, TurnTriggerBodyPadBottom, TurnTriggerBodyPadLeft).Children(func() {
-				f.Text(e.Data.Text).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).
+			ui.Row(f).FillWidth().PadSides(0, TurnTriggerHeaderPadX, TurnTriggerBodyPadBottom, TurnTriggerBodyPadLeft).Children(func() {
+				ui.Text(f, e.Data.Text).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).
 					MaxHeight(TurnTriggerContentMaxHeight)
 			})
 		}
@@ -429,26 +428,26 @@ func triggerTitle(e TranscriptEntry) string {
 }
 
 // drawCommandInput 画 §5.5 `/goal` 命令输入（goal 包节点）。
-func (v *OfficialTranscriptView) drawCommandInput(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawCommandInput(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(ui.Center).Gap(6).Children(func() {
-		f.Text(e.Data.Text).FontSize(t.Fonts.Body).Mono().Color(t.LabelSecondary)
+	ui.Row(f).FillWidth().Items(ui.Center).Gap(6).Children(func() {
+		ui.Text(f, e.Data.Text).FontSize(t.Fonts.Body).Mono().Color(t.LabelSecondary)
 	})
 }
 
 // drawAssistant 画 §5.6 助手正文：markdown 块分派 + reasoning + 中断标记。
-func (v *OfficialTranscriptView) drawAssistant(f *flex.Frame, env *pluginapi.Env, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawAssistant(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
 	t := v.Theme
-	root := f.Column().FillWidth().Gap(AssistantBlockGap)
+	root := ui.Column(f).FillWidth().Gap(AssistantBlockGap)
 	root.Children(func() {
 		if e.Data.Reasoning != "" {
 			// reasoning 分区块间距 4px（AssistantMarkdown.module.css:24-29）
-			f.Column().FillWidth().Gap(AssistantReasoningBlockGap).Children(func() {
-				f.Row().FillWidth().Items(ui.Center).Gap(CompactionLeadingGap).Children(func() {
-					f.Slot().Size(TurnProcessChevron, TurnProcessChevron)
-					f.Text("思考").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Column(f).FillWidth().Gap(AssistantReasoningBlockGap).Children(func() {
+				ui.Row(f).FillWidth().Items(ui.Center).Gap(CompactionLeadingGap).Children(func() {
+					ui.Slot(f).Size(TurnProcessChevron, TurnProcessChevron)
+					ui.Text(f, "思考").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 				})
-				f.Text(e.Data.Reasoning).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
+				ui.Text(f, e.Data.Reasoning).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
 			})
 		}
 		if e.Data.Text != "" {
@@ -456,8 +455,8 @@ func (v *OfficialTranscriptView) drawAssistant(f *flex.Frame, env *pluginapi.Env
 		}
 		if e.Data.Status == "stopped" {
 			// 中断标记 .stopped：11px/18px，左对齐
-			f.Row().Justify(ui.Start).Children(func() {
-				f.Text("已停止").FontSize(StoppedFontSize).LineHeight(StoppedLineHeight).
+			ui.Row(f).Justify(ui.Start).Children(func() {
+				ui.Text(f, "已停止").FontSize(StoppedFontSize).LineHeight(StoppedLineHeight).
 					PadX(StoppedPadX).Radius(t.Radii.SM).Color(t.LabelTertiary)
 			})
 		}
@@ -487,8 +486,8 @@ func (v *OfficialTranscriptView) drawAssistant(f *flex.Frame, env *pluginapi.Env
 // 整段都是 Mono span 时走等宽字体（官方 `MarkdownText` 的 Mono span）；
 // 精确的行内背景色（`--dsw-alias-markdown-inline-code`）同样在 primitives 里，
 // 未取证——这里只换字体，不画背景。
-func (v *OfficialTranscriptView) drawMarkdown(f *flex.Frame, env *pluginapi.Env, text, key string) {
-	body := f.Column().FillWidth().Gap(AssistantBlockGap)
+func (v *OfficialTranscriptView) drawMarkdown(f ui.C, env *pluginapi.Env, text, key string) {
+	body := ui.Column(f).FillWidth().Gap(AssistantBlockGap)
 	body.Children(func() {
 		var doc markdown.Document
 		doc.Parse(text)
@@ -500,7 +499,7 @@ func (v *OfficialTranscriptView) drawMarkdown(f *flex.Frame, env *pluginapi.Env,
 				v.placeCodeBlock(f, env, block, key+":"+strconv.Itoa(i))
 			case markdown.Rule:
 				// 分隔线 1 物理像素（derived；官方 hr 几何未取证）。
-				f.Divider().Height(MarkdownRuleHeight).Background(v.Theme.BorderL2)
+				ui.Divider(f).Height(MarkdownRuleHeight).Background(v.Theme.BorderL2)
 			case markdown.Table:
 				v.drawTableBlock(f, &doc, block)
 			case markdown.Heading:
@@ -515,7 +514,7 @@ func (v *OfficialTranscriptView) drawMarkdown(f *flex.Frame, env *pluginapi.Env,
 }
 
 // drawParagraph 画段落；引用块内的段落再套一层左边框。
-func (v *OfficialTranscriptView) drawParagraph(f *flex.Frame, doc *markdown.Document, block markdown.Block) {
+func (v *OfficialTranscriptView) drawParagraph(f ui.C, doc *markdown.Document, block markdown.Block) {
 	t := v.Theme
 	spans := doc.Spans(&block)
 	body := spansText(spans)
@@ -525,7 +524,7 @@ func (v *OfficialTranscriptView) drawParagraph(f *flex.Frame, doc *markdown.Docu
 	v.drawQuoted(f, block.Quote, func() {
 		// Wrap 而不是 Text：官方正文会按列宽折行（`white-space` 默认 normal）。
 		// 用 Text 的话长段落会被右边缘硬切——真机上表现成"回答只显示一行"。
-		box := f.Wrap(body).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+		box := ui.Wrap(f, body).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
 		if allMono(spans) {
 			box.Mono().FontSize(t.Fonts.Code)
 		}
@@ -537,14 +536,14 @@ func (v *OfficialTranscriptView) drawParagraph(f *flex.Frame, doc *markdown.Docu
 // 字号/行高来自 `MarkdownHeadingFor`（derived 阶梯表）：级别越界按最近一级
 // 夹紧，调用方不必再判边界。字重取 semibold——h5/h6 与正文同字号，只靠字重
 // 区分（官方 primitives 未取证，这是实现选择）。
-func (v *OfficialTranscriptView) drawHeading(f *flex.Frame, doc *markdown.Document, block markdown.Block) {
+func (v *OfficialTranscriptView) drawHeading(f ui.C, doc *markdown.Document, block markdown.Block) {
 	body := spansText(doc.Spans(&block))
 	if body == "" {
 		return
 	}
 	heading := MarkdownHeadingFor(block.Level)
 	v.drawQuoted(f, block.Quote, func() {
-		f.Wrap(body).FontSize(heading.Size).LineHeight(heading.Line).
+		ui.Wrap(f, body).FontSize(heading.Size).LineHeight(heading.Line).
 			Weight(gfx.WeightSemibold).Color(v.Theme.LabelPrimary)
 	})
 }
@@ -553,7 +552,7 @@ func (v *OfficialTranscriptView) drawHeading(f *flex.Frame, doc *markdown.Docume
 //
 // 缩进用 `level × MarkdownListIndentPerLevel`（derived）：Viva 没有
 // `padding-inline-start: 20px` 这种列表缩进，只能按嵌套深度自己算左内边距。
-func (v *OfficialTranscriptView) drawListItem(f *flex.Frame, doc *markdown.Document, block markdown.Block) {
+func (v *OfficialTranscriptView) drawListItem(f ui.C, doc *markdown.Document, block markdown.Block) {
 	t := v.Theme
 	body := spansText(doc.Spans(&block))
 	if body == "" {
@@ -566,12 +565,12 @@ func (v *OfficialTranscriptView) drawListItem(f *flex.Frame, doc *markdown.Docum
 	}
 	indent := float32(block.Level) * MarkdownListIndentPerLevel
 	v.drawQuoted(f, block.Quote, func() {
-		row := f.Row().FillWidth().PadSides(0, 0, 0, indent).Gap(MarkdownListMarkerGap)
+		row := ui.Row(f).FillWidth().PadSides(0, 0, 0, indent).Gap(MarkdownListMarkerGap)
 		row.Children(func() {
 			// 标记槽固定 18px 右对齐（derived；容得下 "99."），正文吃掉剩余宽度。
-			f.Text(marker).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).
+			ui.Text(f, marker).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).
 				Color(t.LabelSecondary).Width(MarkdownListMarkerWidth).TextEnd()
-			f.Wrap(body).FillWidth().FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+			ui.Wrap(f, body).FillWidth().FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
 		})
 	})
 }
@@ -580,30 +579,30 @@ func (v *OfficialTranscriptView) drawListItem(f *flex.Frame, doc *markdown.Docum
 //
 // 宽表格突破（`md-table-wide` 的 `100cqw`）在 Viva 里没有容器查询，
 // 见几何表 deviation 行——这是渲染器能力边界，不是"没做"。
-func (v *OfficialTranscriptView) drawTableBlock(f *flex.Frame, doc *markdown.Document, block markdown.Block) {
+func (v *OfficialTranscriptView) drawTableBlock(f ui.C, doc *markdown.Document, block markdown.Block) {
 	t := v.Theme
-	card := f.Column().FillWidth().Gap(AssistantReasoningBlockGap)
+	card := ui.Column(f).FillWidth().Gap(AssistantReasoningBlockGap)
 	card.Children(func() {
 		for _, cell := range doc.Cells(&block) {
-			f.Text(spansText(doc.CellSpans(cell))).FontSize(t.Fonts.Code).Mono().Color(t.LabelSecondary)
+			ui.Text(f, spansText(doc.CellSpans(cell))).FontSize(t.Fonts.Code).Mono().Color(t.LabelSecondary)
 		}
 	})
 }
 
 // drawQuoted 按引用深度套左边框（每级 2px 竖线 + 12px 左内边距）。
 //
-// Viva 没有 `border-inline-start`，左边框用 Row 里的竖线盒（`f.Divider()`
+// Viva 没有 `border-inline-start`，左边框用 Row 里的竖线盒（`ui.Divider(f)`
 // 在 Row 里是竖线）表达；竖线随行高拉伸，所以多行引用块也是一条通栏线。
 // 两个值都是 derived（官方 blockquote 几何未取证）。
-func (v *OfficialTranscriptView) drawQuoted(f *flex.Frame, depth int, body func()) {
+func (v *OfficialTranscriptView) drawQuoted(f ui.C, depth int, body func()) {
 	if depth <= 0 {
 		body()
 		return
 	}
-	row := f.Row().FillWidth().Gap(MarkdownQuotePadLeft)
+	row := ui.Row(f).FillWidth().Gap(MarkdownQuotePadLeft)
 	row.Children(func() {
-		f.Divider().Width(MarkdownQuoteBorderWidth).Background(v.Theme.BorderL2)
-		f.Column().FillWidth().Children(func() {
+		ui.Divider(f).Width(MarkdownQuoteBorderWidth).Background(v.Theme.BorderL2)
+		ui.Column(f).FillWidth().Children(func() {
 			v.drawQuoted(f, depth-1, body)
 		})
 	})
@@ -621,7 +620,7 @@ func (v *OfficialTranscriptView) drawQuoted(f *flex.Frame, depth int, body func(
 // 高度用估算宽度算：估算公式与真实列宽**同一条算式**（主区宽 - 滚动口
 // 左右内边距），所以 `wrap=false` 时行数完全一致，只有"要不要横滚条"那 10px
 // 可能差 1–2px（不会让内容错位）。
-func (v *OfficialTranscriptView) placeCodeBlock(f *flex.Frame, env *pluginapi.Env, block markdown.Block, key string) {
+func (v *OfficialTranscriptView) placeCodeBlock(f ui.C, env *pluginapi.Env, block markdown.Block, key string) {
 	style := v.codeBlockStyle(env)
 	width := v.codeMeasureWidth(env)
 	code := mdlite.NewCodeBlock(block, nil)
@@ -632,7 +631,7 @@ func (v *OfficialTranscriptView) placeCodeBlock(f *flex.Frame, env *pluginapi.En
 	height := code.Height(v.measureCanvas(env), width, style)
 	// MinHeight(0) 是必须的：默认 min-height:auto 会被内容顶开，
 	// 而我们只要一个**固定高**的占位盒子。
-	box := f.Column().FillWidth().Height(height).MinHeight(0)
+	box := ui.Column(f).FillWidth().Height(height).MinHeight(0)
 	v.codeBlocks = append(v.codeBlocks, pendingCodeBlock{key: key, block: code, box: box})
 }
 
@@ -829,24 +828,24 @@ func transcriptCopyFunc(env *pluginapi.Env) mdlite.CopyFunc {
 //   - error / stopped 不显示 diff 统计与后缀；
 //   - per-file 链接只在 ok 出现（骨架不画链接）；
 //   - preparing 不画子调用。
-func (v *OfficialTranscriptView) drawToolCall(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawToolCall(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	call := f.Column().FillWidth().Radius(t.Radii.SM)
+	call := ui.Column(f).FillWidth().Radius(t.Radii.SM)
 	call.Children(func() {
-		row := f.Row().FillWidth().Items(ui.Center).Gap(ContextSepMargin)
+		row := ui.Row(f).FillWidth().Items(ui.Center).Gap(ContextSepMargin)
 		row.Children(func() {
-			f.Slot().Size(CompactionLeading, CompactionLeading)
+			ui.Slot(f).Size(CompactionLeading, CompactionLeading)
 			title := e.Data.Tool
 			if title == "" {
 				title = "工具"
 			}
-			f.Text(title).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelPrimary)
-			f.Slot().Size(ContextSepSize, ContextSepSize)
-			f.Text(toolSummary(e)).FontSize(t.Fonts.Secondary).Color(toolSummaryColor(t, e)).Ellipsis()
+			ui.Text(f, title).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelPrimary)
+			ui.Slot(f).Size(ContextSepSize, ContextSepSize)
+			ui.Text(f, toolSummary(e)).FontSize(t.Fonts.Secondary).Color(toolSummaryColor(t, e)).Ellipsis()
 		})
 		// 展开体：有输出或参数时给 IN/OUT 卡。
 		if e.Data.ResultText != "" || e.Data.Args != "" {
-			card := f.Column().FillWidth().MarginSides(ToolIOCardMargin, 0, ToolIOCardMargin, ToolIOCardMargin).
+			card := ui.Column(f).FillWidth().MarginSides(ToolIOCardMargin, 0, ToolIOCardMargin, ToolIOCardMargin).
 				Radius(t.Radii.LG).Border(0.5, t.BorderL1)
 			card.Children(func() {
 				if e.Data.Args != "" {
@@ -861,16 +860,16 @@ func (v *OfficialTranscriptView) drawToolCall(f *flex.Frame, e TranscriptEntry) 
 }
 
 // drawIOSection 画 IN/OUT 段（12px 16px 内边距、150px 高度上限、14px 列间距）。
-func (v *OfficialTranscriptView) drawIOSection(f *flex.Frame, label, text string, isError bool) {
+func (v *OfficialTranscriptView) drawIOSection(f ui.C, label, text string, isError bool) {
 	t := v.Theme
-	f.Row().FillWidth().PadSides(ToolIOSectionPadY, ToolIOSectionPadX, ToolIOSectionPadY, ToolIOSectionPadX).
+	ui.Row(f).FillWidth().PadSides(ToolIOSectionPadY, ToolIOSectionPadX, ToolIOSectionPadY, ToolIOSectionPadX).
 		Gap(ToolIOSectionColumnGap).Children(func() {
-		f.Text(label).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
+		ui.Text(f, label).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
 		color := t.LabelSecondary
 		if isError {
 			color = t.Error
 		}
-		f.Text(text).FontSize(t.Fonts.Secondary).Color(color)
+		ui.Text(f, text).FontSize(t.Fonts.Secondary).Color(color)
 	})
 }
 
@@ -908,65 +907,65 @@ func toolSummaryColor(t *pluginapi.Theme, e TranscriptEntry) ui.Color {
 }
 
 // drawCommand 画 §5.8 斜杠命令生命周期。
-func (v *OfficialTranscriptView) drawCommand(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawCommand(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(ui.Center).Gap(ContextSepMargin).Radius(t.Radii.SM).Children(func() {
-		f.Slot().Size(CompactionLeading, CompactionLeading)
+	ui.Row(f).FillWidth().Items(ui.Center).Gap(ContextSepMargin).Radius(t.Radii.SM).Children(func() {
+		ui.Slot(f).Size(CompactionLeading, CompactionLeading)
 		name := e.Data.CommandName
 		if name == "" {
 			name = "命令"
 		}
-		f.Text("/" + name).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
-		f.Slot().Size(ContextSepSize, ContextSepSize)
+		ui.Text(f, "/"+name).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
+		ui.Slot(f).Size(ContextSepSize, ContextSepSize)
 		outcome := e.Data.CommandOutcome
 		if outcome == "" {
 			outcome = "—"
 		}
-		f.Text(outcome).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary).Ellipsis()
+		ui.Text(f, outcome).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary).Ellipsis()
 	})
 }
 
 // drawManualCompaction 画 §5.9 `/compact` 与其压缩事务合一。
-func (v *OfficialTranscriptView) drawManualCompaction(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawManualCompaction(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(ui.Center).Gap(ContextSepMargin).Children(func() {
+	ui.Row(f).FillWidth().Items(ui.Center).Gap(ContextSepMargin).Children(func() {
 		name := e.Data.CommandName
 		if name == "" {
 			name = "compact"
 		}
-		f.Text("/" + name).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
+		ui.Text(f, "/"+name).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
 		if e.Data.Text != "" {
-			f.Text(e.Data.Text).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary).Ellipsis()
+			ui.Text(f, e.Data.Text).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary).Ellipsis()
 		}
 	})
 }
 
 // drawCompaction 画 §5.10 自动压缩检查点（24px 行 + 前导 + 分隔 + 摘要）。
-func (v *OfficialTranscriptView) drawCompaction(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawCompaction(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(ui.Center).Height(CompactionRowHeight).PadY(CompactionRowPadY).
+	ui.Row(f).FillWidth().Items(ui.Center).Height(CompactionRowHeight).PadY(CompactionRowPadY).
 		Children(func() {
-			f.Slot().Size(CompactionLeading, CompactionLeading).MarginSides(0, CompactionLeadingGap, 0, 0)
-			f.Text("压缩").FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
-			f.Slot().Size(CompactionSepSize, CompactionSepSize).MarginSides(0, CompactionSepMargin, 0, CompactionSepMargin)
+			ui.Slot(f).Size(CompactionLeading, CompactionLeading).MarginSides(0, CompactionLeadingGap, 0, 0)
+			ui.Text(f, "压缩").FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
+			ui.Slot(f).Size(CompactionSepSize, CompactionSepSize).MarginSides(0, CompactionSepMargin, 0, CompactionSepMargin)
 			summary := e.Data.CompactionSummary
 			if summary == "" {
 				summary = "—"
 			}
-			f.Text(summary).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary).Ellipsis()
+			ui.Text(f, summary).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary).Ellipsis()
 		})
 }
 
 // drawModelRetry 画 §5.11 模型重试链（一行 + 可展开明细）。
-func (v *OfficialTranscriptView) drawModelRetry(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawModelRetry(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	f.Column().FillWidth().Children(func() {
-		f.Row().FillWidth().Items(ui.Center).Gap(RetrySummaryGap).PadY(RetrySummaryPadY).Children(func() {
-			f.Text(e.Data.RetryText()).FontSize(RetryRowFontSize).LineHeight(RetryRowLineHeight).Color(t.LabelTertiary)
+	ui.Column(f).FillWidth().Children(func() {
+		ui.Row(f).FillWidth().Items(ui.Center).Gap(RetrySummaryGap).PadY(RetrySummaryPadY).Children(func() {
+			ui.Text(f, e.Data.RetryText()).FontSize(RetryRowFontSize).LineHeight(RetryRowLineHeight).Color(t.LabelTertiary)
 		})
 		if e.Data.RetryDelayMs != nil && *e.Data.RetryDelayMs > 0 {
-			f.Row().FillWidth().PadSides(RetryDetailsMarginTop, 0, 0, RetryDetailsPadLeft).Children(func() {
-				f.Text("延迟 " + itoa64(*e.Data.RetryDelayMs) + " ms").FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
+			ui.Row(f).FillWidth().PadSides(RetryDetailsMarginTop, 0, 0, RetryDetailsPadLeft).Children(func() {
+				ui.Text(f, "延迟 "+itoa64(*e.Data.RetryDelayMs)+" ms").FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
 			})
 		}
 	})
@@ -975,7 +974,7 @@ func (v *OfficialTranscriptView) drawModelRetry(f *flex.Frame, e TranscriptEntry
 // drawTurnError 画 §5.12 turn-error / §5.13 turn-max-tokens 的共享栅格。
 //
 // 栅格 `10px minmax(0,1fr) auto`、gap 8、padding 2px 0（MessageItem.module.css:268-276）。
-func (v *OfficialTranscriptView) drawTurnError(f *flex.Frame, e TranscriptEntry, maxTokens bool) {
+func (v *OfficialTranscriptView) drawTurnError(f ui.C, e TranscriptEntry, maxTokens bool) {
 	t := v.Theme
 	title := "Turn 错误"
 	color := t.Error
@@ -985,22 +984,22 @@ func (v *OfficialTranscriptView) drawTurnError(f *flex.Frame, e TranscriptEntry,
 	} else if e.Data.ErrorCode == "ACCOUNT_SIGNED_OUT" || e.Data.ErrorCode == "INTERRUPTED" {
 		title = "任务已停止"
 	}
-	f.Row().FillWidth().Items(ui.Start).Gap(TurnErrorGap).PadY(TurnErrorPadY).Children(func() {
-		f.Slot().Size(TurnErrorDotColumn, TurnErrorDotColumn)
-		f.Column().FillWidth().MinWidth(0).Children(func() {
-			f.Row().Children(func() {
-				f.Text(title).FontSize(t.Fonts.Secondary).Weight(gfx.WeightSemibold).Color(color).
+	ui.Row(f).FillWidth().Items(ui.Start).Gap(TurnErrorGap).PadY(TurnErrorPadY).Children(func() {
+		ui.Slot(f).Size(TurnErrorDotColumn, TurnErrorDotColumn)
+		ui.Column(f).FillWidth().MinWidth(0).Children(func() {
+			ui.Row(f).Children(func() {
+				ui.Text(f, title).FontSize(t.Fonts.Secondary).Weight(gfx.WeightSemibold).Color(color).
 					MarginSides(0, TurnErrorTitleMarginRight, 0, 0)
 				if e.Data.ErrorMessage != "" {
-					f.Text(e.Data.ErrorMessage).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
+					ui.Text(f, e.Data.ErrorMessage).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
 				}
 			})
 			// INTERRUPTED 不显示 code 胶囊（§5.12 真值）。
 			if e.Data.ErrorCode != "" && e.Data.ErrorCode != "INTERRUPTED" {
-				f.Text(e.Data.ErrorCode).FontSize(t.Fonts.Caption).Mono().Color(t.LabelTertiary)
+				ui.Text(f, e.Data.ErrorCode).FontSize(t.Fonts.Caption).Mono().Color(t.LabelTertiary)
 			}
 			if maxTokens && e.Data.MaxTokensLimit != nil {
-				f.Text("limit " + itoa64(*e.Data.MaxTokensLimit)).FontSize(t.Fonts.Caption).Mono().Color(t.LabelTertiary)
+				ui.Text(f, "limit "+itoa64(*e.Data.MaxTokensLimit)).FontSize(t.Fonts.Caption).Mono().Color(t.LabelTertiary)
 			}
 		})
 	})
@@ -1010,74 +1009,74 @@ func (v *OfficialTranscriptView) drawTurnError(f *flex.Frame, e TranscriptEntry,
 //
 // **Turn 未闭合时官方返回 null**（不是 CSS 隐藏）——投影层只会对已闭合
 // Turn 产出这一条，所以这里直接画。
-func (v *OfficialTranscriptView) drawTurnProcess(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawTurnProcess(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(ui.Center).Height(TurnProcessHeight).
+	ui.Row(f).FillWidth().Items(ui.Center).Height(TurnProcessHeight).
 		PadSides(0, 0, TurnProcessPadBottom, 0).Children(func() {
 		label := "已工作"
 		if e.Data.DurationMs != nil {
 			label = "耗时 " + itoa64(*e.Data.DurationMs/1000) + " 秒"
 		}
-		f.Text(label).FontSize(t.Fonts.Body).Color(t.LabelSecondary).Ellipsis()
-		f.Slot().Size(TurnProcessChevron, TurnProcessChevron)
+		ui.Text(f, label).FontSize(t.Fonts.Body).Color(t.LabelSecondary).Ellipsis()
+		ui.Slot(f).Size(TurnProcessChevron, TurnProcessChevron)
 	})
 }
 
 // drawTurnTail 画 §5.15 Turn 尾：动作行 + 用量 + 扩展位。
-func (v *OfficialTranscriptView) drawTurnTail(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawTurnTail(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	f.Column().FillWidth().Gap(TurnTailGap).Children(func() {
-		actions := f.Row().FillWidth().Items(ui.Center).Gap(ActionsRowGap).Height(ActionsRowHeight).
+	ui.Column(f).FillWidth().Gap(TurnTailGap).Children(func() {
+		actions := ui.Row(f).FillWidth().Items(ui.Center).Gap(ActionsRowGap).Height(ActionsRowHeight).
 			MarginSides(TurnTailActionsMarginTop, 0, 0, AssistantActionsMarginLeft)
 		actions.Children(func() {
 			if e.TimeKnown() {
-				f.Text(e.TimeText()).FontSize(ActionsTimeEndFontSize).Color(t.LabelTertiary)
+				ui.Text(f, e.TimeText()).FontSize(ActionsTimeEndFontSize).Color(t.LabelTertiary)
 			}
 			if usage := e.Data.Usage.UsageText(); usage != "" {
-				f.Text(usage).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+				ui.Text(f, usage).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 			}
 		})
 	})
 }
 
 // drawQuestionReply 画 §5.18 已答问题批次。
-func (v *OfficialTranscriptView) drawQuestionReply(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawQuestionReply(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	f.Column().FillWidth().Gap(4).Children(func() {
-		f.Text(e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+	ui.Column(f).FillWidth().Gap(4).Children(func() {
+		ui.Text(f, e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
 		if e.Data.Outcome != "" {
-			f.Text(e.Data.Outcome).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Text(f, e.Data.Outcome).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
 	})
 }
 
 // drawWorkflowRun 画 §5.20 工作流运行（外部包节点：只摆位，不定尺寸）。
-func (v *OfficialTranscriptView) drawWorkflowRun(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawWorkflowRun(f ui.C, e TranscriptEntry) {
 	t := v.Theme
-	card := f.Column().FillWidth().Border(0.5, t.BorderL1).Radius(t.Radii.LG)
+	card := ui.Column(f).FillWidth().Border(0.5, t.BorderL1).Radius(t.Radii.LG)
 	card.Children(func() {
-		f.Row().FillWidth().Items(ui.Center).Gap(6).PadSides(8, 12, 8, 12).Children(func() {
+		ui.Row(f).FillWidth().Items(ui.Center).Gap(6).PadSides(8, 12, 8, 12).Children(func() {
 			name := e.Data.RunName
 			if name == "" {
 				name = "工作流"
 			}
-			f.Text(name).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
+			ui.Text(f, name).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
 			if e.Data.StopReason != "" {
-				f.Text(e.Data.StopReason).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+				ui.Text(f, e.Data.StopReason).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 			}
 		})
 	})
 }
 
 // drawUnknown 画 §5.17 未知 surface 兜底：原样 JSON，**不编摘要**。
-func (v *OfficialTranscriptView) drawUnknown(f *flex.Frame, e TranscriptEntry) {
+func (v *OfficialTranscriptView) drawUnknown(f ui.C, e TranscriptEntry) {
 	t := v.Theme
 	raw := e.Data.Raw
 	if raw == "" {
 		raw = "{}"
 	}
-	f.Column().FillWidth().PadY(TurnErrorPadY).Children(func() {
-		f.Text(raw).FontSize(t.Fonts.Code).LineHeight(t.Fonts.CodeLine).Mono().Color(t.LabelSecondary)
+	ui.Column(f).FillWidth().PadY(TurnErrorPadY).Children(func() {
+		ui.Text(f, raw).FontSize(t.Fonts.Code).LineHeight(t.Fonts.CodeLine).Mono().Color(t.LabelSecondary)
 	})
 }
 
@@ -1145,14 +1144,14 @@ type ApprovalOptionBox struct {
 //   - `RequestID` 为空 → 按钮必须禁用（回传不出去，不编 id）；
 //   - `Options` 为空 → 这次审批点不动（不自己造 optionId）；
 //   - 风险等级**不显示**（宿主没有这个字段，不许从命令里算一个出来）。
-func (v *OfficialTranscriptView) DrawApprovalCard(f *flex.Frame, env *pluginapi.Env, approval pluginapi.Approval) ApprovalBoxes {
+func (v *OfficialTranscriptView) DrawApprovalCard(f ui.C, env *pluginapi.Env, approval pluginapi.Approval) ApprovalBoxes {
 	t := v.Theme
 	var boxes ApprovalBoxes
-	card := f.Column().FillWidth().Radius(t.Radii.XL).Border(0.5, t.BorderL1)
+	card := ui.Column(f).FillWidth().Radius(t.Radii.XL).Border(0.5, t.BorderL1)
 	boxes.Card = card
 	boxes.Rendered = true
 	card.Children(func() {
-		header := f.Row().FillWidth().Items(ui.Center).Gap(ApprovalBodyGap).
+		header := ui.Row(f).FillWidth().Items(ui.Center).Gap(ApprovalBodyGap).
 			PadSides(ApprovalHeaderPadY, ApprovalHeaderPadX, ApprovalHeaderPadY, ApprovalHeaderPadX)
 		boxes.Header = header
 		header.Children(func() {
@@ -1160,9 +1159,9 @@ func (v *OfficialTranscriptView) DrawApprovalCard(f *flex.Frame, env *pluginapi.
 			if title == "" {
 				title = "需要审批"
 			}
-			f.Text(title).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Ellipsis()
+			ui.Text(f, title).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Ellipsis()
 		})
-		body := f.Column().FillWidth().Gap(ApprovalBodyGap).
+		body := ui.Column(f).FillWidth().Gap(ApprovalBodyGap).
 			PadSides(ApprovalBodyPadTop, ApprovalBodyPadX, 0, ApprovalBodyPadX)
 		boxes.Body = body
 		body.Children(func() {
@@ -1171,12 +1170,12 @@ func (v *OfficialTranscriptView) DrawApprovalCard(f *flex.Frame, env *pluginapi.
 				if text == "" {
 					text = approval.Cmd
 				}
-				f.Text(text).FontSize(t.Fonts.Code).LineHeight(t.Fonts.CodeLine).Mono().Color(t.LabelSecondary)
+				ui.Text(f, text).FontSize(t.Fonts.Code).LineHeight(t.Fonts.CodeLine).Mono().Color(t.LabelSecondary)
 			}
 			if approval.Detail != "" {
-				f.Text(approval.Detail).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
+				ui.Text(f, approval.Detail).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
 			}
-			row := f.Row().Gap(ActionsRowGap).PadSides(0, 0, ApprovalBodyPadTop, 0)
+			row := ui.Row(f).Gap(ActionsRowGap).PadSides(0, 0, ApprovalBodyPadTop, 0)
 			boxes.Options = boxes.Options[:0]
 			row.Children(func() {
 				for _, option := range approval.Options {
@@ -1188,7 +1187,7 @@ func (v *OfficialTranscriptView) DrawApprovalCard(f *flex.Frame, env *pluginapi.
 						label = UnknownText
 					}
 					disabled := approval.RequestID == "" || option.OptionID == ""
-					button := f.Button(v.optionID(env, label), label).Small()
+					button := ui.Button(f, label).Small()
 					if disabled {
 						// 没有 requestId / optionId = 回传不出去：**禁用**，不假装成功。
 						button = button.Disabled(true)

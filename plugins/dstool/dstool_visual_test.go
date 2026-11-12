@@ -11,7 +11,6 @@ import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -54,7 +53,7 @@ func TestToolCardCustomRenderings(t *testing.T) {
 
 	tree := &gfx.Tree{}
 	feat := tree.Feature("dstool-visual")
-	var view flex.View
+	var view ui.Page
 	config := app.Config{
 		Title: "dstool-visual", Width: 900, Height: 720, Tree: tree,
 		WindowMode: app.WindowFrameless,
@@ -66,8 +65,8 @@ func TestToolCardCustomRenderings(t *testing.T) {
 			Bounds: bounds, MainWidth: size.Width,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
-			f.Column().WidthPercent(100).Pad(16).Gap(6).Children(func() {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+			ui.Column(f).WidthPercent(100).Pad(16).Gap(6).Children(func() {
 				for _, card := range data {
 					cards.Render(f, env, card)
 				}

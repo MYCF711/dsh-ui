@@ -6,7 +6,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -90,7 +89,7 @@ func (p *Plugin) turnOffset(env *pluginapi.Env, scrollID gfx.ID, group loadedTur
 	return target, true
 }
 
-func (p *Plugin) drawTurnNavigation(f *flex.Frame, env *pluginapi.Env, scrollID gfx.ID, turns []loadedTurn) {
+func (p *Plugin) drawTurnNavigation(f ui.C, env *pluginapi.Env, scrollID gfx.ID, turns []loadedTurn) {
 	if len(turns) == 0 {
 		return
 	}
@@ -111,20 +110,20 @@ func (p *Plugin) drawTurnNavigation(f *flex.Frame, env *pluginapi.Env, scrollID 
 			}
 		}
 	}
-	f.Row().WidthPercent(100).Gap(8).Items(ui.Center).PadY(2).Children(func() {
-		f.Text("已加载 " + strconv.Itoa(len(turns)) + " 个 Turn").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+	ui.Row(f).WidthPercent(100).Gap(8).Items(ui.Center).PadY(2).Children(func() {
+		ui.Text(f, "已加载 "+strconv.Itoa(len(turns))+" 个 Turn").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		if current > 0 {
 			target := turns[current-1]
-			if f.Button(env.Tree.ID(env.Feat, "turn-prev-"+target.key), "← "+target.label).Ghost().Small().Clicked() {
+			if ui.Button(f, "← "+target.label).Ghost().Small().Clicked() {
 				if offset, ok := p.turnOffset(env, scrollID, target); ok {
 					env.Scroll(scrollID).ScrollTo(offset)
 				}
 			}
 		}
-		f.Text(turns[current].label).FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
+		ui.Text(f, turns[current].label).FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
 		if current+1 < len(turns) {
 			target := turns[current+1]
-			if f.Button(env.Tree.ID(env.Feat, "turn-next-"+target.key), target.label+" →").Ghost().Small().Clicked() {
+			if ui.Button(f, target.label+" →").Ghost().Small().Clicked() {
 				if offset, ok := p.turnOffset(env, scrollID, target); ok {
 					env.Scroll(scrollID).ScrollTo(offset)
 				}
@@ -133,10 +132,10 @@ func (p *Plugin) drawTurnNavigation(f *flex.Frame, env *pluginapi.Env, scrollID 
 	})
 }
 
-func (p *Plugin) drawTurnHeader(f *flex.Frame, env *pluginapi.Env, group loadedTurn) {
+func (p *Plugin) drawTurnHeader(f ui.C, env *pluginapi.Env, group loadedTurn) {
 	t := p.theme
-	box := f.Row().WidthPercent(100).MinHeight(26).Gap(8).Items(ui.Center).PadX(4).Children(func() {
-		f.Text(group.label).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
+	box := ui.Row(f).WidthPercent(100).MinHeight(26).Gap(8).Items(ui.Center).PadX(4).Children(func() {
+		ui.Text(f, group.label).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
 	})
 	p.turnBoxes[group.key] = box
 }
@@ -225,7 +224,7 @@ func formatTurnDuration(milliseconds int64) string {
 	return strconv.FormatInt(minutes, 10) + "m" + strconv.FormatInt(seconds, 10) + "s"
 }
 
-func (p *Plugin) drawTurnFooter(f *flex.Frame, env *pluginapi.Env, group loadedTurn) {
+func (p *Plugin) drawTurnFooter(f ui.C, env *pluginapi.Env, group loadedTurn) {
 	data := env.Data
 	input, output, total, records := turnUsage(group, data)
 	start, end := turnTimes(group, data)
@@ -260,7 +259,7 @@ func (p *Plugin) drawTurnFooter(f *flex.Frame, env *pluginapi.Env, group loadedT
 	if status == "失败" {
 		color = t.Error
 	}
-	f.Row().WidthPercent(100).PadX(4).MinHeight(22).Items(ui.Center).Children(func() {
-		f.Text(strings.Join(parts, " · ")).FontSize(t.Fonts.Tiny).Color(color)
+	ui.Row(f).WidthPercent(100).PadX(4).MinHeight(22).Items(ui.Center).Children(func() {
+		ui.Text(f, strings.Join(parts, " · ")).FontSize(t.Fonts.Tiny).Color(color)
 	})
 }

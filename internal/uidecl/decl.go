@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -486,7 +485,7 @@ func (p *declPlugin) Panels() []pluginapi.Painter {
 }
 
 // draw 按 kind 画。这里是整条通道唯一碰 flex 的地方。
-func (p *declPlugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *declPlugin) draw(f ui.C, env *pluginapi.Env) {
 	d := p.decl
 	t := p.theme
 	if env != nil && t == nil {
@@ -509,55 +508,55 @@ func (p *declPlugin) draw(f *flex.Frame, env *pluginapi.Env) {
 
 // drawLabel 一行文字。空内容（比如 {cur_title} 恰好没值）就整块不画，
 // 不占高度——否则槽位里会多一条空白，看着像界面坏了。
-func (p *declPlugin) drawLabel(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme) {
+func (p *declPlugin) drawLabel(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 	d := p.decl
 	text := Expand(d.Text, env.Data)
 	if text == "" {
 		return
 	}
-	f.Row().FillWidth().Height(d.height()).Items(ui.Center).Children(func() {
-		f.Text(text).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
+	ui.Row(f).FillWidth().Height(d.height()).Items(ui.Center).Children(func() {
+		ui.Text(f, text).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
 	})
 }
 
 // drawKeyValue 左标签 + 右值。
-func (p *declPlugin) drawKeyValue(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme) {
+func (p *declPlugin) drawKeyValue(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 	d := p.decl
 	label := Expand(d.Label, env.Data)
 	value := Expand(d.Text, env.Data)
 	if label == "" && value == "" {
 		return
 	}
-	f.Row().FillWidth().Height(d.height()).Items(ui.Center).Gap(8).Children(func() {
+	ui.Row(f).FillWidth().Height(d.height()).Items(ui.Center).Gap(8).Children(func() {
 		if label != "" {
 			// Shrink(0)：标签不许被压缩，空间不够时被省略的永远是右值。
-			f.Text(label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis().Shrink(0)
-			f.Spacer()
+			ui.Text(f, label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis().Shrink(0)
+			ui.Spacer(f)
 		}
-		f.Text(value).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
+		ui.Text(f, value).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
 	})
 }
 
 // drawDot 状态点 + 一行文字。圆点用 color（默认 success），文字固定次要色——
 // 让「状态点变色」和「文字变色」是两件事，别混。
-func (p *declPlugin) drawDot(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme) {
+func (p *declPlugin) drawDot(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 	d := p.decl
 	text := Expand(d.Text, env.Data)
 	if text == "" {
 		return
 	}
-	f.Row().FillWidth().Height(d.height()).Items(ui.Center).Gap(6).Children(func() {
+	ui.Row(f).FillWidth().Height(d.height()).Items(ui.Center).Gap(6).Children(func() {
 		if p.prims != nil {
 			p.prims.Dot(f, d.color(t), 6)
 		}
-		f.Text(text).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis()
+		ui.Text(f, text).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis()
 	})
 }
 
 // drawList 多行文字。空行整行跳过（不占高度），免得变量恰好没值时留下空洞。
-func (p *declPlugin) drawList(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme) {
+func (p *declPlugin) drawList(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 	d := p.decl
-	col := f.Column().FillWidth().Gap(listLineSpacing)
+	col := ui.Column(f).FillWidth().Gap(listLineSpacing)
 	if h := d.height(); h > 0 {
 		col = col.Height(h)
 	}
@@ -567,8 +566,8 @@ func (p *declPlugin) drawList(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Th
 			if s == "" {
 				continue
 			}
-			f.Row().FillWidth().Height(listLineHeight).Items(ui.Center).Children(func() {
-				f.Text(s).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
+			ui.Row(f).FillWidth().Height(listLineHeight).Items(ui.Center).Children(func() {
+				ui.Text(f, s).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
 			})
 		}
 	})

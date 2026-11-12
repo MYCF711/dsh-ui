@@ -40,8 +40,8 @@ package dsconversation
 import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/ui"
 )
 
 // transcriptScrollSelf / transcriptScrollHost 是两个滚动口的交互 id 前缀。
@@ -62,7 +62,7 @@ const (
 //	true  → 外层已经有宿主滚动口（官方骨架的 `ConversationRoot.scrollBody`），
 //	        自滚动口降级 `overflow-y:visible`（官方 ChatView.module.css:57-64）
 //	false → 自滚动口自己滚（旧三栏 / 兼容桥里的 `main.body`）
-func (p *Plugin) drawProductTranscript(f *flex.Frame, env *pluginapi.Env, hostScroll bool) bool {
+func (p *Plugin) drawProductTranscript(f ui.C, env *pluginapi.Env, hostScroll bool) bool {
 	if f == nil || env == nil {
 		return false
 	}
@@ -97,14 +97,14 @@ func (p *Plugin) drawProductTranscript(f *flex.Frame, env *pluginapi.Env, hostSc
 //
 // 这一帧外层已经有宿主滚动口（骨架的 `.scrollBody[data-conversation-scroll]`），
 // 所以自滚动口降级——两层都滚会让滚动位置打架。
-func (p *Plugin) drawOfficialTranscriptSeat(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawOfficialTranscriptSeat(f ui.C, env *pluginapi.Env) {
 	p.drawProductTranscript(f, env, true)
 }
 
 // drawLegacyTranscriptSeat 是旧三栏 / 兼容桥的 `main.body` 座位。
 //
 // 没有宿主滚动口，自滚动口自己滚（官方"独立挂载 Chat"的情形）。
-func (p *Plugin) drawLegacyTranscriptSeat(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawLegacyTranscriptSeat(f ui.C, env *pluginapi.Env) {
 	p.drawProductTranscript(f, env, false)
 }
 
@@ -196,7 +196,7 @@ func (p *Plugin) transcriptRowKinds() []ChatNodeKind {
 
 // 编译期断言：两个座位都是 `pluginapi.Painter.Draw` 的形状。
 var (
-	_ func(*flex.Frame, *pluginapi.Env) = (*Plugin)(nil).drawOfficialTranscriptSeat
-	_ func(*flex.Frame, *pluginapi.Env) = (*Plugin)(nil).drawLegacyTranscriptSeat
-	_                                   = gfx.ID{}
+	_ func(ui.C, *pluginapi.Env) = (*Plugin)(nil).drawOfficialTranscriptSeat
+	_ func(ui.C, *pluginapi.Env) = (*Plugin)(nil).drawLegacyTranscriptSeat
+	_                            = gfx.ID{}
 )

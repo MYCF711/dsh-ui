@@ -21,7 +21,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -102,7 +101,7 @@ func renderSlot(t *testing.T, p *Plugin, slot pluginapi.Slot) *gfx.Canvas {
 }
 
 // renderWith 用给定的 Draw 画一帧。
-func renderWith(t *testing.T, p *Plugin, draw func(f *flex.Frame, env *pluginapi.Env)) *gfx.Canvas {
+func renderWith(t *testing.T, p *Plugin, draw func(f ui.C, env *pluginapi.Env)) *gfx.Canvas {
 	t.Helper()
 	theme := dscore.Dark()
 	tree := &gfx.Tree{}
@@ -116,8 +115,8 @@ func renderWith(t *testing.T, p *Plugin, draw func(f *flex.Frame, env *pluginapi
 		Theme: theme, Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: ui.Rect{Width: 1180, Height: 800}, MainWidth: 900,
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		draw(f, env)
 	})
 	return canvas

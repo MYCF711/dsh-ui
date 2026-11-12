@@ -9,7 +9,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -53,73 +52,73 @@ func formatMessageClock(value int64) string {
 	return at.Local().Format("15:04")
 }
 
-func (p *Plugin) drawMessageMeta(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, key string) {
+func (p *Plugin) drawMessageMeta(f ui.C, env *pluginapi.Env, msg apiclient.Message, key string) {
 	meta := env.Data.MessageMeta[key]
 	clock := formatMessageClock(meta.Time)
 	if clock == "" && !meta.Stopped {
 		return
 	}
 	t := p.theme
-	f.Row().WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
+	ui.Row(f).WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
 		if clock != "" {
-			f.Text(clock).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			ui.Text(f, clock).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		}
 		// TurnID 由真实 Turn shell 统一显示，不在每条消息下重复一遍。
 		if meta.Stopped {
-			f.Text("已停止").FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
+			ui.Text(f, "已停止").FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
 		}
 	})
 }
 
-func (p *Plugin) drawTurnEvents(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawTurnEvents(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	for _, event := range env.Data.TurnEvents {
 		event := event
 		switch event.Kind {
 		case "error":
-			f.Column().WidthPercent(100).Pad(8).Gap(4).Radius(t.Radii.SM).Background(t.BgLayer1).Children(func() {
-				f.Row().Gap(8).Items(ui.Center).Children(func() {
+			ui.Column(f).WidthPercent(100).Pad(8).Gap(4).Radius(t.Radii.SM).Background(t.BgLayer1).Children(func() {
+				ui.Row(f).Gap(8).Items(ui.Center).Children(func() {
 					// 标题是**给人看的**，不是协议词。旁边那个"已停止"卡一直是这么写的，
 					// 只有这张卡漏了，把 `turn/error` 直接端到用户面前——他看不懂，
 					// 而且这四个字看起来像界面坏了。协议词要留就留在日志里。
-					f.Text("这一轮失败了").FontSize(t.Fonts.Caption).Color(t.Error)
+					ui.Text(f, "这一轮失败了").FontSize(t.Fonts.Caption).Color(t.Error)
 					if event.TurnID != "" {
-						f.Text(event.TurnID).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+						ui.Text(f, event.TurnID).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 					}
 					if clock := formatMessageClock(event.Time); clock != "" {
-						f.Text(clock).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+						ui.Text(f, clock).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 					}
 				})
 				if event.Error != "" {
-					f.Wrap(event.Error).FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
+					ui.Wrap(f, event.Error).FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
 				}
 				if env.Act.Retry != nil {
-					if f.Button(env.Tree.ID(env.Feat, "turn-retry-"+event.Key), "重试").Ghost().Small().Clicked() {
+					if ui.Button(f, "重试").Ghost().Small().Clicked() {
 						env.Act.Retry()
 					}
 				}
 			})
 		case "stopped":
-			f.Row().WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
-				f.Text("已停止").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Row(f).WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
+				ui.Text(f, "已停止").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 				if event.TurnID != "" {
-					f.Text(event.TurnID).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+					ui.Text(f, event.TurnID).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 				}
 				if clock := formatMessageClock(event.Time); clock != "" {
-					f.Text(clock).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+					ui.Text(f, clock).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 				}
 			})
 		}
 	}
 }
 
-func (p *Plugin) drawOutgoing(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawOutgoing(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	for _, outgoing := range env.Data.Outgoing {
 		outgoing := outgoing
-		f.Column().WidthPercent(100).Pad(8).Gap(4).Radius(t.Radii.MD).Background(t.BgLayer1).Children(func() {
-			f.Wrap(outgoing.Text).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
-			f.Row().Gap(8).Items(ui.Center).Children(func() {
+		ui.Column(f).WidthPercent(100).Pad(8).Gap(4).Radius(t.Radii.MD).Background(t.BgLayer1).Children(func() {
+			ui.Wrap(f, outgoing.Text).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
+			ui.Row(f).Gap(8).Items(ui.Center).Children(func() {
 				label := "发送中"
 				color := t.LabelCaption
 				switch outgoing.State {
@@ -128,18 +127,18 @@ func (p *Plugin) drawOutgoing(f *flex.Frame, env *pluginapi.Env) {
 				case pubapi.OutgoingFailed:
 					label, color = "发送失败", t.Error
 				}
-				f.Text(label).FontSize(t.Fonts.Caption).Color(color)
+				ui.Text(f, label).FontSize(t.Fonts.Caption).Color(color)
 				if outgoing.TurnID != "" {
-					f.Text(outgoing.TurnID).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+					ui.Text(f, outgoing.TurnID).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 				}
 				if outgoing.State == pubapi.OutgoingFailed && env.Act.RetrySend != nil {
-					if f.Button(env.Tree.ID(env.Feat, "retry-send-"+outgoing.Key), "重试发送").Ghost().Small().Clicked() {
+					if ui.Button(f, "重试发送").Ghost().Small().Clicked() {
 						env.Act.RetrySend(outgoing.Key)
 					}
 				}
 			})
 			if outgoing.Error != "" && outgoing.State == pubapi.OutgoingFailed {
-				f.Wrap(outgoing.Error).FontSize(t.Fonts.Caption).Color(t.Error)
+				ui.Wrap(f, outgoing.Error).FontSize(t.Fonts.Caption).Color(t.Error)
 			}
 		})
 	}

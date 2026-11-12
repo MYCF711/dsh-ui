@@ -24,7 +24,6 @@ package dsagentteam
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -41,7 +40,7 @@ const (
 )
 
 // drawToggle 画开关行。slot ② 的 painter。
-func (p *Plugin) drawToggle(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawToggle(f ui.C, env *pluginapi.Env) {
 	view := p.team.View()
 	// 子会话（按地址或按 origin）**不渲染**开关：Team 模式只能从根会话改。
 	if view.SubagentChild || view.ListedAsSubagent {
@@ -54,26 +53,28 @@ func (p *Plugin) drawToggle(f *flex.Frame, env *pluginapi.Env) {
 	t := p.themeFor(env)
 	pending := p.team.Pending()
 
-	f.Row().FillWidth().Items(ui.Center).Justify(ui.Between).Gap(toggleGap).
+	ui.Row(f).FillWidth().Items(ui.Center).Justify(ui.Between).Gap(toggleGap).
 		MinHeight(toggleMinHeight).PadSides(0, togglePadH, 0, togglePadH).
 		Radius(t.Radii.MD).Children(func() {
 		// .label：文案 + 信息按钮（信息按钮有自己的命中区，挡在 Switch 的整行命中面上）。
-		f.Row().Items(ui.Center).Gap(labelGap).Children(func() {
-			f.Text(zhModeLabel).FontSize(toggleFontSize).LineHeight(toggleLine).
+		ui.Row(f).Items(ui.Center).Gap(labelGap).Children(func() {
+			ui.Text(f, zhModeLabel).FontSize(toggleFontSize).LineHeight(toggleLine).
 				Color(t.LabelPrimary)
 			infoID := env.Tree.ID(env.Feat, "team-mode-info")
-			btn := f.Row().Size(infoButtonSize, infoButtonSize).Center().Radius(4).
+			btn := ui.Row(f).Size(infoButtonSize, infoButtonSize).Center().Radius(4).
 				Hit(infoID, zhModeInfoLabel)
 			if btn.Clicked() {
 				// Tooltip(openOnClick)：点一下展开官方整段说明。
 				p.team.ToggleInfo()
 			}
 			btn.Children(func() {
-				f.Icon(infoIcon()).Size(infoIconSize, infoIconSize).Color(t.LabelCaption)
+				ui.Icon(f, infoIcon()).Size(infoIconSize, infoIconSize).Color(t.LabelCaption)
 			})
 		})
 		// Switch：checked 是宿主值（非乐观），pending/locked/投影缺失时禁用。
-		sw := f.Switch(env.Tree.ID(env.Feat, "team-mode-toggle"), view.Projection.Enabled).
+		// v0.6.0 的 Switch 绑定 *bool（点击写回），所以先每帧重置成宿主值。
+		p.toggleValue = view.Projection.Enabled
+		sw := ui.Switch(f, &p.toggleValue, "").Label(zhModeLabel).
 			Disabled(view.Locked || pending || !view.ModelSelectionKnown)
 		if sw.Clicked() {
 			p.team.Select(!view.Projection.Enabled)
@@ -83,13 +84,13 @@ func (p *Plugin) drawToggle(f *flex.Frame, env *pluginapi.Env) {
 	if p.team.InfoOpen() {
 		// Tooltip(side=top, delayMs=300, maxWidth=300, openOnClick)：
 		// 本仓没有 portal tooltip，就地画在开关下方（宽度上限 300，可换行）。
-		f.Text(zhModeDescription).FillWidth().MaxWidth(infoTooltipMax).
+		ui.Text(f, zhModeDescription).FillWidth().MaxWidth(infoTooltipMax).
 			FontSize(toggleFontSize).LineHeight(toggleLine).Color(t.LabelSecondary)
 	}
 	if failure := p.team.Failure(); failure != "" {
 		// 官方把 mode.failed 交给 reportFailure（壳的状态栏/提示）。
 		// 本仓没有那个通道，就地画一行错误——比"点了没反应"诚实。
-		f.Text(failure).FillWidth().FontSize(t.Fonts.Caption).Color(t.Error)
+		ui.Text(f, failure).FillWidth().FontSize(t.Fonts.Caption).Color(t.Error)
 	}
 }
 

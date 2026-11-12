@@ -18,14 +18,13 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // drawSeat 模拟官方骨架 dispatch 一个槽（含 Children 转发），语义与
 // `uikernel.Kernel.drawSlot` 一致（本测试只需要"座位被派发"这件事）。
-func drawSeat(f *flex.Frame, k *uikernel.Kernel, env *pluginapi.Env, slot pluginapi.Slot) {
+func drawSeat(f ui.C, k *uikernel.Kernel, env *pluginapi.Env, slot pluginapi.Slot) {
 	for _, painter := range k.Painters(slot) {
 		if painter.Draw != nil {
 			painter.Draw(f, env)
@@ -62,8 +61,8 @@ func officialFrame(t *testing.T, tierOfficial bool, goal func() string) *gfx.Can
 		Geometry: pluginapi.Geometry{Width: 1182, Height: 832, MainWidth: 902},
 		Has:      kernel.Has,
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		drawSeat(f, kernel, env, uikernel.OffConvComposer)
 	})
 	return canvas
@@ -113,8 +112,8 @@ func TestGoalLegacySeatStaysSilentOnOfficialTier(t *testing.T) {
 		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 		Geometry: pluginapi.Geometry{MainWidth: 902}, Has: kernel.Has,
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		drawSeat(f, kernel, env, pluginapi.SlotMainComposer)
 	})
 	if rects := canvas.Rectangles(); len(rects) != 0 {

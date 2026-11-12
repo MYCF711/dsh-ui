@@ -12,7 +12,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dstool"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -61,7 +60,7 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 	feat := tree.Feature("tool-card")
 	data := toolCardData()
 
-	var view flex.View
+	var view ui.Page
 	config := app.Config{
 		Title: "tool-card", Width: 900, Height: 700, Tree: tree,
 		WindowMode: app.WindowFrameless,
@@ -73,7 +72,7 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 			Bounds: bounds, MainWidth: size.Width,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)

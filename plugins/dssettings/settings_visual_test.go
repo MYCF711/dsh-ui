@@ -29,7 +29,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -119,7 +118,7 @@ func openSettingsHarness(t *testing.T, width, height int) *settingsHarness {
 
 	h.tree = &gfx.Tree{}
 	h.feat = h.tree.Feature("settings-visual")
-	var view flex.View
+	var view ui.Page
 	config := app.Config{
 		Title: "settings-visual", Width: width, Height: height, Tree: h.tree,
 		WindowMode: app.WindowFrameless,
@@ -139,7 +138,7 @@ func openSettingsHarness(t *testing.T, width, height int) *settingsHarness {
 			Has:    h.kernel.Has,
 		}
 		canvas.Fill(bounds, h.theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(h.theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(h.theme), bounds, func(f ui.C) {
 			h.kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

@@ -20,7 +20,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -46,7 +45,7 @@ func (p *slotProbe) Panels() []pluginapi.Painter {
 		slot := slot
 		p.panels = append(p.panels, pluginapi.Painter{
 			ID: p.id + "-" + string(slot), Slot: slot,
-			Draw: func(*flex.Frame, *pluginapi.Env) { *p.drawn = append(*p.drawn, slot) },
+			Draw: func(ui.C, *pluginapi.Env) { *p.drawn = append(*p.drawn, slot) },
 		})
 	}
 	return p.panels
@@ -216,8 +215,8 @@ func TestOfficialShellWiringDispatchesOfficialSlots(t *testing.T) {
 		Bounds: ui.Rect{Width: 1182, Height: 832},
 		Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		drawOfficialFirstScreen(f, m, env, opts)
 	})
 
@@ -247,8 +246,8 @@ func TestOfficialShellWiringDispatchesOfficialSlots(t *testing.T) {
 		Bounds: ui.Rect{Width: 1182, Height: 832},
 		Has:    func(slot pluginapi.Slot) bool { return clean.Has(slot) },
 	}
-	var view2 flex.View
-	view2.Draw(canvas, dscore.VivaTheme(theme), env2.Bounds, func(f *flex.Frame) {
+	var view2 ui.Page
+	view2.Draw(canvas, dscore.VivaTheme(theme), env2.Bounds, func(f ui.C) {
 		drawOfficialFirstScreen(f, m2, env2, opts2)
 	})
 	for _, slot := range *cleanDrawn {
@@ -299,8 +298,8 @@ func TestDrawnOfficialSlotsAreRegistered(t *testing.T) {
 		Bounds: ui.Rect{Width: 1920, Height: 1032},
 		Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		drawOfficialFirstScreen(f, m, env, opts)
 	})
 	got := map[pluginapi.Slot]bool{}
@@ -382,8 +381,8 @@ func TestOfficialTierReallyDispatchesComposerSeat(t *testing.T) {
 			Bounds: ui.Rect{Width: 1182, Height: 832},
 			Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 		}
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+		var view ui.Page
+		view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 			drawOfficialFirstScreen(f, m, env, opts)
 		})
 		out := map[pluginapi.Slot]int{}

@@ -42,7 +42,6 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -124,7 +123,7 @@ type CommandNodeOptions struct {
 //	Children ← DrawCommandNodeSlots：认领节点的 `.callRow` + 子槽 dispatch
 //
 // 返回画出来的兜底卡数量。
-func DrawCommandNodeCards(f *flex.Frame, env *pluginapi.Env, opts CommandNodeOptions) int {
+func DrawCommandNodeCards(f ui.C, env *pluginapi.Env, opts CommandNodeOptions) int {
 	drawn, _ := drawCommandNodes(f, env, opts, false)
 	return drawn
 }
@@ -133,7 +132,7 @@ func DrawCommandNodeCards(f *flex.Frame, env *pluginapi.Env, opts CommandNodeOpt
 // 再把 keyed 子槽 dispatch 出去（官方 `CommandNodeView.tsx:18`）。
 //
 // 返回 dispatch 出去的节点数量。
-func DrawCommandNodeSlots(f *flex.Frame, env *pluginapi.Env, opts CommandNodeOptions) int {
+func DrawCommandNodeSlots(f ui.C, env *pluginapi.Env, opts CommandNodeOptions) int {
 	drawn, _ := drawCommandNodes(f, env, opts, true)
 	return drawn
 }
@@ -142,7 +141,7 @@ func DrawCommandNodeSlots(f *flex.Frame, env *pluginapi.Env, opts CommandNodeOpt
 //
 // 生产路径上 `Painter.Draw` 用 `DrawCommandNodeCards`、`Painter.Children` 用
 // `DrawCommandNodeSlots`；本函数只是把两者按同一判据跑一遍，方便单点断言。
-func DrawCommandNodes(f *flex.Frame, env *pluginapi.Env, opts CommandNodeOptions) int {
+func DrawCommandNodes(f ui.C, env *pluginapi.Env, opts CommandNodeOptions) int {
 	if f == nil || len(opts.Nodes) == 0 {
 		return 0
 	}
@@ -152,7 +151,7 @@ func DrawCommandNodes(f *flex.Frame, env *pluginapi.Env, opts CommandNodeOptions
 }
 
 // drawCommandNodes 是共用实现；claimed 决定这一次只画认领的还是只画兜底的。
-func drawCommandNodes(f *flex.Frame, env *pluginapi.Env, opts CommandNodeOptions, claimed bool) (int, int) {
+func drawCommandNodes(f ui.C, env *pluginapi.Env, opts CommandNodeOptions, claimed bool) (int, int) {
 	if f == nil || len(opts.Nodes) == 0 {
 		return 0, 0
 	}
@@ -179,7 +178,7 @@ func drawCommandNodes(f *flex.Frame, env *pluginapi.Env, opts CommandNodeOptions
 			continue
 		}
 		// `.callRow`：只有圆角 sm，自己不占额外内边距/边框。
-		f.Column().FillWidth().Radius(t.Radii.SM).Children(func() {
+		ui.Column(f).FillWidth().Radius(t.Radii.SM).Children(func() {
 			if hasClaim {
 				if opts.Dispatch != nil {
 					// keyed 子槽：认领方（ds-agent-team 的 TeamCommandRow）画整行。
@@ -205,7 +204,7 @@ func drawCommandNodes(f *flex.Frame, env *pluginapi.Env, opts CommandNodeOptions
 //
 // title = `node.name ?? t('command.title')`（这里是裸命令名，见官方注释）。
 // 可展开条件：`text` 存在且含换行（body !== null）。
-func drawGenericCommandCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, node CommandNode, width float32, toggle func(string)) {
+func drawGenericCommandCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, node CommandNode, width float32, toggle func(string)) {
 	state := commandState(node.Outcome)
 	title := node.Command
 	if title == "" {
@@ -239,7 +238,7 @@ func drawGenericCommandCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Them
 	if state == "error" {
 		summaryColor = t.Error
 	}
-	row := f.Row().FillWidth().Items(ui.Center).Gap(CommandNodeRowGap)
+	row := ui.Row(f).FillWidth().Items(ui.Center).Gap(CommandNodeRowGap)
 	if expandable && toggle != nil {
 		// 可展开行才是命中区（官方 DisclosureRow 的同款语义）。
 		id := commandRowID(env, node.Command)
@@ -252,17 +251,17 @@ func drawGenericCommandCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Them
 	}
 	row.Children(func() {
 		// leading 图标 14×14：官方是 IconApiOutlineRegular；本仓统一用命令图标。
-		f.Row().Width(CommandNodeIconSize).Height(CommandNodeIconSize).
+		ui.Row(f).Width(CommandNodeIconSize).Height(CommandNodeIconSize).
 			Items(ui.Center).Justify(ui.Center).Children(func() {
-			f.Icon(commandNodeIcon()).Size(CommandNodeIconSize, CommandNodeIconSize).
+			ui.Icon(f, commandNodeIcon()).Size(CommandNodeIconSize, CommandNodeIconSize).
 				Color(t.LabelTertiary)
 		})
-		f.Text(title).FontSize(ModelMenuCellFont).LineHeight(ModelMenuCellLine).Color(t.LabelPrimary)
+		ui.Text(f, title).FontSize(ModelMenuCellFont).LineHeight(ModelMenuCellLine).Color(t.LabelPrimary)
 		// separator 2×2 + 两侧 8px
-		f.Row().Width(CommandNodeSeparatorSize).Height(CommandNodeSeparatorSize).
+		ui.Row(f).Width(CommandNodeSeparatorSize).Height(CommandNodeSeparatorSize).
 			Radius(CommandNodeSeparatorSize/2).Background(t.LabelCaption).
 			MarginSides(0, CommandNodeSeparatorGap, 0, CommandNodeSeparatorGap)
-		f.Text(summaryLabel).FontSize(CommandNodeSummaryFont).LineHeight(CommandNodeSummaryLine).
+		ui.Text(f, summaryLabel).FontSize(CommandNodeSummaryFont).LineHeight(CommandNodeSummaryLine).
 			Color(summaryColor).Grow(1).Ellipsis()
 	})
 	if !open {
@@ -270,12 +269,12 @@ func drawGenericCommandCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Them
 	}
 	// 官方 `.body` <pre>：max-height 260 / margin 4px 0 4px 4px / padding 12·16 /
 	// radius lg / .5px border-l1 / 代码块底 / pre-wrap。
-	f.Column().FillWidth().MaxWidth(width).Background(t.CodeBlock).Radius(t.Radii.LG).
+	ui.Column(f).FillWidth().MaxWidth(width).Background(t.CodeBlock).Radius(t.Radii.LG).
 		Border(0.5, t.BorderL1).MaxHeight(CommandNodeBodyMaxHeight).
 		PadSides(CommandNodeBodyPadV, CommandNodeBodyPadH, CommandNodeBodyPadV, CommandNodeBodyPadH).
 		MarginSides(CommandNodeBodyMargin, CommandNodeBodyMargin, CommandNodeBodyMargin, CommandNodeBodyMargin).
 		Children(func() {
-			f.Text(text).FontSize(t.Fonts.Code).LineHeight(t.Fonts.CodeLine).
+			ui.Text(f, text).FontSize(t.Fonts.Code).LineHeight(t.Fonts.CodeLine).
 				Color(t.LabelPrimary).Mono()
 		})
 }

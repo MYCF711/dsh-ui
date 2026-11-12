@@ -5,7 +5,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -51,8 +50,8 @@ func (d *deleteProbe) draw(t *testing.T, click string) {
 		defer canvas.EndEventPass()
 	}
 	row := sess("s1", "一个会话", `D:\work`, "2026-11-03T20:00:00+08:00")
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(d.plugin.theme), ui.Rect{Width: 268, Height: 40}, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(d.plugin.theme), ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
 		d.plugin.drawSession(f, d.env, row)
 	})
 }

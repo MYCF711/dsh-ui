@@ -7,7 +7,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -49,7 +48,7 @@ func (p *Plugin) selectionState(session string) (turnKey, stepKey string) {
 
 // drawTrajectoryWorkspace 在既有 A-TRAJ 分组之上增加当前窗口搜索、选择、Inspect
 // 和可见行虚拟化。它只读 Snapshot；没有 loadOlder、完整工具树或耗时伪投影。
-func (p *Plugin) drawTrajectoryWorkspace(f *flex.Frame, env *pluginapi.Env, data pluginapi.Snapshot, scrollKey string, groups []turnGroup, total int) {
+func (p *Plugin) drawTrajectoryWorkspace(f ui.C, env *pluginapi.Env, data pluginapi.Snapshot, scrollKey string, groups []turnGroup, total int) {
 	p.initWPD1()
 	t := p.theme
 	field := p.trajectoryField(scrollKey)
@@ -57,20 +56,20 @@ func (p *Plugin) drawTrajectoryWorkspace(f *flex.Frame, env *pluginapi.Env, data
 	query := strings.TrimSpace(rawQuery)
 	filtered, matches := filterTrajectoryGroups(data, groups, query)
 
-	f.Row().WidthPercent(100).MinHeight(30).Gap(6).Items(ui.Center).Children(func() {
-		f.Field(field, env.Tree.ID(env.Feat, "trajectory-search-"+scrollKey+data.Cur), "搜索当前窗口", "Turn / Step / 工具 / 参数 / 结果 / 错误").
+	ui.Row(f).WidthPercent(100).MinHeight(30).Gap(6).Items(ui.Center).Children(func() {
+		ui.TextFieldID(f, env.Tree.ID(env.Feat, "trajectory-search-"+scrollKey+data.Cur), field, "搜索当前窗口", "Turn / Step / 工具 / 参数 / 结果 / 错误").
 			Grow(1).FontSize(t.Fonts.Caption)
 		if query != "" {
-			f.Text(itoa(matches) + " / " + itoa(total) + " Step").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			ui.Text(f, itoa(matches)+" / "+itoa(total)+" Step").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		}
 		if rawQuery != "" {
-			if f.Button(env.Tree.ID(env.Feat, "trajectory-search-clear-"+scrollKey+data.Cur), "清除轨迹搜索").Ghost().Small().Clicked() {
+			if ui.Button(f, "清除轨迹搜索").Ghost().Small().Clicked() {
 				field.SetText("")
 			}
 		}
 	})
-	f.Row().WidthPercent(100).MinHeight(18).Items(ui.Center).Children(func() {
-		f.Text("仅当前已加载窗口").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+	ui.Row(f).WidthPercent(100).MinHeight(18).Items(ui.Center).Children(func() {
+		ui.Text(f, "仅当前已加载窗口").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 	})
 
 	if total == 0 {
@@ -78,15 +77,15 @@ func (p *Plugin) drawTrajectoryWorkspace(f *flex.Frame, env *pluginapi.Env, data
 		if data.Cur == "" {
 			msg = "先选一个会话"
 		}
-		f.Column().WidthPercent(100).Grow(1).Justify(ui.Center).Items(ui.Center).PadX(12).Children(func() {
-			f.Text(msg).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
+		ui.Column(f).WidthPercent(100).Grow(1).Justify(ui.Center).Items(ui.Center).PadX(12).Children(func() {
+			ui.Text(f, msg).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
 				Color(t.LabelTertiary).TextCenter()
 		})
 		return
 	}
 	if query != "" && matches == 0 {
-		f.Column().WidthPercent(100).Grow(1).Justify(ui.Center).Items(ui.Center).PadX(12).Children(func() {
-			f.Text("没有匹配「" + query + "」的 Step").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
+		ui.Column(f).WidthPercent(100).Grow(1).Justify(ui.Center).Items(ui.Center).PadX(12).Children(func() {
+			ui.Text(f, "没有匹配「"+query+"」的 Step").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
 				Color(t.LabelTertiary).TextCenter()
 		})
 		return
@@ -119,13 +118,13 @@ func (p *Plugin) drawTrajectoryWorkspace(f *flex.Frame, env *pluginapi.Env, data
 	}
 	const overscan = 84.0 // 两条收起 Step；不把整批 80/1000 条都建为文本节点。
 
-	f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip().Children(func() {
-		f.Column().WidthPercent(100).Gap(2).Children(func() {
+	ui.Scroll(f).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip().Children(func() {
+		ui.Column(f).WidthPercent(100).Gap(2).Children(func() {
 			top := float32(0)
 			for i := range rows {
 				row := &rows[i]
 				if top+row.height < offset-overscan || top > offset+viewport+overscan {
-					f.Slot().Height(row.height)
+					ui.Slot(f).Height(row.height)
 				} else {
 					p.drawTrajectoryRow(f, env, data, scrollKey, query, *row)
 				}
@@ -325,7 +324,7 @@ func (p *Plugin) buildTrajectoryRows(data pluginapi.Snapshot, groups []turnGroup
 	return rows
 }
 
-func (p *Plugin) drawTrajectoryRow(f *flex.Frame, env *pluginapi.Env, data pluginapi.Snapshot, scope, query string, row trajectoryRow) {
+func (p *Plugin) drawTrajectoryRow(f ui.C, env *pluginapi.Env, data pluginapi.Snapshot, scope, query string, row trajectoryRow) {
 	t := p.theme
 	switch row.kind {
 	case trajectoryGlobalSkip:
@@ -333,9 +332,9 @@ func (p *Plugin) drawTrajectoryRow(f *flex.Frame, env *pluginapi.Env, data plugi
 		if query != "" {
 			text = "… 更早的 " + itoa(row.hidden) + " 个匹配 Step 未显示"
 		}
-		f.Text(text).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
+		ui.Text(f, text).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
 	case trajectoryGroupSkip:
-		f.Text("… 前 " + itoa(row.hidden) + " 次未显示").FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
+		ui.Text(f, "… 前 "+itoa(row.hidden)+" 次未显示").FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
 	case trajectoryTurnRow:
 		p.drawTrajectoryTurnRow(f, env, data, scope, row.group, row.groupLast, query)
 	case trajectoryStepRow:
@@ -345,7 +344,7 @@ func (p *Plugin) drawTrajectoryRow(f *flex.Frame, env *pluginapi.Env, data plugi
 	}
 }
 
-func (p *Plugin) drawTrajectoryTurnRow(f *flex.Frame, env *pluginapi.Env, data pluginapi.Snapshot, scope string, g turnGroup, last bool, query string) {
+func (p *Plugin) drawTrajectoryTurnRow(f ui.C, env *pluginapi.Env, data pluginapi.Snapshot, scope string, g turnGroup, last bool, query string) {
 	t := p.theme
 	open := p.groupOpen(data.Cur, g.key, last)
 	total := g.totalCalls
@@ -357,7 +356,7 @@ func (p *Plugin) drawTrajectoryTurnRow(f *flex.Frame, env *pluginapi.Env, data p
 		title = "第 " + itoa(g.turn) + " 轮 · " + itoa(len(g.calls)) + "/" + itoa(total) + " 次工具"
 	}
 	selected := p.selectedTurn[data.Cur] == g.key
-	header := f.Row().WidthPercent(100).MinHeight(24).Radius(t.Radii.SM).PadX(2).
+	header := ui.Row(f).WidthPercent(100).MinHeight(24).Radius(t.Radii.SM).PadX(2).
 		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, scope+"turn-"+g.key), title)
 	if selected {
@@ -368,8 +367,8 @@ func (p *Plugin) drawTrajectoryTurnRow(f *flex.Frame, env *pluginapi.Env, data p
 		if open {
 			arrow = "▾"
 		}
-		f.Text(arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
-		f.Text(title).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis().Grow(1)
+		ui.Text(f, arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
+		ui.Text(f, title).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis().Grow(1)
 	})
 	if header.Clicked() {
 		p.toggleGroup(data.Cur, g.key, last)
@@ -382,7 +381,7 @@ func (p *Plugin) drawTrajectoryTurnRow(f *flex.Frame, env *pluginapi.Env, data p
 	}
 }
 
-func (p *Plugin) drawTrajectoryStepRow(f *flex.Frame, env *pluginapi.Env, data pluginapi.Snapshot, scope string, g turnGroup, callIndex int, last bool) {
+func (p *Plugin) drawTrajectoryStepRow(f ui.C, env *pluginapi.Env, data pluginapi.Snapshot, scope string, g turnGroup, callIndex int, last bool) {
 	t := p.theme
 	msg := g.calls[callIndex]
 	name, detail, failed := describe(msg)
@@ -393,35 +392,35 @@ func (p *Plugin) drawTrajectoryStepRow(f *flex.Frame, env *pluginapi.Env, data p
 		label += "Step " + strconv.FormatInt(*msg.Step, 10) + " · "
 	}
 	label += name
-	row := f.Row().WidthPercent(100).Gap(8).PadY(4).Radius(t.Radii.SM).
+	row := ui.Row(f).WidthPercent(100).Gap(8).PadY(4).Radius(t.Radii.SM).
 		Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, scope+"step-"+key), label)
 	if p.selectedStep[data.Cur] == key {
 		row = row.Background(t.BgLayer2)
 	}
 	row.Children(func() {
-		f.Column().Width(14).Items(ui.Center).Children(func() {
+		ui.Column(f).Width(14).Items(ui.Center).Children(func() {
 			p.prims.Dot(f, dotColor(t, failed, msg.View), 6)
 			if !last {
-				f.Column().Width(2).Grow(1).Background(t.BorderL2)
+				ui.Column(f).Width(2).Grow(1).Background(t.BorderL2)
 			}
 		})
-		f.Column().Grow(1).Gap(2).Children(func() {
-			f.Row().WidthPercent(100).Gap(6).Items(ui.Center).Children(func() {
+		ui.Column(f).Grow(1).Gap(2).Children(func() {
+			ui.Row(f).WidthPercent(100).Gap(6).Items(ui.Center).Children(func() {
 				arrow := "▸"
 				if open {
 					arrow = "▾"
 				}
-				f.Text(arrow).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-				f.Text(name).Mono().FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis().Grow(1)
+				ui.Text(f, arrow).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+				ui.Text(f, name).Mono().FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis().Grow(1)
 				if msg.Step != nil {
-					f.Text("Step " + strconv.FormatInt(*msg.Step, 10)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+					ui.Text(f, "Step "+strconv.FormatInt(*msg.Step, 10)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 				}
 				if failed {
 					p.prims.Badge(f, "error", t.Error)
 				}
 			})
 			if s := oneLine(detail, 72); s != "" {
-				f.Text(s).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Ellipsis()
+				ui.Text(f, s).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Ellipsis()
 			}
 		})
 	})
@@ -470,13 +469,13 @@ func trajectoryInspectFields(data pluginapi.Snapshot, msg apiclient.Message, ind
 	return fields
 }
 
-func (p *Plugin) drawTrajectoryInspector(f *flex.Frame, fields []trajectoryInspectField) {
+func (p *Plugin) drawTrajectoryInspector(f ui.C, fields []trajectoryInspectField) {
 	t := p.theme
-	f.Column().WidthPercent(100).PadX(22).PadY(4).Gap(4).Children(func() {
-		f.Text("Inspect").FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
+	ui.Column(f).WidthPercent(100).PadX(22).PadY(4).Gap(4).Children(func() {
+		ui.Text(f, "Inspect").FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
 		for _, field := range fields {
-			f.Text(field.name).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			f.Wrap(field.value).Mono().FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
+			ui.Text(f, field.name).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			ui.Wrap(f, field.value).Mono().FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
 		}
 	})
 }

@@ -50,7 +50,6 @@ import (
 	"math"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -137,7 +136,7 @@ func statsHovered(env *pluginapi.Env, id gfx.ID, open bool) bool {
 }
 
 // drawStatsDialog 画 Activity 弹窗（遮罩 + 面板）。在 dock 的胶囊之后调用。
-func (p *Plugin) drawStatsDialog(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme) {
+func (p *Plugin) drawStatsDialog(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 	if f == nil || env == nil || t == nil || !p.dialog.open {
 		return
 	}
@@ -150,65 +149,73 @@ func (p *Plugin) drawStatsDialog(f *flex.Frame, env *pluginapi.Env, t *pluginapi
 	}
 	counts := statsCountsText(stats)
 
-	// ① 遮罩：官方 stat-dialog.ts 的 `useDismissOnOutsidePointer`。全窗一层透明
-	// 命中面——点它 = 点弹窗外面 = 关闭。它先于面板声明，所以面板在它上面，
-	// 点弹窗内部落在面板自己的命中区上（不会误关）。
-	if env.Bounds.Width > 0 && env.Bounds.Height > 0 {
-		backdrop := f.Popup().At(0, 0).Size(env.Bounds.Width, env.Bounds.Height).
-			HitWith(statsTreeID(env, statsDialogBackdrop), "", gfx.HitOptions{SkipFocus: true})
-		if backdrop.Clicked() {
-			p.closeStatsDialog()
-			return
-		}
-	}
-
-	// ② 面板：锚在胶囊上方 8px（官方 bottom: anchor(top)+8）、宽按 max-content 夹。
-	width := statsDialogWidth(env, rows, counts)
-	anchor := statsDialogAnchor(p.statsDialogPillRect(env), width, env.Bounds)
-	panel := f.Popup().Above(anchor, StatsDialogAnchorGap, ui.Start).Width(width)
-	panel = panel.Radius(t.Radii.LG).Background(t.BgLayer3).Shadow(gfx.ShadowLG).
-		Pad(StatsDialogPad)
-	// 弹窗本体吃掉点击：官方点框内不关闭（stat-dialog.ts 只认"外面"）。
-	// 角色用 RoleGroup：viva v0.2.3 没有 RoleDialog，Group 是"成组的非动作区域"。
-	panel = panel.HitWith(statsTreeID(env, statsDialogPanelHit), zhStatsDialogTitle,
-		gfx.HitOptions{Role: gfx.RoleGroup})
-
-	labelColumn := statsDialogLabelColumn(env, rows)
-	panel.Children(func() {
-		// .title：章节名左、头条数值右（flex space-between + gap16 + mb8 + 500）。
-		f.Row().FillWidth().Items(ui.Center).Gap(StatsDialogTitleGap).
-			MarginSides(0, 0, StatsDialogTitleMarginBottom, 0).Children(func() {
-			f.Text(zhStatsDialogTitle).FontSize(StatsDialogFontSize).
-				LineHeight(StatsDialogLineHeight).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
-			f.Spacer()
-			f.Text(counts).FontSize(StatsDialogFontSize).LineHeight(StatsDialogLineHeight).
-				Weight(gfx.WeightMedium).Color(t.LabelPrimary)
-		})
-		// .titleRule：0.5px border-top（border-l2）+ mb10。
-		f.Column().FillWidth().Height(StatsDialogTitleRuleHeight).Background(t.BorderL2).
-			MarginSides(0, 0, StatsDialogTitleRuleMarginBottom, 0)
-		// dl.details：两列 + 行距 6；dt 列宽 = max(76, 最长标签)（官方 minmax(76px,auto)）。
-		f.Column().FillWidth().Gap(StatsDialogDetailsRowGap).Children(func() {
-			for _, row := range rows {
-				f.Row().FillWidth().Items(ui.Center).Gap(StatsDialogDetailsColumnGap).Children(func() {
-					f.Row().Width(labelColumn).Children(func() {
-						f.Text(row.Label).FontSize(StatsDialogFontSize).
-							LineHeight(StatsDialogLineHeight).Color(t.LabelTertiary).Ellipsis()
-					})
-					f.Spacer()
-					f.Text(row.Value).FontSize(StatsDialogFontSize).
-						LineHeight(StatsDialogLineHeight).Color(t.LabelSecondary)
-				})
+	// v0.6.0 不再导出 `frame.Popup()`：自由浮层 = `ui.Overlay(Band, Bounds)` +
+	// 绝对定位的子面板（同 official_model_menu.go 那处的说明）。遮罩铺满整帧、
+	// 面板贴在胶囊上方，两者都是 overlay 的绝对定位子元素，声明序即叠放序。
+	layer := ui.Overlay(f, ui.OverlaySpec{Band: ui.LayerPaneChrome, Bounds: env.Bounds})
+	layer.Children(func() {
+		// ① 遮罩：官方 stat-dialog.ts 的 `useDismissOnOutsidePointer`。全窗一层透明
+		// 命中面——点它 = 点弹窗外面 = 关闭。它先于面板声明，所以面板在它上面，
+		// 点弹窗内部落在面板自己的命中区上（不会误关）。
+		if env.Bounds.Width > 0 && env.Bounds.Height > 0 {
+			backdrop := ui.Column(f).Absolute().Inset(0).
+				HitWith(statsTreeID(env, statsDialogBackdrop), "", gfx.HitOptions{SkipFocus: true})
+			if backdrop.Clicked() {
+				p.closeStatsDialog()
+				return
 			}
+		}
+
+		// ② 面板：锚在胶囊上方 8px（官方 bottom: anchor(top)+8）、宽按 max-content 夹。
+		width := statsDialogWidth(env, rows, counts)
+		anchor := statsDialogAnchor(p.statsDialogPillRect(env), width, env.Bounds)
+		panel := ui.Column(f).Absolute().Left(anchor.X).Width(width).
+			Bottom(max(env.Bounds.Height-anchor.Y+StatsDialogAnchorGap, 0))
+		panel = panel.Radius(t.Radii.LG).Background(t.BgLayer3).Shadow(gfx.ShadowLG).
+			Pad(StatsDialogPad)
+		// 弹窗本体吃掉点击：官方点框内不关闭（stat-dialog.ts 只认"外面"）。
+		// 角色用 RoleGroup：viva v0.2.3 没有 RoleDialog，Group 是"成组的非动作区域"。
+		panel = panel.HitWith(statsTreeID(env, statsDialogPanelHit), zhStatsDialogTitle,
+			gfx.HitOptions{Role: gfx.RoleGroup})
+
+		labelColumn := statsDialogLabelColumn(env, rows)
+		panel.Children(func() {
+			// .title：章节名左、头条数值右（flex space-between + gap16 + mb8 + 500）。
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(StatsDialogTitleGap).
+				MarginSides(0, 0, StatsDialogTitleMarginBottom, 0).Children(func() {
+				ui.Text(f, zhStatsDialogTitle).FontSize(StatsDialogFontSize).
+					LineHeight(StatsDialogLineHeight).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+				ui.Spacer(f)
+				ui.Text(f, counts).FontSize(StatsDialogFontSize).LineHeight(StatsDialogLineHeight).
+					Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+			})
+			// .titleRule：0.5px border-top（border-l2）+ mb10。
+			ui.Column(f).FillWidth().Height(StatsDialogTitleRuleHeight).Background(t.BorderL2).
+				MarginSides(0, 0, StatsDialogTitleRuleMarginBottom, 0)
+			// dl.details：两列 + 行距 6；dt 列宽 = max(76, 最长标签)（官方 minmax(76px,auto)）。
+			ui.Column(f).FillWidth().Gap(StatsDialogDetailsRowGap).Children(func() {
+				for _, row := range rows {
+					ui.Row(f).FillWidth().Items(ui.Center).Gap(StatsDialogDetailsColumnGap).Children(func() {
+						ui.Row(f).Width(labelColumn).Children(func() {
+							ui.Text(f, row.Label).FontSize(StatsDialogFontSize).
+								LineHeight(StatsDialogLineHeight).Color(t.LabelTertiary).Ellipsis()
+						})
+						ui.Spacer(f)
+						ui.Text(f, row.Value).FontSize(StatsDialogFontSize).
+							LineHeight(StatsDialogLineHeight).Color(t.LabelSecondary)
+					})
+				}
+			})
 		})
+		p.dialog.panel, p.dialog.panelDrawn = panel, true
 	})
-	p.dialog.panel, p.dialog.panelDrawn = panel, true
 }
 
-// statsDialogAnchor 返回交给 popup 的锚点矩形。
+// statsDialogAnchor 返回面板的锚点矩形。
 //
-// 纵向由 viva 的 `Above` 负责（等价官方 `bottom: anchor(top)+8`，放不下时翻到
-// 下方 = 官方 `position-try-fallbacks: --dsh-stat-opposite`）；横向按官方
+// 纵向由调用点的 overlay 绝对定位负责（等价官方 `bottom: anchor(top)+8`；
+// v0.5.1 的 `Popup().Above()` 会翻到下方，v0.6.0 的 Overlay 定位不翻——见
+// docs/handoff-viva-0.6.0.md 的 V-06-2 剩余项）；横向按官方
 // `left: max(12px, anchor(left))` 取，再往窗口内夹一档——比官方**更严一档**：
 // 靠右时还会往左推，保证整块不出窗（官方 max-width 已预留 24px，正常窗口下
 // 两者结果相同）。

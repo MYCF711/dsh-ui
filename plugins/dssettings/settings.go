@@ -32,7 +32,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -313,7 +312,7 @@ func cardWidth(window float32) float32 {
 }
 
 // draw 画浮层。没开 / 没有任何设置动作时什么都不画。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// 兼容桥：壳接上 settings.describe 后，官方四区面板接管，旧浮层不画。
 	if p.OfficialEnabled() {
 		return
@@ -368,19 +367,19 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		left = 0
 	}
 	idx := 0
-	f.Row().Absolute().Left(left).Top(cardTop).Width(w).Children(func() {
-		f.Column().FillWidth().Radius(t.Radii.Panel).
+	ui.Row(f).Absolute().Left(left).Top(cardTop).Width(w).Children(func() {
+		ui.Column(f).FillWidth().Radius(t.Radii.Panel).
 			Background(t.InputMajor).Border(1, t.BorderL2).
 			Shadow(gfx.ShadowXS).
 			PadSides(20, 20, 16, 20).Gap(6).Children(func() {
 			// 标题行：标题 + 关闭按钮（28px 圆钮交给 prims，不自己拼尺寸和颜色）。
-			f.Row().FillWidth().Items(ui.Center).Gap(8).Children(func() {
-				f.Text("设置").FontSize(t.Fonts.Title).Color(t.LabelPrimary).Grow(1)
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {
+				ui.Text(f, "设置").FontSize(t.Fonts.Title).Color(t.LabelPrimary).Grow(1)
 				if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "settings-close"), "×", false) {
 					p.hide("设置已关闭")
 				}
 			})
-			f.Text("Shift+F2 或 Esc 关闭 · 只列壳真接上的项").
+			ui.Text(f, "Shift+F2 或 Esc 关闭 · 只列壳真接上的项").
 				FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 
 			for _, sec := range secs {
@@ -393,18 +392,18 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 // drawSection 画一块分区，返回下一个可点行的序号。
 //
 // idx/cursor 是**可点行**的序号（只读行不占号），和 HandleKey 的 move 对齐。
-func (p *Plugin) drawSection(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, sec Section, idx, cursor int) int {
-	f.Text(sec.Title).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
+func (p *Plugin) drawSection(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, sec Section, idx, cursor int) int {
+	ui.Text(f, sec.Title).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
 	if sec.Note != "" {
-		f.Text(sec.Note).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
+		ui.Text(f, sec.Note).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
 	}
 	for _, row := range sec.Rows {
 		row := row
 		if row.Run == nil {
 			// 只读行：不挂命中区、不参与光标——它就不该看起来像按钮。
-			f.Row().FillWidth().Height(rowHeight).Items(ui.Center).Gap(10).Children(func() {
-				f.Text(row.Label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Width(labelWidth)
-				f.Text(row.Hint).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Grow(1).Ellipsis()
+			ui.Row(f).FillWidth().Height(rowHeight).Items(ui.Center).Gap(10).Children(func() {
+				ui.Text(f, row.Label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Width(labelWidth)
+				ui.Text(f, row.Hint).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Grow(1).Ellipsis()
 			})
 			continue
 		}
@@ -414,10 +413,10 @@ func (p *Plugin) drawSection(f *flex.Frame, env *pluginapi.Env, t *pluginapi.The
 		}
 		active := row.Selected || idx == cursor
 		body := func() {
-			f.Text(mark).FontSize(t.Fonts.Caption).Color(t.Info).Width(markWidth)
-			f.Text(row.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Grow(1).Ellipsis()
+			ui.Text(f, mark).FontSize(t.Fonts.Caption).Color(t.Info).Width(markWidth)
+			ui.Text(f, row.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Grow(1).Ellipsis()
 			if row.Hint != "" {
-				f.Text(row.Hint).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
+				ui.Text(f, row.Hint).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
 			}
 		}
 		id := env.Tree.ID(env.Feat, "settings-"+row.Key)

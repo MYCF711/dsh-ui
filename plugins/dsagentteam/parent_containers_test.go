@@ -21,7 +21,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -92,8 +91,8 @@ func (h *containerHarness) drawContainer(t *testing.T, painterID string) *gfx.Ca
 	env := *h.env
 	env.Canvas = canvas
 	h.rendered = nil
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		// 与内核同一个顺序：先 Draw（命中区/兜底卡），再 Children（dispatch）。
 		if target.Draw != nil {
 			target.Draw(f, &env)

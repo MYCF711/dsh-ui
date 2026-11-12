@@ -29,7 +29,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -101,9 +100,9 @@ func (p *hhLauncherProbe) Register(pluginapi.Context) error { return nil }
 func (p *hhLauncherProbe) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
 		ID: "account-launcher.row", Slot: pluginapi.Slot("sidebar.settings"), Order: 60,
-		Draw: func(f *flex.Frame, env *pluginapi.Env) {
-			f.Row().FillWidth().Height(p.height).Children(func() {
-				f.Text("已登录").FontSize(14).LineHeight(22)
+		Draw: func(f ui.C, env *pluginapi.Env) {
+			ui.Row(f).FillWidth().Height(p.height).Children(func() {
+				ui.Text(f, "已登录").FontSize(14).LineHeight(22)
 			})
 		},
 	}}
@@ -129,8 +128,8 @@ func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.A
 		canvas.BeginEventPass(p.tree.ID(p.feat, click))
 		defer canvas.EndEventPass()
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		uikernel.FirstScreenWithMeasure(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.kernel.DrawSlot(f, slot, env)
 		}, func(name string, box ui.Box) {
@@ -278,8 +277,8 @@ func TestHHTriggerRowRendersInLegacySidebarToo(t *testing.T) {
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		// 兼容桥档位：整列走旧三栏（`drawLegacySidebar`），设置行必须照样画出来。
 		uikernel.FirstScreenWithMeasure(f, env,
 			uikernel.ShellOptions{Phase: uikernel.PhaseActive, SidebarPreferred: 280, BridgeLegacy: true},
@@ -388,9 +387,9 @@ func TestHHComposerHasNoConnectionWording(t *testing.T) {
 				Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 				Has:       func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 			}
-			var view flex.View
-			view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
-				f.Column().Width(878).Children(func() { kernel.DrawSlot(f, uikernel.OffConvComposer, env) })
+			var view ui.Page
+			view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+				ui.Column(f).Width(878).Children(func() { kernel.DrawSlot(f, uikernel.OffConvComposer, env) })
 			})
 			joined := strings.Join(hhTexts(canvas), " ")
 			for _, word := range banned {

@@ -7,7 +7,7 @@
 //
 // 用法（和 components.MarkdownView 一样是「占位 + Draw 之后画」）：
 //
-//	slot := f.Slot().Height(150)          // flex 里占位
+//	slot := ui.Slot(f).Height(150)          // flex 里占位
 //	// Draw 返回之后，布局已定：
 //	o.Draw(canvas, theme, slot.Rect(), contentW, contentH, id, "", func(c ui.Rect) {
 //		// 从 c.X / c.Y 开始画内容；c 已经按 OffsetX 平移过

@@ -36,7 +36,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -570,8 +569,8 @@ func newMarkdownFixture() *markdownFixture {
 // draw 跑一帧：布局（Draw）→ 覆画（PaintCodeBlocks）。
 func (f *markdownFixture) draw() {
 	f.canvas.Reset()
-	var view flex.View
-	view.Draw(f.canvas, dscore.VivaTheme(f.theme), ui.Rect{Width: 900, Height: 700}, func(frame *flex.Frame) {
+	var view ui.Page
+	view.Draw(f.canvas, dscore.VivaTheme(f.theme), ui.Rect{Width: 900, Height: 700}, func(frame ui.C) {
 		f.view.Draw(frame, f.env, hostViewport(f.tree), markdownEntry(codeBlockSource))
 	})
 	f.view.PaintCodeBlocks(f.canvas, f.env)

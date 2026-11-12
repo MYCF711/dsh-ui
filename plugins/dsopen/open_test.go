@@ -5,7 +5,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -43,10 +42,10 @@ func renderOpen(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.
 		Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		// 槽位给的是一个列（真实壳就是中栏列）：本插件只借它定位，不占它的流。
-		f.Column().Width(902).Height(76).Children(func() { p.draw(f, env) })
+		ui.Column(f).Width(902).Height(76).Children(func() { p.draw(f, env) })
 	})
 	return canvas.Rectangles()
 }

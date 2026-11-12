@@ -39,7 +39,6 @@ package dsconversation
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -171,7 +170,7 @@ func (v *OfficialTranscriptView) historyButtonID(env *pluginapi.Env) gfx.ID {
 // drawHistoryRow 画「加载更早」那一行，返回这一行的盒子与五态。
 //
 // 返回零值盒子 = 这一帧不画（`HistoryHidden`）。
-func (v *OfficialTranscriptView) drawHistoryRow(f *flex.Frame, env *pluginapi.Env, p pluginapi.HistoryPaging) (ui.Box, HistoryLoadState) {
+func (v *OfficialTranscriptView) drawHistoryRow(f ui.C, env *pluginapi.Env, p pluginapi.HistoryPaging) (ui.Box, HistoryLoadState) {
 	state := historyLoadState(p)
 	if state == HistoryHidden {
 		return ui.Box{}, state
@@ -179,9 +178,9 @@ func (v *OfficialTranscriptView) drawHistoryRow(f *flex.Frame, env *pluginapi.En
 	t := v.Theme
 	if state == HistoryFirst {
 		// 官方 `.hint`：13/18、三级色、不是按钮（基线没到时点它没有意义）。
-		box := f.Row().FillWidth()
+		box := ui.Row(f).FillWidth()
 		box.Children(func() {
-			f.Text(historyLoadLabel(state)).
+			ui.Text(f, historyLoadLabel(state)).
 				FontSize(HistoryHintFontSize).
 				LineHeight(HistoryHintLineHeight).
 				Color(t.LabelTertiary)
@@ -189,11 +188,11 @@ func (v *OfficialTranscriptView) drawHistoryRow(f *flex.Frame, env *pluginapi.En
 		return box, state
 	}
 	// 官方 `.older`：整行居中 + 一个按钮。
-	box := f.Row().FillWidth().Justify(ui.Center)
+	box := ui.Row(f).FillWidth().Justify(ui.Center)
 	clickable := historyLoadClickable(state)
 	var clicked bool
 	box.Children(func() {
-		button := f.Button(v.historyButtonID(env), historyLoadLabel(state)).
+		button := ui.Button(f, historyLoadLabel(state)).
 			Small().
 			Radius(t.Radii.SM).
 			Background(t.Hover).

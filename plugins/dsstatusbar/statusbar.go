@@ -17,7 +17,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -103,7 +102,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 // 连接状态驱动，不能移到底部自创 statusbar」。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
-		{ID: "dock", Slot: pluginapi.SlotMainComposer, Order: 20, Draw: func(f *flex.Frame, env *pluginapi.Env) {
+		{ID: "dock", Slot: pluginapi.SlotMainComposer, Order: 20, Draw: func(f ui.C, env *pluginapi.Env) {
 			if p.composerSeatLive() {
 				return // 官方座位活着：旧槽这一帧不画（不双画）
 			}
@@ -132,7 +131,7 @@ func dockHeight(segments []string) float32 {
 
 // drawDock 在输入卡之后画现有 Snapshot 能证明的用量段。Activity、缓存率和
 // ContextMeter 百分比只有各自 projection 到位后才能加入，不能在这里拿消息凑数。
-func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env) ui.Box {
+func (p *Plugin) drawDock(f ui.C, env *pluginapi.Env) ui.Box {
 	// 官方 composer dock 是 session 作用域；空会话时即便上游残留了旧数字也不画。
 	if env.Data.Cur == "" {
 		return ui.Box{}
@@ -146,7 +145,7 @@ func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env) ui.Box {
 	if extra < 0 {
 		extra = 0
 	}
-	return f.Row().FillWidth().Height(height).
+	return ui.Row(f).FillWidth().Height(height).
 		PadSides(dockPaddingTop, extra, 0, extra).
 		Items(ui.Center).Justify(ui.Center).Gap(dockGap).Children(func() {
 		for _, segment := range segments {
@@ -157,12 +156,12 @@ func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env) ui.Box {
 
 // pill 是官方 PlainPill：12px secondary 降档文字、20px 行高、padding 1px 8px。
 // 没有真实弹层数据时不接点击、不画 hover，避免给出可展开假象。
-func (p *Plugin) pill(f *flex.Frame, label string) {
+func (p *Plugin) pill(f ui.C, label string) {
 	t := p.theme
-	f.Row().Height(pillHeight).Radius(t.Radii.SM).
+	ui.Row(f).Height(pillHeight).Radius(t.Radii.SM).
 		PadSides(pillPadY, pillPadX, pillPadY, pillPadX).
 		Items(ui.Center).Gap(pillGap).Children(func() {
-		f.Text(label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
+		ui.Text(f, label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
 	})
 }
 

@@ -17,7 +17,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -49,7 +48,7 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 	data.MessageMeta[pubapi.MessageKey(wpd1SessionID, msgs[1], 1)] = pubapi.MessageMetadata{Time: 1762222445123}
 	tree := &gfx.Tree{}
 	feat := tree.Feature("wpd1-two-size")
-	var view flex.View
+	var view ui.Page
 	config := app.Config{
 		Title: "wpd1-two-size", Width: 1182, Height: 832, Tree: tree, WindowMode: app.WindowFrameless,
 		TextInput: ui.Fields(rightbar.Fields()...),
@@ -74,7 +73,7 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 			},
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

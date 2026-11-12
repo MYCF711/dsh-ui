@@ -5,7 +5,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -75,8 +74,8 @@ func drawOnce(t *testing.T, p *Plugin, click string) int {
 		Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		p.draw(f, env)
 	})
 	return len(canvas.Rectangles())

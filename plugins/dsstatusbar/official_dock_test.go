@@ -19,14 +19,13 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // drawSeat 模拟官方骨架 dispatch 一个槽（含 Children 转发）并计数。
 // 语义与 `uikernel.Kernel.drawSlot` 一致，区别只是顺手记下每个槽派发几次。
-func drawSeat(f *flex.Frame, k *uikernel.Kernel, env *pluginapi.Env, slot pluginapi.Slot, counts map[pluginapi.Slot]int) {
+func drawSeat(f ui.C, k *uikernel.Kernel, env *pluginapi.Env, slot pluginapi.Slot, counts map[pluginapi.Slot]int) {
 	counts[slot]++
 	for _, painter := range k.Painters(slot) {
 		if painter.Draw != nil {
@@ -61,8 +60,8 @@ func dockFrame(t *testing.T, tierOfficial, drawOfficial bool, data pluginapi.Sna
 		Geometry: pluginapi.Geometry{MainWidth: 902}, Has: kernel.Has,
 	}
 	counts := map[pluginapi.Slot]int{}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		if drawOfficial {
 			drawSeat(f, kernel, env, uikernel.OffConvComposer, counts)
 			return

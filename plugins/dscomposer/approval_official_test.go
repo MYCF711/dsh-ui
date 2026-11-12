@@ -23,7 +23,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -65,11 +64,11 @@ func drawSeat(t *testing.T, approval *pluginapi.Approval) (*gfx.Canvas, *[]strin
 		Geometry: pluginapi.Geometry{MainWidth: 840},
 	}
 	env.Act.Approve = func(requestID, optionID string) { approved = append(approved, requestID+"|"+optionID) }
-	var fv flex.View
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
+	var fv ui.Page
+	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		// 官方座位 = 整个 composer 区（审批卡 overlay + InputBar fallback），
 		// 容器给官方侧边距 16（与 uikernel.drawComposerSeat 一致）。
-		f.Column().Width(840 - 2*composerClearance).PadX(composerClearance).Children(func() {
+		ui.Column(f).Width(840 - 2*composerClearance).PadX(composerClearance).Children(func() {
 			p.drawOfficialComposer(f, env)
 		})
 	})
@@ -206,7 +205,7 @@ func TestOfficialSeatRealClick(t *testing.T) {
 		Title: "approval-official", Width: 1180, Height: 832, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	var fv flex.View
+	var fv ui.Page
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
@@ -216,7 +215,7 @@ func TestOfficialSeatRealClick(t *testing.T) {
 			Geometry: pluginapi.Geometry{MainWidth: 840},
 		}
 		env.Act.Approve = func(requestID, optionID string) { approved = append(approved, requestID+"|"+optionID) }
-		fv.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		fv.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			p.drawOfficialComposer(f, env)
 		})
 	}
@@ -285,8 +284,8 @@ func TestBothSeatsSameCard(t *testing.T) {
 		Geometry: pluginapi.Geometry{MainWidth: 840},
 	}
 	env.Act.Approve = func(string, string) {}
-	var fv flex.View
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
+	var fv ui.Page
+	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		p.draw(f, env)
 	})
 	for _, want := range []string{"需要审批", "允许这一次", "这个会话里以后都允许", "拒绝"} {

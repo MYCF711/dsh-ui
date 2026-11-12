@@ -23,7 +23,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -61,9 +60,9 @@ func renderOfficialSeat(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pl
 		MainWidth: officialSeatColumn,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: officialSeatColumn},
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
-		f.Column().Width(officialSeatColumn - 2*composerClearance).
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+		ui.Column(f).Width(officialSeatColumn - 2*composerClearance).
 			PadX(composerClearance).Children(func() {
 			p.drawOfficialComposer(f, env)
 		})

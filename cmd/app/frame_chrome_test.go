@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/ui"
@@ -57,7 +56,7 @@ func TestConfigureFrameWindowUsesVivaNativeControls(t *testing.T) {
 type frameChromeHarness struct {
 	chrome      frameChrome
 	field       ui.Field
-	view        flex.View
+	view        ui.Page
 	inv         app.Invalidator
 	newSessions int
 	toggles     int
@@ -79,9 +78,9 @@ func newFrameChromeHarness(t *testing.T) (*frameChromeHarness, *app.Driver) {
 		}
 		canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, theme.Background)
 		layout := h.chrome.paintCaption(canvas, theme, size)
-		h.view.Draw(canvas, theme, layout.Content, func(f *flex.Frame) {
-			f.Column().Fill().Children(func() {
-				f.Field(&h.field, draftID, "输入", "输入消息").Height(32)
+		h.view.Draw(canvas, theme, layout.Content, func(f ui.C) {
+			ui.Column(f).Fill().Children(func() {
+				ui.TextFieldID(f, draftID, &h.field, "输入", "输入消息").Height(32)
 			})
 		})
 		h.chrome.paintPopup(canvas, theme, size)

@@ -5,7 +5,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -32,8 +31,8 @@ func renderGoal(t *testing.T, p *Plugin, act pluginapi.Actions) *gfx.Canvas {
 		Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		p.draw(f, env)
 	})
 	return canvas

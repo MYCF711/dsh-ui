@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -30,11 +29,11 @@ func newFrame(t *testing.T, click string) (*dscoreFrame, func()) {
 	if click != "" {
 		canvas.BeginEventPass(tree.ID(feat, click))
 	}
-	var view flex.View
+	var view ui.Page
 	var box ui.Box
-	view.Draw(canvas, VivaTheme(theme), ui.Rect{Width: 320, Height: 200}, func(f *flex.Frame) {
+	view.Draw(canvas, VivaTheme(theme), ui.Rect{Width: 320, Height: 200}, func(f ui.C) {
 		box = p.ListRow(f, tree.ID(feat, "row-1"), false, 32, func() {
-			f.Text("一行").FontSize(14).Color(theme.LabelPrimary)
+			ui.Text(f, "一行").FontSize(14).Color(theme.LabelPrimary)
 		})
 	})
 	return &dscoreFrame{box: box, canvas: canvas, tree: tree, feat: feat}, func() {
@@ -104,8 +103,8 @@ func TestCircleButtonReturnsClick(t *testing.T) {
 	canvas.BeginEventPass(tree.ID(feat, "send"))
 	defer canvas.EndEventPass()
 	var clicked bool
-	var view flex.View
-	view.Draw(canvas, VivaTheme(theme), ui.Rect{Width: 320, Height: 200}, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, VivaTheme(theme), ui.Rect{Width: 320, Height: 200}, func(f ui.C) {
 		clicked = p.CircleButton(f, tree.ID(feat, "send"), "↑", true)
 	})
 	if !clicked {

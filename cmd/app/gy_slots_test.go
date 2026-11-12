@@ -30,7 +30,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -98,8 +97,8 @@ func gyFrame(t *testing.T, official bool) ([]string, map[pluginapi.Slot]int) {
 		Has:       kernel.Has,
 	}
 	counts := map[pluginapi.Slot]int{}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		if !official {
 			gyDrawSlot(f, kernel, pluginapi.SlotShellRoot, env, counts)
 			return
@@ -125,7 +124,7 @@ func gyFrame(t *testing.T, official bool) ([]string, map[pluginapi.Slot]int) {
 
 // gyDrawSlot 与 `uikernel.Kernel.DrawSlot` 同义（含 Children 转发），额外记派发次数。
 // 与生产路径的 `drawSlot`（main.go）分开命名，避免遮蔽。
-func gyDrawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
+func gyDrawSlot(f ui.C, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
 	counts[slot]++
 	for _, painter := range k.Painters(slot) {
 		if painter.Draw != nil {

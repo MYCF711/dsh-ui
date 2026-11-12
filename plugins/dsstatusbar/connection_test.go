@@ -31,7 +31,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -101,17 +100,17 @@ func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *gfx.Canvas 
 		canvas.BeginEventPass(h.tree.ID(h.feat, h.hit))
 		defer canvas.EndEventPass()
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(h.theme), env.Bounds, func(f *flex.Frame) {
-		f.Column().FillWidth().Width(280).Children(func() {
-			row := f.Row().FillWidth().
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(h.theme), env.Bounds, func(f ui.C) {
+		ui.Column(f).FillWidth().Width(280).Children(func() {
+			row := ui.Row(f).FillWidth().
 				MarginSides(connRowMarginY, -2, connRowMarginY, -2).
 				Background(h.theme.SidebarFill).
 				Items(ui.Center).Gap(connRowGap)
 			row.Children(func() {
 				// 官方这一行的第一个子项：设置启动器（`flex:1`、42 高）。
 				// 测试里用一棵定尺寸的盒子代替，只为量"同一行"。
-				f.Row().Height(connRowHeight).Grow(1).Children(func() {})
+				ui.Row(f).Height(connRowHeight).Grow(1).Children(func() {})
 				for _, painter := range h.kernel.Painters(uikernel.OffSidebarSettings) {
 					if painter.Draw != nil {
 						painter.Draw(f, env)

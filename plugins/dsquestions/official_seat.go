@@ -41,7 +41,6 @@ package dsquestions
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -89,7 +88,7 @@ func (p *Plugin) composerSeatLive() bool { return p.tier.Official() }
 // drawOfficial 画官方 `conversation.composer` 座位上的提问卡。
 //
 // 可见性：**只在有待答问题时显示**（`pending(Msgs)` 为空 → 整块不画）。
-func (p *Plugin) drawOfficial(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawOfficial(f ui.C, env *pluginapi.Env) {
 	if !p.composerSeatLive() {
 		return
 	}
@@ -107,26 +106,26 @@ func (p *Plugin) drawOfficial(f *flex.Frame, env *pluginapi.Env) {
 	send := env.Act.Send
 
 	// `.frame`：座位给了 clearance 16，这里再补 16（官方是 clearance + 16）。
-	f.Column().FillWidth().
+	ui.Column(f).FillWidth().
 		PadSides(questionFramePadTop, questionFramePadX, questionFramePadBottom, questionFramePadX).
 		Children(func() {
 			// `.card`
-			f.Column().FillWidth().Radius(t.Radii.XL).Background(t.InputMajor).
+			ui.Column(f).FillWidth().Radius(t.Radii.XL).Background(t.InputMajor).
 				PadSides(0, 0, questionCardPadBottom, 0).Children(func() {
 				// `.header`：eyebrow（在等你回答）+ title（问题本身）
-				f.Column().FillWidth().
+				ui.Column(f).FillWidth().
 					PadSides(questionHeaderPadTop, questionHeaderPadRight, 0, questionHeaderPadLeft).
 					Gap(questionHeaderGap).Children(func() {
-					f.Row().Items(ui.Center).Gap(6).Children(func() {
+					ui.Row(f).Items(ui.Center).Gap(6).Children(func() {
 						p.prims.Dot(f, t.LabelTertiary, 5)
-						f.Text(questionEyebrowText).FontSize(questionEyebrowFont).
+						ui.Text(f, questionEyebrowText).FontSize(questionEyebrowFont).
 							LineHeight(questionEyebrowLine).Color(t.LabelTertiary)
 					})
-					f.Text(q.Question).FontSize(questionTitleFont).
+					ui.Text(f, q.Question).FontSize(questionTitleFont).
 						LineHeight(questionTitleLine).Color(t.LabelPrimary)
 				})
 				// `.options`：一行一个候选答案（点位 = 同一句 prompt）
-				f.Column().FillWidth().
+				ui.Column(f).FillWidth().
 					PadSides(questionOptionsPadTop, questionOptionsPadX, 0, questionOptionsPadX).
 					Gap(questionOptionsGap).Children(func() {
 					for i, opt := range q.Options {
@@ -138,14 +137,14 @@ func (p *Plugin) drawOfficial(f *flex.Frame, env *pluginapi.Env) {
 }
 
 // drawOptionRow 画一个候选答案行（两个座位共用同一套命中/发送语义）。
-func (p *Plugin) drawOptionRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, index int, opt Option, send func(string)) {
+func (p *Plugin) drawOptionRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, index int, opt Option, send func(string)) {
 	key := ""
 	if index == 0 {
 		key = "F7"
 	} else if index == 1 {
 		key = "F8"
 	}
-	row := f.Row().FillWidth().Items(ui.Center).Gap(questionOptionGap).
+	row := ui.Row(f).FillWidth().Items(ui.Center).Gap(questionOptionGap).
 		PadSides(questionOptionPadTop, questionOptionPadX, questionOptionPadTop, questionOptionPadX).
 		Radius(t.Radii.MD).Background(t.BgLayer2).
 		Hit(env.Tree.ID(env.Feat, "opt-"+itoa(index)), opt.Label)
@@ -156,12 +155,12 @@ func (p *Plugin) drawOptionRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.T
 	row.Children(func() {
 		if key != "" {
 			// 能按的键要写出来；第三项之后没有键就不写，也不假装能选。
-			f.Text(key).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Text(f, key).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
-		f.Column().Gap(2).Grow(1).Children(func() {
-			f.Text(opt.Label).FontSize(questionOptionLabelFont).Color(t.LabelPrimary)
+		ui.Column(f).Gap(2).Grow(1).Children(func() {
+			ui.Text(f, opt.Label).FontSize(questionOptionLabelFont).Color(t.LabelPrimary)
 			if opt.Description != "" {
-				f.Text(opt.Description).FontSize(questionOptionDescFont).Color(t.LabelTertiary)
+				ui.Text(f, opt.Description).FontSize(questionOptionDescFont).Color(t.LabelTertiary)
 			}
 		})
 	})

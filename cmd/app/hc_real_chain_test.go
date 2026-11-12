@@ -54,7 +54,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -317,8 +316,8 @@ func hcCaptureStatusbar(t *testing.T, snap pluginapi.Snapshot, path string) {
 			Has:       product.kernel.Has,
 			Act:       pluginapi.Actions{Goal: func() string { return "" }},
 		}
-		var view flex.View
-		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f *flex.Frame) {
+		var view ui.Page
+		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, shotEnv, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, shotEnv)
 			})

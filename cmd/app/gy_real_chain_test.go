@@ -52,7 +52,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -137,8 +136,8 @@ func (p *gyRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, goal string
 		Act:       pluginapi.Actions{Goal: func() string { return goal }, Send: func(string) {}, Cancel: func() {}},
 	}
 	p.dispatched = map[pluginapi.Slot]int{}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 			gyRealDrawSlot(f, p.kernel, slot, env, p.dispatched)
 		})
@@ -161,7 +160,7 @@ func (p *gyRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, goal string
 // 为什么不用 `kernel.DrawSlot`：它把 `Children` 的转发交回给内核自己的递归闭包，
 // 调用方拿不到子槽的派发计数——而本测试要断言的正是「官方子槽每帧 1 次」。
 // 语义逐行对齐（见 `uikernel/kernel.go` 的 drawSlot），只多了计数。
-func gyRealDrawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
+func gyRealDrawSlot(f ui.C, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
 	counts[slot]++
 	for _, painter := range k.Painters(slot) {
 		if painter.Draw != nil {
@@ -317,8 +316,8 @@ func TestRealChainGYGoalQuestionsStatusbar(t *testing.T) {
 			Has:       product.kernel.Has,
 			Act:       pluginapi.Actions{Goal: func() string { return load.Goal }},
 		}
-		var view flex.View
-		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f *flex.Frame) {
+		var view ui.Page
+		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, shotEnv, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, shotEnv)
 			})

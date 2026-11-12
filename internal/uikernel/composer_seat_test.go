@@ -17,7 +17,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -31,8 +30,8 @@ func seatFrame(t *testing.T, opts ShellOptions, occupied map[pluginapi.Slot]bool
 	env, canvas := newSkeletonEnv(1182, 832, func(slot pluginapi.Slot) bool { return occupied[slot] })
 	counts := map[pluginapi.Slot]int{}
 	boxes := map[string]ui.Box{}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		FirstScreenWithMeasure(f, env, opts, func(slot pluginapi.Slot) { counts[slot]++ }, func(name string, box ui.Box) {
 			boxes[name] = box
 		})

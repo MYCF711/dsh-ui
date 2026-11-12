@@ -13,7 +13,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -36,7 +35,7 @@ func openHeaderSession(t *testing.T, data *pluginapi.Snapshot, act pluginapi.Act
 	tree := &gfx.Tree{}
 	feat := tree.Feature("open-header")
 	var (
-		view        flex.View
+		view        ui.Page
 		invalidator app.Invalidator
 	)
 	config := app.Config{
@@ -55,7 +54,7 @@ func openHeaderSession(t *testing.T, data *pluginapi.Snapshot, act pluginapi.Act
 			},
 			Has: func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

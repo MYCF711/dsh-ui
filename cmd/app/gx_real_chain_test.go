@@ -49,7 +49,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsagentteam"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -295,11 +294,11 @@ func gxCapture(t *testing.T, p *gxProduct, snap pluginapi.Snapshot, path string)
 			Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 			Has:      func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
 		}
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		var view ui.Page
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			if p.mode == shellLegacy {
 				// 旧三栏档：dsshell 的形状（中栏 Pad(12) 里 dispatch `main.composer`）。
-				f.Column().FillWidth().FillHeight().Pad(12).Children(func() {
+				ui.Column(f).FillWidth().FillHeight().Pad(12).Children(func() {
 					p.kernel.DrawSlot(f, pluginapi.SlotMainComposer, env)
 				})
 				return

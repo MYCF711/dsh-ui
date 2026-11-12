@@ -11,7 +11,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -65,7 +64,7 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 		}
 		tree := &gfx.Tree{}
 		feat := tree.Feature("composer-mention-" + name)
-		var view flex.View
+		var view ui.Page
 		var invalidator app.Invalidator
 		config := app.Config{
 			Title: "composer-mention-" + name, Width: 1182, Height: 832, Tree: tree,
@@ -79,9 +78,9 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 				Bounds: bounds, MainWidth: 902,
 				Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 			}
-			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
-				f.Column().Width(902-24).FillHeight().PadSides(0, 0, 12, 0).Children(func() {
-					f.Spacer()
+			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+				ui.Column(f).Width(902-24).FillHeight().PadSides(0, 0, 12, 0).Children(func() {
+					ui.Spacer(f)
 					p.draw(f, env)
 				})
 			})

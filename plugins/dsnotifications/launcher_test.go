@@ -21,7 +21,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -44,12 +43,12 @@ func (p *probePlugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
 		ID:   p.id,
 		Slot: p.slot,
-		Draw: func(f *flex.Frame, env *pluginapi.Env) {
+		Draw: func(f ui.C, env *pluginapi.Env) {
 			p.mu.Lock()
 			p.drawn++
 			p.mu.Unlock()
 			// 真画一个盒子：避免"只计数、什么都没有"看起来像没画。
-			f.Row().Width(4).Height(4)
+			ui.Row(f).Width(4).Height(4)
 		},
 	}}
 }
@@ -97,10 +96,10 @@ func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *gfx.
 		Has:      k.Has,
 		Geometry: pluginapi.Geometry{Width: bounds.Width, Height: bounds.Height, SidebarWidth: sidebarWidth},
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 		// 把链放进一条 280 宽的侧栏列：座位与行宽都按它算。
-		f.Column().Width(sidebarWidth).Children(func() {
+		ui.Column(f).Width(sidebarWidth).Children(func() {
 			k.DrawSlot(f, slot, env)
 		})
 	})

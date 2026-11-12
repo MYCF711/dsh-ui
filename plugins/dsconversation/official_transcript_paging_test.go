@@ -29,7 +29,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -156,8 +155,8 @@ func pagingView(t *testing.T, entries []TranscriptEntry, history pluginapi.Histo
 		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	env.Act.LoadOlder = onLoadOlder
-	var fv flex.View
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f *flex.Frame) {
+	var fv ui.Page
+	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		view.Draw(f, env, hostViewport(tree), entries)
 	})
 	return view, canvas
@@ -287,7 +286,7 @@ func TestPagingButtonRealClick(t *testing.T) {
 		Title: "paging-headless", Width: 900, Height: 700, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	var fv flex.View
+	var fv ui.Page
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
@@ -296,7 +295,7 @@ func TestPagingButtonRealClick(t *testing.T) {
 			Bounds: bounds, MainWidth: current.Width, Scroll: fv.ScrollState,
 		}
 		env.Act.LoadOlder = func() { loads++ }
-		fv.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		fv.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			view.Draw(f, env, TranscriptViewport{HostScroll: true, HostID: tree.ID(feat, "host"), SelfID: tree.ID(feat, "self")}, pagingEntries())
 		})
 	}
@@ -388,9 +387,9 @@ func TestDrawProductTranscriptTakeover(t *testing.T) {
 				Theme: theme, Data: c.data, Tree: tree, Feat: tree.Feature("takeover"),
 				Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
 			}
-			var fv flex.View
+			var fv ui.Page
 			got := false
-			fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f *flex.Frame) {
+			fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
 				got = p.drawProductTranscript(f, env, true)
 			})
 			if got != c.want {

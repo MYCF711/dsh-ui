@@ -5,7 +5,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -61,8 +60,8 @@ func TestFG2OfficialGeometryConstants(t *testing.T) {
 func TestFG2BrandNewSessionAndNavigationGeometry(t *testing.T) {
 	p, _, env, _, canvas, _ := searchFixture(t)
 	env.Act.NewSession = func() {}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 256, Height: 420}, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 256, Height: 420}, func(f ui.C) {
 		p.drawHeader(f, env)
 	})
 
@@ -129,9 +128,9 @@ func TestFG2NewSessionClickCallsRealActionOnce(t *testing.T) {
 	calls := 0
 	env.Act.NewSession = func() { calls++ }
 	p.activePanel = "schedules"
-	var view flex.View
+	var view ui.Page
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 256, Height: 420}, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 256, Height: 420}, func(f ui.C) {
 			p.drawHeader(f, env)
 		})
 	}
@@ -170,10 +169,10 @@ func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 		}
 	}
 
-	var view flex.View
+	var view ui.Page
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
-			f.Column().FillWidth().FillHeight().Children(func() {
+		view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+			ui.Column(f).FillWidth().FillHeight().Children(func() {
 				p.drawHeader(f, env)
 				p.drawActivePanel(f, env)
 			})
@@ -206,7 +205,7 @@ func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 	// 会话行仍是返回会话的真实路由；不能重载、清草稿或新建会话。
 	row := sess("session-sentinel", "真会话", `D:\work`, "2026-11-03T10:00:00Z")
 	drawRow := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 40}, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
 			p.drawSession(f, env, row)
 		})
 	}
@@ -230,8 +229,8 @@ func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 	if got := p.panelRoutes(); len(got) != 2 {
 		t.Fatalf("没有 Draw 的扩展竟出现在路由中：%+v", got)
 	}
-	p.extensionRoutes[0].Draw = func(f *flex.Frame, env *pluginapi.Env) {
-		f.Text("主题鱼真实扩展")
+	p.extensionRoutes[0].Draw = func(f ui.C, env *pluginapi.Env) {
+		ui.Text(f, "主题鱼真实扩展")
 	}
 	if got := p.panelRoutes(); len(got) != 3 || got[2].ID != "theme-fish" {
 		t.Fatalf("真实扩展没有按 order 接入：%+v", got)
@@ -241,9 +240,9 @@ func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 func TestFG2WorkspaceHeaderCollapseExpandAndSearch(t *testing.T) {
 	p, _, env, tree, canvas, _ := searchFixture(t)
 	p.known = []string{"workspace"}
-	var view flex.View
+	var view ui.Page
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 50}, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 50}, func(f ui.C) {
 			p.drawWorkspaceHeader(f, env)
 		})
 	}

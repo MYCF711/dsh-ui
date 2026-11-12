@@ -7,7 +7,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -42,11 +41,11 @@ func renderComposer(t *testing.T, p *Plugin, data pluginapi.Snapshot, act plugin
 			Width: windowWidth, Height: 400, SidebarWidth: 280, MainWidth: mainWidth,
 		},
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		// 模拟 dsshell 的中栏内容框：MainWidth 减去壳的左右 12px padding。
 		// 直接在最外层调用会把整窗误当中栏，测的就不是真实装配几何了。
-		f.Column().Width(mainWidth - 24).Children(func() { p.draw(f, env) })
+		ui.Column(f).Width(mainWidth - 24).Children(func() { p.draw(f, env) })
 	})
 	p.afterDraw(canvas, env)
 	return canvas

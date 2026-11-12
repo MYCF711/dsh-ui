@@ -5,7 +5,6 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
@@ -36,7 +35,7 @@ func main() {
 `
 
 type model struct {
-	view flex.View
+	view ui.Page
 	doc  markdown.Document
 	md   components.MarkdownView
 }
@@ -50,11 +49,11 @@ func newConfig(m *model) app.Config {
 		b := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(b, theme.Background)
 		var slot ui.Box
-		m.view.Draw(canvas, theme, b, func(f *flex.Frame) {
-			f.Column().Fill().Pad(20).Children(func() {
+		m.view.Draw(canvas, theme, b, func(f ui.C) {
+			ui.Column(f).Fill().Pad(20).Children(func() {
 				w := f.Bounds().Width - 40
 				h := m.md.Layout(canvas, components.MarkdownStyle{Size: 14}, &m.doc, w)
-				slot = f.Slot().Height(h)
+				slot = ui.Slot(f).Height(h)
 			})
 		})
 		r := slot.Rect()

@@ -6,7 +6,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -42,8 +41,8 @@ func renderFiles(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi
 		MainWidth: 320,
 		Geometry:  pluginapi.Geometry{Width: 320, Height: 900, SidebarWidth: 280},
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		p.drawList(f, env)
 	})
 }
@@ -232,8 +231,8 @@ func drawPreviewOnce(t *testing.T, p *Plugin, data pluginapi.Snapshot, act plugi
 		Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: ui.Rect{Width: 1182, Height: 832},
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		p.drawPreview(f, env)
 	})
 }

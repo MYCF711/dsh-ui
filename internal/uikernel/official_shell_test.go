@@ -22,7 +22,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -640,8 +639,8 @@ func TestFirstScreenDrawMatchesLayout(t *testing.T) {
 
 	boxes := map[string]ui.Box{}
 	var layout ShellLayout
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		layout = FirstScreenWithMeasure(f, env, opts, func(pluginapi.Slot) {}, func(name string, box ui.Box) {
 			boxes[name] = box
 		})
@@ -674,8 +673,8 @@ func TestFirstScreenDispatchesEveryHostedSlot(t *testing.T) {
 	record := func(width, height float32, opts ShellOptions, has func(pluginapi.Slot) bool) map[pluginapi.Slot]bool {
 		env, canvas := newSkeletonEnv(width, height, has)
 		seen := map[pluginapi.Slot]bool{}
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+		var view ui.Page
+		view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 			FirstScreen(f, env, opts, func(slot pluginapi.Slot) { seen[slot] = true })
 		})
 		return seen

@@ -19,7 +19,6 @@ import (
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -70,7 +69,7 @@ func openReasoningHarness(t *testing.T, width, height int, data pluginapi.Snapsh
 	theme := p.theme
 	tree := &gfx.Tree{}
 	feat := tree.Feature("reasoning-headless")
-	var view flex.View
+	var view ui.Page
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "reasoning-headless", Width: width, Height: height, Tree: tree,
@@ -83,7 +82,7 @@ func openReasoningHarness(t *testing.T, width, height int, data pluginapi.Snapsh
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: current.Width, Scroll: view.ScrollState,
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)

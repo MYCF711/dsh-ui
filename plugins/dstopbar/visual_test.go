@@ -7,7 +7,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -22,7 +21,7 @@ func drawTopbarVisualTest(t *testing.T, data pluginapi.Snapshot, hasRightbar boo
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
 	})
-	var view flex.View
+	var view ui.Page
 	f := view.Begin(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 90})
 	p.draw(f, &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("topbar-visual-test"), Canvas: canvas,

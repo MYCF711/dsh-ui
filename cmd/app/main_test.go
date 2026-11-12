@@ -16,7 +16,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -357,18 +356,18 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 		canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 			return float32(len(value)) * size / 2
 		})
-		m.view.Draw(canvas, ui.LightTheme(), ui.Rect{Width: 100, Height: 100}, func(f *flex.Frame) {
-			f.Column().Fill().Children(func() {
-				f.ScrollArea(scrID).Grow(1).Follow(true).Children(func() {
+		m.view.Draw(canvas, ui.LightTheme(), ui.Rect{Width: 100, Height: 100}, func(f ui.C) {
+			ui.Column(f).Fill().Children(func() {
+				ui.Scroll(f).Grow(1).Follow(true).Children(func() {
 					// 与 dsconversation 相同的声明期虚拟化时序：Offset 是上一帧的值。
 					offset := m.view.ScrollState(scrID).Offset
 					for i := range m.msgs {
 						y := float32(i * 30)
 						if y+30 < offset || y > offset+100 {
-							f.Slot().Height(30)
+							ui.Slot(f).Height(30)
 							continue
 						}
-						f.Text(m.msgs[i].Text).Height(30)
+						ui.Text(f, m.msgs[i].Text).Height(30)
 					}
 				})
 			})

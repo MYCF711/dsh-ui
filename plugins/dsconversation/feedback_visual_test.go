@@ -12,7 +12,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -97,7 +96,7 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 	feat := tree.Feature("feedback-headless")
 	data := feedbackShotData()
 	var (
-		view        flex.View
+		view        ui.Page
 		invalidator app.Invalidator
 	)
 	config := app.Config{
@@ -114,7 +113,7 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 			// （没有 Actor 时按钮本来就不画，那样就证明不了"同一排"）。
 			Act: withRowActions(cfg.actions()),
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)

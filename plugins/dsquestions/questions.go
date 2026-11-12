@@ -29,7 +29,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -97,7 +96,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		// Order 3 < GoalBar 的 5 < composer 的 10：最上面是问题，然后是目标，然后是输入框。
 		// **等回答的时候问题比目标更紧急**——所以它在更上面。
 		Order: 3,
-		Draw: func(f *flex.Frame, env *pluginapi.Env) {
+		Draw: func(f ui.C, env *pluginapi.Env) {
 			if p.composerSeatLive() {
 				return // 官方座位活着：旧槽这一帧不画（不双画）
 			}
@@ -166,7 +165,7 @@ func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 }
 
 // draw 画问题条。没有待答问题就整块不画。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	qs := pending(env.Data.Msgs)
 	if len(qs) == 0 {
 		return
@@ -179,15 +178,15 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	p.cur = q
 	p.act = env.Act
 
-	f.Column().FillWidth().PadSides(16, 16, 8, 4).Gap(6).Children(func() {
-		f.Row().Items(ui.Center).Gap(6).Children(func() {
+	ui.Column(f).FillWidth().PadSides(16, 16, 8, 4).Gap(6).Children(func() {
+		ui.Row(f).Items(ui.Center).Gap(6).Children(func() {
 			p.prims.Dot(f, t.LabelPrimary, 5)
 			if q.Header != "" {
-				f.Text(q.Header).FontSize(t.Fonts.Caption).Color(t.LabelPrimary)
+				ui.Text(f, q.Header).FontSize(t.Fonts.Caption).Color(t.LabelPrimary)
 			}
-			f.Text("在等你回答").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Text(f, "在等你回答").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		})
-		f.Text(q.Question).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
+		ui.Text(f, q.Question).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
 		for i, opt := range q.Options {
 			opt := opt
 			send := env.Act.Send
@@ -201,7 +200,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			// "先给元素一个 id，再问它这一帧有没有被点"。我第一版用 `.OnClick(...)`
 			// 搜不到就以为 flex 没有点击 API，**那是搜错了名字**：
 			// 真正的入口是 `Hit`/`Clicked`，`dscore.ListRow` 也是这么用的。
-			row := f.Row().FillWidth().Items(ui.Center).Gap(8).PadSides(8, 8, 7, 7).
+			row := ui.Row(f).FillWidth().Items(ui.Center).Gap(8).PadSides(8, 8, 7, 7).
 				Radius(t.Radii.MD).Background(t.InputMajor).
 				Hit(env.Tree.ID(env.Feat, "opt-"+strconv.Itoa(i)), opt.Label)
 			if row.Clicked() {
@@ -215,12 +214,12 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 				if key != "" {
 					// 把键位写在选项上：**能按的键要写出来**，否则只有读代码的人知道。
 					// 第三项之后没有键——所以就**不写**，也不假装能选。
-					f.Text(key).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+					ui.Text(f, key).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 				}
-				f.Column().Gap(2).Grow(1).Children(func() {
-					f.Text(opt.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
+				ui.Column(f).Gap(2).Grow(1).Children(func() {
+					ui.Text(f, opt.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
 					if opt.Description != "" {
-						f.Text(opt.Description).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+						ui.Text(f, opt.Description).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 					}
 				})
 			})

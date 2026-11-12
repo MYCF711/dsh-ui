@@ -44,7 +44,7 @@ package dsnotifications
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // SlotSettingsLauncherNotifications 是官方 rc.2 的槽位名（逐字）。
@@ -176,7 +176,7 @@ func (p *Plugin) Controller() *Controller { return p.ctrl }
 //	① 父级没给 active（账号菜单没打开）→ 整块不渲染；
 //	② 没有未过期通知 → 整块不渲染（不是画空壳）；
 //	③ 未授权（控制器没跑起来）→ 整块不渲染。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	if p.ctrl == nil || !p.ctrl.Visible() {
 		return
 	}

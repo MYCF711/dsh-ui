@@ -13,7 +13,6 @@ import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -48,14 +47,14 @@ func runWPC2ConversationEvidence(t *testing.T, width, height int) {
 	data := pluginapi.Snapshot{Cur: "s-wpc2", Msgs: msgs, Truncated: true}
 	tree := &gfx.Tree{}
 	feat := tree.Feature("wpc2-headless")
-	var view flex.View
+	var view ui.Page
 	var invalidator app.Invalidator
 	config := app.Config{Title: "wpc2-headless", Width: width, Height: height, Tree: tree, WindowMode: app.WindowFrameless, Invalidator: &invalidator}
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: current.Width, Scroll: view.ScrollState}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) { p.draw(f, env) })
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) { p.draw(f, env) })
 		p.afterDraw(canvas, env)
 	}
 	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult {

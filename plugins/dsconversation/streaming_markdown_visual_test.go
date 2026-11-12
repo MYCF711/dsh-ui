@@ -12,7 +12,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -34,7 +33,7 @@ func TestStreamingMarkdownHeadlessFrames(t *testing.T) {
 	tree := &gfx.Tree{}
 	feat := tree.Feature("mdstream-headless")
 	var (
-		view        flex.View
+		view        ui.Page
 		invalidator app.Invalidator
 		data        = streamingMarkdownData("")
 	)
@@ -49,7 +48,7 @@ func TestStreamingMarkdownHeadlessFrames(t *testing.T) {
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: size.Width,
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)

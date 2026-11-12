@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -32,7 +31,7 @@ var (
 )
 
 type model struct {
-	view flex.View
+	view ui.Page
 }
 
 var (
@@ -108,24 +107,24 @@ func newConfig(m *model) app.Config {
 		}
 
 		rendered, slotted := 0, 0
-		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
-			f.Column().Fill().Pad(12).Gap(6).Children(func() {
-				f.Text(fmt.Sprintf("模式 %s · %d 条 · 视口 %.0fpx · offset %.0f", listMode, len(msgs), viewportH, offset)).
+		m.view.Draw(canvas, theme, bounds, func(f ui.C) {
+			ui.Column(f).Fill().Pad(12).Gap(6).Children(func() {
+				ui.Text(f, fmt.Sprintf("模式 %s · %d 条 · 视口 %.0fpx · offset %.0f", listMode, len(msgs), viewportH, offset)).
 					FontSize(13).Bold()
-				f.Divider()
-				f.ScrollArea(listID).Grow(1).Children(func() {
-					f.Column().Gap(0).Children(func() {
+				ui.Divider(f)
+				ui.Scroll(f).Grow(1).Children(func() {
+					ui.Column(f).Gap(0).Children(func() {
 						y := float32(0)
 						for i := range msgs {
 							h := heights[i]
 							inView := y+h > offset-overscan && y < offset+viewportH+overscan
 							if listMode == "all" || inView {
-								f.Column().Height(h).Pad(padY).Children(func() {
-									f.Text(msgs[i]).FontSize(fontSize).MaxLines(int(h / lineH))
+								ui.Column(f).Height(h).Pad(padY).Children(func() {
+									ui.Text(f, msgs[i]).FontSize(fontSize).MaxLines(int(h / lineH))
 								})
 								rendered++
 							} else {
-								f.Slot().Height(h)
+								ui.Slot(f).Height(h)
 								slotted++
 							}
 							y += h

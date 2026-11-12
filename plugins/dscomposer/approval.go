@@ -16,7 +16,6 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -370,37 +369,37 @@ func approvalTextWidth(env *pluginapi.Env) float32 {
 //   - **不要 Mono()**。WrapLines 是按比例字宽量的（canvas.TextWidthWeight 不带字面），
 //     等宽字实际更宽，量出来"放得下"于是不省略，屏幕上还是硬切
 //     （同一份截图里比例字那行有省略号、等宽那行没有，对比出来的）。
-func oneLineText(f *flex.Frame, text string, width, size, leading float32, color ui.Color) {
-	f.Row().FillWidth().Children(func() {
-		f.Text(text).MaxWidth(width).FontSize(size).LineHeight(leading).Color(color).Ellipsis()
+func oneLineText(f ui.C, text string, width, size, leading float32, color ui.Color) {
+	ui.Row(f).FillWidth().Children(func() {
+		ui.Text(f, text).MaxWidth(width).FontSize(size).LineHeight(leading).Color(color).Ellipsis()
 	})
 }
 
 // drawApproval 按官方 ApprovalPanel 画在输入框上方：root padding 8/12，卡片宽
 // chat-content、radius-xl 20、InputMajor；strip → body → actionRow 三层。
 // 按钮仍调用原来的 press/pressOption，requestId/optionId 回传路径不变。
-func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawApproval(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	plan := planApproval(env.Data, env.Act.Approve != nil)
 	if !plan.Visible {
 		return
 	}
-	f.Column().FillWidth().PadSides(8, 0, 12, 0).Children(func() {
-		f.Row().FillWidth().Justify(ui.Center).Children(func() {
-			f.Column().Width(contentWidth(composerColumn(env))).Radius(t.Radii.XL).
+	ui.Column(f).FillWidth().PadSides(8, 0, 12, 0).Children(func() {
+		ui.Row(f).FillWidth().Justify(ui.Center).Children(func() {
+			ui.Column(f).Width(contentWidth(composerColumn(env))).Radius(t.Radii.XL).
 				Background(t.InputMajor).Border(1, t.Warn).Clip().Children(func() {
 				stripFill := t.Warn
 				stripFill.Alpha = 0.12 // theme 没有 warn-tertiary；由 Warn 派生，不写新色号
-				f.Row().FillWidth().Background(stripFill).PadSides(10, 16, 10, 16).
+				ui.Row(f).FillWidth().Background(stripFill).PadSides(10, 16, 10, 16).
 					Gap(8).Items(ui.Center).Children(func() {
-					f.Text("需要审批").FontSize(t.Fonts.Secondary).LineHeight(18).Color(t.Warn)
+					ui.Text(f, "需要审批").FontSize(t.Fonts.Secondary).LineHeight(18).Color(t.Warn)
 					if plan.Tool != "" {
-						f.Text(plan.Tool).FontSize(t.Fonts.Secondary).LineHeight(18).Color(t.Warn)
+						ui.Text(f, plan.Tool).FontSize(t.Fonts.Secondary).LineHeight(18).Color(t.Warn)
 					}
-					f.Spacer()
+					ui.Spacer(f)
 				})
 				textW := approvalTextWidth(env)
-				f.Column().FillWidth().PadSides(12, 16, 0, 16).Gap(6).Children(func() {
+				ui.Column(f).FillWidth().PadSides(12, 16, 0, 16).Gap(6).Children(func() {
 					if plan.Title != "" {
 						oneLineText(f, plan.Title, textW, t.Fonts.Title, 24, t.LabelPrimary)
 					}
@@ -415,19 +414,19 @@ func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 						oneLineText(f, plan.Note, textW, t.Fonts.Tiny, 16, t.LabelCaption)
 					}
 				})
-				f.Row().Gap(8).Items(ui.Center).Justify(ui.End).
+				ui.Row(f).Gap(8).Items(ui.Center).Justify(ui.End).
 					PadSides(14, 16, 14, 16).Children(func() {
 					// 顺序 = 官方 `.actionRow`（`ApprovalCard.tsx:87-97`）：
 					// 拒绝（outline）→ 允许一次（宿主只给一个允许项时是 primary）
 					// → 始终允许（primary）。**不重排**：官方把"破坏性最小的
 					// 拒绝"放在最左、"以后都允许"放在最右，位置本身就是风险提示。
-					if f.Button(env.Tree.ID(env.Feat, "approval-deny"), plan.Deny.Label).Outline().Small().
+					if ui.Button(f, plan.Deny.Label).Outline().Small().
 						Disabled(!plan.Deny.Usable).Clicked() && plan.Deny.Usable {
 						p.press(env, false)
 					}
 					// 官方：宿主给了"始终允许"时，中间那个是 outline（primary 让给
 					// 最右的始终允许）；只给一个允许项时它自己是 primary。
-					allow := f.Button(env.Tree.ID(env.Feat, "approval-allow"), plan.Allow.Label).Small()
+					allow := ui.Button(f, plan.Allow.Label).Small()
 					if plan.AllowAlways.Option != "" {
 						allow = allow.Outline()
 					}
@@ -435,7 +434,7 @@ func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 						p.press(env, true)
 					}
 					if plan.AllowAlways.Option != "" {
-						if f.Button(env.Tree.ID(env.Feat, "approval-allow-always"), plan.AllowAlways.Label).Small().
+						if ui.Button(f, plan.AllowAlways.Label).Small().
 							Disabled(!plan.AllowAlways.Usable).Clicked() && plan.AllowAlways.Usable {
 							p.pressOption(env, plan.AllowAlways.Option, plan.AllowAlways.Label)
 						}

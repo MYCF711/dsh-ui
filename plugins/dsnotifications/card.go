@@ -27,7 +27,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -78,15 +77,15 @@ func depthScale(depth int) float64 { return math.Pow(depthScaleBase, float64(dep
 // drawStack 画整摞卡片：非前景层先画（只露可见边），前景卡最后画。
 //
 // 顺序 = 服务端顺序：`notices[0]` 是前景（唯一可交互的一张）。
-func (p *Plugin) drawStack(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, notices []apiclient.Notification) {
+func (p *Plugin) drawStack(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, notices []apiclient.Notification) {
 	if len(notices) == 0 {
 		return
 	}
-	f.Column().FillWidth().MaxWidth(StackMaxWidth).Children(func() {
+	ui.Column(f).FillWidth().MaxWidth(StackMaxWidth).Children(func() {
 		for depth := len(notices) - 1; depth >= 1; depth-- {
 			// 官方非前景卡 `pointer-events:none`：这里根本不给命中区，天然不可点。
-			f.Row().FillWidth().Height(DepthOffset).Justify(ui.Center).Children(func() {
-				f.Row().Height(DepthOffset).
+			ui.Row(f).FillWidth().Height(DepthOffset).Justify(ui.Center).Children(func() {
+				ui.Row(f).Height(DepthOffset).
 					WidthPercent(float32(depthScale(depth)) * 100).
 					Radius(DepthOffset / 2).
 					Background(t.InputMajor).
@@ -98,28 +97,25 @@ func (p *Plugin) drawStack(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme
 }
 
 // drawCard 画前景卡（唯一可交互的一张）。
-func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, n apiclient.Notification) {
-	id := func(name string) gfx.ID {
-		return env.Tree.ID(env.Feat, "account-notice-"+n.ID+"-"+name)
-	}
-	f.Column().FillWidth().Radius(CardRadius).Background(t.InputMajor).Shadow(gfx.ShadowXS).
+func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, n apiclient.Notification) {
+	ui.Column(f).FillWidth().Radius(CardRadius).Background(t.InputMajor).Shadow(gfx.ShadowXS).
 		Pad(CardPadding).Gap(CopyGap).Children(func() {
 		// .copy：标题行 + 正文。`role="status"` 是官方可访问性标注；
 		// viva 的 Text 没有 role，写进 aria 只能靠标签语义，此处从简（不影响结构）。
 		if n.Title != "" || n.Body != "" {
-			f.Row().FillWidth().Items(ui.Start).Gap(CopyGap).Children(func() {
+			ui.Row(f).FillWidth().Items(ui.Start).Gap(CopyGap).Children(func() {
 				// .title 的 span.icon 只在有标题时画（官方标题行同时承载 icon 与 title）。
 				if n.Title != "" {
-					f.Icon(noticeBellIcon(t.BrandPrimary)).Size(IconSize, IconSize).
+					ui.Icon(f, noticeBellIcon(t.BrandPrimary)).Size(IconSize, IconSize).
 						MarginSides(IconTopGap, 0, 0, 0)
 				}
-				f.Text(n.Title).FontSize(CardFontSize).LineHeight(TitleLineHeight).
+				ui.Text(f, n.Title).FontSize(CardFontSize).LineHeight(TitleLineHeight).
 					Weight(TitleWeight).Color(t.LabelSecondary).Grow(1)
 			})
 		}
 		if n.Body != "" {
 			// `.copy p{margin:0;white-space:pre-wrap}`：正文原样换行，不重排。
-			f.Text(n.Body).FillWidth().FontSize(CardFontSize).LineHeight(CardLineHeight).
+			ui.Text(f, n.Body).FillWidth().FontSize(CardFontSize).LineHeight(CardLineHeight).
 				Color(t.LabelSecondary)
 		}
 
@@ -127,11 +123,11 @@ func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme,
 			// `.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}`。
 			// viva 的 Row 不自动换行（没有 flex-wrap）；动作通常 1–2 个，先按单行排，
 			// 超出宽度由父级裁剪——这条差异登记在报告里。
-			f.Row().FillWidth().Gap(ActionsGap).MarginSides(ActionsTopMargin, 0, 0, 0).
+			ui.Row(f).FillWidth().Gap(ActionsGap).MarginSides(ActionsTopMargin, 0, 0, 0).
 				Children(func() {
 					for i, act := range n.Actions {
 						act := act
-						btn := f.Button(id("action-"+itoa(i)), act.Label).Small().
+						btn := ui.Button(f.KeyInt(i), act.Label).Small().
 							MinHeight(ActionMinHeight)
 						if act.Style != "primary" {
 							// 官方 `variant = primary | outline`，按 action.style 选。
@@ -148,15 +144,14 @@ func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme,
 		//
 		// 为什么分两步：viva 的 Button 自己画 label，塞不进矢量图标；
 		// 图标没有命中区，所以点在图标上仍落到按钮的命中区里（与官方"图标 + 按钮"一致）。
-		closeID := id("close")
-		if f.Button(closeID, labelClose).Ghost().IconOnly().
+		if ui.Button(f, labelClose).Ghost().IconOnly().
 			Size(CloseSize, CloseSize).Absolute().Top(CloseInset).Right(CloseInset).Clicked() {
 			p.ctrl.Dismiss(n.ID)
 		}
 		iconInset := CloseInset + (CloseSize-CloseIconSize)/2
-		f.Row().Absolute().Top(iconInset).Right(iconInset).
+		ui.Row(f).Absolute().Top(iconInset).Right(iconInset).
 			Size(CloseIconSize, CloseIconSize).Children(func() {
-			f.Icon(closeIcon()).Size(CloseIconSize, CloseIconSize).Color(t.LabelCaption)
+			ui.Icon(f, closeIcon()).Size(CloseIconSize, CloseIconSize).Color(t.LabelCaption)
 		})
 	})
 }

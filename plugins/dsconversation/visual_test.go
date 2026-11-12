@@ -7,7 +7,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -29,7 +28,7 @@ func drawHeroTest(t *testing.T, data pluginapi.Snapshot, mainWidth float32) (*gf
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
 	tree := &gfx.Tree{}
 	canvas := newHeroTestCanvas(tree)
-	var view flex.View
+	var view ui.Page
 	f := view.Begin(canvas, dscore.VivaTheme(theme), ui.Rect{Width: mainWidth, Height: 700})
 	p.draw(f, &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("hero-test"), Canvas: canvas,

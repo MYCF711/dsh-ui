@@ -29,7 +29,7 @@
 //
 // 官方 `<use>` 的 svg 是 `width={size} height={size}` + `viewBox="0 0 16 16"`，
 // 也就是「16 个单点的图形缩到 14px 画」。这里保持同一组坐标，由调用方
-// `f.Icon(…).Size(goalGlyphSize, goalGlyphSize)` 给 14——**不要**把 path 里的
+// `ui.Icon(f, …).Size(goalGlyphSize, goalGlyphSize)` 给 14——**不要**把 path 里的
 // 数字整体缩放成 14，那会让描边宽度（view 单位 1）跟着错。
 package dsgoal
 

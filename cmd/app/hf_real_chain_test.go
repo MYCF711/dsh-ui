@@ -40,7 +40,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -67,7 +66,7 @@ func hfPaint(t *testing.T, product *gyRealProduct, snap pluginapi.Snapshot, goal
 
 // hfDrawSlot 与 `uikernel.Kernel.DrawSlot` 同义，额外记录每槽派发次数
 // （本测试要断言"官方座位那一帧真的被派发"以及"桥与官方座位同帧只活一个"）。
-func hfDrawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
+func hfDrawSlot(f ui.C, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
 	counts[slot]++
 	for _, painter := range k.Painters(slot) {
 		if painter.Draw != nil {
@@ -116,8 +115,8 @@ func hfOfficialSidebarFrame(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas,
 	// 与 main.go 同源：这一帧没走兼容桥，官方子槽活着。
 	tier.SetLegacyBridge(opts.BridgeLegacy)
 	counts := map[pluginapi.Slot]int{}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, opts, func(slot pluginapi.Slot) {
 			hfDrawSlot(f, kernel, slot, env, counts)
 		})
@@ -348,8 +347,8 @@ func hfCapture(t *testing.T, product *gyRealProduct, snap pluginapi.Snapshot, go
 			Has:      product.kernel.Has,
 			Act:      pluginapi.Actions{Goal: func() string { return goal }},
 		}
-		var view flex.View
-		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f *flex.Frame) {
+		var view ui.Page
+		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, env, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, env)
 			})

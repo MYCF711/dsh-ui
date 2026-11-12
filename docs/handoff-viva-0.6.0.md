@@ -327,3 +327,96 @@ func (p *Page) Draw(canvas *gfx.Canvas, bounds Rect, view func(C))
 | 名字全量校验 | `ui` 0 未知 / `gfx` 0 未知 | `_v06/rename-report.json`、`check_names.py` 输出 |
 
 给 V-06-2 的可选起点：`DSH-GO/tmp/GO8-RC2/_v06/v061-seed-frame-view.patch`（146 文件，`git apply --check` 通过）——它把 `*flex.Frame`→`ui.C`、`flex.View`→`ui.Page` 机械铺开，铺开后 `go build` 会直接列出需要 `ui.X(f)` 的每个点。**该 patch 不在本交付树里**，是否采用由 V-06-2 决定；V-06-2 也可以从本 worktree 的干净状态自己做。
+
+---
+
+## 10. V-06-2 实测（阶段二第二步：frame 方法调用 → v0.6.0 元素函数）
+
+> 现场：同一隔离 worktree（分支 `chore/viva-0.6.0-stage2`，起点 HEAD `d826b18` = V-06-1 提交），**未 commit**（按约定由 Lead 统一提交）。
+> 起点：`DSH-GO/tmp/GO8-RC2/_v06/v061-seed-frame-view.patch`（146 文件）`git apply --check` → `git apply` 通过后开始。
+
+### 10.1 结论
+
+| 项 | 结果 |
+|---|---|
+| frame 方法调用改写 | **925 处 / 89 文件**（接收者三种：`f.`、`fr.`（测试）、`b.Frame.`（`plugins/dstool` 的 `BodyCtx.Frame`））；其中 **54 处 / 5 文件在 `spike/*` 五个独立子模块**里（各自 `go.mod`，不在 `./...` 门禁内）→ **主模块 871 处 / 84 文件** |
+| 其中**机械一一对应** `f.X(…)`→`ui.X(f, …)` | **882 处** |
+| 其中**语义改写**（v0.6.0 换了形状） | **43 处**：`Button` 22、`ScrollArea` 10、`Field` 7、`Popup` 3、`Switch` 1 |
+| 保持不动的 `Ctx` 方法 | `f.Bounds()` 15 处、`f.Theme()` 1 处（v0.6.0 `Ctx` 保留同名方法；`Theme()` 返回 `*Theme`，那 1 处调用点补了 `*`） |
+| `gofmt -l` | **0** 个文件 |
+| `CGO_ENABLED=0 go build ./...` | **红，只剩 `cmd/app` 4 处**，且 4 处**全是 V-06-3 的 `ui.Page` 面**（`m.view.ScrollState` ×3、`m.view.Draw` 带 theme ×1）；本包所有非测试代码类型检查通过 |
+| `CGO_ENABLED=0 go vet ./...` | 红 **20 处，全部是 V-06-3 面**：`view.Draw` 13、`canvas.BeginEventPass` 5、`view.ScrollState` 2 |
+| `CGO_ENABLED=0 go test ./... -count=1` | **15 包 ok / 20 包 `[build failed]`**；`[build failed]` 全部来自上面 20 处 vet 级错误，**0 条运行期失败** |
+
+一句话：**V-06-2 的施工面已 100% 做完**（全树 `f.X(` 型 frame 调用 **0 处残留**，`grep` 可证）；build/vet 不绿**不是** V-06-2 的残留，而是 V-06-3 的 `ui.Page` 面（`Page` 没有 `ScrollState`/`Draw(theme)` 了）。
+
+### 10.2 改写清单（实测，按方法）
+
+| 方法 | 处数 | v0.6.0 写法 |
+|---|---|---|
+| `Text` | **312**（303 + `b.Frame.` 9） | `ui.Text(c, s)` |
+| `Row` | **271**（269 + 2） | `ui.Row(c)` |
+| `Column` | **201**（200 + 1） | `ui.Column(c)` |
+| `Slot` | **37**（31 `f.` + 6 `fr.`） | `ui.Slot(c)` |
+| `Icon` | **23** | `ui.Icon(c, icon)` |
+| `Button` | **22** | `ui.Button(c, label)` ← **丢显式 ID** |
+| `Spacer` | **18** | `ui.Spacer(c)` |
+| `Wrap` | **12** | `ui.Wrap(c, s)` |
+| `ScrollArea` | **10** | `ui.Scroll(c)` ← **丢显式 ID** |
+| `Field` | **7** | `ui.TextFieldID(c, id, field, label, placeholder)` ← **参数重排** |
+| `Divider` | **6** | `ui.Divider(c)` |
+| `Popup` | **3** | `ui.Overlay(c, ui.OverlaySpec{Band, Bounds})` + `Absolute()` 子面板 |
+| `Paragraph` / `Spinner` / `Switch` | 各 **1** | `ui.Paragraph(c, s, n)` / `ui.Spinner(c)` / `ui.Switch(c, *bool, label)` |
+
+机械对应 882 = 312+271+201+37+23+18+12+6+1+1；语义 43 = 22+10+7+3+1；合计 **925**。
+
+### 10.3 五个形状变化点（以 v0.6.0 源码为准，不是照报错猜）
+
+1. **`ui.C` = `*Ctx`，元素是包级函数**：`func X(c C, …) Box`，所以 `f.X(a)`→`ui.X(f, a)`，零参 `f.X()`→`ui.X(f)`。`Box` 的链式 API（`Width/Pad/Children/…`）不变，链式写法整段不用动。
+2. **`f.Popup()` 在 v0.6.0 不导出**（公开浮层只剩 `Menu` / `Popover` / `Dialog` / `Drawer` / `Modal` / `Overlay`；`frame.Popup()` 仍是 unexported）。应用的自由浮层走 `ui.Overlay(c, OverlaySpec{Band: LayerPaneChrome, Bounds: 页面矩形})`，它内部做 `At+Size`；被定位的子面板用 `ui.Column(c).Absolute().Left/Right(…).Width(…).Bottom(…)`（`solveAbsolute` 对 `dimAuto` + 单边锚定给内容高度）。3 处都这么改：模型菜单（`Above(…, End)` → 右缘对齐）、统计弹窗（`At(0,0).Size(窗口)` → `Inset(0)` 遮罩；`Above(…, Start)` → 左缘 + `Bottom`）。
+3. **`ScrollArea(id)` 的显式 ID 没了**：v0.6.0 的滚动区身份来自声明名（`Key`/`Part`/位置），`ui.Scroll(c)` 不接受 ID。10 处丢 ID，走位置命名（同一位置跨帧稳定）；`docs/…` 里那条"每个会话一个滚动 id，否则切会话时滚动位置会串"的注释现在只能靠位置命名兜底——**跨视图共享滚动的语义丢了**，登记 V-06-4。
+4. **`Field(field, id, label, ph)` → `ui.TextFieldID(c, id, field, label, ph)`**：参数顺序变了（`id` 提到 `field` 前），7 处按位重排。
+5. **`Switch(id, on)` → `ui.Switch(c, *bool, label)`**：v0.6.0 的开关绑 `*bool` 并由控件写回。`plugins/dsagentteam` 给 `Plugin` 加了绑定位 `toggleValue`，每帧先重置成投影值，再 `ui.Switch(f, &p.toggleValue, "").Label(…)` + 仍用 `.Clicked()` 走 `p.team.Select(...)`——**非乐观更新语义不变**（写回的是绑定位，真值仍来自投影）。
+
+另外：`Ctx.Theme()` 返回 `*Theme`（v0.5.1 是值），`plugins/dscomposer` 那 1 处补 `*`。
+
+### 10.4 怎么做的
+
+1. `git apply` 起点补丁（146 文件：`*flex.Frame`→`ui.C`、`flex.View`→`ui.Page`）。
+2. **自己写括号配平器做改写**（不用 sed）：扫描 `IDENT.Name(`，**跨注释/字符串**配平括号取实参，按方法名分派（零参/一参/两参/丢 ID/换序），只认接收者 `f`、`fr`、`IDENT.Frame` 三种。第一版漏掉了 `.Children(func(){ … })` 里的嵌套调用（扫描器把 `Children(` 整段当成一个调用吞掉了），改成"不是自己的方法名就只跳过 `(`"后再跑一遍：**709 → 909 处**。脚本 `DSH-GO/tmp/GO8-RC2/_v062/rewrite.py`、`rewrite_frame_field.py`，**幂等**（再跑输出 `files=0`）。
+3. 剩下的 3 处 `Popup`、1 处 `Switch`、以及丢 ID 后产生的 2 个未使用变量、1 个未使用的 `id` 闭包，逐个手改。
+4. `gofmt -w` 过一遍（13 个文件因实参增加需要重排），`gofmt -l` 归零。
+5. `go build` / `go vet` / `go test` 三档跑到底，按报错归类。
+
+### 10.5 还剩什么（归类，不是"边界"带过）
+
+**① V-06-3 · `ui.Page` 面（唯一阻塞 `go build` 的东西，4 处 / 1 文件）**
+
+| 位置 | 现状 | v0.6.0 要求 |
+|---|---|---|
+| `cmd/app/main.go:716,743` `m.view.ScrollState(id)` | `View.ScrollState(gfx.ID) *ScrollState` 的 **ID 查表** | v0.6.0 **没有** ID→state 的公开查表：`ScrollState` 只在 `Box.ScrollState()`（声明期拿 Box、`Draw` 之后读同一个 paint）。`saveScroll`/`restoreScroll` 要改成"声明时把 `ui.Scroll(...)` 的 Box 交给壳"，或由声明方自己存取 |
+| `cmd/app/main.go:1805` `Env.Scroll: m.view.ScrollState` | `pluginapi.Env.Scroll func(gfx.ID) *ui.ScrollState` | 同上；`plugins/dsconversation`（`conversation.go:331`、`wpc2_turns.go:79`）是在**声明期**要 state 的，v0.6.0 等价物是声明处直接拿 Box |
+| `cmd/app/main.go:1830` `m.view.Draw(canvas, theme, bounds, fn)` | 每次 Draw 传 theme | `Draw(canvas, bounds, View)`；主题改由 `ui.NewPage(ui.PageConfig{Theme: *Theme})` 给，**主题切换要重建/重配 Page** |
+
+**② V-06-3 · 测试 harness（阻塞 `go vet` / `go test`，20 处 / 16 文件）**：`view.Draw` 13 处（删 theme 实参）、`canvas.BeginEventPass` 5 处（v0.6.0 的 gfx 签名参数变多）、`view.ScrollState` 1 处、`f.End()` 3 处（`Page` 没有 `Begin`/`End`，`var view ui.Page` + `view.Begin(...)` 的整段 harness 要按 `Draw(canvas, bounds, func(c ui.C))` 重写）。
+
+**③ V-06-4 · 控件面语义（编译过得去，语义要另立判据）**：
+- `Button` 22 / `ScrollArea` 10 丢掉的**显式交互 ID**：现在身份来自 `Key`/`Part`/位置。用 `env.Tree.ID(env.Feat, "…")` 造 ID 再按 ID 断言命中区的测试，要按新身份重写（本轮只有 2 处用 `f.KeyInt(i)` 显式保住"每行一个身份"）。
+- `Popup` 3 处的 `Above()` **"放不下翻到另一面"** 语义丢掉了（Overlay 绝对定位不翻面）；两处锚点都在窗口底部，正常窗口不触发，但这是真实差异。
+- 浮层改写的**几何等价**已由冒烟实测（见 10.6），但**真实插件路径**（`DrawModelMenu` / `drawStatsDialog` 的实际锚点与样式）无画面验证，需要 V-06-5 的视觉/命中对照。
+
+### 10.6 本轮做了什么验证 / 没做到什么
+
+- **做到了**：925 处全部过编译器（`go build` 除 `cmd/app` 外全通）；15 个包 `go test` 全绿，其中 `internal/uidecl`（11 处）、`plugins/dsdeliverables`（12）、`plugins/dsjobs`（6）、`plugins/dsschedule`（6）、`plugins/dscommands`（7）、`plugins/dsterminal`（5）**含本轮改写点且测试真跑并全绿**——这是改写后插件仍能真出画面的运行期证据。
+- **另外做了运行期冒烟**（一次性，`_v062smoke/`，跑完已删、源码存档 `_v062/smoke/main.go.txt`）：`SMOKE OK` —— 遮罩命中区正好 `(0,0,900,700)`（`Popup().At+Size` → `Overlay+Inset(0)` 等价）、面板 `x=100 w=200 底边=650(=700−50) h=20(=内容高)`（`Popup().Above(anchor,50,Start)` → `Absolute().Left/Width/Bottom` 等价，**内容高度成立**）、10 类改写元素同帧声明全出命中区、无 panic。
+- **没做到**：paint 类测试（`view.Draw` harness）在 V-06-3 落地前跑不起来，所以 20 个 `[build failed]` 的 UI 包（改写点最多的是 `dsconversation` 198、`dsagentteam` 83、`dssidebar` 74、`internal/uikernel` 71、`dscomposer` 54、`dssettings` 51、`dsrightbar` 51）**只有编译器验证，没有画面验证**；浮层 3 处同样只有编译器验证。5 个 `spike/*` 子模块同理（它们的 `view.Draw` 属 V-06-3，本轮不动）。
+
+### 10.7 证据位置
+
+| 内容 | 路径 |
+|---|---|
+| 改写脚本（幂等，可复跑核对） | `DSH-GO/tmp/GO8-RC2/_v062/rewrite.py`、`rewrite_frame_field.py` |
+| 最终 `go build` 输出 | `_v062/10-build-final.log` |
+| `go vet` 输出（20 处全清单） | `_v062/11-vet.log` |
+| `go test` 输出（15 ok / 20 build failed） | `_v062/12-test.log` |
+| 被改写的文件清单（88 个 `f.`/`fr.` 面；`plugins/dstool/render.go` 另计 1） | `_v062/13-rewritten-files.txt` |

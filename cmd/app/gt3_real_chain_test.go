@@ -35,7 +35,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -225,8 +224,8 @@ func renderTranscriptSeat(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas, *
 		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		// **走官方槽**：这就是真机上 `ChatView.column` 那一次 drawSlot。
 		kernel.DrawSlot(f, pluginapi.Slot("conversation.view"), env)
 	})

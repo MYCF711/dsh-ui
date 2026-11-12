@@ -27,7 +27,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -76,8 +75,8 @@ func gqRenderSeat(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas, *dsconver
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
 	env.Act.CopyResult = func(string) error { return nil }
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		kernel.DrawSlot(f, pluginapi.Slot("conversation.view"), env)
 	})
 	conversation.OfficialTranscript().PaintCodeBlocks(canvas, env)

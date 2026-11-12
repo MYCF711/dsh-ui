@@ -93,7 +93,6 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -323,7 +322,7 @@ func (a *connectionAnim) leavingNow() bool { return a.ready && a.leaving }
 // 描边 = 同色 20%（`color-mix(… 20%, transparent)` 的等价写法是给颜色乘 0.2 alpha）。
 // 中性档（unknown）官方没有，取透明的底 + `border-l2` 描边 + `label-tertiary` 文字，
 // 这样它读起来是"一个状态"，不会被误认成成功/失败的彩色结论。
-func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawConnectionIndicator(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	if env.Theme != nil {
 		t = env.Theme
@@ -354,7 +353,7 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 		border = withAlpha(t.WarnLabel, connIndicatorBorderTint)
 	}
 
-	pill := f.Row().Height(connIndicatorHeight).Radius(t.Radii.SM).
+	pill := ui.Row(f).Height(connIndicatorHeight).Radius(t.Radii.SM).
 		Background(fill).Border(connIndicatorBorder, border).
 		Items(ui.Center).Gap(connIndicatorGap).Opacity(opacity)
 
@@ -372,15 +371,15 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 		// 胶囊宽 = 内容 pref + 两侧 padding，用 PadSides 时文字拿到的是"容器宽 - pad"，
 		// float32 往返会让刚好放得下的文案被判断成放不下（HC 真机报告里那条
 		// 「571 tok/s 被截成 571 tok…」的同一个坑）。
-		f.Row().Width(connIndicatorPadX).Height(connIndicatorHeight)
+		ui.Row(f).Width(connIndicatorPadX).Height(connIndicatorHeight)
 		if view.icon != nil {
-			f.Icon(view.icon()).Size(connectionIconSize, connectionIconSize).Color(text)
+			ui.Icon(f, view.icon()).Size(connectionIconSize, connectionIconSize).Color(text)
 		}
 		// 官方 `font-weight:500`；viva 的 Weight 是**相对常规字重的增量**，
 		// `ui.WeightMedium` 就是这一档（别处也都用它，别写 500）。
-		f.Text(view.label).FontSize(connIndicatorFont).LineHeight(connIndicatorLine).
+		ui.Text(f, view.label).FontSize(connIndicatorFont).LineHeight(connIndicatorLine).
 			Weight(gfx.WeightMedium).Color(text).Ellipsis()
-		f.Row().Width(connIndicatorPadX).Height(connIndicatorHeight)
+		ui.Row(f).Width(connIndicatorPadX).Height(connIndicatorHeight)
 	})
 
 	if interactive && pill.Clicked() {

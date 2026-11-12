@@ -8,7 +8,6 @@ package dsschedule
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -46,7 +45,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 
 // draw 画「定时任务」区。**没有任务就整块不画**——
 // 空标题会让侧栏看着像坏了（"定时任务"下面什么都没有）。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	if env.Act.ScheduleList == nil {
 		return
 	}
@@ -62,18 +61,18 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		shown = shown[:maxShown]
 	}
 
-	f.Column().FillWidth().Gap(2).PadY(4).Children(func() {
-		f.Text("定时任务").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+	ui.Column(f).FillWidth().Gap(2).PadY(4).Children(func() {
+		ui.Text(f, "定时任务").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		for _, it := range shown {
 			title := title(it)
-			f.Row().FillWidth().Items(ui.Center).Gap(6).Children(func() {
-				f.Text(title).FontSize(12).Color(t.LabelSecondary).Grow(1).Ellipsis()
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(6).Children(func() {
+				ui.Text(f, title).FontSize(12).Color(t.LabelSecondary).Grow(1).Ellipsis()
 				// 下次时间用最暗的色：它是参考信息，不该抢任务名的注意力。
-				f.Text(shortTime(it.NextAt)).FontSize(11).Color(t.LabelTertiary)
+				ui.Text(f, shortTime(it.NextAt)).FontSize(11).Color(t.LabelTertiary)
 			})
 		}
 		if more > 0 {
-			f.Text("还有 " + itoa(more) + " 条").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Text(f, "还有 "+itoa(more)+" 条").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
 	})
 }

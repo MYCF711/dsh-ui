@@ -23,7 +23,6 @@ package pluginapi
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -147,7 +146,7 @@ type Painter struct {
 	// Order 决定同一个槽里谁先画：小的先（= 贴在上面）。
 	Order int
 	// Draw 画自己。frame 已经是这块槽的位置和尺寸，别自己算全局坐标。
-	Draw func(f *flex.Frame, env *Env)
+	Draw func(f ui.C, env *Env)
 	// AfterDraw 在整棵树布局完成之后调用，给那些「必须先知道位置才能画」的东西用：
 	// MarkdownView.Paint、自绘文本排版、代码块高亮。canvas 是全屏画布，
 	// 坐标要自己从 Draw 阶段量到的矩形来（拿 Box.Rect() 存起来）。
@@ -160,7 +159,7 @@ type Painter struct {
 	// 这就是"高塔"的做法：壳只画 root 一个槽，框架插件在 root 里切出
 	// shell.leading / serveral 个列 / shell.bottom，再把 f 交给
 	// sidebar.* / main.* / rightbar。插件不需要知道自己在第几层。
-	Children func(f *flex.Frame, env *Env, drawSlot func(Slot))
+	Children func(f ui.C, env *Env, drawSlot func(Slot))
 }
 
 // Primitives 是基础组件的画法，由根本依赖插件（ds-core）提供。
@@ -170,22 +169,22 @@ type Painter struct {
 // 实现方必须自己加 `var _ pluginapi.Primitives = (*X)(nil)` 断言。
 type Primitives interface {
 	// ListRow 一条列表行：选中/悬停底色由实现决定，调用方只给状态。
-	ListRow(f *flex.Frame, id gfx.ID, active bool, height float32, body func()) ui.Box
+	ListRow(f ui.C, id gfx.ID, active bool, height float32, body func()) ui.Box
 	// SectionHeader 一个分组头（标题 + 条数 + 展开/收起箭头）。
-	SectionHeader(f *flex.Frame, id gfx.ID, title string, count int, open bool) ui.Box
+	SectionHeader(f ui.C, id gfx.ID, title string, count int, open bool) ui.Box
 	// Badge 行尾的小徽标。
-	Badge(f *flex.Frame, text string, color ui.Color) ui.Box
+	Badge(f ui.C, text string, color ui.Color) ui.Box
 	// Dot 一个状态圆点。
-	Dot(f *flex.Frame, color ui.Color, size float32) ui.Box
+	Dot(f ui.C, color ui.Color, size float32) ui.Box
 	// Divider 一条最轻的分隔线。
-	Divider(f *flex.Frame)
+	Divider(f ui.C)
 	// CircleButton 一个 28px 圆形图标按钮（官方 .action 的尺寸），返回是否被点击。
-	CircleButton(f *flex.Frame, id gfx.ID, glyph string, filled bool) bool
+	CircleButton(f ui.C, id gfx.ID, glyph string, filled bool) bool
 	// Chip 一个只读小标签（官方的 .chip：inline-flex、gap 3px、business-primary 文字）。
-	Chip(f *flex.Frame, label string) ui.Box
+	Chip(f ui.C, label string) ui.Box
 	// Bubble 画一个用户气泡容器（官方 .bubble：radius xl、specific-bubble 底）。
 	// 调用方传进内容，气泡只管外观。
-	Bubble(f *flex.Frame, body func()) ui.Box
+	Bubble(f ui.C, body func()) ui.Box
 }
 
 // Env 是绘制期拿到的全部东西：只读快照 + 动作 + 主题。

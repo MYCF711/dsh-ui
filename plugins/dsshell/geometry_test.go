@@ -5,7 +5,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -49,25 +48,25 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 			}
 
 			boxes := map[pluginapi.Slot]ui.Box{}
-			var view flex.View
-			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+			var view ui.Page
+			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 				p.draw(f, env)
 				p.children(f, env, func(slot pluginapi.Slot) {
 					switch slot {
 					case pluginapi.SlotMainHeader:
-						boxes[slot] = f.Slot().FillWidth().Height(40)
+						boxes[slot] = ui.Slot(f).FillWidth().Height(40)
 					case pluginapi.SlotMainBody:
 						// 故意用一个自身不 Grow 的占用方：壳必须给它可伸展的区域，
 						// 否则空态会把 composer 提到顶部。
-						boxes[slot] = f.Slot().FillWidth()
+						boxes[slot] = ui.Slot(f).FillWidth()
 					case pluginapi.SlotMainComposer:
-						boxes[slot] = f.Slot().FillWidth().Height(80)
+						boxes[slot] = ui.Slot(f).FillWidth().Height(80)
 					case pluginapi.SlotRightbar:
-						boxes[slot] = f.Slot().FillWidth().FillHeight()
+						boxes[slot] = ui.Slot(f).FillWidth().FillHeight()
 					case pluginapi.SlotShellBottom:
-						boxes[slot] = f.Slot().FillWidth().FillHeight()
+						boxes[slot] = ui.Slot(f).FillWidth().FillHeight()
 					default:
-						boxes[slot] = f.Slot().FillWidth()
+						boxes[slot] = ui.Slot(f).FillWidth()
 					}
 				})
 			})
@@ -115,18 +114,18 @@ func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 	}
 	rightDrawn := false
 	var main ui.Box
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 		p.children(f, env, func(slot pluginapi.Slot) {
 			switch slot {
 			case pluginapi.SlotRightbar:
 				rightDrawn = true
 			case pluginapi.SlotMainBody:
-				main = f.Slot().FillWidth()
+				main = ui.Slot(f).FillWidth()
 			case pluginapi.SlotShellBottom:
-				f.Slot().FillWidth().FillHeight()
+				ui.Slot(f).FillWidth().FillHeight()
 			default:
-				f.Slot().FillWidth()
+				ui.Slot(f).FillWidth()
 			}
 		})
 	})

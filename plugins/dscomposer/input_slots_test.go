@@ -21,7 +21,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dsagentteam"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -62,7 +61,7 @@ func (p *probePlugin) Panels() []pluginapi.Painter {
 		out = append(out, pluginapi.Painter{
 			ID:   "probe:" + string(slot),
 			Slot: slot,
-			Draw: func(*flex.Frame, *pluginapi.Env) { p.counts[slot]++ },
+			Draw: func(ui.C, *pluginapi.Env) { p.counts[slot]++ },
 		})
 	}
 	return out
@@ -144,8 +143,8 @@ func (h *slotHarness) paint(t *testing.T, opts uikernel.ShellOptions, snap plugi
 	for slot := range h.dispatched {
 		delete(h.dispatched, slot)
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(h.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(h.theme), env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, opts, func(slot pluginapi.Slot) {
 			h.dispatched[slot]++
 			h.kernel.DrawSlot(f, slot, env)

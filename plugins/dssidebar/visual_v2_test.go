@@ -7,7 +7,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -28,19 +27,19 @@ type v2RecordingPrimitives struct {
 	dots    int
 }
 
-func (r *v2RecordingPrimitives) ListRow(f *flex.Frame, id gfx.ID, active bool, height float32, body func()) ui.Box {
+func (r *v2RecordingPrimitives) ListRow(f ui.C, id gfx.ID, active bool, height float32, body func()) ui.Box {
 	box := r.Primitives.ListRow(f, id, active, height, body)
 	r.rows = append(r.rows, v2RecordedRow{id: id, active: active, height: height, box: box})
 	return box
 }
 
-func (r *v2RecordingPrimitives) SectionHeader(f *flex.Frame, id gfx.ID, title string, count int, open bool) ui.Box {
+func (r *v2RecordingPrimitives) SectionHeader(f ui.C, id gfx.ID, title string, count int, open bool) ui.Box {
 	box := r.Primitives.SectionHeader(f, id, title, count, open)
 	r.headers = append(r.headers, box)
 	return box
 }
 
-func (r *v2RecordingPrimitives) Dot(f *flex.Frame, color ui.Color, size float32) ui.Box {
+func (r *v2RecordingPrimitives) Dot(f ui.C, color ui.Color, size float32) ui.Box {
 	r.dots++
 	return r.Primitives.Dot(f, color, size)
 }
@@ -80,8 +79,8 @@ func TestV2ActivityDotOnlyForCurrentSessionWithTruth(t *testing.T) {
 		env.Data = pluginapi.Snapshot{Cur: cur, Busy: busy, Stream: stream}
 		env.Act.OpenSession = func(string) {}
 		row := sess("current", "真实标题", `D:\work`, "2026-11-03T20:00:00+08:00")
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 40}, func(f *flex.Frame) {
+		var view ui.Page
+		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
 			p.drawSession(f, env, row)
 		})
 		return recorder.dots
@@ -131,8 +130,8 @@ func TestV2SearchUsesFieldAndNarrowsRealRows(t *testing.T) {
 	}
 	env.Data.Cur = "b"
 	p.search.SetText("  ALPHA  ")
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 300}, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 300}, func(f ui.C) {
 		p.drawList(f, env)
 	})
 	if len(p.lastOrder) != 1 || p.lastOrder[0] != "a" {
@@ -152,10 +151,10 @@ func TestV2SelectionAndClickUseRealSessionID(t *testing.T) {
 	env.Act.OpenSession = func(id string) { opened = id }
 	a := sess("a", "Alpha", `D:\work`, "2026-11-03T10:00:00Z")
 	b := sess("b", "Beta", `D:\work`, "2026-11-03T11:00:00Z")
-	var view flex.View
+	var view ui.Page
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 80}, func(f *flex.Frame) {
-			f.Column().Children(func() {
+		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 80}, func(f ui.C) {
+			ui.Column(f).Children(func() {
 				p.drawSession(f, env, a)
 				p.drawSession(f, env, b)
 			})
@@ -189,10 +188,10 @@ func TestV2GroupGeometryAndScroll(t *testing.T) {
 	}
 	env.Data.Sessions = append(env.Data.Sessions,
 		sess("b", "Beta", `D:\work\b`, "2026-11-03T11:00:00Z"))
-	var view flex.View
+	var view ui.Page
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 180}, func(f *flex.Frame) {
-			f.Column().FillHeight().Children(func() { p.drawList(f, env) })
+		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 180}, func(f ui.C) {
+			ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 		})
 	}
 	draw()

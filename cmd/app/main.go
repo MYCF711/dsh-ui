@@ -51,7 +51,6 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
@@ -84,7 +83,7 @@ type rightbarSessionState struct {
 const cacheLimit = 5
 
 type model struct {
-	view   flex.View
+	view   ui.Page
 	draft  ui.Field
 	search ui.Field // 侧栏过滤（按标题 + cwd 匹配）
 	inv    app.Invalidator
@@ -1554,7 +1553,7 @@ var (
 //
 // 壳里只剩这一句：槽位树（谁在谁里面）由插件自己声明（Painter.Children），
 // 壳不知道有几层、也不知道哪一层是什么部件——这就是「高塔」。
-func drawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env) {
+func drawSlot(f ui.C, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env) {
 	k.DrawSlot(f, slot, env)
 }
 
@@ -1828,7 +1827,7 @@ func newConfig(m *model) app.Config {
 			}
 		}
 
-		m.view.Draw(canvas, theme, contentBounds, func(f *flex.Frame) {
+		m.view.Draw(canvas, theme, contentBounds, func(f ui.C) {
 			if shellTier == shellOfficial {
 				// 官方骨架：结构/槽名/几何来自 internal/uikernel，内容仍是插件。
 				drawOfficialFirstScreen(f, m, env, shellOpts)

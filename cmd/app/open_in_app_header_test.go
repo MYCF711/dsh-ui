@@ -15,7 +15,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -66,7 +65,7 @@ func newOpenInAppRig(t *testing.T, m *model, width, height int) openInAppRig {
 	tree := &gfx.Tree{}
 	feat := tree.Feature("open-in-app-header")
 	var (
-		view        flex.View
+		view        ui.Page
 		invalidator app.Invalidator
 	)
 	config := app.Config{
@@ -85,7 +84,7 @@ func newOpenInAppRig(t *testing.T, m *model, width, height int) openInAppRig {
 			},
 			Has: func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

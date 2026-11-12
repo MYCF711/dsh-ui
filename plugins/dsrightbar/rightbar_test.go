@@ -9,7 +9,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -93,7 +92,7 @@ func openRightbar(t *testing.T, width, height int, msgs []apiclient.Message) (*h
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
 	tree := &gfx.Tree{}
 	feat := tree.Feature("rightbar-test")
-	var view flex.View
+	var view ui.Page
 	config := app.Config{Title: "rightbar-v4a-test", Width: width, Height: height, Tree: tree}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
@@ -102,7 +101,7 @@ func openRightbar(t *testing.T, width, height int, msgs []apiclient.Message) (*h
 			Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
 			Has: func(pluginapi.Slot) bool { return true },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) { p.draw(f, env) })
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) { p.draw(f, env) })
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {

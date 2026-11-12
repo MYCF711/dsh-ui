@@ -17,7 +17,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -62,7 +61,7 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 	// 这条用例要验的正是「壳说 280、用户拖到 360 之后画出来的是 360」。
 	const sideWidth = 280
 
-	var view flex.View
+	var view ui.Page
 	config := app.Config{
 		Title: "layout-drag", Width: layoutW, Height: layoutH,
 		Tree: tree, WindowMode: app.WindowFrameless,
@@ -89,7 +88,7 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 			Has:       kernel.Has,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

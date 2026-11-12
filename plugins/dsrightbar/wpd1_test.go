@@ -12,7 +12,6 @@ import (
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -36,7 +35,7 @@ func openWPD1(t *testing.T, width, height int, msgs []apiclient.Message) (*headl
 	}}
 	tree := &gfx.Tree{}
 	feat := tree.Feature("wpd1-test")
-	var view flex.View
+	var view ui.Page
 	config := app.Config{Title: "wpd1-test", Width: width, Height: height, Tree: tree}
 	if fields, ok := any(p).(interface{ Fields() []*ui.Field }); ok {
 		config.TextInput = ui.Fields(fields.Fields()...)
@@ -48,7 +47,7 @@ func openWPD1(t *testing.T, width, height int, msgs []apiclient.Message) (*headl
 			Scroll: view.ScrollState, Has: func(pluginapi.Slot) bool { return true },
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) { p.draw(f, env) })
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) { p.draw(f, env) })
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {

@@ -10,7 +10,6 @@ import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
@@ -37,7 +36,7 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 
 	tree := &gfx.Tree{}
 	feat := tree.Feature("files-preview-headless")
-	var view flex.View
+	var view ui.Page
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "files-preview", Width: 1182, Height: 832, Tree: tree,
@@ -51,7 +50,7 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 			Bounds: bounds, MainWidth: 902,
 			Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 			p.drawPreview(f, env)
 		})
 	}

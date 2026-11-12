@@ -21,7 +21,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -41,12 +40,12 @@ func (p *footerProbe) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
 		ID:   "probe-footer",
 		Slot: SlotSubagentFooter,
-		Draw: func(f *flex.Frame, env *pluginapi.Env) {
+		Draw: func(f ui.C, env *pluginapi.Env) {
 			p.mu.Lock()
 			p.drawn++
 			p.mu.Unlock()
 			// 真画一块（模拟 TeamBoard 的 section）：有像素、有命中区。
-			f.Column().FillWidth().Height(20).Hit(
+			ui.Column(f).FillWidth().Height(20).Hit(
 				env.Tree.ID(env.Feat, "probe-footer-body"), "共享任务")
 		},
 	}}
@@ -91,8 +90,8 @@ func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *gfx.
 		Has:      k.Has,
 		Geometry: pluginapi.Geometry{Width: bounds.Width, Height: bounds.Height, SidebarWidth: 280},
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
 		k.DrawSlot(f, slot, env)
 	})
 	return canvas

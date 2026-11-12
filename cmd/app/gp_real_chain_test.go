@@ -40,7 +40,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -222,9 +221,9 @@ func renderProductSeats(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas, *ds
 		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
-		f.Column().FillWidth().FillHeight().Children(func() {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
+		ui.Column(f).FillWidth().FillHeight().Children(func() {
 			kernel.DrawSlot(f, pluginapi.SlotMainBody, env)
 			kernel.DrawSlot(f, pluginapi.SlotMainComposer, env)
 		})

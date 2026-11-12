@@ -24,7 +24,6 @@ package dsagentteam
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -80,7 +79,7 @@ func dotColor(t *pluginapi.Theme, task TeamTask) ui.Color {
 }
 
 // drawBoard 画任务板。slot ① 的 painter。
-func (p *Plugin) drawBoard(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawBoard(f ui.C, env *pluginapi.Env) {
 	view := p.team.View()
 	if !view.ProjectionKnown || !view.Projection.Enabled {
 		return
@@ -92,33 +91,33 @@ func (p *Plugin) drawBoard(f *flex.Frame, env *pluginapi.Env) {
 		return
 	}
 
-	board := f.Column().FillWidth().PadSides(boardPadV, boardPadH, boardPadV, boardPadH)
+	board := ui.Column(f).FillWidth().PadSides(boardPadV, boardPadH, boardPadV, boardPadH)
 	if view.Members > 0 {
 		// 有成员目录时与上方留 4px，**不画分割线**（官方 README）。
 		board = board.MarginSides(boardMemberGap, 0, 0, 0)
 	}
 	board.Children(func() {
 		if len(tasks) > 0 {
-			f.Row().FillWidth().Items(ui.Center).Gap(headerGap).
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(headerGap).
 				MarginSides(0, 0, headerBottom, 0).Children(func() {
-				f.Icon(checklistIcon()).Size(14, 14).Color(t.LabelTertiary)
-				f.Text(zhTasks).FontSize(titleSize).LineHeight(titleLine).Weight(500).
+				ui.Icon(f, checklistIcon()).Size(14, 14).Color(t.LabelTertiary)
+				ui.Text(f, zhTasks).FontSize(titleSize).LineHeight(titleLine).Weight(500).
 					Color(t.LabelPrimary)
-				f.Text(progressLabel(tasks)).FontSize(titleSize).LineHeight(progressLine).
+				ui.Text(f, progressLabel(tasks)).FontSize(titleSize).LineHeight(progressLine).
 					Color(t.LabelTertiary).MarginSides(0, 0, 0, progressLead).Grow(1)
 			})
 		}
 		if failure != "" {
 			// `.error[role=alert]`：StateDot(error) + 文案。
-			f.Row().FillWidth().Items(ui.Start).Gap(errGap).
+			ui.Row(f).FillWidth().Items(ui.Start).Gap(errGap).
 				PadSides(errPadV, 0, errPadV, 0).Children(func() {
 				p.drawDot(f, t, t.Error)
-				f.Text(formatMessage(zhFailure, failure)).FontSize(detailsSize).
+				ui.Text(f, formatMessage(zhFailure, failure)).FontSize(detailsSize).
 					LineHeight(detailsLine).Color(t.Error).Grow(1)
 			})
 		}
 		if len(tasks) > 0 {
-			f.Column().FillWidth().Children(func() {
+			ui.Column(f).FillWidth().Children(func() {
 				for _, task := range tasks {
 					p.drawTaskRow(f, env, t, task)
 				}
@@ -128,12 +127,12 @@ func (p *Plugin) drawBoard(f *flex.Frame, env *pluginapi.Env) {
 }
 
 // drawTaskRow 画一行任务 + 可展开的详情（官方 TaskRow）。
-func (p *Plugin) drawTaskRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, task TeamTask) {
+func (p *Plugin) drawTaskRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, task TeamTask) {
 	expanded := p.team.ExpandedTaskID() == task.ID
 	rowID := env.Tree.ID(env.Feat, "team-task-"+task.ID)
 
-	f.Column().FillWidth().Children(func() {
-		row := f.Row().Items(ui.Center).Gap(rowGap).
+	ui.Column(f).FillWidth().Children(func() {
+		row := ui.Row(f).Items(ui.Center).Gap(rowGap).
 			FillWidth().MarginSides(0, -rowBleed, 0, -rowBleed).
 			PadSides(rowPadV, rowPadH, rowPadV, rowPadH).
 			Radius(t.Radii.MD)
@@ -147,36 +146,36 @@ func (p *Plugin) drawTaskRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.The
 			if task.blocked() {
 				glyphLabel = zhBlocked
 			}
-			f.Row().Width(glyphW).Height(glyphH).Center().
+			ui.Row(f).Width(glyphW).Height(glyphH).Center().
 				Hit(env.Tree.ID(env.Feat, "team-task-glyph-"+task.ID), glyphLabel).Children(func() {
 				p.drawDot(f, t, dotColor(t, task))
 			})
 			// .subject：13/17，未展开时单行省略；展开时整段可换行。
-			subject := f.Text(task.Subject).FontSize(rowSize).LineHeight(rowLine).
+			subject := ui.Text(f, task.Subject).FontSize(rowSize).LineHeight(rowLine).
 				Color(t.LabelPrimary).Grow(1)
 			if !expanded {
 				subject.Ellipsis()
 			}
 			// .chevron 28×17（展开时官方 rotate(180deg)；viva 没有 transform，
 			// 这里展开态不旋转——可见差异登记在报告里）。
-			f.Row().Width(chevronW).Height(glyphH).Center().Children(func() {
-				f.Icon(chevronDownIcon()).Size(14, 14).Color(t.LabelTertiary)
+			ui.Row(f).Width(chevronW).Height(glyphH).Center().Children(func() {
+				ui.Icon(f, chevronDownIcon()).Size(14, 14).Color(t.LabelTertiary)
 			})
 		})
 		if expanded {
-			f.Column().FillWidth().PadSides(0, 0, detailsPadB, detailsPadL).Children(func() {
+			ui.Column(f).FillWidth().PadSides(0, 0, detailsPadB, detailsPadL).Children(func() {
 				if task.Description != "" {
-					f.Text(task.Description).FillWidth().FontSize(detailsSize).
+					ui.Text(f, task.Description).FillWidth().FontSize(detailsSize).
 						LineHeight(detailsLine).Color(t.LabelSecondary)
 				}
-				owner := f.Row().FillWidth().Items(ui.Start).Gap(ownerGap)
+				owner := ui.Row(f).FillWidth().Items(ui.Start).Gap(ownerGap)
 				if task.Description != "" {
 					owner = owner.MarginSides(descOwnerGap, 0, 0, 0)
 				}
 				owner.Children(func() {
-					f.Text(zhOwner + "：").FontSize(detailsSize).LineHeight(detailsLine).
+					ui.Text(f, zhOwner+"：").FontSize(detailsSize).LineHeight(detailsLine).
 						Color(t.LabelSecondary)
-					f.Text(task.ownerLabel()).FontSize(detailsSize).LineHeight(detailsLine).
+					ui.Text(f, task.ownerLabel()).FontSize(detailsSize).LineHeight(detailsLine).
 						Color(t.LabelSecondary).Grow(1).Ellipsis()
 				})
 			})
@@ -185,7 +184,7 @@ func (p *Plugin) drawTaskRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.The
 }
 
 // drawDot 画官方 StateDot 的等价物（6px 实心圆）。
-func (p *Plugin) drawDot(f *flex.Frame, t *pluginapi.Theme, color ui.Color) {
+func (p *Plugin) drawDot(f ui.C, t *pluginapi.Theme, color ui.Color) {
 	_ = t
-	f.Row().Width(dotSize).Height(dotSize).Radius(dotSize / 2).Background(color)
+	ui.Row(f).Width(dotSize).Height(dotSize).Radius(dotSize / 2).Background(color)
 }

@@ -34,7 +34,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -87,7 +86,7 @@ func (p *gxProbe) Panels() []pluginapi.Painter {
 		out = append(out, pluginapi.Painter{
 			ID:   "gx-probe:" + string(slot),
 			Slot: slot,
-			Draw: func(*flex.Frame, *pluginapi.Env) { p.counts[slot]++ },
+			Draw: func(ui.C, *pluginapi.Env) { p.counts[slot]++ },
 		})
 	}
 	return out
@@ -175,8 +174,8 @@ func (p *gxProduct) paint(t *testing.T, snap pluginapi.Snapshot, click string) *
 	if click != "" {
 		canvas.BeginEventPass(p.tree.ID(p.feat, click))
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.dispatched[slot]++
 			p.kernel.DrawSlot(f, slot, env)
@@ -221,10 +220,10 @@ func (p *gxProduct) paintLegacySeat(t *testing.T, snap pluginapi.Snapshot) *gfx.
 	for slot := range p.dispatched {
 		delete(p.dispatched, slot)
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
 		// dsshell drawMain 的形状：中栏 Pad(12) 里 dispatch `main.composer`。
-		f.Column().FillWidth().FillHeight().Pad(12).Children(func() {
+		ui.Column(f).FillWidth().FillHeight().Pad(12).Children(func() {
 			p.dispatched[pluginapi.SlotMainComposer]++
 			p.kernel.DrawSlot(f, pluginapi.SlotMainComposer, env)
 		})

@@ -206,12 +206,22 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// setData 画三帧才换态，因为官方动画是「离场 150ms + 入场 150ms」：
+	//   第 1 帧：进入离场窗（仍画旧态）
+	//   第 2 帧：离场走完、换成新态，同一帧开始 `_indicator-enter`（opacity 0）
+	//   第 3 帧：入场走完，新态才是全不透明（断言看到的每一帧都是这一帧）
 	setData := func(next pluginapi.Snapshot) {
 		t.Helper()
 		data = next
 		pump()
 		pump()
+		pump()
 	}
+
+	// 官方 `_indicator-enter .15s ease-out`：首帧是入场动画的起点（opacity 0），
+	// 所以要先把假时钟推过 150ms 让胶囊真正画出来，再开始断言。
+	pump()
+	pump()
 
 	// 同一真实 flex/canvas 窗口覆盖两种尺寸、已知/未知/异常容量与压缩回落。
 	assertFrame(1920, 1032, "stats-wire-known-1920x1032.png", "总量 12.3k", "上下文 2.0k · 20%", false)

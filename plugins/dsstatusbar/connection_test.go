@@ -122,6 +122,16 @@ func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *ui.Canvas {
 	return canvas
 }
 
+// settle 画到入场动画稳定：官方 `_indicator-enter .15s ease-out` 让首帧是
+// opacity 0（等到 150ms 才全不透明），所以"静止态"断言要画两帧：
+// 第一帧把入场窗走起来，推过 150ms 再画第二帧。
+func (h *connHarness) settle(t *testing.T, link pluginapi.LinkState) *ui.Canvas {
+	t.Helper()
+	h.frame(t, link)
+	h.now = h.now.Add(connEnterWindow)
+	return h.frame(t, link)
+}
+
 // connTexts 收画布上的文字。
 func connTexts(canvas *ui.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
@@ -216,7 +226,7 @@ func TestConnectionIndicatorSeatsAreOfficial(t *testing.T) {
 // ② 官方座位真画：胶囊 + 文案 + 与设置按钮**同一行**（同一 Y 中心）。
 func TestConnectionIndicatorDrawsInSettingsRow(t *testing.T) {
 	h := newConnHarness(t)
-	canvas := h.frame(t, pluginapi.LinkConnected)
+	canvas := h.settle(t, pluginapi.LinkConnected)
 	if !connPill(canvas, h.theme.SuccessTertiary, withAlpha(h.theme.SuccessPrimary, connIndicatorBorderTint)) {
 		t.Fatalf("没画出 success 胶囊（官方 ._success 底色）：rects=%+v", canvas.Rectangles())
 	}
@@ -286,7 +296,7 @@ func TestConnectionIndicatorFourStates(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newConnHarness(t)
-			canvas := h.frame(t, tc.link)
+			canvas := h.settle(t, tc.link)
 			if got := connTexts(canvas); len(got) == 0 || got[0] != tc.want {
 				t.Fatalf("文案 = %v，want %q", got, tc.want)
 			}
@@ -317,13 +327,13 @@ func TestConnectionIndicatorFourStates(t *testing.T) {
 	}
 }
 
-// ④ 150ms 离场淡出（官方 `._leaving{opacity:0}` + `transition:opacity .15s`）。
+// ④ 150ms 离场淡出（官方 `._leaving{opacity:0}` + `transition:opacity .15s ease-out`）。
 //
 // 状态机语义（与官方 ConnectionIndicator 的 `shown`/`leaving`/`state` 同构）：
 //
 //	目标态到了       旧态这一帧还是全不透明（1.0）
-//	+75ms            旧态画成 0.5（线性淡出）
-//	+150ms           换成新态（新态不透明度 1）
+//	+75ms            旧态按官方 ease-out 曲线淡到 0.3154（= 1 - cubic-bezier(0,0,.58,1)(0.5)）
+//	+150ms           换成新态，并开始 150ms 入场（新态这一帧还是 0）
 //
 // 这条断言同时钉住"150ms 之后新态在位"，以及"150ms 之前不许提前换"。
 func TestConnectionLeaveWindowIs150ms(t *testing.T) {
@@ -357,30 +367,179 @@ func TestConnectionLeaveWindowIs150ms(t *testing.T) {
 // 既脆又测不到"150ms 这个时长本身"。时长与曲线由本函数钉住。
 func TestConnectionAnimOpacity(t *testing.T) {
 	var a connectionAnim
+	// 首帧的入场动画：官方 `_indicator-enter .15s ease-out`（0% opacity:0）。
 	t0 := time.Unix(0, 0)
-	if phase, op := a.advance(pluginapi.LinkDown, t0); phase != connPhaseDown || op != 1 {
-		t.Fatalf("首帧 = (%v, %v)，want (down, 1)", phase, op)
+	if phase, op := a.advance(pluginapi.LinkDown, t0); phase != connPhaseDown || op != 0 {
+		t.Fatalf("首帧 = (%v, %v)，want (down, 0)（官方 _indicator-enter 从 opacity 0 起）", phase, op)
+	}
+	// 入场窗走完：全不透明。
+	if phase, op := a.advance(pluginapi.LinkDown, t0.Add(connEnterWindow)); phase != connPhaseDown || op != 1 {
+		t.Fatalf("入场窗末 = (%v, %v)，want (down, 1)", phase, op)
 	}
 	// 目标态到了：旧态整帧不透明（`_leaving` 的过渡起点）。
-	if phase, op := a.advance(pluginapi.LinkConnected, t0); phase != connPhaseDown || op != 1 {
+	if phase, op := a.advance(pluginapi.LinkConnected, t0.Add(200*time.Millisecond)); phase != connPhaseDown || op != 1 {
 		t.Fatalf("离场窗第一帧 = (%v, %v)，want (down, 1)", phase, op)
 	}
-	// +75ms：旧态画成 0.5。
-	if phase, op := a.advance(pluginapi.LinkConnected, t0.Add(75*time.Millisecond)); phase != connPhaseDown || op != 0.5 {
-		t.Fatalf("+75ms = (%v, %v)，want (down, 0.5)", phase, op)
+	// +75ms：旧态按官方 ease-out 淡到 1-easeOut(0.5) = 0.31536。
+	if phase, op := a.advance(pluginapi.LinkConnected, t0.Add(275*time.Millisecond)); phase != connPhaseDown {
+		t.Fatalf("+75ms 应仍画旧态，得到 %v", phase)
+	} else if diff := op - (1 - 0.684643); diff > 0.002 || diff < -0.002 {
+		t.Fatalf("+75ms 不透明度 = %v，官方 ease-out 应为 %v", op, 1-0.684643)
 	}
-	// +150ms：换成新态。
-	if phase, op := a.advance(pluginapi.LinkConnected, t0.Add(connLeaveWindow)); phase != connPhaseConnected || op != 1 {
-		t.Fatalf("+150ms = (%v, %v)，want (connected, 1)", phase, op)
+	// +150ms：换成新态，并开始新的入场窗（这一帧 opacity 还是 0）。
+	if phase, op := a.advance(pluginapi.LinkConnected, t0.Add(350*time.Millisecond)); phase != connPhaseConnected || op != 0 {
+		t.Fatalf("+150ms = (%v, %v)，want (connected, 0)（新态从 _indicator-enter 的 0 起）", phase, op)
 	}
 	// 稳定态不抖动。
 	if phase, op := a.advance(pluginapi.LinkConnected, t0.Add(500*time.Millisecond)); phase != connPhaseConnected || op != 1 {
 		t.Fatalf("稳定态 = (%v, %v)，want (connected, 1)", phase, op)
 	}
-	// 离场窗是官方时长：`._indicator{transition:opacity .15s}`。
+	// 两条时长都是官方 150ms。
 	if connLeaveWindow != 150*time.Millisecond {
 		t.Fatalf("离场窗 = %v，官方 150ms", connLeaveWindow)
 	}
+	if connEnterWindow != 150*time.Millisecond {
+		t.Fatalf("入场窗 = %v，官方 .15s", connEnterWindow)
+	}
+}
+
+// ⑨ 入场动画（官方 `._indicator{animation:_indicator-enter .15s ease-out}`）：
+// 首帧 0 → 75ms 按 ease-out 到 0.6846 → 150ms 到 1；`prefers-reduced-motion` 时跳过。
+//
+// 官方 CSS（ui-primitives 的 ConnectionIndicator.module.css，dist 里是
+// `_indicator_16cyo_1` / `_indicator-enter_16cyo_1`）：
+//
+//	._indicator{…;animation:_indicator-enter .15s ease-out}
+//	@keyframes _indicator-enter{0%{opacity:0}}
+//	@media (prefers-reduced-motion:reduce){._indicator{animation:none;transition:none}}
+func TestConnectionEnterWindowIs150msEaseOut(t *testing.T) {
+	var a connectionAnim
+	t0 := time.Unix(0, 0)
+	if _, op := a.advance(pluginapi.LinkConnected, t0); op != 0 {
+		t.Fatalf("入场首帧 opacity = %v，官方 keyframes 0%%{opacity:0} 应为 0", op)
+	}
+	if _, op := a.advance(pluginapi.LinkConnected, t0.Add(75*time.Millisecond)); absDiff(op, 0.684643) > 0.002 {
+		t.Fatalf("入场 75ms opacity = %v，官方 ease-out 应 ≈ 0.684643", op)
+	}
+	// 入场窗内要排下一帧（否则会卡在半透明）——在把时钟推到窗末之前问。
+	if next, ok := a.nextFrameAt(t0.Add(50 * time.Millisecond)); !ok || !next.Equal(t0.Add(connEnterWindow)) {
+		t.Fatalf("入场窗内下一帧 = %v/%v，应为入场截止 %v", next, ok, t0.Add(connEnterWindow))
+	}
+	if _, op := a.advance(pluginapi.LinkConnected, t0.Add(connEnterWindow)); op != 1 {
+		t.Fatalf("入场 150ms opacity = %v，应为 1", op)
+	}
+}
+
+// 减动效档：官方 media query 把 animation/transition 全关——本仓由
+// `ui.Canvas.ReduceMotion()` 承担，首帧就该是不透明度 1，且不留任何待排帧。
+func TestConnectionEnterSkippedUnderReducedMotion(t *testing.T) {
+	var a connectionAnim
+	a.reduceMotion = true
+	t0 := time.Unix(0, 0)
+	if _, op := a.advance(pluginapi.LinkConnected, t0); op != 1 {
+		t.Fatalf("减动效首帧 opacity = %v，应为 1（官方 animation:none）", op)
+	}
+	if _, ok := a.nextFrameAt(t0); ok {
+		t.Fatal("减动效档不该有待排的动画帧")
+	}
+}
+
+// ⑩ 连接态最小可见 800ms（官方 `CONNECTING_MIN_VISIBLE_MS = 800`）：
+// 一次 100ms 就成功的重连尝试，connecting 胶囊必须继续画到 800ms 才换成 recovered。
+//
+// 官方（SettingsRoot.tsx:190-205）：`connectingShownAt` 记开始时刻，离开 connecting 时算
+// `remaining = 800 - (now - shownAt)`，>0 就 `holdConnecting` 到点。
+func TestConnectingMinVisibleIs800ms(t *testing.T) {
+	if connConnectingMinVisible != 800*time.Millisecond {
+		t.Fatalf("连接态最小可见 = %v，官方 CONNECTING_MIN_VISIBLE_MS = 800", connConnectingMinVisible)
+	}
+	var a connectionAnim
+	t0 := time.Unix(0, 0)
+	a.advance(pluginapi.LinkConnecting, t0)
+	// 100ms 就成功了：官方仍要把「重新连接中…」画满 800ms。
+	if phase, _ := a.advance(pluginapi.LinkConnected, t0.Add(100*time.Millisecond)); phase != connPhaseConnecting {
+		t.Fatalf("100ms 恢复后 = %v，want still connecting（最小可见 800ms）", phase)
+	}
+	// 799ms：还在 hold。
+	if phase, _ := a.advance(pluginapi.LinkConnected, t0.Add(799*time.Millisecond)); phase != connPhaseConnecting {
+		t.Fatalf("799ms = %v，want still connecting", phase)
+	}
+	// 800ms 之后进入离场窗（旧态还在），hold 已解除。
+	if phase, _ := a.advance(pluginapi.LinkConnected, t0.Add(800*time.Millisecond)); phase != connPhaseConnecting {
+		t.Fatalf("800ms = %v，want connecting（离场窗内仍是旧态）", phase)
+	}
+	if a.holdConnecting {
+		t.Fatal("800ms 后 holdConnecting 应已解除")
+	}
+	// +950ms（800 + 150ms 离场）：换成「连接成功」。
+	if phase, _ := a.advance(pluginapi.LinkConnected, t0.Add(950*time.Millisecond)); phase != connPhaseConnected {
+		t.Fatalf("950ms = %v，want connected", phase)
+	}
+}
+
+// ⑪ 2s 恢复确认窗（官方 `RECOVERY_CONFIRMATION_MS = 2_000`）：
+// 从断开恢复后 recovered 态保持 2s；窗内再断开立刻取消（官方同一个 effect）。
+func TestRecoveryConfirmationWindowIs2s(t *testing.T) {
+	if connRecoveryWindow != 2*time.Second {
+		t.Fatalf("恢复确认窗 = %v，官方 RECOVERY_CONFIRMATION_MS = 2_000", connRecoveryWindow)
+	}
+	var a connectionAnim
+	t0 := time.Unix(0, 0)
+	a.advance(pluginapi.LinkDown, t0)
+	// 恢复：确认窗打开。
+	a.advance(pluginapi.LinkConnected, t0.Add(10*time.Millisecond))
+	if !a.showRecovery {
+		t.Fatal("从 disconnected 恢复后 showRecovery 应为真")
+	}
+	// 1999ms：仍在确认窗内。
+	a.advance(pluginapi.LinkConnected, t0.Add(10*time.Millisecond+1999*time.Millisecond))
+	if !a.showRecovery {
+		t.Fatal("1999ms 时确认窗不应关闭")
+	}
+	// 2001ms：确认窗关闭。
+	a.advance(pluginapi.LinkConnected, t0.Add(10*time.Millisecond+2*time.Second+time.Millisecond))
+	if a.showRecovery {
+		t.Fatal("2001ms 时确认窗应已关闭（官方 2s）")
+	}
+	// 窗内再断开：立刻取消（官方 `if (connectionState !== 'connected') setShowRecovery(false)`）。
+	var b connectionAnim
+	b.advance(pluginapi.LinkDown, t0)
+	b.advance(pluginapi.LinkConnected, t0.Add(10*time.Millisecond))
+	b.advance(pluginapi.LinkDown, t0.Add(500*time.Millisecond))
+	if b.showRecovery {
+		t.Fatal("确认窗内再断开应立即取消 showRecovery")
+	}
+}
+
+// 确认窗的计时从"recovered 胶囊真正可见"开始：connecting 最小可见时长会推迟它
+// （官方注释：`the connecting minimum-visible hold can delay past the transition`）。
+func TestRecoveryWindowStartsAfterConnectingHold(t *testing.T) {
+	var a connectionAnim
+	t0 := time.Unix(0, 0)
+	a.advance(pluginapi.LinkConnecting, t0)
+	// 100ms 就成功：hold 到 800ms，确认窗 800ms 才开始计时。
+	a.advance(pluginapi.LinkConnected, t0.Add(100*time.Millisecond))
+	a.advance(pluginapi.LinkConnected, t0.Add(900*time.Millisecond))
+	if !a.showRecovery {
+		t.Fatal("hold 结束后确认窗应打开")
+	}
+	// 从 800ms 起算：+1999ms 仍在窗内，+2001ms 关闭。
+	a.advance(pluginapi.LinkConnected, t0.Add(800*time.Millisecond+1999*time.Millisecond))
+	if !a.showRecovery {
+		t.Fatal("确认窗应从 hold 结束（800ms）起算，1999ms 时不该关闭")
+	}
+	a.advance(pluginapi.LinkConnected, t0.Add(800*time.Millisecond+2*time.Second+time.Millisecond))
+	if a.showRecovery {
+		t.Fatal("确认窗应从 hold 结束起算 2s，2001ms 后应关闭")
+	}
+}
+
+// absDiff 是浮点断言的容差工具（只服务本文件的动画数值断言）。
+func absDiff(a, b float32) float32 {
+	if a > b {
+		return a - b
+	}
+	return b - a
 }
 
 // ⑤ 几何：官方 CSS 逐条（triggerRow 42/4/8、胶囊 28/8/4/12/18、描边 1 + 20%）。
@@ -424,8 +583,10 @@ func TestConnectionIconsAreOfficialSprites(t *testing.T) {
 	}{
 		{"check-outline", checkOutlineIcon(), 16, 1, 1, ui.Point{X: 2.25, Y: 8.5}, "check-outline"},
 		{"refresh-outline", refreshOutlineIcon(), 16, 1, 2, ui.Point{X: 14.5001, Y: 8}, "refresh-outline"},
-		// 官方 spinner：24 viewBox、stroke 2、只转写 72° 的 arc（见 icons.go 的 derived 说明）。
-		{"spinner-arc", loadingArcIcon(), 24, 2, 1, ui.Point{X: 12, Y: 2.5}, "spinner(ongoing)"},
+		// 官方 spinner（StateDot ongoing）：viewBox 24、stroke 2、cx=cy=12 r=9.5；
+		// 这一帧取周期起点（dash 12 → 72.3736°，从 3 点钟方向起）。
+		{"spinner-arc", spinnerGlyph(spinnerFrameAt(time.Unix(0, 0), false), ui.Color{Alpha: 1}), 24, 2, 1,
+			ui.Point{X: 21.5, Y: 12}, "spinner(ongoing)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.icon.ViewBox != tc.viewBox {

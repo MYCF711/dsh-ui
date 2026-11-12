@@ -158,7 +158,7 @@ var OfficialStatsGeometry = []StatsGeoRow{
 	{Node: "StatsDialog.title", Prop: "gap", Official: 16, Impl: StatsDialogTitleGap, Unit: StatsUnitPx, Status: StatsGeoAligned, Anchor: "dsh-client-ui-chat/src/client/chat/stat-dialog.module.css:47"},
 	{Node: "StatsDialog.title", Prop: "font-weight", Official: 500, Impl: StatsDialogTitleWeight, Unit: StatsUnitWeight, Status: StatsGeoAligned, Anchor: "dsh-client-ui-chat/src/client/chat/stat-dialog.module.css:50"},
 	{Node: "StatsDialog.titleLabel", Prop: "gap", Official: 6, Impl: StatsDialogTitleLabelGap, Unit: StatsUnitPx, Status: StatsGeoAligned, Anchor: "dsh-client-ui-chat/src/client/chat/stat-dialog.module.css:68"},
-	{Node: "StatsDialog.titleLabel.icon", Prop: "size", Official: 14, Impl: StatsDialogTitleIconSize, Unit: StatsUnitPx, Status: StatsGeoDeviation, Anchor: "dsh-client-ui-chat/src/client/chat/stat-dialog.module.css:72-73", Reason: "官方 titleLabel 画 14px 的 gauge/database 图标；本仓尚未把这套官方 svg（dsh-ui-official/assets/icons/dock/{gauge,database}.jsx）转写成 ui.Icon，硬画一个近似图形等于手画冒充官方素材，故本单不画，登记为缺口"},
+	{Node: "StatsDialog.titleLabel.icon", Prop: "size", Official: 14, Impl: StatsDialogTitleIconSize, Unit: StatsUnitPx, Status: StatsGeoAligned, Anchor: "dsh-client-ui-chat/src/client/chat/stat-dialog.module.css:72-73（图标本体：ActivityPill 的 IconGaugeOutlineRegular，StatsPills.tsx:255；rc.2 sprite gauge-outline，viewBox 0 0 16 16）"},
 	{Node: "StatsDialog.titleRule", Prop: "margin-bottom", Official: 10, Impl: StatsDialogTitleRuleMarginBottom, Unit: StatsUnitPx, Status: StatsGeoAligned, Anchor: "dsh-client-ui-chat/src/client/chat/stat-dialog.module.css:55"},
 	{Node: "StatsDialog.titleRule", Prop: "border-top", Official: 0.5, Impl: StatsDialogTitleRuleHeight, Unit: StatsUnitPx, Status: StatsGeoAligned, Anchor: "dsh-client-ui-chat/src/client/chat/stat-dialog.module.css:56"},
 	// ── 明细网格 ──
@@ -173,7 +173,7 @@ var OfficialStatsGeometry = []StatsGeoRow{
 	{Node: "StatsPills.pill", Prop: "border-radius", Official: 8, Impl: 8, Unit: StatsUnitPx, Status: StatsGeoDerived, Anchor: "dsh-client-ui-chat/src/client/chat/StatsPills.module.css:21", Formula: "var(--dsw-radius-sm) = 8（实现取 theme.Radii.SM）"},
 	{Node: "StatsPills.pill", Prop: "line-height", Official: 20, Impl: pillLineHeight, Unit: StatsUnitPx, Status: StatsGeoAligned, Anchor: "dsh-client-ui-chat/src/client/chat/StatsPills.module.css:10"},
 	{Node: "StatsPills.pill", Prop: "height", Official: 22, Impl: pillHeight, Unit: StatsUnitPx, Status: StatsGeoDerived, Anchor: "dsh-client-ui-chat/src/client/chat/StatsPills.module.css:13-28", Formula: "line-height 20 + 2×padding 1（无固定 height，由内容撑开）"},
-	{Node: "StatsPills.pill.icon", Prop: "size", Official: 14, Impl: StatsPillIconSize, Unit: StatsUnitPx, Status: StatsGeoDeviation, Anchor: "dsh-client-ui-chat/src/client/chat/StatsPills.module.css:30-34", Reason: "官方胶囊 = 14px 图标 + gap 6 + 文本；本仓 dock 胶囊（HC 已交付）只有文本，图标素材需先按 ui.Icon 转写，本单不改胶囊形状（入口可点性/悬停态本单已补）"},
+	{Node: "StatsPills.pill.icon", Prop: "size", Official: 14, Impl: StatsPillIconSize, Unit: StatsUnitPx, Status: StatsGeoAligned, Anchor: "dsh-client-ui-chat/src/client/chat/StatsPills.module.css:30-34（Activity = rc.2 sprite gauge-outline / Usage = database-outline，见 StatsPills.tsx:255/305）"},
 	{Node: "StatsPills.anchor", Prop: "font-size", Official: 12, Impl: StatsPillFontSize, Unit: StatsUnitPx, Status: StatsGeoDerived, Anchor: "dsh-client-ui-chat/src/client/chat/StatsPills.module.css:9", Formula: "calc(var(--dsh-content-font-size-secondary, 13px) - 1px) = 12"},
 }
 

@@ -235,11 +235,14 @@ func TestStatsDialogDetailsAlignLikeOfficialGrid(t *testing.T) {
 			t.Fatalf("dd %q 右沿 = %v，want %v（官方 text-align: right）", value, right, contentRight)
 		}
 	}
-	// 标题：章节名贴内容左沿、头条计数贴内容右沿。
+	// 标题：`.titleLabel` 是「14px 图标 + gap6 + 章节名」，所以章节名左沿 =
+	// 内容左沿 + 图标 + gap；头条计数贴内容右沿。
 	title, _ := find(zhStatsDialogTitle)
 	counts, _ := find("2 轮 3 步")
-	if title.Bounds.X != contentLeft {
-		t.Fatalf("标题左沿 = %v，want %v", title.Bounds.X, contentLeft)
+	wantTitleX := contentLeft + StatsDialogTitleIconSize + StatsDialogTitleLabelGap
+	if title.Bounds.X != wantTitleX {
+		t.Fatalf("标题左沿 = %v，want %v（官方 .titleLabel：icon 14 + gap 6 之后才是章节名）",
+			title.Bounds.X, wantTitleX)
 	}
 	if right := counts.Bounds.X + counts.Bounds.Width; math.Abs(float64(right-contentRight)) > 0.01 {
 		t.Fatalf("头条计数右沿 = %v，want %v（官方 .title space-between）", right, contentRight)

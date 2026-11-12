@@ -117,6 +117,13 @@ type model struct {
 
 	// models 是可选模型清单（宿主 models.list 的投影），启动拉一次。
 	models []pluginapi.Model
+	// settingsDescribe 是宿主 settings.describe 的缓存（设置面板的数据面）。
+	// nil = 还没拉到（界面显示「未知」，不编值）。
+	settingsDescribe *apiclient.SettingsDescribeResult
+	// settingsDescribePending 防重入：每帧都可能问，别每帧发一次请求。
+	settingsDescribePending bool
+	// settingsDescribeErr 是最近一次拉取失败的原因（只报状态栏，不清缓存）。
+	settingsDescribeErr error
 	// jobsPending 防重入：刷新在途时不再发第二次请求（每帧都可能问）。
 	jobsPending bool
 	smokeFired  bool
@@ -2293,6 +2300,14 @@ func main() {
 				}
 			}()
 		},
+		// 设置面（HOST-SETTINGS-FORM，rc.2 官方 SettingsRoot）：
+		// describe 同步返回缓存、首次问触发后台拉取；写路径同步（调用方在
+		// goroutine 里）、冲突原样回给插件渲染。见 settings_panel_wiring.go。
+		SettingsDescribe:  m.settingsDescribeSnapshot,
+		SettingsHostFacts: m.settingsHostFacts,
+		SettingsFormSet:   m.settingsFormSet,
+		SettingsFormReset: m.settingsFormReset,
+		SettingsMutate:    m.settingsMutate,
 		FSRead: func(path string) (string, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

@@ -521,14 +521,96 @@
         }
       ],
       "req_note": "官方 parameters: []（传任何字段回 400）；结果**裸数组**（宿主 writeJSON 套 result）。未接线回 501 not_implemented，**不是空数组**——界面必须能区分\"没有 provider\"与\"查不了\"。secret 只出 env 名，不含值。"
+    },
+    "settings.describe": {
+      "batch": 6,
+      "req": {},
+      "resp": {
+        "writable": "bool",
+        "hasDocument": "bool",
+        "namespaces": [
+          "SettingsNamespaceView"
+        ],
+        "sections": [
+          "SettingsSectionView"
+        ],
+        "errors": [
+          "string"
+        ]
+      },
+      "req_note": "HOST-SETTINGS-FORM（DSH-GO docs/settings-form.md §2）。裸空对象；namespace 字段 ns/schema/value/base/user?/autoGenerate/applies/secrets/revision。hasDocument=false 表示没有伪造原生设置文档。"
+    },
+    "settings.mutate": {
+      "batch": 6,
+      "req": {
+        "ns": "string",
+        "ops": [
+          "SettingsOp"
+        ],
+        "expectedRevision": "int?"
+      },
+      "resp": "SettingsNamespaceView",
+      "req_note": "ops[] 为 {op:\"set\",path:[field],value} 或 {op:\"unset\",path:[field]}；**路径操作**不是整张 descriptor 覆盖。revision 是持久乐观锁：冲突回 409 revision_conflict，不得覆盖新值。retryPolicy 的嵌套路径（providers.<route>.retryPolicy.*）走这条。"
+    },
+    "settings.form.describe": {
+      "batch": 6,
+      "req": {},
+      "resp": {
+        "writable": "bool",
+        "hasDocument": "bool",
+        "namespaces": [
+          "SettingsNamespaceView"
+        ],
+        "sections": [
+          "SettingsSectionView"
+        ],
+        "errors": [
+          "string"
+        ]
+      },
+      "req_note": "与 settings.describe 同形，显式提供通用 sections/fields 投影。"
+    },
+    "settings.form.get": {
+      "batch": 6,
+      "req": {
+        "ns": "string"
+      },
+      "resp": "SettingsSectionView",
+      "req_note": "section 为 {ns,title,writable,revision,fields,errors}；field 含 name/path/type/current/default/overridden/writable 与适用时的 enum 或 minLength/maxLength。"
+    },
+    "settings.form.set": {
+      "batch": 6,
+      "req": {
+        "ns": "string",
+        "path": [
+          "string"
+        ],
+        "value": "any",
+        "expectedRevision": "int?"
+      },
+      "resp": "SettingsSectionView",
+      "req_note": "成功 result 是**写后的 section**，不是 {ok:true}。path 必须是**单段**字段名（非单段回 400 invalid_path）；冲突 409 revision_conflict；只读 403 read_only。"
+    },
+    "settings.form.reset": {
+      "batch": 6,
+      "req": {
+        "ns": "string",
+        "path": [
+          "string"
+        ],
+        "expectedRevision": "int?"
+      },
+      "resp": "SettingsSectionView",
+      "req_note": "path 省略 = 清整个 namespace；**显式 null 会被宿主拒绝**（invalid_path），所以客户端在 nil 时必须真的不写这个键。"
     }
   },
   "counts": {
-    "total": 32,
+    "total": 38,
     "batch1": 15,
     "batch2": 10,
     "batch3": 4,
     "batch4": 2,
-    "batch5": 1
+    "batch5": 1,
+    "batch6": 6
   }
 }

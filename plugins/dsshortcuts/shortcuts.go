@@ -45,6 +45,7 @@ var bindings = []Binding{
 	{"F6", "把终端输入框里的命令发出去", "plugins/dsterminal"},
 	{"F7 / F8", "选第 1 / 第 2 个选项（提问条出现时）", "plugins/dsquestions"},
 	{"F12", "收起 / 展开右上角的插件提示条", "plugins/dsdemo"},
+	{"Tab / Shift+Tab", "设置面板打开时在面板内循环焦点（模态层陷阱）", "plugins/dssettings/official_modal.go"},
 }
 
 // Plugin 只有「显示 / 收起」一个状态。

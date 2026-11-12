@@ -604,4 +604,57 @@ type Actions struct {
 	// 新代码一律用 Approve：这两个没有 id，宿主那边无从对应。
 	Allow func()
 	Deny  func()
+
+	// ── 设置面（HOST-SETTINGS-FORM，rc.2 官方 SettingsRoot）──
+	//
+	// 这三个是设置面板的**数据面**。为什么放在 Actions 而不是让插件自己发 HTTP：
+	// 插件不 import 壳、也不自己建 Transport（R2/R7），数据只经壳的缓存。
+	//
+	// 同步返回**壳缓存的那一份**（与 ModelsList / ScheduleList 同一个形状）：
+	// 首次问会触发一次后台拉取，插件下一帧就能拿到；nil = 壳没接。
+	//
+	// 判据：`SettingsDescribe != nil` 时设置面板画**官方 5 section 四区面板**；
+	// nil 时退回 rc.1 的最小浮层（兼容桥，见 plugins/dssettings 的注释）。
+	SettingsDescribe func() *apiclient.SettingsDescribeResult
+	// SettingsHostFacts 返回这一帧的宿主事实（决定动态注册哪些 section/item）。
+	//
+	// 零值 = 什么都提供不了：那时所有条件项都不注册，面板只画固定项。
+	// **不许把零值当"默认开"**——那会画出宿主根本没提供的行。
+	SettingsHostFacts func() SettingsHostFacts
+	// SettingsFormSet 写一个字段（宿主 `settings.form.set`），返回写后的 section。
+	//
+	// expectedRevision 是持久乐观锁：0 = 不 fence（用宿主最新 revision）。
+	// 冲突回 409 `revision_conflict`，插件**不得重试覆盖**。
+	SettingsFormSet func(ns string, path []string, value any, expectedRevision int) (apiclient.SettingsSectionView, error)
+	// SettingsFormReset 清一个字段 / 整个 namespace（宿主 `settings.form.reset`）。
+	SettingsFormReset func(ns string, path []string, expectedRevision int) (apiclient.SettingsSectionView, error)
+	// SettingsMutate 原子提交一批路径操作（宿主 `settings.mutate`）。
+	//
+	// retryPolicy 的嵌套路径（`providers.<route>.retryPolicy.*`）走这条：
+	// 官方 `settings.form.set` 只接受单段字段名。
+	SettingsMutate func(ns string, ops []apiclient.SettingsOp, expectedRevision int) (apiclient.SettingsNamespaceView, error)
+}
+
+// SettingsHostFacts 是设置面板需要的**宿主事实**（决定动态注册）。
+//
+// 字段名对齐官方来源：`dshDesktop.protocolVersion` / `dshDesktop.updates.channels`
+// / `sidebarRightTabs` / `session-log-deepseek` / `DSH_CLIENT_VERSION` /
+// `permissionPresets.catalog` / `ui-chat.transcriptView` / `snapshot.view.status`。
+type SettingsHostFacts struct {
+	// DesktopProtocolVersion 是 `dshDesktop.protocolVersion`；0 = 没有桌面桥。
+	DesktopProtocolVersion int
+	// UpdatesChannels 是 `dshDesktop.updates.channels`；空 = 桥没给通道。
+	UpdatesChannels []string
+	// SidebarRightTabs 表示 `sidebarRightTabs` 服务存在。
+	SidebarRightTabs bool
+	// SessionLogServed 表示 `session-log-deepseek` namespace 被宿主服务。
+	SessionLogServed bool
+	// ClientVersion 是 build 注入的 `DSH_CLIENT_VERSION`；空 = 没注入。
+	ClientVersion string
+	// PermissionCatalog 表示 `permissionPresets.catalog` 已就绪。
+	PermissionCatalog bool
+	// TranscriptView 是 `ui-chat.transcriptView` 的当前值；空 = 未知。
+	TranscriptView string
+	// CredentialStored 表示 `snapshot.view.status === "credential-stored"`。
+	CredentialStored bool
 }

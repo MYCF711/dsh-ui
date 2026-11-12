@@ -32,9 +32,11 @@ type (
 	// 纯别名，不在这里加任何东西——两份定义会漂移。
 	ApprovalOption = pub.ApprovalOption
 	Actions        = pub.Actions
-	Theme          = pub.Theme
-	Radii          = pub.Radii
-	Fonts          = pub.Fonts
+	// SettingsHostFacts 是设置面板的宿主事实（决定动态注册哪些 section/item）。
+	SettingsHostFacts = pub.SettingsHostFacts
+	Theme             = pub.Theme
+	Radii             = pub.Radii
+	Fonts             = pub.Fonts
 )
 
 const (

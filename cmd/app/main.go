@@ -184,6 +184,13 @@ type model struct {
 	// 等下一帧 Paint 去消费"的那一个。见 theme.go 里为什么必须排队。
 	themeMode    string
 	pendingTheme string
+	// pendingDraft / pendingSmoke 和 pendingTheme 同一形状：草稿是 Viva
+	// `*flex.Field` 的状态，只有 UI 线程能碰——`text.(*Editor).String()` 名字像
+	// 取值，实现里却会惰性写 `editor.text`/`editor.textValid`，后台 goroutine
+	// 读它就已经是数据竞争。背景 goroutine 只排队，由 applyPendingDraft 消费。
+	// 上游缺陷说明见 docs/viva-upstream-editor-string-race.md。
+	pendingDraft *draftRestoreRequest
+	pendingSmoke *string
 	sessions     []apiclient.Session
 	cur          string
 	msgs         []apiclient.Message
@@ -525,8 +532,9 @@ func (m *model) refreshSession(id string, quiet bool) {
 		if text == "" {
 			text = "smoke-" + time.Now().Format("150405")
 		}
-		m.draft.SetText(text)
-		m.send()
+		// 这里在后台 goroutine 里：草稿只能排队，写和发送都由 UI 线程做
+		//（见 applyPendingDraft 与 docs/viva-upstream-editor-string-race.md）。
+		m.queueSmokeSend(text)
 	}
 }
 
@@ -1492,6 +1500,8 @@ func newConfig(m *model) app.Config {
 		// 主题：**在这一帧开画之前**消费排队的那一个。
 		// 放这里是因为它写包级 `theme` 变量，而只有绘制线程可以写。
 		m.applyPendingTheme()
+		// 草稿写回同理：Viva 的 `*flex.Field` 是 UI 线程状态，后台 goroutine 只排队。
+		m.applyPendingDraft()
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.Background)
 		contentBounds := bounds
@@ -2315,8 +2325,10 @@ func main() {
 		Allow: func() { m.decide("allow_once") },
 		Deny:  func() { m.decide("reject_once") },
 		// 取消：用户点停止键时打断当前会话的 turn。
-		Cancel:    m.cancelTurn,
-		SetDraft:  func(text string) { m.draft.SetText(text) },
+		Cancel: m.cancelTurn,
+		// SetDraft 把文字灌进输入框。草稿是 Viva 的 UI 线程状态，所以这里也只
+		// 排队——调用点可能来自插件的后台动作（见 applyPendingDraft）。
+		SetDraft:  func(text string) { m.queueDraftOverwrite(text) },
 		Retry:     m.retryLast,
 		RetrySend: m.retrySend,
 

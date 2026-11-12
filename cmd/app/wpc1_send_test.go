@@ -25,11 +25,15 @@ func TestWPC1SendFailureKeepsDraftAndDoesNotBorrowTransportIdentity(t *testing.T
 	m.draft.SetText("不要丢的草稿")
 	m.sendText(m.draft.Text())
 
+	// 草稿写回排在 UI 线程：测试自己就是那个线程（生产里是 Paint 调
+	// applyPendingDraft），不能靠 sleep 等"大概写完了"。
 	deadline := time.Now().Add(3 * time.Second)
+	var status string
 	for time.Now().Before(deadline) {
 		m.mu.Lock()
-		status := m.status
+		status = m.status
 		m.mu.Unlock()
+		m.applyPendingDraft()
 		if strings.Contains(status, "发送失败") {
 			break
 		}
@@ -37,8 +41,8 @@ func TestWPC1SendFailureKeepsDraftAndDoesNotBorrowTransportIdentity(t *testing.T
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if !strings.Contains(m.status, "发送失败") {
-		t.Fatalf("没有等到发送失败状态：%q", m.status)
+	if !strings.Contains(status, "发送失败") {
+		t.Fatalf("没有等到发送失败状态：%q", status)
 	}
 	if got := m.draft.Text(); got != "不要丢的草稿" {
 		t.Fatalf("发送失败后草稿 = %q，期望保留原文", got)

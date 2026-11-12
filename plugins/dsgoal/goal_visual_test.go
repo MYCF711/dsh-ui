@@ -68,30 +68,64 @@ func TestGoalBarHeadlessCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var dot, card ui.Rect
-	haveDot, haveCard := false, false
+	// 目标条上唯一的图形是官方 sprite `goal-outline`（描边 → 三角化图元）。
+	// 4px 圆点已被删掉，所以这里改为对**三角形图元的包围盒**做位置断言。
+	var glyph ui.Rect
+	haveGlyph := false
+	var card ui.Rect
+	haveCard := false
 	for _, primitive := range session.Snapshot().Primitives {
-		b := primitive.Bounds
-		if b.Width == 4 && b.Height == 4 {
-			dot, haveDot = b, true
+		if primitive.Kind == app.TrianglePrimitive {
+			for _, point := range primitive.Points {
+				if !haveGlyph {
+					glyph = ui.Rect{X: point.X, Y: point.Y}
+					haveGlyph = true
+					continue
+				}
+				if point.X < glyph.X {
+					glyph.Width += glyph.X - point.X
+					glyph.X = point.X
+				}
+				if point.Y < glyph.Y {
+					glyph.Height += glyph.Y - point.Y
+					glyph.Y = point.Y
+				}
+				if point.X > glyph.X+glyph.Width {
+					glyph.Width = point.X - glyph.X
+				}
+				if point.Y > glyph.Y+glyph.Height {
+					glyph.Height = point.Y - glyph.Y
+				}
+			}
 		}
+		b := primitive.Bounds
 		if primitive.Color == theme.InputMajor && primitive.Radius == 28 && b.Height == 98 {
 			card, haveCard = b, true
 		}
 	}
-	if !haveDot {
-		t.Fatal("真实像素帧里找不到 4×4 的目标圆点")
+	if !haveGlyph {
+		t.Fatal("真实像素帧里找不到官方 goal-outline 图标（没有任何描边三角形）")
 	}
 	if !haveCard {
 		t.Fatal("真实像素帧里找不到输入卡片占位（98 高 R28）")
 	}
-	// 钩住的判据：圆点（目标条）整行都在卡片顶边之上。
-	if dot.Y >= card.Y {
-		t.Errorf("目标条圆点 y=%v 没在输入卡片 y=%v 上方——\"docked above the composer\" 没做到", dot.Y, card.Y)
+	// 图标框（14×14）的左上角 = 墨迹左上角 - 墨迹相对框的偏移（sprite 不贴框边）。
+	inkDX, inkDY, inkW, inkH := iconInk(goalOutlineIcon(), goalGlyphSize)
+	// 钩住的判据：图标（目标条）整行都在卡片顶边之上。
+	if glyph.Y-inkDY+goalGlyphSize >= card.Y {
+		t.Errorf("目标条图标底边 y=%v 没在输入卡片 y=%v 上方——\"docked above the composer\" 没做到",
+			glyph.Y-inkDY+goalGlyphSize, card.Y)
 	}
 	// 左边距 16（PadSides(6,16,6,16) 的 left）：这条以前是 6，写串过。
-	if dot.X != 24+16 {
-		t.Errorf("圆点 x=%v，want 40（外层 Pad 24 + 本行左内边距 16）", dot.X)
+	if !nearPx(glyph.X-inkDX, 24+16, 0.5) {
+		t.Errorf("图标框 x=%v，want 40（外层 Pad 24 + 本行左内边距 16）", glyph.X-inkDX)
+	}
+	// 图标是 14×14 的框，但**着墨范围**比框小：官方 sprite 的墨迹落在 viewBox
+	// 的 1.5..14.5（13 个单位）里，缩到 14px 后约 11.4px，再加一个描边宽度。
+	// 期望值从 sprite 自己的命令里算，不写死像素（写死就成了"按截图调测试"）。
+	if !nearInk(glyph.Width, inkW) || !nearInk(glyph.Height, inkH) {
+		t.Errorf("图标包围盒 %vx%v，want ≈%vx%v（官方 sprite 墨迹按 size=%v 缩放 + 描边）",
+			glyph.Width, glyph.Height, inkW, inkH, goalGlyphSize)
 	}
 
 	path := filepath.Join(dir, "goal-bar.png")
@@ -102,5 +136,24 @@ func TestGoalBarHeadlessCapture(t *testing.T) {
 	if err != nil || info.Size() == 0 {
 		t.Fatalf("截图无效 path=%s info=%v err=%v", path, info, err)
 	}
-	t.Logf("GOAL_VISUAL path=%s bytes=%d dot=%+v card=%+v", path, info.Size(), dot, card)
+	t.Logf("GOAL_VISUAL path=%s bytes=%d glyph=%+v card=%+v", path, info.Size(), glyph, card)
+}
+
+// nearPx 是像素级比较：描边在 viva 里按设备像素对齐，坐标会有亚像素级偏移。
+func nearPx(got, want, tolerance float32) bool {
+	d := got - want
+	if d < 0 {
+		d = -d
+	}
+	return d <= tolerance
+}
+
+// nearInk 是"着墨尺寸"的比较：曲线描边的外沿与凸包包围盒之间会有 1px 内外的
+// 差异（曲线可以在凸包里收缩），所以容差取 1px。
+func nearInk(got, want float32) bool {
+	d := got - want
+	if d < 0 {
+		d = -d
+	}
+	return d <= 1
 }

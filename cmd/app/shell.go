@@ -79,6 +79,21 @@ func (m shellMode) resolve(k *uikernel.Kernel) shellMode {
 	return shellOfficial
 }
 
+// linkStateOf 把两枚布尔事实压成 `pluginapi.LinkState`（唯一出处）。
+//
+// 顺序是有意的：**断线的证据优先于连着的证据**——订阅成功后又失败时两者都真，
+// 那时结论必须是"断"。两个都假 = 还没拿到任何事实 = `LinkUnknown`（界面写「未知」）。
+func linkStateOf(up, down bool) pluginapi.LinkState {
+	switch {
+	case down:
+		return pluginapi.LinkDown
+	case up:
+		return pluginapi.LinkConnected
+	default:
+		return pluginapi.LinkUnknown
+	}
+}
+
 // shellOptionsFor 把壳的真实状态压成骨架的一帧输入。
 //
 // 这里只许读真值：会话、右栏开关、侧栏宽度偏好都来自 model；未知一律按

@@ -319,7 +319,25 @@ type Snapshot struct {
 	// 为什么单独一个字段而不是让插件去读 Status 里的字：状态栏那颗绿点写「就绪」
 	// 是**连接层**的断言，不该靠人肉匹配中文字符串来判断。默认 false = 正常，
 	// 所以没接这个字段的插件行为不变。
+	//
+	// **它是 `Link == LinkDown` 的旧式投影**：新代码读 `Link`，因为它能表达
+	// "壳还没拿到任何连接事实"这一态（`Disconnected == false` 分不出"连着"
+	// 和"还不知道"）。两个字段由壳在同一处赋值，不会互相矛盾。
 	Disconnected bool
+	// Link 是壳对"与宿主的流连接"的**三态真值**。
+	//
+	// 为什么不能只有 `Disconnected bool`：那个布尔的 false 同时表示
+	// "已连接"和"还不知道"，于是首帧 / 老宿主 / 还没有会话（还没订阅）时，
+	// 任何据此写「已连接」的界面都在**编一句没有证据的话**。
+	//
+	// 官方 `ui-settings-general` 的 `SettingsRoot` 由 `useConnectionState` 驱动，
+	// 正是这个语义（`connecting` / `disconnected`，其余不画）；本仓没有那条框架
+	// 钩子，等价事实由壳在**真实 apiclient 回调**里写（`cmd/app/main.go` 的
+	// `runSubscription`：订阅成功 = LinkConnected，订阅失败 = LinkDown，未拿过
+	// 任何事实 = LinkUnknown）。
+	//
+	// 零值 = `LinkUnknown`：**不知道就不许写「已连接」**，写「未知」。
+	Link LinkState
 	// Usage 是当前会话的 token 用量（壳从 session.load 拿到的合计）。
 	// Usage.Known() 为 false 时插件不许显示任何 token 数字。
 	//

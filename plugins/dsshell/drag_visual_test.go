@@ -75,9 +75,13 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 			Tree:  tree, Feat: feat, Canvas: canvas, Bounds: bounds,
 			// 壳的口径：侧栏 280、右栏视口 45%。用户拖过之后 dsshell 会自己覆盖，
 			// 这正是这次要验的东西（Geometry 是「默认值」，不是「真值」）。
+			// BottomHeight = 0：连接指示已迁到 `sidebar.settings`（见
+			// plugins/dsstatusbar/connection.go），本插件集里再没有任何人占
+			// `shell.bottom`——官方默认 bottom 就是空的。旧值 24 是那条被迁走的
+			// 全宽状态行的残余，留着会让这条用例继续钉住一个已经不存在的层。
 			Geometry: pluginapi.Geometry{
 				Width: size.Width, Height: size.Height, SidebarWidth: sideWidth,
-				RightWidth: rightPref, MainWidth: size.Width - sideWidth - rightPref, BottomHeight: 24,
+				RightWidth: rightPref, MainWidth: size.Width - sideWidth - rightPref,
 			},
 			MainWidth: size.Width - sideWidth - rightPref,
 			Act:       act,
@@ -129,8 +133,9 @@ func TestLayoutDragHeadless(t *testing.T) {
 	if !ok {
 		t.Fatalf("启动时没有侧栏拖拽把手；hits=%+v", before.Hits)
 	}
+	// 底部整行已经没人占（BottomHeight 0）→ 把手贯穿整个内容高度。
 	assertRect(t, "拖前侧栏把手", hit.Bounds,
-		ui.Rect{X: 280 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH - 24})
+		ui.Rect{X: 280 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 	if _, ok := findHit(before, "拖动调整右栏宽度"); !ok {
 		t.Fatal("右栏展开时应该有右栏拖拽把手")
 	}
@@ -210,7 +215,7 @@ func TestLayoutDragHeadless(t *testing.T) {
 		t.Fatalf("松手后把手不见了；hits=%+v", after.Hits)
 	}
 	assertRect(t, "拖后侧栏把手", afterHit.Bounds,
-		ui.Rect{X: 360 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH - 24})
+		ui.Rect{X: 360 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 	// 右栏没被牵动：左缘仍是 1920-864=1056。
 	if rb, ok := findHit(after, "拖动调整右栏宽度"); !ok || rb.Bounds.X != 1056-handleWidth/2 {
 		t.Fatalf("拖侧栏不该动右栏：%+v ok=%v", rb.Bounds, ok)
@@ -321,14 +326,14 @@ func TestLayoutWidthRestoredHeadless(t *testing.T) {
 		t.Fatalf("恢复后没有侧栏把手；hits=%+v", snapshot.Hits)
 	}
 	assertRect(t, "恢复的侧栏把手", hit.Bounds,
-		ui.Rect{X: 344 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH - 24})
+		ui.Rect{X: 344 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 	// 右栏 700：左缘 = 1920-700 = 1220。
 	rb, ok := findHit(snapshot, "拖动调整右栏宽度")
 	if !ok {
 		t.Fatalf("恢复后没有右栏把手；hits=%+v", snapshot.Hits)
 	}
 	assertRect(t, "恢复的右栏把手", rb.Bounds,
-		ui.Rect{X: 1220 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH - 24})
+		ui.Rect{X: 1220 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 
 	path := filepath.Join(dir, "layout-restored.png")
 	if err := session.Screenshot(path); err != nil {

@@ -1,0 +1,75 @@
+// icons.go —— 连接指示用到的官方 sprite 符号（rc.2 `dsh-client-ui-primitives` 的 sprite 表）。
+//
+// # 官方出处（逐字）
+//
+// `ui-settings-general/src/client/SettingsRoot.tsx` 的 `triggerRow` 里渲染
+// `ConnectionIndicator`（primitives）。它的两个状态图标是：
+//
+//	recovered    -> `Cs` = `M("check-outline","regular")`   -> `IconCheckOutlineRegular`
+//	disconnected -> `Jw` = `M("refresh-outline","regular")` -> `IconRefreshOutlineRegular`
+//
+// 两者在 rc.2 都是 sprite 表的一条（`M(name,weight)` + `<use href="#dsw-icon-...">`），
+// 生成器为 `svg({width:size,height:size,"data-icon":"dsw-icon-<name>-<weight>"})`：
+//
+//	name             viewBox       weight regular    dist 位置（dsh-web-frontend/dist/assets/index-ghOpC9uV.js）
+//	check-outline    0 0 16 16     1（stroke-width） 第 129 行 第 10644 列
+//	refresh-outline  0 0 16 16     1（stroke-width） 第 129 行 第 14896 列
+//
+// dist 文件 1,093,231 B，sha256 061de8cefa15e1fbb87d301463ad4ebb79259b197ca08e83406f6997c1af8bb8；
+// sprite svg(1) 原串 sha256：
+//
+//	check-outline   41e32b03bef4130a030a4f4827a13e2e474e9c0fe8f9fe42dc7ca9ba437fc291
+//	refresh-outline 06a5745f7fe0ceddf5ecfd9dfbd80f78e3927e395eacd9d9a20f0b66fb71eadb
+//
+// `check-outline` 素材库内有同物：assets/icons/composer/check.jsx
+// （sha256 3b47a8c21d5bf626867f2d6b45a6ff8b2f7362123cfa76de5a395a2b2916bb8c），
+// 其 d 与 rc.2 sprite 逐字节相同；`refresh-outline` 库内暂无，本文件按 sprite 原文转写。
+//
+// viewBox 一律官方 16；显示尺寸由调用方给官方的 14（._icon_16cyo_71{width:14px;height:14px}）。
+package dsstatusbar
+
+import "github.com/vivaui/viva/ui"
+
+// connectionIconSize 是官方 ._icon_16cyo_71{width:14px;height:14px}。
+const connectionIconSize float32 = 14
+
+// checkOutlineIcon 是官方 sprite `check-outline`（成功态：已连接 / 已恢复）。
+func checkOutlineIcon() ui.Icon {
+	return ui.Icon{
+		ViewBox: 16,
+		Stroke:  1,
+		Commands: []ui.PathCommand{
+			// 第 1 段（官方 path #1）
+			ui.MoveTo(2.25, 8.5),
+			ui.LineTo(5.49732, 11.7473),
+			ui.CubicTo(5.90519, 12.1552, 6.57263, 12.1344, 6.95426, 11.7018),
+			ui.LineTo(13.75, 4),
+		},
+	}
+}
+
+// refreshOutlineIcon 是官方 sprite `refresh-outline`（异常态：断开 / 正在重试）。
+func refreshOutlineIcon() ui.Icon {
+	return ui.Icon{
+		ViewBox: 16,
+		Stroke:  1,
+		Commands: []ui.PathCommand{
+			// 第 1 段（官方 path #1）
+			ui.MoveTo(14.5001, 8),
+			ui.CubicTo(14.5, 9.28552, 14.1188, 10.5422, 13.4045, 11.611),
+			ui.CubicTo(12.6903, 12.6799, 11.6752, 13.5129, 10.4875, 14.0049),
+			ui.CubicTo(9.29982, 14.4968, 7.99295, 14.6255, 6.73212, 14.3747),
+			ui.CubicTo(5.4713, 14.124, 4.31314, 13.505, 3.4041, 12.596),
+			ui.CubicTo(2.49514, 11.687, 1.87614, 10.5288, 1.62537, 9.26798),
+			ui.CubicTo(1.37459, 8.00716, 1.50331, 6.70028, 1.99525, 5.51261),
+			ui.CubicTo(2.48719, 4.32494, 3.32025, 3.30981, 4.3891, 2.59557),
+			ui.CubicTo(5.45795, 1.88134, 6.71458, 1.50008, 8.0001, 1.5),
+			ui.CubicTo(9.9001, 1.5, 11.7001, 2.3, 13.0001, 3.6),
+			ui.LineTo(14.5001, 5.1),
+			// 第 2 段（官方 path #2）
+			ui.MoveTo(14.4999, 1.5),
+			ui.LineTo(14.4999, 5.1),
+			ui.LineTo(10.8999, 5.1),
+		},
+	}
+}

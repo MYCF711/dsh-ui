@@ -123,6 +123,10 @@ type Plugin struct {
 	feedback       map[string]string
 	feedbackSeeded bool
 
+	// officialTranscript 是 rc.2 官方主区 transcript 渲染器（official_transcript_*.go）。
+	// 惰性初始化：只在真正画官方骨架时才建（旧路径不付这份内存）。
+	officialTranscript *OfficialTranscriptView
+
 	// tools 是工具卡渲染器（ds-tool 提供 ui.tool-card）。
 	//
 	// 工具卡在 2026-11-04 从本包抽成独立插件：它的展开状态、每种工具的画法

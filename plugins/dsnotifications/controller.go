@@ -52,6 +52,13 @@ type AccountState struct {
 	SignedIn bool
 	// Failed 是账号态失败（登录失败 / 刷新失败）。
 	Failed bool
+	// Wide 是官方 `hidden={!wide}` 的那个 `wide`：侧栏是否为宽态。
+	//
+	// 官方由设置外壳作为运行时 props 传给账号菜单（AccountMenu.tsx:60）；
+	// 本仓没有那个外壳，所以由**壳**按侧栏真实宽度折算后经此字段注入
+	// （`cmd/app` 的 `launcherWide` → `AccountState.Wide`）。
+	// 零值 false = 收起轨：通知座位整段不渲染，启动器画 36×36 图标版。
+	Wide bool
 	// Locale 是当前界面语言（官方 setLocale 的入参）。
 	Locale string
 }
@@ -90,7 +97,8 @@ type Controller struct {
 
 	// openAccount 是 `target.type === 'app_route'` 的落地动作（官方 openAccount()）。
 	// nil = 账号设置面还没接线：卡片照样画，点 CTA 要如实告诉用户"还没有"。
-	openAccount func()
+	// 返回 false = 接上了但这次打不开（见 SetOpenAccount 的注释）。
+	openAccount func() bool
 }
 
 // NewController 造一个控制器。remote 可以为 nil（= 未授权/未接线：永远空态）。
@@ -194,13 +202,18 @@ func (c *Controller) Update(st AccountState) {
 //
 // nil 是合法状态：账号设置面还没落地时，CTA 只上报 cta_clicked 并给一条提示，
 // 不假装跳转成功。
-func (c *Controller) SetOpenAccount(fn func()) {
+//
+// 回调返回 **bool**：false = "接线了但这次没打开"（例如设置面板还没就绪）。
+// 官方的 `openAccount()` 没有返回值，但本仓的设置面板是**另一个插件**提供的，
+// 它可能拒绝打开（F2 面板没装/没就绪）——那种情况下 `OpenAccount()` 必须
+// 如实回 false，让卡片说"还没有"，而不是把"点了没反应"说成成功。
+func (c *Controller) SetOpenAccount(fn func() bool) {
 	c.mu.Lock()
 	c.openAccount = fn
 	c.mu.Unlock()
 }
 
-// OpenAccount 执行"打开账号设置"。返回 false = 没接线。
+// OpenAccount 执行"打开账号设置"。返回 false = 没接线，或这次没打开。
 func (c *Controller) OpenAccount() bool {
 	c.mu.Lock()
 	fn := c.openAccount
@@ -208,8 +221,7 @@ func (c *Controller) OpenAccount() bool {
 	if fn == nil {
 		return false
 	}
-	fn()
-	return true
+	return fn()
 }
 
 // Begin 幂等地开始一轮生命周期，并立刻读一次列表。

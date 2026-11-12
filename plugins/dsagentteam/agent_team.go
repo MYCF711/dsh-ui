@@ -36,6 +36,8 @@
 package dsagentteam
 
 import (
+	"sync"
+
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
 )
@@ -79,6 +81,13 @@ const RemoteKey = "ui.apiclient"
 type Plugin struct {
 	theme *pluginapi.Theme
 	team  *Store
+
+	// mu 保护运行期才接上的可选远端（provider 目录）。
+	mu sync.Mutex
+	// providers 是 `llm.listConfigurableProviders` 的远端（容器 C 的数据面）。
+	providers ProvidersRemote
+	// catalog 是子代理目录父容器（GC 的容器 B）的界面态。
+	catalog catalogUI
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -109,6 +118,13 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 		if remote, ok := v.(Remote); ok {
 			p.team.SetRemote(remote)
 		}
+		// 同一个注入值（*apiclient.Client）也满足容器 C 的 provider 目录远端。
+		// 缺它时菜单整段隐藏（空态），不影响装配。
+		if providers, ok := v.(ProvidersRemote); ok {
+			p.SetProvidersRemote(providers)
+			// 起手拉一次目录：官方 trigger 在首屏就该知道有没有模型可配。
+			p.team.RefreshProviders()
+		}
 	}
 	ctx.Provide(ServiceKey, p.team)
 	return nil
@@ -119,12 +135,19 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 // Order 都是 0：官方每个槽里本包都是唯一一块（`id` 不同），顺序无意义，
 // 但必须稳定（同一份插件集合每次画出来一样）。
 func (p *Plugin) Panels() []pluginapi.Painter {
-	return []pluginapi.Painter{
+	// 四个官方槽位各自的贡献（panel ①-④）。
+	base := []pluginapi.Painter{
 		{ID: "agent-team.board", Slot: SlotSubagentFooter, Order: 0, Draw: p.drawBoard},
 		{ID: "agent-team.toggle", Slot: SlotInputModelOptions, Order: 0, Draw: p.drawToggle},
 		{ID: "agent-team.disable", Slot: SlotDisableOverlay, Order: 0, Draw: p.drawConfirm},
 		{ID: "agent-team.command", Slot: SlotChatCommandView, Order: 0, Draw: p.drawCommand},
 	}
+	// **父容器**（本单新增）：模型菜单（②的父级）与 chat 命令节点渲染器（④的父级）。
+	// 它们不是"槽位贡献"，是"槽位父级里那一次 drawSlot"——没有它们，②④ 永远画不出来。
+	base = append(base, p.containerPanels()...)
+	// 子代理目录（GC 的父容器 B）：触发器 / 面板 / 旧三栏过渡桥 3 条。
+	base = append(base, p.catalogPanels()...)
+	return base
 }
 
 // Store 返回本插件的运行时（测试与父级用）。

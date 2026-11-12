@@ -73,6 +73,20 @@ type Store struct {
 	// commandExpanded 是官方 TeamCommandRow 内部的 useState(false)。
 	commandExpanded bool
 
+	// ── 容器 C（模型菜单）的数据面 ────────────────────────────────────
+	//
+	// providers 来自宿主 `llm.listConfigurableProviders`（经 internal/apiclient）；
+	// known=false = 没接线/取不到 → 整段隐藏；failure 是取列表失败的原因。
+	providers        []ModelProviderOption
+	providersKnown   bool
+	providersFailure string
+	// modelMenuOpen 是官方 ModelSelect 的 `open`（菜单展开态）。
+	modelMenuOpen bool
+	// providersLoading 防止同一次展开并发拉两遍目录。
+	providersLoading bool
+	// providersRemote 是可选注入的 provider 目录远端（*apiclient.Client 直接满足）。
+	providersRemote ProvidersRemote
+
 	log *slog.Logger
 }
 
@@ -313,6 +327,52 @@ func (s *Store) ConfirmDisable() {
 func (s *Store) SetCommand(node *CommandNode) {
 	s.mu.Lock()
 	s.command = node
+	s.mu.Unlock()
+}
+
+// SetProviders 喂宿主 `llm.listConfigurableProviders` 的真值目录（容器 C 的数据面）。
+//
+// known=false 表示**宿主没有这个能力 / 取不到**（未接线、501、网络失败），
+// 界面对它的处理是"整段隐藏"；known=true 且列表为空表示宿主真的没有可配置
+// provider，同样隐藏菜单。两者都不编造 provider，失败原因原样带出来。
+func (s *Store) SetProviders(known bool, failure string, list []ModelProviderOption) {
+	s.mu.Lock()
+	s.providersKnown = known
+	s.providersFailure = failure
+	s.providers = list
+	s.mu.Unlock()
+}
+
+// Providers 返回这一帧要画的 provider 目录（值拷贝）。
+func (s *Store) Providers() (bool, string, []ModelProviderOption) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.providersKnown, s.providersFailure, append([]ModelProviderOption(nil), s.providers...)
+}
+
+// ModelMenuOpen 是模型菜单的展开态（官方 ModelSelect 的 `open`）。
+func (s *Store) ModelMenuOpen() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.modelMenuOpen
+}
+
+// ToggleModelMenu 切模型菜单展开态；打开时顺带触发一次 provider 目录刷新。
+func (s *Store) ToggleModelMenu() {
+	s.mu.Lock()
+	s.modelMenuOpen = !s.modelMenuOpen
+	opened := s.modelMenuOpen
+	needFetch := !s.providersKnown || s.providersFailure != ""
+	s.mu.Unlock()
+	if opened && needFetch {
+		s.RefreshProviders()
+	}
+}
+
+// CloseModelMenu 关掉模型菜单（选中/点外/Esc 都走这里）。
+func (s *Store) CloseModelMenu() {
+	s.mu.Lock()
+	s.modelMenuOpen = false
 	s.mu.Unlock()
 }
 

@@ -334,7 +334,7 @@ func TestOpenAccountNotWired(t *testing.T) {
 		t.Fatal("没 SetOpenAccount 时不该返回 true")
 	}
 	called := 0
-	c.SetOpenAccount(func() { called++ })
+	c.SetOpenAccount(func() bool { called++; return true })
 	if !c.OpenAccount() || called != 1 {
 		t.Fatalf("接线后应执行一次，called=%d", called)
 	}

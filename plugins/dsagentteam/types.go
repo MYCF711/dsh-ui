@@ -56,6 +56,20 @@ type View struct {
 	Projection      TeamProjection
 	ProjectionKnown bool
 
+	// Catalog 是官方 `subagentCatalog` 投影的行数据（ui-subagent 的目录内容）。
+	//
+	// 官方这一份数据由 `sessions.projectionsBySession[...].values.subagentCatalog`
+	// 提供；本仓宿主同一个键也实现了（handlers_session_official.go:875 的
+	// session.projections），壳经 apiclient 取回后喂进来。
+	Catalog []CatalogEntry
+	// CatalogKnown 对应官方的 `presentedCatalog !== undefined`：
+	// **false = 目录未知**（键不存在/查询失败）→ 整个目录容器不渲染，
+	// 不是"画一个 0 个子智能体的空目录"（那是把"不知道"说成"没有"）。
+	CatalogKnown bool
+	// CatalogError 是目录读取失败的原因（官方 `presentedCatalog.state === 'error'`）。
+	// 非空时容器仍然渲染（官方错误态要能看见并重试），行里显示失败原因。
+	CatalogError string
+
 	// Members 是 `subagentCatalog` 的条数（只用于 data-with-members 的 4px 上边距）。
 	Members int
 
@@ -70,6 +84,32 @@ type View struct {
 	// ModelLastUsed 对应 `modelSelection.lastUsed !== null`：
 	// **关闭**时只有它为真才弹确认（结构树 §2.2）。
 	ModelLastUsed bool
+}
+
+// CatalogEntry 是官方 `subagentCatalog` 的一项（ui-subagent 目录里的一行）。
+//
+// 官方行里还有 activity（running/completed/inactive）、token、duration 等指标；
+// 本仓宿主这两类**没有**对应投影字段（`OfficialSubagentCatalogEntry` 只有
+// id/createdAt/mode/label），所以这里也**不建模**：没有数据就不画，
+// 不拿零值冒充"已完成 / 0 tok"。
+type CatalogEntry struct {
+	// ID 是子会话 id（点击 = 打开该子会话）。
+	ID string
+	// Label 官方 continuable 必填；本仓宿主给空串（无 durable 创建标签）。
+	// 空 label 时按官方兜底只显示 id 尾部，**不编一段标题**。
+	Label string
+	// Mode 是官方闭集四值：continuable | one-shot | external | unknown。
+	Mode string
+	// CreatedAt 是创建时刻（毫秒，官方 createdAt）。
+	CreatedAt int64
+}
+
+// catalogLabel 是这一行的显示文案：官方 `primaryLabel`（label 优先，没有就用 id）。
+func (e CatalogEntry) catalogLabel() string {
+	if strings.TrimSpace(e.Label) != "" {
+		return e.Label
+	}
+	return e.ID
 }
 
 // CommandOutcome 是官方命令结果（`CommandNode.outcome`）：success | error。

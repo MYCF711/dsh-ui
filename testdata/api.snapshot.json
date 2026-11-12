@@ -462,12 +462,73 @@
       },
       "resp": {},
       "req_note": "rc.2（官方 dsh-agent-team）。agentId 必须是**树根会话**；非根回 403 team_lead_required。官方结果 z.void()，本仓 wire 用空对象 {}。"
+    },
+    "account.getState": {
+      "batch": 4,
+      "req": {},
+      "resp": {
+        "status": "credential-stored|signed-out",
+        "source": "local|official|oidc"
+      },
+      "req_note": "rc.2 账号状态机（宿主 handlers_account_official.go:929，`return api.AccountGetState(ctx)`）。结果**平铺**是 AccountView（不是 {state:…}）：status 闭集两值 credential-stored|signed-out；links/attempt 界面这一轮不解码。宿主没有账号状态机时回 not_implemented（界面按“未知”处理，不许写成 signed-out）。"
+    },
+    "session.projections": {
+      "batch": 4,
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": {
+        "asOfSeq": 0,
+        "values": {
+          "subagentCatalog": [
+            {
+              "id": "string",
+              "createdAt": 0,
+              "mode": "continuable|one-shot|external|unknown",
+              "label": "string"
+            }
+          ],
+          "teamMode": {
+            "enabled": true
+          }
+        }
+      },
+      "req_note": "宿主 handlers_session_official.go:875。结果 {asOfSeq,values}；values 是**开放集合**，键缺失 = 该能力不存在（不许当空数组/0 用）。本仓界面只解 subagentCatalog 与 teamMode 两个键；空会话 asOfSeq=-1。sessionId 必填，空串回 bad_request。"
+    },
+    "llm.listConfigurableProviders": {
+      "batch": 5,
+      "req": {},
+      "resp": [
+        {
+          "provider": "string",
+          "displayName": "string",
+          "settingsNs": "string",
+          "settingsPath": [
+            "string"
+          ],
+          "declared": "bool?",
+          "defaultBaseURL": "string?",
+          "baseURLEnv": [
+            "string?"
+          ],
+          "nativeAuth": {
+            "env": [
+              "string"
+            ],
+            "oauth": "bool"
+          },
+          "error": "string?"
+        }
+      ],
+      "req_note": "官方 parameters: []（传任何字段回 400）；结果**裸数组**（宿主 writeJSON 套 result）。未接线回 501 not_implemented，**不是空数组**——界面必须能区分\"没有 provider\"与\"查不了\"。secret 只出 env 名，不含值。"
     }
   },
   "counts": {
-    "total": 29,
+    "total": 32,
     "batch1": 15,
     "batch2": 10,
-    "batch3": 4
+    "batch3": 4,
+    "batch4": 2,
+    "batch5": 1
   }
 }

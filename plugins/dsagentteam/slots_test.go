@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
@@ -174,41 +175,92 @@ func TestOfficialSlotNames(t *testing.T) {
 	}
 }
 
-// TestPanelsRegisterFourOfficialSlots：四块画，槽位与官方 id/key 一一对应。
+// TestPanelsRegisterFourOfficialSlots：四个官方槽位各恰好一块画，槽位与官方 id/key 一一对应。
+//
+// 计数口径从"len(panels)==4"改成"按 (Slot, ID) 唯一 + 四个官方 ID 齐全"，因为
+// **父容器**（模型菜单 / 命令节点渲染器 / 子代理目录）也会往同一个插件里加 painter：
+//
+//	shell.overlay 会合法地出现两块（`agent-team.disable` + 子代理目录的 `agent-team.catalog-panel`）
+//	conversation.session.header.actions 是子代理目录触发器的父槽（GC 的容器 B）
+//
+// 所以这里钉的是"官方四个槽位贡献都在、且每块只有一个"，而不是"总共只有 4 块"。
 func TestPanelsRegisterFourOfficialSlots(t *testing.T) {
 	p := newTestPlugin(nil)
 	panels := p.Panels()
-	if len(panels) != 4 {
-		t.Fatalf("官方是 4 个槽位，注册了 %d 块", len(panels))
-	}
 	want := map[pluginapi.Slot]string{
 		SlotSubagentFooter:    "agent-team.board",
 		SlotInputModelOptions: "agent-team.toggle",
 		SlotDisableOverlay:    "agent-team.disable",
 		SlotChatCommandView:   "agent-team.command",
 	}
+	seenID := map[string]bool{}
+	for _, painter := range panels {
+		if painter.Draw == nil && painter.Children == nil {
+			t.Fatalf("painter %q 既没有 Draw 也没有 Children = 挂上去什么都不做", painter.ID)
+		}
+		if painter.ID == "" {
+			t.Fatalf("槽 %q 上有一块没有 ID 的画（日志/命中区前缀没法对照）", painter.Slot)
+		}
+		if seenID[painter.ID] {
+			t.Fatalf("painter id %q 重复注册", painter.ID)
+		}
+		seenID[painter.ID] = true
+	}
 	for slot, id := range want {
 		found := 0
 		for _, painter := range panels {
-			if painter.Slot != slot {
+			if painter.Slot != slot || painter.ID != id {
 				continue
 			}
 			found++
-			if painter.ID != id {
-				t.Fatalf("槽 %q 的 painter id 应为 %q，得到 %q", slot, id, painter.ID)
-			}
 			if painter.Draw == nil {
-				t.Fatalf("槽 %q 的画没有 Draw", slot)
+				t.Fatalf("槽 %q 的槽位贡献 %q 必须是 Draw（父容器才用 Children）", slot, id)
 			}
 		}
 		if found != 1 {
-			t.Fatalf("槽 %q 上应恰好 1 块画，得到 %d", slot, found)
+			t.Fatalf("槽 %q 的贡献 %q 应恰好 1 块，得到 %d", slot, id, found)
 		}
 	}
 	// 官方 id 字面量也钉住（日志/命中区前缀与官方对照用）。
 	if SlotIDBoard != "agent-team" || SlotIDToggle != "agent-team" ||
 		SlotIDDisable != "agent-team.disable" || CommandKey != "team" {
 		t.Fatalf("官方 id/key 字面量对不上：%q %q %q %q", SlotIDBoard, SlotIDToggle, SlotIDDisable, CommandKey)
+	}
+}
+
+// TestContainerPanelsAreMounted 断言两个父容器的 painter 真的挂在槽上。
+//
+// 判据：模型菜单与命令节点必须在**官方座位**和**旧三栏过渡座位**各有一条；
+// 没有官方座位那条 = 官方骨架活过来时容器消失；没有旧座位那条 = 今天的产品上看不见。
+func TestContainerPanelsAreMounted(t *testing.T) {
+	p := newTestPlugin(nil)
+	panels := p.Panels()
+	want := []struct {
+		id   string
+		slot pluginapi.Slot
+	}{
+		{"agent-team.model-menu", uikernel.OffInputModel},
+		{"agent-team.model-menu-legacy", pluginapi.SlotMainComposer},
+		{"agent-team.command-node", uikernel.OffConvView},
+		{"agent-team.command-node-legacy", pluginapi.SlotMainBody},
+	}
+	for _, tc := range want {
+		var found *pluginapi.Painter
+		for i, painter := range panels {
+			if painter.ID == tc.id {
+				found = &panels[i]
+				break
+			}
+		}
+		if found == nil {
+			t.Fatalf("父容器 painter %q 没有注册（容器缺失 → 槽位永远画不出来）", tc.id)
+		}
+		if found.Slot != tc.slot {
+			t.Fatalf("父容器 %q 应挂在 %q，实际 %q", tc.id, tc.slot, found.Slot)
+		}
+		if found.Children == nil {
+			t.Fatalf("父容器 %q 必须有 Children（父容器的全部意义就是里面那次 drawSlot）", tc.id)
+		}
 	}
 }
 

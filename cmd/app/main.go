@@ -26,7 +26,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/internal/uiplugins"
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
-	_ "github.com/MYCF711/dsh-ui/plugins/dsagentteam"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscommands"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscomposer"
@@ -38,7 +37,6 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
-	_ "github.com/MYCF711/dsh-ui/plugins/dsnotifications"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsopen"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsquestions"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
@@ -176,6 +174,9 @@ type model struct {
 	// shellMode 是首屏结构档位（auto/legacy/official），见 shell.go。
 	// 注意：它决定「谁切三栏」，不是外观选项——两块实现几何口径不同。
 	shellMode shellMode
+	// wave3 是 GUI 第三波两个父容器的壳侧数据接线（账号态 / 会话投影 / apiclient）。
+	// 见 wave3_wiring.go：它只喂缓存，不在绘制里发请求。
+	wave3 wave3Wiring
 
 	mu           sync.Mutex
 	chromeLayout frameChromeLayout // 由 Paint 写入，原生截图报告在 mu 下读取。
@@ -1569,6 +1570,18 @@ func newConfig(m *model) app.Config {
 			geom = buildGeometry(contentBounds.Width, contentBounds.Height, m.side.Width(), hasRightbar,
 				m.kernel.Has(pluginapi.SlotShellBottom))
 		}
+		// 官方骨架在旧部件还占槽时会整段换成旧三栏排版（`BridgeLegacy`）：
+		// 那时官方子槽（sidebar.settings / conversation.session.header.actions）
+		// **不会被 dispatch**，旧槽（sidebar.footer / main.header）会。插件必须知道
+		// 这一帧到底该挂哪边，否则会把画挂在永远不 dispatch 的槽上（2026-11-12 真机
+		// `-shell official` 下设置启动器入口不显示，就是这么来的）。
+		{
+			bridgeLegacy := shellTier == shellLegacy
+			if shellTier == shellOfficial {
+				bridgeLegacy = shellOpts.BridgeLegacy
+			}
+			m.wave3.tier.SetLegacyBridge(bridgeLegacy)
+		}
 		mainWidth := geom.MainWidth
 
 		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
@@ -1646,6 +1659,23 @@ func newConfig(m *model) app.Config {
 		// 框架插件照着摆，不再自己猜（猜错过：白名单里漏掉 shell，部件就上下堆叠）。
 		// 与上面 env.MainWidth 用的是**同一份**求解结果，不允许两处各算一遍。
 		env.Geometry = geom
+
+		// 两个父容器的每帧输入：账号态（通知入口可见性）+ 会话投影（子代理目录）。
+		// 只喂缓存、不发请求；拉取按节流在后台（见 wave3_wiring.go）。
+		{
+			m.mu.Lock()
+			curForWave3 := m.cur
+			m.mu.Unlock()
+			m.wave3.feed(curForWave3, geom.SidebarWidth)
+			if accountDue, projDue := m.wave3.refreshDue(m, curForWave3); accountDue || projDue {
+				if accountDue {
+					go m.wave3.fetchAccount(m)
+				}
+				if projDue {
+					go m.wave3.fetchProjections(m, curForWave3)
+				}
+			}
+		}
 
 		m.view.Draw(canvas, theme, contentBounds, func(f *flex.Frame) {
 			if shellTier == shellOfficial {
@@ -1990,6 +2020,8 @@ func main() {
 		approvals:        map[string]*approvalReq{},
 		streamStates:     map[string]*sessionStreamState{},
 		shellMode:        shellTier,
+		// GUI 第三波两个父容器的壳侧数据接线（见 wave3_wiring.go）。
+		wave3: newWave3Wiring(),
 	}
 	// **先换 cookie，再拉数据**。
 	// 反过来（先 refreshList 再 Connect）的后果实测过：第一次 list 必然 401，
@@ -2029,6 +2061,10 @@ func main() {
 	// 否则其余部件没有令牌可 Inject、或者各自独占整个窗口。
 	// 这两条不许被 ui-plugins.json 关掉——配置管的是"装哪些部件"，不是"要不要有地基"。
 	m.kernel = uikernel.New(productName)
+	// 壳侧能力必须在 Load **之前**给出：插件的 Register 里就会 ctx.Inject。
+	//	ui.shell.tier   壳档位（official/legacy）的共享持有者
+	//	ui.apiclient    壳唯一的传输客户端（第三波两个容器的数据/写面）
+	m.wave3.provide(m.kernel, m.cli)
 
 	// 插件从哪来：**壳不认识任何具体插件**。
 	// 内置的自己在 init 里 pluginapi.Register 报到（blank import 即接入）；
@@ -2069,6 +2105,8 @@ func main() {
 	if err := m.kernel.Load(orderPlugins(plugins)...); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}
+	// 装配完成：取回两个容器插件的服务、写死壳档位、接好"打开账号设置"。
+	m.wave3.attach(m)
 	m.theme = m.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	m.prims = m.kernel.MustGet(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	theme = dscore.VivaTheme(m.theme)

@@ -168,26 +168,67 @@ func TestSlotNameIsOfficial(t *testing.T) {
 	}
 }
 
-// TestPanelsRegisterOfficialSlot 钉住注册点：只有一个画，挂官方槽，有 Draw。
+// TestPanelsRegisterOfficialSlot 钉住注册点：**叶槽一块画 + 两级父容器三块画**。
+//
+// 期望形状（官方层级，见 launcher.go）：第 1节侧栏设置行 → 第 2节账号菜单 → 叶槽通知卡片。
+// 叶槽仍然只有一块画（single 槽），父容器那三块各自挂在父级槽上。
 func TestPanelsRegisterOfficialSlot(t *testing.T) {
 	p := newTestPlugin(nil)
-	panels := p.Panels()
-	if len(panels) != 1 {
-		t.Fatalf("本包只该注册一块画（single 槽），得到 %d", len(panels))
+	var leaves int
+	seen := map[pluginapi.Slot]string{}
+	for _, painter := range p.Panels() {
+		if painter.ID == "" {
+			t.Fatalf("画缺 ID：%+v", painter)
+		}
+		if painter.Draw == nil && painter.AfterDraw == nil {
+			t.Fatalf("%q 缺 Draw/AfterDraw（内核装配会 fail-loud）", painter.ID)
+		}
+		if other, dup := seen[painter.Slot]; dup {
+			t.Fatalf("槽 %q 被画了两次（%q 与 %q）", painter.Slot, other, painter.ID)
+		}
+		seen[painter.Slot] = painter.ID
+		if painter.Slot == SlotSettingsLauncherNotifications {
+			leaves++
+			if painter.Draw == nil {
+				t.Fatalf("叶槽 %q 必须有 Draw", painter.ID)
+			}
+		}
 	}
-	if panels[0].Slot != SlotSettingsLauncherNotifications {
-		t.Fatalf("挂错槽：%q", panels[0].Slot)
+	if leaves != 1 {
+		t.Fatalf("叶槽（single）只该有一块画，得到 %d", leaves)
 	}
-	if panels[0].Draw == nil || panels[0].ID == "" {
-		t.Fatalf("画缺 Draw 或 ID：%+v", panels[0])
+	for _, want := range []pluginapi.Slot{SlotSidebarSettings, pluginapi.SlotSidebarFooter, SlotSettingsLauncher} {
+		if _, ok := seen[want]; !ok {
+			t.Fatalf("父容器缺 painter：槽 %q 上没有画", want)
+		}
 	}
 }
 
-// TestSlotOrderStable：single 槽里顺序本身无意义，但必须稳定（截图对比用）。
+// TestSlotOrderStable：每个槽里的顺序本身无意义，但必须稳定（截图对比用）。
+//
+// 叶槽与二级父槽 Order 0；侧栏 footer 的两块（旧 footer 行 Order 30/40、设置行 60）
+// 必须保持"先动作、后设置"的官方顺序。
 func TestSlotOrderStable(t *testing.T) {
 	p := newTestPlugin(nil)
-	if p.Panels()[0].Order != 0 {
-		t.Fatalf("Order 应为 0（单画），得到 %d", p.Panels()[0].Order)
+	first := p.Panels()
+	second := p.Panels()
+	if len(first) != len(second) {
+		t.Fatalf("同一份插件两次 Panels() 数量不同：%d vs %d", len(first), len(second))
+	}
+	for i := range first {
+		if first[i].ID != second[i].ID || first[i].Slot != second[i].Slot || first[i].Order != second[i].Order {
+			t.Fatalf("第 %d 块画不稳定：%+v vs %+v", i, first[i], second[i])
+		}
+	}
+	orders := map[string]int{}
+	for _, painter := range first {
+		orders[painter.ID] = painter.Order
+	}
+	if orders["account-notices"] != 0 {
+		t.Fatalf("叶槽 Order 应为 0，得到 %d", orders["account-notices"])
+	}
+	if orders["account-launcher.row"] <= 30 {
+		t.Fatalf("设置行必须排在旧 footer 行（Order 30/40）之后，得到 %d", orders["account-launcher.row"])
 	}
 }
 

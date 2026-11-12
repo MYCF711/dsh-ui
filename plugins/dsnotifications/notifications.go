@@ -43,6 +43,7 @@ package dsnotifications
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
 )
 
@@ -72,6 +73,12 @@ const RemoteKey = "ui.apiclient"
 type Plugin struct {
 	theme *pluginapi.Theme
 	ctrl  *Controller
+	// tier 是壳档位（official / legacy）的共享持有者；nil = 壳没提供，按 official。
+	// 见 launcher.go 的 isOfficial 与 uikernel.ShellTier。
+	tier *uikernel.ShellTier
+	// settings 是"打开设置浮层"的可选能力（`plugins/dssettings` 的 ui.settings.open）。
+	// nil = 没装设置面板：点账号启动器要**如实说没有**，不假装跳转。
+	settings func() bool
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -106,20 +113,69 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 		}
 	}
 	p.ctrl.SetTheme(p.theme)
+	// 可选：设置面板的"打开我"能力（没有就是没装，点按要如实提示）。
+	if v := ctx.Inject(settingsKey); v != nil {
+		if fn, ok := v.(func() bool); ok {
+			p.settings = fn
+		}
+	}
+	// 可选：壳档位（没有就按 official：官方槽是终态，旧槽是过渡）。
+	if v := ctx.Inject(uikernel.KeyShellTier); v != nil {
+		if tier, ok := v.(*uikernel.ShellTier); ok {
+			p.tier = tier
+		}
+	}
 
 	ctx.Provide(ServiceKey, p.ctrl)
 	return nil
 }
 
-// Panels 实现 pluginapi.Panels：只挂官方那一个槽。
+// Panels 实现 pluginapi.Panels：**父容器两级 + 通知卡片一层**。
+//
+//	account-launcher.row     sidebar.settings        官方 SettingsRoot.triggerRow
+//	account-launcher.bridge  sidebar.footer          旧三栏的过渡桥（official 档自动让位）
+//	account-launcher.menu    settings.launcher       官方 AccountMenu（触发 + 通知座位）
+//	account-notices          settings.launcher.notifications  通知卡片（原有那一层）
 func (p *Plugin) Panels() []pluginapi.Painter {
-	return []pluginapi.Painter{{
-		ID:   "account-notices",
-		Slot: SlotSettingsLauncherNotifications,
-		// 单槽 single：同槽再有别人挂也是各自画，Order 0 保持稳定顺序。
-		Order: 0,
-		Draw:  p.draw,
-	}}
+	return []pluginapi.Painter{
+		{
+			ID:   "account-launcher.row",
+			Slot: SlotSidebarSettings,
+			// 与旧壳 footer 里的其它行共存：Order 60 排在后（官方 settings 行在 footer
+			// actions 之下），保证"先动作、后设置"的官方顺序。
+			Order: 60,
+			// 容器只做布局与 dispatch，自己不画像素；Draw 仍要给——内核把
+			// "没有 Draw 的画"当成写坏了（uikernel.Load 的 fail-loud 规则）。
+			Draw:     containerNoop,
+			Children: p.drawSettingsLauncherRow,
+		},
+		{
+			ID:   "account-launcher.bridge",
+			Slot: pluginapi.SlotSidebarFooter,
+			// Order 55：ds-deliverables 的列表占着 60、旧 footer 行是 30/40；
+			// 设置启动器在官方布局里是 footer 区域的**最后一行**，所以取 55
+			// （仍然排在 30/40 之后、60 之前，避开同槽同 Order）。
+			Order:    55,
+			Draw:     containerNoop,
+			Children: p.drawLauncherFooterBridge,
+		},
+		{
+			ID:    "account-launcher.menu",
+			Slot:  SlotSettingsLauncher,
+			Order: 0,
+			Draw:  p.drawLauncher,
+			// 通知座位（`settings.launcher.notifications`）**无条件** dispatch：
+			// 官方 `renderSlot` 也是无条件的，可见性由被挂组件按 `active` 自己判。
+			Children: p.drawLauncherSeat,
+		},
+		{
+			ID:   "account-notices",
+			Slot: SlotSettingsLauncherNotifications,
+			// 单槽 single：同槽再有别人挂也是各自画，Order 0 保持稳定顺序。
+			Order: 0,
+			Draw:  p.draw,
+		},
+	}
 }
 
 // Controller 返回本插件持有的通知运行时（测试与父级用）。

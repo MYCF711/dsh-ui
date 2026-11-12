@@ -815,6 +815,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 			m.mu.Lock()
 			m.status = "连不上宿主，重试中…"
 			wsDown = true
+			wsUp = false // 连过又断：断线也是"已经拿到事实"，但结论是"断"
 			m.mu.Unlock()
 			m.inv.Invalidate()
 			select {
@@ -830,6 +831,9 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 		backoff = time.Second
 		m.mu.Lock()
 		ep := m.epochs[id]
+		// 订阅真的建起来了：这是"连着"的**唯一证据**（不是"没报错所以算连上"）。
+		wsUp = true
+		wsDown = false
 		m.mu.Unlock()
 		log.Printf("mux 已订阅 session:%s since=%d epoch=%d", id, since, ep)
 
@@ -1464,14 +1468,19 @@ var (
 	// themeExplicit：用户显式给了 -theme。给了就不再被 ui-config 里的 ui.theme 覆盖——
 	// 命令行是"这一次我要这样"，配置文件是"上次我选过这样"，前者优先。
 	themeExplicit bool
-	renderLimit   int               // 0 = 不限制
-	forceSession  string            // 非空则启动后直接打开
-	tailCount     int               // session.load 的 tailMessages
-	wsDown        bool              // WS 订阅当前连不上（状态栏据此把绿点换成「已断开」）
-	uiConfig      map[string]string // 宿主 config.get 的缓存（插件同步读，壳后台刷新）
-	demoTool      bool              // 在消息列表里插假的工具卡
-	smokeSend     bool              // 启动后自动发一条
-	promptText    string            // -prompt 覆盖 smoke 文本
+	renderLimit   int    // 0 = 不限制
+	forceSession  string // 非空则启动后直接打开
+	tailCount     int    // session.load 的 tailMessages
+	wsDown        bool   // WS 订阅当前连不上（Snapshot.Disconnected / Link == LinkDown）
+	// wsUp 是"WS 订阅已经建起来"的**唯一成功证据**。与 wsDown 相反方向：
+	// 两个都为假 = 壳还没拿到任何连接事实 = `LinkUnknown`（界面必须写「未知」，
+	// 不许写「已连接」）。写入点只有 runSubscription 的两处：订阅成功 / 订阅失败，
+	// 都在 m.mu 里写，读数也在 m.mu 里取（-race 干净是这个仓的门禁）。
+	wsUp       bool
+	uiConfig   map[string]string // 宿主 config.get 的缓存（插件同步读，壳后台刷新）
+	demoTool   bool              // 在消息列表里插假的工具卡
+	smokeSend  bool              // 启动后自动发一条
+	promptText string            // -prompt 覆盖 smoke 文本
 )
 
 // drawSlot 把一个槽位上的插件按序画出来。
@@ -1644,6 +1653,9 @@ func newConfig(m *model) app.Config {
 		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
 		m.mu.Lock()
 		busy := m.turnBusy
+		// 连接三态与 busy 同一把锁里取：runSubscription 写 wsUp/wsDown 也在锁里，
+		// 分开取会在 `-race` 下变成真的数据竞争。
+		link := linkStateOf(wsUp, wsDown)
 		m.mu.Unlock()
 		approvalView := (*pluginapi.Approval)(nil)
 		if approval != nil {
@@ -1710,8 +1722,14 @@ func newConfig(m *model) app.Config {
 				Approval:     approvalView,
 				Busy:         busy,
 				ShowRightbar: showRightbar,
-				// 连不上时状态栏那颗绿点必须变红说「已断开」，而不是继续「就绪」。
-				Disconnected: wsDown,
+				// 连接是一等事实：三态由壳按真实 apiclient 订阅结果写
+				// （订阅成功 = LinkConnected / 失败 = LinkDown / 还没拿过 = LinkUnknown）。
+				// 插件据此画官方 `ConnectionIndicator`；`LinkUnknown` 时写「未知」，
+				// **不许**写「已连接」——那是"没有证据的断言"。
+				Link: link,
+				// 兼容旧字段：`Disconnected` 恒等于 `Link == LinkDown`，
+				// 由同一个 link 推出，不会与 Link 自相矛盾。
+				Disconnected: link == pluginapi.LinkDown,
 				// 当前会话的工作目录：插件拼文件路径的前提，空串=不知道。
 				CWD: m.cwd,
 			},

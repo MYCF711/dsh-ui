@@ -92,6 +92,22 @@ const (
 	staticRed400   = 0xf25a5a
 	staticRed600   = 0xec1313
 	staticAmber500 = 0xf59e0b
+
+	// 状态"容器"色（官方 `--dsw-alias-state-*` 指向的 `--dsw-static-*` 档位）。
+	//
+	// 取值来源：官方 `dsh-client-ui-theme/src/styles/design-platform.css`
+	// （rc.2 asar 内，`--dsw-static-amber-*` / `--dsw-static-green-*` 原值）：
+	//
+	//	amber-100 rgb(254, 245, 231) / amber-600 rgb(221, 134, 41) / amber-900 rgb(39, 36, 31)
+	//	green-100 rgb(230, 250, 237) / green-900 rgb(35, 60, 44)
+	//
+	// 暗色用 900 档（`state-warn-tertiary: var(--dsw-static-amber-900)`），
+	// 亮色用 100 档；label / primary 两档两套主题同值。
+	staticAmber100 = 0xfef5e7
+	staticAmber600 = 0xdd8629
+	staticAmber900 = 0x27241f
+	staticGreen100 = 0xe6faed
+	staticGreen900 = 0x233c2c
 )
 
 // 圆角：官方 --dsw-radius-* 的全部取值。改这里等于改所有组件的手感。
@@ -169,6 +185,12 @@ func Dark() *pluginapi.Theme {
 		Warn:    ui.RGB24(staticAmber500),
 		Info:    ui.RGB24(staticDeepseek400),
 
+		// 暗色：tertiary = 900 档（官方 design-platform.css 的暗色别名解析）。
+		SuccessTertiary: ui.RGB24(staticGreen900),
+		SuccessPrimary:  ui.RGB24(staticGreen500),
+		WarnTertiary:    ui.RGB24(staticAmber900),
+		WarnLabel:       ui.RGB24(staticAmber600),
+
 		Selection: ui.RGBA(59, 130, 246, 0.40), // --dsw-alias-bg-document-selection
 
 		Radii: radii,
@@ -228,6 +250,12 @@ func Light() *pluginapi.Theme {
 		Error:   ui.RGB24(staticRed600),
 		Warn:    ui.RGB24(staticAmber500),
 		Info:    ui.RGB24(staticDeepseek500),
+
+		// 亮色：tertiary = 100 档。
+		SuccessTertiary: ui.RGB24(staticGreen100),
+		SuccessPrimary:  ui.RGB24(staticGreen500),
+		WarnTertiary:    ui.RGB24(staticAmber100),
+		WarnLabel:       ui.RGB24(staticAmber600),
 
 		Selection: ui.RGBA(59, 130, 246, 0.30),
 

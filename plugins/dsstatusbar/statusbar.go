@@ -43,6 +43,8 @@ type Plugin struct {
 	prims pluginapi.Primitives
 	// tier 是壳档位（nil = 按 official 处理）。两个座位靠它二选一。
 	tier *uikernel.ShellTier
+	// dialog 是官方 Activity 详情弹窗的跨帧状态（展开态 + 锚点矩形）。
+	dialog statsDialogState
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -69,13 +71,18 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	return nil
 }
 
-// Panels 把「用量 dock」挂到两个座位（同帧只有一个活），连接状态仍留在 shell.bottom。
+// Panels 把「用量 dock」与「连接指示」各挂到**官方座位 + 兼容桥**（同帧只有一个活）。
 //
 //	conversation.composer  官方 chain 座位（官方 conversation.composer.dock 今天
 //	                       不可达，见 official_dock.go 文件头）—— rc.2 终态（常驻 + 未知）
 //	main.composer          旧三栏 / 兼容桥的 dock 位置 —— legacy 档位的旧路径
+//	sidebar.settings       官方设置行（SettingsRoot.triggerRow）—— 连接指示的官方家，
+//	                       见 connection.go 文件头
+//	sidebar.footer         整列还在兼容桥上时的过渡桥（官方槽那一帧不 dispatch）
 //
-// 连接行（shell.bottom）不在这里二选一：官方骨架没有底部整行时它本来就不占位。
+// **不再占 `shell.bottom`**：官方默认 bottom 为空（结构树 W8），旧实现那条
+// 全宽「就绪/已断开」行是错层；结构树 §4 S8 的原话是「连接指示由 settings 的
+// 连接状态驱动，不能移到底部自创 statusbar」。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{ID: "dock", Slot: pluginapi.SlotMainComposer, Order: 20, Draw: func(f *flex.Frame, env *pluginapi.Env) {
@@ -84,8 +91,12 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			}
 			p.drawDock(f, env)
 		}},
-		{ID: "connection", Slot: pluginapi.SlotShellBottom, Order: 10, Draw: p.draw},
-		{ID: "dock-official", Slot: uikernel.OffConvComposer, Order: dockOfficialOrder, Draw: p.drawOfficialDock},
+		{ID: "connection", Slot: uikernel.OffSidebarSettings, Order: connSettingsOrder,
+			Draw: p.drawConnectionSettingsSeat},
+		{ID: "connection-bridge", Slot: pluginapi.SlotSidebarFooter, Order: connFooterBridgeOrder,
+			Draw: p.drawConnectionFooterBridge},
+		{ID: "dock-official", Slot: uikernel.OffConvComposer, Order: dockOfficialOrder,
+			Draw: p.drawOfficialDock, AfterDraw: p.afterOfficialDock},
 	}
 }
 
@@ -130,61 +141,6 @@ func (p *Plugin) pill(f *flex.Frame, label string) {
 		PadSides(pillPadY, pillPadX, pillPadY, pillPadX).
 		Items(flex.Center).Gap(pillGap).Children(func() {
 		f.Text(label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
-	})
-}
-
-// connectionTone 是连接状态的颜色语义，不与 ContextMeter 混用。
-type connectionTone uint8
-
-const (
-	connectionReady connectionTone = iota
-	connectionApproval
-	connectionDisconnected
-)
-
-// connectionState 保持断线 > 待审批 > 就绪的既有真值优先级。
-func connectionState(data pluginapi.Snapshot) (string, connectionTone) {
-	switch {
-	case data.Disconnected:
-		return "已断开", connectionDisconnected
-	case data.Approval != nil:
-		return "待审批", connectionApproval
-	default:
-		return "就绪", connectionReady
-	}
-}
-
-// bar 是 dscore 那个底部整行图元的可选能力，只服务连接状态。
-type bar interface {
-	StatusBarRow(f *flex.Frame, height float32, body func()) flex.Box
-}
-
-// draw 画独立连接状态行。统计指标已经移到 composer 后，不再占这条全宽行的左侧。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
-	t := p.theme
-	label, tone := connectionState(env.Data)
-	dotColor := t.Success
-	switch tone {
-	case connectionDisconnected:
-		dotColor = t.Error
-	case connectionApproval:
-		dotColor = t.Warn
-	}
-
-	h := env.Geometry.BottomHeight
-	if h <= 0 {
-		h = 24
-	}
-	p.bar(f, h, func() {
-		f.Spacer()
-		if env.Data.Status != "" {
-			f.Text(env.Data.Status).FontSize(t.Fonts.Caption).
-				Color(t.LabelTertiary).Ellipsis().MaxWidth(240)
-		}
-		f.Row().Gap(6).Items(flex.Center).Shrink(0).Children(func() {
-			p.prims.Dot(f, dotColor, 6)
-			f.Text(label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		})
 	})
 }
 
@@ -269,19 +225,6 @@ func contextSegment(used, window int64) string {
 	return raw + " · " + percent
 }
 
-// bar 调 dscore 的整行图元；拿不到就自己画一条等价的连接状态行。
-func (p *Plugin) bar(f *flex.Frame, height float32, body func()) {
-	if sb, ok := p.prims.(bar); ok {
-		sb.StatusBarRow(f, height, body)
-		return
-	}
-	t := p.theme
-	f.Column().FillWidth().Height(height).Background(t.BgBase).Children(func() {
-		f.Row().FillWidth().Height(0.5).Background(t.BorderL2)
-		f.Row().FillWidth().FillHeight().PadX(12).Items(flex.Center).Gap(6).Children(body)
-	})
-}
-
 // tok 把 token 数压成「6.5k / 1.2M」这种短写法。
 func tok(n int64) string {
 	switch {
@@ -332,6 +275,7 @@ func itoa(n int) string {
 }
 
 var (
-	_ pluginapi.Plugin = (*Plugin)(nil)
-	_ pluginapi.Panels = (*Plugin)(nil)
+	_ pluginapi.Plugin     = (*Plugin)(nil)
+	_ pluginapi.Panels     = (*Plugin)(nil)
+	_ pluginapi.KeyHandler = (*Plugin)(nil)
 )

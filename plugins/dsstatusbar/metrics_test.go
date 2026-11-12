@@ -145,28 +145,6 @@ func TestContextPercentNeedsUsedTokensAndWindow(t *testing.T) {
 	}
 }
 
-func TestConnectionStatePriority(t *testing.T) {
-	approval := &pluginapi.Approval{}
-	tests := []struct {
-		name      string
-		data      pluginapi.Snapshot
-		wantLabel string
-		wantTone  connectionTone
-	}{
-		{name: "连接正常", data: pluginapi.Snapshot{}, wantLabel: "就绪", wantTone: connectionReady},
-		{name: "待审批", data: pluginapi.Snapshot{Approval: approval}, wantLabel: "待审批", wantTone: connectionApproval},
-		{name: "断线优先于审批", data: pluginapi.Snapshot{Disconnected: true, Approval: approval}, wantLabel: "已断开", wantTone: connectionDisconnected},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			label, tone := connectionState(tc.data)
-			if label != tc.wantLabel || tone != tc.wantTone {
-				t.Fatalf("connectionState() = (%q, %v)，want (%q, %v)", label, tone, tc.wantLabel, tc.wantTone)
-			}
-		})
-	}
-}
-
 func TestOfficialDockGeometryDoesNotReuseLegacy24OrCaption40(t *testing.T) {
 	if dockPaddingTop != 4 || dockGap != 12 {
 		t.Fatalf("dock padding/gap = %v/%v，官方 4/12", dockPaddingTop, dockGap)
@@ -191,9 +169,10 @@ func TestOfficialDockGeometryDoesNotReuseLegacy24OrCaption40(t *testing.T) {
 func TestPanelsSeparateComposerDockFromConnectionBottom(t *testing.T) {
 	p := &Plugin{}
 	panels := p.Panels()
-	// 三个面：legacy dock / 连接行 / 官方 dock（见 official_dock.go）。
-	if len(panels) != 3 {
-		t.Fatalf("Panels 数 = %d，want legacy dock + connection + 官方 dock 三个", len(panels))
+	// 四个面：legacy dock / 官方 dock（见 official_dock.go）/
+	// 连接指示的官方座位（sidebar.settings）+ 兼容桥（sidebar.footer，见 connection.go）。
+	if len(panels) != 4 {
+		t.Fatalf("Panels 数 = %d，want legacy dock + 官方 dock + 连接官方座位 + 连接兼容桥四个", len(panels))
 	}
 	byID := map[string]pluginapi.Painter{}
 	for _, panel := range panels {
@@ -202,8 +181,19 @@ func TestPanelsSeparateComposerDockFromConnectionBottom(t *testing.T) {
 	if byID["dock"].Slot != pluginapi.SlotMainComposer || byID["dock"].Order <= 10 {
 		t.Fatalf("legacy dock 必须在 composer(order10) 后：%+v", byID["dock"])
 	}
-	if byID["connection"].Slot != pluginapi.SlotShellBottom {
-		t.Fatalf("连接状态必须保留独立 shell.bottom 出口：%+v", byID["connection"])
+	// 连接指示：官方座位 + 兼容桥，**都不在 shell.bottom**
+	// （官方默认 bottom 为空；结构树 §4 S8 点名过"不能移到底部自创 statusbar"）。
+	if byID["connection"].Slot != uikernel.OffSidebarSettings {
+		t.Fatalf("连接指示官方座位 = %q，want sidebar.settings：%+v", byID["connection"].Slot, byID["connection"])
+	}
+	if byID["connection-bridge"].Slot != pluginapi.SlotSidebarFooter {
+		t.Fatalf("连接指示兼容桥 = %q，want sidebar.footer：%+v",
+			byID["connection-bridge"].Slot, byID["connection-bridge"])
+	}
+	for _, panel := range panels {
+		if panel.Slot == pluginapi.SlotShellBottom {
+			t.Fatalf("连接指示已迁走，不许再占 shell.bottom：%+v", panel)
+		}
 	}
 	// 官方座位：挂在 chain 座位 `conversation.composer`，order 必须在输入卡片(10)之后。
 	official := byID["dock-official"]

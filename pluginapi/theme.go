@@ -75,6 +75,26 @@ type Theme struct {
 	Warn    ui.Color
 	Info    ui.Color
 
+	// ── 状态**容器**色（官方 `--dsw-alias-state-*` 里成对的那几档）──
+	//
+	// 官方的小标签/胶囊（连接指示 `ConnectionIndicator`、审批条）不是"纯色点"，
+	// 而是「tertiary 底 + 同色系 label 文字 + 20% 该色描边」的三件套：
+	//
+	//	连接指示 warning   background: --dsw-alias-state-warn-tertiary
+	//	                   color:      --dsw-alias-state-warn-label
+	//	连接指示 success   background: --dsw-alias-state-success-tertiary
+	//	                   color:      --dsw-alias-state-success-primary
+	//
+	// 上述两条来自官方 `index-CSAdOBx6.css` 的 `._indicator_16cyo_1` /
+	// `._warning_16cyo_35` / `._success_16cyo_65`；取值在
+	// `dsh-client-ui-theme/src/styles/design-platform.css` 里映射到 `--dsw-static-*`
+	// （暗色用 900 档，亮色用 100 档）。只有 Success/Warn 两个"纯色"时没法画这套底，
+	// 那时只能拿纯色降透明度凑——那就不是官方那个色了。
+	SuccessTertiary ui.Color // ← --dsw-alias-state-success-tertiary
+	SuccessPrimary  ui.Color // ← --dsw-alias-state-success-primary
+	WarnTertiary    ui.Color // ← --dsw-alias-state-warn-tertiary
+	WarnLabel       ui.Color // ← --dsw-alias-state-warn-label
+
 	// ── 文本选区 ──
 	Selection ui.Color
 

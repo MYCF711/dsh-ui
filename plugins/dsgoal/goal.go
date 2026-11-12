@@ -93,9 +93,10 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	// 这种**四个数两两对称**的形状。这一条是唯一一条两个方向都不对称的，
 	// 而它出现在一个只画一行字的部件里——那不像设计，像把顺序写串了。
 	f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(6, 16, 6, 16).Children(func() {
-		// 一个小圆点表示"这里有个正在进行的目标"——用中性色，
-		// 不用绿（绿在状态栏已经表示"连着宿主"，复用会混淆）。
-		f.Row().Width(4).Height(4).Radius(2).Background(t.LabelTertiary)
+		// 官方 `.goalGlyph`：sprite `goal-outline`（viewBox 16）按 size 14 画，
+		// 左边中性色 `label-tertiary`。不用绿（绿在状态栏已经表示"连着宿主"，
+		// 复用会混淆），也不用圆点冒充图标（见 icons.go 的取证）。
+		f.Icon(goalOutlineIcon()).Size(goalGlyphSize, goalGlyphSize).Color(t.LabelTertiary)
 		f.Text("目标").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		// Ellipsis：目标可能是一句话，但这一行只给一眼的高度。
 		// 完整内容该在别处看——这里的作用是"别忘了我",不是"读完我"。

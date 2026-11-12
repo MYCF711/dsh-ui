@@ -186,7 +186,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	}
 }
 
-// drawFooter 画左栏底部那一行：会话总数 + 连接状态。
+// drawFooter 画左栏底部那一行：会话总数。
 //
 // 官方侧栏 footer（`SidebarRoot.module.css`）只给了这些：
 //
@@ -198,17 +198,24 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // **没有高度、没有字号**（里面装的是 28px 图标按钮，高度由按钮撑）。所以这里
 // 行高取按钮那一档 28，字号沿用我们原来的一档（官方未给，不另编一个）。
 //
-// 数据全部来自快照，不自己发请求。状态文字太长就省略——底部这行只用来"扫一眼"。
+// # 为什么这一行不再写「连接状态」
+//
+// 这里原来画的是 `env.Data.Status`（壳的动作状态串，成功 load 一次就变成
+// 「已连接 · N 条（总 M）」）。两处不对：
+//
+//  1. **错层**：官方连接指示的家是 `sidebar.settings`（结构树 §4 S8 原话
+//     「连接指示由 settings 的连接状态驱动，不能移到底部自创 statusbar」），
+//     今天由 dsstatusbar 的 `connection.go` 画在那里；
+//  2. **编事实**：`Status` 是"上一次动作的文案"，不是连接层结论——壳没订阅成功时
+//     它照样可以写着「已连接 · N 条」。连接三态现在从 `Snapshot.Link` 读。
+//
+// 所以这一行只留"会话总数"这一个它自己知道的事实。
 func (p *Plugin) drawFooter(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	f.Row().FillWidth().Height(28).Items(flex.Center).Gap(6).Children(func() {
 		f.Text(itoa(len(env.Data.Sessions)) + " 个会话").
 			FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		f.Spacer()
-		if env.Data.Status != "" {
-			f.Text(env.Data.Status).FontSize(t.Fonts.Tiny).
-				Color(t.LabelTertiary).Ellipsis().MaxWidth(p.width - 120)
-		}
 	})
 }
 

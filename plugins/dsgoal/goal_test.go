@@ -13,8 +13,8 @@ import (
 // 没有目标就整块不画。守卫生效时看起来"什么都没有"，失效时看起来
 // "本来就该有东西"——所以两条路都得断言，否则这个插件等于没被测。
 
-// renderGoal 画一帧目标条，返回这一帧画出来的矩形。
-func renderGoal(t *testing.T, p *Plugin, act pluginapi.Actions) []ui.Rectangle {
+// renderGoal 画一帧目标条，返回这一帧的画布（矩形/三角形/文字都在上面）。
+func renderGoal(t *testing.T, p *Plugin, act pluginapi.Actions) *ui.Canvas {
 	t.Helper()
 	if p.theme == nil {
 		p.theme = dscore.Dark()
@@ -35,14 +35,17 @@ func renderGoal(t *testing.T, p *Plugin, act pluginapi.Actions) []ui.Rectangle {
 	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
 		p.draw(f, env)
 	})
-	return canvas.Rectangles()
+	return canvas
 }
 
 // TestDrawsNothingWithoutGoalCapability 钉住老宿主那条路。
 func TestDrawsNothingWithoutGoalCapability(t *testing.T) {
-	rects := renderGoal(t, &Plugin{}, pluginapi.Actions{})
-	if len(rects) != 0 {
+	canvas := renderGoal(t, &Plugin{}, pluginapi.Actions{})
+	if rects := canvas.Rectangles(); len(rects) != 0 {
 		t.Fatalf("壳没接 Goal 时不该画任何东西，画了 %+v", rects)
+	}
+	if tris := canvas.Triangles(); len(tris) != 0 {
+		t.Fatalf("壳没接 Goal 时连图标都不该画，画了 %d 个三角形", len(tris))
 	}
 }
 
@@ -52,30 +55,44 @@ func TestDrawsNothingWithoutGoalCapability(t *testing.T) {
 // 却什么都不说。它和 dsterminal 的「有终端但没输出要画」是**相反**的决定：
 // 那边"空着"本身是个信息，这边不是。
 func TestDrawsNothingForEmptyGoal(t *testing.T) {
-	rects := renderGoal(t, &Plugin{}, pluginapi.Actions{Goal: func() string { return "" }})
-	if len(rects) != 0 {
+	canvas := renderGoal(t, &Plugin{}, pluginapi.Actions{Goal: func() string { return "" }})
+	if rects := canvas.Rectangles(); len(rects) != 0 {
 		t.Fatalf("目标为空时不该画任何东西，画了 %+v", rects)
+	}
+	if tris := canvas.Triangles(); len(tris) != 0 {
+		t.Fatalf("目标为空时连图标都不该画，画了 %d 个三角形", len(tris))
 	}
 }
 
-// TestDrawsOneDotWithAGoal 是有目标那一侧。
+// TestDrawsOfficialGoalGlyph 是有目标那一侧。
 //
-// 目标条上唯一被填色的东西就是那个 4×4 的圆点（文字不算矩形）。
-// 所以"正好一个 4×4 的矩形"既是"画了"，也是"没有多余的框"。
-func TestDrawsOneDotWithAGoal(t *testing.T) {
-	rects := renderGoal(t, &Plugin{}, pluginapi.Actions{
+// 目标条上唯一的图形是官方 sprite `goal-outline` 那枚 14px glyph（文字是文字）。
+// 判据三条：
+//
+//	① **不再有 4×4 圆点**（那是一枚自造占位，官方无此物）；
+//	② 真的画了描边图形（icon 的描边被三角化 → Triangles 非空）；
+//	③ 文字仍是「目标」+ 目标正文。
+func TestDrawsOfficialGoalGlyph(t *testing.T) {
+	canvas := renderGoal(t, &Plugin{}, pluginapi.Actions{
 		Goal: func() string { return "把 DSH 重写成 Go 版本" },
 	})
-	if len(rects) != 1 {
-		t.Fatalf("有目标时应当正好一个圆点矩形，得到 %d 个：%+v", len(rects), rects)
+	if rects := canvas.Rectangles(); len(rects) != 0 {
+		t.Fatalf("目标条已改用官方 sprite 图标，不该再有圆点矩形：%+v", rects)
 	}
-	got := rects[0].Bounds
-	if got.Width != 4 || got.Height != 4 {
-		t.Errorf("圆点尺寸 %vx%v，want 4x4", got.Width, got.Height)
+	if len(canvas.Triangles()) == 0 {
+		t.Fatal("官方 goal-outline 图标没画出来（没有任何描边三角形）")
 	}
-	// 左边 16px 是 PadSides(16,16,…) 的左边距：圆点贴左，文字在它后面。
-	if got.X != 16 {
-		t.Errorf("圆点左边距 %v，want 16（PadSides 的左内边距）", got.X)
+	var label, objective bool
+	for _, text := range canvas.Texts() {
+		if text.Value == "目标" {
+			label = true
+		}
+		if text.Value == "把 DSH 重写成 Go 版本" {
+			objective = true
+		}
+	}
+	if !label || !objective {
+		t.Fatalf("目标条文字不全：label=%v objective=%v texts=%+v", label, objective, canvas.Texts())
 	}
 }
 
@@ -88,15 +105,15 @@ func TestGoalIsReadEveryFrame(t *testing.T) {
 	act := pluginapi.Actions{Goal: func() string { return goal }}
 	p := &Plugin{}
 
-	if rects := renderGoal(t, p, act); len(rects) != 0 {
-		t.Fatalf("一开始没有目标，不该画")
+	if canvas := renderGoal(t, p, act); len(canvas.Triangles()) != 0 {
+		t.Fatalf("一开始没有目标，不该画图标")
 	}
 	goal = "先出方案"
-	if rects := renderGoal(t, p, act); len(rects) != 1 {
-		t.Fatalf("设了目标之后应当画出来，得到 %+v", rects)
+	if canvas := renderGoal(t, p, act); len(canvas.Triangles()) == 0 {
+		t.Fatalf("设了目标之后应当画出图标")
 	}
 	goal = ""
-	if rects := renderGoal(t, p, act); len(rects) != 0 {
-		t.Fatalf("清掉目标之后应当整块消失，得到 %+v", rects)
+	if canvas := renderGoal(t, p, act); len(canvas.Triangles()) != 0 {
+		t.Fatalf("清掉目标之后应当整块消失，仍有 %d 个三角形", len(canvas.Triangles()))
 	}
 }

@@ -237,9 +237,11 @@ func makeFrames(n int) []apiclient.Frame {
 	return frames
 }
 
-// TestRefreshFramesPagesThroughHistory 钉住"**分批**拉全"。
+// TestRefreshFramesPagesThroughHistory 钉住"**按页拉、不重拉整页**"。
 //
-// 缺口比单次上限大时必须接着拉：早先只拉一次，大缺口会静默漏掉中段。
+// 早先这里是"从 0 拉到拉完"：长会话（上万帧）打开一次要几百次分页，
+// 而其中绝大部分用户根本不会往上看。现在基线只取**尾窗一页**，
+// 更早的由 `.older` 按钮按需翻（见 frames_paging_test.go）。
 func TestRefreshFramesPagesThroughHistory(t *testing.T) {
 	all := makeFrames(frameHistoryChunk*2 + 7) // 两页多一点
 	server := newHistoryServer(t, all, frameHistoryChunk, 4)
@@ -253,16 +255,39 @@ func TestRefreshFramesPagesThroughHistory(t *testing.T) {
 		t.Fatal("基线没建起来")
 	}
 	got := frameSeqs(journal.snapshot())
+	// 尾窗：最后 frameHistoryChunk 条（407-200+1 = 208 起）。
+	if len(got) != frameHistoryChunk {
+		t.Fatalf("基线帧数 = %d，想要 %d（尾窗一页）", len(got), frameHistoryChunk)
+	}
+	if got[0] != len(all)-frameHistoryChunk+1 || got[len(got)-1] != len(all) {
+		t.Fatalf("基线 seq 范围 = [%d..%d]，想要 [%d..%d]",
+			got[0], got[len(got)-1], len(all)-frameHistoryChunk+1, len(all))
+	}
+	if !journal.paging.HasMore {
+		t.Fatal("尾窗之前还有帧，paging.HasMore 必须是 true")
+	}
+	if !journal.paging.Partial {
+		t.Fatal("基线是截断的，paging.Partial 必须是 true（否则「已到会话开头」那行不会留下）")
+	}
+	if journal.epoch != 4 {
+		t.Fatalf("epoch = %d，想要 4（基线要带上世代）", journal.epoch)
+	}
+
+	// 按需向前翻到底：每一页都接上、seq 连续、一条不重复。
+	for m.frames["s-1"].paging.HasMore {
+		m.loadOlderFrames("s-1")
+	}
+	got = frameSeqs(journal.snapshot())
 	if len(got) != len(all) {
-		t.Fatalf("基线帧数 = %d，想要 %d（分页没接上，中段丢了）", len(got), len(all))
+		t.Fatalf("翻完之后帧数 = %d，想要 %d（中段丢了）", len(got), len(all))
 	}
 	for i := range got {
 		if got[i] != i+1 {
 			t.Fatalf("第 %d 条 seq = %d，想要 %d", i, got[i], i+1)
 		}
 	}
-	if journal.epoch != 4 {
-		t.Fatalf("epoch = %d，想要 4（基线要带上世代）", journal.epoch)
+	if !journal.paging.Partial {
+		t.Fatal("Partial 是粘性的：翻到底之后仍应为 true（那一行显示「已到会话开头」而不是消失）")
 	}
 }
 

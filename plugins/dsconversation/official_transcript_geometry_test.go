@@ -10,6 +10,7 @@ package dsconversation
 //	③ z-index 阶梯必须是 6 < 7 = 7 < 8 < 9 四档（结构树 §5.22 官方注释固化）。
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -178,4 +179,62 @@ func TestGeometryUsesSingleSourceOfTruth(t *testing.T) {
 	check("ChatView.toBottom.size", ToBottomSize)
 	check("TurnNavigator.frame.width", TurnRailWidth)
 	check("ChatView.flowItem.min-width", 0)
+}
+
+// TestMarkdownGeometryIsAllDerived 钉住「markdown 块级与代码块整节 derived」。
+//
+// 为什么这一条是硬要求：官方 `MarkdownText` / `FenceCodeBlock` 在
+// `@deepseek-ai/dsh-client-ui-primitives` 里，而该包**没有 rc.2 `src/`**
+// （结构树 §9 第 1/2 条）。这一节的任何一行如果被标成 `aligned`，就等于
+// 宣称"我们知道官方值"——**那是假的**。所以：
+//
+//	① 每行必须是 derived，且 Formula 里必须写「不得反推像素」；
+//	② 锚点必须指向结构树的未取证条目（不是编出来的 CSS 行号）；
+//	③ 标题阶梯必须与 `MarkdownHeadings()` 逐级一致（表与常量不许两套）。
+func TestMarkdownGeometryIsAllDerived(t *testing.T) {
+	prefixes := []string{"MarkdownText.", "FenceCodeBlock."}
+	rows := 0
+	byHeading := map[string]float32{}
+	for _, row := range OfficialTranscriptGeometry() {
+		matched := false
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(row.Node, prefix) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		rows++
+		if row.Status != uikernel.GeoDerived {
+			t.Errorf("%s.%s 状态 %q，markdown/代码块整节必须是 derived（官方无 rc.2 src）",
+				row.Node, row.Prop, row.Status)
+		}
+		if !strings.Contains(row.Formula, "不得反推像素") {
+			t.Errorf("%s.%s 的 Formula 必须写明「不得反推像素」：%q", row.Node, row.Prop, row.Formula)
+		}
+		if !strings.Contains(row.Anchor, "official-conversation-transcript-tree.md") {
+			t.Errorf("%s.%s 的锚点必须指向结构树未取证条目：%q", row.Node, row.Prop, row.Anchor)
+		}
+		byHeading[row.Node+"."+row.Prop] = row.Impl
+	}
+	if rows < 20 {
+		t.Fatalf("markdown/代码块几何只有 %d 行，覆盖不足（标题 6 级 × 2 + 列表/引用/分隔线 + 代码块 5）", rows)
+	}
+
+	// 标题阶梯：表里的六行必须与常量表逐级一致。
+	for _, heading := range MarkdownHeadings() {
+		node := "MarkdownText.h" + strconv.Itoa(heading.Level)
+		if got := byHeading[node+".font-size"]; got != heading.Size {
+			t.Errorf("%s 字号 表 %v ≠ 常量 %v", node, got, heading.Size)
+		}
+		if got := byHeading[node+".line-height"]; got != heading.Line {
+			t.Errorf("%s 行高 表 %v ≠ 常量 %v", node, got, heading.Line)
+		}
+	}
+	// 代码块 banner 高度也必须在表里（不是只写常量）。
+	if got := byHeading["FenceCodeBlock.banner.height"]; got != CodeBlockBannerHeight {
+		t.Errorf("FenceCodeBlock.banner.height 表 %v ≠ 常量 %v", got, CodeBlockBannerHeight)
+	}
 }

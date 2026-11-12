@@ -173,12 +173,38 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.field} }
 
 // Panels 实现 pluginapi.Panels。
+//
+// # 两个座位（同一帧只有一个活）
+//
+//	main.composer          旧三栏 / 官方骨架的**旧部件兼容桥** —— 今天的产品路径
+//	conversation.composer  官方 `InputBar` 上方（rc.2 终态，`uikernel.OffConvComposer`）
+//
+// 为什么两个都挂：壳按 `ShellOptions.BridgeLegacy` **一帧一个值**决定 dispatch
+// 哪一边（`uikernel/shell_skeleton.go` 的 drawLegacyConversation /
+// drawComposerSkeleton）。旧部件（dsconversation 的 `main.body`）还占着槽时
+// 走兼容桥，官方子槽根本没人 dispatch；反过来官方槽全量 dispatch 时旧槽没人画。
+// 两个座位互斥，**不会双画** —— 与 transcript 的双座位是同一条判据。
+//
+// 审批卡的座位归属：官方审批走 **composer 接管**（`ChatView.tsx:293-295`
+// 的注释：approvals take over the composer），不是消息流里的一段。所以两个
+// 座位上都只有 **composer 侧**画审批卡，transcript 侧一条都不画
+// （dsconversation 的 Panels 注释写了为什么）。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{ID: "composer", Slot: pluginapi.SlotMainComposer, Order: 10,
 			Draw: p.draw, AfterDraw: p.afterDraw},
+		// 官方座位：只画审批卡（输入卡片本身在官方骨架里由
+		// `drawComposerSkeleton` 摆位，输入 Field 由本插件的 Fields() 登记）。
+		// 没有审批请求时这个方法**什么都不画**（`Approval == nil` 整条不渲染）。
+		{ID: "approval-official", Slot: pluginapi.Slot(offConversationComposer), Order: 10,
+			Draw: p.drawOfficialApprovalSeat},
 	}
 }
+
+// offConversationComposer 是官方 composer 链的槽位字面量
+// （`ui-conversation/src/client/contract/slots.ts:290`，`uikernel.OffConvComposer`
+// 的同一个值）。**不许改写成 main.composer 之类的旧槽名**：那就又回到兼容桥了。
+const offConversationComposer = "conversation.composer"
 
 // draw 画一列：审批条（有才画）+ 输入卡片。
 //

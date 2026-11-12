@@ -29,9 +29,13 @@
 package dsconversation
 
 import (
+	"strconv"
 	"strings"
 
+	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
@@ -78,6 +82,13 @@ type TranscriptBoxes struct {
 	Flow   flex.Box
 	// Rows 是逐条消息行（顺序 = 节点顺序）。
 	Rows []RowBox
+	// Older 是「加载更早」那一行（官方 `.older` / `.hint`）。
+	//
+	// **它不在 Rows 里**：官方它画在 flow 槽**之前**、`.column` 的直接子级，
+	// 不是一个消息节点（`ChatView.tsx:265-279`）。零值 = 这一帧不画。
+	Older flex.Box
+	// HistoryState 是这一帧「加载更早」的五态（诊断/测试用；HistoryHidden = 没画）。
+	HistoryState HistoryLoadState
 	// HostScroll 记录这一帧外层有没有宿主滚动口。
 	HostScroll bool
 	// SelfScrolls 记录自滚动口这一帧是否真的在滚（= !HostScroll）。
@@ -120,6 +131,40 @@ type OfficialTranscriptView struct {
 	Prims pluginapi.Primitives
 	// Boxes 是上一帧的几何（每帧 Draw 开头重置）。
 	Boxes TranscriptBoxes
+
+	// codeBlocks 是本帧**布局阶段占位、覆画阶段才真画**的代码块。
+	//
+	// 为什么要两段：`mdlite.CodeBlock` 要的是**真实矩形**，而布局阶段
+	// viva 还没解出列宽（`f.Bounds()` 给的是整窗）。详见 `placeCodeBlock`
+	// 与 `PaintCodeBlocks` 的注释。
+	codeBlocks []pendingCodeBlock
+	// prevCodeBlocks 是上一帧的代码块：按 (key, 源码) 复用，保住横滚位移、
+	// 折行开关与复制反馈——每帧重建等于"滚一下弹回原位"。
+	prevCodeBlocks []pendingCodeBlock
+	// codeClipBox 是代码块的裁剪视口（自滚动口；布局之后才有矩形）。
+	codeClipBox flex.Box
+	// codeClipOK 报告这一帧有没有可用的裁剪视口（Draw 没跑 / 零值 Box 时不能取矩形）。
+	codeClipOK bool
+	// frameSeq / paintedSeq 是"一帧只覆画一次"的帧号。
+	//
+	// 为什么需要去重：两个座位（`conversation.view` 与 `main.body`）的 painter
+	// 都挂了 AfterDraw，壳会把**所有** painter 的 AfterDraw 跑一遍，不管这个
+	// 座位这一帧有没有被 dispatch。不去重就会同一块画两遍（叠字 + 双 hit 区）。
+	frameSeq   uint64
+	paintedSeq uint64
+}
+
+// pendingCodeBlock 是一条「布局阶段占位、覆画阶段真画」的代码块。
+type pendingCodeBlock struct {
+	// key 是稳定渲染键（entry key + 块序号），四个交互 id 由它派生。
+	key string
+	// block 是代码块视图（跨帧复用，自带横滚/折行/复制反馈状态）。
+	block mdlite.CodeBlock
+	// box 是布局阶段占的位（覆画阶段从这里取真实矩形）。
+	box flex.Box
+	// geometry 是上一次覆画的真实几何（banner / 视口 / 横滚上限），
+	// 测试与 Turn 导航读它——**不跨帧外推**（每帧覆画时覆盖写）。
+	geometry mdlite.CodeBlockGeometry
 }
 
 // NewOfficialTranscriptView 造一个渲染器。
@@ -137,6 +182,15 @@ func (v *OfficialTranscriptView) Draw(f *flex.Frame, env *pluginapi.Env, vp Tran
 		t = env.Theme
 	}
 	v.Boxes = TranscriptBoxes{HostScroll: vp.HostScroll, SelfScrolls: !vp.HostScroll}
+
+	// ── 代码块：本帧重新占位 ──────────────────────────────────────
+	//
+	// 上一帧的代码块先挪到 prevCodeBlocks（覆画阶段按 key+源码复用它的
+	// 横滚位移与复制反馈），本帧只重新占位、不重新画。
+	v.prevCodeBlocks = append(v.prevCodeBlocks[:0], v.codeBlocks...)
+	v.codeBlocks = v.codeBlocks[:0]
+	v.frameSeq++
+	v.codeClipOK = false
 
 	// ── ChatView 五层容器（frame → root → scroll → column → flow）──
 	//
@@ -160,10 +214,18 @@ func (v *OfficialTranscriptView) Draw(f *flex.Frame, env *pluginapi.Env, vp Tran
 					v.Boxes.Scroll = f.Column().FillWidth().Grow(1).MinHeight(0).
 						PadSides(ChatScrollPad, ChatScrollPad+ComposerSideClearance, ChatScrollPad, ChatScrollPad+ComposerSideClearance)
 				}
+				// 代码块的裁剪视口就是自滚动口：横滚内容只能裁在列内，
+				// 不能画到顶栏/输入区上（旧渲染路径踩过同样的坑）。
+				v.codeClipBox, v.codeClipOK = v.Boxes.Scroll, true
 				v.Boxes.Scroll.Children(func() {
 					// ── ChatView.column（唯一行序容器，max-width: chat-content-width）──
 					v.Boxes.Column = f.Column().FillWidth().MinHeight(0)
 					v.Boxes.Column.Children(func() {
+						// ── 「加载更早」那一行（官方 `.hint` / `.older`）──
+						// 它画在 flow 槽**之前**：官方 `.column` 的直接子级里它是
+						// 第一条（`ChatView.tsx:265-279`），不属于任何消息节点。
+						// 五态的判据全部来自 `Snapshot.History`（壳算好的），这里不猜。
+						v.Boxes.Older, v.Boxes.HistoryState = v.drawHistoryRow(f, env, env.Data.History)
 						// ── flow 槽（display:contents：保留布局但不保留盒模型）──
 						v.Boxes.Flow = f.Column().FillWidth()
 						v.Boxes.Flow.Children(func() {
@@ -389,7 +451,7 @@ func (v *OfficialTranscriptView) drawAssistant(f *flex.Frame, env *pluginapi.Env
 			})
 		}
 		if e.Data.Text != "" {
-			v.drawMarkdown(f, env, e.Data.Text)
+			v.drawMarkdown(f, env, e.Data.Text, e.Key)
 		}
 		if e.Data.Status == "stopped" {
 			// 中断标记 .stopped：11px/18px，左对齐
@@ -401,58 +463,362 @@ func (v *OfficialTranscriptView) drawAssistant(f *flex.Frame, env *pluginapi.Env
 	})
 }
 
-// drawMarkdown 画 markdown 块：段落 / 标题 / 列表 → 文本；围栏 → 代码卡；表格 → 等宽文本。
+// drawMarkdown 画 markdown 块：标题阶梯（h1–h6）/ 段落 / 列表 / 引用块 /
+// 分隔线 / 表格 / 围栏代码块。
 //
-// **行内代码**（Mono span）单独成段时走等宽字体——精确的行内背景色
-// （`--dsw-alias-markdown-inline-code`）在 primitives 里，未取证（§9 第 1/2 条）。
-func (v *OfficialTranscriptView) drawMarkdown(f *flex.Frame, env *pluginapi.Env, text string) {
-	t := v.Theme
-	var doc markdown.Document
-	doc.Parse(text)
-	for i := range doc.Blocks {
-		block := doc.Blocks[i]
-		switch block.Kind {
-		case markdown.Code:
-			v.drawCodeBlock(f, block)
-		case markdown.Rule:
-			f.Divider()
-		case markdown.Table:
-			// 宽表格突破（md-table-wide 的 100cqw）在 Viva 里没有容器查询，
-			// 见几何表 deviation 行：这里按等宽文本原样渲染。
-			for _, cell := range doc.Cells(&block) {
-				f.Text(spansText(doc.CellSpans(cell))).FontSize(t.Fonts.Code).Mono().Color(t.LabelSecondary)
-			}
-		default:
-			body := spansText(doc.Spans(&block))
-			if body == "" {
-				continue
-			}
-			box := f.Text(body).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
-			if allMono(doc.Spans(&block)) {
-				box.Mono().FontSize(t.Fonts.Code)
+// # 块间距
+//
+// 官方 `AssistantMarkdown.body` 是 `display:flex;flex-direction:column;gap:16px`
+// （`AssistantMarkdown.module.css:17-22`，几何表 aligned 行）。**块与块之间靠
+// 容器的 gap，不靠每个块的 margin**——所以这里建一个带 gap 的列，各块自己
+// 不带上下边距。这样"两个块挨在一起"和"三个块挨在一起"的行距是同一个数。
+//
+// # 几何来源（重要）
+//
+// 标题阶梯、列表缩进、引用块边框、代码块 banner 高度**全部**来自
+// `official_transcript_geometry.go` 的 derived 段。官方 `MarkdownText` /
+// `FenceCodeBlock` 在 `@deepseek-ai/dsh-client-ui-primitives` 里，而该包
+// **没有 rc.2 `src/`**（结构树 §9 第 1/2 条），所以这些值**不得反推像素**，
+// 也不许拿去改壳几何。取到 primitives `src/` 后逐行换锚。
+//
+// # 行内代码
+//
+// 整段都是 Mono span 时走等宽字体（官方 `MarkdownText` 的 Mono span）；
+// 精确的行内背景色（`--dsw-alias-markdown-inline-code`）同样在 primitives 里，
+// 未取证——这里只换字体，不画背景。
+func (v *OfficialTranscriptView) drawMarkdown(f *flex.Frame, env *pluginapi.Env, text, key string) {
+	body := f.Column().FillWidth().Gap(AssistantBlockGap)
+	body.Children(func() {
+		var doc markdown.Document
+		doc.Parse(text)
+		for i := range doc.Blocks {
+			block := doc.Blocks[i]
+			switch block.Kind {
+			case markdown.Code:
+				// 围栏：**不在布局阶段画**，只占位（见 placeCodeBlock）。
+				v.placeCodeBlock(f, env, block, key+":"+strconv.Itoa(i))
+			case markdown.Rule:
+				// 分隔线 1 物理像素（derived；官方 hr 几何未取证）。
+				f.Divider().Height(MarkdownRuleHeight).Background(v.Theme.BorderL2)
+			case markdown.Table:
+				v.drawTableBlock(f, &doc, block)
+			case markdown.Heading:
+				v.drawHeading(f, &doc, block)
+			case markdown.Item:
+				v.drawListItem(f, &doc, block)
+			default: // markdown.Paragraph
+				v.drawParagraph(f, &doc, block)
 			}
 		}
+	})
+}
+
+// drawParagraph 画段落；引用块内的段落再套一层左边框。
+func (v *OfficialTranscriptView) drawParagraph(f *flex.Frame, doc *markdown.Document, block markdown.Block) {
+	t := v.Theme
+	spans := doc.Spans(&block)
+	body := spansText(spans)
+	if body == "" {
+		return
+	}
+	v.drawQuoted(f, block.Quote, func() {
+		// Wrap 而不是 Text：官方正文会按列宽折行（`white-space` 默认 normal）。
+		// 用 Text 的话长段落会被右边缘硬切——真机上表现成"回答只显示一行"。
+		box := f.Wrap(body).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+		if allMono(spans) {
+			box.Mono().FontSize(t.Fonts.Code)
+		}
+	})
+}
+
+// drawHeading 画标题阶梯（h1–h6）。
+//
+// 字号/行高来自 `MarkdownHeadingFor`（derived 阶梯表）：级别越界按最近一级
+// 夹紧，调用方不必再判边界。字重取 semibold——h5/h6 与正文同字号，只靠字重
+// 区分（官方 primitives 未取证，这是实现选择）。
+func (v *OfficialTranscriptView) drawHeading(f *flex.Frame, doc *markdown.Document, block markdown.Block) {
+	body := spansText(doc.Spans(&block))
+	if body == "" {
+		return
+	}
+	heading := MarkdownHeadingFor(block.Level)
+	v.drawQuoted(f, block.Quote, func() {
+		f.Wrap(body).FontSize(heading.Size).LineHeight(heading.Line).
+			Weight(ui.WeightSemibold).Color(v.Theme.LabelPrimary)
+	})
+}
+
+// drawListItem 画列表项：按 level 缩进 + 固定宽标记槽（无序 `•`、有序 `N.`）+ 正文。
+//
+// 缩进用 `level × MarkdownListIndentPerLevel`（derived）：Viva 没有
+// `padding-inline-start: 20px` 这种列表缩进，只能按嵌套深度自己算左内边距。
+func (v *OfficialTranscriptView) drawListItem(f *flex.Frame, doc *markdown.Document, block markdown.Block) {
+	t := v.Theme
+	body := spansText(doc.Spans(&block))
+	if body == "" {
+		return
+	}
+	marker := MarkdownListBullet
+	if block.Number > 0 {
+		// 有序列表：官方 `Number` 是标记的**实际值**（不是序号），照抄不重排。
+		marker = strconv.Itoa(block.Number) + "."
+	}
+	indent := float32(block.Level) * MarkdownListIndentPerLevel
+	v.drawQuoted(f, block.Quote, func() {
+		row := f.Row().FillWidth().PadSides(0, 0, 0, indent).Gap(MarkdownListMarkerGap)
+		row.Children(func() {
+			// 标记槽固定 18px 右对齐（derived；容得下 "99."），正文吃掉剩余宽度。
+			f.Text(marker).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).
+				Color(t.LabelSecondary).Width(MarkdownListMarkerWidth).TextEnd()
+			f.Wrap(body).FillWidth().FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+		})
+	})
+}
+
+// drawTableBlock 画表格：按等宽文本原样渲染。
+//
+// 宽表格突破（`md-table-wide` 的 `100cqw`）在 Viva 里没有容器查询，
+// 见几何表 deviation 行——这是渲染器能力边界，不是"没做"。
+func (v *OfficialTranscriptView) drawTableBlock(f *flex.Frame, doc *markdown.Document, block markdown.Block) {
+	t := v.Theme
+	card := f.Column().FillWidth().Gap(AssistantReasoningBlockGap)
+	card.Children(func() {
+		for _, cell := range doc.Cells(&block) {
+			f.Text(spansText(doc.CellSpans(cell))).FontSize(t.Fonts.Code).Mono().Color(t.LabelSecondary)
+		}
+	})
+}
+
+// drawQuoted 按引用深度套左边框（每级 2px 竖线 + 12px 左内边距）。
+//
+// Viva 没有 `border-inline-start`，左边框用 Row 里的竖线盒（`f.Divider()`
+// 在 Row 里是竖线）表达；竖线随行高拉伸，所以多行引用块也是一条通栏线。
+// 两个值都是 derived（官方 blockquote 几何未取证）。
+func (v *OfficialTranscriptView) drawQuoted(f *flex.Frame, depth int, body func()) {
+	if depth <= 0 {
+		body()
+		return
+	}
+	row := f.Row().FillWidth().Gap(MarkdownQuotePadLeft)
+	row.Children(func() {
+		f.Divider().Width(MarkdownQuoteBorderWidth).Background(v.Theme.BorderL2)
+		f.Column().FillWidth().Children(func() {
+			v.drawQuoted(f, depth-1, body)
+		})
+	})
+}
+
+// placeCodeBlock 是**布局阶段**：按估算列宽算好高度，占一个固定高的盒子。
+//
+// 真正的绘制在 `PaintCodeBlocks`（布局之后矩形才有效）。为什么不能在这里画：
+//
+//	viva 的布局是「先声明整棵树、再一次性 End() 解算」，Draw 回调里所有
+//	Box.Rect() 都还是零值；`f.Bounds()` 给的是**整窗**，不是列宽。
+//	而 mdlite.CodeBlock 必须拿到真实矩形（banner 宽度、横滚视口、复制按钮
+//	命中区全都由它算）。`pluginapi.Painter.AfterDraw` 就是为这件事存在的。
+//
+// 高度用估算宽度算：估算公式与真实列宽**同一条算式**（主区宽 - 滚动口
+// 左右内边距），所以 `wrap=false` 时行数完全一致，只有"要不要横滚条"那 10px
+// 可能差 1–2px（不会让内容错位）。
+func (v *OfficialTranscriptView) placeCodeBlock(f *flex.Frame, env *pluginapi.Env, block markdown.Block, key string) {
+	style := v.codeBlockStyle(env)
+	width := v.codeMeasureWidth(env)
+	code := mdlite.NewCodeBlock(block, nil)
+	// 跨帧复用视图状态（横滚位移 / 折行 / 复制反馈）。
+	if prev, ok := v.previousCodeBlock(key, code.Code); ok {
+		code = prev
+	}
+	height := code.Height(v.measureCanvas(env), width, style)
+	// MinHeight(0) 是必须的：默认 min-height:auto 会被内容顶开，
+	// 而我们只要一个**固定高**的占位盒子。
+	box := f.Column().FillWidth().Height(height).MinHeight(0)
+	v.codeBlocks = append(v.codeBlocks, pendingCodeBlock{key: key, block: code, box: box})
+}
+
+// measureCanvas 取测量用的画布（拉伸不了就退一张零值画布）。
+//
+// `mdlite` 的 `MonoCellSize` 对零值画布是安全的（拿不到字形宽度时按
+// `fontSize × 0.6` 兜底），所以这里不需要伪造 measurer。
+func (v *OfficialTranscriptView) measureCanvas(env *pluginapi.Env) *ui.Canvas {
+	if env != nil && env.Canvas != nil {
+		return env.Canvas
+	}
+	return &ui.Canvas{}
+}
+
+// PaintCodeBlocks 是**覆画阶段**：布局定下来之后，把 Draw 阶段占位的代码块
+// 按真实矩形画出来（banner 语言标签 / 语法高亮正文 / 横滚视口 / 复制按钮）。
+//
+// 一帧只画一次：两个座位（`conversation.view` 与 `main.body`）的 painter 都挂了
+// AfterDraw，壳会把**所有** painter 的 AfterDraw 跑一遍（不管这个座位这一帧
+// 有没有被 dispatch），所以用帧号去重——否则同一块画两遍，表现为叠字 + 双命中区。
+func (v *OfficialTranscriptView) PaintCodeBlocks(canvas *ui.Canvas, env *pluginapi.Env) {
+	if v == nil || canvas == nil || len(v.codeBlocks) == 0 {
+		return
+	}
+	if v.frameSeq == 0 || v.frameSeq == v.paintedSeq {
+		return
+	}
+	v.paintedSeq = v.frameSeq
+
+	style := v.codeBlockStyle(env)
+	// 裁剪到自滚动口：横滚内容只能出现在列内，不许画到顶栏/输入区上。
+	if v.codeClipOK {
+		if clip := v.codeClipBox.Rect(); clip.Width > 0 && clip.Height > 0 {
+			canvas.Clip(clip)
+			defer canvas.Unclip()
+		}
+	}
+	for i := range v.codeBlocks {
+		pending := &v.codeBlocks[i]
+		bounds := pending.box.Rect()
+		if bounds.Width <= 0 || bounds.Height <= 0 {
+			// 这一行被滚动口裁掉了（或布局没跑到它）：**不画**，不是画到 (0,0)。
+			continue
+		}
+		pending.block.Copy = transcriptCopyFunc(env)
+		pending.geometry = pending.block.Draw(canvas, bounds, v.codeBlockIDs(env, pending.key), style)
 	}
 }
 
-// drawCodeBlock 画围栏代码块（banner + 等宽正文）。
+// CodeBlockGeometryOf 返回某个渲染键的代码块上一帧真实几何；ok=false 表示
+// 这一帧没有这块（被裁掉 / 不是代码块）。测试与 Turn 导航用。
+func (v *OfficialTranscriptView) CodeBlockGeometryOf(key string) (mdlite.CodeBlockGeometry, bool) {
+	if v == nil {
+		return mdlite.CodeBlockGeometry{}, false
+	}
+	for i := range v.codeBlocks {
+		if v.codeBlocks[i].key == key {
+			return v.codeBlocks[i].geometry, true
+		}
+	}
+	return mdlite.CodeBlockGeometry{}, false
+}
+
+// CodeBlockBox 是一条代码块的渲染结果（渲染键 + 真实几何）。
+type CodeBlockBox struct {
+	// Key 是稳定渲染键（entry key + 块序号）。
+	Key string
+	// Geometry 是上一次覆画的真实几何。
+	Geometry mdlite.CodeBlockGeometry
+}
+
+// CodeBlocks 返回本帧代码块的只读几何快照（顺序 = 文档块顺序）。
 //
-// 官方走 `FenceCodeBlock` / `CodeBlock`（primitives），**不得手写高亮**；
-// 这里只做骨架：语言名 banner + 等宽正文，精确高亮与 copy 按钮归代码块线。
-func (v *OfficialTranscriptView) drawCodeBlock(f *flex.Frame, block markdown.Block) {
+// 为什么不在 Draw 里返回：代码块的矩形要等布局结束才有，所以几何是**覆画
+// 阶段**的产物。测试断言"banner 32px / 视口非零 / 横滚上限"全读这一份。
+func (v *OfficialTranscriptView) CodeBlocks() []CodeBlockBox {
+	if v == nil {
+		return nil
+	}
+	boxes := make([]CodeBlockBox, 0, len(v.codeBlocks))
+	for i := range v.codeBlocks {
+		boxes = append(boxes, CodeBlockBox{Key: v.codeBlocks[i].key, Geometry: v.codeBlocks[i].geometry})
+	}
+	return boxes
+}
+
+// HandleScroll 把真实滚轮/触控板事件转发给代码块。
+//
+// 判据在 mdlite：只认**本代码块视口**上的横向手势（或 Shift+纵向滚轮），
+// 绝不抢外层消息流的纵向滚动——抢了就会表现为"列表滚不动"。
+func (v *OfficialTranscriptView) HandleScroll(event ui.ScrollEvent) ui.EventResult {
+	if v == nil {
+		return ui.EventResult{}
+	}
+	for i := range v.codeBlocks {
+		if result := v.codeBlocks[i].block.HandleScroll(event); result.Handled {
+			return result
+		}
+	}
+	return ui.EventResult{}
+}
+
+// codeStyle 之外的绘制令牌：主题 + 代码块几何（全部 derived）。
+func (v *OfficialTranscriptView) codeBlockStyle(env *pluginapi.Env) mdlite.CodeBlockStyle {
 	t := v.Theme
-	card := f.Column().FillWidth().Radius(t.Radii.SM).Border(0.5, t.BorderL1)
-	card.Children(func() {
-		banner := f.Row().FillWidth().PadSides(4, 8, 4, 8)
-		banner.Children(func() {
-			lang := strings.TrimSpace(block.Info)
-			if lang == "" {
-				lang = "text"
-			}
-			f.Text(lang).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		})
-		f.Text(block.Text).FontSize(t.Fonts.Code).LineHeight(t.Fonts.CodeLine).Mono().Color(t.LabelPrimary)
-	})
+	if t == nil && env != nil {
+		t = env.Theme
+	}
+	vivaTheme := dscore.VivaTheme(t)
+	// banner 语言标签字号走 viva 的 FontSizeS 档：钉成几何表的 12px，
+	// 不跟平台默认值漂移（否则不同机器上 banner 高度对不上）。
+	vivaTheme.Metrics.FontSizeS = CodeBlockBannerFontSize
+	style := mdlite.DefaultCodeBlockStyle(vivaTheme)
+	// 语法色：与旧渲染路径（`Plugin.markdownLook`）同一个出处，避免两套配色。
+	style.Look.Code[components.CodeComment-1] = t.CodeComment
+	style.Look.Code[components.CodeString-1] = t.CodeString
+	style.Look.Code[components.CodeNumber-1] = t.CodeNumber
+	style.Look.Code[components.CodeKeyword-1] = t.CodeKeyword
+	style.Look.Code[components.CodeFunction-1] = t.CodeFunction
+	style.Look.Code[components.CodeVariable-1] = t.CodeVariable
+	style.BannerFill = t.BgLayer1
+	style.ButtonFill = t.Hover
+	style.Success = t.Success
+	style.Failure = t.Error
+	style.FontSize = t.Fonts.Code
+	style.BannerHeight = CodeBlockBannerHeight
+	style.PadX = CodeBlockPadX
+	style.PadY = CodeBlockPadY
+	return style
+}
+
+// codeMeasureWidth 估算代码块的**真实列宽**（布局阶段拿不到列宽时的唯一依据）。
+//
+// 算式与真实列宽同源：主区宽 - 滚动口左右内边距
+// （`ChatView.scroll` 的 `padding-inline` = 两侧净空 + 16，几何表 aligned 行）。
+func (v *OfficialTranscriptView) codeMeasureWidth(env *pluginapi.Env) float32 {
+	if env == nil {
+		return CodeBlockMeasureMinWidth
+	}
+	width := env.MainWidth - 2*(ChatScrollPad+ComposerSideClearance)
+	if width < CodeBlockMeasureMinWidth {
+		width = CodeBlockMeasureMinWidth
+	}
+	return width
+}
+
+// previousCodeBlock 在上一帧里找同 key 同源码的代码块（复用视图状态）。
+func (v *OfficialTranscriptView) previousCodeBlock(key, code string) (mdlite.CodeBlock, bool) {
+	for i := range v.prevCodeBlocks {
+		if v.prevCodeBlocks[i].key == key && v.prevCodeBlocks[i].block.Code == code {
+			return v.prevCodeBlocks[i].block, true
+		}
+	}
+	return mdlite.CodeBlock{}, false
+}
+
+// codeBlockIDs 造四个真实交互 id（复制 / 折行 / 横滚视口 / 横滚条）。
+//
+// 没有交互树时返回零值 id：mdlite 仍画预览按钮，但不声明死命中区
+// （`CodeBlockIDs` 的注释：留空仍画预览，只是不可点）。
+func (v *OfficialTranscriptView) codeBlockIDs(env *pluginapi.Env, key string) mdlite.CodeBlockIDs {
+	if env == nil || env.Tree == nil {
+		return mdlite.CodeBlockIDs{}
+	}
+	return mdlite.CodeBlockIDs{
+		Copy:      env.Tree.ID(env.Feat, "transcript-code-copy-"+key),
+		Wrap:      env.Tree.ID(env.Feat, "transcript-code-wrap-"+key),
+		Scroll:    env.Tree.ID(env.Feat, "transcript-code-scroll-"+key),
+		Scrollbar: env.Tree.ID(env.Feat, "transcript-code-scrollbar-"+key),
+	}
+}
+
+// transcriptCopyFunc 取宿主的真实复制动作（`CopyResult` 优先：要原位反馈）。
+func transcriptCopyFunc(env *pluginapi.Env) mdlite.CopyFunc {
+	if env == nil {
+		return nil
+	}
+	if env.Act.CopyResult != nil {
+		return env.Act.CopyResult
+	}
+	if env.Act.Copy != nil {
+		return func(text string) error {
+			env.Act.Copy(text)
+			return nil
+		}
+	}
+	return nil
 }
 
 // drawToolCall 画 §5.7 工具调用行：callRow（前导 + 标题 + 分隔点 + 摘要）+ 展开体。
@@ -855,7 +1221,16 @@ func (v *OfficialTranscriptView) optionID(env *pluginapi.Env, label string) ui.I
 //
 // 为什么放在插件上而不是包级单例：主题是**每进程一份**的共享指针，
 // 包级单例会在多内核（测试）之间串颜色。
+// OfficialTranscript 返回（惰性创建）官方 transcript 渲染器。
+//
+// **必须是惰性而不是每次新建**：渲染器持有**跨两阶段**的状态——
+// Draw 阶段占位的代码块（`codeBlocks`）、上一帧的视图状态（横滚位移）、
+// 帧号去重（`frameSeq`/`paintedSeq`）。每次调用都 new 一个的话，
+// 覆画阶段（AfterDraw）拿到的是空实例，代码块一个都画不出来
+// （GT3 的真机断言当场抓到这个：标题/列表在，代码块整块消失）。
 func (p *Plugin) OfficialTranscript() *OfficialTranscriptView {
-	p.officialTranscript = NewOfficialTranscriptView(p.theme, p.prims)
+	if p.officialTranscript == nil {
+		p.officialTranscript = NewOfficialTranscriptView(p.theme, p.prims)
+	}
 	return p.officialTranscript
 }

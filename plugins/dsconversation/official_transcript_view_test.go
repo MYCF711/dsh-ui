@@ -45,6 +45,9 @@ func renderTranscript(t *testing.T, entries []TranscriptEntry, vp TranscriptView
 	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f *flex.Frame) {
 		view.Draw(f, env, vp, entries)
 	})
+	// 覆画阶段：代码块（banner / 高亮 / 横滚视口 / 复制按钮）要等布局
+	// 定下来才有真实矩形——与产品路径（`pluginapi.Painter.AfterDraw`）同一顺序。
+	view.PaintCodeBlocks(canvas, env)
 	return view, canvas
 }
 

@@ -365,6 +365,48 @@ type Snapshot struct {
 	// 零值；消息区只给身份完全匹配的 Turn 页脚标“进行中”，不猜最新一组。
 	ActiveTurnID string
 	ActiveTurn   *int64
+
+	// History 是主区 transcript 的**向前分页**状态（官方 `hasMore` /
+	// `historyWasPartial` / `loadingOlder` / `historyLoadStatus` 四元组）。
+	//
+	// 为什么必须单独一个结构而不是从 Frames 反推：**"还有更早的没拉"不是
+	// "当前有几帧"的函数**——空会话、只有一页的短会话、拉到头的长会话都可能是
+	// 同一种帧数，界面画错就是"点了没反应"或者"明明还有却说到头了"。
+	//
+	// 官方判据（`ChatView.tsx:253-273`）：`(hasMore || historyWasPartial)` 时
+	// 才画 `.older` 那一行；按钮 `disabled={!hasMore}`；文案五态由
+	// `loadingOlder` / `historyLoadStatus === 'error'` / 其余决定。
+	History HistoryPaging
+}
+
+// HistoryPaging 是「加载更早」单按钮的**五态输入**（additive）。
+//
+// 五个状态与官方文案一一对应（`dsh-client-ui-chat/src/client/locale.ts:94-98`）：
+//
+//	首次（首屏基线还在拉）      → `.hint`「正在加载历史…」        chat.loadingHistory
+//	有更多                      → 按钮「加载更早」                chat.loadOlder
+//	加载中                      → 按钮「正在加载」（禁用）        chat.loadingOlder
+//	无更多                      → 按钮「已到会话开头」（禁用）    chat.historyStart
+//	失败                        → 按钮「重新加载」                chat.retryOlder
+//
+// **零值 = 没有分页信息**（老宿主 / mockd）：界面不画这一行，也不因此把
+// transcript 判成"到头了"。
+type HistoryPaging struct {
+	// Baseline 报告首屏基线是否已经**试过**（成功或失败都算）。
+	// false = 第一页还在路上（此时若已经有 load 投影出来的消息，官方画 .hint）。
+	Baseline bool
+	// HasMore 报告宿主还有更早的帧没拉。false = 已到可加载的最早处。
+	HasMore bool
+	// Partial 报告**基线是截断的**（首屏那一页之前还有帧）。
+	//
+	// 官方 `historyWasPartial` 是**粘性**的：它是"这一行该不该留在屏幕上"的判据，
+	// 不是"现在还有没有更多"。全部拉完之后它仍然为 true，那一行才会从
+	// 「加载更早」变成「已到会话开头」，而不是整行消失（用户会以为坏了）。
+	Partial bool
+	// Loading 报告正在拉一页（首屏基线或更早一页）。
+	Loading bool
+	// Error 是最近一次失败的原因（空 = 没有失败）。失败态按钮可点 = 重试。
+	Error string
 }
 
 // Usage 是 token 用量的界面视图。
@@ -519,6 +561,18 @@ type Actions struct {
 	//
 	// nil = 壳没接；插件要自己判，别假设一定有。
 	Cancel func()
+
+	// LoadOlder 向上翻一页历史（`session.history` 的**更早**那一页）。
+	//
+	// 为什么是一个动作而不是让插件自己发请求：网络与 journal 世代都归壳管
+	// （插件不建 Transport，界面线 R2/R7），插件只画按钮。
+	//
+	// **壳可能异步完成**（网络请求必然不在绘制线程里）：调用方不能假设返回时
+	// `Snapshot.History.HasMore` 已经变了——下一帧才变。
+	//
+	// nil = 壳没接（老壳）：插件这时不画入口——画一个点了没反应的东西，
+	// 比不画更让人以为"已经在加载了"。
+	LoadOlder func()
 	// SetDraft 把文字灌进输入框。
 	//
 	// **当前没有任何插件调用它**（壳已接线，但调用点为零）。设计意图本来是

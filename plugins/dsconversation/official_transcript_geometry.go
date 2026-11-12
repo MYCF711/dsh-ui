@@ -291,6 +291,121 @@ const (
 	ComposerSideClearance float32 = 16
 )
 
+// ── markdown 块级与代码块（**整节 derived**，结构树 §9 第 1/2 条）─────────
+//
+// 为什么整节都是 derived、一行 aligned 都没有：
+//
+//	官方 `MarkdownText` / `FenceCodeBlock` / `CodeBlock` 全部在
+//	`@deepseek-ai/dsh-client-ui-primitives` 里，而**该包没有 rc.2 `src/`**
+//	（结构树 §9 第 1 条：对 asar 全路径检索 `ui-primitives` = 0 命中，
+//	`dsh/node_modules/@deepseek-ai/**` 里也没有包目录）。
+//
+// 三条纪律（不是"以后再补"，是现在就必须守住）：
+//
+//	① 下面每个值都标 `derived` 且写 `Formula`（推导依据），
+//	   `official_transcript_geometry_test.go` 逐行核对；没有一个值伪装成 aligned。
+//	② **不得反推像素**：这些数不是从截图里量出来的，也**不许**拿它们反推官方几何、
+//	   不许拿去改 `internal/uikernel` 的壳几何、不许写进结构树当"官方值"。
+//	   它们是**本实现的选择**，只为让人看到"这里为什么是 20 而不是 18"。
+//	③ 取到 primitives `src/` 后逐行换锚（derived → aligned + 官方行号），
+//	   并把本段注释改掉。在此之前任何"官方代码块 banner 是 32px"的说法都是假的。
+//
+// 唯一能锚的两处（已取证，作推导基准）：正文 14/24（`AssistantMarkdown.module.css:9-15`
+// 的 `--dsh-content-font-size` + `calc(24px + delta)`）与块间距 16px
+// （`AssistantMarkdown.module.css:17-22` 的 `.body { gap: 16px }`）。
+const (
+	// MarkdownListIndentPerLevel 是无序/有序列表**每级**的缩进（derived）。
+	MarkdownListIndentPerLevel float32 = 20
+	// MarkdownListMarkerGap 是列表标记与正文之间的间距（derived）。
+	MarkdownListMarkerGap float32 = 6
+	// MarkdownListMarkerWidth 是列表标记槽宽度（derived；"99." 要放得下）。
+	MarkdownListMarkerWidth float32 = 18
+	// MarkdownListBullet 是无序列表的标记（与官方 MarkdownText 同字符，derived）。
+	MarkdownListBullet = "•"
+
+	// MarkdownQuoteBorderWidth 是引用块左边框宽度（derived）。
+	MarkdownQuoteBorderWidth float32 = 2
+	// MarkdownQuotePadLeft 是引用块左内边距（derived）。
+	MarkdownQuotePadLeft float32 = 12
+
+	// MarkdownRuleHeight 是分隔线粗细（derived；1 物理像素）。
+	MarkdownRuleHeight float32 = 1
+
+	// CodeBlockBannerHeight 是代码块 banner 高度（derived；mdlite 默认同值）。
+	CodeBlockBannerHeight float32 = 32
+	// CodeBlockBannerFontSize 是 banner 语言标签字号（derived；对齐 --dsw-font-xxs-12 档）。
+	CodeBlockBannerFontSize float32 = 12
+	// CodeBlockPadX 是代码块左右内边距（derived）。
+	CodeBlockPadX float32 = 10
+	// CodeBlockPadY 是代码块上下内边距（derived）。
+	CodeBlockPadY float32 = 8
+	// CodeBlockRadius 是代码块圆角（derived）。
+	CodeBlockRadius float32 = 6
+	// CodeBlockMeasureMinWidth 是**测量宽度**的下限（derived）。
+	//
+	// 为什么要有下限：布局阶段拿不到列宽（viva 的 `f.Bounds()` 是整窗），
+	// 只能按 `env.MainWidth` 减滚动口内边距估算；窗口极窄时估算值会掉到
+	// 几十像素，横滚条算出来的高度没有意义。120 是"还能看两个字符"的下限。
+	CodeBlockMeasureMinWidth float32 = 120
+)
+
+// markdownAnchor 是 markdown 块级/代码块那一整段的**证据锚点**。
+//
+// 它指向的不是官方 CSS 行号，而是结构树的「未取证」条目本身：
+// `structure/official-conversation-transcript-tree.md:647-654`（§9 第 1/2 条，
+// 明确写 primitives 没有 rc.2 `src/`、代码块与 markdown 块级几何未取证）。
+//
+// 为什么几何表里要允许这种锚：几何表的规矩是"每行必须有锚点、锚点带行号"。
+// 这几行的**唯一**官方事实就是"官方没有可锚的行号"——把这件事写进 Anchor，
+// 比编一个 `primitives/CodeBlock.module.css:12` 诚实。测试只校验"有锚点且带冒号"，
+// 不校验它是不是 CSS（结构树自己也不是 CSS）。
+const markdownAnchor = "official-conversation-transcript-tree.md:647-654（§9 第 1/2 条：primitives 无 rc.2 src，块级几何未取证）"
+
+// MarkdownHeading 是一级标题的字号/行高（h1–h6 的阶梯）。
+type MarkdownHeading struct {
+	// Level 是标题级别（1–6）。
+	Level int
+	// Size 是字号（px，derived）。
+	Size float32
+	// Line 是行高（px，derived）。
+	Line float32
+}
+
+// markdownHeadings 是标题阶梯（索引 0 = h1）。
+//
+// derived 依据：官方正文 14/24 已取证，标题阶梯在 primitives 里未取证。
+// 这里按「正文的 1.43 / 1.29 / 1.14 / 1.07 / 1 / 1 倍」推出（20 / 18 / 16 / 15 / 14 / 14），
+// 行高取 `size + 8`（与正文 14/24 的同一比例）。
+//
+// **不得反推像素**：这六组数不是官方值，取到 primitives `src/` 后整表换锚。
+var markdownHeadings = [6]MarkdownHeading{
+	{Level: 1, Size: 20, Line: 28},
+	{Level: 2, Size: 18, Line: 26},
+	{Level: 3, Size: 16, Line: 24},
+	{Level: 4, Size: 15, Line: 23},
+	{Level: 5, Size: 14, Line: 22},
+	{Level: 6, Size: 14, Line: 22},
+}
+
+// MarkdownHeadingFor 返回某一级标题的样式。
+//
+// 越界按最近一级夹紧（官方 clamp(h1..h6) 语义）：0 和负数按 h1，>6 按 h6。
+// 这样调用方不必在分派处再判一次边界。
+func MarkdownHeadingFor(level int) MarkdownHeading {
+	if level < 1 {
+		level = 1
+	}
+	if level > len(markdownHeadings) {
+		level = len(markdownHeadings)
+	}
+	return markdownHeadings[level-1]
+}
+
+// MarkdownHeadings 返回标题阶梯的只读副本（测试与报告用同一个出处）。
+func MarkdownHeadings() []MarkdownHeading {
+	return append([]MarkdownHeading(nil), markdownHeadings[:]...)
+}
+
 // ── z-index 固定阶梯（结构树 §5.22，官方注释固化，实现不得改）───────────
 const (
 	// ZChatCodeBanner 是代码块 banner 的层级（第 1 档）。
@@ -533,6 +648,37 @@ var officialTranscriptGeometry = []uikernel.GeoRow{
 	{Node: "TurnErrorItem.turnErrorRow", Prop: "padding-block", Official: TurnErrorPadY, Impl: TurnErrorPadY, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "MessageItem.module.css:268-276"},
 	{Node: "TurnErrorItem.turnErrorDot", Prop: "margin-top", Official: TurnErrorDotMarginTop, Impl: TurnErrorDotMarginTop, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "MessageItem.module.css:278-280"},
 	{Node: "TurnErrorItem.turnErrorTitle", Prop: "margin-right", Official: TurnErrorTitleMarginRight, Impl: TurnErrorTitleMarginRight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "MessageItem.module.css:287-291"},
+
+	// ── markdown 块级（§5.6；**全部 derived**：primitives 无 rc.2 src）───
+	//
+	// 锚点统一指结构树的「未取证」条目本身——这是**证据的缺席**的锚，
+	// 不是官方行号。任何人看到这些行都该知道：值是本实现的选择。
+	{Node: "MarkdownText.h1", Prop: "font-size", Official: 20, Impl: 20, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "官方无 rc.2 src 可锚（primitives 缺包）；按正文 14px × 1.43 推出，**不得反推像素**"},
+	{Node: "MarkdownText.h1", Prop: "line-height", Official: 28, Impl: 28, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "font-size + 8（与正文 14/24 同比例），**不得反推像素**"},
+	{Node: "MarkdownText.h2", Prop: "font-size", Official: 18, Impl: 18, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "正文 14px × 1.29，**不得反推像素**"},
+	{Node: "MarkdownText.h2", Prop: "line-height", Official: 26, Impl: 26, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "font-size + 8，**不得反推像素**"},
+	{Node: "MarkdownText.h3", Prop: "font-size", Official: 16, Impl: 16, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "正文 14px × 1.14，**不得反推像素**"},
+	{Node: "MarkdownText.h3", Prop: "line-height", Official: 24, Impl: 24, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "font-size + 8，**不得反推像素**"},
+	{Node: "MarkdownText.h4", Prop: "font-size", Official: 15, Impl: 15, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "正文 14px × 1.07，**不得反推像素**"},
+	{Node: "MarkdownText.h4", Prop: "line-height", Official: 23, Impl: 23, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "font-size + 8，**不得反推像素**"},
+	{Node: "MarkdownText.h5", Prop: "font-size", Official: 14, Impl: 14, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "与正文同档（14px），只靠字重区分，**不得反推像素**"},
+	{Node: "MarkdownText.h5", Prop: "line-height", Official: 22, Impl: 22, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "与正文同档（22px），**不得反推像素**"},
+	{Node: "MarkdownText.h6", Prop: "font-size", Official: 14, Impl: 14, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "与 h5 同档（14px），**不得反推像素**"},
+	{Node: "MarkdownText.h6", Prop: "line-height", Official: 22, Impl: 22, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "与 h5 同档（22px），**不得反推像素**"},
+	{Node: "MarkdownText.ul/ol", Prop: "padding-inline-start", Official: MarkdownListIndentPerLevel, Impl: MarkdownListIndentPerLevel, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "每级 20px 累加（level × 20）；官方列表缩进未取证，**不得反推像素**"},
+	{Node: "MarkdownText.li", Prop: "marker-gap", Official: MarkdownListMarkerGap, Impl: MarkdownListMarkerGap, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "标记与正文间距 6px（与 DisclosureRow 的 leading-gap 6 同档），**不得反推像素**"},
+	{Node: "MarkdownText.li", Prop: "marker-width", Official: MarkdownListMarkerWidth, Impl: MarkdownListMarkerWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "标记槽 18px（容得下 \"99.\"），**不得反推像素**"},
+	{Node: "MarkdownText.blockquote", Prop: "border-inline-start-width", Official: MarkdownQuoteBorderWidth, Impl: MarkdownQuoteBorderWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "左边框 2px（Viva 无 border-inline-start，用 Row 里的竖线盒表达），**不得反推像素**"},
+	{Node: "MarkdownText.blockquote", Prop: "padding-inline-start", Official: MarkdownQuotePadLeft, Impl: MarkdownQuotePadLeft, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "左内边距 12px，**不得反推像素**"},
+	{Node: "MarkdownText.hr", Prop: "height", Official: MarkdownRuleHeight, Impl: MarkdownRuleHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "1 物理像素（与 flex.Frame.Divider 同值），**不得反推像素**"},
+
+	// ── 代码块（§5.6；**全部 derived**：FenceCodeBlock 无 rc.2 src）──────
+	{Node: "FenceCodeBlock.banner", Prop: "height", Official: CodeBlockBannerHeight, Impl: CodeBlockBannerHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "banner 32px（mdlite.DefaultCodeBlockStyle 默认同值）；官方 banner 高度未取证，**不得反推像素**"},
+	{Node: "FenceCodeBlock.banner", Prop: "font-size", Official: CodeBlockBannerFontSize, Impl: CodeBlockBannerFontSize, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "语言标签 12px（对齐 --dsw-font-xxs-12 档），**不得反推像素**"},
+	{Node: "FenceCodeBlock.body", Prop: "padding-inline", Official: CodeBlockPadX, Impl: CodeBlockPadX, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "左右 10px（mdlite 默认同值），**不得反推像素**"},
+	{Node: "FenceCodeBlock.body", Prop: "padding-block", Official: CodeBlockPadY, Impl: CodeBlockPadY, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "上下 8px（mdlite 默认同值），**不得反推像素**"},
+	{Node: "FenceCodeBlock.card", Prop: "border-radius", Official: CodeBlockRadius, Impl: CodeBlockRadius, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "圆角 6px（Viva 无 --dsw-radius 令牌解析，取 SM 档），**不得反推像素**"},
+	{Node: "FenceCodeBlock.scroll", Prop: "min-measure-width", Official: CodeBlockMeasureMinWidth, Impl: CodeBlockMeasureMinWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "布局期测量宽度下限 120px（列宽在 Draw 阶段拿不到，按 env.MainWidth 减滚动口内边距估算），**不得反推像素**"},
 
 	// ── 浮动控件（§5.22 / §5.23）───────────────────────────────────
 	{Node: "ChatView.toBottomSlot", Prop: "bottom", Official: ToBottomBottom, Impl: ToBottomBottom, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "ChatView.module.css:359-405"},

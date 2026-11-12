@@ -63,10 +63,25 @@ const (
 //	        自滚动口降级 `overflow-y:visible`（官方 ChatView.module.css:57-64）
 //	false → 自滚动口自己滚（旧三栏 / 兼容桥里的 `main.body`）
 func (p *Plugin) drawProductTranscript(f *flex.Frame, env *pluginapi.Env, hostScroll bool) bool {
-	if f == nil || env == nil || len(env.Data.Frames) == 0 {
-		// 没有原始帧 = 还没有基线（老宿主 / mockd / 首帧未到）。
-		// **不是**画一个空主区：交回旧渲染路径，界面上仍是消息列表。
+	if f == nil || env == nil {
 		return false
+	}
+	if len(env.Data.Frames) == 0 {
+		// 还没有任何原始帧。两种情形**必须分开**：
+		//
+		//	① 首屏基线还在路上，且这个会话本来就有 load 投影出来的消息
+		//	   → 官方此时画 `.hint`「正在加载历史…」（`ChatView.tsx:265`），
+		//	     这就是分页五态里的「首次」。接管，让用户看到"在加载"而不是干等。
+		//	② 空白会话（Hero）/ 老宿主 / mockd（根本没有分页信息）
+		//	   → 回退旧渲染路径：宁可画旧的消息列表，也不给用户一个空白主区。
+		//
+		// 判据不能只看 Loading：空白会话打开瞬间也在拉基线，那时把 Hero 换成
+		// 一行「正在加载历史…」是一次没必要的闪烁。`Msgs` 非空 = 这个会话
+		// 本来就有内容，才值得为它显示加载态。
+		starting := env.Data.History.Loading && !env.Data.History.Baseline && len(env.Data.Msgs) > 0
+		if !starting {
+			return false
+		}
 	}
 	entries := p.syncTranscript(env)
 	viewport := TranscriptViewport{HostScroll: hostScroll}
@@ -91,6 +106,29 @@ func (p *Plugin) drawOfficialTranscriptSeat(f *flex.Frame, env *pluginapi.Env) {
 // 没有宿主滚动口，自滚动口自己滚（官方"独立挂载 Chat"的情形）。
 func (p *Plugin) drawLegacyTranscriptSeat(f *flex.Frame, env *pluginapi.Env) {
 	p.drawProductTranscript(f, env, false)
+}
+
+// afterDrawOfficialTranscriptSeat 是官方 `conversation.view` 座位的**覆画阶段**。
+//
+// 只做一件事：把布局阶段占好位的代码块按真实矩形画出来（banner 语言标签 /
+// 语法高亮 / 横滚视口 / 复制按钮）。为什么不在 Draw 里画：viva 的布局是
+// 「先声明整棵树、再一次性 End() 解算」，Draw 回调里 `Box.Rect()` 还是零值，
+// 而 `mdlite.CodeBlock` 要的正是真实矩形（`pluginapi.Painter.AfterDraw` 的
+// 注释写的就是这件事）。
+func (p *Plugin) afterDrawOfficialTranscriptSeat(canvas *ui.Canvas, env *pluginapi.Env) {
+	p.paintOfficialTranscriptCodeBlocks(canvas, env)
+}
+
+// paintOfficialTranscriptCodeBlocks 覆画官方 transcript 的代码块。
+//
+// 两个座位共用：`conversation.view`（rc.2 终态）与 `main.body`（三栏/兼容桥）
+// 都可能承载官方 transcript（判据是"这一帧有没有原始帧"）。渲染器**自己按
+// 帧号去重**（`OfficialTranscriptView.PaintCodeBlocks`），所以两边都调不会双画。
+func (p *Plugin) paintOfficialTranscriptCodeBlocks(canvas *ui.Canvas, env *pluginapi.Env) {
+	if p.officialTranscript == nil {
+		return
+	}
+	p.officialTranscript.PaintCodeBlocks(canvas, env)
 }
 
 // syncTranscript 把快照里的原始帧**增量**并入投影，返回当前节点。

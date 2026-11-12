@@ -1584,6 +1584,9 @@ func newConfig(m *model) app.Config {
 		// 主区 transcript 的数据面：原始 journal 帧 + 世代。
 		// 锁内拷贝（journal 会被 WS goroutine 插入，活切片不能交出去）。
 		frames, framesEpoch := m.snapshotFramesLocked(cur)
+		// 向前分页状态（loadOlder 五态）：同样是锁内拷贝的**值**，
+		// 插件据此画 `.older` 那一行（还有没有更早 / 在拉 / 失败）。
+		historyPaging := m.snapshotHistoryPagingLocked(cur)
 		approval := m.approval
 		usage := m.usage
 		// H1/H4/H5：会话语义的真值原样带进快照，插件自己决定画不画。
@@ -1668,6 +1671,15 @@ func newConfig(m *model) app.Config {
 			Data: pluginapi.Snapshot{
 				Sessions: sessions, Cur: cur, Status: status,
 				Msgs: msgs, Frames: frames, JournalEpoch: framesEpoch,
+				// 向前分页五态：**只在"确实开过会话"时才有意义**；
+				// 零值（Baseline/HasMore 全 false、无错）界面不画那一行。
+				History: pluginapi.HistoryPaging{
+					Baseline: historyPaging.Baseline,
+					HasMore:  historyPaging.HasMore,
+					Partial:  historyPaging.Partial,
+					Loading:  historyPaging.Loading,
+					Error:    historyPaging.Error,
+				},
 				Total: total, Stream: streamText, Truncated: truncated,
 				MessageMeta: metadata, TurnEvents: turnEvents, Outgoing: outgoing,
 				ActiveTurnID: activeTurnID, ActiveTurn: activeTurn,
@@ -2379,6 +2391,18 @@ func main() {
 		Deny:  func() { m.decide("reject_once") },
 		// 取消：用户点停止键时打断当前会话的 turn。
 		Cancel: m.cancelTurn,
+		// 向上翻一页历史：网络请求**必须**离开绘制线程（点一下卡一帧就是手感坏），
+		// 所以排到后台 goroutine；`frameJournal.paging.Loading` 保证重复点击只发一次。
+		//
+		// 会话 id 在**点击这一帧**锁定（不是后台再读 m.cur）：用户点的就是屏幕上
+		// 那个会话，请求途中切走也不该把这一页补到别人头上。journal 按会话存，
+		// 切回来就是完整的一页。
+		LoadOlder: func() {
+			m.mu.Lock()
+			id := m.cur
+			m.mu.Unlock()
+			go m.loadOlderFrames(id)
+		},
 		// SetDraft 把文字灌进输入框。草稿是 Viva 的 UI 线程状态，所以这里也只
 		// 排队——调用点可能来自插件的后台动作（见 applyPendingDraft）。
 		SetDraft:  func(text string) { m.queueDraftOverwrite(text) },

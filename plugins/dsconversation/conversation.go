@@ -228,6 +228,9 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Slot:  pluginapi.Slot(SlotConversationView),
 			Order: 20,
 			Draw:  p.drawOfficialTranscriptSeat,
+			// 覆画：代码块（banner / 高亮 / 横滚视口 / 复制按钮）必须等布局
+			// 定下来才有真实矩形，见 official_transcript_view.go 的 PaintCodeBlocks。
+			AfterDraw: p.afterDrawOfficialTranscriptSeat,
 		},
 	}
 	// 审批条**不在这里画**：它属于"用户要做决定的地方"，由 ds-composer 在输入框
@@ -722,6 +725,10 @@ func (p *Plugin) layoutMarkdownWithFiles(canvas *ui.Canvas, i int, text string, 
 
 // afterDraw 是覆画阶段：把排好版的 Markdown 画到占位上。
 func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
+	// 官方 transcript 的代码块是「布局后覆画」：`main.body` 兼容桥这一帧
+	// 可能承载官方 transcript（判据是"有没有原始帧"），与 `conversation.view`
+	// 座位共用同一个覆画入口。渲染器自己按帧号去重，两个座位都调不会双画。
+	p.paintOfficialTranscriptCodeBlocks(canvas, env)
 	// 只把布局后的矩形值交给下一帧 Turn 导航；flex.Box 自身随 Frame 复用，
 	// 跨帧保存会在下一帧索引到错误节点。
 	if p.bodyReady {

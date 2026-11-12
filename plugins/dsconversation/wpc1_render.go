@@ -74,6 +74,13 @@ func (p *Plugin) markdownExtraHeight(index int) float32 {
 }
 
 func (p *Plugin) HandleScroll(event ui.ScrollEvent) ui.EventResult {
+	// 官方 transcript（`conversation.view` 座位）的代码块自己接管横滚：
+	// 它只认本视口上的横向手势，纵向滚轮照旧落到 `m.view.Wheel`。
+	if p.officialTranscript != nil {
+		if result := p.officialTranscript.HandleScroll(event); result.Handled {
+			return result
+		}
+	}
 	for _, codes := range p.codeBlocks {
 		for i := range codes {
 			if result := codes[i].block.HandleScroll(event); result.Handled {

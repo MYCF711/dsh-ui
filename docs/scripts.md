@@ -48,7 +48,7 @@
 | `scripts/slot-proof.sh` | 公开槽「实画」的可复现证据（默认槽 / F1 浮层 / 逐槽裁剪） | 改了槽位装配或面板布局时 | ❌（要真窗口） |
 | `scripts/shot.py` | 截一张窗口图：按窗口标题找窗，裁掉窗外框 | 手动取证时 | ❌ |
 | `scripts/visual-diff.py` | 对同尺寸 PNG 做确定性区域测量与逐像素 diff | 视觉回归核对时 | ❌ |
-| `scripts/visual-regions.py` | **像素判据**：9 个产品形态真机截图 × 显式区域，与 v0.5.1 基线逐区域比像素差并按阈值判红（结构 2% / 正文 5% / 整窗 1%） | 改渲染调用、Viva 升级、发布前；结论进 `docs/handoff-viva-0.6.0.md` §13 | ❌（要真窗口 + 真宿主） |
+| `scripts/visual-regions.py` | **像素判据**：9 个产品形态真机截图 × 显式区域，与 v0.5.1 基线逐区域比像素差并按阈值判红（结构 2% / 正文 5% / 整窗 1%）。`--dshd` 自包含（自己起两份临时宿主）；`--seed` 按 `regions.json` 的 `seed` 块**确定性回放**会话，幂等 | 改渲染调用、Viva 升级、发布前；结论进 `docs/handoff-viva-0.6.0.md` §14 | ❌（要真窗口） |
 | `scripts/e2e-probe.py` | e2e 探针的断言层（每条 PASS 都必须能变红） | 被 `e2e-workday.sh` / `e2e-probe-selftest.sh` 调用 | ❌ |
 | `scripts/smoke-u1.ps1` | U1 的冒烟（PowerShell；`-Acp` 走 ACP 分支） | 手动冒烟时 | ❌ |
 
@@ -68,6 +68,11 @@ accept-all.sh ──┬─ guard-selftest.sh            （第一位：守卫自
 
 `perf-*.sh` / `slot-proof.sh` / `shot.py` / `visual-diff.py` / `visual-regions.py` / `smoke-u1.ps1` **不在任何链路里**，
 是独立取证工具——所以它们的行必须写清"什么时候跑"，否则就是没人跑。
+
+> `visual-regions.py` 现在**一条命令自包含**：`--dshd <dshd.exe>` 自己起两份临时宿主
+> （一份种好会话、一份零会话），`--seed` 把 `testdata/visual-v06/regions.json` 的 `seed`
+> 块**确定性回放**成 v4 journal（固定 session id / 时间戳 / 文件 mtime，幂等）。
+> 只截图不种会话时，`active-messages` 等形态会渲染出不同的会话内容 → 30%+ 假红。
 
 > `visual-regions.py` 有一条**进 CI 的**配套守卫：`cmd/app/visual_regions_contract_test.go`
 > 把 `testdata/visual-v06/regions.json` 的每个矩形和 `uikernel.ComputeShellLayout`

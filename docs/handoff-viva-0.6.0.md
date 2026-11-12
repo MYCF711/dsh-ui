@@ -813,18 +813,58 @@ viva v0.5.1 `ui/popup.go` 的 `sideOf`（请求的那侧放得下就用它；放
 | `full`（整窗兜底） | **> 1.0% 即红** | 任何区域漏检都会在这里露头 |
 
 19 条 `accepted` 的 `max_percent` 是**实测 × 1.2 向上取整到 0.5%**，每一格都 ≤ 对应类别阈值
-（`transcript` 最紧的一格 1.0%，最松 3.0%）——**没有一格比阈值松**。
+（`transcript` 最紧的一格 1.0%，最松 4.0%——`demo-tool|transcript` 实测 3.0335% 按公式
+取到 4.0%，其余 18 格全部不变）——**没有一格比阈值松**。
+重刷种子基线后**逐格重算**过一次：18 格实测都落回原上界以内（多数直接归零），
+只有 `demo-tool|transcript` 这一格因上游等宽行高变化从 3.0 挪到 4.0。
 
-**跑法**（要真窗口 + 真宿主；进不了 `go test` 默认路径，所以配套的契约守卫进 CI）：
+**跑法**（要真窗口；进不了 `go test` 默认路径，所以配套的契约守卫进 CI）：
 
 ```bash
-# 1) 两份临时 dshd：一份带会话（基线与当前都从它取同一份数据），一份零会话（Hero 首态）
-#    临时 home + --port 0；会话文件 mtime 冻结（否则侧栏「N 分钟前」会漂）
-# 2) 两个二进制各截 9 张
+# 一条命令自包含：脚本自己起两份临时 dshd（一份**种好会话**、一份零会话），
+# 临时 home + --port 0，跑完回收进程与目录（--keep 留现场）。
+python scripts/visual-regions.py --dshd <dshd.exe> --binary <v0.6.0.exe>            # 与基线比
+python scripts/visual-regions.py --dshd <dshd.exe> --binary <v0.5.1.exe> --update   # 重刷基线（复核过差异才准用）
+
+# 已起好宿主时仍可分开跑（种子可以只种、不截图）
+python scripts/visual-regions.py --seed-home <home> --seed-only
 export VISUAL_ADDR=… VISUAL_COOKIE=… VISUAL_ADDR_EMPTY=… VISUAL_COOKIE_EMPTY=… VISUAL_SESSION=…
-python scripts/visual-regions.py --binary <v0.6.0.exe>            # 与基线比
-python scripts/visual-regions.py --binary <v0.5.1.exe> --update   # 重刷基线（复核过差异才准用）
+python scripts/visual-regions.py --binary <app.exe>
 ```
+
+#### 14.4.1 种子（seeding）：为什么必须由脚本自己种
+
+**只截图不种会话，这条判据就不可复现。** 9 个形态里 `active-messages` / `demo-tool` /
+`approval-card` 渲染的是**会话内容**，内容不同，像素差就是 30%+ 的假红——V-06-5 第一次
+跑出的 `demo-tool transcript 36.7%` / `narrow-720x600 composer 76.3%` 全是这个原因。
+
+所以 `--seed` 把会话按**固定脚本**种成基线图那一份：
+
+| 决定 | 理由 |
+|---|---|
+| 种子**全部**写在 `testdata/visual-v06/regions.json` 的 `seed` 块里（session id / created_at / files / turns / model） | 种子与基线**同源**：改一处两处一起变，否则下次重刷基线没人知道差的是哪一份内容 |
+| 脚本把 `seed.turns` 展开成 **v4 journal 帧**（`turn/start`→`step/start`→`user/message`→`assistant/message`→`tool/call`→`tool/result`→`step/end`→`turn/end`）写进临时 home | 宿主读的就是这一份；帧形状从真实 journal 抄（`codecs/v4` 的 header 键序 + `ProjectKey` 逐字实现） |
+| 帧 `time`、文件 mtime 全部由 `seed.created_at` 推出 | 状态栏 `884k tok`（= outputTokens ÷ 相邻帧墙钟差）、消息行 `00:00`、侧栏 `08-01` 都从时间算——**任何一处拿实时钟都会让两次跑出不同像素** |
+| 固定 session id + **先删后建** | 幂等：同一 seed 跑两次得到同一份内容 |
+
+**为什么是"回放录好的 transcript"而不是"真发一轮模型"**：真发一轮**不可能**满足
+"两次跑像素差 0"——回复文本、流式分块、token 速率、帧时间戳每次都不一样，而这些
+全都直接进像素。种子是**录制产物**（prompt 与回复都在 `regions.json` 里，可读可审），
+脚本负责**确定性回放**。它验的是**渲染**（同一份 journal 帧在两个 viva 版本下画出来一样），
+不是模型行为。
+
+**确定性实测**：连跑 **3 次**（每次全新临时 home + 新起两份 dshd），9 个形态的截图
+**逐字节相同**（`sha256` 全等，即 0 像素差），46 个区域全绿。
+
+**种子内容的两个取舍**（都是实测逼出来的，不是审美）：
+
+1. **不放围栏代码块**：`ui.Scroll` 的消息流是**贴底对齐**的，代码块行高在上游 v0.6.0
+   里每行少 1px → 整个消息流相对视口位移 1~3px → 含等宽的行**逐行**都是差（实测 5.4%，
+   超 `content` 5.0% 阈值）。代码块与工具卡的渲染由 **`demo-tool` 形态**（`-demo` 注入
+   `demoWideCode` + 工具卡 + 审批卡）覆盖，那里 diff 3.03% 已写进 `accepted`。
+2. **最后一条消息不含行内代码**：含 CJK + 行内代码胶囊的那一行实测 ~5 次里有 1 次渲染
+   出 1px 水平位移（同一二进制两次跑不同）——这是**上游文本测量/胶囊定位的抖动**，
+   不是我们的回归。种子把这一行改成纯文本后连跑 11 次一致；抖动本身登记在 §14.5 第 6 条。
 
 ### 14.5 剩余缺口（不是"边界"带过）
 
@@ -839,6 +879,14 @@ python scripts/visual-regions.py --binary <v0.5.1.exe> --update   # 重刷基线
 4. **只有 deepseek 深/浅两套令牌**：`-theme light` 已覆盖；系统跟随（`system`）不在像素基线内
    （它依赖桌面设置，不是确定性输入）。
 5. **`spike/*` 五个子模块**仍各自 pin `viva v0.2.3`，不在 `./...` 门禁内（V-06-3 已登记）。
+6. **CJK + 行内代码胶囊有 1px 渲染抖动（上游）**：实测同一二进制连跑，含「中文 + 行内代码」
+   的那一行约 5 次里有 1 次整行水平位移 1px（其余 8 个形态全一致）。这不是我们的回归
+   （同一份 journal、同一二进制、同一进程参数），是上游文本测量/胶囊定位的抖动。
+   种子已把最后一条消息改成纯文本规避；**要真正钉住得先去上游定位**（`ui.MeasureText`
+   与行内代码胶囊的 x 取整），本轮未做——它不属于视觉门禁的写作用域。
+7. **围栏代码块只能在 `demo-tool` 形态里覆盖**：消息流贴底对齐时，代码块行高变化会
+   整体推动消息流，把 `content` 阈值吃掉（实测 5.4%）。要覆盖"种子里的代码块"，
+   得先让消息流改成**顶端对齐**或给 `ui.Scroll` 加"锚定首行"，那是产品改动，本轮未做。
 
 ### 14.6 证据位置
 

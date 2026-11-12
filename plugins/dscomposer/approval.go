@@ -27,6 +27,16 @@ const (
 	approvalArgsMax = 120
 	// approvalTitleMax 是标题行的字符上限（宿主给的 title 已经是单行，这里只防超长）。
 	approvalTitleMax = 160
+	// unknownField 是**宿主没给的字段**在界面上的显示值（跨线 §12 H13）。
+	//
+	// 为什么必须有一个具体词而不是留空：审批卡上"工具名/标题"是**身份**字段，
+	// 留空等于画一张没有任何信息的卡——用户看到一条审批，却不知道在批准什么。
+	// 留空还有一种更坏的读法："这个字段不存在"，而真相是"宿主没说"。
+	//
+	// 官方 ApprovalPanel 的 title/description/subject 里 title 是必填
+	// （`ApprovalCard.tsx` 直接 `{title}`），所以"未知"是本仓对
+	// "宿主缺字段"的如实标注，不是编造内容。
+	unknownField = "未知"
 )
 
 // approvalVisible 决定整条审批条画不画。
@@ -224,6 +234,18 @@ func planApproval(s pluginapi.Snapshot, wired bool) approvalPlan {
 	if plan.Title != "" && plan.Args != "" && strings.Contains(plan.Title, plan.Args) {
 		plan.Title = ""
 	}
+	// **宿主没给的字段显示「未知」**（只针对身份字段，见 unknownField 注释）。
+	//
+	// 工具名：宿主没给 `toolCall.title` 的冒号前缀、也没有 `Tool` 时，
+	// 条上仍要有"批的是谁"这一格——留空等于把"不知道"画成"没有"。
+	// 标题：只有在**连参数摘要都没有**时才补「未知」；有参数摘要说明宿主
+	// 已经交代了在批什么，再补一行"未知"是噪声。
+	if plan.Tool == "" {
+		plan.Tool = unknownField
+	}
+	if plan.Title == "" && plan.Args == "" {
+		plan.Title = unknownField
+	}
 
 	allowOpt, allowOK := chooseOption(ap, true)
 	rejectOpt, rejectOK := chooseOption(ap, false)
@@ -395,19 +417,28 @@ func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 				})
 				f.Row().Gap(8).Items(flex.Center).Justify(flex.End).
 					PadSides(14, 16, 14, 16).Children(func() {
+					// 顺序 = 官方 `.actionRow`（`ApprovalCard.tsx:87-97`）：
+					// 拒绝（outline）→ 允许一次（宿主只给一个允许项时是 primary）
+					// → 始终允许（primary）。**不重排**：官方把"破坏性最小的
+					// 拒绝"放在最左、"以后都允许"放在最右，位置本身就是风险提示。
 					if f.Button(env.Tree.ID(env.Feat, "approval-deny"), plan.Deny.Label).Outline().Small().
 						Disabled(!plan.Deny.Usable).Clicked() && plan.Deny.Usable {
 						p.press(env, false)
 					}
+					// 官方：宿主给了"始终允许"时，中间那个是 outline（primary 让给
+					// 最右的始终允许）；只给一个允许项时它自己是 primary。
+					allow := f.Button(env.Tree.ID(env.Feat, "approval-allow"), plan.Allow.Label).Small()
 					if plan.AllowAlways.Option != "" {
-						if f.Button(env.Tree.ID(env.Feat, "approval-allow-always"), plan.AllowAlways.Label).Outline().Small().
+						allow = allow.Outline()
+					}
+					if allow.Disabled(!plan.Allow.Usable).Clicked() && plan.Allow.Usable {
+						p.press(env, true)
+					}
+					if plan.AllowAlways.Option != "" {
+						if f.Button(env.Tree.ID(env.Feat, "approval-allow-always"), plan.AllowAlways.Label).Small().
 							Disabled(!plan.AllowAlways.Usable).Clicked() && plan.AllowAlways.Usable {
 							p.pressOption(env, plan.AllowAlways.Option, plan.AllowAlways.Label)
 						}
-					}
-					if f.Button(env.Tree.ID(env.Feat, "approval-allow"), plan.Allow.Label).Small().
-						Disabled(!plan.Allow.Usable).Clicked() && plan.Allow.Usable {
-						p.press(env, true)
 					}
 				})
 			})

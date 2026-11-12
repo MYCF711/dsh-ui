@@ -15,12 +15,16 @@
 package dsgoal
 
 import (
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
 )
 
 type Plugin struct {
 	theme *pluginapi.Theme
+	// tier 是壳档位（nil = 按 official 处理，见 uikernel.ShellTier 包注释第 2 条）。
+	// 两个座位靠它**二选一**：official 档挂官方座位、legacy 档走旧 main.composer。
+	tier *uikernel.ShellTier
 }
 
 func (*Plugin) ID() string { return "ds-goal" }
@@ -33,9 +37,20 @@ func (*Plugin) Requires() []string {
 
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
+	// 可选注入：没有这个能力键（单测 / 旧壳）时按 official（官方槽是终态）。
+	if v := ctx.Inject(uikernel.KeyShellTier); v != nil {
+		if tier, ok := v.(*uikernel.ShellTier); ok {
+			p.tier = tier
+		}
+	}
 	return nil
 }
 
+// Panels 把目标条挂到**两个座位**，同一帧只有一个活（判据 `composerSeatLive`）：
+//
+//	conversation.composer  官方 chain 座位（官方 ui-goal 的 conversation.input.dock
+//	                       今天不可达，见 official_seat.go 文件头）—— rc.2 终态
+//	main.composer          dsshell 三栏 / 官方骨架兼容桥 —— legacy 档位的旧路径
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
 		ID:   "goal-bar",
@@ -43,7 +58,17 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		// **Order 5 < composer 的 10**：同一个槽里小的先画，于是它落在输入框上方。
 		// 官方就是"docked above the composer"——顺序在这里就是位置。
 		Order: 5,
-		Draw:  p.draw,
+		Draw: func(f *flex.Frame, env *pluginapi.Env) {
+			if p.composerSeatLive() {
+				return // 官方座位活着：旧槽这一帧不画（不双画）
+			}
+			p.draw(f, env)
+		},
+	}, {
+		ID:    "goal-bar-official",
+		Slot:  uikernel.OffConvComposer,
+		Order: goalDockOrder,
+		Draw:  p.drawOfficial,
 	}}
 }
 

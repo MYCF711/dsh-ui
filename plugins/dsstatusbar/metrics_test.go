@@ -6,6 +6,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 )
 
 func int64ptr(v int64) *int64 { return &v }
@@ -142,17 +143,26 @@ func TestOfficialDockGeometryDoesNotReuseLegacy24OrCaption40(t *testing.T) {
 func TestPanelsSeparateComposerDockFromConnectionBottom(t *testing.T) {
 	p := &Plugin{}
 	panels := p.Panels()
-	if len(panels) != 2 {
-		t.Fatalf("Panels 数 = %d，want dock + connection 两个", len(panels))
+	// 三个面：legacy dock / 连接行 / 官方 dock（见 official_dock.go）。
+	if len(panels) != 3 {
+		t.Fatalf("Panels 数 = %d，want legacy dock + connection + 官方 dock 三个", len(panels))
 	}
 	byID := map[string]pluginapi.Painter{}
 	for _, panel := range panels {
 		byID[panel.ID] = panel
 	}
 	if byID["dock"].Slot != pluginapi.SlotMainComposer || byID["dock"].Order <= 10 {
-		t.Fatalf("dock 必须在 composer(order10) 后：%+v", byID["dock"])
+		t.Fatalf("legacy dock 必须在 composer(order10) 后：%+v", byID["dock"])
 	}
 	if byID["connection"].Slot != pluginapi.SlotShellBottom {
 		t.Fatalf("连接状态必须保留独立 shell.bottom 出口：%+v", byID["connection"])
+	}
+	// 官方座位：挂在 chain 座位 `conversation.composer`，order 必须在输入卡片(10)之后。
+	official := byID["dock-official"]
+	if official.Slot != uikernel.OffConvComposer {
+		t.Fatalf("官方 dock 座位 = %q，want conversation.composer", official.Slot)
+	}
+	if official.Order <= 10 {
+		t.Fatalf("官方 dock order = %d，必须大于 composer 的 10（dock 在卡片下方）", official.Order)
 	}
 }

@@ -61,18 +61,32 @@ func importedPlugins(t *testing.T) map[string]string {
 	return out
 }
 
-// diskPlugins 列出 plugins/ 下的所有目录。
+// diskPlugins 列出 plugins/ 下**真的是插件**的目录。
+//
+// 判据是"目录里有 register.go"：本仓每个插件都靠 register.go 里的 `func init()`
+// 去 `pluginapi.Register`（2026-11-04 逐个数过，23 个插件全部符合），
+// 而纯素材/纯工具库没有 register.go，也就没有"装配"这一步。
+//
+// 为什么要把库包排除掉（而不是让每个库都去 cmd/app 做空 import）：
+// cmd/app 的 import 表就是**装配清单**，往里面塞一个不注册任何东西的库，
+// 会让下一个读者以为它是个插件。第一个撞上这条的是 `plugins/dsassets`
+// （官方 SVG 素材库，只被 dscomposer/dsconversation import）。
 func diskPlugins(t *testing.T) []string {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join("..", "..", "plugins"))
+	root := filepath.Join("..", "..", "plugins")
+	entries, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatalf("读 plugins/ 失败：%v", err)
 	}
 	var out []string
 	for _, e := range entries {
-		if e.IsDir() {
-			out = append(out, e.Name())
+		if !e.IsDir() {
+			continue
 		}
+		if _, err := os.Stat(filepath.Join(root, e.Name(), "register.go")); err != nil {
+			continue // 不是插件（库包）
+		}
+		out = append(out, e.Name())
 	}
 	sort.Strings(out)
 	return out
@@ -82,7 +96,7 @@ func diskPlugins(t *testing.T) []string {
 func TestEveryPluginDirIsImported(t *testing.T) {
 	dirs := diskPlugins(t)
 	if len(dirs) < 20 {
-		t.Fatalf("plugins/ 下只找到 %d 个目录——这个守卫没有意义了？", len(dirs))
+		t.Fatalf("plugins/ 下只找到 %d 个插件目录——这个守卫没有意义了？", len(dirs))
 	}
 	imported := importedPlugins(t)
 	if len(imported) < 20 {

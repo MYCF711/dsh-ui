@@ -48,9 +48,11 @@ function Mem($name) {
 }
 
 Step '清场'
-Get-Process dshui, mockd -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# 进程名 = 产品名全程 `DSH GUI GO`（exe 是 `DSH GUI GO.exe`，见 cmd/app/brand.go）。
+# PowerShell 里带空格的进程名**必须加引号**，不引会被当成两个参数。
+Get-Process 'DSH GUI GO', mockd -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
-Ok 'cleanup' 'killed old dshui/mockd'
+Ok 'cleanup' 'killed old DSH GUI GO/mockd'
 
 Step '起 mockd'
 $mockdArgs = @()
@@ -69,13 +71,13 @@ for ($i = 0; $i -lt 300; $i++) {
 $ready = [int]((Get-Date) - $t0).TotalMilliseconds
 if ($ready -lt 5000) { Ok 'mockd ready' "$ready ms" } else { No 'mockd ready' "$ready ms（>5s）" }
 
-Step '起 dsh-ui'
+Step '起 DSH GUI GO'
 $t0 = Get-Date
-Start-Process -FilePath "$tmp\dshui.exe"
+Start-Process -FilePath "$tmp\DSH GUI GO.exe"
 # 等**窗口真的出现**（MainWindowHandle 非 0），不是"进程存在"——
 # 进程起来到窗口出现之间还有几百毫秒，报"进程存在"的时间会骗人。
 for ($i = 0; $i -lt 300; $i++) {
-  $p = Get-Process dshui -ErrorAction SilentlyContinue
+  $p = Get-Process 'DSH GUI GO' -ErrorAction SilentlyContinue
   if ($p -and $p.MainWindowHandle -ne 0) { break }
   Start-Sleep -Milliseconds 100
 }
@@ -83,10 +85,10 @@ $up = [int]((Get-Date) - $t0).TotalMilliseconds
 if ($up -lt 3000) { Ok 'app up' "$up ms" } else { No 'app up' "$up ms（>3s）" }
 Start-Sleep -Seconds 6
 
-$m = Mem 'dshui'
+$m = Mem 'DSH GUI GO'
 if ($m -lt 110) { Ok 'memory' "$m MB（目标 <110）" } else { No 'memory' "$m MB（>110）" }
 
-$p = Get-Process dshui
+$p = Get-Process 'DSH GUI GO'
 $threads = $p.Threads.Count
 if ($threads -lt 80) { Ok 'threads' "$threads" } else { No 'threads' "$threads（>80，可能泄漏）" }
 
@@ -94,14 +96,14 @@ Step '点击切换会话'
 $h = $p.MainWindowHandle
 [U1]::SetForegroundWindow($h) | Out-Null
 Start-Sleep -Milliseconds 500
-$before = (Get-Process dshui).MainWindowTitle
+$before = (Get-Process 'DSH GUI GO').MainWindowTitle
 ClickAt $h 60 118
 ClickAt $h 60 148
 ClickAt $h 60 118
-$after = (Get-Process dshui).MainWindowTitle
-if ($after -eq 'dsh-ui') { Ok 'click switch' '窗口仍在、没崩' } else { No 'click switch' "标题变了：$after" }
+$after = (Get-Process 'DSH GUI GO').MainWindowTitle
+if ($after -eq 'DSH GUI GO') { Ok 'click switch' '窗口仍在、没崩' } else { No 'click switch' "标题变了：$after" }
 
-$m2 = Mem 'dshui'
+$m2 = Mem 'DSH GUI GO'
 if ($m2 -lt ($m + 15)) { Ok 'memory after switch' "$m -> $m2 MB" } else { No 'memory after switch' "$m -> $m2 MB（涨太多）" }
 
 Step '汇总'

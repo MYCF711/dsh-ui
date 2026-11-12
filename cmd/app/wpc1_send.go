@@ -87,9 +87,12 @@ func (m *model) dispatchSend(session, key, text string) {
 			if m.cur == session {
 				m.status = "发送失败: " + err.Error()
 				m.loading = false
+				// 草稿写回只能由 UI 线程做（Viva 的 `*flex.Field` 不是并发安全的，
+				// 见 docs/viva-upstream-editor-string-race.md）。这里只排队；和
+				// status 在同一个临界区，所以"看到失败状态"就一定能消费到这次排队。
+				m.pendingDraft = &draftRestoreRequest{session: session, text: text}
 			}
 			m.mu.Unlock()
-			m.restoreDraftIfEmpty(session, text)
 			m.inv.Invalidate()
 			return
 		}
@@ -111,16 +114,59 @@ func (m *model) dispatchSend(session, key, text string) {
 	}()
 }
 
-// restoreDraftIfEmpty 恢复壳旧输入框以及 ds-composer 通过 Fields 暴露的真实草稿；
-// 用户已输入的新草稿不被覆盖。失败卡片仍保留同一份文本供显式重试。
-func (m *model) restoreDraftIfEmpty(session, text string) {
+// draftRestoreRequest 是"把草稿写回输入框"的排队项。
+//
+// session 非空时只有当前会话仍是它才写（切走的会话不写草稿）；overwrite=false
+// 表示"只在草稿为空时写"——用户已经输入的新草稿不被覆盖，而失败卡片仍保留
+// 同一份文本供显式重试。
+type draftRestoreRequest struct {
+	session   string
+	text      string
+	overwrite bool
+}
+
+// queueDraftOverwrite 排一次"直接写这段文字"（不检查草稿是否为空）。
+// 插件的 `SetDraft` 语义就是覆盖，但调用点可能在非 UI 线程上。
+func (m *model) queueDraftOverwrite(text string) {
 	m.mu.Lock()
-	current := m.cur == session
+	m.pendingDraft = &draftRestoreRequest{text: text, overwrite: true}
 	m.mu.Unlock()
-	if !current {
-		return
+	m.inv.Invalidate()
+}
+
+// queueSmokeSend 排一次"灌草稿并发送"。发送本身要读 `m.draft`（见 send），
+// 所以它也只能在 UI 线程上发生——这里是 `-smoke` 的后台 goroutine，只排队。
+func (m *model) queueSmokeSend(text string) {
+	m.mu.Lock()
+	m.pendingSmoke = &text
+	m.mu.Unlock()
+	m.inv.Invalidate()
+}
+
+// applyPendingDraft 消费排队的草稿写回与 smoke 发送。
+// **必须在 UI 线程（Paint）里调。**
+func (m *model) applyPendingDraft() {
+	m.mu.Lock()
+	req := m.pendingDraft
+	m.pendingDraft = nil
+	smoke := m.pendingSmoke
+	m.pendingSmoke = nil
+	cur := m.cur
+	m.mu.Unlock()
+	if req != nil && (req.session == "" || req.session == cur) {
+		m.writeDraft(req.text, req.overwrite)
 	}
-	if strings.TrimSpace(m.draft.Text()) == "" {
+	if smoke != nil {
+		m.writeDraft(*smoke, true)
+		m.send()
+	}
+}
+
+// writeDraft 是**唯一**允许写草稿的地方，只能在 UI 线程上调用。
+// 它同时写壳旧输入框和 ds-composer 通过 Fields 暴露的真实草稿——两处都是
+// Viva 的 editor，不能从后台 goroutine 直接动。
+func (m *model) writeDraft(text string, overwrite bool) {
+	if overwrite || strings.TrimSpace(m.draft.Text()) == "" {
 		m.draft.SetText(text)
 	}
 	if m.kernel == nil {
@@ -135,7 +181,10 @@ func (m *model) restoreDraftIfEmpty(session, text string) {
 			continue
 		}
 		for _, field := range fields.Fields() {
-			if field != nil && strings.TrimSpace(field.Text()) == "" {
+			if field == nil {
+				continue
+			}
+			if overwrite || strings.TrimSpace(field.Text()) == "" {
 				field.SetText(text)
 			}
 		}

@@ -1,0 +1,130 @@
+// projections_test.go —— `session.projections` 的客户端契约测试（子代理目录的数据面）。
+//
+// 判据：
+//   - 路径 `/api/session.projections`，入参 `{sessionId}`（宿主 DisallowUnknownFields，
+//     字段名写错会直接 400，所以这条必须钉住）；
+//   - 结果 `{asOfSeq, values}`：**键缺失 = 能力不存在**，不是空数组；
+//     本包只解 subagentCatalog 与 teamMode 两个键，其余原样留着不动；
+//   - 键存在但值是 `null` → 同样算"未知"（官方 optional 的 null 语义）。
+package apiclient
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestSessionProjectionsWireShape(t *testing.T) {
+	var gotPath string
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, _ = w.Write([]byte(`{
+			"asOfSeq": 42,
+			"values": {
+				"subagentCatalog": [
+					{"id":"child-1","createdAt":1762900000000,"mode":"continuable","label":"调研"},
+					{"id":"child-2","createdAt":1762900100000,"mode":"continuable","label":""}
+				],
+				"teamMode": {"enabled": true},
+				"title": "别的键我们不解码",
+				"todos": null
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	proj, err := New(srv.URL).SessionProjections(context.Background(), "sess-root")
+	if err != nil {
+		t.Fatalf("应当成功：%v", err)
+	}
+	if gotPath != "/api/session.projections" {
+		t.Fatalf("路径应为 /api/session.projections，得到 %q", gotPath)
+	}
+	if body["sessionId"] != "sess-root" {
+		t.Fatalf("入参必须是 sessionId（宿主 strict schema），得到 %v", body)
+	}
+	if proj.AsOfSeq != 42 {
+		t.Fatalf("asOfSeq 应透出，得到 %d", proj.AsOfSeq)
+	}
+
+	entries, ok := proj.SubagentCatalog()
+	if !ok {
+		t.Fatal("subagentCatalog 键存在，应判为已知")
+	}
+	if len(entries) != 2 {
+		t.Fatalf("应有 2 条子代理，得到 %d", len(entries))
+	}
+	if entries[0].ID != "child-1" || entries[0].Label != "调研" || entries[0].Mode != "continuable" {
+		t.Fatalf("第 1 条解码不对：%+v", entries[0])
+	}
+	if entries[0].CreatedAt != 1762900000000 {
+		t.Fatalf("createdAt 应原样透出，得到 %d", entries[0].CreatedAt)
+	}
+
+	mode, ok := proj.TeamMode()
+	if !ok || mode == nil || !mode.Enabled {
+		t.Fatalf("teamMode.enabled=true 应解出来，得到 ok=%v mode=%+v", ok, mode)
+	}
+}
+
+func TestSessionProjectionsMissingKeysAreUnknown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 宿主注释明写这三个键可能整个不出现；键缺失 = 该能力不存在。
+		_, _ = w.Write([]byte(`{"asOfSeq":-1,"values":{"title":"空会话"}}`))
+	}))
+	defer srv.Close()
+
+	proj, err := New(srv.URL).SessionProjections(context.Background(), "s-empty")
+	if err != nil {
+		t.Fatalf("应当成功：%v", err)
+	}
+	if _, ok := proj.SubagentCatalog(); ok {
+		t.Fatal("subagentCatalog 键缺失时必须回 known=false（不许当成空目录）")
+	}
+	if _, ok := proj.TeamMode(); ok {
+		t.Fatal("teamMode 键缺失时必须回 known=false（不许当成已关闭）")
+	}
+}
+
+func TestSessionProjectionsNullValuesAreUnknown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"asOfSeq":7,"values":{"subagentCatalog":null,"teamMode":null}}`))
+	}))
+	defer srv.Close()
+
+	proj, err := New(srv.URL).SessionProjections(context.Background(), "s1")
+	if err != nil {
+		t.Fatalf("应当成功：%v", err)
+	}
+	if _, ok := proj.SubagentCatalog(); ok {
+		t.Fatal("subagentCatalog=null 是“没有”，不是空数组")
+	}
+	if _, ok := proj.TeamMode(); ok {
+		t.Fatal("teamMode=null 是“未知”，不是 enabled=false")
+	}
+}
+
+func TestSessionProjectionsBadRequestIsAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"bad_request","message":"session.projections 需要非空 sessionId","hint":"","retryable":false}}`))
+	}))
+	defer srv.Close()
+
+	_, err := New(srv.URL).SessionProjections(context.Background(), "")
+	if err == nil {
+		t.Fatal("空 sessionId 必须报错")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("应是 *APIError，得到 %T", err)
+	}
+	if apiErr.Code != "bad_request" {
+		t.Fatalf("code 应为 bad_request，得到 %q", apiErr.Code)
+	}
+}

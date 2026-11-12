@@ -117,6 +117,13 @@ type model struct {
 
 	// models 是可选模型清单（宿主 models.list 的投影），启动拉一次。
 	models []pluginapi.Model
+	// settingsDescribe 是宿主 settings.describe 的缓存（设置面板的数据面）。
+	// nil = 还没拉到（界面显示「未知」，不编值）。
+	settingsDescribe *apiclient.SettingsDescribeResult
+	// settingsDescribePending 防重入：每帧都可能问，别每帧发一次请求。
+	settingsDescribePending bool
+	// settingsDescribeErr 是最近一次拉取失败的原因（只报状态栏，不清缓存）。
+	settingsDescribeErr error
 	// jobsPending 防重入：刷新在途时不再发第二次请求（每帧都可能问）。
 	jobsPending bool
 	smokeFired  bool
@@ -148,7 +155,13 @@ type model struct {
 	seqs map[string]int
 	// epochs 是每会话的 journal 世代（从 session.load 的 journalEpoch 拿）。
 	// 订阅时带上它，宿主换代了就会发 session/reset——不带的话旧水位会静默错位。
-	epochs     map[string]int64
+	epochs map[string]int64
+	// frames 是每会话的**原始 journal 帧**（主区 transcript 的数据面，见 frames.go）。
+	//
+	// 与 msgs 是两件事：msgs 是 session.load 的**投影**（首屏用），frames 是
+	// journal 原文（steering / turn-trigger / reason.kind 这些只有原文才分得出来）。
+	// 绘制期在锁内拷一份进快照，插件读不到活切片。
+	frames     map[string]*frameJournal
 	streamText string
 	// turnBusy：当前会话有 turn 在跑。发 prompt 置 true，流结束/取消/失败置 false。
 	turnBusy bool
@@ -171,6 +184,12 @@ type model struct {
 	settings *dssettings.Plugin
 	actions  pluginapi.Actions
 	chrome   frameChrome
+	// shellMode 是首屏结构档位（auto/legacy/official），见 shell.go。
+	// 注意：它决定「谁切三栏」，不是外观选项——两块实现几何口径不同。
+	shellMode shellMode
+	// wave3 是 GUI 第三波两个父容器的壳侧数据接线（账号态 / 会话投影 / apiclient）。
+	// 见 wave3_wiring.go：它只喂缓存，不在绘制里发请求。
+	wave3 wave3Wiring
 
 	mu           sync.Mutex
 	chromeLayout frameChromeLayout // 由 Paint 写入，原生截图报告在 mu 下读取。
@@ -178,6 +197,13 @@ type model struct {
 	// 等下一帧 Paint 去消费"的那一个。见 theme.go 里为什么必须排队。
 	themeMode    string
 	pendingTheme string
+	// pendingDraft / pendingSmoke 和 pendingTheme 同一形状：草稿是 Viva
+	// `*flex.Field` 的状态，只有 UI 线程能碰——`text.(*Editor).String()` 名字像
+	// 取值，实现里却会惰性写 `editor.text`/`editor.textValid`，后台 goroutine
+	// 读它就已经是数据竞争。背景 goroutine 只排队，由 applyPendingDraft 消费。
+	// 上游缺陷说明见 docs/viva-upstream-editor-string-race.md。
+	pendingDraft *draftRestoreRequest
+	pendingSmoke *string
 	sessions     []apiclient.Session
 	cur          string
 	msgs         []apiclient.Message
@@ -442,6 +468,9 @@ func (m *model) openSession(id string) {
 	}
 	m.subscribe(id)
 	go m.refreshSession(id, false)
+	// 主区 transcript 的数据面：WS 只从 lastSeq 之后推，之前的历史只有
+	// `session.history` 能拿到（load 是投影，没有 frames 键）。
+	go m.refreshFrames(id)
 }
 
 // refreshSession 拉一次 session.load；quiet=true 时失败不覆盖状态栏。
@@ -519,8 +548,9 @@ func (m *model) refreshSession(id string, quiet bool) {
 		if text == "" {
 			text = "smoke-" + time.Now().Format("150405")
 		}
-		m.draft.SetText(text)
-		m.send()
+		// 这里在后台 goroutine 里：草稿只能排队，写和发送都由 UI 线程做
+		//（见 applyPendingDraft 与 docs/viva-upstream-editor-string-race.md）。
+		m.queueSmokeSend(text)
 	}
 }
 
@@ -853,6 +883,8 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 								since = m.onJournalResetLocked(id)
 								m.mu.Unlock()
 								m.refreshSession(id, true)
+								// 主区数据面同样要重建基线（load 只有投影，没有 frames）。
+								go m.refreshFrames(id)
 								m.mu.Lock()
 								if base := m.seqs[id]; base > since {
 									since = base // 新基线之后重连，别把新 journal 整条重放
@@ -888,6 +920,8 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 				// **不清空已有消息**——先把新基线拉回来，界面再整体替换，
 				// 这样用户看到的是"刷新了一下"，而不是"内容突然没了"。
 				m.refreshSession(id, true)
+				// 主区数据面同样要重建基线（load 只有投影，没有 frames）。
+				go m.refreshFrames(id)
 				// refreshSession 会把新基线写回 m.seqs[id]（新 journal 的 lastSeq）。
 				// 有它就从他之后重连：从 0 重连会把新 journal 整条重放一遍，而那些
 				// 内容刚刚已经由 load 画上去了（同一条消息出现两次）。
@@ -945,6 +979,11 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 func (m *model) onJournalResetLocked(id string) int {
 	delete(m.seqs, id)
 	delete(m.epochs, id)
+	// **原始帧也要整段丢弃**：旧 seq 属于另一个序号域，留着就是"新旧两代混排"，
+	// 界面上表现为消息偶尔跳一下（最难看出来的那种错）。重建由 refreshFrames 负责。
+	if journal := m.frames[id]; journal != nil {
+		journal.reset()
+	}
 	if sub := m.subs[id]; sub != nil {
 		sub.lastSeq = 0
 	}
@@ -1151,6 +1190,18 @@ func (m *model) applyEventAt(id string, ev apiclient.Event, envelopeTime int64) 
 	if ev.Time == 0 {
 		ev.Time = envelopeTime
 	}
+	// **原始帧先进数据面日志**（主区 transcript 的唯一来源），再走下面的归约。
+	//
+	// 为什么放在最前面、连审批帧也进：journal 是 append-only 的**一个**序号域，
+	// 少记一条（哪怕它不是消息行）就会在补洞时留下一个"假洞"——宿主会重新推
+	// 一遍那段，而客户端按 seq 判重只看得到自己记过的那几条。投影器负责跳过
+	// 非消息行（approval/* 等），数据面负责**一条不丢**。
+	//
+	// 这一帧的 Time 已经是 canonical 真值（上面刚补齐），不再另取墙钟。
+	m.mu.Lock()
+	m.appendFrameLocked(id, apiclient.Frame{Seq: ev.Seq, Type: ev.Kind, Data: ev.Data, Time: ev.Time})
+	m.mu.Unlock()
+
 	// 审批**作废**：宿主的超时按拒绝结算并推这一帧（serve_approval.go），
 	// 再 approve 过去只会拿到 404 `no_such_request`。
 	//
@@ -1323,6 +1374,10 @@ func (m *model) evictLocked(keep string) {
 			return
 		}
 		delete(m.cache, oldestID)
+		// 原始帧跟着温缓存一起淘汰：两者都是"这一会话的首屏内容"，留一份不留
+		// 另一份只会让内存涨到没边（长会话一帧约 200 B，十条会话就是几十 MB）。
+		// 淘汰之后重开走冷载，`refreshFrames` 会重新拉回来——与 msgs 同款语义。
+		delete(m.frames, oldestID)
 	}
 }
 
@@ -1486,6 +1541,8 @@ func newConfig(m *model) app.Config {
 		// 主题：**在这一帧开画之前**消费排队的那一个。
 		// 放这里是因为它写包级 `theme` 变量，而只有绘制线程可以写。
 		m.applyPendingTheme()
+		// 草稿写回同理：Viva 的 `*flex.Field` 是 UI 线程状态，后台 goroutine 只排队。
+		m.applyPendingDraft()
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.Background)
 		contentBounds := bounds
@@ -1524,6 +1581,12 @@ func newConfig(m *model) app.Config {
 		}
 		status := m.status
 		streamText := m.streamText
+		// 主区 transcript 的数据面：原始 journal 帧 + 世代。
+		// 锁内拷贝（journal 会被 WS goroutine 插入，活切片不能交出去）。
+		frames, framesEpoch := m.snapshotFramesLocked(cur)
+		// 向前分页状态（loadOlder 五态）：同样是锁内拷贝的**值**，
+		// 插件据此画 `.older` 那一行（还有没有更早 / 在拉 / 失败）。
+		historyPaging := m.snapshotHistoryPagingLocked(cur)
 		approval := m.approval
 		usage := m.usage
 		// H1/H4/H5：会话语义的真值原样带进快照，插件自己决定画不画。
@@ -1551,8 +1614,31 @@ func newConfig(m *model) app.Config {
 		// 缓存，所以 resize 之后不会沿用上一帧的列宽（真机三档见 tmp/v4b-shots）。
 		hasRightbar := showRightbar && m.kernel.Has(pluginapi.SlotRightbar)
 		m.chrome.rightbarOpen = showRightbar
-		geom := buildGeometry(contentBounds.Width, contentBounds.Height, m.side.Width(), hasRightbar,
-			m.kernel.Has(pluginapi.SlotShellBottom))
+		// 结构档位：auto 在内核有 shell.root 占用方时仍走 dsshell 旧三栏。
+		shellTier := m.shellMode.resolve(m.kernel)
+		var shellOpts uikernel.ShellOptions
+		var geom pluginapi.Geometry
+		if shellTier == shellOfficial {
+			// 官方骨架自己解三列；Geometry 与真画出来的必须是同一份结果
+			//（旧代码 buildGeometry 与 dsshell 各算一遍，分叉过一次）。
+			shellOpts = shellOptionsFor(m, m.kernel, contentBounds.Width, contentBounds.Height)
+			geom = officialGeometry(contentBounds.Width, contentBounds.Height, shellOpts)
+		} else {
+			geom = buildGeometry(contentBounds.Width, contentBounds.Height, m.side.Width(), hasRightbar,
+				m.kernel.Has(pluginapi.SlotShellBottom))
+		}
+		// 官方骨架在旧部件还占槽时会整段换成旧三栏排版（`BridgeLegacy`）：
+		// 那时官方子槽（sidebar.settings / conversation.session.header.actions）
+		// **不会被 dispatch**，旧槽（sidebar.footer / main.header）会。插件必须知道
+		// 这一帧到底该挂哪边，否则会把画挂在永远不 dispatch 的槽上（2026-11-12 真机
+		// `-shell official` 下设置启动器入口不显示，就是这么来的）。
+		{
+			bridgeLegacy := shellTier == shellLegacy
+			if shellTier == shellOfficial {
+				bridgeLegacy = shellOpts.BridgeLegacy
+			}
+			m.wave3.tier.SetLegacyBridge(bridgeLegacy)
+		}
 		mainWidth := geom.MainWidth
 
 		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
@@ -1584,7 +1670,17 @@ func newConfig(m *model) app.Config {
 			Theme: m.theme,
 			Data: pluginapi.Snapshot{
 				Sessions: sessions, Cur: cur, Status: status,
-				Msgs: msgs, Total: total, Stream: streamText, Truncated: truncated,
+				Msgs: msgs, Frames: frames, JournalEpoch: framesEpoch,
+				// 向前分页五态：**只在"确实开过会话"时才有意义**；
+				// 零值（Baseline/HasMore 全 false、无错）界面不画那一行。
+				History: pluginapi.HistoryPaging{
+					Baseline: historyPaging.Baseline,
+					HasMore:  historyPaging.HasMore,
+					Partial:  historyPaging.Partial,
+					Loading:  historyPaging.Loading,
+					Error:    historyPaging.Error,
+				},
+				Total: total, Stream: streamText, Truncated: truncated,
 				MessageMeta: metadata, TurnEvents: turnEvents, Outgoing: outgoing,
 				ActiveTurnID: activeTurnID, ActiveTurn: activeTurn,
 				Usage: pluginapi.Usage{
@@ -1631,8 +1727,30 @@ func newConfig(m *model) app.Config {
 		// 与上面 env.MainWidth 用的是**同一份**求解结果，不允许两处各算一遍。
 		env.Geometry = geom
 
+		// 两个父容器的每帧输入：账号态（通知入口可见性）+ 会话投影（子代理目录）。
+		// 只喂缓存、不发请求；拉取按节流在后台（见 wave3_wiring.go）。
+		{
+			m.mu.Lock()
+			curForWave3 := m.cur
+			m.mu.Unlock()
+			m.wave3.feed(curForWave3, geom.SidebarWidth)
+			if accountDue, projDue := m.wave3.refreshDue(m, curForWave3); accountDue || projDue {
+				if accountDue {
+					go m.wave3.fetchAccount(m)
+				}
+				if projDue {
+					go m.wave3.fetchProjections(m, curForWave3)
+				}
+			}
+		}
+
 		m.view.Draw(canvas, theme, contentBounds, func(f *flex.Frame) {
-			// 壳只画一个槽：三栏怎么切、底栏多高、右栏占多少，全在 plugins/dsshell 里。
+			if shellTier == shellOfficial {
+				// 官方骨架：结构/槽名/几何来自 internal/uikernel，内容仍是插件。
+				drawOfficialFirstScreen(f, m, env, shellOpts)
+				return
+			}
+			// 旧路径：壳只画一个槽，三栏怎么切全在 plugins/dsshell 里。
 			drawSlot(f, m.kernel, pluginapi.SlotShellRoot, env)
 		})
 
@@ -1879,9 +1997,11 @@ func itoaLocal(n int) string {
 }
 
 func main() {
-	// `-h` 打的是产品名与产物名：否则人对着 "Usage of app.exe" 还得猜这是哪个程序。
+	// `-h` 打的是产品名：否则人对着 "Usage of app.exe" 还得猜这是哪个程序。
+	// 产物名不用再重复一遍——它**就是**产品名加 `.exe`（brand.go 的 binaryName），
+	// 再打一次只会得到「DSH GUI GO dev（DSH GUI GO.exe）」这种同义反复。
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "%s %s（%s.exe）\n\n参数：\n", productName, version, binaryName)
+		fmt.Fprintf(flag.CommandLine.Output(), "%s %s\n\n参数：\n", productName, version)
 		flag.PrintDefaults()
 	}
 	// --version：只读打印一行然后退出。它是**查身份**用的（哪个产物、哪一版），
@@ -1893,6 +2013,7 @@ func main() {
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
 	openFile := flag.String("open-file", "", "无头截图用：启动后直接打开这个文件名的预览（走 dsfiles.Open，不模拟鼠标）")
 	openSettings := flag.Bool("open-settings", false, "无头截图用：启动后直接打开设置浮层（走 dssettings.Open，不模拟热键）；产品入口是 Shift+F2")
+	shellTierFlag := flag.String("shell", "auto", "首屏结构档位：auto（默认；有 shell.root 占用方时走旧三栏）/ legacy / official（官方骨架）")
 	themeName := flag.String("theme", "dark", "主题：dark / light / system（system 跟着操作系统的明暗走）")
 	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
@@ -1921,7 +2042,11 @@ func main() {
 	chromeProbe := flag.Bool("chrome-probe", false, "与 -shot 同用：点击本进程窗口控制并断言 OS 状态，最后从关闭钮退出")
 	winSize := flag.String("size", "", "调试：窗口初始尺寸 WxH（如 1600x900）；空 = 1180x800。验证几何在不同宽度下是否成立")
 	flag.Parse()
-	// 版本查询排在所有参数校验之前：`dshgogui.exe --version` 不管别的参数写成什么，
+	shellTier, err := parseShellMode(*shellTierFlag)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	// 版本查询排在所有参数校验之前：`"DSH GUI GO.exe" --version` 不管别的参数写成什么，
 	// 都只该打印一行就退（退出码 0），否则脚本里那句"先确认产物是哪一版"会被
 	// 别的 flag 的合法性检查带成判红。
 	if *showVersion {
@@ -1961,6 +2086,9 @@ func main() {
 		turnEvents:       map[string][]pubapi.TurnEvent{},
 		approvals:        map[string]*approvalReq{},
 		streamStates:     map[string]*sessionStreamState{},
+		shellMode:        shellTier,
+		// GUI 第三波两个父容器的壳侧数据接线（见 wave3_wiring.go）。
+		wave3: newWave3Wiring(),
 	}
 	// **先换 cookie，再拉数据**。
 	// 反过来（先 refreshList 再 Connect）的后果实测过：第一次 list 必然 401，
@@ -2000,6 +2128,10 @@ func main() {
 	// 否则其余部件没有令牌可 Inject、或者各自独占整个窗口。
 	// 这两条不许被 ui-plugins.json 关掉——配置管的是"装哪些部件"，不是"要不要有地基"。
 	m.kernel = uikernel.New(productName)
+	// 壳侧能力必须在 Load **之前**给出：插件的 Register 里就会 ctx.Inject。
+	//	ui.shell.tier   壳档位（official/legacy）的共享持有者
+	//	ui.apiclient    壳唯一的传输客户端（第三波两个容器的数据/写面）
+	m.wave3.provide(m.kernel, m.cli)
 
 	// 插件从哪来：**壳不认识任何具体插件**。
 	// 内置的自己在 init 里 pluginapi.Register 报到（blank import 即接入）；
@@ -2040,6 +2172,8 @@ func main() {
 	if err := m.kernel.Load(orderPlugins(plugins)...); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}
+	// 装配完成：取回两个容器插件的服务、写死壳档位、接好"打开账号设置"。
+	m.wave3.attach(m)
 	m.theme = m.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	m.prims = m.kernel.MustGet(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	theme = dscore.VivaTheme(m.theme)
@@ -2216,6 +2350,14 @@ func main() {
 				}
 			}()
 		},
+		// 设置面（HOST-SETTINGS-FORM，rc.2 官方 SettingsRoot）：
+		// describe 同步返回缓存、首次问触发后台拉取；写路径同步（调用方在
+		// goroutine 里）、冲突原样回给插件渲染。见 settings_panel_wiring.go。
+		SettingsDescribe:  m.settingsDescribeSnapshot,
+		SettingsHostFacts: m.settingsHostFacts,
+		SettingsFormSet:   m.settingsFormSet,
+		SettingsFormReset: m.settingsFormReset,
+		SettingsMutate:    m.settingsMutate,
 		FSRead: func(path string) (string, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -2248,8 +2390,22 @@ func main() {
 		Allow: func() { m.decide("allow_once") },
 		Deny:  func() { m.decide("reject_once") },
 		// 取消：用户点停止键时打断当前会话的 turn。
-		Cancel:    m.cancelTurn,
-		SetDraft:  func(text string) { m.draft.SetText(text) },
+		Cancel: m.cancelTurn,
+		// 向上翻一页历史：网络请求**必须**离开绘制线程（点一下卡一帧就是手感坏），
+		// 所以排到后台 goroutine；`frameJournal.paging.Loading` 保证重复点击只发一次。
+		//
+		// 会话 id 在**点击这一帧**锁定（不是后台再读 m.cur）：用户点的就是屏幕上
+		// 那个会话，请求途中切走也不该把这一页补到别人头上。journal 按会话存，
+		// 切回来就是完整的一页。
+		LoadOlder: func() {
+			m.mu.Lock()
+			id := m.cur
+			m.mu.Unlock()
+			go m.loadOlderFrames(id)
+		},
+		// SetDraft 把文字灌进输入框。草稿是 Viva 的 UI 线程状态，所以这里也只
+		// 排队——调用点可能来自插件的后台动作（见 applyPendingDraft）。
+		SetDraft:  func(text string) { m.queueDraftOverwrite(text) },
 		Retry:     m.retryLast,
 		RetrySend: m.retrySend,
 

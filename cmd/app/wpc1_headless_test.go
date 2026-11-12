@@ -107,9 +107,24 @@ func runWPC1Headless(t *testing.T, width, height int) {
 		view        flex.View
 		invalidator app.Invalidator
 	)
-	data := pluginapi.Snapshot{
-		Cur: m.cur, Msgs: m.msgs, MessageMeta: m.msgMeta[m.cur],
-		TurnEvents: m.turnEvents[m.cur], Outgoing: m.outgoing[m.cur],
+	// 快照每帧重建并在锁内拷贝：插件拿到的必须是**这一帧的副本**。
+	// 直接把 `m.outgoing[m.cur]` 交给绘制线程，dispatchSend 的 goroutine 会
+	// 就地改它的元素（发送状态），`-race` 就会报
+	// drawOutgoing ↔ dispatchSend——那是测试自己没遵守壳的快照契约。
+	snapshot := func() pluginapi.Snapshot {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		metadata := make(map[string]pluginapi.MessageMetadata, len(m.msgMeta[m.cur]))
+		for key, value := range m.msgMeta[m.cur] {
+			metadata[key] = value
+		}
+		return pluginapi.Snapshot{
+			Cur:         m.cur,
+			Msgs:        append([]apiclient.Message(nil), m.msgs...),
+			MessageMeta: metadata,
+			TurnEvents:  append([]pluginapi.TurnEvent(nil), m.turnEvents[m.cur]...),
+			Outgoing:    append([]pluginapi.OutgoingMessage(nil), m.outgoing[m.cur]...),
+		}
 	}
 	config := app.Config{
 		Title: "wpc1-headless", Width: width, Height: height, Tree: tree,
@@ -119,7 +134,7 @@ func runWPC1Headless(t *testing.T, width, height int) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
-			Theme: theme, Data: data, Act: m.actions, Tree: tree, Feat: feat, Canvas: canvas,
+			Theme: theme, Data: snapshot(), Act: m.actions, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: current.Width,
 			Scroll: view.ScrollState,
 		}
@@ -183,10 +198,16 @@ func runWPC1Headless(t *testing.T, width, height int) {
 		t.Fatal(err)
 	}
 	if opened, ok := session.Driver().LastOpenedPath(); !ok || opened != file {
-		t.Fatalf("文件打开动作 = %q, %v；期望 %q；fileURL=%q status=%q", opened, ok, file, fileURL, m.status)
+		m.mu.Lock()
+		status := m.status
+		m.mu.Unlock()
+		t.Fatalf("文件打开动作 = %q, %v；期望 %q；fileURL=%q status=%q", opened, ok, file, fileURL, status)
 	}
 
-	mainID := tree.ID(feat, "msgs-"+m.cur)
+	m.mu.Lock()
+	cur := m.cur
+	m.mu.Unlock()
+	mainID := tree.ID(feat, "msgs-"+cur)
 	mainState := view.ScrollState(mainID)
 	if mainState == nil || mainState.Max() <= 0 {
 		t.Fatalf("测试需要可纵向滚动的消息区：%+v", mainState)

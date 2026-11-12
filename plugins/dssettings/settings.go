@@ -69,6 +69,12 @@ type Plugin struct {
 	// 用户按下 ↑↓ 之后才有光标。
 	cursor int
 	notify func(string)
+
+	// official 是 rc.2 官方四区面板的状态（official_panel.go）。
+	//
+	// 为什么和旧浮层共存：官方面板需要 settings.describe 数据面；老壳没接时
+	// 退回旧浮层（兼容桥），这样两条路径都有真实测试，而不是二选一时删掉一条。
+	official *officialPanel
 }
 
 // ID 必须全局唯一。
@@ -97,12 +103,25 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 // 面板，两个同时开着时它该在最上面。分层约定见 plugins/dscommands 的注释，
 // `cmd/app/panels_order_test.go` 守着同槽不许撞号。
 func (p *Plugin) Panels() []pluginapi.Painter {
-	return []pluginapi.Painter{{
-		ID:    "settings-overlay",
-		Slot:  pluginapi.SlotShellOverlay,
-		Order: 100,
-		Draw:  p.draw,
-	}}
+	return []pluginapi.Painter{
+		{
+			// rc.1 最小浮层（兼容桥）：只在壳没接 settings.describe 时画。
+			ID:    "settings-overlay",
+			Slot:  pluginapi.SlotShellOverlay,
+			Order: 100,
+			Draw:  p.draw,
+		},
+		{
+			// rc.2 官方四区面板：壳接上 settings.describe 后由它接管。
+			//
+			// Order 101 压在旧浮层之上（两个同时存在时官方结构优先）；两者的
+			// Draw 各自以 OfficialEnabled() 为判据互斥，不会同时画出来。
+			ID:    "settings-panel",
+			Slot:  pluginapi.SlotShellOverlay,
+			Order: 101,
+			Draw:  p.drawOfficialPanel,
+		},
+	}
 }
 
 // Open 打开浮层，返回"这一帧确实有可操作的东西"。
@@ -213,6 +232,10 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 	if ev.Release {
 		return false
 	}
+	// 官方四区面板可用时由它接管键盘（同一个 Shift+F2 入口，互斥）。
+	if p.OfficialEnabled() {
+		return p.handleOfficialKey(ev)
+	}
 	p.mu.Lock()
 	shown := p.shown
 	hasActions := HasSettingsActions(p.act)
@@ -274,6 +297,10 @@ func cardWidth(window float32) float32 {
 
 // draw 画浮层。没开 / 没有任何设置动作时什么都不画。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+	// 兼容桥：壳接上 settings.describe 后，官方四区面板接管，旧浮层不画。
+	if p.OfficialEnabled() {
+		return
+	}
 	t := p.theme
 	if env.Theme != nil {
 		t = env.Theme

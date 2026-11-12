@@ -21,3 +21,7 @@
 *.exe binary
 *.dll binary
 *.zip binary
+# `*.syso` 是 COFF 目标文件（VERSIONINFO 资源，见 cmd/app/internal/vsinfo）。
+# 被当成文本转换一次就编不进去了，而报错会指向"链接器看不懂这个对象"——
+# 看不出是行尾问题。写死一句，永远不用再想。
+*.syso binary

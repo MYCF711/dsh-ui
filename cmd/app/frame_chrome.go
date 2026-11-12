@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/text"
@@ -10,7 +11,7 @@ import (
 )
 
 const (
-	frameCaptionHeight = float32(40)
+	frameCaptionHeight = uikernel.CaptionHeight // 官方 --dsh-windows-titlebar-height，唯一出处 internal/uikernel
 	frameMenuHeight    = float32(28)
 	frameMenuFontSize  = float32(14)
 	frameMenuGap       = float32(2)

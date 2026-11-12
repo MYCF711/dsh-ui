@@ -29,6 +29,22 @@ var primarySendIcon = ui.Icon{
 	},
 }
 
+// addPlusIcon 是控件行左端「加号」入口的图标（官方 `IconPlusOutlineMedium
+// size={14}`，`InputBar.tsx:517`）。
+//
+// **derived**：rc.2 随包的 `dsh-client-ui-primitives` 没有 `src/` 可锚
+// （GT 报告 §8 的未取证第 1 条），所以这里不是逐点抄来的路径，而是按
+// 16 viewBox 画的等宽十字（官方图标名明确是 "Outline Medium"，即描边式）。
+// 几何（14×14 显示、1px 描边、圆头）来自上面那行 size 与 `.pill svg` 的
+// 同类规则；**不得**把它当成官方逐字节素材（official-assets-reuse 里记为 derived）。
+var addPlusIcon = ui.Icon{
+	ViewBox: 16, Stroke: 1, Join: ui.JoinRound,
+	Commands: []ui.PathCommand{
+		ui.MoveTo(8, 3.5), ui.LineTo(8, 12.5),
+		ui.MoveTo(3.5, 8), ui.LineTo(12.5, 8),
+	},
+}
+
 var primaryStopIcon = ui.Icon{
 	ViewBox: 16,
 	Commands: []ui.PathCommand{

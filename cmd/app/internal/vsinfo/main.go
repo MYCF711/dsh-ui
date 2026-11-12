@@ -3,7 +3,7 @@
 // 为什么自己写而不是装 windres/rsrc：本机没有 windres；`rc.exe` 只出 `.res`，
 // 转 COFF 还要 `cvtres`（这台机器上没有）；`rsrc` 那类第三方生成器只能做图标和
 // manifest、做不了 VERSIONINFO。而这一项的全部价值就是**任务管理器的「描述」列
-// 不是空白**——进程列表里一眼看出"这是 DSH GO GUI"。为它引一条 C 工具链或一个
+// 不是空白**——进程列表里一眼看出"这是 DSH GUI GO"。为它引一条 C 工具链或一个
 // 只在打包机上存在的第三方生成器，是把构建变复杂：换来的是别人克隆仓库后
 // `go build ./...` 直接多一个前置条件。
 //
@@ -35,7 +35,7 @@ func main() {
 	out := flag.String("o", "versioninfo_windows_amd64.syso", "输出的 .syso 文件")
 	src := flag.String("src", "brand.go", "产品名/版本号的唯一出处（cmd/app/brand.go）")
 	product := flag.String("product", "", "覆盖 ProductName / FileDescription；空则从 -src 读")
-	binary := flag.String("binary", "", "覆盖 InternalName / OriginalFilename；空则从 -src 读")
+	binary := flag.String("binary", "", "覆盖 InternalName / OriginalFilename；空则从 -src 读（含 .exe 的产物名）")
 	version := flag.String("version", "", "覆盖版本号；空则从 -src 读")
 	company := flag.String("company", "DSH-GO", "CompanyName（项目名，不是两条线各自的名字）")
 	flag.Parse()
@@ -61,7 +61,7 @@ func main() {
 	if err := os.WriteFile(*out, obj, 0o644); err != nil {
 		fail("写 %s 失败：%v", *out, err)
 	}
-	fmt.Printf("VERSIONINFO: %s %s（FileDescription=%s，CompanyName=%s，%s.exe）→ %s（%d 字节）\n",
+	fmt.Printf("VERSIONINFO: %s %s（FileDescription=%s，CompanyName=%s，%s）→ %s（%d 字节）\n",
 		*product, *version, *product, *company, *binary, *out, len(obj))
 }
 
@@ -156,8 +156,12 @@ func versionInfo(product, company, binary, ver string, ms, ls uint32) []byte {
 		strNode("CompanyName", company),
 		strNode("FileDescription", product),
 		strNode("FileVersion", ver),
-		strNode("InternalName", binary),
-		strNode("OriginalFilename", binary+".exe"),
+		// InternalName 按惯例是**不带扩展名**的模块名，OriginalFilename 是
+		// **带扩展名**的产物名。两者都从 brand.go 的 binaryName 来（它含 `.exe`），
+		// 这里只做一次后缀裁剪——不再各自拼一遍 `.exe`，否则改名成
+		// `DSH GUI GO.exe` 之后会生成 `DSH GUI GO.exe.exe`。
+		strNode("InternalName", strings.TrimSuffix(binary, ".exe")),
+		strNode("OriginalFilename", binary),
 		strNode("ProductName", product),
 		strNode("ProductVersion", ver),
 	)
@@ -203,7 +207,7 @@ func fixedInfo(ms, ls uint32) []byte {
 // **目录树必须排在最前**：PE 的 data directory[2]（资源）指向的是段的起点，
 // 而链接器只会把那条重定位算成"段首 RVA"。目录树要是排在数据后面，
 // 资源管理器读到的就是 VS_VERSIONINFO 的正文（一堆 UTF-16 垃圾）——
-// 现象是**二进制里明明有 "DSH GO GUI"，任务管理器的「描述」列却还是空白**。
+// 现象是**二进制里明明有 "DSH GUI GO"，任务管理器的「描述」列却还是空白**。
 // 这条不是猜的：第一版就是把数据放在前面，编出来的 exe 逐字搜得到产品名、
 // `(Get-Item).VersionInfo` 却全是空，改用目录在前才读得出来。
 //

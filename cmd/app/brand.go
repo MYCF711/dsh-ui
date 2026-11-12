@@ -9,11 +9,20 @@
 package main
 
 // productName 是产品名：窗口标题默认值、内核根作用域名、`--version` 的首段。
-const productName = "DSH GO GUI"
+//
+// 用户口径（2026-11-04）：「exe 要写产品名，而且要全程」。所以它是**全程**
+// ——逐字等于命令行里敲的那个名字、分大小写，不是 `DSHGUI` / `dsh-go-gui`
+// 这类缩写（官方参照物 `DeepSeek Harness.exe` 就是这么写的）。缩写名的问题
+// 不在"不好看"，在**任务管理器里认不出是哪个产品**：进程表只看得到文件名。
+const productName = "DSH GUI GO"
 
-// binaryName 是构建产物名（不带 .exe）：`scripts/` 里编的是 `dshgogui.exe`，
-// 进程表里看到的也是它——出问题时人第一眼认的就是这个名字。
-const binaryName = "dshgogui"
+// binaryName 是构建产物名，**含扩展名**：`scripts/` 里编的是 `DSH GUI GO.exe`。
+//
+// 为什么把它和 productName 分成两根而不是一根加 `.exe`：这两件事会分头变
+// （换平台、或者哪天要做 `-cli` 变体），合成一根就得在两个方向上都加特判。
+// 现在是同一个字符串——**但它是两个事实**：一个给人看，一个是文件名。
+// 所以路径里带空格是**故意的**，`scripts/` 与文档里每一处命令行形态都必须加引号。
+const binaryName = "DSH GUI GO.exe"
 
 // version 是 `--version` 打印的版本号，默认 "dev"。
 //
@@ -21,7 +30,7 @@ const binaryName = "dshgogui"
 // 编一个看起来像真的号（0.1.0 之类）比写 dev 更糟——它会被当成"这就是发出去的版本"。
 // 要号的时候由构建方注入：
 //
-//	go build -ldflags "-X main.version=0.2.1-go.7" -o tmp/dshgogui.exe ./cmd/app
+//	go build -ldflags "-X main.version=0.2.1-go.7" -o "tmp/DSH GUI GO.exe" ./cmd/app
 //
 // 所以这里是 var 而不是 const（`-X` 只认变量），"一根常量"的约束管的是
 // productName / binaryName 这两个**名称**，不管版本号。

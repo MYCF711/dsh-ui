@@ -2,7 +2,7 @@
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,
   "input_style": "flat",
-  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method>。入参一律**平铺**：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构。v2（2026-11-04）按真宿主当前实现重写：stream 段原来的 {t:ev,kind,topic} + gap 帧是**错的**，真形状是 {seq,type,data,time} 且服务端不发 gap；方法表补齐到 25 个。",
+  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method>。入参一律**平铺**：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构。v2（2026-11-04）按真宿主当前实现重写：stream 段原来的 {t:ev,kind,topic} + gap 帧是**错的**，真形状是 {seq,type,data,time} 且服务端不发 gap；方法表 25 个；rc.2 追加 4 个（account 通知三件套 + agentTeams.setEnabled），共 29 个。",
   "envelope": {
     "request": {
       "style": "flat",
@@ -18,6 +18,11 @@
       "message": "string",
       "hint": "string",
       "retryable": "bool"
+    },
+    "details": {
+      "reason": "string?",
+      "note": "409 的稳定机器字段（DSH-GO/docs/transport-contract.md §3D）。**可选**：老宿主不带，客户端必须能判空并走 message 文本兜底（cmd/app/frames.go journalEvictedError）。它是 error 的**兄弟**，不是四字段之一——error 仍然恰好 code/message/hint/retryable。",
+      "envelope_example": "{\"error\":{\"code\":\"stale_epoch\",\"message\":\"…\",\"hint\":\"…\",\"retryable\":true},\"journalEpoch\":7,\"lastSeq\":1024,\"details\":{\"reason\":\"history_evicted\"}}"
     }
   },
   "errors": {
@@ -26,6 +31,31 @@
     "invalid_arg": "参数不合法，hint 写清怎么改",
     "unsupported": "该方法本版本未实现",
     "internal": "宿主内部错误"
+  },
+  "conflict_reasons": {
+    "note": "409 的 details.reason 取值表。宿主侧唯一来源是 DSH-GO internal/transport/ConflictReasons()（快照 internal/transport/testdata/api.snapshot.json 的 conflict_reasons 段），两侧同表：加新值必须一起改。",
+    "values": [
+      "stale_epoch",
+      "history_evicted",
+      "revision_conflict",
+      "job_finished",
+      "job_owner_not_live",
+      "stale_head",
+      "agent_busy",
+      "NO_CONTINUABLE_FAILURE_OR_PENDING_INPUT",
+      "conflict"
+    ],
+    "semantics": {
+      "stale_epoch": "journal 换代 / 水位比当前还大 → 丢掉旧水位重新 load 基线",
+      "history_evicted": "sinceSeq 之前的历史已滑出内存 journal → 这就是「没有更早的了」，不要重建（UI 消费：cmd/app/frames.go）",
+      "revision_conflict": "乐观并发 revision 过期 → 重新读最新 revision",
+      "job_finished": "任务已结束 → 只读 jobs.output",
+      "job_owner_not_live": "任务 owner 已不在（官方 JOB_OWNER_NOT_LIVE）",
+      "stale_head": "forge 写入基于旧 head（远端已前进）",
+      "agent_busy": "会话/管理器正忙（code=busy）→ 等 turn/done",
+      "NO_CONTINUABLE_FAILURE_OR_PENDING_INPUT": "官方 session/agent-busy 的逐字 reason（不是 agent_busy）",
+      "conflict": "叫不出更细名字的 409（兜底）"
+    }
   },
   "stream": {
     "path": "/ws",
@@ -410,11 +440,207 @@
         "…": "见 ../DSH-GO/internal/transport/handlers_terminal.go 的 TerminalOutput"
       },
       "req_note": "增量"
+    },
+    "account.getNotifications": {
+      "batch": 3,
+      "req": {
+        "client": {
+          "version": "string",
+          "locale": "string",
+          "timezoneOffsetSeconds": 0
+        }
+      },
+      "resp": {
+        "batch": null
+      },
+      "req_note": "rc.2（官方 dsh-deepseek-account）。client=AccountClientMetadata 三个字段必填，缺了宿主回 invalid_arg。resp.batch 是 **null 或批次**：null=未登录/授权在查询中变了，不是空批次。"
+    },
+    "account.getNotificationContent": {
+      "batch": 3,
+      "req": {
+        "id": "string",
+        "client": {
+          "version": "string",
+          "locale": "string",
+          "timezoneOffsetSeconds": 0
+        }
+      },
+      "resp": {
+        "content": null
+      },
+      "req_note": "rc.2。resp.content 是 null 或一条 AccountNotification（id/createdAt/displayUntil/title/body/actions[]/data?）。"
+    },
+    "account.reportNotificationEvent": {
+      "batch": 3,
+      "req": {
+        "id": "string",
+        "event": "displayed|cta_clicked|dismissed",
+        "client": {
+          "version": "string",
+          "locale": "string",
+          "timezoneOffsetSeconds": 0
+        }
+      },
+      "resp": true,
+      "req_note": "rc.2。结果是**裸 boolean**（不是对象）：true=平台接受了这次上报。event 是闭集，未知值宿主回 invalid_arg。"
+    },
+    "agentTeams.setEnabled": {
+      "batch": 3,
+      "req": {
+        "agentId": "string",
+        "enabled": true
+      },
+      "resp": {},
+      "req_note": "rc.2（官方 dsh-agent-team）。agentId 必须是**树根会话**；非根回 403 team_lead_required。官方结果 z.void()，本仓 wire 用空对象 {}。"
+    },
+    "account.getState": {
+      "batch": 4,
+      "req": {},
+      "resp": {
+        "status": "credential-stored|signed-out",
+        "source": "local|official|oidc"
+      },
+      "req_note": "rc.2 账号状态机（宿主 handlers_account_official.go:929，`return api.AccountGetState(ctx)`）。结果**平铺**是 AccountView（不是 {state:…}）：status 闭集两值 credential-stored|signed-out；links/attempt 界面这一轮不解码。宿主没有账号状态机时回 not_implemented（界面按“未知”处理，不许写成 signed-out）。"
+    },
+    "session.projections": {
+      "batch": 4,
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": {
+        "asOfSeq": 0,
+        "values": {
+          "subagentCatalog": [
+            {
+              "id": "string",
+              "createdAt": 0,
+              "mode": "continuable|one-shot|external|unknown",
+              "label": "string"
+            }
+          ],
+          "teamMode": {
+            "enabled": true
+          }
+        }
+      },
+      "req_note": "宿主 handlers_session_official.go:875。结果 {asOfSeq,values}；values 是**开放集合**，键缺失 = 该能力不存在（不许当空数组/0 用）。本仓界面只解 subagentCatalog 与 teamMode 两个键；空会话 asOfSeq=-1。sessionId 必填，空串回 bad_request。"
+    },
+    "llm.listConfigurableProviders": {
+      "batch": 5,
+      "req": {},
+      "resp": [
+        {
+          "provider": "string",
+          "displayName": "string",
+          "settingsNs": "string",
+          "settingsPath": [
+            "string"
+          ],
+          "declared": "bool?",
+          "defaultBaseURL": "string?",
+          "baseURLEnv": [
+            "string?"
+          ],
+          "nativeAuth": {
+            "env": [
+              "string"
+            ],
+            "oauth": "bool"
+          },
+          "error": "string?"
+        }
+      ],
+      "req_note": "官方 parameters: []（传任何字段回 400）；结果**裸数组**（宿主 writeJSON 套 result）。未接线回 501 not_implemented，**不是空数组**——界面必须能区分\"没有 provider\"与\"查不了\"。secret 只出 env 名，不含值。"
+    },
+    "settings.describe": {
+      "batch": 6,
+      "req": {},
+      "resp": {
+        "writable": "bool",
+        "hasDocument": "bool",
+        "namespaces": [
+          "SettingsNamespaceView"
+        ],
+        "sections": [
+          "SettingsSectionView"
+        ],
+        "errors": [
+          "string"
+        ]
+      },
+      "req_note": "HOST-SETTINGS-FORM（DSH-GO docs/settings-form.md §2）。裸空对象；namespace 字段 ns/schema/value/base/user?/autoGenerate/applies/secrets/revision。hasDocument=false 表示没有伪造原生设置文档。"
+    },
+    "settings.mutate": {
+      "batch": 6,
+      "req": {
+        "ns": "string",
+        "ops": [
+          "SettingsOp"
+        ],
+        "expectedRevision": "int?"
+      },
+      "resp": "SettingsNamespaceView",
+      "req_note": "ops[] 为 {op:\"set\",path:[field],value} 或 {op:\"unset\",path:[field]}；**路径操作**不是整张 descriptor 覆盖。revision 是持久乐观锁：冲突回 409 revision_conflict，不得覆盖新值。retryPolicy 的嵌套路径（providers.<route>.retryPolicy.*）走这条。"
+    },
+    "settings.form.describe": {
+      "batch": 6,
+      "req": {},
+      "resp": {
+        "writable": "bool",
+        "hasDocument": "bool",
+        "namespaces": [
+          "SettingsNamespaceView"
+        ],
+        "sections": [
+          "SettingsSectionView"
+        ],
+        "errors": [
+          "string"
+        ]
+      },
+      "req_note": "与 settings.describe 同形，显式提供通用 sections/fields 投影。"
+    },
+    "settings.form.get": {
+      "batch": 6,
+      "req": {
+        "ns": "string"
+      },
+      "resp": "SettingsSectionView",
+      "req_note": "section 为 {ns,title,writable,revision,fields,errors}；field 含 name/path/type/current/default/overridden/writable 与适用时的 enum 或 minLength/maxLength。"
+    },
+    "settings.form.set": {
+      "batch": 6,
+      "req": {
+        "ns": "string",
+        "path": [
+          "string"
+        ],
+        "value": "any",
+        "expectedRevision": "int?"
+      },
+      "resp": "SettingsSectionView",
+      "req_note": "成功 result 是**写后的 section**，不是 {ok:true}。path 必须是**单段**字段名（非单段回 400 invalid_path）；冲突 409 revision_conflict；只读 403 read_only。"
+    },
+    "settings.form.reset": {
+      "batch": 6,
+      "req": {
+        "ns": "string",
+        "path": [
+          "string"
+        ],
+        "expectedRevision": "int?"
+      },
+      "resp": "SettingsSectionView",
+      "req_note": "path 省略 = 清整个 namespace；**显式 null 会被宿主拒绝**（invalid_path），所以客户端在 nil 时必须真的不写这个键。"
     }
   },
   "counts": {
-    "total": 25,
+    "total": 38,
     "batch1": 15,
-    "batch2": 10
+    "batch2": 10,
+    "batch3": 4,
+    "batch4": 2,
+    "batch5": 1,
+    "batch6": 6
   }
 }

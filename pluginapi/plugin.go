@@ -280,8 +280,28 @@ type Snapshot struct {
 	Search   string
 	Status   string
 	Msgs     []apiclient.Message
-	Total    int
-	Stream   string
+	// Frames 是当前会话 journal 的**原始 Transport 帧**（`session.history` 的
+	// `frames[]` 与 WS 推送**同一个形状**），按 seq 升序、已去重。
+	//
+	// 为什么必须单独一份、不能从 Msgs 反推：宿主契约（`DSH-GO/docs/transport-contract.md`
+	// §恢复）写明 `session.history` 返回**原始 frames**，`session.load` 只是首屏投影。
+	// 官方主区 transcript 的投影器消费的是 v4 原始事件（`user/message` /
+	// `assistant/message` / `tool/call` …），而 `surfaceOp` / `source.kind` /
+	// `reason.kind` 这些**只有原始帧才有**——从"抽过 text 的 messages"反推，
+	// 这几种节点就再也分不出来了。
+	//
+	// 空 = 还没有基线（老宿主 / mockd / 首帧尚未拉到）。插件据此回退旧渲染路径，
+	// 不许画一个空的消息区。
+	Frames []apiclient.Frame
+	// JournalEpoch 是 Frames 所属的 journal 世代（`session.load`/`session.history`
+	// 的 `journalEpoch`）。0 = 未知。
+	//
+	// 世代不一致 = 宿主换过 journal（重启），旧 seq 属于**另一个序号域**：
+	// 消费方必须丢弃旧基线重建，不能按 seq 硬补——后者不报错也不丢帧，
+	// 只是"少了几条"，是这一层最难发现的一种错。
+	JournalEpoch int64
+	Total        int
+	Stream       string
 	// Busy 表示当前会话**有一个 turn 在跑**（已发 prompt、还没结束/取消/失败）。
 	//
 	// 为什么不能只看 Stream：只有思考（reasoning）没有正文时 Stream 是空的，
@@ -345,6 +365,48 @@ type Snapshot struct {
 	// 零值；消息区只给身份完全匹配的 Turn 页脚标“进行中”，不猜最新一组。
 	ActiveTurnID string
 	ActiveTurn   *int64
+
+	// History 是主区 transcript 的**向前分页**状态（官方 `hasMore` /
+	// `historyWasPartial` / `loadingOlder` / `historyLoadStatus` 四元组）。
+	//
+	// 为什么必须单独一个结构而不是从 Frames 反推：**"还有更早的没拉"不是
+	// "当前有几帧"的函数**——空会话、只有一页的短会话、拉到头的长会话都可能是
+	// 同一种帧数，界面画错就是"点了没反应"或者"明明还有却说到头了"。
+	//
+	// 官方判据（`ChatView.tsx:253-273`）：`(hasMore || historyWasPartial)` 时
+	// 才画 `.older` 那一行；按钮 `disabled={!hasMore}`；文案五态由
+	// `loadingOlder` / `historyLoadStatus === 'error'` / 其余决定。
+	History HistoryPaging
+}
+
+// HistoryPaging 是「加载更早」单按钮的**五态输入**（additive）。
+//
+// 五个状态与官方文案一一对应（`dsh-client-ui-chat/src/client/locale.ts:94-98`）：
+//
+//	首次（首屏基线还在拉）      → `.hint`「正在加载历史…」        chat.loadingHistory
+//	有更多                      → 按钮「加载更早」                chat.loadOlder
+//	加载中                      → 按钮「正在加载」（禁用）        chat.loadingOlder
+//	无更多                      → 按钮「已到会话开头」（禁用）    chat.historyStart
+//	失败                        → 按钮「重新加载」                chat.retryOlder
+//
+// **零值 = 没有分页信息**（老宿主 / mockd）：界面不画这一行，也不因此把
+// transcript 判成"到头了"。
+type HistoryPaging struct {
+	// Baseline 报告首屏基线是否已经**试过**（成功或失败都算）。
+	// false = 第一页还在路上（此时若已经有 load 投影出来的消息，官方画 .hint）。
+	Baseline bool
+	// HasMore 报告宿主还有更早的帧没拉。false = 已到可加载的最早处。
+	HasMore bool
+	// Partial 报告**基线是截断的**（首屏那一页之前还有帧）。
+	//
+	// 官方 `historyWasPartial` 是**粘性**的：它是"这一行该不该留在屏幕上"的判据，
+	// 不是"现在还有没有更多"。全部拉完之后它仍然为 true，那一行才会从
+	// 「加载更早」变成「已到会话开头」，而不是整行消失（用户会以为坏了）。
+	Partial bool
+	// Loading 报告正在拉一页（首屏基线或更早一页）。
+	Loading bool
+	// Error 是最近一次失败的原因（空 = 没有失败）。失败态按钮可点 = 重试。
+	Error string
 }
 
 // Usage 是 token 用量的界面视图。
@@ -499,6 +561,18 @@ type Actions struct {
 	//
 	// nil = 壳没接；插件要自己判，别假设一定有。
 	Cancel func()
+
+	// LoadOlder 向上翻一页历史（`session.history` 的**更早**那一页）。
+	//
+	// 为什么是一个动作而不是让插件自己发请求：网络与 journal 世代都归壳管
+	// （插件不建 Transport，界面线 R2/R7），插件只画按钮。
+	//
+	// **壳可能异步完成**（网络请求必然不在绘制线程里）：调用方不能假设返回时
+	// `Snapshot.History.HasMore` 已经变了——下一帧才变。
+	//
+	// nil = 壳没接（老壳）：插件这时不画入口——画一个点了没反应的东西，
+	// 比不画更让人以为"已经在加载了"。
+	LoadOlder func()
 	// SetDraft 把文字灌进输入框。
 	//
 	// **当前没有任何插件调用它**（壳已接线，但调用点为零）。设计意图本来是
@@ -604,4 +678,57 @@ type Actions struct {
 	// 新代码一律用 Approve：这两个没有 id，宿主那边无从对应。
 	Allow func()
 	Deny  func()
+
+	// ── 设置面（HOST-SETTINGS-FORM，rc.2 官方 SettingsRoot）──
+	//
+	// 这三个是设置面板的**数据面**。为什么放在 Actions 而不是让插件自己发 HTTP：
+	// 插件不 import 壳、也不自己建 Transport（R2/R7），数据只经壳的缓存。
+	//
+	// 同步返回**壳缓存的那一份**（与 ModelsList / ScheduleList 同一个形状）：
+	// 首次问会触发一次后台拉取，插件下一帧就能拿到；nil = 壳没接。
+	//
+	// 判据：`SettingsDescribe != nil` 时设置面板画**官方 5 section 四区面板**；
+	// nil 时退回 rc.1 的最小浮层（兼容桥，见 plugins/dssettings 的注释）。
+	SettingsDescribe func() *apiclient.SettingsDescribeResult
+	// SettingsHostFacts 返回这一帧的宿主事实（决定动态注册哪些 section/item）。
+	//
+	// 零值 = 什么都提供不了：那时所有条件项都不注册，面板只画固定项。
+	// **不许把零值当"默认开"**——那会画出宿主根本没提供的行。
+	SettingsHostFacts func() SettingsHostFacts
+	// SettingsFormSet 写一个字段（宿主 `settings.form.set`），返回写后的 section。
+	//
+	// expectedRevision 是持久乐观锁：0 = 不 fence（用宿主最新 revision）。
+	// 冲突回 409 `revision_conflict`，插件**不得重试覆盖**。
+	SettingsFormSet func(ns string, path []string, value any, expectedRevision int) (apiclient.SettingsSectionView, error)
+	// SettingsFormReset 清一个字段 / 整个 namespace（宿主 `settings.form.reset`）。
+	SettingsFormReset func(ns string, path []string, expectedRevision int) (apiclient.SettingsSectionView, error)
+	// SettingsMutate 原子提交一批路径操作（宿主 `settings.mutate`）。
+	//
+	// retryPolicy 的嵌套路径（`providers.<route>.retryPolicy.*`）走这条：
+	// 官方 `settings.form.set` 只接受单段字段名。
+	SettingsMutate func(ns string, ops []apiclient.SettingsOp, expectedRevision int) (apiclient.SettingsNamespaceView, error)
+}
+
+// SettingsHostFacts 是设置面板需要的**宿主事实**（决定动态注册）。
+//
+// 字段名对齐官方来源：`dshDesktop.protocolVersion` / `dshDesktop.updates.channels`
+// / `sidebarRightTabs` / `session-log-deepseek` / `DSH_CLIENT_VERSION` /
+// `permissionPresets.catalog` / `ui-chat.transcriptView` / `snapshot.view.status`。
+type SettingsHostFacts struct {
+	// DesktopProtocolVersion 是 `dshDesktop.protocolVersion`；0 = 没有桌面桥。
+	DesktopProtocolVersion int
+	// UpdatesChannels 是 `dshDesktop.updates.channels`；空 = 桥没给通道。
+	UpdatesChannels []string
+	// SidebarRightTabs 表示 `sidebarRightTabs` 服务存在。
+	SidebarRightTabs bool
+	// SessionLogServed 表示 `session-log-deepseek` namespace 被宿主服务。
+	SessionLogServed bool
+	// ClientVersion 是 build 注入的 `DSH_CLIENT_VERSION`；空 = 没注入。
+	ClientVersion string
+	// PermissionCatalog 表示 `permissionPresets.catalog` 已就绪。
+	PermissionCatalog bool
+	// TranscriptView 是 `ui-chat.transcriptView` 的当前值；空 = 未知。
+	TranscriptView string
+	// CredentialStored 表示 `snapshot.view.status === "credential-stored"`。
+	CredentialStored bool
 }

@@ -116,6 +116,7 @@ func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.
 		box := f.Row().Height(pillHeight).Radius(t.Radii.SM).
 			Items(flex.Center).Gap(0).Children(func() {
 			f.Row().Width(pillPadX).Height(pillHeight)
+			p.drawPillIcon(f, spec.icon, t.LabelTertiary)
 			f.Text(spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
 				Color(t.LabelTertiary).Ellipsis()
 			f.Row().Width(pillPadX).Height(pillHeight)
@@ -145,6 +146,7 @@ func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.
 	}
 	box = box.Items(flex.Center).Gap(0).Children(func() {
 		f.Row().Width(pillPadX).Height(pillHeight)
+		p.drawPillIcon(f, spec.icon, textColor)
 		f.Text(spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
 			Color(textColor).Ellipsis()
 		f.Row().Width(pillPadX).Height(pillHeight)
@@ -156,6 +158,36 @@ func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.
 		})
 	}
 	return box, true
+}
+
+// drawPillIcon 画官方胶囊左边那枚 14px glyph（`StatsPills.module.css:30-34`）。
+//
+// 官方几何：`.pill{display:inline-flex;align-items:center;gap:6px}` +
+// `.pill svg{width:14px;height:14px;flex:none}`。gap 用的是同一张几何表里的
+// `pillGap`（=6），随图标一起出现，所以胶囊宽度 = 8 + 14 + 6 + 文字 + 8。
+//
+// 图标颜色随胶囊文字色（官方 svg 无自带 color，继承 `.pill{color:…}`）：
+// 常态 label-tertiary、悬停/展开 label-secondary（本函数由调用方传色）。
+// `viewBox` 仍是官方 16，这里只按官方 CSS 渲染成 14×14。
+func (p *Plugin) drawPillIcon(f *flex.Frame, kind officialGlyph, tint ui.Color) {
+	if kind == glyphNone {
+		return
+	}
+	// 官方 `.pill{gap:6px}`：图标与文字之间那 6px 由这里给（不在图标里内缩）。
+	f.Row().Width(pillGap).Height(pillHeight)
+	f.Icon(pillIcon(kind, tint)).Size(StatsPillIconSize, StatsPillIconSize).Color(tint)
+}
+
+// pillIcon 按种类取官方 sprite（Activity = gauge-outline，Usage = database-outline）。
+func pillIcon(kind officialGlyph, tint ui.Color) ui.Icon {
+	switch kind {
+	case glyphGauge:
+		return gaugeOutlineIcon(tint)
+	case glyphDatabase:
+		return databaseOutlineIcon()
+	default:
+		return ui.Icon{}
+	}
 }
 
 // officialSegments 是常驻 dock 的两枚读数：活动 / 用量。

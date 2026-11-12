@@ -297,6 +297,36 @@ const (
 	PluginsGroupTitleLn  float32 = 20
 )
 
+// ── 设置行的第 3 格：桌面更新指示（`DesktopUpdateIndicator.module.css:1-34`）──
+//
+// 逐条：`.indicator{height:28px;padding:0 8px;column-gap:4px;
+// border:1px solid color-mix(brand 20%,transparent); border-radius:radius-sm;
+// background:color-mix(brand 8%,transparent); font:12px/18px 500}` +
+// `.icon{width:14px;height:14px}`。
+const (
+	// UpdateIndicatorHeight 是 `.indicator{height:28px}`。
+	UpdateIndicatorHeight float32 = 28
+	// UpdateIndicatorPadX 是 `.indicator{padding:0 8px}`（用定宽占位盒表达，见绘制）。
+	UpdateIndicatorPadX float32 = 8
+	// UpdateIndicatorGap 是 `.indicator{column-gap:4px}`（图标与文字之间）。
+	UpdateIndicatorGap float32 = 4
+	// UpdateIndicatorIconSize 是 `.icon{width:14px;height:14px}`（svg 也是 14）。
+	UpdateIndicatorIconSize float32 = 14
+	// UpdateIndicatorBorder 是 `.indicator{border:1px solid …}`。
+	UpdateIndicatorBorder float32 = 1
+	// UpdateIndicatorBorderTint 是描边的 `color-mix(… 20%, transparent)`。
+	UpdateIndicatorBorderTint float32 = 0.2
+	// UpdateIndicatorBgTint 是底的 `color-mix(… 8%, transparent)`。
+	UpdateIndicatorBgTint float32 = 0.08
+	// UpdateIndicatorFontSize 是 `.indicator{font-size:12px}`。
+	UpdateIndicatorFontSize float32 = 12
+	// UpdateIndicatorLineHeight 是 `.indicator{line-height:18px}`。
+	UpdateIndicatorLineHeight float32 = 18
+	// UpdateIndicatorSpinPeriodMS 是 `.spinner{animation:spin 1s linear infinite}`
+	// 的周期（毫秒；与连接指示的 spinner 1.5s 不是同一条，别混用）。
+	UpdateIndicatorSpinPeriodMS float32 = 1000
+)
+
 // ── 窄窗口（官方 <768px 全屏 + 横向 rail）───────────────────────────
 const (
 	// NarrowViewportBreakpoint 是官方窄窗口断点（`@media (width <= 767px)`）。
@@ -437,6 +467,17 @@ var OfficialSettingsGeometry = []GeoRow{
 	{Node: "PluginInventorySettingsTab.group", Prop: "gap", Official: 8, Impl: PluginsGroupGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:101-120"},
 	{Node: "PluginInventorySettingsTab.groupTitle", Prop: "font-size", Official: 13, Impl: PluginsGroupTitle, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:101-120"},
 	{Node: "PluginInventorySettingsTab.groupTitle", Prop: "line-height", Official: 20, Impl: PluginsGroupTitleLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:101-120"},
+	// ── 设置行第 3 格：桌面更新指示（DesktopUpdateIndicator.module.css）──
+	{Node: "DesktopUpdateIndicator.indicator", Prop: "height", Official: 28, Impl: UpdateIndicatorHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:7"},
+	{Node: "DesktopUpdateIndicator.indicator", Prop: "padding-inline", Official: 8, Impl: UpdateIndicatorPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:8"},
+	{Node: "DesktopUpdateIndicator.indicator", Prop: "column-gap", Official: 4, Impl: UpdateIndicatorGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:5"},
+	{Node: "DesktopUpdateIndicator.icon", Prop: "size", Official: 14, Impl: UpdateIndicatorIconSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:29-34"},
+	{Node: "DesktopUpdateIndicator.indicator", Prop: "border-width", Official: 1, Impl: UpdateIndicatorBorder, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:10"},
+	{Node: "DesktopUpdateIndicator.indicator", Prop: "border-tint", Official: 0.2, Impl: UpdateIndicatorBorderTint, Unit: UnitRatio, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:10", Formula: "color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 20%, transparent)"},
+	{Node: "DesktopUpdateIndicator.indicator", Prop: "background-tint", Official: 0.08, Impl: UpdateIndicatorBgTint, Unit: UnitRatio, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:13", Formula: "color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 8%, transparent)"},
+	{Node: "DesktopUpdateIndicator.indicator", Prop: "font-size", Official: 12, Impl: UpdateIndicatorFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:15"},
+	{Node: "DesktopUpdateIndicator.indicator", Prop: "line-height", Official: 18, Impl: UpdateIndicatorLineHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:17"},
+	{Node: "DesktopUpdateIndicator.spinner", Prop: "cycle-ms", Official: 1000, Impl: UpdateIndicatorSpinPeriodMS, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:48"},
 }
 
 // GeoCount 返回表里 aligned / derived / deviation 三种状态的行数。

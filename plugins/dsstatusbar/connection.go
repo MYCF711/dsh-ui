@@ -122,10 +122,34 @@ const (
 	connWarningActiveTint float32 = 0.10
 )
 
-// connLeaveWindow 是官方 `._indicator` 的离场时长（`transition:opacity .15s` +
-// `._leaving{opacity:0}`）。React 靠 150ms 的 setTimeout 撑住这一帧；本仓靠
-// `Actions.Invalidate` 在 150ms 后排下一帧。
-const connLeaveWindow = 150 * time.Millisecond
+// 官方时间常量（逐条对齐 `ui-primitives/src/ConnectionIndicator.module.css` 与
+// `ui-settings-general/src/client/SettingsRoot.tsx`）。
+const (
+	// connLeaveWindow 是官方 `._indicator` 的离场时长（`transition:…opacity .15s`
+	// + `._leaving{opacity:0}`）。React 靠 150ms 的 setTimeout 撑住这一帧；本仓靠
+	// `Actions.Invalidate` 在 150ms 后排下一帧。
+	connLeaveWindow = 150 * time.Millisecond
+
+	// connEnterWindow 是官方入场动画：`._indicator{animation:_indicator-enter .15s ease-out}`
+	// + `@keyframes _indicator-enter{0%{opacity:0}}`（opacity 0→1，`.15s ease-out`）。
+	// 官方在 `prefers-reduced-motion:reduce` 下把这条 animation 关掉（本仓
+	// `ui.Canvas.ReduceMotion()` 为真时跳过，见 `advance`）。
+	connEnterWindow = 150 * time.Millisecond
+
+	// connRecoveryWindow 是官方 `RECOVERY_CONFIRMATION_MS = 2_000`：
+	// 恢复（disconnected/connecting → connected）后 recovered 胶囊的确认窗。
+	// 官方计时从"recovered 胶囊真正可见"开始（连接态最小可见时长会推迟它）。
+	connRecoveryWindow = 2 * time.Second
+
+	// connConnectingMinVisible 是官方 `CONNECTING_MIN_VISIBLE_MS = 800`：
+	// connecting 胶囊的最小可见时长，避免一次极短的重连尝试闪一下。
+	connConnectingMinVisible = 800 * time.Millisecond
+
+	// connFrameInterval 是 spinner 真动画的重绘间隔。官方是 CSS 合成动画
+	// （1.5s 线性旋转，由合成器按显示刷新率推进）；Go 侧没有合成器，只能按
+	// 计时器申请整帧重绘，30fps（33ms）在 14px 的指示器上肉眼看不出台阶。
+	connFrameInterval = 33 * time.Millisecond
+)
 
 // 座位顺序。
 //
@@ -226,14 +250,33 @@ func connPhaseOf(link pluginapi.LinkState) connPhase {
 	}
 }
 
+// officialGlyph 是这一帧要画的官方 glyph（spinner 要按时间算帧，所以不能是
+// `func() ui.Icon`；胶囊的两枚图标也用同一套枚举）。全部来自 rc.2 sprite 表：
+//
+//	glyphCheck    check-outline      ConnectionIndicator（recovered）
+//	glyphRefresh  refresh-outline    ConnectionIndicator（disconnected/connecting）
+//	glyphSpinner  StateDot ongoing   ConnectionIndicator（connecting）= 1.5s 旋转
+//	glyphGauge    gauge-outline      ActivityPill / Activity 弹窗标题
+//	glyphDatabase database-outline   UsagePill
+type officialGlyph uint8
+
+const (
+	glyphNone officialGlyph = iota
+	glyphCheck
+	glyphRefresh
+	glyphSpinner
+	glyphGauge
+	glyphDatabase
+)
+
 // connectionView 是这一帧要画的那一段（色调 + 文案 + 图标 + 可点性）。
 type connectionView struct {
 	phase  connPhase
 	tone   connectionTone
 	label  string
-	icon   func() ui.Icon // nil = 这一档没有官方 glyph
-	button bool           // 官方 warning 态是 `<button onClick={onReconnect}>`
-	aria   string         // 官方 aria-label（`connection.reconnect` / `connection.restart`）
+	icon   officialGlyph // glyphNone = 这一档没有官方 glyph
+	button bool          // 官方 warning 态是 `<button onClick={onReconnect}>`
+	aria   string        // 官方 aria-label（`connection.reconnect` / `connection.restart`）
 }
 
 // connectionViewOf 把态翻成要画的东西。
@@ -244,29 +287,31 @@ type connectionView struct {
 func connectionViewOf(phase connPhase) connectionView {
 	switch phase {
 	case connPhaseConnected:
-		return connectionView{phase: phase, tone: connToneSuccess, label: zhConnectionConnected, icon: checkOutlineIcon}
+		return connectionView{phase: phase, tone: connToneSuccess, label: zhConnectionConnected, icon: glyphCheck}
 	case connPhaseDown:
 		return connectionView{
 			phase: phase, tone: connToneWarning, label: zhConnectionError,
-			icon: refreshOutlineIcon, button: true, aria: zhConnectionReconnect,
+			icon: glyphRefresh, button: true, aria: zhConnectionReconnect,
 		}
 	case connPhaseConnecting:
 		return connectionView{
 			phase: phase, tone: connToneWarning, label: zhConnectionConnecting + zhConnectionDots,
-			icon: loadingArcIcon, button: true, aria: zhConnectionRestart,
+			icon: glyphSpinner, button: true, aria: zhConnectionRestart,
 		}
 	default:
 		return connectionView{phase: phase, tone: connToneNeutral, label: zhConnectionUnknown}
 	}
 }
 
-// connectionAnim 是官方 150ms 离场淡出的状态机（**唯一**状态源）。
+// connectionAnim 是官方 `ConnectionIndicator` + `SettingsRoot` 连接状态机的等价物
+// （**唯一**状态源）。它把官方三处 `useLayoutEffect`/`useState` 合成一台：
 //
-// 三个字段就是官方的 `shown` / `leaving` / `state`：
-//
-//	shown   这一帧画的那一态（离场期间是**旧态**）
-//	target  壳给的最新态（离场结束后切过去）
-//	leaving 正在离场（shown 是旧的，等 150ms 走完再换 target）
+//	官方 ConnectionIndicator           本仓字段
+//	shown / target / leaving / EXIT_MS  ready/shown/target/leaving/since
+//	._indicator-enter .15s ease-out     entering/enterSince（本单新增）
+//	RECOVERY_CONFIRMATION_MS = 2_000    showRecovery/recoverySince（本单新增）
+//	CONNECTING_MIN_VISIBLE_MS = 800     connectingShownAt/holdConnecting（本单新增）
+//	previousConnectionState ref         prev（恢复窗口的边沿判据）
 //
 // 时间从 `now` 来（测试注入固定时钟，真机是 `time.Now()`）。
 type connectionAnim struct {
@@ -275,43 +320,208 @@ type connectionAnim struct {
 	target  connPhase
 	leaving bool
 	since   time.Time
+
+	// entering/enterSince 是官方 `_indicator-enter`（opacity 0→1，150ms ease-out）。
+	entering   bool
+	enterSince time.Time
+
+	// reduceMotion 等价 `@media (prefers-reduced-motion:reduce)`：
+	// 官方在那里把 `_indicator` 的 animation 与 transition 都关掉。
+	reduceMotion bool
+
+	// prev 是官方 `previousConnectionState` ref：恢复窗口只看边沿。
+	prev connPhase
+
+	// connectingShownAt 是官方 `connectingShownAt` ref（零值 = 不在 connecting 态）。
+	connectingShownAt time.Time
+	// holdConnecting/holdSince/holdFor 是官方 `holdConnecting` + 那条 setTimeout。
+	holdConnecting bool
+	holdSince      time.Time
+	holdFor        time.Duration
+
+	// showRecovery/recoverySince 是官方 `showRecovery` + 2s 确认窗计时。
+	// recoverySince 为零 = 窗口还没开始计时（官方：等 holdConnecting 走完才开始）。
+	showRecovery  bool
+	recoverySince time.Time
 }
 
 // advance 推进一步，返回这一帧要画的 (态, 不透明度)。
 //
-// 不透明度的语义与官方 `_leaving{opacity:0}` + `transition:opacity .15s` 一致：
-// 离场期间从 1 线性降到 0（150ms 走完切到新态，新态 opacity=1）。
+// 不透明度的语义：
+//
+//	入场（官方 `_indicator-enter .15s ease-out`）  0 → 1，ease-out
+//	离场（官方 `._leaving{opacity:0}` + opacity .15s ease-out）  1 → 0，ease-out
+//	其余                                           1
+//
+// 减动效档（`reduceMotion`）下两条动画都跳过（官方 media query 逐字），
+// 但**状态机的窗口**照旧推进——官方那里 `showRecovery`/`holdConnecting` 与 CSS 无关。
 func (a *connectionAnim) advance(link pluginapi.LinkState, now time.Time) (connPhase, float32) {
-	target := connPhaseOf(link)
+	state := connPhaseOf(link)
 	if !a.ready {
-		a.ready, a.shown, a.target, a.since = true, target, target, now
-		return a.shown, 1
+		a.ready, a.shown, a.target, a.prev = true, state, state, state
+		a.startEnter(now)
+		// 首帧也要记 connecting 的起点：官方 `connectingShownAt` 是在同一个
+		// useLayoutEffect 里写的，漏了它，首帧就 connecting → 下一帧恢复时
+		// 800ms 最小可见会被整体跳过（真机首连正好是这条路径）。
+		if state == connPhaseConnecting {
+			a.connectingShownAt = now
+		}
+		return a.shown, a.opacity(now)
 	}
+
+	// ① 官方 SettingsRoot 的第一个 useLayoutEffect：恢复窗口的开关（只看边沿）。
+	if state != a.prev {
+		switch {
+		case state != connPhaseConnected:
+			// 一旦离开 connected，确认窗立刻关（官方 `if (connectionState !== 'connected')`）。
+			a.showRecovery, a.recoverySince = false, time.Time{}
+		case a.prev == connPhaseDown || a.prev == connPhaseConnecting:
+			// 从断开/正在连接恢复 → 开确认窗；计时从胶囊真正可见开始（②③）。
+			a.showRecovery, a.recoverySince = true, time.Time{}
+		}
+		a.prev = state
+	}
+
+	// ② 官方第三个 useLayoutEffect：connecting 最小可见时长
+	//    （`CONNECTING_MIN_VISIBLE_MS - (Date.now() - connectingShownAt)`）。
+	if state == connPhaseConnecting {
+		a.connectingShownAt = now
+	} else if !a.connectingShownAt.IsZero() {
+		elapsed := now.Sub(a.connectingShownAt)
+		a.connectingShownAt = time.Time{}
+		if remaining := connConnectingMinVisible - elapsed; remaining > 0 {
+			a.holdConnecting, a.holdSince, a.holdFor = true, now, remaining
+		}
+	}
+	if a.holdConnecting && now.Sub(a.holdSince) >= a.holdFor {
+		a.holdConnecting = false
+		if a.showRecovery {
+			// 官方在 `setHoldConnecting(false)` 的那一次渲染里开始 2s 计时；
+			// 两次绘制之间可能跨过 hold 的截止点，所以按**截止时刻**起算，
+			// 而不是按这一帧的 now（否则离散采样会把确认窗推后）。
+			a.recoverySince = a.holdSince.Add(a.holdFor)
+		}
+	}
+
+	// ③ 官方第二个 useLayoutEffect：2s 恢复确认窗（`showRecovery && !holdConnecting`）。
+	if a.showRecovery && !a.holdConnecting {
+		if a.recoverySince.IsZero() {
+			a.recoverySince = now
+		} else if now.Sub(a.recoverySince) >= connRecoveryWindow {
+			a.showRecovery, a.recoverySince = false, time.Time{}
+		}
+	} else {
+		a.recoverySince = time.Time{}
+	}
+
+	// ④ 官方 `connectionIndicator` 的三选一（+ 本仓 connected 常驻这条显式差异）。
+	want := a.visiblePhase(state)
+
+	// ⑤ 离场 → 换态 → 入场（官方 React 的 unmount/mount 时序）：
+	//    态变了先把旧态按官方 `_leaving` 淡出 150ms，再挂新态（新态带 `_indicator-enter`）。
 	if a.leaving {
-		elapsed := now.Sub(a.since)
-		if elapsed >= connLeaveWindow {
-			// 离场走完：换成新态（官方此时 `setShown(state)`，新组件带入场动画；
-			// 本仓入场是立即全不透明——见文件头「显式差异」）。
-			next := a.target
-			a.shown, a.leaving, a.target, a.since = next, false, next, now
-			return a.shown, 1
+		if elapsed := now.Sub(a.since); elapsed >= connLeaveWindow {
+			// 离场走完 = 官方 React 的 unmount → 挂新组件（新组件带入场动画）。
+			a.shown = a.target
+			a.leaving = false
+			a.startEnter(now)
 		}
-		progress := float32(elapsed) / float32(connLeaveWindow)
-		if progress < 0 {
-			progress = 0
-		}
-		return a.shown, 1 - progress
+		return a.shown, a.opacity(now)
 	}
-	if target != a.shown {
-		// 目标态到了：旧态进入 150ms 离场窗（这一帧还是全不透明）。
-		a.leaving, a.target, a.since = true, target, now
-		return a.shown, 1
+	if want != a.shown {
+		a.leaving, a.target, a.since = true, want, now
+		a.entering = false // 离场期间不跑入场（官方 `_leaving` 与 mount 动画不会同时出现）
+		return a.shown, a.opacity(now)
 	}
-	return a.shown, 1
+	if a.entering && now.Sub(a.enterSince) >= connEnterWindow {
+		a.entering = false
+	}
+	return a.shown, a.opacity(now)
 }
 
-// leaving 报告状态机是否正处在离场窗里（壳要据此排下一帧）。
+// visiblePhase 是官方 `connectionIndicator` 的取值（connecting 占先、其次 disconnected、
+// 再次 recovered），再叠加本仓那条**显式差异**：connected 常驻显示（官方此处返回
+// undefined，胶囊短暂出现 2s 后消失；本仓不让"连着"这件事没有画面）。
+func (a *connectionAnim) visiblePhase(state connPhase) connPhase {
+	switch {
+	case state == connPhaseConnecting || a.holdConnecting:
+		return connPhaseConnecting
+	case state == connPhaseDown:
+		return connPhaseDown
+	case a.showRecovery:
+		return connPhaseConnected
+	default:
+		return state
+	}
+}
+
+// startEnter 开始一次官方入场动画（减动效档直接跳过）。
+func (a *connectionAnim) startEnter(now time.Time) {
+	if a.reduceMotion {
+		a.entering, a.enterSince = false, time.Time{}
+		return
+	}
+	a.entering, a.enterSince = true, now
+}
+
+// opacity 是这一帧的不透明度（入场/离场两条官方 150ms ease-out 曲线）。
+func (a *connectionAnim) opacity(now time.Time) float32 {
+	if a.reduceMotion {
+		return 1
+	}
+	if a.leaving {
+		progress := float32(now.Sub(a.since)) / float32(connLeaveWindow)
+		return 1 - easeOut(progress)
+	}
+	if a.entering {
+		progress := float32(now.Sub(a.enterSince)) / float32(connEnterWindow)
+		return easeOut(progress)
+	}
+	return 1
+}
+
+// leavingNow 报告状态机是否正处在离场窗里（兼容旧判据）。
 func (a *connectionAnim) leavingNow() bool { return a.ready && a.leaving }
+
+// nextFrameAt 报告壳**下一次**必须重绘的时刻（零值 = 无事可做，不需要排帧）。
+//
+// 四类事各有截止点：离场窗、入场窗、connecting 最小可见窗、2s 恢复确认窗；另外
+// connecting 态的 spinner 是持续动画，按 `connFrameInterval` 连排。
+// 测试用固定时钟直接断言这个时刻，避免"动画靠 sleep 才对"。
+func (a *connectionAnim) nextFrameAt(now time.Time) (time.Time, bool) {
+	if !a.ready {
+		return time.Time{}, false
+	}
+	earliest := time.Time{}
+	take := func(at time.Time) {
+		if at.IsZero() || at.Before(now) {
+			at = now
+		}
+		if earliest.IsZero() || at.Before(earliest) {
+			earliest = at
+		}
+	}
+	if a.leaving {
+		take(a.since.Add(connLeaveWindow))
+	}
+	if a.entering {
+		take(a.enterSince.Add(connEnterWindow))
+	}
+	if a.holdConnecting {
+		take(a.holdSince.Add(a.holdFor))
+	}
+	if a.showRecovery && !a.holdConnecting && !a.recoverySince.IsZero() {
+		take(a.recoverySince.Add(connRecoveryWindow))
+	}
+	// spinner 动画：只要这一帧画的是 connecting 态就继续排。
+	if a.shown == connPhaseConnecting && !a.leaving {
+		take(now.Add(connFrameInterval))
+	}
+	if earliest.IsZero() {
+		return time.Time{}, false
+	}
+	return earliest, true
+}
 
 // drawConnectionIndicator 画官方 `ConnectionIndicator`（28 高胶囊：图标 14 + 文案 12/18）。
 //
@@ -331,11 +541,19 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 	if p.now != nil {
 		now = p.now()
 	}
+	// 官方 `@media (prefers-reduced-motion:reduce)` 由 viva 的 canvas 承担
+	// （`ui.Canvas.ReduceMotion()`，桌面壳按操作系统设置注入）。
+	p.conn.reduceMotion = env.Canvas != nil && env.Canvas.ReduceMotion()
 	phase, opacity := p.conn.advance(env.Data.Link, now)
-	if p.conn.leavingNow() {
-		// 离场窗里必须自己排下一帧：这个仓没有渲染循环，不排就会卡在半透明
-		// （见 pluginapi.Actions.Invalidate 的注释）。
-		p.scheduleFrame(env.Act.Invalidate)
+	// 动画（入场/离场/连接态最小可见/恢复确认窗/spinner 旋转）都要自己排下一帧：
+	// 这个仓没有渲染循环，不排就会卡在半透明或停在一帧的角度上
+	// （见 pluginapi.Actions.Invalidate 的注释）。
+	if next, ok := p.conn.nextFrameAt(now); ok {
+		delay := next.Sub(now)
+		if delay < 0 {
+			delay = 0
+		}
+		p.scheduleFrameAfter(env.Act.Invalidate, delay)
 	}
 	view := connectionViewOf(phase)
 
@@ -372,9 +590,7 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 		// float32 往返会让刚好放得下的文案被判断成放不下（HC 真机报告里那条
 		// 「571 tok/s 被截成 571 tok…」的同一个坑）。
 		f.Row().Width(connIndicatorPadX).Height(connIndicatorHeight)
-		if view.icon != nil {
-			f.Icon(view.icon()).Size(connectionIconSize, connectionIconSize).Color(text)
-		}
+		p.drawConnectionIcon(f, view.icon, text, t.LabelTertiary, now)
 		// 官方 `font-weight:500`；viva 的 Weight 是**相对常规字重的增量**，
 		// `ui.WeightMedium` 就是这一档（别处也都用它，别写 500）。
 		f.Text(view.label).FontSize(connIndicatorFont).LineHeight(connIndicatorLine).
@@ -388,25 +604,52 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 	}
 }
 
-// scheduleFrame 在离场窗结束时申请一帧重绘（幂等：同时只排一个）。
+// drawConnectionIcon 画连接指示的官方 glyph（check / refresh / spinner）。
+//
+// spinner 的颜色按官方 `.spinner{color:var(--dsw-alias-label-tertiary)}` 取
+// **label-tertiary**——即使它长在 warning 胶囊里（官方 warning 只染文字与描边，
+// `.spinner` 自己那条 color 覆盖了继承色）。
+func (p *Plugin) drawConnectionIcon(f *flex.Frame, kind officialGlyph, text, tertiary ui.Color, now time.Time) {
+	switch kind {
+	case glyphCheck:
+		f.Icon(checkOutlineIcon()).Size(connectionIconSize, connectionIconSize).Color(text)
+	case glyphRefresh:
+		f.Icon(refreshOutlineIcon()).Size(connectionIconSize, connectionIconSize).Color(text)
+	case glyphSpinner:
+		frame := spinnerFrameAt(now, p.conn.reduceMotion)
+		f.Icon(spinnerGlyph(frame, tertiary)).Size(spinnerSize, spinnerSize).Color(tertiary)
+	}
+}
+
+// scheduleFrameAfter 在 delay 之后申请一帧重绘（幂等：同时只排一个，取最早的那个）。
 //
 // 计时器回调在另一条 goroutine 上跑，所以只捕获**不可变**的局部值
-// （invalidate 函数本身），不读插件字段——那会与绘制线程竞争（-race 门禁）。
-func (p *Plugin) scheduleFrame(invalidate func()) {
+// （invalidate 函数本身与 delay），不读插件字段——那会与绘制线程竞争（-race 门禁）。
+// 已经排过一帧时：新截止点更早才重排（spinner 每帧都会来排，不能无限顺延）。
+func (p *Plugin) scheduleFrameAfter(invalidate func(), delay time.Duration) {
 	if invalidate == nil {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.frameTimer != nil {
-		return // 已经排过了：离场窗里再排一次只会多一次无意义重绘
+	if p.frameTimer != nil && p.frameAt.Sub(time.Now()) <= delay {
+		return // 已排的那一帧不晚于这次请求：不用重排
 	}
-	p.frameTimer = time.AfterFunc(connLeaveWindow, func() {
+	if p.frameTimer != nil {
+		p.frameTimer.Stop()
+	}
+	p.frameAt = time.Now().Add(delay)
+	p.frameTimer = time.AfterFunc(delay, func() {
 		p.mu.Lock()
 		p.frameTimer = nil
 		p.mu.Unlock()
 		invalidate()
 	})
+}
+
+// scheduleFrame 是旧的一步版封装（离场窗 150ms），保留给既有调用点。
+func (p *Plugin) scheduleFrame(invalidate func()) {
+	p.scheduleFrameAfter(invalidate, connLeaveWindow)
 }
 
 // withAlpha 是官方 `color-mix(in srgb, C 20%, transparent)` 的等价写法。

@@ -96,6 +96,9 @@ type wave3Wiring struct {
 	// projStats 是 whole-log `sessionStats` 投影（nil = 未知）。指向的结构体
 	// 存进缓存后**永不原地改**（每次拉取换一个新指针），所以读方拿指针安全。
 	projStats *apiclient.SessionStats
+	// projUsage 是 whole-log `tokenUsage` 投影的四桶（nil = 未知，与 projStats
+	// 同一份 `session.projections`、同一次拉取；同样"换指针不原地改"）。
+	projUsage *apiclient.TokenUsage
 	// projModelKnown / projModelLastUsed 是 `modelSelection` 投影的两个官方判据：
 	// 键存在 = 开关可用（`modelSelection !== undefined`）；
 	// `lastUsed !== null` = 关闭前要先弹停用确认（TeamModeToggle.tsx:43/47）。
@@ -199,6 +202,20 @@ func (w *wave3Wiring) sessionStatsSnapshot(session string) *apiclient.SessionSta
 		return nil
 	}
 	return w.projStats
+}
+
+// tokenUsageSnapshot 取某会话的 whole-log `tokenUsage` 投影四桶。
+//
+// 返回 nil = **未知**（切到还没拉过的会话 / 查询失败 / 老宿主没有这个键）：
+// 用量胶囊据此写「未知」，**不是**写 0 桶。四桶全 0 但键在时返回非 nil——
+// 那是"宿主说这份日志没有用量样本"的真值，两者不能互相顶替。
+func (w *wave3Wiring) tokenUsageSnapshot(session string) *apiclient.TokenUsage {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if session == "" || session != w.projSession {
+		return nil
+	}
+	return w.projUsage
 }
 
 // modelSelectionSnapshot 取 `modelSelection` 投影的两个官方判据。
@@ -336,6 +353,7 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 		// 查询失败 = **未知**：状态栏写「活动 未知」、Team 开关禁用/隐藏，
 		// 不沿用上一个会话的数字（跨会话复用比"未知"更坏）。
 		w.projStats = nil
+		w.projUsage = nil
 		w.projModelKnown = false
 		w.projModelLastUsed = false
 		if isCapabilityMissing(err) {
@@ -356,6 +374,8 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 	mode, teamKnown := proj.TeamMode()
 	// whole-log 统计（状态栏「活动」）与模型选择（Team 开关可用性）。
 	stats, statsKnown := proj.SessionStats()
+	// whole-log 用量四桶（状态栏「用量」与它的详情弹窗）。
+	usage, usageKnown := proj.TokenUsage()
 	selection, selectionKnown := proj.ModelSelection()
 
 	w.mu.Lock()
@@ -377,6 +397,11 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 		w.projStats = stats
 	} else {
 		w.projStats = nil
+	}
+	if usageKnown {
+		w.projUsage = usage
+	} else {
+		w.projUsage = nil
 	}
 	w.projModelKnown = selectionKnown
 	w.projModelLastUsed = selectionKnown && selection != nil && selection.LastUsed != nil

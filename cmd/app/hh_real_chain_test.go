@@ -99,7 +99,7 @@ func newHHRealProduct(t *testing.T) *hhRealProduct {
 //
 // 设置行矩形从骨架的 measure 回调里取：`drawLegacySidebar` / `drawSidebarSkeleton`
 // 都会把 `SettingsRoot.triggerRow` 报上来（HH 单第 1 件的判据就是它）。
-func (p *hhRealProduct) paintReal(t *testing.T, snap pluginapi.Snapshot, act pluginapi.Actions, click string) (*gfx.Canvas, map[pluginapi.Slot]int, ui.Rect) {
+func (p *hhRealProduct) paintReal(t *testing.T, snap pluginapi.Snapshot, act pluginapi.Actions, click string) (*gfx.Canvas, map[pluginapi.Slot]int, gfx.Rect) {
 	t.Helper()
 	canvas := &gfx.Canvas{}
 	canvas.SetTree(p.tree)
@@ -110,7 +110,7 @@ func (p *hhRealProduct) paintReal(t *testing.T, snap pluginapi.Snapshot, act plu
 	var rowBox ui.Box
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: p.tree, Feat: p.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
@@ -171,7 +171,7 @@ func (p *hhRealProduct) shot(t *testing.T, snap pluginapi.Snapshot, act pluginap
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	config.Paint = func(c *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		c.Fill(bounds, p.theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: p.theme, Data: snap, Tree: shotTree, Feat: shotFeat, Canvas: c,

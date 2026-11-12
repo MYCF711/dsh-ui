@@ -125,7 +125,7 @@ func openSettingsHarness(t *testing.T, width, height int) *settingsHarness {
 		WindowMode: app.WindowFrameless,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		sidebar := float32(280)
 		env := &pluginapi.Env{
 			Theme: h.theme, Data: h.data, Tree: h.tree, Feat: h.feat, Canvas: canvas,

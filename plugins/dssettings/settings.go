@@ -29,6 +29,7 @@ package dssettings
 
 import (
 	"sync"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
@@ -70,6 +71,10 @@ type Plugin struct {
 	// 用户按下 ↑↓ 之后才有光标。
 	cursor int
 	notify func(string)
+
+	// updateFrameTimer 是桌面更新指示器 busy spinner（官方 1s 线性旋转）自己排的
+	// 那一帧重绘。与 dsstatusbar 的同名机制同构：本仓没有渲染循环，不排就停在一帧。
+	updateFrameTimer *time.Timer
 
 	// official 是 rc.2 官方四区面板的状态（official_panel.go）。
 	//
@@ -129,13 +134,23 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			// 行里的 `flex:1` 那一格。
 			//
 			// Order 55：**排在连接指示（61）之前**——官方 `triggerRow` 的排法是
-			// `[设置按钮(flex:1)] [连接指示(flex:none)]`，行内顺序就是 Order 顺序。
+			// `[设置按钮(flex:1)] [连接指示(flex:none)] [更新指示]`，行内顺序
+			// 就是 Order 顺序。
 			// 55 同时排在账号启动器（dsnotifications 的 60）之前；两者互斥
 			// （有启动器时本按钮是官方 fallback，不画），所以不会出现"两个设置入口"。
 			ID:    "settings-trigger",
 			Slot:  uikernel.OffSidebarSettings,
 			Order: 55,
 			Draw:  p.drawSettingsTrigger,
+		},
+		{
+			// 行内第 3 格：官方 `DesktopUpdateIndicator`（**不是 slot**，官方把它
+			// 硬写在 `SettingsRoot` 里，所以由设置面 owner 画，见 official_update.go）。
+			// Order 62 排在连接指示（dsstatusbar 的 61）之后，与官方行内顺序一致。
+			ID:    "settings-desktop-update",
+			Slot:  uikernel.OffSidebarSettings,
+			Order: desktopUpdateOrder,
+			Draw:  p.drawDesktopUpdateIndicator,
 		},
 	}
 }

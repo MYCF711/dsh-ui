@@ -104,7 +104,7 @@ func hfOfficialSidebarFrame(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas,
 	})
 	env := &pluginapi.Env{
 		Theme: theme, Data: snap, Tree: tree, Feat: tree.Feature("hf-official-sidebar"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 		Geometry: pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
@@ -339,7 +339,7 @@ func hfCapture(t *testing.T, product *gyRealProduct, snap pluginapi.Snapshot, go
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	config.Paint = func(c *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		c.Fill(bounds, product.theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: product.theme, Data: snap, Tree: shotTree, Feat: shotFeat, Canvas: c,

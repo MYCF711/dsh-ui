@@ -67,7 +67,7 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 		WindowMode: app.WindowFrameless,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: size.Width,
@@ -131,7 +131,7 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 // findToolHit 按交互 id 找命中区。
 //
 // 为什么不按标签找：工具标题行的标签是空串（`Hit(id, "")`），它没有可见文字，
-// 唯一的身份就是那个 id。ui.Tree 的名字是内部化（intern）的，所以在这里
+// 唯一的身份就是那个 id。gfx.Tree 的名字是内部化（intern）的，所以在这里
 // 用同样的 (scope, word) 算出来的 ID 与绘制期那个**逐位相同**。
 func findToolHit(snapshot app.Snapshot, id gfx.ID) (gfx.Hit, bool) {
 	for _, hit := range snapshot.Hits {

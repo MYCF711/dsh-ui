@@ -68,7 +68,7 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 		Tree: tree, WindowMode: app.WindowFrameless,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		rightPref := size.Width * rightbarOpenFrac
 		env := &pluginapi.Env{
 			Theme: theme,
@@ -136,7 +136,7 @@ func TestLayoutDragHeadless(t *testing.T) {
 	}
 	// 底部整行已经没人占（BottomHeight 0）→ 把手贯穿整个内容高度。
 	assertRect(t, "拖前侧栏把手", hit.Bounds,
-		ui.Rect{X: 280 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
+		gfx.Rect{X: 280 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 	if _, ok := findHit(before, "拖动调整右栏宽度"); !ok {
 		t.Fatal("右栏展开时应该有右栏拖拽把手")
 	}
@@ -216,7 +216,7 @@ func TestLayoutDragHeadless(t *testing.T) {
 		t.Fatalf("松手后把手不见了；hits=%+v", after.Hits)
 	}
 	assertRect(t, "拖后侧栏把手", afterHit.Bounds,
-		ui.Rect{X: 360 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
+		gfx.Rect{X: 360 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 	// 右栏没被牵动：左缘仍是 1920-864=1056。
 	if rb, ok := findHit(after, "拖动调整右栏宽度"); !ok || rb.Bounds.X != 1056-handleWidth/2 {
 		t.Fatalf("拖侧栏不该动右栏：%+v ok=%v", rb.Bounds, ok)
@@ -327,14 +327,14 @@ func TestLayoutWidthRestoredHeadless(t *testing.T) {
 		t.Fatalf("恢复后没有侧栏把手；hits=%+v", snapshot.Hits)
 	}
 	assertRect(t, "恢复的侧栏把手", hit.Bounds,
-		ui.Rect{X: 344 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
+		gfx.Rect{X: 344 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 	// 右栏 700：左缘 = 1920-700 = 1220。
 	rb, ok := findHit(snapshot, "拖动调整右栏宽度")
 	if !ok {
 		t.Fatalf("恢复后没有右栏把手；hits=%+v", snapshot.Hits)
 	}
 	assertRect(t, "恢复的右栏把手", rb.Bounds,
-		ui.Rect{X: 1220 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
+		gfx.Rect{X: 1220 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 
 	path := filepath.Join(dir, "layout-restored.png")
 	if err := session.Screenshot(path); err != nil {

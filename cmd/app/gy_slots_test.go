@@ -91,7 +91,7 @@ func gyFrame(t *testing.T, official bool) ([]string, map[pluginapi.Slot]int) {
 	})
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Act: act, Tree: tree, Feat: tree.Feature("gy-slots"), Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       kernel.Has,

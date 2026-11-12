@@ -116,6 +116,7 @@ func (p *Plugin) officialPill(f ui.C, t *pluginapi.Theme, env *pluginapi.Env, sp
 		box := ui.Row(f).Height(pillHeight).Radius(t.Radii.SM).
 			Items(ui.Center).Gap(0).Children(func() {
 			ui.Row(f).Width(pillPadX).Height(pillHeight)
+			p.drawPillIcon(f, spec.icon, t.LabelTertiary)
 			ui.Text(f, spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
 				Color(t.LabelTertiary).Ellipsis()
 			ui.Row(f).Width(pillPadX).Height(pillHeight)
@@ -145,6 +146,7 @@ func (p *Plugin) officialPill(f ui.C, t *pluginapi.Theme, env *pluginapi.Env, sp
 	}
 	box = box.Items(ui.Center).Gap(0).Children(func() {
 		ui.Row(f).Width(pillPadX).Height(pillHeight)
+		p.drawPillIcon(f, spec.icon, textColor)
 		ui.Text(f, spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
 			Color(textColor).Ellipsis()
 		ui.Row(f).Width(pillPadX).Height(pillHeight)
@@ -156,6 +158,36 @@ func (p *Plugin) officialPill(f ui.C, t *pluginapi.Theme, env *pluginapi.Env, sp
 		})
 	}
 	return box, true
+}
+
+// drawPillIcon 画官方胶囊左边那枚 14px glyph（`StatsPills.module.css:30-34`）。
+//
+// 官方几何：`.pill{display:inline-flex;align-items:center;gap:6px}` +
+// `.pill svg{width:14px;height:14px;flex:none}`。gap 用的是同一张几何表里的
+// `pillGap`（=6），随图标一起出现，所以胶囊宽度 = 8 + 14 + 6 + 文字 + 8。
+//
+// 图标颜色随胶囊文字色（官方 svg 无自带 color，继承 `.pill{color:…}`）：
+// 常态 label-tertiary、悬停/展开 label-secondary（本函数由调用方传色）。
+// `viewBox` 仍是官方 16，这里只按官方 CSS 渲染成 14×14。
+func (p *Plugin) drawPillIcon(f ui.C, kind officialGlyph, tint gfx.Color) {
+	if kind == glyphNone {
+		return
+	}
+	// 官方 `.pill{gap:6px}`：图标与文字之间那 6px 由这里给（不在图标里内缩）。
+	ui.Row(f).Width(pillGap).Height(pillHeight)
+	ui.Icon(f, pillIcon(kind, tint)).Size(StatsPillIconSize, StatsPillIconSize).Color(tint)
+}
+
+// pillIcon 按种类取官方 sprite（Activity = gauge-outline，Usage = database-outline）。
+func pillIcon(kind officialGlyph, tint gfx.Color) gfx.Icon {
+	switch kind {
+	case glyphGauge:
+		return gaugeOutlineIcon(tint)
+	case glyphDatabase:
+		return databaseOutlineIcon()
+	default:
+		return gfx.Icon{}
+	}
 }
 
 // officialSegments 是常驻 dock 的两枚读数：活动 / 用量。

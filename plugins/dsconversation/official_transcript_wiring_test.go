@@ -55,12 +55,12 @@ func renderSeat(t *testing.T, p *Plugin, snap pluginapi.Snapshot, painterID stri
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: tree, Feat: tree.Feature("transcript-wiring-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	env.Has = func(pluginapi.Slot) bool { return false }
 	pageTheme := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-	view.Draw(canvas, ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		painter.Draw(f, env)
 	})
 	// 旧渲染路径的 Markdown 是**布局后覆画**（viva 的绘制顺序不受调用方控制）：
@@ -164,13 +164,13 @@ func TestOfficialSeatDispatchesThroughDrawSlot(t *testing.T) {
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Tree: tree, Feat: tree.Feature("transcript-drawslot-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 		Data: pluginapi.Snapshot{Cur: "s-1", Frames: realFrames(), JournalEpoch: 1},
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
 	pageTheme2 := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
-	view.Draw(canvas, ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		kernel.DrawSlot(f, pluginapi.Slot("conversation.view"), env)
 	})
 	if !hasCanvasText(canvas, "真实用户消息") {

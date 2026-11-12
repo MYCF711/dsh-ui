@@ -19,7 +19,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/vivaui/viva/gfx"
-	"github.com/vivaui/viva/ui"
 )
 
 // geometryNotice 造一条动作标签不撞"关闭"的通知（避免命中区标签歧义）。
@@ -46,8 +45,8 @@ func activePlugin(t *testing.T, notices ...apiclient.Notification) *Plugin {
 }
 
 // cardRect 从画布上找那张卡：半径 16 的矩形里最宽的那个（正文区/背景层都更小）。
-func cardRect(canvas *gfx.Canvas) (ui.Rect, bool) {
-	var best ui.Rect
+func cardRect(canvas *gfx.Canvas) (gfx.Rect, bool) {
+	var best gfx.Rect
 	found := false
 	for _, r := range canvas.Rectangles() {
 		if r.Radius != CardRadius {

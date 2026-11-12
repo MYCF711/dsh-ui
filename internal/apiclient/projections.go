@@ -33,6 +33,7 @@ package apiclient
 import (
 	"context"
 	"encoding/json"
+	"math"
 )
 
 // SessionProjections 是官方 `session.projections` 的结果（非 null 分支）。
@@ -185,6 +186,140 @@ func (p *SessionProjections) ModelSelection() (*ModelSelectionProjection, bool) 
 		return nil, false
 	}
 	return &selection, true
+}
+
+// TokenUsage 是宿主 `tokenUsage` 投影的 wire 视图（四个桶，全部必填、整数、非负）。
+//
+// 官方形状（`@deepseek-ai/dsh-token-meter/src/usage-projection.ts:45-50` 的
+// `projectionSchema` + `:143` 的 `wire.view = state => state.totals`）：
+//
+//	uncachedInputTokens  prompt 侧未命中缓存的部分
+//	outputTokens         输出 token（reasoning 已含在内，不另加）
+//	cacheReadTokens      缓存读命中
+//	cacheWriteTokens     缓存写
+//
+// 四桶**不相交**（`src/projection.ts:15-20`）：prompt 侧合计 =
+// `uncachedInputTokens + cacheReadTokens + cacheWriteTokens`，输出桶不在其中。
+// 所以这里刻意不提供"总 token"字段：官方 `UsagePill` 的总数就是
+// `billedInputTokens(usage) + usage.outputTokens`（`StatsPills.tsx:311`），
+// 由 `TotalTokens()` 按同一条公式给出，不另存一份会漂移的数。
+//
+// # 为什么整个结构体不带 `Known`
+//
+// 只有"有没有这个投影"这一种未知，那是 `TokenUsage()` 的第二个返回值；
+// 进入结构体之后四个数都是宿主的真值（**包括真实的 0**：`init` 就是全 0）。
+// 把两者混在一起就是下一次"未知被写成 0"的来源。
+type TokenUsage struct {
+	UncachedInputTokens int64 `json:"uncachedInputTokens"`
+	OutputTokens        int64 `json:"outputTokens"`
+	CacheReadTokens     int64 `json:"cacheReadTokens"`
+	CacheWriteTokens    int64 `json:"cacheWriteTokens"`
+}
+
+// BilledInputTokens 是官方 `billedInputTokens`（`StatsPills.tsx:118-120`）：
+// 三个互不相交的 prompt 侧计费桶之和。
+func (u *TokenUsage) BilledInputTokens() int64 {
+	if u == nil {
+		return 0
+	}
+	return u.UncachedInputTokens + u.CacheReadTokens + u.CacheWriteTokens
+}
+
+// TotalTokens 是官方 `UsagePill` 的合计（`StatsPills.tsx:311`）：
+// prompt 侧三桶 + 输出桶。
+func (u *TokenUsage) TotalTokens() int64 {
+	if u == nil {
+		return 0
+	}
+	return u.BilledInputTokens() + u.OutputTokens
+}
+
+// TokenUsage 解 `tokenUsage`。返回 (nil, false) = 宿主没给这个投影
+// （老宿主 / 探针失败）→ 用量写「未知」，**不许拿别的用量字段凑四桶**。
+//
+// 键存在就返回真值，哪怕四桶全是 0：那是"这份日志还没有被 provider 回报过用量"
+// 的官方表达（官方 wire 上没有 `Measured` 位），由界面按官方 gate 决定画不画。
+func (p *SessionProjections) TokenUsage() (*TokenUsage, bool) {
+	raw, ok := p.raw("tokenUsage")
+	if !ok {
+		return nil, false
+	}
+	var usage TokenUsage
+	if err := json.Unmarshal(raw, &usage); err != nil {
+		return nil, false
+	}
+	return &usage, true
+}
+
+// ContextPressure 是宿主 `contextPressure` 投影的 wire 视图
+// （`@deepseek-ai/dsh-token-meter/src/usage-projection.ts:140-190`）。
+//
+// 三个字段**各自可选**：官方 wire 的形状就是"缺键 = 不知道"
+// （`...contextWindow === undefined ? {} : {contextWindow}`）。未知就整段省略，
+// 绝不补 0——0 是个可观测的谎报（0% 占用）。
+type ContextPressure struct {
+	// ContextWindow 是最近一次 request/context 声明的窗口（容量）。
+	ContextWindow *int64 `json:"contextWindow"`
+	// PressureTokens 是最近一次实测的 prompt 侧三桶之和。
+	PressureTokens *int64 `json:"pressureTokens"`
+	// ProjectedTokens 是 max(0, pressure + surface − sampledSurface) 的预测占用。
+	ProjectedTokens *int64 `json:"projectedTokens"`
+}
+
+// ContextPressure 解 `contextPressure`。返回 (nil, false) = 键缺失/为 null
+// → 上下文占用**未知**（不画环、不写 0%）。
+//
+// 注意：键存在但三个字段都缺（宿主给 `{}`）也是合法形状——那时返回非 nil 的
+// 空结构，`Occupancy()` 会如实回 false（"还不知道占用与容量"）。
+func (p *SessionProjections) ContextPressure() (*ContextPressure, bool) {
+	raw, ok := p.raw("contextPressure")
+	if !ok {
+		return nil, false
+	}
+	var pressure ContextPressure
+	if err := json.Unmarshal(raw, &pressure); err != nil {
+		return nil, false
+	}
+	return &pressure, true
+}
+
+// Occupancy 是官方 `contextOccupancy`（`dsh-client-ui-conversation/src/client/
+// context-occupancy.ts:15-25`）的逐行移植——占用百分比**是客户端算的**：
+//
+//	used    = projectedTokens ?? pressureTokens     （官方是 `??`：只用 nullish 回退）
+//	percent = min(100, round(used / contextWindow × 100))
+//
+// 三者缺一（used 或 contextWindow 未知）就回 false：官方那一条是
+// `if (usedTokens === undefined || pressure?.contextWindow === undefined) return null`，
+// 界面据此不画上下文读数——不是画 0%。
+//
+// 这个函数刻意放在客户端契约层而不是某个插件里：官方把它放在
+// `dsh-client-ui-conversation`，本仓的 ContextMeter 也归 composer 插件，
+// 任何要用"上下文占用"的地方都该走同一条算法，别再各算一遍。
+func (c *ContextPressure) Occupancy() (used int64, window int64, percent int, ok bool) {
+	if c == nil {
+		return 0, 0, 0, false
+	}
+	value := c.ProjectedTokens
+	if value == nil {
+		value = c.PressureTokens
+	}
+	if value == nil || c.ContextWindow == nil {
+		return 0, 0, 0, false
+	}
+	if *c.ContextWindow <= 0 {
+		// 容量非正是坏值：百分比没有意义，按"未知"处理（不写 0%，也不除零）。
+		return 0, 0, 0, false
+	}
+	used, window = *value, *c.ContextWindow
+	percent = int(math.Round(float64(used) / float64(window) * 100))
+	if percent > 100 {
+		percent = 100
+	}
+	if percent < 0 {
+		percent = 0
+	}
+	return used, window, percent, true
 }
 
 // SessionProjections 取一条会话的当前投影（官方 session/projections）。

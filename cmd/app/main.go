@@ -1803,6 +1803,9 @@ func newConfig(m *model) app.Config {
 				// whole-log `sessionStats` 投影（状态栏「活动」的唯一来源）。
 				// nil = 还没拉到 / 老宿主没有这个键 → 写「未知」，不拿 Msgs 凑。
 				SessionStats: m.wave3.sessionStatsSnapshot(cur),
+				// whole-log `tokenUsage` 投影四桶（用量胶囊 + 用量详情弹窗的唯一来源）。
+				// nil = 还没拉到 / 老宿主没有这个键 → 写「未知」，不拿 UsageTotal 反推。
+				TokenUsage:   m.wave3.tokenUsageSnapshot(cur),
 				Model:        modelName,
 				Permission:   permission,
 				Approval:     approvalView,

@@ -306,7 +306,7 @@ func hcCaptureStatusbar(t *testing.T, snap pluginapi.Snapshot, path string) {
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	config.Paint = func(c *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		c.Fill(bounds, product.theme.BgBase)
 		shotEnv := &pluginapi.Env{
 			Theme: product.theme, Data: snap, Tree: shotTree, Feat: shotFeat, Canvas: c,

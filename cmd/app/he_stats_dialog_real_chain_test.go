@@ -113,7 +113,7 @@ func (p *heRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, click strin
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: p.tree, Feat: p.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
@@ -427,7 +427,7 @@ func heCapture(t *testing.T, p *heRealProduct, snap pluginapi.Snapshot, path str
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, p.theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: p.theme, Data: snap, Tree: shotTree, Feat: shotFeat, Canvas: canvas,

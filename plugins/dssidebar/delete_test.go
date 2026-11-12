@@ -52,7 +52,7 @@ func (d *deleteProbe) draw(t *testing.T, click string) {
 	row := sess("s1", "一个会话", `D:\work`, "2026-11-03T20:00:00+08:00")
 	pageTheme := dscore.VivaTheme(d.plugin.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-	view.Draw(canvas, ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 268, Height: 40}, func(f ui.C) {
 		d.plugin.drawSession(f, d.env, row)
 	})
 }

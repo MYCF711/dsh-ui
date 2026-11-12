@@ -58,7 +58,7 @@ func newContainerHarness(t *testing.T) *containerHarness {
 	})
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("agent-team-containers"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 800}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1180, Height: 800}, MainWidth: 900,
 		Geometry: pluginapi.Geometry{Width: 1180, Height: 800, MainWidth: 900, SidebarWidth: 280},
 	}
 	return &containerHarness{kernel: kernel, plugin: plugin, store: store, env: env, canvas: canvas}
@@ -405,7 +405,7 @@ func containerHarnessEnv() *pluginapi.Env {
 	})
 	return &pluginapi.Env{
 		Theme: dscore.Dark(), Tree: tree, Feat: tree.Feature("agent-team-containers"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 800}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1180, Height: 800}, MainWidth: 900,
 		Geometry: pluginapi.Geometry{Width: 1180, Height: 800, MainWidth: 900, SidebarWidth: 280},
 	}
 }

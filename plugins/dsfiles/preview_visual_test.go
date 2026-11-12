@@ -44,7 +44,7 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
@@ -67,7 +67,7 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 
 	// 判据：预览卡片（InputMajor + 圆角 Panel）真的画出来了，而且它上面有文字。
 	// 只写 PNG 不断言的话，"画在一块看不见的地方"照样能出一张图。
-	var card ui.Rect
+	var card gfx.Rect
 	found := false
 	for _, primitive := range session.Snapshot().Primitives {
 		if primitive.Color != theme.InputMajor {

@@ -55,7 +55,7 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 		TextInput: ui.Fields(rightbar.Fields()...),
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		rightPref := size.Width * 0.45
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,

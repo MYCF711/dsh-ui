@@ -50,7 +50,7 @@ func containerEnv(width, height float32) *pluginapi.Env {
 		Tree:   tree,
 		Feat:   tree.Feature("official-containers-test"),
 		Canvas: canvas,
-		Bounds: ui.Rect{Width: width, Height: height},
+		Bounds: gfx.Rect{Width: width, Height: height},
 		Has:    func(pluginapi.Slot) bool { return false },
 	}
 }
@@ -59,19 +59,19 @@ func containerEnv(width, height float32) *pluginapi.Env {
 func menuTheme() *pluginapi.Theme { return dscore.Dark() }
 
 // mirrorRect 把容器算出来的 trigger 矩形镜像成"菜单应该出现的矩形"（上方 8px、右缘对齐）。
-func menuRectFor(anchor ui.Rect, bounds ui.Rect) ui.Rect {
+func menuRectFor(anchor gfx.Rect, bounds gfx.Rect) gfx.Rect {
 	width := ModelMenuWidth(bounds.Width)
 	height := ModelMenuMaxHeightFor(bounds.Height)
 	// 菜单紧贴 anchor 上方 8px，右缘对齐（官方 bottom:calc(anchor(top)+8px); right:anchor(right)）。
-	return ui.Rect{X: anchor.X + anchor.Width - width, Y: anchor.Y - ModelMenuAnchorGap - height, Width: width, Height: height}
+	return gfx.Rect{X: anchor.X + anchor.Width - width, Y: anchor.Y - ModelMenuAnchorGap - height, Width: width, Height: height}
 }
 
 // ── 容器 C：模型菜单 ────────────────────────────────────────────────
 
 // TestModelMenuFourStates 是容器 C 的四态表。
 func TestModelMenuFourStates(t *testing.T) {
-	bounds := ui.Rect{Width: 1182, Height: 832}
-	anchor := ui.Rect{X: 600, Y: 700, Width: 200, Height: ModelTriggerHeight}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
+	anchor := gfx.Rect{X: 600, Y: 700, Width: 200, Height: ModelTriggerHeight}
 
 	cases := []struct {
 		name     string
@@ -234,8 +234,8 @@ func TestModelMenuGeometryMatchesOfficial(t *testing.T) {
 //
 // 判据：菜单所有矩形的底边 <= trigger 顶边（允许 0px：菜单紧贴）。
 func TestModelMenuIsDrawnAboveAnchor(t *testing.T) {
-	bounds := ui.Rect{Width: 1182, Height: 832}
-	anchor := ui.Rect{X: 560, Y: 640, Width: 240, Height: ModelTriggerHeight}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
+	anchor := gfx.Rect{X: 560, Y: 640, Width: 240, Height: ModelTriggerHeight}
 	env := containerEnv(bounds.Width, bounds.Height)
 	opts := ModelMenuOptions{
 		Theme: menuTheme(), Anchor: anchor, Bounds: bounds, Open: true, Known: true,

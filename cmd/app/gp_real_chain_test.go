@@ -218,12 +218,12 @@ func renderProductSeats(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas, *ds
 	})
 	env := &pluginapi.Env{
 		Theme: theme, Data: snap, Tree: tree, Feat: tree.Feature("gp-real-chain"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
 	pageTheme := dscore.VivaTheme(theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-	view.Draw(canvas, ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		ui.Column(f).FillWidth().FillHeight().Children(func() {
 			kernel.DrawSlot(f, pluginapi.SlotMainBody, env)
 			kernel.DrawSlot(f, pluginapi.SlotMainComposer, env)

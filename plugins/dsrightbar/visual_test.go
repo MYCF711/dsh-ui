@@ -42,7 +42,7 @@ func TestV4AHeadlessResizeAndScreenshots(t *testing.T) {
 	showRightbar := true
 	config := app.Config{Title: "v4a-shell-rightbar", Width: 1920, Height: 1032, Tree: tree, WindowMode: app.WindowFrameless}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		rightPref := size.Width * 0.45
 		env := &pluginapi.Env{
 			Theme: theme,

@@ -212,7 +212,7 @@ func TestOfficialShellWiringDispatchesOfficialSlots(t *testing.T) {
 	theme := dscore.Dark()
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("shell-official-test"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832},
+		Bounds: gfx.Rect{Width: 1182, Height: 832},
 		Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
 	pageTheme := dscore.VivaTheme(theme)
@@ -244,7 +244,7 @@ func TestOfficialShellWiringDispatchesOfficialSlots(t *testing.T) {
 	}
 	env2 := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("shell-official-test-2"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832},
+		Bounds: gfx.Rect{Width: 1182, Height: 832},
 		Has:    func(slot pluginapi.Slot) bool { return clean.Has(slot) },
 	}
 	pageTheme2 := dscore.VivaTheme(theme)
@@ -297,7 +297,7 @@ func TestDrawnOfficialSlotsAreRegistered(t *testing.T) {
 	theme := dscore.Dark()
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("shell-official-all"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 1920, Height: 1032},
+		Bounds: gfx.Rect{Width: 1920, Height: 1032},
 		Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
 	pageTheme3 := dscore.VivaTheme(theme)
@@ -381,7 +381,7 @@ func TestOfficialTierReallyDispatchesComposerSeat(t *testing.T) {
 		theme := dscore.Dark()
 		env := &pluginapi.Env{
 			Theme: theme, Tree: tree, Feat: tree.Feature("composer-tier-test"), Canvas: canvas,
-			Bounds: ui.Rect{Width: 1182, Height: 832},
+			Bounds: gfx.Rect{Width: 1182, Height: 832},
 			Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 		}
 		pageTheme4 := dscore.VivaTheme(theme)

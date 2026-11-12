@@ -60,13 +60,13 @@ func drawSeat(t *testing.T, approval *pluginapi.Approval) (*gfx.Canvas, *[]strin
 	data := pluginapi.Snapshot{Cur: "s-approval", Approval: approval}
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("approval-official"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 		Geometry: pluginapi.Geometry{MainWidth: 840},
 	}
 	env.Act.Approve = func(requestID, optionID string) { approved = append(approved, requestID+"|"+optionID) }
 	pageTheme := dscore.VivaTheme(theme)
 	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-	fv.Draw(canvas, ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
+	fv.Draw(canvas, gfx.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		// 官方座位 = 整个 composer 区（审批卡 overlay + InputBar fallback），
 		// 容器给官方侧边距 16（与 uikernel.drawComposerSeat 一致）。
 		ui.Column(f).Width(840 - 2*composerClearance).PadX(composerClearance).Children(func() {
@@ -209,7 +209,7 @@ func TestOfficialSeatRealClick(t *testing.T) {
 	pageTheme2 := dscore.VivaTheme(theme)
 	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
-		bounds := ui.Rect{Width: current.Width, Height: current.Height}
+		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
@@ -283,13 +283,13 @@ func TestBothSeatsSameCard(t *testing.T) {
 	env := &pluginapi.Env{
 		Theme: theme, Data: pluginapi.Snapshot{Cur: "s-approval", Approval: &ap},
 		Tree: tree, Feat: tree.Feature("approval-legacy"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
+		Bounds: gfx.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 		Geometry: pluginapi.Geometry{MainWidth: 840},
 	}
 	env.Act.Approve = func(string, string) {}
 	pageTheme3 := dscore.VivaTheme(theme)
 	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
-	fv.Draw(canvas, ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
+	fv.Draw(canvas, gfx.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		p.draw(f, env)
 	})
 	for _, want := range []string{"需要审批", "允许这一次", "这个会话里以后都允许", "拒绝"} {

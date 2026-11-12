@@ -152,12 +152,12 @@ func pagingView(t *testing.T, entries []TranscriptEntry, history pluginapi.Histo
 	data := pluginapi.Snapshot{Cur: "s-paging", History: history}
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("transcript-paging-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	env.Act.LoadOlder = onLoadOlder
 	pageTheme := dscore.VivaTheme(theme)
 	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-	fv.Draw(canvas, ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
+	fv.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		view.Draw(f, env, hostViewport(tree), entries)
 	})
 	return view, canvas
@@ -290,7 +290,7 @@ func TestPagingButtonRealClick(t *testing.T) {
 	pageTheme2 := dscore.VivaTheme(theme)
 	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
-		bounds := ui.Rect{Width: current.Width, Height: current.Height}
+		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
@@ -387,12 +387,12 @@ func TestDrawProductTranscriptTakeover(t *testing.T) {
 			p.prims = &dscore.Primitives{Theme: theme}
 			env := &pluginapi.Env{
 				Theme: theme, Data: c.data, Tree: tree, Feat: tree.Feature("takeover"),
-				Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+				Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 			}
 			pageTheme3 := dscore.VivaTheme(theme)
 			fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
 			got := false
-			fv.Draw(canvas, ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
+			fv.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 				got = p.drawProductTranscript(f, env, true)
 			})
 			if got != c.want {

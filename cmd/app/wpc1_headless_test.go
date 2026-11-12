@@ -135,7 +135,7 @@ func runWPC1Headless(t *testing.T, width, height int) {
 	// 区域每帧都声明，所以拿到的是同一个 ScrollState 对象，可以跨帧读。
 	var bodyState *ui.ScrollState
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
-		bounds := ui.Rect{Width: current.Width, Height: current.Height}
+		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: snapshot(), Act: m.actions, Tree: tree, Feat: feat, Canvas: canvas,

@@ -59,7 +59,7 @@ func questionFrame(t *testing.T, tierOfficial, drawOfficial bool, msgs []apiclie
 		Theme: theme, Data: pluginapi.Snapshot{Cur: "s", Msgs: msgs},
 		Act:  pluginapi.Actions{Send: func(string) {}},
 		Tree: tree, Feat: tree.Feature("questions-official"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
+		Bounds: gfx.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 		Geometry: pluginapi.Geometry{MainWidth: 902}, Has: kernel.Has,
 	}
 	counts := map[pluginapi.Slot]int{}

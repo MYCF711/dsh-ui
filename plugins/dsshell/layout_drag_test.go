@@ -57,7 +57,7 @@ func TestLayoutUserWidthBeatsShellGeometry(t *testing.T) {
 	// 没拖过：照壳的几何摆。
 	p := &Plugin{SidebarWidth: 280}
 	env := &pluginapi.Env{
-		Geometry: geometry, Bounds: ui.Rect{Width: 1920},
+		Geometry: geometry, Bounds: gfx.Rect{Width: 1920},
 		Data: pluginapi.Snapshot{ShowRightbar: true}, Has: hasAll,
 	}
 	if got := p.layout(env); got != (columns{sidebar: 280, center: 776, rightbar: 864}) {
@@ -85,7 +85,7 @@ func TestLayoutUserWidthBeatsShellGeometry(t *testing.T) {
 	// 拖过侧栏但这一帧没有侧栏占用方：侧栏整列不占位，用户值不硬撑出一列。
 	noSidebar := &Plugin{SidebarWidth: 280, UserSidebarWidth: 344}
 	envNoSidebar := &pluginapi.Env{
-		Geometry: geometry, Bounds: ui.Rect{Width: 1920},
+		Geometry: geometry, Bounds: gfx.Rect{Width: 1920},
 		Data: pluginapi.Snapshot{ShowRightbar: true},
 		Has: func(s pluginapi.Slot) bool {
 			return s != pluginapi.SlotSidebarHeader && s != pluginapi.SlotSidebarList &&
@@ -128,7 +128,7 @@ type dragFixture struct {
 	env    *pluginapi.Env
 	tree   *gfx.Tree
 	canvas *gfx.Canvas
-	bounds ui.Rect
+	bounds gfx.Rect
 	boxes  map[pluginapi.Slot]ui.Box
 	// host 是宿主 ui-config.json 的替身：拖拽松手时插件会往它里面写。
 	host *fakeHostConfig
@@ -149,7 +149,7 @@ func newDragFixture(t *testing.T, width, height float32) *dragFixture {
 		theme:  theme,
 		tree:   tree,
 		canvas: canvas,
-		bounds: ui.Rect{Width: width, Height: height},
+		bounds: gfx.Rect{Width: width, Height: height},
 		boxes:  map[pluginapi.Slot]ui.Box{},
 		host:   &fakeHostConfig{kv: map[string]string{}},
 	}
@@ -230,7 +230,7 @@ func TestDragSidebarHandle(t *testing.T) {
 		t.Fatalf("侧栏把手没有命中区；hits=%+v", f.canvas.Hits())
 	}
 	// 命中带骑在分隔线上：左缘 = 280 - 4，宽 8，高 = 主体行高（视口减底部整行）。
-	wantRect := ui.Rect{X: 280 - handleWidth/2, Y: 0, Width: handleWidth, Height: 1032 - 24}
+	wantRect := gfx.Rect{X: 280 - handleWidth/2, Y: 0, Width: handleWidth, Height: 1032 - 24}
 	assertRect(t, "侧栏把手命中带", h.Bounds, wantRect)
 	if h.Cursor != gfx.PointerCursorResizeHorizontal {
 		t.Fatalf("把手光标应为 SizeWE（PointerCursorResizeHorizontal），得到 %v", h.Cursor)
@@ -305,7 +305,7 @@ func TestDragRightbarHandle(t *testing.T) {
 	}
 	// 右栏左缘 = 1920 - 864 = 1056；命中带骑在上面。
 	assertRect(t, "右栏把手命中带", h.Bounds,
-		ui.Rect{X: 1056 - handleWidth/2, Y: 0, Width: handleWidth, Height: 1032 - 24})
+		gfx.Rect{X: 1056 - handleWidth/2, Y: 0, Width: handleWidth, Height: 1032 - 24})
 	if h.Cursor != gfx.PointerCursorResizeHorizontal {
 		t.Fatalf("右栏把手光标应为 SizeWE，得到 %v", h.Cursor)
 	}
@@ -426,7 +426,7 @@ func TestReadConfigRestoresWidths(t *testing.T) {
 	newEnv := func(act pluginapi.Actions) *pluginapi.Env {
 		return &pluginapi.Env{
 			Geometry: pluginapi.Geometry{Width: 1920, SidebarWidth: 280, RightWidth: 864},
-			Bounds:   ui.Rect{Width: 1920},
+			Bounds:   gfx.Rect{Width: 1920},
 			Data:     pluginapi.Snapshot{ShowRightbar: true},
 			Has:      hasAll,
 			Act:      act,

@@ -60,7 +60,7 @@ func TestToolCardCustomRenderings(t *testing.T) {
 		WindowMode: app.WindowFrameless,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: size.Width,

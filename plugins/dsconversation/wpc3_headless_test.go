@@ -54,7 +54,7 @@ func runWPC3Evidence(t *testing.T, width, height int) {
 	var invalidator app.Invalidator
 	config := app.Config{Title: "wpc3-headless", Width: width, Height: height, Tree: tree, WindowMode: app.WindowFrameless, Invalidator: &invalidator}
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
-		bounds := ui.Rect{Width: current.Width, Height: current.Height}
+		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: current.Width}
 		view.Draw(canvas, bounds, func(f ui.C) { p.draw(f, env) })

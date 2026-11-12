@@ -56,7 +56,7 @@ func TestConversationTabsReallyClickAndRememberSession(t *testing.T) {
 	config := app.Config{Title: "fg3-tabs", Width: 1182, Height: 832, Tree: tree, WindowMode: app.WindowFrameless}
 	config.TextInput = ui.Fields(composer.Fields()...)
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		data.Total = len(data.Msgs)
 		env := fg3TestEnv(theme, tree, feat, canvas, bounds, data, kernel)
 		env.Act = pluginapi.Actions{
@@ -247,7 +247,7 @@ func TestConversationTabsReallyClickAndRememberSession(t *testing.T) {
 	}
 }
 
-func fg3TestEnv(theme *pluginapi.Theme, tree *gfx.Tree, feat gfx.Scope, canvas *gfx.Canvas, bounds ui.Rect, data pluginapi.Snapshot, kernel *uikernel.Kernel) *pluginapi.Env {
+func fg3TestEnv(theme *pluginapi.Theme, tree *gfx.Tree, feat gfx.Scope, canvas *gfx.Canvas, bounds gfx.Rect, data pluginapi.Snapshot, kernel *uikernel.Kernel) *pluginapi.Env {
 	var right float32
 	if data.ShowRightbar {
 		right = bounds.Width * 0.45

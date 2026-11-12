@@ -134,7 +134,7 @@ func (h *slotHarness) paint(t *testing.T, opts uikernel.ShellOptions, snap plugi
 	})
 	env := &pluginapi.Env{
 		Theme: h.theme, Data: snap, Tree: h.tree, Feat: h.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return h.kernel.Has(slot) },

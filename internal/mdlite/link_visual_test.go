@@ -45,13 +45,13 @@ func TestLinksHeadlessRealRegionsCallbacksAndBoundaries(t *testing.T) {
 
 	config := app.Config{Title: "link-actions", Width: 760, Height: 320, Tree: tree, WindowMode: app.WindowFrameless}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, theme.Background)
+		canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, theme.Background)
 		style := gfx.TextStyle{Size: 14, Color: fixture.look.Link}
-		fixture.http.Draw(canvas, ui.Rect{X: 20, Y: 20, Width: 600, Height: 28}, tree.ID(feature, "http"), style)
-		fixture.file.Draw(canvas, ui.Rect{X: 20, Y: 60, Width: 600, Height: 28}, tree.ID(feature, "file"), style)
+		fixture.http.Draw(canvas, gfx.Rect{X: 20, Y: 20, Width: 600, Height: 28}, tree.ID(feature, "http"), style)
+		fixture.file.Draw(canvas, gfx.Rect{X: 20, Y: 60, Width: 600, Height: 28}, tree.ID(feature, "file"), style)
 		fixture.view.Layout(canvas, components.MarkdownStyle{Size: 14}, &fixture.markdown, 600)
 		fixture.actions.Paint(canvas, &fixture.view, components.MarkdownPaint{
-			Look: fixture.look, X: 20, Y: 110, Clip: ui.Rect{X: 20, Y: 100, Width: 600, Height: 100},
+			Look: fixture.look, X: 20, Y: 110, Clip: gfx.Rect{X: 20, Y: 100, Width: 600, Height: 100},
 		})
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})

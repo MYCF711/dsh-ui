@@ -118,7 +118,7 @@ func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.A
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: p.tree, Feat: p.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
@@ -155,13 +155,13 @@ func hhTexts(canvas *gfx.Canvas) []string {
 }
 
 // hhFindText 找一条文字的矩形（找不到返回 ok=false）。
-func hhFindText(canvas *gfx.Canvas, value string) (ui.Rect, bool) {
+func hhFindText(canvas *gfx.Canvas, value string) (gfx.Rect, bool) {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return text.Bounds, true
 		}
 	}
-	return ui.Rect{}, false
+	return gfx.Rect{}, false
 }
 
 // hhHasText 看画布上有没有这条文字（含前缀匹配：省略号/后缀不影响）。
@@ -230,7 +230,7 @@ func TestHHTriggerRowPutsSettingsAndConnectionOnOneLine(t *testing.T) {
 					tc.leftLabel, leftCenter, connCenter)
 			}
 			// 两个子项都必须落在这一行里（不是"行在，子项跑到别处"）。
-			for _, box := range []ui.Rect{left, conn} {
+			for _, box := range []gfx.Rect{left, conn} {
 				if box.Y < row.Y || box.Y+box.Height > row.Y+row.Height {
 					t.Fatalf("子项 %+v 越出设置行 %+v", box, row)
 				}
@@ -273,7 +273,7 @@ func TestHHTriggerRowRendersInLegacySidebarToo(t *testing.T) {
 	env := &pluginapi.Env{
 		Theme: theme, Data: pluginapi.Snapshot{Cur: "s", Link: pluginapi.LinkConnected},
 		Tree: tree, Feat: feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
@@ -384,7 +384,7 @@ func TestHHComposerHasNoConnectionWording(t *testing.T) {
 				Data:  pluginapi.Snapshot{Cur: "s", Link: tc.link, Status: tc.status},
 				Act:   pluginapi.Actions{Send: func(string) {}},
 				Tree:  tree, Feat: feat, Canvas: canvas,
-				Bounds:    ui.Rect{Width: 902, Height: 400},
+				Bounds:    gfx.Rect{Width: 902, Height: 400},
 				MainWidth: 902,
 				Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 				Has:       func(slot pluginapi.Slot) bool { return kernel.Has(slot) },

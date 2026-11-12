@@ -516,7 +516,7 @@ func TestSolveColumnsMatchesOfficial(t *testing.T) {
 
 // ── 布局：两个官方验收尺寸的逐容器矩形 ──────────────────────────────
 
-func assertRect(t *testing.T, name string, got, want ui.Rect) {
+func assertRect(t *testing.T, name string, got, want gfx.Rect) {
 	t.Helper()
 	const eps = 0.01
 	if absOff(got.X-want.X) > eps || absOff(got.Y-want.Y) > eps ||
@@ -536,29 +536,29 @@ func TestFirstScreenGeometryAtOfficialSizes(t *testing.T) {
 	// 1920×1032：PLAN §U1.5 的第一个证据尺寸；Windows 有 40px caption。
 	t.Run("1920x1032", func(t *testing.T) {
 		l := ComputeShellLayout(1920, 1032, ShellOptions{Windows: true, Tabs: true, SidebarPreferred: 280, RightbarOn: true, PanellistRows: 3})
-		assertRect(t, "frame", l.Frame, ui.Rect{Width: 1920, Height: 1032})
-		assertRect(t, "sidebarCol", l.SidebarCol, ui.Rect{Y: 40, Width: 280, Height: 992})
-		assertRect(t, "centerCol", l.CenterCol, ui.Rect{X: 280, Y: 40, Width: 776, Height: 992})
-		assertRect(t, "rightbarCol", l.RightbarCol, ui.Rect{X: 1056, Y: 40, Width: 864, Height: 992})
+		assertRect(t, "frame", l.Frame, gfx.Rect{Width: 1920, Height: 1032})
+		assertRect(t, "sidebarCol", l.SidebarCol, gfx.Rect{Y: 40, Width: 280, Height: 992})
+		assertRect(t, "centerCol", l.CenterCol, gfx.Rect{X: 280, Y: 40, Width: 776, Height: 992})
+		assertRect(t, "rightbarCol", l.RightbarCol, gfx.Rect{X: 1056, Y: 40, Width: 864, Height: 992})
 		// 左栏：padding 6/8 → 内容 264 宽；logoRow 40（Windows）。
-		assertRect(t, "SidebarRoot.root", l.SidebarRoot, ui.Rect{X: 8, Y: 46, Width: 264, Height: 980})
-		assertRect(t, "SidebarRoot.logoRow", l.SidebarLogoRow, ui.Rect{X: 8, Y: 46, Width: 264, Height: 40})
-		assertRect(t, "SidebarRoot.newSession", l.NewSession, ui.Rect{X: 12, Y: 86, Width: 256, Height: 38})
-		assertRect(t, "SidebarRoot.panelList", l.PanelList, ui.Rect{X: 8, Y: 136, Width: 264, Height: 108})
+		assertRect(t, "SidebarRoot.root", l.SidebarRoot, gfx.Rect{X: 8, Y: 46, Width: 264, Height: 980})
+		assertRect(t, "SidebarRoot.logoRow", l.SidebarLogoRow, gfx.Rect{X: 8, Y: 46, Width: 264, Height: 40})
+		assertRect(t, "SidebarRoot.newSession", l.NewSession, gfx.Rect{X: 12, Y: 86, Width: 256, Height: 38})
+		assertRect(t, "SidebarRoot.panelList", l.PanelList, gfx.Rect{X: 8, Y: 136, Width: 264, Height: 108})
 		// header 76 = 10 + 30 + 10 + 25 + 1 hairline；titleRow 30；tabs 25。
-		assertRect(t, "header", l.Header, ui.Rect{X: 280, Y: 40, Width: 776, Height: 76})
-		assertRect(t, "titleRow", l.TitleRow, ui.Rect{X: 300, Y: 50, Width: 728, Height: 30})
-		assertRect(t, "tabsRow", l.TabsRow, ui.Rect{X: 308, Y: 90, Width: 720, Height: 25})
-		assertRect(t, "body", l.Body, ui.Rect{X: 280, Y: 116, Width: 776, Height: 916})
-		assertRect(t, "scrollBody", l.ScrollBody, ui.Rect{X: 280, Y: 116, Width: 776, Height: 788})
+		assertRect(t, "header", l.Header, gfx.Rect{X: 280, Y: 40, Width: 776, Height: 76})
+		assertRect(t, "titleRow", l.TitleRow, gfx.Rect{X: 300, Y: 50, Width: 728, Height: 30})
+		assertRect(t, "tabsRow", l.TabsRow, gfx.Rect{X: 308, Y: 90, Width: 720, Height: 25})
+		assertRect(t, "body", l.Body, gfx.Rect{X: 280, Y: 116, Width: 776, Height: 916})
+		assertRect(t, "scrollBody", l.ScrollBody, gfx.Rect{X: 280, Y: 116, Width: 776, Height: 788})
 		// 正文列：clamp(680, 776*.64=496.6, 920) = 680，滚动区两侧 16+16 → 710 可用，居中。
-		assertRect(t, "column", l.Column, ui.Rect{X: 327, Y: 132, Width: 680, Height: 756})
-		assertRect(t, "composerSeat", l.ComposerSeat, ui.Rect{X: 280, Y: 904, Width: 776, Height: 128})
-		assertRect(t, "composerRoot", l.ComposerRoot, ui.Rect{X: 296, Y: 904, Width: 744, Height: 128})
-		assertRect(t, "composerCard", l.ComposerCard, ui.Rect{X: 312, Y: 904, Width: 712, Height: 98})
-		assertRect(t, "composerRow", l.ComposerRow, ui.Rect{X: 312, Y: 960, Width: 712, Height: 42})
-		assertRect(t, "composerDock", l.ComposerDock, ui.Rect{X: 296, Y: 1002, Width: 744, Height: 26})
-		assertRect(t, "overlay", l.Overlay, ui.Rect{Width: 1920, Height: 1032})
+		assertRect(t, "column", l.Column, gfx.Rect{X: 327, Y: 132, Width: 680, Height: 756})
+		assertRect(t, "composerSeat", l.ComposerSeat, gfx.Rect{X: 280, Y: 904, Width: 776, Height: 128})
+		assertRect(t, "composerRoot", l.ComposerRoot, gfx.Rect{X: 296, Y: 904, Width: 744, Height: 128})
+		assertRect(t, "composerCard", l.ComposerCard, gfx.Rect{X: 312, Y: 904, Width: 712, Height: 98})
+		assertRect(t, "composerRow", l.ComposerRow, gfx.Rect{X: 312, Y: 960, Width: 712, Height: 42})
+		assertRect(t, "composerDock", l.ComposerDock, gfx.Rect{X: 296, Y: 1002, Width: 744, Height: 26})
+		assertRect(t, "overlay", l.Overlay, gfx.Rect{Width: 1920, Height: 1032})
 		if l.LeadingSeat.X != 88 || l.LeadingSeat.Y != 11 {
 			t.Fatalf("leadingSeat = (%v,%v)，官方是 (88,11)", l.LeadingSeat.X, l.LeadingSeat.Y)
 		}
@@ -567,14 +567,14 @@ func TestFirstScreenGeometryAtOfficialSizes(t *testing.T) {
 	// 1182×832：PLAN §U1.5 的第二个证据尺寸；Web 无 caption，中栏恰好 400。
 	t.Run("1182x832", func(t *testing.T) {
 		l := ComputeShellLayout(1182, 832, ShellOptions{Tabs: true, SidebarPreferred: 280, RightbarOn: true})
-		assertRect(t, "sidebarCol", l.SidebarCol, ui.Rect{Width: 280, Height: 832})
-		assertRect(t, "centerCol", l.CenterCol, ui.Rect{X: 280, Width: 400, Height: 832})
-		assertRect(t, "rightbarCol", l.RightbarCol, ui.Rect{X: 680, Width: 502, Height: 832})
-		assertRect(t, "titleRow", l.TitleRow, ui.Rect{X: 300, Y: 10, Width: 352, Height: 30})
+		assertRect(t, "sidebarCol", l.SidebarCol, gfx.Rect{Width: 280, Height: 832})
+		assertRect(t, "centerCol", l.CenterCol, gfx.Rect{X: 280, Width: 400, Height: 832})
+		assertRect(t, "rightbarCol", l.RightbarCol, gfx.Rect{X: 680, Width: 502, Height: 832})
+		assertRect(t, "titleRow", l.TitleRow, gfx.Rect{X: 300, Y: 10, Width: 352, Height: 30})
 		// 正文列被可用宽度夹住：710 → 398-2-64=332? 实际 innerW=398-2-64=332。
-		assertRect(t, "column", l.Column, ui.Rect{X: 312, Y: 92, Width: 334, Height: 596})
+		assertRect(t, "column", l.Column, gfx.Rect{X: 312, Y: 92, Width: 334, Height: 596})
 		// 主栏 400 时 composer 卡片宽 = clamp(680,…)=680 + 32 = 712 → 被可用宽夹到 368。
-		assertRect(t, "composerCard", l.ComposerCard, ui.Rect{X: 296, Y: 704, Width: 368, Height: 98})
+		assertRect(t, "composerCard", l.ComposerCard, gfx.Rect{X: 296, Y: 704, Width: 368, Height: 98})
 	})
 }
 
@@ -587,8 +587,8 @@ func TestBottomRowReservesNoSpaceWhenEmpty(t *testing.T) {
 		t.Fatalf("没有 bottom 时三列应有全部 992 高，实际 %v", empty.BodyRow.Height)
 	}
 	with := ComputeShellLayout(1920, 1032, ShellOptions{Windows: true, Tabs: true, SidebarPreferred: 280, RightbarOn: true, BottomHeight: 24})
-	assertRect(t, "bottomRow", with.BottomRow, ui.Rect{Y: 1008, Width: 1920, Height: 24})
-	assertRect(t, "centerCol", with.CenterCol, ui.Rect{X: 280, Y: 40, Width: 776, Height: 968})
+	assertRect(t, "bottomRow", with.BottomRow, gfx.Rect{Y: 1008, Width: 1920, Height: 24})
+	assertRect(t, "centerCol", with.CenterCol, gfx.Rect{X: 280, Y: 40, Width: 776, Height: 968})
 }
 
 func TestCaptionDeductedOnce(t *testing.T) {
@@ -625,7 +625,7 @@ func newSkeletonEnv(width, height float32, has func(pluginapi.Slot) bool) (*plug
 		Tree:   tree,
 		Feat:   tree.Feature("official-shell-test"),
 		Canvas: canvas,
-		Bounds: ui.Rect{Width: width, Height: height},
+		Bounds: gfx.Rect{Width: width, Height: height},
 		Has:    has,
 	}, canvas
 }
@@ -647,7 +647,7 @@ func TestFirstScreenDrawMatchesLayout(t *testing.T) {
 		})
 	})
 
-	want := map[string]ui.Rect{
+	want := map[string]gfx.Rect{
 		"AppFrame.frame":                layout.Frame,
 		"AppFrame.sidebarCol":           layout.SidebarCol,
 		"AppFrame.centerCol":            layout.CenterCol,

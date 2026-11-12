@@ -60,7 +60,7 @@ func newStatsDialogHarness(t *testing.T) *statsDialogHarness {
 // 与 `uikernel.Kernel.DrawSlot` 同义（Draw → Children 转发），只是**顺手**把
 // AfterDraw 也跑一遍——弹窗的锚点矩形就是在那里缓存的，不跑 AfterDraw 的帧
 // 只能走过渡几何。
-func (h *statsDialogHarness) frame(t *testing.T, bounds ui.Rect, data pluginapi.Snapshot, click, hover string) *gfx.Canvas {
+func (h *statsDialogHarness) frame(t *testing.T, bounds gfx.Rect, data pluginapi.Snapshot, click, hover string) *gfx.Canvas {
 	t.Helper()
 	canvas := &gfx.Canvas{}
 	canvas.SetTree(h.tree)
@@ -117,7 +117,7 @@ func (h *statsDialogHarness) drawSlot(f ui.C, env *pluginapi.Env, slot pluginapi
 // 第二帧在胶囊的命中区上造一次点击。返回第二帧的画布。
 func (h *statsDialogHarness) openDialog(t *testing.T, data pluginapi.Snapshot) *gfx.Canvas {
 	t.Helper()
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "")
 	return h.frame(t, bounds, data, statsPillHitName, "")
 }
@@ -187,7 +187,7 @@ func TestStatsDialogStructureFollowsOfficialTree(t *testing.T) {
 	data := statsSnapshot(statsFullStats())
 
 	// 第一帧只有胶囊：没有弹窗、但有命中区（官方 DialogPill）。
-	closed := h.frame(t, ui.Rect{Width: 1182, Height: 832}, data, "", "")
+	closed := h.frame(t, gfx.Rect{Width: 1182, Height: 832}, data, "", "")
 	if statsDialogHasText(closed, zhStatsDialogTitle) {
 		t.Fatalf("没点开的帧里出现了弹窗标题：%v", statsDialogTexts(closed))
 	}
@@ -284,7 +284,7 @@ func TestStatsDialogRendersEachOfTheEightFields(t *testing.T) {
 func TestStatsDialogHiddenWithoutProjection(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := pluginapi.Snapshot{Cur: "s-empty"} // SessionStats == nil（老宿主 / 未拉到）
-	first := h.frame(t, ui.Rect{Width: 1182, Height: 832}, data, "", "")
+	first := h.frame(t, gfx.Rect{Width: 1182, Height: 832}, data, "", "")
 	if !statsDialogHasText(first, zhActivityUnknown) {
 		t.Fatalf("没有投影时活动胶囊 = %v，want「活动 未知」", statsDialogTexts(first))
 	}
@@ -292,7 +292,7 @@ func TestStatsDialogHiddenWithoutProjection(t *testing.T) {
 		t.Fatal("没有投影时活动胶囊仍有命中区（点了也开不出弹窗 = 假入口）")
 	}
 	// 就算硬点这个名字，也不许出现弹窗。
-	clicked := h.frame(t, ui.Rect{Width: 1182, Height: 832}, data, statsPillHitName, "")
+	clicked := h.frame(t, gfx.Rect{Width: 1182, Height: 832}, data, statsPillHitName, "")
 	if statsDialogHasText(clicked, zhStatsDialogTitle) {
 		t.Fatalf("没有投影却点出了弹窗：%v", statsDialogTexts(clicked))
 	}
@@ -309,11 +309,11 @@ func TestStatsDialogHiddenWithoutProjection(t *testing.T) {
 func TestStatsDialogDoesNotFabricateZeroCounts(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := pluginapi.Snapshot{Cur: "s-zero", SessionStats: &apiclient.SessionStats{}}
-	first := h.frame(t, ui.Rect{Width: 1182, Height: 832}, data, "", "")
+	first := h.frame(t, gfx.Rect{Width: 1182, Height: 832}, data, "", "")
 	if _, ok := statsDialogHitByName(t, h, first, statsPillHitName); ok {
 		t.Fatal("steps=0 时胶囊仍可点（官方整枚不渲染 + 本仓写「未知」）")
 	}
-	clicked := h.frame(t, ui.Rect{Width: 1182, Height: 832}, data, statsPillHitName, "")
+	clicked := h.frame(t, gfx.Rect{Width: 1182, Height: 832}, data, statsPillHitName, "")
 	joined := statsDialogJoined(clicked)
 	for _, banned := range []string{"0 轮 0 步", "0 轮", "0 步"} {
 		if strings.Contains(joined, banned) {
@@ -330,14 +330,14 @@ func TestStatsDialogStaysPlainWithoutTimedRows(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	stats := &apiclient.SessionStats{Turns: 1, Steps: 2}
 	data := statsSnapshot(stats)
-	first := h.frame(t, ui.Rect{Width: 1182, Height: 832}, data, "", "")
+	first := h.frame(t, gfx.Rect{Width: 1182, Height: 832}, data, "", "")
 	if !statsDialogHasText(first, "1 轮 2 步") {
 		t.Fatalf("胶囊读数 = %v，want「1 轮 2 步」", statsDialogTexts(first))
 	}
 	if _, ok := statsDialogHitByName(t, h, first, statsPillHitName); ok {
 		t.Fatal("没有计时行时胶囊仍有命中区（官方是 PlainPill，不可点）")
 	}
-	clicked := h.frame(t, ui.Rect{Width: 1182, Height: 832}, data, statsPillHitName, "")
+	clicked := h.frame(t, gfx.Rect{Width: 1182, Height: 832}, data, statsPillHitName, "")
 	if strings.Contains(statsDialogJoined(clicked), zhStatsDialogTitle) {
 		t.Fatalf("没有计时行却点出了空弹窗：%v", statsDialogTexts(clicked))
 	}
@@ -347,7 +347,7 @@ func TestStatsDialogStaysPlainWithoutTimedRows(t *testing.T) {
 func TestStatsDialogPillHoverState(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := statsSnapshot(statsFullStats())
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 
 	rest := h.frame(t, bounds, data, "", "")
 	if color := statsDialogTextColor(rest, "2 轮 3 步 · 410 tok/s"); color != h.theme.LabelTertiary {
@@ -360,20 +360,20 @@ func TestStatsDialogPillHoverState(t *testing.T) {
 }
 
 // statsDialogTextColor 取某段文本的颜色。
-func statsDialogTextColor(canvas *gfx.Canvas, want string) ui.Color {
+func statsDialogTextColor(canvas *gfx.Canvas, want string) gfx.Color {
 	for _, text := range canvas.Texts() {
 		if text.Value == want {
 			return text.Style.Color
 		}
 	}
-	return ui.Color{}
+	return gfx.Color{}
 }
 
 // ⑤ 点弹窗外面关闭（官方 useDismissOnOutsidePointer）。
 func TestStatsDialogClosesOnOutsideClick(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := statsSnapshot(statsFullStats())
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "")
 	open := h.frame(t, bounds, data, statsPillHitName, "")
 	if !statsDialogHasText(open, zhStatsDialogTitle) {
@@ -400,7 +400,7 @@ func TestStatsDialogClosesOnOutsideClick(t *testing.T) {
 func TestStatsDialogStaysOpenOnPanelClick(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := statsSnapshot(statsFullStats())
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "")
 	h.frame(t, bounds, data, statsPillHitName, "")
 	inside := h.frame(t, bounds, data, statsDialogPanelHit, "")
@@ -413,7 +413,7 @@ func TestStatsDialogStaysOpenOnPanelClick(t *testing.T) {
 func TestStatsDialogClosesOnEscape(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := statsSnapshot(statsFullStats())
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "")
 	h.frame(t, bounds, data, statsPillHitName, "")
 	if !h.plugin.dialog.open {
@@ -435,7 +435,7 @@ func TestStatsDialogClosesOnEscape(t *testing.T) {
 func TestStatsDialogClosesOnSessionSwitch(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	first := statsSnapshot(statsFullStats())
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, first, "", "")
 	h.frame(t, bounds, first, statsPillHitName, "")
 	if !h.plugin.dialog.open {
@@ -453,7 +453,7 @@ func TestStatsDialogClosesOnSessionSwitch(t *testing.T) {
 func TestStatsDialogRendersOncePerFrame(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := statsSnapshot(statsFullStats())
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "")
 	h.frame(t, bounds, data, statsPillHitName, "")
 	canvas := h.frame(t, bounds, data, "", "")
@@ -474,7 +474,7 @@ func TestStatsDialogRendersOncePerFrame(t *testing.T) {
 func TestUsagePillStaysPlainWithoutTokenUsage(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := statsSnapshot(statsFullStats())
-	canvas := h.frame(t, ui.Rect{Width: 1182, Height: 832}, data, "", "")
+	canvas := h.frame(t, gfx.Rect{Width: 1182, Height: 832}, data, "", "")
 	pills := 0
 	for _, hit := range canvas.Hits() {
 		if hit.Role == gfx.RoleButton {

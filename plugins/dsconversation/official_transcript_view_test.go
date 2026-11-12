@@ -39,11 +39,11 @@ func renderTranscript(t *testing.T, entries []TranscriptEntry, vp TranscriptView
 	canvas, tree := newTranscriptCanvas()
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("transcript-view-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	pageTheme := dscore.VivaTheme(theme)
 	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-	fv.Draw(canvas, ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
+	fv.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		view.Draw(f, env, vp, entries)
 	})
 	// 覆画阶段：代码块（banner / 高亮 / 横滚视口 / 复制按钮）要等布局
@@ -397,12 +397,12 @@ func TestApprovalCardGeometryAndDisabled(t *testing.T) {
 	canvas, tree := newTranscriptCanvas()
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("approval-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	var boxes ApprovalBoxes
 	pageTheme2 := dscore.VivaTheme(theme)
 	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
-	fv.Draw(canvas, ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
+	fv.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		boxes = view.DrawApprovalCard(f, env, pluginapi.Approval{
 			RequestID: "",
 			Title:     "需要审批 bash",

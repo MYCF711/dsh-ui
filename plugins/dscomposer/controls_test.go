@@ -6,7 +6,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/gfx"
-	"github.com/vivaui/viva/ui"
 )
 
 func composerText(canvas *gfx.Canvas, value string) (gfx.Text, bool) {
@@ -27,7 +26,7 @@ func composerHit(canvas *gfx.Canvas, label string) (gfx.Hit, bool) {
 	return gfx.Hit{}, false
 }
 
-func trianglesInside(canvas *gfx.Canvas, bounds ui.Rect, color ui.Color) int {
+func trianglesInside(canvas *gfx.Canvas, bounds gfx.Rect, color gfx.Color) int {
 	count := 0
 	for _, triangle := range canvas.Triangles() {
 		if triangle.Color != color {
@@ -95,7 +94,7 @@ func TestKnownPermissionHasVectorIconBesideLabel(t *testing.T) {
 			}
 			// 官方 triggerIcon 为 14×14，位于 label 左侧、gap 4；这里只量这枚图标的座位，
 			// 避免发送键的矢量三角形误满足权限图标断言。
-			iconBounds := ui.Rect{X: label.Bounds.X - 18, Y: label.Bounds.Y + label.Bounds.Height/2 - 8, Width: 16, Height: 16}
+			iconBounds := gfx.Rect{X: label.Bounds.X - 18, Y: label.Bounds.Y + label.Bounds.Height/2 - 8, Width: 16, Height: 16}
 			if got := trianglesInside(canvas, iconBounds, p.theme.LabelSecondary); got == 0 {
 				t.Fatalf("权限 label 左侧没有 14px 矢量图标；label=%+v triangles=%d", label.Bounds, len(canvas.Triangles()))
 			}

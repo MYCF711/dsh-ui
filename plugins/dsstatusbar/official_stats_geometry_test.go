@@ -20,7 +20,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/gfx"
-	"github.com/vivaui/viva/ui"
 )
 
 // TestOfficialStatsGeometryTableIsSelfConsistent 逐行核对几何表。
@@ -111,7 +110,7 @@ func TestStatsDialogGeometryStates(t *testing.T) {
 	// ── 常态：宽窗 + 胶囊贴底 → 弹窗在胶囊上方 8px、宽 = 官方 min-width 300。
 	h := newStatsDialogHarness(t)
 	data := statsSnapshot(statsFullStats())
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "")
 	open := h.frame(t, bounds, data, statsPillHitName, "")
 	pill, ok := statsDialogHitByName(t, h, open, statsPillHitName)
@@ -138,7 +137,7 @@ func TestStatsDialogGeometryStates(t *testing.T) {
 
 	// ── 窄窗：320 宽 → 官方 max-width min(440, 100vw-24) 生效 = 296，左右各 12。
 	narrow := newStatsDialogHarness(t)
-	narrowBounds := ui.Rect{Width: 320, Height: 832}
+	narrowBounds := gfx.Rect{Width: 320, Height: 832}
 	narrow.frame(t, narrowBounds, data, "", "")
 	narrowOpen := narrow.frame(t, narrowBounds, data, statsPillHitName, "")
 	narrowPanel, ok := statsDialogHitByName(t, narrow, narrowOpen, statsDialogPanelHit)
@@ -156,8 +155,8 @@ func TestStatsDialogGeometryStates(t *testing.T) {
 	}
 
 	// ── 靠右锚点：胶囊贴右边缘时，左沿被往左推到"整块不出窗"。
-	rightAnchor := ui.Rect{X: 1100, Y: 810, Width: 120, Height: 22}
-	atRight := statsDialogAnchor(rightAnchor, StatsDialogMinWidth, ui.Rect{Width: 1182, Height: 832})
+	rightAnchor := gfx.Rect{X: 1100, Y: 810, Width: 120, Height: 22}
+	atRight := statsDialogAnchor(rightAnchor, StatsDialogMinWidth, gfx.Rect{Width: 1182, Height: 832})
 	if want := float32(1182 - StatsDialogWindowInset - StatsDialogMinWidth); atRight.X != want {
 		t.Fatalf("靠右锚点左沿 = %v，want %v（官方 left: max(12px, anchor(left)) 后再夹进窗）", atRight.X, want)
 	}
@@ -165,7 +164,7 @@ func TestStatsDialogGeometryStates(t *testing.T) {
 		t.Fatalf("靠右锚点仍出窗：%+v", atRight)
 	}
 	// 靠左锚点：官方 max(12px, anchor(left)) 的下界生效。
-	atLeft := statsDialogAnchor(ui.Rect{X: 2, Y: 810, Width: 120, Height: 22}, StatsDialogMinWidth, ui.Rect{Width: 1182, Height: 832})
+	atLeft := statsDialogAnchor(gfx.Rect{X: 2, Y: 810, Width: 120, Height: 22}, StatsDialogMinWidth, gfx.Rect{Width: 1182, Height: 832})
 	if atLeft.X != StatsDialogWindowInset {
 		t.Fatalf("靠左锚点左沿 = %v，want 12（官方 max(12px, …)）", atLeft.X)
 	}
@@ -187,7 +186,7 @@ func TestStatsDialogWidthClampsLikeOfficial(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			env := &pluginapi.Env{Bounds: ui.Rect{Width: tc.bounds, Height: 832}}
+			env := &pluginapi.Env{Bounds: gfx.Rect{Width: tc.bounds, Height: 832}}
 			if got := statsDialogWidth(env, rows, "2 轮 3 步"); got != tc.want {
 				t.Fatalf("宽 %v 时弹窗宽 = %v，want %v", tc.bounds, got, tc.want)
 			}
@@ -199,7 +198,7 @@ func TestStatsDialogWidthClampsLikeOfficial(t *testing.T) {
 func TestStatsDialogDetailsAlignLikeOfficialGrid(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := statsSnapshot(statsFullStats())
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "")
 	open := h.frame(t, bounds, data, statsPillHitName, "")
 	panel, ok := statsDialogHitByName(t, h, open, statsDialogPanelHit)
@@ -236,11 +235,14 @@ func TestStatsDialogDetailsAlignLikeOfficialGrid(t *testing.T) {
 			t.Fatalf("dd %q 右沿 = %v，want %v（官方 text-align: right）", value, right, contentRight)
 		}
 	}
-	// 标题：章节名贴内容左沿、头条计数贴内容右沿。
+	// 标题：`.titleLabel` 是「14px 图标 + gap6 + 章节名」，所以章节名左沿 =
+	// 内容左沿 + 图标 + gap；头条计数贴内容右沿。
 	title, _ := find(zhStatsDialogTitle)
 	counts, _ := find("2 轮 3 步")
-	if title.Bounds.X != contentLeft {
-		t.Fatalf("标题左沿 = %v，want %v", title.Bounds.X, contentLeft)
+	wantTitleX := contentLeft + StatsDialogTitleIconSize + StatsDialogTitleLabelGap
+	if title.Bounds.X != wantTitleX {
+		t.Fatalf("标题左沿 = %v，want %v（官方 .titleLabel：icon 14 + gap 6 之后才是章节名）",
+			title.Bounds.X, wantTitleX)
 	}
 	if right := counts.Bounds.X + counts.Bounds.Width; math.Abs(float64(right-contentRight)) > 0.01 {
 		t.Fatalf("头条计数右沿 = %v，want %v（官方 .title space-between）", right, contentRight)

@@ -17,6 +17,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -24,7 +25,7 @@ import (
 //
 // 矩形必须在 `Draw` 返回**之后**读（`box.Rect()` 的有效期是 End 解算完成）：
 // 在 measure 回调里读只会拿到零矩形。
-func seatFrame(t *testing.T, opts ShellOptions, occupied map[pluginapi.Slot]bool) (map[pluginapi.Slot]int, map[string]ui.Rect) {
+func seatFrame(t *testing.T, opts ShellOptions, occupied map[pluginapi.Slot]bool) (map[pluginapi.Slot]int, map[string]gfx.Rect) {
 	t.Helper()
 	theme := dscore.Dark()
 	env, canvas := newSkeletonEnv(1182, 832, func(slot pluginapi.Slot) bool { return occupied[slot] })
@@ -37,7 +38,7 @@ func seatFrame(t *testing.T, opts ShellOptions, occupied map[pluginapi.Slot]bool
 			boxes[name] = box
 		})
 	})
-	rects := make(map[string]ui.Rect, len(boxes))
+	rects := make(map[string]gfx.Rect, len(boxes))
 	for name, box := range boxes {
 		rects[name] = box.Rect()
 	}

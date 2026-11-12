@@ -55,7 +55,7 @@ func runWPC2ConversationEvidence(t *testing.T, width, height int) {
 	// 这里把它记下来。区域每帧都声明，所以拿到的是同一个 ScrollState 对象。
 	var bodyState *ui.ScrollState
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
-		bounds := ui.Rect{Width: current.Width, Height: current.Height}
+		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: current.Width,
 			ScrollBox: func(box ui.Box) { bodyState = box.ScrollState() }}

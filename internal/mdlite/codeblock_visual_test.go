@@ -42,9 +42,9 @@ func TestCodeBlockHeadlessCopyFeedbackWrapScrollAndScreenshots(t *testing.T) {
 
 	config := app.Config{Title: "codeblock-actions", Width: 760, Height: 560, Tree: tree, WindowMode: app.WindowFrameless}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.DarkTheme().Background)
+		canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, ui.DarkTheme().Background)
 		height := fixture.block.Height(canvas, 560, fixture.style)
-		bounds := ui.Rect{X: 20, Y: 20, Width: 560, Height: height}
+		bounds := gfx.Rect{X: 20, Y: 20, Width: 560, Height: height}
 		fixture.geometry = fixture.block.Draw(canvas, bounds, fixture.ids, fixture.style)
 	}
 	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult { return fixture.block.HandleScroll(event) }

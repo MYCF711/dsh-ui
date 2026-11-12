@@ -37,7 +37,7 @@ func renderFiles(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi
 	}
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 320, Height: 900},
+		Bounds:    gfx.Rect{Width: 320, Height: 900},
 		MainWidth: 320,
 		Geometry:  pluginapi.Geometry{Width: 320, Height: 900, SidebarWidth: 280},
 	}
@@ -233,7 +233,7 @@ func drawPreviewOnce(t *testing.T, p *Plugin, data pluginapi.Snapshot, act plugi
 		}
 		env := &pluginapi.Env{
 			Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
-			Bounds: ui.Rect{Width: 1182, Height: 832},
+			Bounds: gfx.Rect{Width: 1182, Height: 832},
 		}
 		pageTheme2 := dscore.VivaTheme(p.theme)
 		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})

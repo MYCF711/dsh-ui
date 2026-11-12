@@ -348,6 +348,17 @@ type Snapshot struct {
 	//
 	// 零值 = `LinkUnknown`：**不知道就不许写「已连接」**，写「未知」。
 	Link LinkState
+	// DesktopUpdate 是壳对"桌面更新"的**事实呈现**（官方 `DesktopUpdateIndicator`
+	// 的 `view.presentation`）。
+	//
+	// nil / Phase==idle = 官方那句 `(state === undefined || state.phase === 'idle')`
+	// → **整枚指示器不渲染**（`DesktopUpdateIndicator.tsx:66`）。所以它不是
+	// "占位空着"，而是官方在"没有更新这件事"时的正确形状；本仓今天没有桌面
+	// 更新通道（宿主没有 updater 方法），这个字段常为 nil，报告里登记为差距。
+	//
+	// 为什么放在 Snapshot 而不是某个插件自己查：官方由 `settings.launcher` 那一级
+	// 父容器注入（`useDesktopUpdate` face），只有壳知道更新器的事实。
+	DesktopUpdate *DesktopUpdatePresentation
 	// Usage 是当前会话的 token 用量（壳从 session.load 拿到的合计）。
 	// Usage.Known() 为 false 时插件不许显示任何 token 数字。
 	//
@@ -378,6 +389,20 @@ type Snapshot struct {
 	// 非 nil 时八个数全是宿主的真值，包括真实的 0（空会话 = 0 步，那是真话；
 	// 显示什么由插件按官方「steps === 0 整枚不渲染」的规则决定）。
 	SessionStats *apiclient.SessionStats
+	// TokenUsage 是宿主 whole-log `tokenUsage` 投影的四个桶（累计，整数、非负，
+	// 官方 `dsh-token-meter/src/usage-projection.ts:45-50`），官方用量胶囊
+	// `UsagePill` 与其详情弹窗的**唯一**数据来源。
+	//
+	// **nil = 未知**（老宿主没有这个键 / 还没拉到 / 查询失败）：那时用量写
+	// 「未知」，**不许**拿 `UsageTotal`（宿主自有的人类可读合计）反推四桶——
+	// 那是另一种"编"，缓存率的分母根本不成立（`metrics.go` 的
+	// `cacheHitPercent` 早就拒绝这种口径）。
+	//
+	// 非 nil 时四个数全是宿主的真值，**包括真实的 0**：官方 wire 没有
+	// `Measured` 位，四桶全 0 = "这份日志没有 provider 回报的用量样本"。
+	// 界面按官方 gate 决定画不画：`billed === 0 && output === 0` 时不画弹窗，
+	// 但读数仍写成 `0 tok`（宿主说 0），**不是**「未知」。
+	TokenUsage *apiclient.TokenUsage
 	// Model 是宿主 §12 H4 给的最近一次 request/context 的模型名。
 	// 空串 = 不知道；插件不许拿自己的默认值冒充。
 	Model string

@@ -82,7 +82,7 @@ func drawSearchList(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.E
 	p.search.SetText("e")
 	pageTheme := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-	view.Draw(canvas, ui.Rect{Width: 268, Height: 400}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 268, Height: 400}, func(f ui.C) {
 		ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 	})
 	return p, rec, env, tree, canvas, texts
@@ -193,7 +193,7 @@ func TestSearchNoMatchesUsesOfficialEmptyText(t *testing.T) {
 	p.search.SetText("zzz-不存在的词")
 	pageTheme2 := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
-	view.Draw(canvas, ui.Rect{Width: 268, Height: 400}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 268, Height: 400}, func(f ui.C) {
 		ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 	})
 	if len(rec.rows) != 0 || len(p.lastOrder) != 0 {
@@ -222,7 +222,7 @@ func TestSearchCardClickUsesRealSessionID(t *testing.T) {
 	pageTheme3 := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
 	draw := func() {
-		view.Draw(canvas, ui.Rect{Width: 268, Height: 400}, func(f ui.C) {
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 400}, func(f ui.C) {
 			ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 		})
 	}
@@ -296,7 +296,7 @@ func TestSearchResultCardInnerGeometry(t *testing.T) {
 		var boxes searchCardBoxes
 		pageTheme4 := dscore.VivaTheme(p.theme)
 		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme4})
-		view.Draw(canvas, ui.Rect{Width: 268, Height: 200}, func(f ui.C) {
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 200}, func(f ui.C) {
 			ui.Column(f).Width(268).Children(func() { boxes = p.drawSearchCard(f, env, results[0]) })
 		})
 		return boxes
@@ -367,7 +367,7 @@ func TestSearchCardSnippetRendersOnlyWithTruth(t *testing.T) {
 		var boxes searchCardBoxes
 		pageTheme5 := dscore.VivaTheme(p.theme)
 		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme5})
-		view.Draw(canvas, ui.Rect{Width: 268, Height: 200}, func(f ui.C) {
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 200}, func(f ui.C) {
 			ui.Column(f).Width(268).Children(func() { boxes = p.drawSearchCard(f, env, r) })
 		})
 		got := map[string]float32{}

@@ -32,7 +32,7 @@ func newFrame(t *testing.T, click string) (*dscoreFrame, func()) {
 	pageTheme := VivaTheme(theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var box ui.Box
-	view.Draw(canvas, ui.Rect{Width: 320, Height: 200}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 320, Height: 200}, func(f ui.C) {
 		box = p.ListRow(f, tree.ID(feat, "row-1"), false, 32, func() {
 			ui.Text(f, "一行").FontSize(14).Color(theme.LabelPrimary)
 		})
@@ -106,7 +106,7 @@ func TestCircleButtonReturnsClick(t *testing.T) {
 	var clicked bool
 	pageTheme2 := VivaTheme(theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
-	view.Draw(canvas, ui.Rect{Width: 320, Height: 200}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 320, Height: 200}, func(f ui.C) {
 		clicked = p.CircleButton(f, tree.ID(feat, "send"), "↑", true)
 	})
 	if !clicked {

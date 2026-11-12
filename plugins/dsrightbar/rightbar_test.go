@@ -96,7 +96,7 @@ func openRightbar(t *testing.T, width, height int, msgs []apiclient.Message) (*h
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "rightbar-v4a-test", Width: width, Height: height, Tree: tree}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Data: pluginapi.Snapshot{Cur: "session-v4a", Msgs: msgs},
 			Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
@@ -112,7 +112,7 @@ func openRightbar(t *testing.T, width, height int, msgs []apiclient.Message) (*h
 	return session, p
 }
 
-func sameColor(got, want ui.Color) bool { return got == want }
+func sameColor(got, want gfx.Color) bool { return got == want }
 
 func findText(t *testing.T, texts []gfx.Text, value string) gfx.Text {
 	t.Helper()

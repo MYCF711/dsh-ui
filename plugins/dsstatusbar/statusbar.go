@@ -62,6 +62,8 @@ type Plugin struct {
 	// 与 `now`，都不需要这把锁——那两个只在一帧里用。
 	mu         sync.Mutex
 	frameTimer *time.Timer
+	// frameAt 是已排那一帧的截止时刻（用来判断新请求要不要重排）。
+	frameAt time.Time
 }
 
 // ID 实现 pluginapi.Plugin。

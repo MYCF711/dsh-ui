@@ -72,7 +72,7 @@ func drawOnce(t *testing.T, p *Plugin, click string) int {
 	env := &pluginapi.Env{
 		Theme: theme, Data: pluginapi.Snapshot{Cur: "s"}, Act: pluginapi.Actions{},
 		Tree: tree, Feat: feat, Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
+		Bounds: gfx.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 	}
 	pageTheme := dscore.VivaTheme(theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})

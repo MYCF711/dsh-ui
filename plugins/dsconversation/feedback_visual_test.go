@@ -47,7 +47,7 @@ func feedbackShotData() pluginapi.Snapshot {
 }
 
 // brightest 返回一块矩形里最亮的像素（只取亮度，用来比较两处的前景色是否同一档）。
-func brightest(picture *image.RGBA, bounds ui.Rect) (luma int, x, y int) {
+func brightest(picture *image.RGBA, bounds gfx.Rect) (luma int, x, y int) {
 	luma = -1
 	for py := int(bounds.Y); py < int(bounds.Y+bounds.Height); py++ {
 		for px := int(bounds.X); px < int(bounds.X+bounds.Width); px++ {
@@ -105,7 +105,7 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
@@ -150,7 +150,7 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 			t.Errorf("%s 命中区高 = %v，期望 %d（官方 .Hyy-Wa_action / viva Small 按钮）", name, hit.Bounds.Height, wantHit)
 		}
 	}
-	center := func(r ui.Rect) float32 { return r.Y + r.Height/2 }
+	center := func(r gfx.Rect) float32 { return r.Y + r.Height/2 }
 	if delta := center(upHit.Bounds) - center(copyHit.Bounds); delta > 0.5 || delta < -0.5 {
 		t.Errorf("👍 与「复制」不在同一基线：中心差 %v px（👍 中心 %v，复制中心 %v）",
 			delta, center(upHit.Bounds), center(copyHit.Bounds))
@@ -240,11 +240,11 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 		t.Errorf("点击改了 %d 个像素，超出「只换图标」的范围（不应有布局跳动）", changed)
 	}
 	// 实心版比空心版更"重"：图标区域内的亮像素数必须增加。
-	inkCount := func(picture *image.RGBA, bounds ui.Rect) int {
+	inkCount := func(picture *image.RGBA, bounds gfx.Rect) int {
 		n := 0
 		for py := int(bounds.Y); py < int(bounds.Y+bounds.Height); py++ {
 			for px := int(bounds.X); px < int(bounds.X+bounds.Width); px++ {
-				if l, _, _ := brightest(picture, ui.Rect{X: float32(px), Y: float32(py), Width: 1, Height: 1}); l > 120 {
+				if l, _, _ := brightest(picture, gfx.Rect{X: float32(px), Y: float32(py), Width: 1, Height: 1}); l > 120 {
 					n++
 				}
 			}

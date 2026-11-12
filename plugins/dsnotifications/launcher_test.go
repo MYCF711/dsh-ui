@@ -90,7 +90,7 @@ func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *gfx.
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
 	})
-	bounds := ui.Rect{Width: 1180, Height: 800}
+	bounds := gfx.Rect{Width: 1180, Height: 800}
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: 900,
 		Has:      k.Has,

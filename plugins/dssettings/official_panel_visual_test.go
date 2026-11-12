@@ -162,7 +162,7 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 		WindowMode: app.WindowFrameless,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: h.theme, Tree: h.tree, Feat: h.feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: size.Width,

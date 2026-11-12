@@ -56,7 +56,7 @@ func renderOfficialSeat(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pl
 	}
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat,
-		Canvas: canvas, Bounds: ui.Rect{Width: 1182, Height: 832},
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: officialSeatColumn,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: officialSeatColumn},
 	}
@@ -325,7 +325,7 @@ func TestShiftEnterDoesNotSend(t *testing.T) {
 //
 // 不能只用 largestSurface：审批卡也是 InputMajor 底（radius 20/19），
 // 它比输入卡片还高（156 vs 98），按面积取会拿到审批卡。
-func inputCardSurface(canvas *gfx.Canvas, color ui.Color) (gfx.Rectangle, bool) {
+func inputCardSurface(canvas *gfx.Canvas, color gfx.Color) (gfx.Rectangle, bool) {
 	var best gfx.Rectangle
 	found := false
 	for _, r := range canvas.Rectangles() {

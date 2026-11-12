@@ -43,7 +43,7 @@ func TestGoalBarHeadlessCapture(t *testing.T) {
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
@@ -71,15 +71,15 @@ func TestGoalBarHeadlessCapture(t *testing.T) {
 
 	// 目标条上唯一的图形是官方 sprite `goal-outline`（描边 → 三角化图元）。
 	// 4px 圆点已被删掉，所以这里改为对**三角形图元的包围盒**做位置断言。
-	var glyph ui.Rect
+	var glyph gfx.Rect
 	haveGlyph := false
-	var card ui.Rect
+	var card gfx.Rect
 	haveCard := false
 	for _, primitive := range session.Snapshot().Primitives {
 		if primitive.Kind == app.TrianglePrimitive {
 			for _, point := range primitive.Points {
 				if !haveGlyph {
-					glyph = ui.Rect{X: point.X, Y: point.Y}
+					glyph = gfx.Rect{X: point.X, Y: point.Y}
 					haveGlyph = true
 					continue
 				}

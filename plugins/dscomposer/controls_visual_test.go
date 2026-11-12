@@ -63,7 +63,7 @@ func TestControlsHeadlessGeometryAndCapture(t *testing.T) {
 				WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 			}
 			config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-				bounds := ui.Rect{Width: size.Width, Height: size.Height}
+				bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 				canvas.Fill(bounds, theme.BgBase)
 				env := &pluginapi.Env{
 					Theme: theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,

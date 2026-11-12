@@ -39,9 +39,14 @@ type (
 	Actions        = pub.Actions
 	// SettingsHostFacts 是设置面板的宿主事实（决定动态注册哪些 section/item）。
 	SettingsHostFacts = pub.SettingsHostFacts
-	Theme             = pub.Theme
-	Radii             = pub.Radii
-	Fonts             = pub.Fonts
+	// DesktopUpdatePresentation 是壳对"桌面更新"的事实呈现
+	// （官方 `DesktopUpdateIndicator` 的 `view.presentation`）。纯别名。
+	DesktopUpdatePresentation = pub.DesktopUpdatePresentation
+	DesktopUpdatePhase        = pub.DesktopUpdatePhase
+	DesktopUpdateFailureKind  = pub.DesktopUpdateFailureKind
+	Theme                     = pub.Theme
+	Radii                     = pub.Radii
+	Fonts                     = pub.Fonts
 )
 
 const (
@@ -53,6 +58,27 @@ const (
 	LinkConnected  = pub.LinkConnected
 	LinkDown       = pub.LinkDown
 	LinkConnecting = pub.LinkConnecting
+
+	// 桌面更新的阶段与错因（官方 `DesktopUpdatePresentation['phase']` /
+	// `DesktopUpdateFailureKind` 逐值）：纯转发公开包的常量。
+	DesktopUpdateIdle                  = pub.DesktopUpdateIdle
+	DesktopUpdateChecking              = pub.DesktopUpdateChecking
+	DesktopUpdateAvailable             = pub.DesktopUpdateAvailable
+	DesktopUpdateDownloading           = pub.DesktopUpdateDownloading
+	DesktopUpdateVerifying             = pub.DesktopUpdateVerifying
+	DesktopUpdateInstalling            = pub.DesktopUpdateInstalling
+	DesktopUpdateReady                 = pub.DesktopUpdateReady
+	DesktopUpdateError                 = pub.DesktopUpdateError
+	DesktopUpdateFailureCheck          = pub.DesktopUpdateFailureCheck
+	DesktopUpdateFailureCheckNetwork   = pub.DesktopUpdateFailureCheckNetwork
+	DesktopUpdateFailureDownload       = pub.DesktopUpdateFailureDownload
+	DesktopUpdateFailureDownloadNet    = pub.DesktopUpdateFailureDownloadNet
+	DesktopUpdateFailureInstall        = pub.DesktopUpdateFailureInstall
+	DesktopUpdateFailureInstallNetwork = pub.DesktopUpdateFailureInstallNetwork
+	DesktopUpdateFailureStopFailed     = pub.DesktopUpdateFailureStopFailed
+	DesktopUpdateFailureTasksChanged   = pub.DesktopUpdateFailureTasksChanged
+	DesktopUpdateFailureTasksUnavail   = pub.DesktopUpdateFailureTasksUnavail
+	DesktopUpdateFailureFullscreen     = pub.DesktopUpdateFailureFullscreen
 
 	SlotShellRoot     = pub.SlotShellRoot
 	SlotShellLeading  = pub.SlotShellLeading

@@ -57,7 +57,7 @@ func openRightbarShot(t *testing.T, width, height int, msgs []apiclient.Message)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "traj-shot", Width: width, Height: height, Tree: tree}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Data: pluginapi.Snapshot{Cur: "traj-shot", Msgs: msgs},
 			Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,

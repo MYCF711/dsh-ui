@@ -33,7 +33,7 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 			canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 				return float32(len([]rune(value))) * size / 2
 			})
-			bounds := ui.Rect{Width: tc.width, Height: tc.height}
+			bounds := gfx.Rect{Width: tc.width, Height: tc.height}
 			rightPref := tc.width * rightbarOpenFrac
 			env := &pluginapi.Env{
 				Theme: theme,
@@ -72,13 +72,13 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 				})
 			})
 
-			assertRect(t, "main.header", boxes[pluginapi.SlotMainHeader].Rect(), ui.Rect{X: 280 + columnPad, Y: columnPad, Width: tc.mainWidth - 2*columnPad, Height: 40})
-			assertRect(t, "main.body", boxes[pluginapi.SlotMainBody].Rect(), ui.Rect{X: 280 + columnPad, Y: columnPad + 40 + 8, Width: tc.mainWidth - 2*columnPad})
-			assertRect(t, "rightbar", boxes[pluginapi.SlotRightbar].Rect(), ui.Rect{X: tc.rightX + columnPad, Y: columnPad, Width: tc.rightWidth - 2*columnPad, Height: tc.height - 24 - 2*columnPad})
-			assertRect(t, "main.composer", boxes[pluginapi.SlotMainComposer].Rect(), ui.Rect{X: 280 + columnPad, Y: tc.height - 24 - columnPad - 80, Width: tc.mainWidth - 2*columnPad, Height: 80})
-			assertRect(t, "shell.bottom", boxes[pluginapi.SlotShellBottom].Rect(), ui.Rect{Y: tc.height - 24, Width: tc.width, Height: 24})
+			assertRect(t, "main.header", boxes[pluginapi.SlotMainHeader].Rect(), gfx.Rect{X: 280 + columnPad, Y: columnPad, Width: tc.mainWidth - 2*columnPad, Height: 40})
+			assertRect(t, "main.body", boxes[pluginapi.SlotMainBody].Rect(), gfx.Rect{X: 280 + columnPad, Y: columnPad + 40 + 8, Width: tc.mainWidth - 2*columnPad})
+			assertRect(t, "rightbar", boxes[pluginapi.SlotRightbar].Rect(), gfx.Rect{X: tc.rightX + columnPad, Y: columnPad, Width: tc.rightWidth - 2*columnPad, Height: tc.height - 24 - 2*columnPad})
+			assertRect(t, "main.composer", boxes[pluginapi.SlotMainComposer].Rect(), gfx.Rect{X: 280 + columnPad, Y: tc.height - 24 - columnPad - 80, Width: tc.mainWidth - 2*columnPad, Height: 80})
+			assertRect(t, "shell.bottom", boxes[pluginapi.SlotShellBottom].Rect(), gfx.Rect{Y: tc.height - 24, Width: tc.width, Height: 24})
 
-			wantRight := ui.Rect{X: tc.rightX, Width: tc.rightWidth, Height: tc.height - 24}
+			wantRight := gfx.Rect{X: tc.rightX, Width: tc.rightWidth, Height: tc.height - 24}
 			found := false
 			for _, r := range canvas.Rectangles() {
 				if r.Bounds == wantRight && r.Color == theme.SidebarFill {
@@ -105,7 +105,7 @@ func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 { return float32(len(value)) * size / 2 })
-	bounds := ui.Rect{Width: 960, Height: 832}
+	bounds := gfx.Rect{Width: 960, Height: 832}
 	env := &pluginapi.Env{
 		Theme: theme, Data: pluginapi.Snapshot{ShowRightbar: true}, Tree: tree,
 		Feat: tree.Feature("shell-narrow-test"), Canvas: canvas, Bounds: bounds,
@@ -139,7 +139,7 @@ func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 	}
 }
 
-func assertRect(t *testing.T, name string, got, want ui.Rect) {
+func assertRect(t *testing.T, name string, got, want gfx.Rect) {
 	t.Helper()
 	const tolerance = 0.01
 	if abs32(got.X-want.X) > tolerance || abs32(got.Y-want.Y) > tolerance ||

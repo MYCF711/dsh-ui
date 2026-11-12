@@ -44,7 +44,7 @@ func openHeaderSession(t *testing.T, data *pluginapi.Snapshot, act pluginapi.Act
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: *data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
@@ -190,7 +190,7 @@ func TestButtonDoesNotCoverTheRightbarCorner(t *testing.T) {
 	}
 }
 
-func overlaps(a, b ui.Rect) bool {
+func overlaps(a, b gfx.Rect) bool {
 	return a.X < b.X+b.Width && b.X < a.X+a.Width &&
 		a.Y < b.Y+b.Height && b.Y < a.Y+a.Height
 }

@@ -56,7 +56,7 @@ func dockFrame(t *testing.T, tierOfficial, drawOfficial bool, data pluginapi.Sna
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 { return float32(len([]rune(value))) * size * 0.55 })
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("statusbar-official"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
+		Bounds: gfx.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 		Geometry: pluginapi.Geometry{MainWidth: 902}, Has: kernel.Has,
 	}
 	counts := map[pluginapi.Slot]int{}

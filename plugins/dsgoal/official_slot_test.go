@@ -57,7 +57,7 @@ func officialFrame(t *testing.T, tierOfficial bool, goal func() string) *gfx.Can
 	env := &pluginapi.Env{
 		Theme: theme, Data: pluginapi.Snapshot{Cur: "s"}, Act: pluginapi.Actions{Goal: goal},
 		Tree: tree, Feat: tree.Feature("goal-official"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
+		Bounds: gfx.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 		Geometry: pluginapi.Geometry{Width: 1182, Height: 832, MainWidth: 902},
 		Has:      kernel.Has,
 	}
@@ -110,7 +110,7 @@ func TestGoalLegacySeatStaysSilentOnOfficialTier(t *testing.T) {
 		Theme: theme, Data: pluginapi.Snapshot{Cur: "s"},
 		Act:  pluginapi.Actions{Goal: func() string { return "有目标" }},
 		Tree: tree, Feat: tree.Feature("goal-legacy-silent"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
+		Bounds: gfx.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 		Geometry: pluginapi.Geometry{MainWidth: 902}, Has: kernel.Has,
 	}
 	pageTheme2 := dscore.VivaTheme(theme)

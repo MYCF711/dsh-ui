@@ -13,14 +13,14 @@ import (
 func TestFrameChromeLayoutUsesFortyPixelClientCaption(t *testing.T) {
 	for _, size := range []ui.Size{{Width: 1920, Height: 1032}, {Width: 1182, Height: 832}} {
 		layout := layoutFrameChrome(size, true, 3*app.WindowControlWidth, 28, 28)
-		if layout.Caption != (ui.Rect{Width: size.Width, Height: 40}) {
+		if layout.Caption != (gfx.Rect{Width: size.Width, Height: 40}) {
 			t.Fatalf("%.0fx%.0f caption = %+v，期望从客户区 (0,0) 起高 40", size.Width, size.Height, layout.Caption)
 		}
-		wantContent := ui.Rect{Y: 40, Width: size.Width, Height: size.Height - 40}
+		wantContent := gfx.Rect{Y: 40, Width: size.Width, Height: size.Height - 40}
 		if layout.Content != wantContent {
 			t.Fatalf("%.0fx%.0f content = %+v，期望 %+v；三栏高度只能扣一次 caption", size.Width, size.Height, layout.Content, wantContent)
 		}
-		if layout.Application != (ui.Rect{X: 48, Y: 6, Width: 48, Height: 28}) {
+		if layout.Application != (gfx.Rect{X: 48, Y: 6, Width: 48, Height: 28}) {
 			t.Fatalf("应用按钮 = %+v，期望 x48/y6/48x28（14px 字 + 两侧 10px）", layout.Application)
 		}
 		if layout.Edit.X-layout.Application.X-layout.Application.Width != 2 || layout.Edit.Y != 6 || layout.Edit.Height != 28 || layout.Edit.Width != 48 {
@@ -78,7 +78,7 @@ func newFrameChromeHarness(t *testing.T) (*frameChromeHarness, *app.Driver) {
 		if id, ok := canvas.ClickTarget(); ok {
 			h.clickErr = h.chrome.handleClick(id)
 		}
-		canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, theme.Background)
+		canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, theme.Background)
 		layout := h.chrome.paintCaption(canvas, theme, size)
 		h.view.Draw(canvas, layout.Content, func(f ui.C) {
 			ui.Column(f).Fill().Children(func() {
@@ -96,7 +96,7 @@ func newFrameChromeHarness(t *testing.T) (*frameChromeHarness, *app.Driver) {
 	return h, driver
 }
 
-func frameHit(t *testing.T, driver *app.Driver, id gfx.ID) ui.Rect {
+func frameHit(t *testing.T, driver *app.Driver, id gfx.ID) gfx.Rect {
 	t.Helper()
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == id {
@@ -104,7 +104,7 @@ func frameHit(t *testing.T, driver *app.Driver, id gfx.ID) ui.Rect {
 		}
 	}
 	t.Fatalf("当前帧没有 hit %v；hits=%+v", id, driver.Snapshot().Hits)
-	return ui.Rect{}
+	return gfx.Rect{}
 }
 
 func clickFrameID(t *testing.T, driver *app.Driver, id gfx.ID) {
@@ -159,7 +159,7 @@ func TestFrameChromeMenuDismissRestoresEditorFocusAndSelection(t *testing.T) {
 			before := h.chrome.last.selection
 			clickFrameID(t, driver, chromeEditID)
 			if !h.chrome.open.IsZero() && h.chrome.open == chromeEditID {
-				// open 是 ui.ID；这个分支只让失败信息更直观。
+				// open 是 gfx.ID；这个分支只让失败信息更直观。
 			} else {
 				t.Fatal("编辑菜单未打开")
 			}

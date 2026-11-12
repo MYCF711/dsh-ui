@@ -87,13 +87,13 @@ func canvasTextsWith(canvas *gfx.Canvas, value string) int {
 }
 
 // canvasRect 在画布上找**满足条件的第一块矩形**（背景/边框都走这里）。
-func canvasRect(canvas *gfx.Canvas, match func(ui.Rect) bool) (ui.Rect, bool) {
+func canvasRect(canvas *gfx.Canvas, match func(gfx.Rect) bool) (gfx.Rect, bool) {
 	for _, rect := range canvas.Rectangles() {
 		if match(rect.Bounds) {
 			return rect.Bounds, true
 		}
 	}
-	return ui.Rect{}, false
+	return gfx.Rect{}, false
 }
 
 // canvasHitLabel 按无障碍标签找命中区（按钮的真实可点区域）。
@@ -242,7 +242,7 @@ func TestMarkdownBlockquoteBorder(t *testing.T) {
 
 	// 左边框：宽度 == MarkdownQuoteBorderWidth 的竖线，且正文比它靠右正好
 	// MarkdownQuotePadLeft。
-	border, ok := canvasRect(canvas, func(r ui.Rect) bool {
+	border, ok := canvasRect(canvas, func(r gfx.Rect) bool {
 		return r.Width == MarkdownQuoteBorderWidth && r.Height > 0
 	})
 	if !ok {
@@ -262,7 +262,7 @@ func TestMarkdownBlockquoteBorder(t *testing.T) {
 func TestMarkdownRule(t *testing.T) {
 	view, canvas := renderMarkdown(t, markdownLines("上面", "", "---", "", "下面"))
 
-	rule, ok := canvasRect(canvas, func(r ui.Rect) bool { return r.Height == MarkdownRuleHeight })
+	rule, ok := canvasRect(canvas, func(r gfx.Rect) bool { return r.Height == MarkdownRuleHeight })
 	if !ok {
 		t.Fatalf("分隔线没有画出来（应有 %vpx 高的矩形）", MarkdownRuleHeight)
 	}
@@ -304,7 +304,7 @@ func TestMarkdownCodeBlockBanner(t *testing.T) {
 		t.Errorf("banner 语言标签字号 = %v，应为 %v", language.Style.Size, CodeBlockBannerFontSize)
 	}
 	// banner 自己那块底色矩形：高度 == 32（derived）。
-	banner, ok := canvasRect(canvas, func(r ui.Rect) bool {
+	banner, ok := canvasRect(canvas, func(r gfx.Rect) bool {
 		return r.Height == CodeBlockBannerHeight && r.Width > 0
 	})
 	if !ok {
@@ -509,7 +509,7 @@ func TestMarkdownAllBlocksRender(t *testing.T) {
 	}
 
 	// 分隔线 1 条（`---` 只算一条），代码块 banner 一条。
-	if _, ok := canvasRect(canvas, func(r ui.Rect) bool { return r.Height == MarkdownRuleHeight }); !ok {
+	if _, ok := canvasRect(canvas, func(r gfx.Rect) bool { return r.Height == MarkdownRuleHeight }); !ok {
 		t.Error("分隔线没有画出来")
 	}
 	if len(view.codeBlocks) != 1 {
@@ -557,7 +557,7 @@ func newMarkdownFixture() *markdownFixture {
 	fixture := &markdownFixture{view: view, canvas: canvas, tree: tree, theme: theme}
 	fixture.env = &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("markdown-block-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	fixture.env.Act.CopyResult = func(text string) error {
 		fixture.copied = append(fixture.copied, text)
@@ -571,7 +571,7 @@ func (f *markdownFixture) draw() {
 	f.canvas.Reset()
 	pageTheme := dscore.VivaTheme(f.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-	view.Draw(f.canvas, ui.Rect{Width: 900, Height: 700}, func(frame ui.C) {
+	view.Draw(f.canvas, gfx.Rect{Width: 900, Height: 700}, func(frame ui.C) {
 		f.view.Draw(frame, f.env, hostViewport(f.tree), markdownEntry(codeBlockSource))
 	})
 	f.view.PaintCodeBlocks(f.canvas, f.env)

@@ -62,7 +62,7 @@ func TestFG2BrandNewSessionAndNavigationGeometry(t *testing.T) {
 	env.Act.NewSession = func() {}
 	pageTheme := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-	view.Draw(canvas, ui.Rect{Width: 256, Height: 420}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 256, Height: 420}, func(f ui.C) {
 		p.drawHeader(f, env)
 	})
 
@@ -132,7 +132,7 @@ func TestFG2NewSessionClickCallsRealActionOnce(t *testing.T) {
 	pageTheme2 := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
 	draw := func() {
-		view.Draw(canvas, ui.Rect{Width: 256, Height: 420}, func(f ui.C) {
+		view.Draw(canvas, gfx.Rect{Width: 256, Height: 420}, func(f ui.C) {
 			p.drawHeader(f, env)
 		})
 	}
@@ -151,7 +151,7 @@ func TestFG2NewSessionClickCallsRealActionOnce(t *testing.T) {
 
 func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 	p, _, env, tree, canvas, _ := searchFixture(t)
-	env.Bounds = ui.Rect{Width: 1182, Height: 832}
+	env.Bounds = gfx.Rect{Width: 1182, Height: 832}
 	env.Geometry = pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902}
 	env.Data.Cur = "session-sentinel"
 	env.Data.Sessions = mockdSessions()
@@ -208,7 +208,7 @@ func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 	// 会话行仍是返回会话的真实路由；不能重载、清草稿或新建会话。
 	row := sess("session-sentinel", "真会话", `D:\work`, "2026-11-03T10:00:00Z")
 	drawRow := func() {
-		view.Draw(canvas, ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 40}, func(f ui.C) {
 			p.drawSession(f, env, row)
 		})
 	}
@@ -246,7 +246,7 @@ func TestFG2WorkspaceHeaderCollapseExpandAndSearch(t *testing.T) {
 	pageTheme4 := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme4})
 	draw := func() {
-		view.Draw(canvas, ui.Rect{Width: 268, Height: 50}, func(f ui.C) {
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 50}, func(f ui.C) {
 			p.drawWorkspaceHeader(f, env)
 		})
 	}

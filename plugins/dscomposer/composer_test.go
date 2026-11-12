@@ -49,7 +49,7 @@ func renderComposerAt(t *testing.T, p *Plugin, data pluginapi.Snapshot, act plug
 	}
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat,
-		Canvas: canvas, Bounds: ui.Rect{Width: windowWidth, Height: 400},
+		Canvas: canvas, Bounds: gfx.Rect{Width: windowWidth, Height: 400},
 		MainWidth: mainWidth,
 		Geometry: pluginapi.Geometry{
 			Width: windowWidth, Height: 400, SidebarWidth: 280, MainWidth: mainWidth,
@@ -89,7 +89,7 @@ func renderComposerClickLabel(t *testing.T, p *Plugin, data pluginapi.Snapshot, 
 	return renderComposerAt(t, p, data, act, mainWidth, windowWidth, "", target)
 }
 
-func largestSurface(canvas *gfx.Canvas, color ui.Color) (gfx.Rectangle, bool) {
+func largestSurface(canvas *gfx.Canvas, color gfx.Color) (gfx.Rectangle, bool) {
 	var best gfx.Rectangle
 	found := false
 	for _, r := range canvas.Rectangles() {

@@ -139,7 +139,7 @@ func render(t *testing.T, p *Plugin) *gfx.Canvas {
 	})
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: feat, Canvas: canvas,
-		Bounds: ui.Rect{Width: 1180, Height: 800}, MainWidth: 900,
+		Bounds: gfx.Rect{Width: 1180, Height: 800}, MainWidth: 900,
 	}
 	pageTheme := dscore.VivaTheme(theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})

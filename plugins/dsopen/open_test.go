@@ -40,7 +40,7 @@ func renderOpen(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.
 	}
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
+		Bounds: gfx.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 	}
 	pageTheme := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})

@@ -42,7 +42,7 @@ func openWPD1(t *testing.T, width, height int, msgs []apiclient.Message) (*headl
 		config.TextInput = ui.Fields(fields.Fields()...)
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Data: fixture.data, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
 			Has: func(pluginapi.Slot) bool { return true },

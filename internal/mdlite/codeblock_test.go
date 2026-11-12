@@ -72,7 +72,7 @@ func TestCodeBlockLongUnicodeLineWrapsOrScrollsWithoutTruncation(t *testing.T) {
 	const width = float32(240)
 
 	height := code.Height(&canvas, width, style)
-	geometry := code.Draw(&canvas, ui.Rect{Width: width, Height: height}, ids, style)
+	geometry := code.Draw(&canvas, gfx.Rect{Width: width, Height: height}, ids, style)
 	if geometry.MaxOffsetX <= 0 || geometry.ContentWidth <= geometry.Content.Width {
 		t.Fatalf("nowrap must expose horizontal overflow: %+v", geometry)
 	}
@@ -84,7 +84,7 @@ func TestCodeBlockLongUnicodeLineWrapsOrScrollsWithoutTruncation(t *testing.T) {
 	code.Restore(CodeBlockState{Wrap: true, OffsetX: geometry.MaxOffsetX})
 	canvas.Reset()
 	height = code.Height(&canvas, width, style)
-	geometry = code.Draw(&canvas, ui.Rect{Width: width, Height: height}, ids, style)
+	geometry = code.Draw(&canvas, gfx.Rect{Width: width, Height: height}, ids, style)
 	if geometry.MaxOffsetX != 0 {
 		t.Fatalf("wrapped block still has horizontal overflow: %+v", geometry)
 	}
@@ -111,7 +111,7 @@ func TestCodeBlockEmptyAndHighlightStillPaint(t *testing.T) {
 	var canvas gfx.Canvas
 	empty := CodeBlock{Language: "python", Title: "空.py"}
 	height := empty.Height(&canvas, 320, style)
-	geometry := empty.Draw(&canvas, ui.Rect{Width: 320, Height: height}, CodeBlockIDs{Copy: gfx.Item(4)}, style)
+	geometry := empty.Draw(&canvas, gfx.Rect{Width: 320, Height: height}, CodeBlockIDs{Copy: gfx.Item(4)}, style)
 	if geometry.Bounds.Height <= style.BannerHeight || len(canvas.Hits()) == 0 {
 		t.Fatalf("empty code block lost banner/copy target: geometry=%+v hits=%+v", geometry, canvas.Hits())
 	}
@@ -119,7 +119,7 @@ func TestCodeBlockEmptyAndHighlightStillPaint(t *testing.T) {
 	canvas.Reset()
 	highlighted := CodeBlock{Language: "go", Code: `func main() { return "你好" }`}
 	height = highlighted.Height(&canvas, 520, style)
-	highlighted.Draw(&canvas, ui.Rect{Width: 520, Height: height}, CodeBlockIDs{}, style)
+	highlighted.Draw(&canvas, gfx.Rect{Width: 520, Height: height}, CodeBlockIDs{}, style)
 	keywordColor := style.Look.Code[components.CodeKeyword-1]
 	foundKeyword := false
 	for _, text := range canvas.Texts() {

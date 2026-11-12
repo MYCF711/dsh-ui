@@ -65,7 +65,7 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 		Title: "u2-slot-proof", Width: sheetTestW, Height: sheetTestH,
 		Tree: tree, Invalidator: &invalidator,
 		Paint: func(canvas *gfx.Canvas, size ui.Size) {
-			bounds := ui.Rect{Width: size.Width, Height: size.Height}
+			bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 			env := &pluginapi.Env{
 				Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
 				// Cur 非空 + 无消息：ds-conversation 画官方首屏（hero），
@@ -185,7 +185,7 @@ func waitText(t *testing.T, session *headless.Session, value string, want bool) 
 	}
 }
 
-func assertColor(t *testing.T, picture image.Image, x, y int, want ui.Color, where string) {
+func assertColor(t *testing.T, picture image.Image, x, y int, want gfx.Color, where string) {
 	t.Helper()
 	r, g, b, _ := picture.At(x, y).RGBA()
 	wr, wg, wb := uint32(want.Red*255+0.5), uint32(want.Green*255+0.5), uint32(want.Blue*255+0.5)
@@ -195,7 +195,7 @@ func assertColor(t *testing.T, picture image.Image, x, y int, want ui.Color, whe
 	}
 }
 
-func assertNotColor(t *testing.T, picture image.Image, x, y int, unwanted ui.Color, where string) {
+func assertNotColor(t *testing.T, picture image.Image, x, y int, unwanted gfx.Color, where string) {
 	t.Helper()
 	r, g, b, _ := picture.At(x, y).RGBA()
 	wr, wg, wb := uint32(unwanted.Red*255+0.5), uint32(unwanted.Green*255+0.5), uint32(unwanted.Blue*255+0.5)
@@ -205,7 +205,7 @@ func assertNotColor(t *testing.T, picture image.Image, x, y int, unwanted ui.Col
 	}
 }
 
-// near 允许 ±2 的量化误差：ui.Color 是 float32，画到 8 位像素会有舍入。
+// near 允许 ±2 的量化误差：gfx.Color 是 float32，画到 8 位像素会有舍入。
 func near(value, want uint32) bool {
 	d := int(value) - int(want)
 	return d >= -2 && d <= 2

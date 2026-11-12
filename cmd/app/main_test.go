@@ -361,7 +361,7 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 			return float32(len(value)) * size / 2
 		})
 		var area ui.Box
-		m.view.Draw(canvas, ui.Rect{Width: 100, Height: 100}, func(f ui.C) {
+		m.view.Draw(canvas, gfx.Rect{Width: 100, Height: 100}, func(f ui.C) {
 			ui.Column(f).Fill().Children(func() {
 				area = ui.Scroll(f).Grow(1).Follow(true)
 				area.Children(func() {
@@ -436,7 +436,7 @@ func TestPendingScrollRestoresOffset(t *testing.T) {
 		return float32(len(value)) * size / 2
 	})
 	var area ui.Box
-	m.view.Draw(canvas, ui.Rect{Width: 100, Height: 100}, func(f ui.C) {
+	m.view.Draw(canvas, gfx.Rect{Width: 100, Height: 100}, func(f ui.C) {
 		ui.Column(f).Fill().Children(func() {
 			area = ui.Scroll(f).Grow(1).Follow(true)
 			area.Children(func() {

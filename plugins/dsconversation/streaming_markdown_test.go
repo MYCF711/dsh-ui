@@ -32,9 +32,9 @@ func drawStreamingMarkdownTest(t *testing.T, p *Plugin, data pluginapi.Snapshot)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("mdstream-test"), Canvas: canvas,
-		Bounds: ui.Rect{Width: width, Height: 700}, MainWidth: width,
+		Bounds: gfx.Rect{Width: width, Height: 700}, MainWidth: width,
 	}
-	view.Draw(canvas, ui.Rect{Width: width, Height: 700}, func(f ui.C) { p.draw(f, env) })
+	view.Draw(canvas, gfx.Rect{Width: width, Height: 700}, func(f ui.C) { p.draw(f, env) })
 	p.afterDraw(canvas, env)
 	return canvas
 }

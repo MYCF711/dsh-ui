@@ -39,7 +39,7 @@ func (r *v2RecordingPrimitives) SectionHeader(f ui.C, id gfx.ID, title string, c
 	return box
 }
 
-func (r *v2RecordingPrimitives) Dot(f ui.C, color ui.Color, size float32) ui.Box {
+func (r *v2RecordingPrimitives) Dot(f ui.C, color gfx.Color, size float32) ui.Box {
 	r.dots++
 	return r.Primitives.Dot(f, color, size)
 }
@@ -81,7 +81,7 @@ func TestV2ActivityDotOnlyForCurrentSessionWithTruth(t *testing.T) {
 		row := sess("current", "真实标题", `D:\work`, "2026-11-03T20:00:00+08:00")
 		pageTheme := dscore.VivaTheme(p.theme)
 		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
-		view.Draw(canvas, ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 40}, func(f ui.C) {
 			p.drawSession(f, env, row)
 		})
 		return recorder.dots
@@ -133,7 +133,7 @@ func TestV2SearchUsesFieldAndNarrowsRealRows(t *testing.T) {
 	p.search.SetText("  ALPHA  ")
 	pageTheme2 := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
-	view.Draw(canvas, ui.Rect{Width: 268, Height: 300}, func(f ui.C) {
+	view.Draw(canvas, gfx.Rect{Width: 268, Height: 300}, func(f ui.C) {
 		p.drawList(f, env)
 	})
 	if len(p.lastOrder) != 1 || p.lastOrder[0] != "a" {
@@ -156,7 +156,7 @@ func TestV2SelectionAndClickUseRealSessionID(t *testing.T) {
 	pageTheme3 := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
 	draw := func() {
-		view.Draw(canvas, ui.Rect{Width: 268, Height: 80}, func(f ui.C) {
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 80}, func(f ui.C) {
 			ui.Column(f).Children(func() {
 				p.drawSession(f, env, a)
 				p.drawSession(f, env, b)
@@ -194,7 +194,7 @@ func TestV2GroupGeometryAndScroll(t *testing.T) {
 	pageTheme4 := dscore.VivaTheme(p.theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme4})
 	draw := func() {
-		view.Draw(canvas, ui.Rect{Width: 268, Height: 180}, func(f ui.C) {
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 180}, func(f ui.C) {
 			ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 		})
 	}

@@ -50,7 +50,7 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 	}
 
 	// shot 画一帧，返回：卡片矩形、这一帧画出来的内容顶端、候选行数。
-	shot := func(t *testing.T, name, draft string, act pluginapi.Actions) (ui.Rect, float32, int) {
+	shot := func(t *testing.T, name, draft string, act pluginapi.Actions) (gfx.Rect, float32, int) {
 		t.Helper()
 		theme := dscore.Dark()
 		p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
@@ -72,7 +72,7 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 			WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 		}
 		config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
-			bounds := ui.Rect{Width: size.Width, Height: size.Height}
+			bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 			canvas.Fill(bounds, theme.BgBase)
 			env := &pluginapi.Env{
 				Theme: theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,

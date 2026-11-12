@@ -654,3 +654,43 @@ viva v0.5.1 `ui/popup.go` 的 `sideOf`（请求的那侧放得下就用它；放
 | 静态 `.Clicked()` 盘点脚本 | `_v064/clicked_audit.py`、`_v064/clicked_detail.py` |
 | 只读盘点副本（HEAD `3555eb0`） | `_v064/head/` |
 | 逐条报告 | `DSH-GO/tmp/GO8-RC2/reports/V06-4-control-semantics.md` |
+
+---
+
+## 13. 上游回应（2026-11-12 深夜，两个 issue 都已处理）
+
+### 13.1 #239 `text.(*Editor).String()` 并发写缓存 → **not planned 关闭**
+
+上游 `@t8y2` 的处理结论（逐条摘录 + 我们的判断）：
+
+| 上游说法 | 我们的核对 |
+|---|---|
+| 复现成立：用当前 API 对等改写（`flex`→`ui`，`Field.Bind` + 并发 `Text`/`SetText`），macOS arm64 headless 下实测复现 race | ✅ 与我们 Windows + MinGW 的复现一致 |
+| **不打算把 `Editor`/`Field` 改成线程安全对象**；getter ≠ 纯读，`String()`/`CommittedString()` 会填缓存 | ✅ 与我们的代码事实一致 |
+| 正确用法：**窗口线程**先取不可变字符串快照，再交给后台；**不要把 Field/Editor 指针交给 worker** | ✅ **正是我们 `pendingDraft` 的做法** |
+| 页面作用域任务用 `ui.NewEffectKeyed`（文本快照作 key，`Take()` 应用）；后台结果用 `Invalidator`/`OnWake` 回窗口线程 | 记录：我们的实现是自建队列，等价语义；不迁 |
+| 已在 `3b1f9f2` 补齐契约文档 + 无头 race 回归测试 `TestFieldBackgroundSnapshotSurvivesTypingAndDropsStaleResult`，随 **v0.6.1** 发布 | 待 v0.6.1 发布后复验 |
+
+**结论：本仓 `pendingDraft` / `pendingSmoke` 兜底不是 workaround，而是上游认可的**唯一正确用法**——保留，不删。**
+`docs/viva-upstream-editor-string-race.md` 里"上游修好后删 `spike/vivaeditor/`"的条件**仍未满足**（上游明确不修）。
+
+### 13.2 #240 `docs/upgrading.md` 漏写 v0.6.0 包重组 → **fixed（`bfcc26b`，随 v0.6.1）**
+
+上游确认我们报的缺口成立，并补齐了：
+
+- `flex` 导入路径移除、page/layout/control API 迁到 `ui`
+- 原 `ui` 底层 API 迁到 `gfx`，附代表性映射表 + 版本钉死的包文档链接
+- 保留的 page 词汇（`Color`/`Rect`/`Size`/`Point`/`Theme` + 主题/颜色 helper）
+- `Frame`/`View` → `Page`/`C` 的编写迁移（含主题配置、Page 持久所有权、嵌入式宿主输入路由、拖放 API）
+- **我们没发现的一条渲染迁移**：`ReplaceBlockElements` / `Canvas.BlockRectangles`
+  → `ReplaceCellGlyphs` / `Canvas.CellGlyphGeometry`（输出含矩形**和**三角形）
+
+**对我们的一处纠正**：`ui.ID` 的**类型**搬到了 `gfx.ID`；v0.6.0 里的 `ui.ID(c)` 是新的 **page helper 函数**（返回 `gfx.ID`），不是保留的类型别名。`ui.Rect` 才是保留别名。
+—— 这正是 V-06-1 里那 9 个"同名坑"的成因，我们的处理（按类型/函数上下文分开改）与该纠正一致。
+
+**渲染迁移自查**：`grep -rn "ReplaceBlockElements\|BlockRectangles" --include=*.go .` → **0 处**（本仓不用这两个 API），无需额外迁移。
+
+### 13.3 后续动作
+- 等 **v0.6.1** 发布 → 按 13.1 的交接方式复验 #239（**只在遵守窗口线程所有权的路径上**验；并发 `Text`/`SetText` 仍不受支持）
+- 复验通过后才删 `spike/vivaeditor/` 与 `pendingDraft` 兜底（**两个条件同时满足**）
+- watcher 已配 `vivaui/viva`（30 分钟一次，每次最多 3 条唤醒）只盯这两个 issue 的后续

@@ -30,6 +30,7 @@ package dssettings
 import (
 	"sync"
 
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
@@ -120,6 +121,21 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Slot:  pluginapi.SlotShellOverlay,
 			Order: 101,
 			Draw:  p.drawOfficialPanel,
+		},
+		{
+			// 官方 `SettingsRoot.triggerRow` 里的设置按钮（`settings.launcher`
+			// 的 fallback，见 official_trigger.go）。挂 `sidebar.settings` 官方槽：
+			// 壳把这一槽摆进**一行**（行容器在 uikernel 骨架里），本画家只画
+			// 行里的 `flex:1` 那一格。
+			//
+			// Order 55：**排在连接指示（61）之前**——官方 `triggerRow` 的排法是
+			// `[设置按钮(flex:1)] [连接指示(flex:none)]`，行内顺序就是 Order 顺序。
+			// 55 同时排在账号启动器（dsnotifications 的 60）之前；两者互斥
+			// （有启动器时本按钮是官方 fallback，不画），所以不会出现"两个设置入口"。
+			ID:    "settings-trigger",
+			Slot:  uikernel.OffSidebarSettings,
+			Order: 55,
+			Draw:  p.drawSettingsTrigger,
 		},
 	}
 }

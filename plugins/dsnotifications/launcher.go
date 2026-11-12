@@ -147,27 +147,15 @@ func launcherRowHeight(st AccountState) float32 {
 // drawSettingsLauncherRow 是**第一级父容器**：官方 SettingsRoot 的 `triggerRow`。
 //
 // 它只做一件事：把 `settings.launcher` 槽真的 dispatch 出来（`renderSlot`）。
-// 官方这一行里还有 ConnectionIndicator / DesktopUpdateIndicator，本仓没有
-// 那两个部件（登记为差距），所以这里不画它们，也不留占位空白。
-func (p *Plugin) drawSettingsLauncherRow(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
-	if !p.officialSlotsLive() {
-		// 这一帧不 dispatch sidebar.settings：让位给过渡桥（drawLauncherFooterBridge）。
-		return
-	}
-	f.Column().FillWidth().Children(func() {
-		drawSlot(SlotSettingsLauncher)
-	})
-}
-
-// drawLauncherFooterBridge 是**旧三栏的过渡桥**：旧路径里侧栏底部是 `sidebar.footer`。
+// 官方这一行里还有 ConnectionIndicator / DesktopUpdateIndicator：连接指示由
+// dsstatusbar 画在同一行（`sidebar.settings` 槽的第二个子项），更新指示本仓没有
+// （登记为差距），所以这里不画它，也不留占位空白。
 //
-// 这不是新造挂载点：官方侧栏底部本来就是"footer actions + settings 行"两块
-// （`SidebarRoot.module.css` 的 `.footArea{flex-direction:column}`），旧壳只是
-// 把它们合成一个槽。官方档位下本 painter 自动让位（见 isOfficial 守卫）。
-func (p *Plugin) drawLauncherFooterBridge(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
-	if p.officialSlotsLive() {
-		return
-	}
+// **不再按档位让位**：壳现在在**所有**绘制路径下都画「设置行」那一行
+// （uikernel 官方骨架 / uikernel 兼容桥 / dsshell 旧三栏），本容器是那一行的
+// 第一个子项——`flex:1` 把它撑开、把连接指示推到行右缘（官方
+// `[设置按钮(flex:1)] [连接指示]` 的排法）。
+func (p *Plugin) drawSettingsLauncherRow(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	f.Column().FillWidth().Children(func() {
 		drawSlot(SlotSettingsLauncher)
 	})

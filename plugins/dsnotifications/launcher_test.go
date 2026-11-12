@@ -167,7 +167,6 @@ func TestLauncherPanelsRegistration(t *testing.T) {
 		childr bool
 	}{
 		{"account-launcher.row", SlotSidebarSettings, false, true},
-		{"account-launcher.bridge", pluginapi.SlotSidebarFooter, false, true},
 		{"account-launcher.menu", SlotSettingsLauncher, true, true},
 		{"account-notices", SlotSettingsLauncherNotifications, true, false},
 	} {
@@ -210,11 +209,11 @@ func TestLauncherChainDispatchesNotificationsSlot(t *testing.T) {
 
 // TestLauncherMountPointFollowsDispatchedSlots 挂载点必须跟着**这一帧真正被 dispatch 的槽**走。
 //
-// 三档（真机 `-shell official` 踩到第三档）：
+// 三档（真机 `-shell official` 踩到第三档）都从同一个官方槽进：
 //
-//	official（无旧部件）  sidebar.settings 被 dispatch  → 官方链活、过渡桥让位
-//	official + 旧部件桥   换旧三栏排版：sidebar.footer 被 dispatch → 桥活、官方链让位
-//	legacy                dsshell 只 dispatch 旧槽        → 桥活、官方链让位
+//	official（无旧部件）  sidebar.settings 被 dispatch（官方骨架自己画那一行）
+//	official + 旧部件桥   换旧三栏排版：壳仍画设置行（drawLegacySidebar）
+//	legacy                dsshell 只 dispatch 旧槽 —— 它现在也画设置行
 //
 // 判据不只是"画了"，还有"**另一边一次都没画**"（双画会让同一行出现两次）。
 func TestLauncherMountPointFollowsDispatchedSlots(t *testing.T) {
@@ -225,9 +224,12 @@ func TestLauncherMountPointFollowsDispatchedSlots(t *testing.T) {
 		wantFrom pluginapi.Slot // 从哪个槽开始 dispatch 会落到叶槽
 		other    pluginapi.Slot // 这个槽必须一次都不 dispatch
 	}{
+		// 三档都从同一个官方槽进：壳在**所有**绘制路径下都画设置行
+		// （uikernel 官方骨架 / uikernel 兼容桥 / dsshell 旧三栏），
+		// 所以不再需要"过渡桥座位"（HH 单第 1 件）。
 		{"official 无桥", true, false, SlotSidebarSettings, pluginapi.SlotSidebarFooter},
-		{"official + 旧部件桥", true, true, pluginapi.SlotSidebarFooter, SlotSidebarSettings},
-		{"legacy", false, false, pluginapi.SlotSidebarFooter, SlotSidebarSettings},
+		{"official + 旧部件桥", true, true, SlotSidebarSettings, pluginapi.SlotSidebarFooter},
+		{"legacy", false, false, SlotSidebarSettings, pluginapi.SlotSidebarFooter},
 	}
 	for _, tc := range cases {
 		tc := tc

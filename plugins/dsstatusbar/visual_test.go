@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
@@ -31,6 +32,11 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 	}
 
 	status := &Plugin{}
+	// 假时钟：连接指示有官方 150ms 离场淡出（旧态再画 150ms 才换新态）。
+	// 这个测试每个状态只画一帧，不给假时钟的话每一帧都落在离场窗里——
+	// 那是"动画没走完"，不是"状态错了"。每次换数据把时钟推过 150ms。
+	fakeNow := time.Unix(0, 0)
+	status.now = func() time.Time { return fakeNow }
 	composer := &dscomposer.Plugin{}
 	kernel := uikernel.New("fg5-headless")
 	if err := kernel.Load(&dscore.Plugin{Dark: true}, composer, status); err != nil {
@@ -188,13 +194,23 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 			path, width, height, info.Size(), dock.X, dock.Y, dock.Width, dock.Height, cardCenter, wantConnection)
 	}
 
-	setData := func(next pluginapi.Snapshot) {
+	// pump 画一帧，并先把假时钟推过官方 150ms 离场窗。
+	//
+	// 两帧才换态是**故意**的：第一帧进入离场窗（仍画旧态），时钟推过 150ms
+	// 后第二帧才换成新态。少画一帧就会停在"旧态还亮着"（动画没走完）。
+	pump := func() {
 		t.Helper()
-		data = next
+		fakeNow = fakeNow.Add(200 * time.Millisecond)
 		invalidator.Invalidate()
 		if err := session.Driver().Pump(); err != nil {
 			t.Fatal(err)
 		}
+	}
+	setData := func(next pluginapi.Snapshot) {
+		t.Helper()
+		data = next
+		pump()
+		pump()
 	}
 
 	// 同一真实 flex/canvas 窗口覆盖两种尺寸、已知/未知/异常容量与压缩回落。
@@ -241,10 +257,8 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 		Cur: "session-b", Status: "已连接", Link: pluginapi.LinkConnected,
 		UsageTotal: pluginapi.Usage{TotalTokens: 777}, ContextTokens: 100,
 	}
-	invalidator.Invalidate()
-	if err := session.Driver().Pump(); err != nil {
-		t.Fatal(err)
-	}
+	pump()
+	pump()
 	for _, want := range []string{"总量 777", "上下文 100"} {
 		if !session.HasText(want) {
 			t.Fatalf("切到 B 后缺 B 的真值 %q；texts=%q", want, session.Texts())
@@ -258,10 +272,8 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 
 	// 空会话即便上游错误地残留 usage，session-scoped dock 也不能创建盒子。
 	data = pluginapi.Snapshot{UsageTotal: aUsageForStaleTest(), ContextTokens: 2000}
-	invalidator.Invalidate()
-	if err := session.Driver().Pump(); err != nil {
-		t.Fatal(err)
-	}
+	pump()
+	pump()
 	if session.HasText("总量 12.3k") || session.HasText("上下文 2.0k") {
 		t.Fatalf("空会话显示了残留 usage；texts=%q", session.Texts())
 	}

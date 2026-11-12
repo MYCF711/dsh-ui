@@ -197,7 +197,10 @@ func TestPanelsRegisterOfficialSlot(t *testing.T) {
 	if leaves != 1 {
 		t.Fatalf("叶槽（single）只该有一块画，得到 %d", leaves)
 	}
-	for _, want := range []pluginapi.Slot{SlotSidebarSettings, pluginapi.SlotSidebarFooter, SlotSettingsLauncher} {
+	// 只有两个父槽：`sidebar.settings`（官方 triggerRow 容器）与
+	// `settings.launcher`（AccountMenu）。过渡桥已经删掉——壳在**所有**绘制
+	// 路径下都画设置行，不需要第二份挂载点（HH 单第 1 件）。
+	for _, want := range []pluginapi.Slot{SlotSidebarSettings, SlotSettingsLauncher} {
 		if _, ok := seen[want]; !ok {
 			t.Fatalf("父容器缺 painter：槽 %q 上没有画", want)
 		}

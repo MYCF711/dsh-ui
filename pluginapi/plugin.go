@@ -280,8 +280,28 @@ type Snapshot struct {
 	Search   string
 	Status   string
 	Msgs     []apiclient.Message
-	Total    int
-	Stream   string
+	// Frames 是当前会话 journal 的**原始 Transport 帧**（`session.history` 的
+	// `frames[]` 与 WS 推送**同一个形状**），按 seq 升序、已去重。
+	//
+	// 为什么必须单独一份、不能从 Msgs 反推：宿主契约（`DSH-GO/docs/transport-contract.md`
+	// §恢复）写明 `session.history` 返回**原始 frames**，`session.load` 只是首屏投影。
+	// 官方主区 transcript 的投影器消费的是 v4 原始事件（`user/message` /
+	// `assistant/message` / `tool/call` …），而 `surfaceOp` / `source.kind` /
+	// `reason.kind` 这些**只有原始帧才有**——从"抽过 text 的 messages"反推，
+	// 这几种节点就再也分不出来了。
+	//
+	// 空 = 还没有基线（老宿主 / mockd / 首帧尚未拉到）。插件据此回退旧渲染路径，
+	// 不许画一个空的消息区。
+	Frames []apiclient.Frame
+	// JournalEpoch 是 Frames 所属的 journal 世代（`session.load`/`session.history`
+	// 的 `journalEpoch`）。0 = 未知。
+	//
+	// 世代不一致 = 宿主换过 journal（重启），旧 seq 属于**另一个序号域**：
+	// 消费方必须丢弃旧基线重建，不能按 seq 硬补——后者不报错也不丢帧，
+	// 只是"少了几条"，是这一层最难发现的一种错。
+	JournalEpoch int64
+	Total        int
+	Stream       string
 	// Busy 表示当前会话**有一个 turn 在跑**（已发 prompt、还没结束/取消/失败）。
 	//
 	// 为什么不能只看 Stream：只有思考（reasoning）没有正文时 Stream 是空的，

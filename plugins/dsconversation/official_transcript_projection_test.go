@@ -256,13 +256,18 @@ func TestProjectWorkflowRun(t *testing.T) {
 	}
 }
 
-// TestProjectUnknownFallback：不认识的帧必须落 unknown 且原样保留 JSON，**不编摘要**。
+// TestProjectUnknownFallback：不认识的 **surface** 帧必须落 unknown 且原样保留
+// JSON，**不编摘要**。
+//
+// 为什么带 `surfaceOp`：官方 `fallback.ts` 的 match 是"任何 append surface
+// 事件"。非 surface 的帧（`request/context` / `usage/update` / 标题生成 …）是
+// 元数据，不是消息行——它们连 unknown 都不该落（见 TestProjectSkipsMetadataFrames）。
 func TestProjectUnknownFallback(t *testing.T) {
-	entry := mustProject(t, frame(90, "some/future-event", `{"foo":"bar"}`))
+	entry := mustProject(t, frame(90, "some/future-event", `{"surfaceOp":"append","foo":"bar"}`))
 	if entry.Kind != ChatNodeUnknown {
 		t.Fatalf("未知帧 kind = %q，应为 unknown", entry.Kind)
 	}
-	if entry.Data.Raw != `{"foo":"bar"}` {
+	if entry.Data.Raw != `{"surfaceOp":"append","foo":"bar"}` {
 		t.Errorf("未知帧原文 = %q（必须原样保留）", entry.Data.Raw)
 	}
 	if entry.Data.Text != "" || entry.Data.Summary != "" {
@@ -291,7 +296,7 @@ func TestProjectAllRenderableKindsReachable(t *testing.T) {
 		frame(14, "turn/start", `{"turn":1}`),
 		frame(15, "turn/end", `{"reason":{"kind":"completed"}}`),
 		frame(16, "system/message", `{"content":[{"type":"text","text":"sp"}]}`),
-		frame(17, "some/unknown", `{"raw":true}`),
+		frame(17, "some/unknown", `{"surfaceOp":"append","raw":true}`),
 		frame(18, "user/message", `{"surfaceOp":"append","source":{"kind":"user-question-reply","callId":"c"},"content":[]}`),
 		frame(19, "tool-workflow/run-start", `{"runId":"r","name":"w"}`),
 	}

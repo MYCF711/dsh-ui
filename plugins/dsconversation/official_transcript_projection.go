@@ -54,6 +54,14 @@ type TranscriptEntry struct {
 	Visibility ChatNodeVisibility
 	// Data 是渲染器自己的载荷（各类只填自己的字段）。
 	Data TranscriptData
+	// Streaming 标记这一条是**流式增量**（`assistant/text` / `assistant/reasoning`）：
+	// 它要**追加**到同 key 的已有节点上，不是替换。
+	//
+	// 为什么不能一帧一条：真实宿主一步推 step/start → assistant/text×N →
+	// assistant/message → step/end 五类帧。一帧一节点的话，界面上一步回答会
+	// 变成 4~5 行（前几行空的、正文重复两遍）。官方 assistant.ts 的
+	// start/update 状态机就是按 (turn, step) 一条节点。
+	Streaming bool
 }
 
 // TimeKnown 报告事件时间是不是真值（0 = 宿主没给）。
@@ -278,7 +286,11 @@ func (t *Transcript) applyFrames(frames []apiclient.Frame) int {
 			continue
 		}
 		if entry, ok := t.project(frame); ok {
-			t.upsert(entry)
+			if entry.Streaming {
+				t.appendStep(entry)
+			} else {
+				t.upsert(entry)
+			}
 			applied++
 		}
 		if frame.Seq > t.lastSeq {
@@ -301,6 +313,43 @@ func (t *Transcript) upsert(entry TranscriptEntry) {
 	t.entries = append(t.entries, entry)
 }
 
+// appendStep 把**流式增量**并进同 key 的节点（行位置不变，只并内容）。
+//
+// 行必须留在 step/start 那一条的位置：先到的 start 定位置，后续增量只长内容。
+// 找不到同 key 时退化成追加——宁可多一行，也不要吞掉正文。
+func (t *Transcript) appendStep(entry TranscriptEntry) {
+	if entry.Key == "" {
+		t.upsert(entry)
+		return
+	}
+	at, ok := t.seqOf[entry.Key]
+	if !ok || at >= len(t.entries) {
+		t.seqOf[entry.Key] = len(t.entries)
+		t.entries = append(t.entries, entry)
+		return
+	}
+	existing := t.entries[at]
+	existing.Data.Text += entry.Data.Text
+	existing.Data.Reasoning += entry.Data.Reasoning
+	t.entries[at] = existing
+}
+
+// stepKey 是官方 assistant 节点的稳定键：`(turn, step)`。
+//
+// 用坐标而不是 seq：同一 (turn, step) 的五类帧（start / text / reasoning /
+// message / end）必须落到**同一条**节点上，而它们的 seq 各不相同。
+func stepKey(data transcriptFrame) string {
+	turn := UnknownText
+	if data.Turn != nil {
+		turn = itoa64(*data.Turn)
+	}
+	step := UnknownText
+	if data.Step != nil {
+		step = itoa64(*data.Step)
+	}
+	return "assistant-step-turn" + turn + "-step" + step
+}
+
 // ── 帧 → 节点 ─────────────────────────────────────────────────────────
 
 // transcriptFrame 是 v4 事件 data 的联合形状（只解界面真用到的字段）。
@@ -320,6 +369,9 @@ type transcriptFrame struct {
 	Name       string             `json:"name"`
 	Arguments  string             `json:"arguments"`
 	ID         string             `json:"id"`
+	// Text 是 `assistant/text` / `assistant/reasoning` 的**流式增量**（顶层
+	// `text` 键，不是 content 块——真宿主 `internal/agent/loop.go` 就是这么推的）。
+	Text string `json:"text"`
 
 	Reason  *transcriptReason  `json:"reason"`
 	Command *transcriptCommand `json:"command"`
@@ -475,7 +527,7 @@ func (f transcriptFrame) turnOf() int64 {
 // 映射规则逐条对齐官方 Definition 的 `match`（锚点写在 case 上）。
 func (t *Transcript) project(frame apiclient.Frame) (TranscriptEntry, bool) {
 	kindName := frame.Type
-	if kindName == "" || kindName == "pong" || kindName == "session/reset" {
+	if skipTranscriptFrame(kindName) {
 		return TranscriptEntry{}, false
 	}
 	var data transcriptFrame
@@ -551,20 +603,46 @@ func (t *Transcript) project(frame apiclient.Frame) (TranscriptEntry, bool) {
 		// request-prompt.ts:68-110 → system-prompt（in-history 更新与首次提示两个文案）
 		entry.Kind = ChatNodeSystemPrompt
 		entry.Data.Text = data.textOf()
-	case "step/start", "assistant/attempt", "assistant/live-chunk", "assistant/message":
-		// assistant.ts:307-334 → assistant-step
+	// 注意 `step/end` **不在**这里：它是"这一步收工"的边界帧，不带正文，
+	// 落成节点只会把刚合并好的正文**覆盖成空**（真实宿主每步都推它）。
+	case "step/start", "assistant/attempt", "assistant/live-chunk",
+		"assistant/text", "assistant/reasoning", "assistant/message":
+		// assistant.ts:307-334 → assistant-step（官方 start/update 状态机：
+		// **一个 (turn, step) 一条节点**，不是一帧一条）。
+		//
+		// 真实宿主一步推的是：step/start → assistant/text×N（流式增量）→
+		// assistant/message（一步完整产物 + usage）→ step/end。四类帧的 seq
+		// 各不相同，所以**必须按 (turn, step) 合键**——按 seq 就是一步 4 行，
+		// 前几行空、正文重复两遍。
 		entry.Kind = ChatNodeAssistantStep
-		entry.Data.Text = data.textOf()
-		entry.Data.Reasoning = data.reasoningOf()
-		if data.Usage != nil {
-			entry.Data.Usage = TranscriptUsage{
-				InputTokens:  data.Usage.InputTokens,
-				OutputTokens: data.Usage.OutputTokens,
-				TotalTokens:  data.Usage.TotalTokens,
+		entry.Key = stepKey(data)
+		switch kindName {
+		case "assistant/text", "assistant/live-chunk":
+			// 流式正文增量（宿主 `internal/agent/loop.go` 推的是 delta）：**追加**。
+			entry.Data.Text = data.Text
+			entry.Streaming = true
+		case "assistant/reasoning":
+			// 流式思考增量：追加到 reasoning 区（不占正文）。
+			entry.Data.Reasoning = data.Text
+			entry.Streaming = true
+		case "assistant/message":
+			// 一步的完整产物（权威正文 + 用量）。
+			entry.Data.Text = data.textOf()
+			entry.Data.Reasoning = data.reasoningOf()
+			if data.Usage != nil {
+				entry.Data.Usage = TranscriptUsage{
+					InputTokens:  data.Usage.InputTokens,
+					OutputTokens: data.Usage.OutputTokens,
+					TotalTokens:  data.Usage.TotalTokens,
+				}
 			}
-		}
-		if data.ID != "" {
-			entry.Data.MessageID = data.ID
+			if data.ID != "" {
+				entry.Data.MessageID = data.ID
+			}
+		default:
+			// step/start / assistant/attempt：只定位置，不带正文。
+			entry.Data.Text = data.textOf()
+			entry.Data.Reasoning = data.reasoningOf()
 		}
 	case "tool/call", "tool/ptc-dispatch-start", "tool/ptc-dispatch", "tool/result":
 		// tool.ts:295-330 → tool-call（三态 preparing|start|result；四态渲染 ok/error/stopped/preparing）
@@ -665,8 +743,16 @@ func (t *Transcript) project(frame apiclient.Frame) (TranscriptEntry, bool) {
 		entry.Data.RunName = data.Name
 		entry.Data.StopReason = data.StopReason
 	default:
-		// fallback.ts:19-27：任何 append surface 事件都可以落 unknown 兜底。
+		// fallback.ts:19-27：任何 **append surface 事件**都可以落 unknown 兜底。
 		// **不编摘要**：原样 JSON 交给 JsonBlock。
+		//
+		// 非 surface 帧（`request/context`、`usage/update`、`step/end`、
+		// `session/title*`、`turn/done`/`turn/error` …）是**元数据**，不是消息行：
+		// 原样 JSON 画出来只会让主区每轮多几行看不懂的东西。判据是官方的
+		// `surfaceOp`（真宿主每个 surface 事件都带），不靠白名单猜。
+		if data.SurfaceOp == "" && len(data.blocks()) == 0 {
+			return TranscriptEntry{}, false
+		}
 		return t.unknownEntry(frame), true
 	}
 	entry.Visibility = visibilityOf(entry.Kind)
@@ -675,6 +761,25 @@ func (t *Transcript) project(frame apiclient.Frame) (TranscriptEntry, bool) {
 	}
 	return entry, true
 }
+
+// skipTranscriptFrame 报告一条 journal 帧**不产生消息行**。
+//
+// 为什么要有这个判据：Transport journal 里除了 v4 内容事件，还有控制帧
+// （`pong` / `session/reset`）与**审批帧**（`approval/request|timeout|cancel`）。
+// 审批不是消息行——官方由 composer 接管（见 conversation.go 的 Panels 注释：
+// 同屏两条「需要审批」是明确要避免的）。不跳过它们，主区就会在每轮里多出
+// 几行原始 JSON，而用户完全不知道那是什么。
+func skipTranscriptFrame(kindName string) bool {
+	switch kindName {
+	case "", "pong", "session/reset",
+		"approval/request", "approval/timeout", "approval/cancel":
+		return true
+	}
+	return false
+}
+
+// 注：**非 surface 的未知帧**（元数据类）由 project 的 default 分支丢弃，
+// 不在这里列清单——清单会随宿主新增事件类型腐化，`surfaceOp` 判据不会。
 
 // commandInputText 拼 `/goal` 命令行的可见文本（goal-command-input.ts:36-38：
 // `/${name}${args.trimEnd()}`）。

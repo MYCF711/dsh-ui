@@ -155,7 +155,13 @@ type model struct {
 	seqs map[string]int
 	// epochs 是每会话的 journal 世代（从 session.load 的 journalEpoch 拿）。
 	// 订阅时带上它，宿主换代了就会发 session/reset——不带的话旧水位会静默错位。
-	epochs     map[string]int64
+	epochs map[string]int64
+	// frames 是每会话的**原始 journal 帧**（主区 transcript 的数据面，见 frames.go）。
+	//
+	// 与 msgs 是两件事：msgs 是 session.load 的**投影**（首屏用），frames 是
+	// journal 原文（steering / turn-trigger / reason.kind 这些只有原文才分得出来）。
+	// 绘制期在锁内拷一份进快照，插件读不到活切片。
+	frames     map[string]*frameJournal
 	streamText string
 	// turnBusy：当前会话有 turn 在跑。发 prompt 置 true，流结束/取消/失败置 false。
 	turnBusy bool
@@ -462,6 +468,9 @@ func (m *model) openSession(id string) {
 	}
 	m.subscribe(id)
 	go m.refreshSession(id, false)
+	// 主区 transcript 的数据面：WS 只从 lastSeq 之后推，之前的历史只有
+	// `session.history` 能拿到（load 是投影，没有 frames 键）。
+	go m.refreshFrames(id)
 }
 
 // refreshSession 拉一次 session.load；quiet=true 时失败不覆盖状态栏。
@@ -874,6 +883,8 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 								since = m.onJournalResetLocked(id)
 								m.mu.Unlock()
 								m.refreshSession(id, true)
+								// 主区数据面同样要重建基线（load 只有投影，没有 frames）。
+								go m.refreshFrames(id)
 								m.mu.Lock()
 								if base := m.seqs[id]; base > since {
 									since = base // 新基线之后重连，别把新 journal 整条重放
@@ -909,6 +920,8 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 				// **不清空已有消息**——先把新基线拉回来，界面再整体替换，
 				// 这样用户看到的是"刷新了一下"，而不是"内容突然没了"。
 				m.refreshSession(id, true)
+				// 主区数据面同样要重建基线（load 只有投影，没有 frames）。
+				go m.refreshFrames(id)
 				// refreshSession 会把新基线写回 m.seqs[id]（新 journal 的 lastSeq）。
 				// 有它就从他之后重连：从 0 重连会把新 journal 整条重放一遍，而那些
 				// 内容刚刚已经由 load 画上去了（同一条消息出现两次）。
@@ -966,6 +979,11 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 func (m *model) onJournalResetLocked(id string) int {
 	delete(m.seqs, id)
 	delete(m.epochs, id)
+	// **原始帧也要整段丢弃**：旧 seq 属于另一个序号域，留着就是"新旧两代混排"，
+	// 界面上表现为消息偶尔跳一下（最难看出来的那种错）。重建由 refreshFrames 负责。
+	if journal := m.frames[id]; journal != nil {
+		journal.reset()
+	}
 	if sub := m.subs[id]; sub != nil {
 		sub.lastSeq = 0
 	}
@@ -1172,6 +1190,18 @@ func (m *model) applyEventAt(id string, ev apiclient.Event, envelopeTime int64) 
 	if ev.Time == 0 {
 		ev.Time = envelopeTime
 	}
+	// **原始帧先进数据面日志**（主区 transcript 的唯一来源），再走下面的归约。
+	//
+	// 为什么放在最前面、连审批帧也进：journal 是 append-only 的**一个**序号域，
+	// 少记一条（哪怕它不是消息行）就会在补洞时留下一个"假洞"——宿主会重新推
+	// 一遍那段，而客户端按 seq 判重只看得到自己记过的那几条。投影器负责跳过
+	// 非消息行（approval/* 等），数据面负责**一条不丢**。
+	//
+	// 这一帧的 Time 已经是 canonical 真值（上面刚补齐），不再另取墙钟。
+	m.mu.Lock()
+	m.appendFrameLocked(id, apiclient.Frame{Seq: ev.Seq, Type: ev.Kind, Data: ev.Data, Time: ev.Time})
+	m.mu.Unlock()
+
 	// 审批**作废**：宿主的超时按拒绝结算并推这一帧（serve_approval.go），
 	// 再 approve 过去只会拿到 404 `no_such_request`。
 	//
@@ -1344,6 +1374,10 @@ func (m *model) evictLocked(keep string) {
 			return
 		}
 		delete(m.cache, oldestID)
+		// 原始帧跟着温缓存一起淘汰：两者都是"这一会话的首屏内容"，留一份不留
+		// 另一份只会让内存涨到没边（长会话一帧约 200 B，十条会话就是几十 MB）。
+		// 淘汰之后重开走冷载，`refreshFrames` 会重新拉回来——与 msgs 同款语义。
+		delete(m.frames, oldestID)
 	}
 }
 
@@ -1547,6 +1581,9 @@ func newConfig(m *model) app.Config {
 		}
 		status := m.status
 		streamText := m.streamText
+		// 主区 transcript 的数据面：原始 journal 帧 + 世代。
+		// 锁内拷贝（journal 会被 WS goroutine 插入，活切片不能交出去）。
+		frames, framesEpoch := m.snapshotFramesLocked(cur)
 		approval := m.approval
 		usage := m.usage
 		// H1/H4/H5：会话语义的真值原样带进快照，插件自己决定画不画。
@@ -1630,7 +1667,8 @@ func newConfig(m *model) app.Config {
 			Theme: m.theme,
 			Data: pluginapi.Snapshot{
 				Sessions: sessions, Cur: cur, Status: status,
-				Msgs: msgs, Total: total, Stream: streamText, Truncated: truncated,
+				Msgs: msgs, Frames: frames, JournalEpoch: framesEpoch,
+				Total: total, Stream: streamText, Truncated: truncated,
 				MessageMeta: metadata, TurnEvents: turnEvents, Outgoing: outgoing,
 				ActiveTurnID: activeTurnID, ActiveTurn: activeTurn,
 				Usage: pluginapi.Usage{

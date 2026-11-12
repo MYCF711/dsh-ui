@@ -126,6 +126,16 @@ type Plugin struct {
 	// officialTranscript 是 rc.2 官方主区 transcript 渲染器（official_transcript_*.go）。
 	// 惰性初始化：只在真正画官方骨架时才建（旧路径不付这份内存）。
 	officialTranscript *OfficialTranscriptView
+	// transcript 是**产品路径**的帧投影状态（official_transcript_wiring.go）：
+	// 原始 journal 帧增量并入，按 seq 去重、按 journalEpoch 重建基线。
+	//
+	// 为什么投影放插件里而不是每帧重算：一帧一次 json.Unmarshal（消息多时上千条）
+	// 会把绘制线程拖垮；而 journal 是 append-only，增量并入是 O(新增帧)。
+	transcript *Transcript
+	// transcriptSession 是当前投影属于哪条会话。
+	// 切会话必须 Reset：两条会话的 seq 都从 1 起，不 Reset 会把新会话的帧
+	// 全当成"重放"丢掉（界面症状：切过去主区空白）。
+	transcriptSession string
 
 	// tools 是工具卡渲染器（ds-tool 提供 ui.tool-card）。
 	//
@@ -192,6 +202,15 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.searchField} }
 
 // Panels 实现 pluginapi.Panels：一块主体（消息流）+ 一块审批气泡。
+//
+// 主区有两个座位（互斥，同一帧只有一个活）：
+//
+//	conversation.view  官方 `ChatView.column`（rc.2 终态；`uikernel.OffConvView`）
+//	main.body          dsshell 三栏 / 官方骨架的旧部件兼容桥（今天的产品路径）
+//
+// 座位的选择**由壳决定**（`uikernel.ShellOptions.BridgeLegacy` 一帧一个值），
+// 插件两边都挂、各自判"这一帧有没有原始帧可画"，不自己猜壳是哪个档。
+// 详见 official_transcript_wiring.go 文件头。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{
@@ -201,6 +220,15 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Draw:      p.draw,
 			AfterDraw: p.afterDraw,
 		},
+		{
+			// 官方 `conversation.view` 槽（动态取名字面量，见 official_transcript_nodes.go
+			// 的 SlotConversationView：这三个名字是官方 slots.ts 的字面量，
+			// **不许改写成 main.body 之类的旧槽名**）。
+			ID:    "official-transcript",
+			Slot:  pluginapi.Slot(SlotConversationView),
+			Order: 20,
+			Draw:  p.drawOfficialTranscriptSeat,
+		},
 	}
 	// 审批条**不在这里画**：它属于"用户要做决定的地方"，由 ds-composer 在输入框
 	// 上方画（dscomposer/approval.go）。这里曾经也画一条气泡，结果同屏出现两条
@@ -209,12 +237,29 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 
 // draw 是布局阶段。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
-	t := p.theme
-	msgs := env.Data.Msgs
+	// 每个渲染路径都要清掉上一帧的覆画槽，否则接管之后旧的 Markdown
+	// 槽还会被 AfterDraw 画到屏幕上（两套内容叠着）。
 	p.slots = p.slots[:0]
 	p.bodyReady = false
+	p.turnBoxes = nil
+	// 按键期快照（复制/重试要读）与渲染路径无关，两条路都要更新：
+	// 少了它，transcript 接管后按 Ctrl+Shift+C 复制的是**上一帧**的正文。
 	p.lastAct = env.Act
 	p.lastMsgs = env.Data.Msgs
+	// **主区接管**：宿主 journal 的原始帧到了，就由 rc.2 官方 transcript
+	// 渲染器（conversation.view 那一条 painter）画这一帧。
+	//
+	// 为什么在旧渲染器里判而不是靠槽位：dsshell 三栏与官方兼容桥都只
+	// dispatch `main.body`，`conversation.view` 根本没人画。两个座位都判
+	// 同一个条件，**同一帧只有一个活**。
+	//
+	// 没有帧（mockd / 老宿主 / 首帧未到）时走下面的旧路径——宁可画旧列表，
+	// 也不给用户一个空白主区。
+	if p.drawProductTranscript(f, env, false) {
+		return
+	}
+	t := p.theme
+	msgs := env.Data.Msgs
 	if p.expanded == nil {
 		p.expanded = map[string]bool{}
 	}

@@ -138,6 +138,20 @@ const (
 	SidebarNewSessionMargin float32 = 4 // paint-inset 3 + 1
 	SidebarNewSessionRadius float32 = 8 // --dsw-radius-md
 
+	// 设置行（`SettingsRoot.triggerRow`，官方 `sidebar.settings` 的唯一一行）：
+	//
+	//	.triggerRow{flex:none;align-items:center;gap:8px;width:calc(100% + 4px);
+	//	            margin:4px -2px;display:flex;position:relative}
+	//	.trigger{height:42px;border-radius:var(--dsw-radius-md);flex:1;
+	//	         padding:0 10px 0 8px;font:14px/22px;gap:8px;display:flex}
+	//
+	// 结构树 §4 S8 的判定同一句：「官方是 [设置按钮(flex:1)] [连接指示] 同一行」。
+	// 横向 -2px 是官方的 paint-inset（`--dsh-sidebar-paint-inset` 的一半）：
+	// 行比侧栏内容宽 4px，左右各溢出 2px，让选中/悬停底色的边缘贴到栏边。
+	SettingsTriggerRowMarginY float32 = 4
+	SettingsTriggerRowInset   float32 = 2 // margin-inline: -2px
+	SettingsTriggerRowGap     float32 = 8
+
 	// panelList：list gap 2、bottom margin 8；panelRow min-height 32、
 	// padding 5px calc(12px - 3px)、margin 0。
 	SidebarPanelListGap    float32 = 2
@@ -382,6 +396,15 @@ var officialGeometry = []GeoRow{
 	// SidebarRoot
 	{Node: "SidebarRoot.root", Prop: "padding-block", Official: SidebarRootPadY, Impl: SidebarRootPadY, Unit: UnitPx, Status: GeoAligned,
 		Anchor: "ui-sidebar/src/client/SidebarRoot.module.css:17"},
+	// 设置行（`SettingsRoot.triggerRow`）：官方是**一行 flex**，本仓的
+	// `sidebar.settings` 槽由壳包成 Row 派发，三个子项（设置按钮/连接指示/更新指示）
+	// 同 Y。三个值逐条来自 SettingsRoot.module.css:1-9。
+	{Node: "SettingsRoot.triggerRow", Prop: "margin-block", Official: SettingsTriggerRowMarginY, Impl: SettingsTriggerRowMarginY, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:1-9"},
+	{Node: "SettingsRoot.triggerRow", Prop: "margin-inline", Official: -SettingsTriggerRowInset, Impl: -SettingsTriggerRowInset, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:1-9"},
+	{Node: "SettingsRoot.triggerRow", Prop: "gap", Official: SettingsTriggerRowGap, Impl: SettingsTriggerRowGap, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:1-9"},
 	{Node: "SidebarRoot.root", Prop: "padding-inline", Official: SidebarRootPadX, Impl: SidebarRootPadX, Unit: UnitPx, Status: GeoAligned,
 		Anchor: "ui-sidebar/src/client/SidebarRoot.module.css:10,17"},
 	{Node: "SidebarRoot.root", Prop: "font-size", Official: 14, Impl: 14, Unit: UnitPx, Status: GeoAligned,

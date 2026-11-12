@@ -17,20 +17,27 @@ import (
 )
 
 func TestLinkStateOf(t *testing.T) {
+	// 四个事实组合 + 优先级：断线证据 > 连着证据 > 正在重连 > 未知。
 	for _, tc := range []struct {
-		name string
-		up   bool
-		down bool
-		want pluginapi.LinkState
+		name       string
+		up         bool
+		down       bool
+		connecting bool
+		want       pluginapi.LinkState
 	}{
-		{"还没拿到事实", false, false, pluginapi.LinkUnknown},
-		{"订阅成功", true, false, pluginapi.LinkConnected},
-		{"订阅失败", false, true, pluginapi.LinkDown},
-		{"连过又断（断线证据优先）", true, true, pluginapi.LinkDown},
+		{"还没拿到事实", false, false, false, pluginapi.LinkUnknown},
+		{"订阅成功", true, false, false, pluginapi.LinkConnected},
+		{"订阅失败", false, true, false, pluginapi.LinkDown},
+		{"连过又断（断线证据优先）", true, true, false, pluginapi.LinkDown},
+		// 一次重连尝试正在飞行中：官方 `data-phase=connecting`。
+		{"正在重连（首连 / 退避到点 / 点了立即重连）", false, false, true, pluginapi.LinkConnecting},
+		{"重连中但上次失败还没清（断线证据优先，先报断）", false, true, true, pluginapi.LinkDown},
+		{"连着时又发起重连（连着证据优先，不抖动）", true, false, true, pluginapi.LinkConnected},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := linkStateOf(tc.up, tc.down); got != tc.want {
-				t.Fatalf("linkStateOf(up=%v, down=%v) = %v，want %v", tc.up, tc.down, got, tc.want)
+			if got := linkStateOf(tc.up, tc.down, tc.connecting); got != tc.want {
+				t.Fatalf("linkStateOf(up=%v, down=%v, connecting=%v) = %v，want %v",
+					tc.up, tc.down, tc.connecting, got, tc.want)
 			}
 		})
 	}

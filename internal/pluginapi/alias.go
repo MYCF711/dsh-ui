@@ -48,10 +48,11 @@ const (
 	KeyTheme      = pub.KeyTheme
 	KeyPrimitives = pub.KeyPrimitives
 
-	// 连接三态（`Snapshot.Link`）的取值：纯转发公开包的常量。
-	LinkUnknown   = pub.LinkUnknown
-	LinkConnected = pub.LinkConnected
-	LinkDown      = pub.LinkDown
+	// 连接四态（`Snapshot.Link`）的取值：纯转发公开包的常量。
+	LinkUnknown    = pub.LinkUnknown
+	LinkConnected  = pub.LinkConnected
+	LinkDown       = pub.LinkDown
+	LinkConnecting = pub.LinkConnecting
 
 	SlotShellRoot     = pub.SlotShellRoot
 	SlotShellLeading  = pub.SlotShellLeading

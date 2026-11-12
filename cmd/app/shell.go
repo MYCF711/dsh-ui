@@ -79,16 +79,24 @@ func (m shellMode) resolve(k *uikernel.Kernel) shellMode {
 	return shellOfficial
 }
 
-// linkStateOf 把两枚布尔事实压成 `pluginapi.LinkState`（唯一出处）。
+// linkStateOf 把三枚布尔事实压成 `pluginapi.LinkState`（唯一出处）。
 //
-// 顺序是有意的：**断线的证据优先于连着的证据**——订阅成功后又失败时两者都真，
-// 那时结论必须是"断"。两个都假 = 还没拿到任何事实 = `LinkUnknown`（界面写「未知」）。
-func linkStateOf(up, down bool) pluginapi.LinkState {
+// 顺序是有意的：
+//
+//	① **断线的证据优先于连着的证据**——订阅成功后又失败时两者都真，那时结论
+//	   必须是"断"；
+//	② 有连着的证据就算连着；
+//	③ 都没有、但有一次订阅**正在飞行中**（首连 / 退避到点 / 用户点了立即重连）
+//	   → `LinkConnecting`（官方 `data-phase=connecting` 的「重新连接中」）；
+//	④ 三个都假 = 还没拿到任何事实 = `LinkUnknown`（界面写「未知」）。
+func linkStateOf(up, down, connecting bool) pluginapi.LinkState {
 	switch {
 	case down:
 		return pluginapi.LinkDown
 	case up:
 		return pluginapi.LinkConnected
+	case connecting:
+		return pluginapi.LinkConnecting
 	default:
 		return pluginapi.LinkUnknown
 	}

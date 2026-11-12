@@ -169,10 +169,14 @@ func TestOfficialDockGeometryDoesNotReuseLegacy24OrCaption40(t *testing.T) {
 func TestPanelsSeparateComposerDockFromConnectionBottom(t *testing.T) {
 	p := &Plugin{}
 	panels := p.Panels()
-	// 四个面：legacy dock / 官方 dock（见 official_dock.go）/
-	// 连接指示的官方座位（sidebar.settings）+ 兼容桥（sidebar.footer，见 connection.go）。
-	if len(panels) != 4 {
-		t.Fatalf("Panels 数 = %d，want legacy dock + 官方 dock + 连接官方座位 + 连接兼容桥四个", len(panels))
+	// 三个面：legacy dock / 官方 dock（见 official_dock.go）/
+	// 连接指示（唯一座位 `sidebar.settings`，见 connection.go 文件头）。
+	//
+	// 不再有"兼容桥座位"：壳在**所有**绘制路径（uikernel 官方骨架 / uikernel
+	// 兼容桥 / dsshell 旧三栏）下都会画「设置行」那一行，连接指示只画行里的
+	// 一个子项（HH 单第 1 件）。
+	if len(panels) != 3 {
+		t.Fatalf("Panels 数 = %d，want legacy dock + 官方 dock + 连接官方座位三个", len(panels))
 	}
 	byID := map[string]pluginapi.Painter{}
 	for _, panel := range panels {
@@ -186,9 +190,8 @@ func TestPanelsSeparateComposerDockFromConnectionBottom(t *testing.T) {
 	if byID["connection"].Slot != uikernel.OffSidebarSettings {
 		t.Fatalf("连接指示官方座位 = %q，want sidebar.settings：%+v", byID["connection"].Slot, byID["connection"])
 	}
-	if byID["connection-bridge"].Slot != pluginapi.SlotSidebarFooter {
-		t.Fatalf("连接指示兼容桥 = %q，want sidebar.footer：%+v",
-			byID["connection-bridge"].Slot, byID["connection-bridge"])
+	if _, ok := byID["connection-bridge"]; ok {
+		t.Fatal("不该再有连接指示兼容桥：设置行在所有绘制路径下都会被 dispatch")
 	}
 	for _, panel := range panels {
 		if panel.Slot == pluginapi.SlotShellBottom {

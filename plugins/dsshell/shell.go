@@ -47,6 +47,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
@@ -745,6 +746,19 @@ func (p *Plugin) drawSidebar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pl
 		if env.Has(pluginapi.SlotSidebarFooter) {
 			p.prims.Divider(f)
 			drawSlot(pluginapi.SlotSidebarFooter)
+		}
+		// 设置行（官方 `SettingsRoot.triggerRow`）：官方 `.footArea` 的顺序是
+		// 「footerActions 在上、settings 在下」，所以它是侧栏最后一格。
+		//
+		// 容器必须是 **Row**：同一槽上的占用方（设置启动器 `flex:1` + 连接指示
+		// `flex:none`）要并排画在同一行。各自画一行就是"连接指示在设置按钮
+		// 下面"那个错位（HF 报告 §剩余差距 1 / HH 单第 1 件）。
+		if env.Has(uikernel.OffSidebarSettings) {
+			row := f.Row().FillWidth().
+				MarginSides(uikernel.SettingsTriggerRowMarginY, -uikernel.SettingsTriggerRowInset,
+					uikernel.SettingsTriggerRowMarginY, -uikernel.SettingsTriggerRowInset).
+				Items(flex.Center).Gap(uikernel.SettingsTriggerRowGap)
+			row.Children(func() { drawSlot(uikernel.OffSidebarSettings) })
 		}
 	})
 }

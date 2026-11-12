@@ -12,6 +12,9 @@
 package dsstatusbar
 
 import (
+	"sync"
+	"time"
+
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
@@ -45,6 +48,20 @@ type Plugin struct {
 	tier *uikernel.ShellTier
 	// dialog 是官方 Activity 详情弹窗的跨帧状态（展开态 + 锚点矩形）。
 	dialog statsDialogState
+
+	// conn 是连接指示的 150ms 离场淡出状态机（官方 CSS transition 的等价物，
+	// 见 connection.go 文件头「150ms 淡出」）。
+	conn connectionAnim
+	// now 是状态机的时钟；nil = time.Now（测试注入固定时钟，动画才是确定的）。
+	now func() time.Time
+
+	// mu 保护 frameTimer（离场窗里排的那一帧重绘）。
+	//
+	// 计时器回调在另一条 goroutine 上跑：它只拿锁清字段、然后调壳的
+	// `Actions.Invalidate`（Invalidator 自己线程安全）。绘制线程碰 `conn` 状态机
+	// 与 `now`，都不需要这把锁——那两个只在一帧里用。
+	mu         sync.Mutex
+	frameTimer *time.Timer
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -91,10 +108,14 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			}
 			p.drawDock(f, env)
 		}},
+		// 连接指示唯一的座位：官方 `sidebar.settings`（`SettingsRoot.triggerRow`）。
+		//
+		// 壳在**所有**绘制路径下都会画「设置行」那一行（uikernel 官方骨架 /
+		// uikernel 兼容桥 / dsshell 旧三栏），行里的子项由本插件与设置启动器
+		// 各画一个，所以这里**不需要**第二个"兼容桥座位"：那会把同一段画拆成
+		// 两行（「连接指示在设置按钮下面」就是这么来的，HH 单第 1 件）。
 		{ID: "connection", Slot: uikernel.OffSidebarSettings, Order: connSettingsOrder,
-			Draw: p.drawConnectionSettingsSeat},
-		{ID: "connection-bridge", Slot: pluginapi.SlotSidebarFooter, Order: connFooterBridgeOrder,
-			Draw: p.drawConnectionFooterBridge},
+			Draw: p.drawConnectionIndicator},
 		{ID: "dock-official", Slot: uikernel.OffConvComposer, Order: dockOfficialOrder,
 			Draw: p.drawOfficialDock, AfterDraw: p.afterOfficialDock},
 	}

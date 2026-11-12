@@ -150,16 +150,6 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Children: p.drawSettingsLauncherRow,
 		},
 		{
-			ID:   "account-launcher.bridge",
-			Slot: pluginapi.SlotSidebarFooter,
-			// Order 55：ds-deliverables 的列表占着 60、旧 footer 行是 30/40；
-			// 设置启动器在官方布局里是 footer 区域的**最后一行**，所以取 55
-			// （仍然排在 30/40 之后、60 之前，避开同槽同 Order）。
-			Order:    55,
-			Draw:     containerNoop,
-			Children: p.drawLauncherFooterBridge,
-		},
-		{
 			ID:    "account-launcher.menu",
 			Slot:  SlotSettingsLauncher,
 			Order: 0,

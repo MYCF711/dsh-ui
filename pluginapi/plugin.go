@@ -592,6 +592,39 @@ type Actions struct {
 	// nil = 壳没接；插件要自己判，别假设一定有。
 	Cancel func()
 
+	// Reconnect **立刻重连**：取消当前 WS 订阅，然后不等退避、马上重新订阅。
+	//
+	// 它是官方 `ConnectionIndicator` 那个按钮的动作（`SettingsRoot` 的
+	// `reconnect` 来自 `ctx.connection.reconnect()`）：warning 态的胶囊是
+	// `<button onClick={onReconnect}>`，点了要真的重新连，不是画个假动作。
+	//
+	// 语义（壳的实现必须一致）：
+	//
+	//	① 取消当前订阅（旧 goroutine 退出，不再退避等待）；
+	//	② 立刻发起一次新订阅，**水位用当前 lastSeq**（不重放已收到的帧）；
+	//	③ 这次尝试进行中 `Snapshot.Link` = `LinkConnecting`（官方 connecting 态），
+	//	   成功 → LinkConnected，失败 → LinkDown 并恢复退避重试。
+	//
+	// 幂等：没有会话 / 没有订阅时也安全（壳只重绘，不报错）。
+	//
+	// nil = 壳没接（老壳 / 测试）：插件这时**不把 warning 胶囊画成按钮**——
+	// 画一个点了没反应的东西比不画更坏。
+	Reconnect func()
+
+	// Invalidate 请求壳**重绘一帧**，不写状态栏。
+	//
+	// 用途只有一个：插件里的**时间动画**（官方 CSS transition 的等价物）。
+	// 官方连接胶囊有 150ms 离场淡出（`._indicator{transition:…opacity .15s}` +
+	// `._leaving{opacity:0}`），React 靠 `setTimeout` + 重渲染完成；本仓没有
+	// 渲染循环，插件改完状态后必须自己申请下一帧，否则要等下一个外部事件
+	// （WS 帧 / 按键）才重绘——淡出会卡在半透明。
+	//
+	// 与 Notify 的区别：Notify 会**写状态栏文案**（"已复制"这类给用户看的反馈）；
+	// 动画帧不需要也不该改任何用户可见文案。
+	//
+	// nil = 壳没接：插件退化为"下次自然重绘时再推进"（动画不完整，但不崩）。
+	Invalidate func()
+
 	// LoadOlder 向上翻一页历史（`session.history` 的**更早**那一页）。
 	//
 	// 为什么是一个动作而不是让插件自己发请求：网络与 journal 世代都归壳管

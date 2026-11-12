@@ -73,3 +73,49 @@ func refreshOutlineIcon() ui.Icon {
 		},
 	}
 }
+
+// loadingArcIcon 是官方 `connecting` 态的加载指示（primitives 的 `Spinner`,
+// `state="ongoing"`）。
+//
+// # 官方出处（逐字）
+//
+// `dsh-web-frontend/dist/assets/index-BXV-oxvX.js` 的 spinner 组件：
+//
+//	<svg width={14} height={14} viewBox="0 0 24 24" aria-hidden="true">
+//	  <g class="spinnerMotion">
+//	    <circle class="spinnerTrack" cx="12" cy="12" r="9.5"/>
+//	    <circle class="spinnerArc"   cx="12" cy="12" r="9.5"/>
+//	  </g>
+//	</svg>
+//
+// CSS（`index-BNyAYEM7.css` 的 `_spinnerTrack_1i3xo_47` / `_spinnerArc_1i3xo_48`）：
+//
+//	.spinnerTrack,.spinnerArc{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+//	.spinnerTrack{opacity:.25}
+//	.spinnerArc{stroke-dasharray:12 150}          ← 周长 2π·9.5 ≈ 59.69，取 12（≈72°）
+//	@media (prefers-reduced-motion:reduce){ .spinnerMotion,.spinnerArc{animation:none} }
+//	.spinnerArc（减动效档）{stroke-dasharray:18 150;stroke-dashoffset:-3}
+//
+// # 本仓的转写（derived，登记在报告里）
+//
+// `ui.Icon` 只有 path 命令、没有 `<circle>`/逐 path opacity，所以：
+//
+//   - **只画 arc 那一段**（72° 圆弧，从正上方 -90° 顺时针），不画 25% 的 track——
+//     画成 100% 不透明会变成"一个实心圆环"，比缺一段更错；
+//   - 不转（官方 `spinnerMotion` 是 1.5s 旋转动画；无头截图拍不到动画，
+//     真机每帧重绘只会让整窗脏区变大）；
+//   - 减动效档的 `stroke-dasharray:18` 也不做——本仓没有 media query，
+//     固定取常规档的 12。
+//
+// 72° 圆弧的三次贝塞尔近似：k = 4/3·tan(θ/4) = 4/3·tan18° = 0.43321，
+// 半径 9.5 → 控制点偏移 4.1155。
+func loadingArcIcon() ui.Icon {
+	return ui.Icon{
+		ViewBox: 24,
+		Stroke:  2,
+		Commands: []ui.PathCommand{
+			ui.MoveTo(12, 2.5),
+			ui.CubicTo(16.1155, 2.5, 19.7645, 5.1517, 21.0371, 9.0641),
+		},
+	}
+}

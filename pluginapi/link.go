@@ -13,8 +13,9 @@
 //
 // # 谁写它
 //
-// 壳（`cmd/app`）在真实 apiclient 回调里写，只有两个事实来源：
+// 壳（`cmd/app`）在真实 apiclient 回调里写，只有三个事实来源：
 //
+//	apiclient.Mux.Subscribe 进行中  → LinkConnecting（官方 data-phase=connecting）
 //	apiclient.Mux.Subscribe 成功    → LinkConnected
 //	apiclient.Mux.Subscribe 失败    → LinkDown（并且带退避重试）
 //
@@ -34,6 +35,15 @@ const (
 	LinkConnected
 	// LinkDown 表示订阅失败/断开，壳正在按退避重试。
 	LinkDown
+	// LinkConnecting 表示**一次订阅正在飞行中**（首连 / 退避到点后的重试 /
+	// 用户点了「立即重连」之后的重新订阅）。
+	//
+	// 它是官方 `ConnectionIndicator` 的 `connecting` 态（`data-phase=connecting`，
+	// 文案 `connection.connecting`）。与 `LinkDown` 的区别是"现在有没有一次尝试
+	// 正在进行"：`LinkDown` 是"上一次尝试失败了、正在等退避"。
+	//
+	// 追加在末尾是为了不挪动前三个值：`LinkUnknown` 必须是零值（缺事实 ≠ 连着）。
+	LinkConnecting
 )
 
 // String 只服务日志与测试失败信息（界面文案由插件按官方 i18n 决定）。
@@ -43,6 +53,8 @@ func (s LinkState) String() string {
 		return "connected"
 	case LinkDown:
 		return "down"
+	case LinkConnecting:
+		return "connecting"
 	default:
 		return "unknown"
 	}

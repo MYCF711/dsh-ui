@@ -165,6 +165,14 @@ const (
 	TriggerRailMarginBot float32 = 10
 	TriggerFontSize      float32 = 14
 	TriggerLineHeight    float32 = 22
+	// `.trigger{padding:0 10px 0 8px}`（:25）：左 8 右 10，**不对称**。
+	TriggerPadLeft  float32 = 8
+	TriggerPadRight float32 = 10
+	// `.trigger{gap:8px}`（:21）。
+	TriggerGap float32 = 8
+	// 宽态图标 16（`IconSettingsOutlineMedium` 的 `wide ? 16 : 18`，
+	// `chrome.tsx:22-29`）。
+	TriggerIconSize float32 = 16
 )
 
 // ── general 行（§4.1 共享行样式）─────────────────────────────────────
@@ -356,6 +364,12 @@ var OfficialSettingsGeometry = []GeoRow{
 	// ── 启动器 ──
 	{Node: "SettingsRoot.trigger", Prop: "height", Official: 42, Impl: TriggerHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:23"},
 	{Node: "SettingsRoot.triggerRow", Prop: "margin-block", Official: 4, Impl: TriggerRowMarginY, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:1-9"},
+	{Node: "SettingsRoot.triggerRow", Prop: "gap", Official: 8, Impl: TriggerGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:1-9"},
+	{Node: "SettingsRoot.trigger", Prop: "padding-left", Official: 8, Impl: TriggerPadLeft, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:25"},
+	{Node: "SettingsRoot.trigger", Prop: "padding-right", Official: 10, Impl: TriggerPadRight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:25"},
+	{Node: "SettingsRoot.trigger", Prop: "font-size", Official: 14, Impl: TriggerFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:23-27"},
+	{Node: "SettingsRoot.trigger", Prop: "line-height", Official: 22, Impl: TriggerLineHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:23-27"},
+	{Node: "SettingsRoot.trigger", Prop: "icon-size", Official: 16, Impl: TriggerIconSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/chrome.tsx:22-29"},
 	{Node: "SettingsRoot.trigger.rail", Prop: "width", Official: 36, Impl: TriggerRailSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:11-14"},
 	{Node: "SettingsRoot.trigger.rail", Prop: "height", Official: 36, Impl: TriggerRailSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/SettingsRoot.module.css:48-58"},
 

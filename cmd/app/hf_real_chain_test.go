@@ -164,7 +164,7 @@ func hfWaitLink(t *testing.T, m *model, want pluginapi.LinkState, timeout time.D
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		m.mu.Lock()
-		got := linkStateOf(wsUp, wsDown)
+		got := linkStateOf(wsUp, wsDown, wsConnecting)
 		m.mu.Unlock()
 		if got == want {
 			return
@@ -172,10 +172,11 @@ func hfWaitLink(t *testing.T, m *model, want pluginapi.LinkState, timeout time.D
 		time.Sleep(200 * time.Millisecond)
 	}
 	m.mu.Lock()
-	got := linkStateOf(wsUp, wsDown)
-	up, down := wsUp, wsDown
+	got := linkStateOf(wsUp, wsDown, wsConnecting)
+	up, down, connecting := wsUp, wsDown, wsConnecting
 	m.mu.Unlock()
-	t.Fatalf("%s 内连接态没变成 %v（当前 %v：wsUp=%v wsDown=%v）", timeout, want, got, up, down)
+	t.Fatalf("%s 内连接态没变成 %v（当前 %v：wsUp=%v wsDown=%v wsConnecting=%v）",
+		timeout, want, got, up, down, connecting)
 }
 
 // TestRealChainHFConnectionGoalIcon 真宿主 + 真 apiclient + 官方座位 + 官方 sprite。
@@ -231,12 +232,16 @@ func TestRealChainHFConnectionGoalIcon(t *testing.T) {
 	// ── ③ 产品形状（`-shell official`）真画一帧：连接指示在侧栏、目标条图标是 sprite。
 	product := newGYRealProduct(t)
 	productCanvas, texts, counts := hfPaint(t, product, snapConnected, load.Goal)
-	// 产品形状：旧 sidebar 占着槽 → 整列兼容桥开着 → 官方座位不被 dispatch（这是现实）。
-	if counts[uikernel.OffSidebarSettings] != 0 {
-		t.Fatalf("产品形状下 sidebar.settings 不该被 dispatch（否则会双画）：%v", counts)
+	// 产品形状：旧 sidebar 占着槽 → 整列兼容桥开着 → 官方**座位**不画，
+	// 但「设置行」那一行（`SettingsRoot.triggerRow`）在两种档位下都 dispatch：
+	// 官方档位画官方座位，兼容桥档位画桥。行容器只有一个，所以计数必须是 1
+	// （不是 0——0 就意味着连接指示又被挤回独立行了，HH 单第 1 件要拆的正是那个）。
+	if counts[uikernel.OffSidebarSettings] != 1 {
+		t.Fatalf("设置行（triggerRow）每帧必须 dispatch 1 次，得到 %d：%v",
+			counts[uikernel.OffSidebarSettings], counts)
 	}
 	if counts[pluginapi.SlotSidebarFooter] != 1 {
-		t.Fatalf("连接指示的兼容桥必须落在侧栏 footer（每帧 1 次）：%v", counts)
+		t.Fatalf("侧栏 footer 的其余行也必须画（每帧 1 次）：%v", counts)
 	}
 	for _, want := range []string{dsstatusbar.OfficialConnectedLabel, "目标", hfRealGoal} {
 		if !hfTextHas(texts, want) {
@@ -285,14 +290,16 @@ func TestRealChainHFConnectionGoalIcon(t *testing.T) {
 		t.Fatal("连不上的 Base 居然订阅成功了？")
 	}
 	badCancel()
-	down := linkStateOf(false, true)
+	down := linkStateOf(false, true, false)
 	if down != pluginapi.LinkDown {
 		t.Fatalf("订阅失败的事实 = %v，want LinkDown", down)
 	}
 	snapDown := snapConnected
 	snapDown.Link = down
 	snapDown.Disconnected = true
-	snapDown.Status = "连不上宿主，重试中…"
+	// 壳的状态串不再写连接措辞（HH 单第 4 件：composer 那行与官方座位重复），
+	// 连接层的可见措辞只由 `Snapshot.Link` 驱动的官方胶囊给。
+	snapDown.Status = "已加载 1 条（总 1）"
 	_, downTexts, downCounts := hfPaint(t, product, snapDown, load.Goal)
 	if downCounts[pluginapi.SlotSidebarFooter] != 1 {
 		t.Fatalf("断开态也要在侧栏 footer 画一次：%v", downCounts)

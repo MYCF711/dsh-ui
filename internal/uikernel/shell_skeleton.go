@@ -709,6 +709,11 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 
 // drawSidebarSkeleton 画 SidebarRoot 的带结构（logoRow / newSession / scrollRegion / footArea）。
 func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
+	note := func(name string, box flex.Box) {
+		if measure != nil {
+			measure(name, box)
+		}
+	}
 	if layout.Options.BridgeLegacy {
 		drawLegacySidebar(f, env, layout, dispatch, measure)
 		return
@@ -733,10 +738,22 @@ func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, 
 			}
 			f.Column().FillWidth().Grow(1).Children(func() { dispatch(OffSidebarWorkspaces) })
 		})
-		// footArea：footer 动作（list）+ 设置（single）
+		// footArea：footer 动作（list）+ 设置行（single）
+		//
+		// 设置行是官方 `SettingsRoot.triggerRow` 的**一行**：
+		// `[设置按钮(flex:1)] [连接指示] [更新指示]`。容器必须是一个 Row，
+		// 否则同一槽上的几个占用方会各画一行（同一列里上下堆叠）——
+		// 「连接指示在设置按钮下面一行」就是这么来的（HF 报告 §剩余差距 1）。
+		// Row 的子项由各插件自己画，壳不认任何具体部件。
 		f.Column().FillWidth().Children(func() {
 			dispatch(OffSidebarFooterActions)
-			dispatch(OffSidebarSettings)
+			settingsRow := f.Row().FillWidth().
+				MarginSides(SettingsTriggerRowMarginY, -SettingsTriggerRowInset,
+					SettingsTriggerRowMarginY, -SettingsTriggerRowInset).
+				Items(flex.Center).Gap(SettingsTriggerRowGap)
+			settingsRow.Children(func() { dispatch(OffSidebarSettings) })
+			// 必须在 Children 之后报：布局跑完才量得到行高（顺序反了报的是 0）。
+			note("SettingsRoot.triggerRow", settingsRow)
 		})
 	})
 }
@@ -745,6 +762,11 @@ func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, 
 // sidebar.header / sidebar.list / sidebar.footer 三个旧槽上，按 dsshell 时代的
 // 12px 内联 padding + gap 8 排版（official_geometry.go 的 deviation 行）。
 func drawLegacySidebar(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
+	note := func(name string, box flex.Box) {
+		if measure != nil {
+			measure(name, box)
+		}
+	}
 	f.Column().FillWidth().FillHeight().
 		PadSides(SidebarRootPadY, LegacySidebarPadX, SidebarRootPadY, LegacySidebarPadX).Gap(8).Children(func() {
 		dispatch(pluginapi.SlotSidebarHeader)
@@ -752,6 +774,21 @@ func drawLegacySidebar(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, di
 		if env.Has != nil && env.Has(pluginapi.SlotSidebarFooter) {
 			dispatch(pluginapi.SlotSidebarFooter)
 		}
+		// 设置行在**两种档位下都是同一行**（官方 footArea 的顺序就是
+		// 「footerActions 在上、settings 在下」）。兼容桥里 `sidebar.settings`
+		// 的官方座位不画，但它的**过渡桥**（dsnotifications 的账号启动器、
+		// dsstatusbar 的连接指示）都注册在这个槽上，由这一行统一摆：
+		// `[启动器(flex:1)] [连接指示]`，与官方几何一致。
+		//
+		// 这一行必须放在 footer 之后：官方 `.footArea{flex-direction:column}`
+		// 里 settingsArea 是最后一行。
+		settingsRow := f.Row().FillWidth().
+			MarginSides(SettingsTriggerRowMarginY, -SettingsTriggerRowInset,
+				SettingsTriggerRowMarginY, -SettingsTriggerRowInset).
+			Items(flex.Center).Gap(SettingsTriggerRowGap)
+		settingsRow.Children(func() { dispatch(OffSidebarSettings) })
+		// 必须在 Children 之后报：布局跑完才量得到行高（顺序反了报的是 0）。
+		note("SettingsRoot.triggerRow (legacy bridge)", settingsRow)
 	})
 }
 

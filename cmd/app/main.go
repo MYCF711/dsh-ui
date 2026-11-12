@@ -45,7 +45,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
-	_ "github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
+	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsterminal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dstool"
 	_ "github.com/MYCF711/dsh-ui/plugins/dstopbar"
@@ -182,8 +182,16 @@ type model struct {
 	// settings 是设置浮层。壳持有实例只为一件事：`-open-settings` 无头截图要调它，
 	// 以及把它排在装配顺序最前（HandleKey 第一个拿到键才能先关掉自己）。
 	settings *dssettings.Plugin
-	actions  pluginapi.Actions
-	chrome   frameChrome
+	// statusbar 是状态栏插件（官方 composer dock + 连接指示 + Activity 弹窗）。
+	//
+	// 壳持有实例的理由与 settings 相同：它必须排在**装配顺序最前**——
+	// kernel 按装配顺序转发按键，第一个返回 true 的赢。dscomposer 在没有审批时
+	// 把 Esc 当"停止 turn"（composer.go 的 HandleKey），而 Activity 弹窗的 Esc
+	// 关闭在 dsstatusbar 里。排在 dscomposer 之后 → 跑 turn 时按 Esc 只会停 turn，
+	// 弹窗关不掉（官方是 document 级监听，两件事互不抢）。
+	statusbar *dsstatusbar.Plugin
+	actions   pluginapi.Actions
+	chrome    frameChrome
 	// shellMode 是首屏结构档位（auto/legacy/official），见 shell.go。
 	// 注意：它决定「谁切三栏」，不是外观选项——两块实现几何口径不同。
 	shellMode shellMode
@@ -532,7 +540,9 @@ func (m *model) refreshSession(id string, quiet bool) {
 			m.publishSessionLocked(id)
 		}
 		m.syncRightbarLocked()
-		m.status = fmt.Sprintf("已连接 · %d 条（总 %d）", len(r.Messages), r.Total)
+		// **不写连接措辞**：连接状态的家是官方 `ConnectionIndicator`
+		// （`Snapshot.Link`），composer 那一行只放动作状态（HH 单：两处重复）。
+		m.status = fmt.Sprintf("已加载 %d 条（总 %d）", len(r.Messages), r.Total)
 		m.loading = false
 	}
 	fireSmoke := smokeSend && !m.smokeFired
@@ -774,6 +784,39 @@ func (m *model) subscribe(id string) {
 	go m.runSubscription(ctx, id, since)
 }
 
+// reconnectNow 是官方 `ConnectionIndicator` 的「立即重连」（`ctx.connection.reconnect()`）。
+//
+// 语义三条（与 pluginapi.Actions.Reconnect 的注释同一份契约）：
+//
+//	① 取消当前会话的订阅（旧 goroutine 从 `Subscribe`/退避里退出）；
+//	② **立刻**重新订阅，不睡退避——用户点这一下就是要"现在试"，等 1s→30s
+//	   的退避等于点了没反应；
+//	③ 水位沿用 `m.lastSeq`（已经收到的帧不重放）。
+//
+// 连接事实由 `runSubscription` 自己写：新尝试一开始就是 `LinkConnecting`
+// （界面「重新连接中」），出结果再变 connected / down。
+//
+// 幂等：没有当前会话时只重绘一帧（按钮仍然"点得动"，但没东西可连）。
+func (m *model) reconnectNow() {
+	m.mu.Lock()
+	id := m.cur
+	if sub, ok := m.subs[id]; ok {
+		if sub.cancel != nil {
+			sub.cancel()
+		}
+		delete(m.subs, id)
+	}
+	m.mu.Unlock()
+
+	if id == "" {
+		m.inv.Invalidate()
+		return
+	}
+	log.Printf("立即重连 session:%s（用户点了连接指示）", id)
+	m.subscribe(id)
+	m.inv.Invalidate()
+}
+
 // muxSub 是一个会话的订阅状态。
 type muxSub struct {
 	cancel  context.CancelFunc
@@ -796,6 +839,12 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 		// out（缓冲 64）填满后永远阻塞——每换一代 journal 就漏一个 socket 加两个
 		// goroutine，而且它还会继续把新 journal 的帧读进一个没人消费的 channel。
 		connCtx, connCancel := context.WithCancel(ctx)
+		// 一次订阅尝试**开始**：官方 connecting 态（「重新连接中」）就是这一刻。
+		// 写事实与读数同一把锁（-race 门禁）；订阅是同步调用，拿到结果立刻改写。
+		m.mu.Lock()
+		wsConnecting = true
+		m.mu.Unlock()
+		m.inv.Invalidate()
 		ch, err := m.mux.Subscribe(connCtx, "session:"+id, since)
 		if err != nil {
 			connCancel()
@@ -808,14 +857,17 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 				m.setStatus("宿主凭据已失效（多半是重启过）：请用新的 launch token 重新连接")
 			}
 			log.Printf("mux 订阅失败（%v），%s 后重试 session:%s", err, backoff, id)
-			// **必须让用户看见**。早先这里只 log 一行：宿主被杀 33 秒后，
-			// 界面右下角还亮着绿点写「已连接 · 就绪」——连接早断了，UI 在说谎。
-			// 只写一句"连不上宿主（重试中）"，别覆盖成"已发送"这类动作状态，
-			// 因为它描述的是连接层而不是这一轮 turn。
+			// 连接层的**可见措辞只属于官方 `ConnectionIndicator`**（侧栏设置行，
+			// 见 plugins/dsstatusbar/connection.go）：这里只写连接事实，不再往
+			// 壳的状态串里塞"连不上宿主"——那会和官方座位在同一个窗口里说两遍
+			// （HH 单的 composer 那行重复就是它带出来的）。
+			//
+			// 事实本身必须写：早先这里只 log、连接事实从不变，于是宿主被杀 33 秒后
+			// 界面还写着「已连接 · 就绪」——UI 在说谎。
 			m.mu.Lock()
-			m.status = "连不上宿主，重试中…"
 			wsDown = true
-			wsUp = false // 连过又断：断线也是"已经拿到事实"，但结论是"断"
+			wsUp = false         // 连过又断：断线也是"已经拿到事实"，但结论是"断"
+			wsConnecting = false // 这次尝试已经出结果（失败），不再处于 connecting
 			m.mu.Unlock()
 			m.inv.Invalidate()
 			select {
@@ -834,6 +886,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 		// 订阅真的建起来了：这是"连着"的**唯一证据**（不是"没报错所以算连上"）。
 		wsUp = true
 		wsDown = false
+		wsConnecting = false // 尝试出结果（成功）：connecting 态结束，success 态入场
 		m.mu.Unlock()
 		log.Printf("mux 已订阅 session:%s since=%d epoch=%d", id, since, ep)
 
@@ -1476,11 +1529,20 @@ var (
 	// 两个都为假 = 壳还没拿到任何连接事实 = `LinkUnknown`（界面必须写「未知」，
 	// 不许写「已连接」）。写入点只有 runSubscription 的两处：订阅成功 / 订阅失败，
 	// 都在 m.mu 里写，读数也在 m.mu 里取（-race 干净是这个仓的门禁）。
-	wsUp       bool
-	uiConfig   map[string]string // 宿主 config.get 的缓存（插件同步读，壳后台刷新）
-	demoTool   bool              // 在消息列表里插假的工具卡
-	smokeSend  bool              // 启动后自动发一条
-	promptText string            // -prompt 覆盖 smoke 文本
+	wsUp bool
+	// wsConnecting 是"有一次订阅尝试正在飞行中"（首连 / 退避到点 / 用户点立即重连）。
+	//
+	// 它是官方 `ConnectionIndicator` 的 `connecting` 态的唯一事实来源：真实
+	// apiclient 的 `Mux.Subscribe` 是同步调用（拨号 + 握手），调用前写 true、
+	// 拿到结果（成功或失败）立刻写 false。**不许**拿"还没结果"当"连着"。
+	//
+	// 三个事实（wsUp / wsDown / wsConnecting）同一把锁里写、同一把锁里读，
+	// 由 `linkStateOf` 压成一个 `LinkState`（顺序见那个函数）。
+	wsConnecting bool
+	uiConfig     map[string]string // 宿主 config.get 的缓存（插件同步读，壳后台刷新）
+	demoTool     bool              // 在消息列表里插假的工具卡
+	smokeSend    bool              // 启动后自动发一条
+	promptText   string            // -prompt 覆盖 smoke 文本
 )
 
 // drawSlot 把一个槽位上的插件按序画出来。
@@ -1655,7 +1717,7 @@ func newConfig(m *model) app.Config {
 		busy := m.turnBusy
 		// 连接三态与 busy 同一把锁里取：runSubscription 写 wsUp/wsDown 也在锁里，
 		// 分开取会在 `-race` 下变成真的数据竞争。
-		link := linkStateOf(wsUp, wsDown)
+		link := linkStateOf(wsUp, wsDown, wsConnecting)
 		m.mu.Unlock()
 		approvalView := (*pluginapi.Approval)(nil)
 		if approval != nil {
@@ -1982,20 +2044,36 @@ func condF(ok bool, a, b float32) float32 {
 	return b
 }
 
-// orderPlugins 把框架插件排到最前。
+// orderPlugins 按**按键优先级**排序（`Kernel.HandleKey` 按装配顺序转发，
+// 第一个返回 true 的插件赢）。
 //
-// 装配顺序本身由 Requires 拓扑排序决定，但 ds-shell 与别的部件之间**没有依赖关系**
-// （它只是画槽位，不许 Requires 那些部件），所以白名单里它可能排在后面。
-// 排在后面时，部件会先占满整个窗口，框架再切三栏就晚了。
+//	ds-core       唯一"无依赖"的插件（提供 ui.theme / ui.primitives）。
+//	              它必须在最前：`Load` 按轮次装配，排在 core 前面的插件第一轮
+//	              "依赖还没就位"会被推到下一轮——想靠 prepend 把某个插件提前，
+//	              反而会把它推到最后一轮。
+//	ds-settings   设置浮层（Shift+F2 / 浮层开着时的 Esc）
+//	ds-statusbar  状态栏（Activity 弹窗开着时的 Esc）
+//	ds-shell      切三栏（它跟别的部件没有依赖关系，只画槽位）
+//	其余          按传入顺序
+//
+// 为什么 settings/statusbar 必须早于 dscomposer：composer 在没有审批时把 Esc
+// 当"停止当前 turn"，排在它后面的话，跑 turn 时按 Esc 只会停 turn、弹窗关不掉
+// （HH 单第 5 件）。官方是 document 级监听，两件事互不抢。
 func orderPlugins(ps []pluginapi.Plugin) []pluginapi.Plugin {
+	priority := []string{"ds-core", "ds-settings", "ds-statusbar", "ds-shell"}
 	out := make([]pluginapi.Plugin, 0, len(ps))
-	for _, p := range ps {
-		if p.ID() == "ds-shell" {
+	placed := make(map[string]bool, len(ps))
+	for _, id := range priority {
+		for _, p := range ps {
+			if p.ID() != id || placed[id] {
+				continue
+			}
+			placed[id] = true
 			out = append(out, p)
 		}
 	}
 	for _, p := range ps {
-		if p.ID() != "ds-shell" {
+		if !placed[p.ID()] {
 			out = append(out, p)
 		}
 	}
@@ -2145,6 +2223,7 @@ func main() {
 	// 装配器按 Requires 排序；ds-sidebar 少一个键就直接报错，不会静默少画一块。
 	m.side = &dssidebar.Plugin{CollapseAll: *collapseAll}
 	m.settings = &dssettings.Plugin{}
+	m.statusbar = &dsstatusbar.Plugin{}
 	// ds-core（令牌 + 图元）与 ds-shell（三栏）是结构性的：它们不在白名单里也要装，
 	// 否则其余部件没有令牌可 Inject、或者各自独占整个窗口。
 	// 这两条不许被 ui-plugins.json 关掉——配置管的是"装哪些部件"，不是"要不要有地基"。
@@ -2160,7 +2239,7 @@ func main() {
 	// 需要壳注入运行期状态的少数几个（侧栏实例、搜索开关）在这里补。
 	plugins, err := uiplugins.Load(*pluginConfig, pluginapi.Builtin(), func(id string) bool {
 		// 这两个实例由壳自己 append（壳要读它们的 Fields/Width/搜索开关）。
-		return id == "ds-sidebar" || id == "ds-conversation" || id == "ds-core" || id == "ds-shell" || id == "ds-settings"
+		return id == "ds-sidebar" || id == "ds-conversation" || id == "ds-core" || id == "ds-shell" || id == "ds-settings" || id == "ds-statusbar"
 	})
 	if err != nil {
 		log.Fatalf("插件来源加载失败: %v", err)
@@ -2170,9 +2249,12 @@ func main() {
 		SearchOpen:        *searchAtStart != "",
 		SearchQuery:       *searchAtStart,
 	})
-	// 白名单模式下，cs-shell 必须永远是第一个：它负责切三栏。
+	// ds-shell 必须**排在 ds-core 之后、所有部件之前**：它负责切三栏，
 	// 少了它，其余部件会各自独占整个窗口（实测：白名单里漏掉 ds-shell，
-	// 侧栏和消息流就上下堆在一起了）。
+	// 侧栏和消息流就上下堆在一起了）。顺序由下面的 `orderPlugins` 统一排
+	// （`ds-core → ds-settings → ds-statusbar → ds-shell → 其余`）——
+	// 用 prepend 提没有用：`Load` 按轮次拓扑装配，排在 core 前面的插件
+	// 第一轮"依赖还没就位"会被推到最后一轮（HH 单第 5 件踩的就是这个）。
 	// 主题模式：`system` 要在这里**解析成明/暗**再交给 dscore 插件——
 	// 插件构造主题时只知道"深还是浅"，"跟着系统"是壳这一层的事。
 	if !validThemeMode(*themeName) {
@@ -2189,7 +2271,11 @@ func main() {
 	// 它只吃 Shift+F2 和"浮层开着时的 Esc/↑↓/Enter"，其余一律放行；
 	// 排在最前才能保证浮层开着时 Esc 先关浮层，而不是被 composer 当成"停止 turn"。
 	// 排在后面则相反：composer 先看到 Esc，浮层永远关不掉。
-	plugins = append([]pluginapi.Plugin{m.settings}, plugins...)
+	// 两个"按键优先"的插件（设置浮层 / 状态栏弹窗）**不能靠 prepend 提前**：
+	// `Load` 按轮次拓扑装配，prepend 到 ds-core 前面会让它们第一轮"依赖还没
+	// 就位"、被推到最后一轮（HH 单第 5 件的真实原因）。顺序由 `orderPlugins`
+	// 统一排：ds-core → ds-settings → ds-statusbar → ds-shell → 其余。
+	plugins = append(plugins, m.settings, m.statusbar)
 	if err := m.kernel.Load(orderPlugins(plugins)...); err != nil {
 		log.Fatalf("插件装配失败: %v", err)
 	}
@@ -2399,6 +2485,10 @@ func main() {
 		OpenExternal:   m.openExternal,
 		OpenFile:       m.openFile,
 		Notify:         m.setStatus,
+		// 立即重连：取消当前 sub + 马上重订（官方连接胶囊按钮的动作）。
+		Reconnect: m.reconnectNow,
+		// 只重绘、不写状态栏：给插件的时间动画（官方 150ms 离场淡出）用。
+		Invalidate:     func() { m.inv.Invalidate() },
 		ToggleRightbar: m.toggleRightbar,
 		// 审批：真调 session.approve，把宿主的 requestId 与它自己的 optionId 原样回传。
 		// **只有宿主 200 且 accepted 才收气泡**——本地收掉不等于批准了（宿主 §11.7）。

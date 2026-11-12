@@ -139,6 +139,15 @@ type ModelMenuOptions struct {
 	Selected string
 	// Locked 表示本会话当前不允许改选择（官方 locked/busy）。
 	Locked bool
+	// PanelHeight 是**上一帧量到的**菜单面高度（0 = 还没量过）。
+	//
+	// v0.6.0 的 `Absolute` 子元素高度由内容决定，声明期拿不到，但"放不下翻到
+	// 下方"的判定要用它（见 official_popup_place.go 的 PlaceAbove）。调用方在
+	// AfterDraw 里量一次、下一帧传回来；0 按"放得下"处理，与 v0.5.1 首帧一致。
+	PanelHeight float32
+	// OnPanel 把这一帧声明的菜单面 Box 交给调用方，供它在 AfterDraw 里量高度。
+	// nil = 调用方不做翻面（永远按"放得下"处理）。
+	OnPanel func(ui.Box)
 	// Dispatch 把子槽交给内核画（**必须**是内核的 DrawSlot：这就是"父容器"的意义）。
 	Dispatch func(pluginapi.Slot)
 }
@@ -241,9 +250,20 @@ func DrawModelMenu(f ui.C, env *pluginapi.Env, opts ModelMenuOptions) bool {
 	// `Above(anchor, gap, ui.End)` = 右缘贴 anchor 右缘、底边落在 anchor 顶上方 gap。
 	layer := ui.Overlay(f, ui.OverlaySpec{Band: ui.LayerPaneChrome, Bounds: opts.Bounds})
 	layer.Children(func() {
+		// 纵向：贴在锚点顶上方 gap 处；**放不下翻到下方**（v0.5.1 `Popup().Above`
+		// 的翻面语义，见 official_popup_place.go）。高度取上一帧量到的菜单高。
+		//
+		// 用**边**钉不用坐标钉：`Absolute()` 子元素高度由内容决定，钉 `Bottom`
+		// 时内容往上长、钉 `Top` 时往下长，两种都正确；钉算出来的 top 会在
+		// "还没量过高度"的首帧让面板从锚点顶往下长、压住 trigger。
 		menu := ui.Column(f).Absolute().Width(width).
-			Right(opts.Bounds.Width - (opts.Anchor.X + opts.Anchor.Width)).
-			Bottom(opts.Bounds.Height - opts.Anchor.Y + ModelMenuAnchorGap)
+			Right(opts.Bounds.Width - (opts.Anchor.X + opts.Anchor.Width))
+		if PlaceAbove(opts.Anchor, opts.PanelHeight, ModelMenuAnchorGap,
+			opts.Bounds.Height, ModelMenuEdgeMargin) == PopupBelow {
+			menu = menu.Top(opts.Anchor.Y + opts.Anchor.Height + ModelMenuAnchorGap)
+		} else {
+			menu = menu.Bottom(opts.Bounds.Height - opts.Anchor.Y + ModelMenuAnchorGap)
+		}
 		menu.MaxHeight(maxHeight)
 		menu.Radius(t.Radii.MD).Background(t.BgLayer3).Border(1, t.BorderL1).
 			Shadow(gfx.ShadowMD).Pad(ModelMenuPad).Gap(0).Children(func() {
@@ -266,6 +286,11 @@ func DrawModelMenu(f ui.C, env *pluginapi.Env, opts ModelMenuOptions) bool {
 				opts.Dispatch(OffInputModelOptions)
 			}
 		})
+		// 把这一帧的菜单面交给调用方：它在 AfterDraw 里量高度，下一帧的
+		// PanelHeight 就是翻面判据的输入（声明期拿不到内容高度）。
+		if opts.OnPanel != nil {
+			opts.OnPanel(menu)
+		}
 	})
 	return true
 }

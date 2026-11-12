@@ -91,10 +91,17 @@ const (
 //
 // chip 是 Draw 阶段量到的 trigger 盒子；Rect 要等 End 之后才有效，所以 AfterDraw
 // 才读（同 dscomposer 的 fieldBox/afterDraw 做法）。rect 只用于下一帧的菜单锚点。
+//
+// panel/panelDrawn 是**菜单面**的同一套：v0.6.0 的 Absolute 子元素高度由内容
+// 决定，声明期拿不到，而"放不下翻到下方"的判定要用它（见
+// `internal/uikernel/official_popup_place.go`）。
 type modelSlotState struct {
-	chip  ui.Box
-	drawn bool
-	rect  ui.Rect
+	chip       ui.Box
+	drawn      bool
+	rect       ui.Rect
+	panel      ui.Box
+	panelDrawn bool
+	panelRect  ui.Rect
 }
 
 // modelSlotAvailable 报告官方模型菜单这一帧能不能用（provider 目录 known 且非空）。
@@ -188,12 +195,22 @@ func (p *Plugin) drawModelSlot(f ui.C, env *pluginapi.Env) {
 
 // afterModelSlot 把本帧 trigger 的**真实矩形**留给下一帧的菜单锚点。
 func (p *Plugin) afterModelSlot(canvas *gfx.Canvas, env *pluginapi.Env) {
-	if !p.model.drawn {
-		return
+	if p.model.drawn {
+		p.model.drawn = false
+		if rect := p.model.chip.Rect(); rect.Width > 0 && rect.Height > 0 {
+			p.model.rect = rect
+		}
 	}
-	p.model.drawn = false
-	if rect := p.model.chip.Rect(); rect.Width > 0 && rect.Height > 0 {
-		p.model.rect = rect
+	// 菜单面的高度同理：这一帧量到，下一帧给 DrawModelMenu 做翻面判定。
+	if p.model.panelDrawn {
+		p.model.panelDrawn = false
+		if rect := p.model.panel.Rect(); rect.Width > 0 && rect.Height > 0 {
+			p.model.panelRect = rect
+		} else {
+			// 菜单这一帧没画出来（关掉了/目录未知）：高度清零，下次打开按
+			// "还没量过"处理，不要拿着上一次的高度去翻面。
+			p.model.panelRect = ui.Rect{}
+		}
 	}
 }
 

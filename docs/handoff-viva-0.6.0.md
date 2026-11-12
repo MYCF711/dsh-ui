@@ -521,3 +521,136 @@ V-06-2 的 `Button`(22)/`ScrollArea`(10)/`Switch`(1) 丢了显式 ID，身份改
 | 最终三档 | `_v063/final-build.log`、`final-vet.log`、`final-test.log`（35 ok / 0 FAIL） |
 | 产品路径补丁快照（V-06-3 中途） | `_v063/product.patch` |
 | 逐条报告 | `DSH-GO/tmp/GO8-RC2/reports/V06-3-page-migration.md` |
+
+## 12. V-06-4 实测（阶段二第四步：控件语义改写 —— 命中区矩阵 / 翻面 / 滚轮）
+
+> 现场：同一隔离 worktree（分支 `chore/viva-0.6.0-stage2`），起点 HEAD `56377f5`
+> （= V-06-3 的 `3555eb0` + 把 `origin/main` 合进来那次 merge），**未 commit**（按约定由 Lead 统一提交）。
+
+### 12.1 结论
+
+| 项 | 结果 |
+|---|---|
+| `CGO_ENABLED=0 go build ./...` | **绿**（退出码 0） |
+| `CGO_ENABLED=0 go vet ./...` | **绿**（退出码 0） |
+| `CGO_ENABLED=0 go test ./... -count=1` | **绿：35 包 ok / 0 包红 / 0 条 FAIL** |
+| `CGO_ENABLED=1 go test -race -timeout 20m ./...` | **绿，RACE_EXIT=0**（无 `DATA RACE`） |
+| `gofmt -l .`（不含 `spike/`） | **0** 个文件 |
+| `scripts/guard-selftest.sh` | **OK=8 FAIL=0** |
+| 改动面 | **10 文件**（改 4：`uikernel/official_model_menu.go`、`dsagentteam/{model_slot,parent_containers}.go`、`dsstatusbar/official_stats_dialog.go`；新增 6：`uikernel/official_popup_place.go`(+_test)、`uikernel/official_popup_flip_test.go`、`cmd/app/{hits_matrix,hits_static_guard,scroll_wheel}_test.go`），`+73 / −16`（不含新增测试文件） |
+
+一句话：**"看着对但点不着"这件事本轮有了可执行的判据**——全量产品 11 个形态的命中区矩阵
+（323 个可点元素实例、零面积 0 个）+ 静态 `.Clicked()` 身份守卫（56 处，0 处无身份）+
+两处 `Popup().Above()` 的翻面等价实现 + 滚轮/恢复互斥的回归断言。
+
+### 12.2 全量 hits 矩阵（本单最重要的判据）
+
+**做法**：`cmd/app/hits_matrix_test.go` 用 `pluginapi.Builtin()` 装**全部 25 个内置插件**
+（不手抄清单——`plugins_assembled_test.go` 已经证明"目录在、没装配"真会发生），
+再走产品同一条 `ui.NewPage` + `uikernel.FirstScreen` 路径真画，然后读 `gfx.Canvas.Hits()`。
+
+**11 个产品形态**（`hitsFrames()`，每个形态一份**全新装配**——插件里的 `shown/open`
+是真状态，复用产品会让上一帧开着的浮层污染下一帧的清单）：
+
+| 形态 | 可点元素 |
+|---|---|
+| hero 空首屏 | 10 |
+| 有会话有消息 | 30 |
+| 发送中（Busy） | 30 |
+| 审批待定 | 32 |
+| 历史分页五态 | 30 |
+| 设置浮层打开（官方四区面板） | 46 |
+| 点活动胶囊开统计弹窗（**真点击路径**） | 30 |
+| 子代理目录打开 | 30 |
+| 右栏关闭 | 28 |
+| 侧栏收起（窄窗） | 30 |
+| 窄窗 720×600 | 27 |
+| **合计（去重前实例数）** | **323** |
+
+**三条判据**：
+
+| 判据 | 内容 | 结果 |
+|---|---|---|
+| ① 零面积 | 每个命中区 `Width>0 && Height>0`，且无 NaN | **全绿**（用 `Height(0)` 变异验证：红，报 `新建会话 … 252.0x0.0`） |
+| ② 有身份 | 每个 `.Clicked()` 的接收者都能追到 `.Hit`/`HitWith`/控件/带 ID 辅助函数 | **全绿**（56 处，用删掉 `dsopen` 的 `.Hit(...)` 变异验证：红） |
+| ③ 无身份交换 | 同帧同 `(label, role)` 不存在"两个完全重合但身份不同"的命中区 | **全绿** |
+
+**判据②的静态实现**：`cmd/app/hits_static_guard_test.go` 按函数粒度扫
+`plugins/`+`internal/`+`cmd/` 的**非测试** Go 文件；函数里出现 `.Clicked()` ⇒ 该函数内必须
+出现身份来源，或接收者来自 `hitsIdentityHelpers` 登记的三个**带 ID 辅助函数**
+（`prims.ListRow` / `chromeButton` / `workspaceIconButton`——它们把 id 当参数、函数体内 `.Hit`）。
+**登记表是双向的**：辅助函数改名 ⇒ `TestHitsIdentityHelpersStillExist` 红（否则判据②会静默退化成放行）。
+
+### 12.3 `Popup().Above()` 的翻面：实际 **2 处**，不是 3 处
+
+`git grep "Popup()" ab2b9db^`（V-06-2 迁移前的树）只有三处，第三处**没有翻面语义**：
+
+| 站点 | 旧形状 | 是否翻面 |
+|---|---|---|
+| `internal/uikernel/official_model_menu.go` | `Popup().Above(anchor, 8, End)` | **是** |
+| `plugins/dsstatusbar/official_stats_dialog.go` | `Popup().Above(anchor, 8, Start)` | **是** |
+| `plugins/dsstatusbar/official_stats_dialog.go`（遮罩） | `Popup().At(0, 0).Size(...)` | **否**（`At` 就是定坐标，没有"另一面"） |
+
+**等价行为**：新增 `internal/uikernel/official_popup_place.go` 的 `PlaceAbove`，判据逐字照
+viva v0.5.1 `ui/popup.go` 的 `sideOf`（请求的那侧放得下就用它；放不下时去空间更大的那边；
+两侧一样宽时留在请求的那侧，不做无谓抖动）。
+
+**关键设计（踩过一次才知道）**：`PlaceAbove` **只判"哪一侧"，不判坐标**；坐标由调用方
+**按边钉**——
+
+- 上方：`.Bottom(bounds.Height - anchor.Y + gap)`（底边贴锚点顶）
+- 下方：`.Top(anchor.Y + anchor.Height + gap)`（顶边贴锚点底）
+
+为什么：v0.6.0 的 `Absolute()` 子元素高度由**内容**决定，声明期拿不到。第一版让
+`PlaceAbove` 返回算出来的 `top` 并统一 `.Top(top)`，结果**首帧（高度未知=0）面板从锚点顶
+往下长、压住 trigger**——`TestModelMenuIsDrawnAboveAnchor` 当场红。按边钉之后，
+"没量过高度"也不会有错帧。
+
+高度从**上一帧**量：`dsagentteam` 的 `modelSlotState` 新增 `panel/panelDrawn/panelRect`
+（同已有点 `chip/drawn/rect` 那套，在 `afterModelSlot` 里量）；`dsstatusbar` 用它已有的
+`dialog.panelRect`。0 = 还没量过 → 按"放得下"处理（与 v0.5.1 首帧一致）。
+
+**行为断言**（`internal/uikernel/official_popup_flip_test.go`，真画一帧再量矩形，不是只测算式）：
+
+- 锚点靠上（Y=40 / 窗 400 高 / 面板 200 高）→ 菜单**整块落在窗口内**且底边 ≥ 锚点底（翻到下方）；
+- 锚点贴窗口底部（Y=740 / 窗 800 高，正常产品形态）→ 菜单留在上方，且面积 > 0。
+
+### 12.4 滚轮接管与 `OnScroll` 同步（V-06-3 记的 ③）
+
+**那条坑是什么**：v0.6.0 里 `ScrollAt` 会置 `scrollManual`，而 `view.Wheel` 遇到 manual 区
+**直接返回未处理**（`ui/scroll.go` 的 `view.Wheel`）。也就是说"应用自己接管滚轮"和
+"应用自己恢复偏移"是**互斥**的两条路；本仓走的是 `ScrollTo`，所以**目前**不冲突——
+但没有任何断言守着，哪天有人把 `ScrollTo` 换成 `ScrollAt`，编译过、单测过、门禁全绿，
+只有真机上鼠标滚轮滚不动。
+
+`cmd/app/scroll_wheel_test.go` 三条断言（全部真滚轮事件，不是读字段）：
+
+| 断言 | 内容 |
+|---|---|
+| ① `TestWheelScrollsMessageArea` | `view.Wheel` 对消息区返回 `Handled=true`，且 `Offset` 真的变大、`Repaint=true` |
+| ② `TestWheelOffsetReachesScrollPos` | 滚轮之后 `recordScroll` 抄进 `m.scrollPos` 的是**新**偏移（切会话恢复的就是它） |
+| ③ `TestScrollToRestoreKeepsWheelWorking` | `settleScroll` 恢复位置之后**滚轮仍然 Handled**（`ScrollTo` 没把 `scrollManual` 打开），且新位置同帧被抄回 `m.scrollPos` |
+
+### 12.5 剩余项（不是"边界"带过）
+
+1. **两个 overlay 不在全量矩阵里**：`dsstatusbar` 的活动胶囊弹窗走 `p.dialog` 内部态、
+   `dsagentteam` 的子代理目录要 `p.team.View().CatalogKnown` 数据；全量装配下前者需要
+   模拟真实点击链、后者在空快照下 `visible=false`（**官方正确行为**：目录未知就不画）。
+   两者的命中区由各自插件测试守（`plugins/dsstatusbar/official_stats_dialog_test.go` 已断言
+   面板命中区），**全量矩阵只覆盖 Snapshot 驱动的形态**——这条是明确的覆盖边界，不是漏。
+2. **`dsopen` 的"在工作目录里打开"**：只在 `Snapshot` 带 destination 时出现，矩阵里没有该状态；
+   它的 `.Clicked()` 身份由静态守卫②守（`Hit(env.Tree.ID(env.Feat, "open-in-app"), …)` 在链上）。
+3. **视觉对照**仍是 V-06-5：本轮做到"每个可点元素都有正面积命中区"，**没有**做像素级对照。
+4. **`spike/*` 五个子模块**仍各自 pin `viva v0.2.3`，不在 `./...` 门禁内（V-06-3 已登记）。
+
+### 12.6 证据位置
+
+| 内容 | 路径 |
+|---|---|
+| 命中区矩阵（11 形态 / 323 实例） | `DSH-GO/tmp/GO8-RC2/_v064/matrix-dump.log` |
+| 最终三档 | `_v064/11-final-test.log`（35 ok / 0 FAIL）、`build`/`vet` 退出码 0 |
+| race | `_v064/20-race.log`（RACE_EXIT=0） |
+| 守卫自测 | `_v064/30-guard.log`（OK=8 FAIL=0） |
+| 静态 `.Clicked()` 盘点脚本 | `_v064/clicked_audit.py`、`_v064/clicked_detail.py` |
+| 只读盘点副本（HEAD `3555eb0`） | `_v064/head/` |
+| 逐条报告 | `DSH-GO/tmp/GO8-RC2/reports/V06-4-control-semantics.md` |

@@ -160,7 +160,12 @@ func (p *Plugin) drawModelMenuAt(f ui.C, env *pluginapi.Env, anchor ui.Rect, dra
 		FetchFailure: failure,
 		Selected:     env.Data.Model,
 		Locked:       env.Data.Busy,
-		Dispatch:     drawSlot,
+		// 翻面判据：上一帧量到的菜单面高度（0 = 还没量过 → 按"放得下"处理）。
+		PanelHeight: p.model.panelRect.Height,
+		OnPanel: func(box ui.Box) {
+			p.model.panel, p.model.panelDrawn = box, true
+		},
+		Dispatch: drawSlot,
 	})
 }
 

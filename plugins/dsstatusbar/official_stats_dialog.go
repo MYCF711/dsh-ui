@@ -58,6 +58,7 @@ import (
 	"math"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -212,11 +213,20 @@ func (p *Plugin) drawStatsDialog(f ui.C, env *pluginapi.Env, t *pluginapi.Theme)
 	// ② 面板：锚在胶囊上方 8px（官方 bottom: anchor(top)+8）、宽按 max-content 夹。
 	width := statsDialogWidth(env, rows, headValue)
 	anchor := statsDialogAnchor(p.dialogAnchorPill(env, p.dialog.kind), width, env.Bounds)
-	// v0.6.0 没有 `Popup().Above`（"放不下翻面"语义随之消失）：用绝对定位钉在锚点
-	// 上方的 gap 处——与 V-06-2 迁移 dsagentteam/confirm.go 的写法一致。
-	panelBottom := env.Bounds.Height - anchor.Y + StatsDialogAnchorGap
-	panel := ui.Column(f).Absolute().Right(env.Bounds.Width - (anchor.X + anchor.Width)).
-		Bottom(panelBottom).Width(width)
+	// v0.6.0 没有 `Popup().Above`（v0.5.1 的"放不下翻到另一面"语义随之消失）：
+	// **翻面**由 `uikernel.PlaceAbove` 补齐（与 viva v0.5.1 `ui/popup.go` 的
+	// `sideOf` 判据逐字一致）。高度取**上一帧量到的**面板高——v0.6.0 的 Absolute
+	// 子元素高由内容决定，声明期拿不到；0 = 还没量过 → 按"放得下"处理（与
+	// v0.5.1 首帧行为一致）。
+	//
+	// 用**边**钉不用坐标钉：钉 Bottom 时内容往上长、钉 Top 时往下长，两种都正确。
+	panel := ui.Column(f).Absolute().Right(env.Bounds.Width - (anchor.X + anchor.Width)).Width(width)
+	if uikernel.PlaceAbove(anchor, p.dialog.panelRect.Height, StatsDialogAnchorGap,
+		env.Bounds.Height, StatsDialogWindowInset) == uikernel.PopupBelow {
+		panel = panel.Top(anchor.Y + anchor.Height + StatsDialogAnchorGap)
+	} else {
+		panel = panel.Bottom(env.Bounds.Height - anchor.Y + StatsDialogAnchorGap)
+	}
 	panel = panel.Radius(t.Radii.LG).Background(t.BgLayer3).Shadow(gfx.ShadowLG).
 		Pad(StatsDialogPad)
 	// 弹窗本体吃掉点击：官方点框内不关闭（stat-dialog.ts 只认"外面"）。

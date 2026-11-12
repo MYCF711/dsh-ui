@@ -26,6 +26,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/internal/uiplugins"
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsagentteam"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscommands"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscomposer"
@@ -37,6 +38,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsnotifications"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsopen"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsquestions"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"
@@ -171,6 +173,9 @@ type model struct {
 	settings *dssettings.Plugin
 	actions  pluginapi.Actions
 	chrome   frameChrome
+	// shellMode 是首屏结构档位（auto/legacy/official），见 shell.go。
+	// 注意：它决定「谁切三栏」，不是外观选项——两块实现几何口径不同。
+	shellMode shellMode
 
 	mu           sync.Mutex
 	chromeLayout frameChromeLayout // 由 Paint 写入，原生截图报告在 mu 下读取。
@@ -1551,8 +1556,19 @@ func newConfig(m *model) app.Config {
 		// 缓存，所以 resize 之后不会沿用上一帧的列宽（真机三档见 tmp/v4b-shots）。
 		hasRightbar := showRightbar && m.kernel.Has(pluginapi.SlotRightbar)
 		m.chrome.rightbarOpen = showRightbar
-		geom := buildGeometry(contentBounds.Width, contentBounds.Height, m.side.Width(), hasRightbar,
-			m.kernel.Has(pluginapi.SlotShellBottom))
+		// 结构档位：auto 在内核有 shell.root 占用方时仍走 dsshell 旧三栏。
+		shellTier := m.shellMode.resolve(m.kernel)
+		var shellOpts uikernel.ShellOptions
+		var geom pluginapi.Geometry
+		if shellTier == shellOfficial {
+			// 官方骨架自己解三列；Geometry 与真画出来的必须是同一份结果
+			//（旧代码 buildGeometry 与 dsshell 各算一遍，分叉过一次）。
+			shellOpts = shellOptionsFor(m, m.kernel, contentBounds.Width, contentBounds.Height)
+			geom = officialGeometry(contentBounds.Width, contentBounds.Height, shellOpts)
+		} else {
+			geom = buildGeometry(contentBounds.Width, contentBounds.Height, m.side.Width(), hasRightbar,
+				m.kernel.Has(pluginapi.SlotShellBottom))
+		}
 		mainWidth := geom.MainWidth
 
 		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
@@ -1632,7 +1648,12 @@ func newConfig(m *model) app.Config {
 		env.Geometry = geom
 
 		m.view.Draw(canvas, theme, contentBounds, func(f *flex.Frame) {
-			// 壳只画一个槽：三栏怎么切、底栏多高、右栏占多少，全在 plugins/dsshell 里。
+			if shellTier == shellOfficial {
+				// 官方骨架：结构/槽名/几何来自 internal/uikernel，内容仍是插件。
+				drawOfficialFirstScreen(f, m, env, shellOpts)
+				return
+			}
+			// 旧路径：壳只画一个槽，三栏怎么切全在 plugins/dsshell 里。
 			drawSlot(f, m.kernel, pluginapi.SlotShellRoot, env)
 		})
 
@@ -1895,6 +1916,7 @@ func main() {
 	sess := flag.String("session", "", "启动后直接打开这个会话 id")
 	openFile := flag.String("open-file", "", "无头截图用：启动后直接打开这个文件名的预览（走 dsfiles.Open，不模拟鼠标）")
 	openSettings := flag.Bool("open-settings", false, "无头截图用：启动后直接打开设置浮层（走 dssettings.Open，不模拟热键）；产品入口是 Shift+F2")
+	shellTierFlag := flag.String("shell", "auto", "首屏结构档位：auto（默认；有 shell.root 占用方时走旧三栏）/ legacy / official（官方骨架）")
 	themeName := flag.String("theme", "dark", "主题：dark / light / system（system 跟着操作系统的明暗走）")
 	tail := flag.Int("tail", 40, "session.load 拉多少条尾巴（实测每条消息约 0.46 MB 纹理，40 条约 100 MB）")
 	smoke := flag.Bool("smoke", false, "启动后自动发一条消息，验证 send 链路（不做按键模拟）")
@@ -1923,6 +1945,10 @@ func main() {
 	chromeProbe := flag.Bool("chrome-probe", false, "与 -shot 同用：点击本进程窗口控制并断言 OS 状态，最后从关闭钮退出")
 	winSize := flag.String("size", "", "调试：窗口初始尺寸 WxH（如 1600x900）；空 = 1180x800。验证几何在不同宽度下是否成立")
 	flag.Parse()
+	shellTier, err := parseShellMode(*shellTierFlag)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
 	// 版本查询排在所有参数校验之前：`"DSH GUI GO.exe" --version` 不管别的参数写成什么，
 	// 都只该打印一行就退（退出码 0），否则脚本里那句"先确认产物是哪一版"会被
 	// 别的 flag 的合法性检查带成判红。
@@ -1963,6 +1989,7 @@ func main() {
 		turnEvents:       map[string][]pubapi.TurnEvent{},
 		approvals:        map[string]*approvalReq{},
 		streamStates:     map[string]*sessionStreamState{},
+		shellMode:        shellTier,
 	}
 	// **先换 cookie，再拉数据**。
 	// 反过来（先 refreshList 再 Connect）的后果实测过：第一次 list 必然 401，

@@ -1,0 +1,221 @@
+// types.go —— 官方数据形状 + 语言域（`dsh-agent-team/src/types.ts`、`locales.ts`）。
+//
+// 界面只读视图，不做写操作：任务板**只读**（README：Agents mutate tasks through
+// tools; the panel provides no mutation controls）。
+package dsagentteam
+
+import "strings"
+
+// TaskStatus 是官方 `TeamTaskStatus`（`TeamTaskView.status`）。
+type TaskStatus string
+
+const (
+	StatusPending    TaskStatus = "pending"
+	StatusInProgress TaskStatus = "in_progress"
+	StatusCompleted  TaskStatus = "completed"
+	// StatusDeleted 只出现在投影里，TeamBoard 一律滤掉（TeamBoard.tsx:19,86）。
+	StatusDeleted TaskStatus = "deleted"
+)
+
+// TeamTask 是官方 `TeamTaskView`（rc.2 `dsh-agent-team/src/types.ts:78-92`）。
+//
+// 界面**只显示** subject / description / owner / status / ready；
+// `blockedBy` / `writeScopes` / `writeScopeWarnings` 是宿主内部字段，官方 README
+// 明写不在界面展示——但 `ready === false` 的 pending 任务必须画 warning 圆点。
+type TeamTask struct {
+	ID          string
+	Revision    int
+	Subject     string
+	Description string
+	Status      TaskStatus
+	BlockedBy   []string
+	WriteScopes []string
+	OwnerID     string
+	OwnerName   string
+	// Ready 是"依赖都完成了"。零值 false 对 pending 任务意味着**被阻塞**，
+	// 所以上游必须给真值；投影里缺这个字段时界面按"阻塞"画（宁可多提示）。
+	Ready bool
+}
+
+// TeamProjection 是官方 `TeamProjection`（`types.ts:98-102`，projection key `agentTeam`）。
+type TeamProjection struct {
+	Enabled bool
+	Tasks   []TeamTask
+	// Failure 是投影自带的失败说明（`failure?: string`）。空 = 没有失败。
+	Failure string
+}
+
+// View 是父级这一帧喂给运行时的快照（官方 hooks 的 Go 等价物）。
+type View struct {
+	// SessionID 是当前会话（根会话才有开关）。
+	SessionID string
+
+	// Projection / ProjectionKnown 对应 `useProjection('agentTeam')`：
+	// **Known=false 等价于 undefined** → 任务板与开关都不渲染
+	// （TeamBoard.tsx:86 的 `!team?.enabled`、TeamModeToggle.tsx:43 的 `mode === undefined`）。
+	Projection      TeamProjection
+	ProjectionKnown bool
+
+	// Members 是 `subagentCatalog` 的条数（只用于 data-with-members 的 4px 上边距）。
+	Members int
+
+	// Locked 对应官方的 `locked`：宿主说这个会话当前不能改 Team 模式。
+	Locked bool
+	// SubagentChild 对应 `useSession(s => s.subagent !== null)`。
+	SubagentChild bool
+	// ListedAsSubagent 对应 `useSessions(s => s.byId[sessionId]?.origin === 'subagent')`。
+	ListedAsSubagent bool
+	// ModelSelectionKnown 对应 `modelSelection !== undefined`（累加器缺失时开关禁用）。
+	ModelSelectionKnown bool
+	// ModelLastUsed 对应 `modelSelection.lastUsed !== null`：
+	// **关闭**时只有它为真才弹确认（结构树 §2.2）。
+	ModelLastUsed bool
+}
+
+// CommandOutcome 是官方命令结果（`CommandNode.outcome`）：success | error。
+type CommandOutcome struct {
+	Kind string // "success" | "error"
+	Text string
+}
+
+// CommandNode 是官方 `conversation.chat.commandview` 的 `node` 入参。
+//
+// 本仓的聊天流还没有"命令节点"这种节点类型（dsconversation 只画消息），
+// 所以由父级通过 Store.SetCommand 喂进来；`Command` 不是 `team` 时本包不画
+// （官方由 ui-chat 的 key 过滤完成；我们这层再守一次，免得误挂到别的命令上）。
+type CommandNode struct {
+	Command string
+	Outcome *CommandOutcome
+}
+
+// ── 语言域（官方 `locales.ts` 的 zh 字典，逐字）────────────────────────────
+//
+// 官方 NS = 'agent-team'，22 个键 × 8 语言。这里只落本包用到的 18 个；
+// 缺的三个（loading/unavailable/empty）本仓还画不到（没有加载态与空态入口，
+// 任务板空且无失败时整块不渲染），不硬编一个"暂无共享任务"进去冒充官方文案。
+const (
+	zhProgressCompleted = "{count} 已完成"
+	zhProgressActive    = "{count} 进行中"
+	zhProgressPending   = "{count} 待处理"
+	zhCommandTitle      = "智能体团队协作"
+	zhCommandRunning    = "执行中"
+	zhCommandDone       = "已完成"
+	zhCommandFailed     = "执行失败"
+	zhCommandFailedWhy  = "执行失败：{reason}"
+	zhTrigger           = "任务板"
+	zhModeLabel         = "启用智能体团队协作"
+	zhModeInfoLabel     = "关于智能体团队协作"
+	zhModeDescription   = "通过共享任务板协调多个智能体的分工与进度，复杂任务表现更佳，token 开销也相应更高。"
+	zhModeFailed        = "无法确认智能体团队协作设置已保存，请重试：{message}"
+	zhDisableTitle      = "确认停用智能体团队协作？"
+	zhDisableDesc       = "对话过程中停用智能体团队协作，将停止共享任务工具和团队协调指令。"
+	zhDisableWarning    = "停用后可能影响缓存复用、增加后续 token 用量与开销，并影响当前任务的协作效果。"
+	zhDisableCancel     = "取消"
+	zhDisableConfirm    = "确认停用"
+	zhDisableClose      = "关闭"
+	zhTasks             = "共享任务"
+	zhOwner             = "负责人"
+	zhUnowned           = "未分配"
+	zhBlocked           = "被依赖阻塞"
+	zhStatusPending     = "待处理"
+	zhStatusInProgress  = "进行中"
+	zhStatusCompleted   = "已完成"
+	zhFailure           = "任务记录无效：{message}"
+)
+
+// 进度分隔符：官方 `join('\u2002·\u2002')`（en-space + · + en-space）。
+const progressSeparator = "\u2002·\u2002"
+
+// statusLabel 把状态翻成官方文案（statusKeys 映射，TeamBoard.tsx:21-23）。
+func statusLabel(status TaskStatus) string {
+	switch status {
+	case StatusPending:
+		return zhStatusPending
+	case StatusInProgress:
+		return zhStatusInProgress
+	case StatusCompleted:
+		return zhStatusCompleted
+	}
+	return string(status)
+}
+
+// ownerLabel 是官方优先级 `ownerName ?? ownerId ?? t('unowned')`（TeamBoard.tsx:46）。
+func (t TeamTask) ownerLabel() string {
+	if n := strings.TrimSpace(t.OwnerName); n != "" {
+		return n
+	}
+	if id := strings.TrimSpace(t.OwnerID); id != "" {
+		return id
+	}
+	return zhUnowned
+}
+
+// blocked 是官方 `status === 'pending' && !ready`（TeamBoard.tsx:47）。
+func (t TeamTask) blocked() bool { return t.Status == StatusPending && !t.Ready }
+
+// visibleTasks 滤掉 deleted 并保持服务端顺序（官方 `tasks.filter(status !== 'deleted')`）。
+func visibleTasks(tasks []TeamTask) []TeamTask {
+	out := make([]TeamTask, 0, len(tasks))
+	for _, task := range tasks {
+		if task.Status == StatusDeleted {
+			continue
+		}
+		out = append(out, task)
+	}
+	return out
+}
+
+// progressLabel 是官方 `progressLabel`（TeamBoard.tsx:29-38）：
+// 完成/进行中/待处理三段，**计数为 0 的段不出现**，段间用 en-space·en-space 连接。
+func progressLabel(tasks []TeamTask) string {
+	completed, active := 0, 0
+	for _, task := range tasks {
+		switch task.Status {
+		case StatusCompleted:
+			completed++
+		case StatusInProgress:
+			active++
+		}
+	}
+	pending := len(tasks) - completed - active
+	var parts []string
+	if completed > 0 {
+		parts = append(parts, formatCount(zhProgressCompleted, completed))
+	}
+	if active > 0 {
+		parts = append(parts, formatCount(zhProgressActive, active))
+	}
+	if pending > 0 {
+		parts = append(parts, formatCount(zhProgressPending, pending))
+	}
+	return strings.Join(parts, progressSeparator)
+}
+
+// formatCount 只替换 `{count}`（官方 i18n 的最小子集）。
+func formatCount(template string, count int) string {
+	return strings.ReplaceAll(template, "{count}", itoa(count))
+}
+
+// formatMessage 只替换 `{message}` / `{reason}`。
+func formatMessage(template, value string) string {
+	out := strings.ReplaceAll(template, "{message}", value)
+	return strings.ReplaceAll(out, "{reason}", value)
+}
+
+// itoa 避免为了一个数字引 fmt（同 dsnotifications 的做法）。
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	if i < 0 {
+		return "-" + itoa(-i)
+	}
+	digits := [12]byte{}
+	n := len(digits)
+	for i > 0 {
+		n--
+		digits[n] = byte('0' + i%10)
+		i /= 10
+	}
+	return string(digits[n:])
+}

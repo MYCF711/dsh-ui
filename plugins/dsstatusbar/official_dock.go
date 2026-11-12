@@ -42,6 +42,7 @@ package dsstatusbar
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 const (
@@ -61,27 +62,37 @@ func (p *Plugin) composerSeatLive() bool { return p.tier.Official() }
 // drawOfficialDock 画官方 `conversation.composer.dock`：卡片下方一行居中的读数胶囊。
 //
 // 可见性：**常驻**（有会话就画）；每枚胶囊的字段按宿主实际能力写数或写「未知」。
+// 有官方弹窗行的那一枚（活动）按官方 DialogPill 画成 button（hover + 命中区），
+// 并在被点开时画详情弹窗；其余保持官方 PlainPill 的静态读数。
 func (p *Plugin) drawOfficialDock(f *flex.Frame, env *pluginapi.Env) {
 	if !p.composerSeatLive() {
+		// 旧档位没有这个座位：弹窗跟着座位一起消失，别留一个飞在旧界面上的浮层。
+		p.closeStatsDialog()
 		return
 	}
 	// 官方这个槽是 session 作用域：没有会话就不画（Hero 阶段 Hero 内嵌 composer
 	// 自己那条 dock 由骨架画，不在这里重复）。
 	if env.Data.Cur == "" {
+		p.closeStatsDialog()
 		return
 	}
-	t := p.theme
-	if env.Theme != nil {
-		t = env.Theme
-	}
-	segments := officialSegments(env.Data)
+	t := p.themeOf(env)
+	specs := officialPillSpecs(env.Data)
+	var pill flex.Box
+	var pillDrawn bool
 	f.Row().FillWidth().Height(dockPaddingTop+pillHeight).
 		PadSides(dockPaddingTop, 0, 0, 0).
 		Items(flex.Center).Justify(flex.Center).Gap(dockGap).Children(func() {
-		for _, segment := range segments {
-			p.officialPill(f, t, segment)
+		for _, spec := range specs {
+			box, drawn := p.officialPill(f, t, env, spec)
+			if spec.interactive {
+				pill, pillDrawn = box, drawn
+			}
 		}
 	})
+	// 弹窗锚点要的是"这一帧胶囊的真实矩形"，Rect() 只有布局后才有效 → AfterDraw 取。
+	p.dialog.pill, p.dialog.pillDrawn = pill, pillDrawn
+	p.drawStatsDialog(f, env, t)
 }
 
 // officialPill 画一枚读数胶囊（官方 `.pill`：20 行高、左右 8、radius sm）。
@@ -96,14 +107,55 @@ func (p *Plugin) drawOfficialDock(f *flex.Frame, env *pluginapi.Env) {
 // 用定宽占位盒时，文字节点拿到的就是**它自己的 pref 宽度**（不是容器宽减
 // padding），不存在这次往返。同样的修法见 `plugins/dsagentteam/model_slot.go`
 // 的「为什么内边距用定宽占位盒而不是 PadSides」。
-func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, segment string) {
-	f.Row().Height(pillHeight).Radius(t.Radii.SM).
-		Items(flex.Center).Gap(0).Children(func() {
+// 返回的 Box 是本帧胶囊（AfterDraw 从它读锚点矩形）；bool 表示这一帧真的画了
+// 一颗**可点**的胶囊（官方 DialogPill）。
+func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.Env, spec officialPillSpec) (flex.Box, bool) {
+	if !spec.interactive {
+		// 官方 PlainPill：静态 span。没有命中区、没有 hover——画一个点不开的
+		// 按钮比不画更糟（用户会以为它坏了）。
+		box := f.Row().Height(pillHeight).Radius(t.Radii.SM).
+			Items(flex.Center).Gap(0).Children(func() {
+			f.Row().Width(pillPadX).Height(pillHeight)
+			f.Text(spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
+				Color(t.LabelTertiary).Ellipsis()
+			f.Row().Width(pillPadX).Height(pillHeight)
+		})
+		return box, false
+	}
+	// 官方 DialogPill：`button.pill`，悬停/展开时底 = interactive-bg-hover、
+	// 字 = label-secondary（StatsPills.module.css:38-52）。
+	id := statsTreeID(env, statsPillHitName)
+	// **在画之前**处理这次点击：官方是 `setOpen(!open)` 之后重渲染，胶囊的
+	// `aria-expanded`/底色与同一帧的弹窗必须是同一个状态。viva 的
+	// `Canvas.Clicked(id)` 只比对本次事件派发的 id，不需要先声明命中区，
+	// 所以这里可以先改状态、再按新状态画胶囊与弹窗。
+	if !id.IsZero() && env != nil && env.Canvas != nil && env.Canvas.Clicked(id) {
+		p.toggleStatsDialog(env)
+	}
+	open := p.statsDialogOpen(env.Data)
+	lit := statsHovered(env, id, open)
+	textColor := t.LabelTertiary
+	if lit {
+		textColor = t.LabelSecondary
+	}
+	box := f.Row().Height(pillHeight).Radius(t.Radii.SM).HoverBackground(t.Hover)
+	if open {
+		// `button.pill[aria-expanded=true]{background: interactive-bg-hover}`
+		box = box.Background(t.Hover)
+	}
+	box = box.Items(flex.Center).Gap(0).Children(func() {
 		f.Row().Width(pillPadX).Height(pillHeight)
-		f.Text(segment).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
-			Color(t.LabelTertiary).Ellipsis()
+		f.Text(spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
+			Color(textColor).Ellipsis()
 		f.Row().Width(pillPadX).Height(pillHeight)
 	})
+	if !id.IsZero() {
+		// 官方 trigger 是 button：`aria-haspopup="dialog"` + `aria-expanded={open}`。
+		box = box.HitWith(id, spec.text, ui.HitOptions{
+			Role: ui.RoleButton, Expandable: true, Expanded: open,
+		})
+	}
+	return box, true
 }
 
 // officialSegments 是常驻 dock 的两枚读数：活动 / 用量。
@@ -123,10 +175,12 @@ func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, segment string)
 //     才写「未知」。绝不拿消息窗口数轮/步。
 //   - 用量（官方 UsagePill）：`UsageTotal` / 旧 `Usage` 的真值，缺则「未知」。
 func officialSegments(d pluginapi.Snapshot) []string {
-	return []string{
-		activitySegment(d),
-		orUnknown(usageTokenSegment(d), zhUsageUnknown),
+	specs := officialPillSpecs(d)
+	out := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		out = append(out, spec.text)
 	}
+	return out
 }
 
 // 未知文案（与 GR 报告 §3 的「上下文 未知」同一套写法：标签 + 未知）。

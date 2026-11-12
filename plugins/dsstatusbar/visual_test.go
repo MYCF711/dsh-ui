@@ -41,6 +41,8 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 	feat := tree.Feature("fg5-headless")
 	data := pluginapi.Snapshot{
 		Cur: "fg5-real-layout", Status: "已连接",
+		// 连接三态由壳给（`Snapshot.Link`）：这一组用例先验"连着"那一态。
+		Link:          pluginapi.LinkConnected,
 		UsageTotal:    pluginapi.Usage{InputTokens: 12000, OutputTokens: 345, TotalTokens: 12345},
 		ContextTokens: 2000,
 		ContextWindow: 10000,
@@ -82,9 +84,13 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 						painter.Draw(f, env)
 					}
 				})
-				for _, painter := range kernel.Painters(pluginapi.SlotShellBottom) {
-					painter.Draw(f, env)
-				}
+				// 连接指示的官方座位：`sidebar.settings`（官方左栏默认 280 宽）。
+				// 这里模拟骨架在 footArea 里 dispatch 那个槽（不再有 shell.bottom 整行）。
+				f.Row().Width(280).Height(connRowHeight + 2*connRowMarginY).Children(func() {
+					for _, painter := range kernel.Painters(uikernel.OffSidebarSettings) {
+						painter.Draw(f, env)
+					}
+				})
 			})
 		})
 		for _, painter := range kernel.AllPainters() {
@@ -128,30 +134,32 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 		if len(contextTexts) != 1 || contextTexts[0] != wantContext {
 			t.Fatalf("%s 上下文文本残留或重复：got=%q want=%q", name, contextTexts, wantContext)
 		}
-		wantConnection := "就绪"
-		wantColor := theme.Success
+		// 连接指示走官方 `ConnectionIndicator`：28 高胶囊 + 官方 success/warning 色。
+		wantConnection := zhConnectionConnected
+		wantFill := theme.SuccessTertiary
 		if disconnected {
-			wantConnection = "已断开"
-			wantColor = theme.Error
-			if session.HasText("就绪") {
-				t.Fatalf("%s 断线后仍显示就绪", name)
+			wantConnection = zhConnectionError
+			wantFill = theme.WarnTertiary
+			if session.HasText(zhConnectionConnected) {
+				t.Fatalf("%s 断线后仍显示「%s」", name, zhConnectionConnected)
 			}
 		}
 		if !session.HasText(wantConnection) {
 			t.Fatalf("%s 缺连接状态 %q；texts=%q", name, wantConnection, session.Texts())
 		}
-		var connectionDot bool
+		var connectionPill bool
 		var card app.Primitive
 		for _, primitive := range snapshot.Primitives {
-			if primitive.Bounds.Width == 6 && primitive.Bounds.Height == 6 && primitive.Color == wantColor {
-				connectionDot = true
+			if primitive.Kind == app.RectanglePrimitive && primitive.Bounds.Height == connIndicatorHeight-2 &&
+				primitive.Color == wantFill {
+				connectionPill = true
 			}
 			if primitive.Color == theme.InputMajor && primitive.Bounds.Width*primitive.Bounds.Height > card.Bounds.Width*card.Bounds.Height {
 				card = primitive
 			}
 		}
-		if !connectionDot {
-			t.Fatalf("%s 没有实画正确连接状态点", name)
+		if !connectionPill {
+			t.Fatalf("%s 侧栏没画出官方连接胶囊（%v 底 / %v 高）", name, wantFill, connIndicatorHeight)
 		}
 		dock := dockBox.Rect()
 		if closeEnoughFG5(dock.Height, 0) {
@@ -212,7 +220,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 
 	// A→B→A：每个会话只显示自己的 used/capacity，不能把 A 的 10k 套到 B 的 32k。
 	setData(pluginapi.Snapshot{
-		Cur: "session-b", Status: "已连接",
+		Cur: "session-b", Status: "已连接", Link: pluginapi.LinkConnected,
 		UsageTotal: pluginapi.Usage{TotalTokens: 777}, ContextTokens: 8000, ContextWindow: 32000,
 	})
 	assertFrame(1920, 1032, "stats-wire-session-b-1920x1032.png", "总量 777", "上下文 8.0k · 25%", false)
@@ -222,6 +230,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 	assertFrame(1182, 832, "stats-wire-session-a-return-1182x832.png", "总量 12.3k", "上下文 500 · 5%", false)
 
 	disconnected := compacted
+	disconnected.Link = pluginapi.LinkDown
 	disconnected.Disconnected = true
 	disconnected.Status = "连不上宿主，重试中…"
 	setData(disconnected)
@@ -229,7 +238,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 
 	// 同一真实窗口切到 B：只能出现 B 的 whole-log 数字，不能残留 A。
 	data = pluginapi.Snapshot{
-		Cur: "session-b", Status: "已连接",
+		Cur: "session-b", Status: "已连接", Link: pluginapi.LinkConnected,
 		UsageTotal: pluginapi.Usage{TotalTokens: 777}, ContextTokens: 100,
 	}
 	invalidator.Invalidate()
@@ -241,7 +250,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 			t.Fatalf("切到 B 后缺 B 的真值 %q；texts=%q", want, session.Texts())
 		}
 	}
-	for _, stale := range []string{"总量 12.3k", "上下文 2.0k", "已断开"} {
+	for _, stale := range []string{"总量 12.3k", "上下文 2.0k", zhConnectionError} {
 		if session.HasText(stale) {
 			t.Fatalf("切到 B 后仍显示 A/断线残留 %q", stale)
 		}

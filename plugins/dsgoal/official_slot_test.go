@@ -131,18 +131,25 @@ func TestGoalVisibilityBothStates(t *testing.T) {
 	goal = "先出方案"
 	canvas = officialFrame(t, true, func() string { return goal })
 	rects := canvas.Rectangles()
-	// 官方条 = 条背景(36 高) + 圆点(4×4)；每个正好一次 = 没双画。
-	var bars, dots int
+	// 官方条 = 条背景(36 高)；glyph 是 sprite 的描边（三角化后不进矩形），
+	// 所以"条 1 / 文字标签 1 / 有描边三角形"三条一起才算"正好一份、没双画"。
+	var bars, labels int
 	for _, rect := range rects {
 		if rect.Bounds.Height == goalBarHeight {
 			bars++
 		}
-		if rect.Bounds.Width == goalDotSize && rect.Bounds.Height == goalDotSize {
-			dots++
+	}
+	for _, text := range canvas.Texts() {
+		if text.Value == goalLabelText {
+			labels++
 		}
 	}
-	if bars != 1 || dots != 1 {
-		t.Fatalf("官方目标条应当正好一份（条 %d / 圆点 %d），rects=%+v", bars, dots, rects)
+	if bars != 1 || labels != 1 {
+		t.Fatalf("官方目标条应当正好一份（条 %d / 标签 %d），rects=%+v texts=%+v",
+			bars, labels, rects, canvas.Texts())
+	}
+	if len(canvas.Triangles()) == 0 {
+		t.Fatal("官方目标条没画出 goal-outline 图标（没有任何描边三角形）")
 	}
 	goal = ""
 	canvas = officialFrame(t, true, func() string { return goal })
@@ -155,13 +162,16 @@ func TestGoalVisibilityBothStates(t *testing.T) {
 func TestGoalDrawsOncePerFrame(t *testing.T) {
 	officialFrame(t, true, func() string { return "同一目标" })
 	second := officialFrame(t, true, func() string { return "同一目标" })
-	var dots int
-	for _, rect := range second.Rectangles() {
-		if rect.Bounds.Width == goalDotSize && rect.Bounds.Height == goalDotSize {
-			dots++
+	var labels int
+	for _, text := range second.Texts() {
+		if text.Value == goalLabelText {
+			labels++
 		}
 	}
-	if dots != 1 {
-		t.Fatalf("第二帧目标圆点画了 %d 次，want 1（每帧重画一次）", dots)
+	if labels != 1 {
+		t.Fatalf("第二帧目标标签画了 %d 次，want 1（每帧重画一次）", labels)
+	}
+	if len(second.Triangles()) == 0 {
+		t.Fatal("第二帧没画出 goal-outline 图标")
 	}
 }

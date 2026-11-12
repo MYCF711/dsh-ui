@@ -35,7 +35,8 @@ func activityText(stats *apiclient.SessionStats) string {
 	if stats == nil || stats.Steps <= 0 {
 		return ""
 	}
-	parts := []string{itoa(int(stats.Turns)) + " 轮 " + itoa(int(stats.Steps)) + " 步"}
+	// 计数文案的唯一出处是 statsCountsText（弹窗标题右侧那一格用的是同一句）。
+	parts := []string{statsCountsText(stats)}
 	if stats.DecodeMs > 0 {
 		perSecond := float64(stats.DecodeTokens) / (float64(stats.DecodeMs) / 1000)
 		parts = append(parts, rate(perSecond))

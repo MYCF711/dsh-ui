@@ -63,10 +63,10 @@ const (
 	// `.objective{font-size:13px; line-height:20px}`。
 	goalObjectiveFont float32 = 13
 	goalObjectiveLine float32 = 20
-	// 官方 `.goalGlyph` 是图标精灵里的一枚 14px 图标；本仓没有那枚 symbol
-	// （`assets/icons/tools/goal.jsx` 是工具面板图标，不是 composer 条上的这枚），
-	// 所以保留旧座位那个 4px 中性圆点，**不手画一个假图标冒充官方**。
-	goalDotSize float32 = 4
+	// 官方 `.goalGlyph` 是 sprite`goal-outline`（viewBox 16、size 14）。原注释
+	// 「本仓没有那枚 symbol」是误判：官方 GoalBar.tsx:137 用的就是
+	// `IconGoalOutlineRegular`，而素材库 `assets/icons/tools/goal.jsx` 与 rc.2
+	// sprite 的 4 段 path **逐字节相同**。符号定义见 icons.go（goalGlyphSize）。
 )
 
 // composerSeatLive 报告**这一帧**官方 composer 座位是不是活的。
@@ -149,9 +149,10 @@ func (p *Plugin) drawOfficial(f *flex.Frame, env *pluginapi.Env) {
 			Items(flex.Center).Gap(goalBarGap).
 			Radius(t.Radii.MD).Background(t.BgLayer2).Shadow(ui.ShadowXS).
 			Children(func() {
-				// `.goalGlyph`：官方图标 14px；本仓没有那枚 symbol → 沿用 4px 中性圆点。
-				f.Row().Width(goalDotSize).Height(goalDotSize).Radius(goalDotSize / 2).
-					Background(t.LabelTertiary)
+				// `.goalGlyph{color:var(--dsw-alias-label-tertiary);flex:none;display:inline-flex}`：
+				// 官方 sprite `goal-outline`，`<IconGoalOutlineRegular size={14}/>`
+				// （GoalBar.tsx:137）。viewBox 保持官方的 16，缩放交给 Size(14)。
+				f.Icon(goalOutlineIcon()).Size(goalGlyphSize, goalGlyphSize).Color(t.LabelTertiary)
 				f.Text(goalLabelText).FontSize(goalLabelFont).LineHeight(goalLabelLine).
 					Weight(ui.WeightMedium).Color(t.LabelPrimary)
 				// `.objective`：一行，超出省略（完整内容在别处看）。

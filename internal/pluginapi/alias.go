@@ -30,6 +30,9 @@ type (
 	Approval     = pub.Approval
 	// HistoryPaging 是主区「加载更早」单按钮的五态输入（additive）。
 	HistoryPaging = pub.HistoryPaging
+	// LinkState 是壳与宿主流连接的三态事实（`Snapshot.Link`）。
+	// 纯别名：取值常量见 pluginapi/link.go 的公开包。
+	LinkState = pub.LinkState
 	// ApprovalOption 是审批帧里 data.options 的一项（H13）。
 	// 纯别名，不在这里加任何东西——两份定义会漂移。
 	ApprovalOption = pub.ApprovalOption
@@ -44,6 +47,11 @@ type (
 const (
 	KeyTheme      = pub.KeyTheme
 	KeyPrimitives = pub.KeyPrimitives
+
+	// 连接三态（`Snapshot.Link`）的取值：纯转发公开包的常量。
+	LinkUnknown   = pub.LinkUnknown
+	LinkConnected = pub.LinkConnected
+	LinkDown      = pub.LinkDown
 
 	SlotShellRoot     = pub.SlotShellRoot
 	SlotShellLeading  = pub.SlotShellLeading

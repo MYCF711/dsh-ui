@@ -54,7 +54,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -298,15 +298,15 @@ func hcFrameTypes(frames []apiclient.Frame) []string {
 func hcCaptureStatusbar(t *testing.T, snap pluginapi.Snapshot, path string) {
 	t.Helper()
 	product := newGYRealProduct(t)
-	shotTree := &ui.Tree{}
+	shotTree := &gfx.Tree{}
 	shotFeat := shotTree.Feature("hc-shot")
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "hc-statusbar", Width: 1182, Height: 832, Tree: shotTree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(c *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(c *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		c.Fill(bounds, product.theme.BgBase)
 		shotEnv := &pluginapi.Env{
 			Theme: product.theme, Data: snap, Tree: shotTree, Feat: shotFeat, Canvas: c,
@@ -316,8 +316,9 @@ func hcCaptureStatusbar(t *testing.T, snap pluginapi.Snapshot, path string) {
 			Has:       product.kernel.Has,
 			Act:       pluginapi.Actions{Goal: func() string { return "" }},
 		}
-		var view flex.View
-		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f *flex.Frame) {
+		pageTheme := dscore.VivaTheme(product.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+		view.Draw(c, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, shotEnv, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, shotEnv)
 			})

@@ -19,11 +19,10 @@
 package main
 
 import (
+	"github.com/vivaui/viva/text"
+	"github.com/vivaui/viva/ui"
 	"sync"
 	"testing"
-
-	"github.com/vivaui/viva/flex"
-	"github.com/vivaui/viva/text"
 )
 
 // TestEditorStringIsNotARead 钉住根因：String() 自己写缓存。
@@ -52,7 +51,7 @@ func TestEditorStringIsNotARead(t *testing.T) {
 // TestFieldTextIsNotARead 是产品里真正踩到的形状：`flex.Field` 是 Viva
 // 推荐给业务持有的输入框状态，`Field.Text()` 转调 `Editor.String()`。
 func TestFieldTextIsNotARead(t *testing.T) {
-	var field flex.Field
+	var field ui.Field
 	field.SetText("不要丢的草稿")
 	var wg sync.WaitGroup
 	wg.Add(2)

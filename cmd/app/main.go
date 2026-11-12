@@ -51,7 +51,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
@@ -83,9 +83,12 @@ type rightbarSessionState struct {
 const cacheLimit = 5
 
 type model struct {
-	view   flex.View
-	draft  flex.Field
-	search flex.Field // 侧栏过滤（按标题 + cwd 匹配）
+	// view 是整窗的 ui.Page（v0.6.0 把 flex.View 并进了 ui.Page）。
+	// 主题是**构造期**给的：这里传的是包级 `theme` 的地址，所以运行时换主题
+	// （applyPendingTheme 在 Paint 里改 theme）下一帧就生效，不必重建 Page。
+	view   *ui.Page
+	draft  ui.Field
+	search ui.Field // 侧栏过滤（按标题 + cwd 匹配）
 	inv    app.Invalidator
 	cli    *apiclient.Client
 	cache  map[string]*cachedSession
@@ -404,11 +407,8 @@ func (m *model) integrateLoadWithContextWindowLocked(id string, result *apiclien
 }
 
 func (m *model) openSession(id string) {
-	// 切走之前记下当前会话滚到哪了
-	m.mu.Lock()
-	prev := m.cur
-	m.mu.Unlock()
-	m.saveScroll(prev)
+	// 滚动位置不用在这里存：m.recordScroll 每帧都在抄（v0.6.0 没有可回头查的
+	// 滚动状态入口，见 recordScroll 的注释）。
 
 	// 切会话必须丢掉上一个会话的 Markdown 文档树，否则切三次就是三份 200 条的
 	// Layout 结果全常驻（实测 168.7 MB）
@@ -708,20 +708,38 @@ func (m *model) loadDir(dir string) {
 	m.inv.Invalidate() // 拉到了就重绘，插件下一帧才看得见
 }
 
-// saveScroll 记下某个会话当前的滚动偏移。
-func (m *model) saveScroll(id string) {
-	if id == "" {
+// settleScroll 是 Draw 返回后对滚动区的全部处理：先恢复待恢复的位置，再记本帧偏移。
+//
+// **顺序不能反**：recordScroll 会覆盖 m.scrollPos，而切会话那一帧新滚动区是从 0
+// 布局的——先记再恢复就会把"切走前的位置"覆盖成 0，恢复等于没恢复。
+// 回归测试：TestPendingScrollRestoresOffset（它调的就是这个函数）。
+func (m *model) settleScroll(box ui.Box, handed bool) bool {
+	repaint := m.applyPendingScroll(box, handed)
+	m.recordScroll(box, handed)
+	return repaint
+}
+
+// recordScroll 把本帧消息流滚动区的偏移抄进 m.scrollPos。
+//
+// v0.6.0 起**没有**"按 ID 查 ScrollState"的入口：滚动状态由声明方（消息流插件）
+// 持在 `Box` 上，`Box.ScrollState()` 只在同一个 paint 内有效。所以壳不再在
+// "切会话那一刻回头查上一帧"，改成**每帧抄一次**——切走时 m.scrollPos[prev]
+// 已经是上一帧的真值，语义等价，且不依赖任何跨帧的 Box/指针。
+//
+// box/handed 为空（本帧没有消息流滚动区，比如没有 ds-conversation 插件）时跳过。
+func (m *model) recordScroll(box ui.Box, handed bool) {
+	if !handed {
 		return
 	}
-	st := m.view.ScrollState(tree.ID(home, "msgs-"+id))
-	if st == nil {
-		return
-	}
+	st := box.ScrollState()
+	offset := st.Offset
 	m.mu.Lock()
 	if m.scrollPos == nil {
 		m.scrollPos = map[string]float32{}
 	}
-	m.scrollPos[id] = st.Offset
+	if m.cur != "" {
+		m.scrollPos[m.cur] = offset
+	}
 	m.mu.Unlock()
 }
 
@@ -729,7 +747,10 @@ func (m *model) saveScroll(id string) {
 //
 // Follow 到布局末尾才把 Offset 移到尾部，而消息虚拟化在声明时读的是旧 Offset。
 // 空消息 Hero 帧不能消费 pendingScroll；否则首载只有尾部占位，没有下一帧实画。
-func (m *model) applyPendingScroll() bool {
+//
+// 恢复必须在布局**之后**做（ScrollTo 的落位要拿本次布局的 Content/Viewport 判断
+// "是否停在末尾"），所以用本帧插件交回来的 Box；没有任何滚动区时只报告"要不要补帧"。
+func (m *model) applyPendingScroll(box ui.Box, handed bool) bool {
 	m.mu.Lock()
 	id := m.pendingScroll
 	if id == "" || id != m.cur || len(m.msgs) == 0 {
@@ -740,12 +761,11 @@ func (m *model) applyPendingScroll() bool {
 	m.pendingScroll = ""
 	m.mu.Unlock()
 
-	st := m.view.ScrollState(tree.ID(home, "msgs-"+id))
-	if st == nil {
+	if !handed {
 		return false
 	}
 	if restore {
-		st.ScrollTo(off)
+		box.ScrollState().ScrollTo(off)
 	}
 	return true
 }
@@ -1553,7 +1573,7 @@ var (
 //
 // 壳里只剩这一句：槽位树（谁在谁里面）由插件自己声明（Painter.Children），
 // 壳不知道有几层、也不知道哪一层是什么部件——这就是「高塔」。
-func drawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env) {
+func drawSlot(f ui.C, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env) {
 	k.DrawSlot(f, slot, env)
 }
 
@@ -1590,18 +1610,18 @@ func newConfig(m *model) app.Config {
 		MinWidth: 760, MinHeight: 520, Invalidator: &m.inv}
 	// 插件的输入框也要登记，否则收不到键盘（viva 只把登记过的 Field 当输入焦点候选）。
 	// 走一次统一的聚合：以后再加插件不用改这里。
-	fields := []*flex.Field{&m.draft}
+	fields := []*ui.Field{&m.draft}
 	for _, p := range m.kernel.Plugins() {
 		if withFields, ok := p.(pluginapi.Fields); ok {
 			fields = append(fields, withFields.Fields()...)
 		}
 	}
 	configureFrameWindow(&cfg, runtime.GOOS == "windows", theme)
-	cfg.TextInput = m.chrome.wrapTextInput(flex.Fields(fields...))
+	cfg.TextInput = m.chrome.wrapTextInput(ui.Fields(fields...))
 	m.chrome.newSession = m.newSession
 	m.chrome.toggleRightbar = m.toggleRightbar
 
-	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	cfg.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		if runtime.GOOS == "windows" {
 			if id, ok := canvas.ClickTarget(); ok {
 				if err := m.chrome.handleClick(id); err != nil {
@@ -1740,6 +1760,10 @@ func newConfig(m *model) app.Config {
 		if approvalView == nil {
 			approvalView = demoApprovalView()
 		}
+		// 本帧消息流滚动区：插件在声明后交回来（见 env.ScrollBox）。
+		// Box 只在同一个 paint 内有效，所以这里只用一帧、用完即弃。
+		var scrollBox ui.Box
+		var hasScrollBox bool
 		env := &pluginapi.Env{
 			Theme: m.theme,
 			Data: pluginapi.Snapshot{
@@ -1804,8 +1828,10 @@ func newConfig(m *model) app.Config {
 			Canvas:    canvas,
 			Bounds:    contentBounds,
 			MainWidth: mainWidth,
-			// viva 要求滚动状态"要的时候再取"，所以传函数而不是指针。
-			Scroll: m.view.ScrollState,
+			// v0.6.0 没有"按 ID 查滚动状态"的入口了：滚动区状态由声明方
+			// （消息流插件）持在 Box 上，且只在同一个 paint 内有效。所以改成
+			// 声明方把盒子交回来，壳在 Draw 返回后（布局已定）立刻用完就丢。
+			ScrollBox: func(box ui.Box) { scrollBox, hasScrollBox = box, true },
 		}
 		env.Has = func(slot pluginapi.Slot) bool { return m.kernel.Has(slot) }
 		// 三栏几何由壳算：它知道侧栏要的宽度、右栏开不开、白名单里有没有底部整行。
@@ -1830,7 +1856,7 @@ func newConfig(m *model) app.Config {
 			}
 		}
 
-		m.view.Draw(canvas, theme, contentBounds, func(f *flex.Frame) {
+		m.view.Draw(canvas, contentBounds, func(f ui.C) {
 			if shellTier == shellOfficial {
 				// 官方骨架：结构/槽名/几何来自 internal/uikernel，内容仍是插件。
 				drawOfficialFirstScreen(f, m, env, shellOpts)
@@ -1840,10 +1866,16 @@ func newConfig(m *model) app.Config {
 			drawSlot(f, m.kernel, pluginapi.SlotShellRoot, env)
 		})
 
-		// 布局已定：先恢复待恢复的滚动位置，再跑插件的 AfterDraw
+		// 布局已定：先恢复待恢复的滚动位置，再记本帧偏移，然后跑插件的 AfterDraw
 		// （插件负责 Markdown 这类"先布局后覆画"的东西，壳不再画内容）。
+		//
+		// **顺序不能反**：recordScroll 会把本帧的 Offset 写进 m.scrollPos，
+		// 而切会话那一帧的新滚动区是从 0 布局的——先记再恢复就会把"切走前的位置"
+		// 覆盖成 0，恢复等于没恢复（这条有专门的回归测试：
+		// TestPendingScrollRestoresOffset）。
+		//
 		// 第一批消息的高度/尾部 Offset 刚确定，必须再绘一帧让虚拟化实画尾部。
-		if m.applyPendingScroll() {
+		if m.settleScroll(scrollBox, hasScrollBox) {
 			m.inv.Invalidate()
 		}
 		for _, painter := range m.kernel.AllPainters() {
@@ -1870,7 +1902,7 @@ func newConfig(m *model) app.Config {
 	// 用 viva 自带的 `View.Wheel`：它按**指针位置**找最内层能滚的 ScrollArea，
 	// 滚到头再往外层找，行为跟浏览器一致。自己拿当前会话的 ScrollState 去 Wheel
 	// 只覆盖"消息区"一个区域，侧栏/轨迹栏在指针下时就不该滚消息区。
-	cfg.OnScroll = func(ev ui.ScrollEvent) ui.EventResult {
+	cfg.OnScroll = func(ev gfx.ScrollEvent) gfx.EventResult {
 		for _, plugin := range m.kernel.Plugins() {
 			if handler, ok := plugin.(pubapi.ScrollHandler); ok {
 				if result := handler.HandleScroll(ev); result.Handled {
@@ -1881,9 +1913,9 @@ func newConfig(m *model) app.Config {
 		return m.view.Wheel(ev)
 	}
 
-	cfg.OnKey = func(ev ui.KeyEvent) ui.EventResult {
+	cfg.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
 		if ev.Release {
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
 		if runtime.GOOS == "windows" {
 			if result := m.chrome.handleKey(ev); result.Handled {
@@ -1896,9 +1928,9 @@ func newConfig(m *model) app.Config {
 			// shell.overlay 里的画重新执行。实测：F1 把插件状态切成 shown=true，
 			// 但之后一帧都没再画，面板永远不出现（key 16 handled=true 却看不见东西）。
 			m.inv.Invalidate()
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
 
 	cfg.OnResize = func(ui.Size) { m.inv.Invalidate() }
@@ -1910,19 +1942,19 @@ func newConfig(m *model) app.Config {
 // 为什么返回 KeyEvent 而不是 ui.Key：**修饰键也是路由的一部分**。
 // 设置浮层的入口是 Shift+F2，而普通 F2 是命令面板——只翻键名会把 Shift 丢掉，
 // 注入的按键就永远打不开设置，而"打不开"看起来会像"插件没装/没接上"。
-func parseKeys(seq string) []ui.KeyEvent {
-	var out []ui.KeyEvent
+func parseKeys(seq string) []gfx.KeyEvent {
+	var out []gfx.KeyEvent
 	for _, raw := range strings.Split(seq, ",") {
 		name := strings.TrimSpace(strings.ToLower(raw))
-		var mods ui.Modifiers
+		var mods gfx.Modifiers
 		if rest, ok := strings.CutPrefix(name, "shift+"); ok {
-			mods, name = ui.ModifierShift, rest
+			mods, name = gfx.ModifierShift, rest
 		}
 		key, ok := keyFromName(name)
 		if !ok {
 			continue
 		}
-		out = append(out, ui.KeyEvent{Key: key, Modifiers: mods})
+		out = append(out, gfx.KeyEvent{Key: key, Modifiers: mods})
 	}
 	return out
 }
@@ -1931,37 +1963,37 @@ func parseKeys(seq string) []ui.KeyEvent {
 //
 // 加插件键位的同一条规矩：插件吃哪个键，这里就得认识哪个名字，
 // 否则截图时按键静默无效（F5 加的时候踩过）。
-func keyFromName(name string) (ui.Key, bool) {
+func keyFromName(name string) (gfx.Key, bool) {
 	switch name {
 	case "down":
-		return ui.KeyDown, true
+		return gfx.KeyDown, true
 	case "up":
-		return ui.KeyUp, true
+		return gfx.KeyUp, true
 	case "f1":
-		return ui.KeyF1, true
+		return gfx.KeyF1, true
 	case "f2":
-		return ui.KeyF2, true
+		return gfx.KeyF2, true
 	case "f5":
 		// 终端面板（dsterminal）。
-		return ui.KeyF5, true
+		return gfx.KeyF5, true
 	case "f6":
-		return ui.KeyF6, true
+		return gfx.KeyF6, true
 	case "f7":
-		return ui.KeyF7, true
+		return gfx.KeyF7, true
 	case "f8":
-		return ui.KeyF8, true
+		return gfx.KeyF8, true
 	case "f12":
-		return ui.KeyF12, true
+		return gfx.KeyF12, true
 	case "home":
-		return ui.KeyHome, true
+		return gfx.KeyHome, true
 	case "end":
-		return ui.KeyEnd, true
+		return gfx.KeyEnd, true
 	case "esc":
-		return ui.KeyEscape, true
+		return gfx.KeyEscape, true
 	case "enter":
 		// 审批条可见时 Enter = 允许（dscomposer 的 HandleKey 只在可见时接管）。
 		// 加它不是为了别的：验「允许之后宿主真的执行工具」必须有办法按下允许。
-		return ui.KeyEnter, true
+		return gfx.KeyEnter, true
 	}
 	return 0, false
 }
@@ -2287,6 +2319,11 @@ func main() {
 	m.theme = m.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	m.prims = m.kernel.MustGet(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	theme = dscore.VivaTheme(m.theme)
+	// 整窗的 Page：一个 Page 活过所有帧（名字/作用域/滚动状态都挂在它身上），
+	// 所以必须在这里建一次，不能在 Paint 里每帧新建。
+	// Theme 传包级 `theme` 的地址 → applyPendingTheme 改 theme，下一帧跟着换。
+	// Tree 给整窗的交互树（与 app.Config{Tree: &tree} 是同一棵）。
+	m.view = ui.NewPage(ui.PageConfig{Tree: &tree, Theme: &theme})
 	m.actions = pluginapi.Actions{
 		// 宿主 ui-config.json 的读写。ConfigGet 给的是**缓存**（插件要同步返回），
 		// ConfigSet 异步写、失败只报状态栏——插件不等待也不重试。
@@ -2601,7 +2638,7 @@ func main() {
 		startShot(m, shotPath, time.Duration(*shotWait)*time.Second, *chromeReport, *chromeProbe)
 	}
 
-	var canvas ui.Canvas
+	var canvas gfx.Canvas
 	if err := app.RunCanvas(newConfig(m), &canvas); err != nil {
 		log.Fatal(err)
 	}

@@ -93,7 +93,7 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -133,7 +133,7 @@ const (
 	// connEnterWindow 是官方入场动画：`._indicator{animation:_indicator-enter .15s ease-out}`
 	// + `@keyframes _indicator-enter{0%{opacity:0}}`（opacity 0→1，`.15s ease-out`）。
 	// 官方在 `prefers-reduced-motion:reduce` 下把这条 animation 关掉（本仓
-	// `ui.Canvas.ReduceMotion()` 为真时跳过，见 `advance`）。
+	// `gfx.Canvas.ReduceMotion()` 为真时跳过，见 `advance`）。
 	connEnterWindow = 150 * time.Millisecond
 
 	// connRecoveryWindow 是官方 `RECOVERY_CONFIRMATION_MS = 2_000`：
@@ -251,7 +251,7 @@ func connPhaseOf(link pluginapi.LinkState) connPhase {
 }
 
 // officialGlyph 是这一帧要画的官方 glyph（spinner 要按时间算帧，所以不能是
-// `func() ui.Icon`；胶囊的两枚图标也用同一套枚举）。全部来自 rc.2 sprite 表：
+// `func() gfx.Icon`；胶囊的两枚图标也用同一套枚举）。全部来自 rc.2 sprite 表：
 //
 //	glyphCheck    check-outline      ConnectionIndicator（recovered）
 //	glyphRefresh  refresh-outline    ConnectionIndicator（disconnected/connecting）
@@ -532,7 +532,7 @@ func (a *connectionAnim) nextFrameAt(now time.Time) (time.Time, bool) {
 // 描边 = 同色 20%（`color-mix(… 20%, transparent)` 的等价写法是给颜色乘 0.2 alpha）。
 // 中性档（unknown）官方没有，取透明的底 + `border-l2` 描边 + `label-tertiary` 文字，
 // 这样它读起来是"一个状态"，不会被误认成成功/失败的彩色结论。
-func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawConnectionIndicator(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	if env.Theme != nil {
 		t = env.Theme
@@ -542,7 +542,7 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 		now = p.now()
 	}
 	// 官方 `@media (prefers-reduced-motion:reduce)` 由 viva 的 canvas 承担
-	// （`ui.Canvas.ReduceMotion()`，桌面壳按操作系统设置注入）。
+	// （`gfx.Canvas.ReduceMotion()`，桌面壳按操作系统设置注入）。
 	p.conn.reduceMotion = env.Canvas != nil && env.Canvas.ReduceMotion()
 	phase, opacity := p.conn.advance(env.Data.Link, now)
 	// 动画（入场/离场/连接态最小可见/恢复确认窗/spinner 旋转）都要自己排下一帧：
@@ -557,7 +557,7 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 	}
 	view := connectionViewOf(phase)
 
-	fill := ui.Color{}
+	fill := gfx.Color{}
 	text := t.LabelTertiary
 	border := t.BorderL2
 	switch view.tone {
@@ -571,17 +571,17 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 		border = withAlpha(t.WarnLabel, connIndicatorBorderTint)
 	}
 
-	pill := f.Row().Height(connIndicatorHeight).Radius(t.Radii.SM).
+	pill := ui.Row(f).Height(connIndicatorHeight).Radius(t.Radii.SM).
 		Background(fill).Border(connIndicatorBorder, border).
-		Items(flex.Center).Gap(connIndicatorGap).Opacity(opacity)
+		Items(ui.Center).Gap(connIndicatorGap).Opacity(opacity)
 
 	// 官方 warning 态是**可点按钮**（`<button onClick={onReconnect}>`）：
 	// 命中区 + hover/active 底色都只在真的接了重连动作时才画。
 	interactive := view.button && env.Act.Reconnect != nil
 	if interactive {
 		pill = pill.Hit(env.Tree.ID(env.Feat, "connection-reconnect"), view.aria).
-			Hover(flex.Look{}.Background(mixColor(fill, t.Warn, connWarningHoverTint))).
-			Pressed(flex.Look{}.Background(mixColor(fill, t.Warn, connWarningActiveTint)))
+			Hover(ui.Look{}.Background(mixColor(fill, t.Warn, connWarningHoverTint))).
+			Pressed(ui.Look{}.Background(mixColor(fill, t.Warn, connWarningActiveTint)))
 	}
 
 	pill.Children(func() {
@@ -589,13 +589,13 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 		// 胶囊宽 = 内容 pref + 两侧 padding，用 PadSides 时文字拿到的是"容器宽 - pad"，
 		// float32 往返会让刚好放得下的文案被判断成放不下（HC 真机报告里那条
 		// 「571 tok/s 被截成 571 tok…」的同一个坑）。
-		f.Row().Width(connIndicatorPadX).Height(connIndicatorHeight)
+		ui.Row(f).Width(connIndicatorPadX).Height(connIndicatorHeight)
 		p.drawConnectionIcon(f, view.icon, text, t.LabelTertiary, now)
 		// 官方 `font-weight:500`；viva 的 Weight 是**相对常规字重的增量**，
-		// `ui.WeightMedium` 就是这一档（别处也都用它，别写 500）。
-		f.Text(view.label).FontSize(connIndicatorFont).LineHeight(connIndicatorLine).
-			Weight(ui.WeightMedium).Color(text).Ellipsis()
-		f.Row().Width(connIndicatorPadX).Height(connIndicatorHeight)
+		// `gfx.WeightMedium` 就是这一档（别处也都用它，别写 500）。
+		ui.Text(f, view.label).FontSize(connIndicatorFont).LineHeight(connIndicatorLine).
+			Weight(gfx.WeightMedium).Color(text).Ellipsis()
+		ui.Row(f).Width(connIndicatorPadX).Height(connIndicatorHeight)
 	})
 
 	if interactive && pill.Clicked() {
@@ -609,15 +609,15 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 // spinner 的颜色按官方 `.spinner{color:var(--dsw-alias-label-tertiary)}` 取
 // **label-tertiary**——即使它长在 warning 胶囊里（官方 warning 只染文字与描边，
 // `.spinner` 自己那条 color 覆盖了继承色）。
-func (p *Plugin) drawConnectionIcon(f *flex.Frame, kind officialGlyph, text, tertiary ui.Color, now time.Time) {
+func (p *Plugin) drawConnectionIcon(f ui.C, kind officialGlyph, text, tertiary gfx.Color, now time.Time) {
 	switch kind {
 	case glyphCheck:
-		f.Icon(checkOutlineIcon()).Size(connectionIconSize, connectionIconSize).Color(text)
+		ui.Icon(f, checkOutlineIcon()).Size(connectionIconSize, connectionIconSize).Color(text)
 	case glyphRefresh:
-		f.Icon(refreshOutlineIcon()).Size(connectionIconSize, connectionIconSize).Color(text)
+		ui.Icon(f, refreshOutlineIcon()).Size(connectionIconSize, connectionIconSize).Color(text)
 	case glyphSpinner:
 		frame := spinnerFrameAt(now, p.conn.reduceMotion)
-		f.Icon(spinnerGlyph(frame, tertiary)).Size(spinnerSize, spinnerSize).Color(tertiary)
+		ui.Icon(f, spinnerGlyph(frame, tertiary)).Size(spinnerSize, spinnerSize).Color(tertiary)
 	}
 }
 
@@ -653,14 +653,14 @@ func (p *Plugin) scheduleFrame(invalidate func()) {
 }
 
 // withAlpha 是官方 `color-mix(in srgb, C 20%, transparent)` 的等价写法。
-func withAlpha(c ui.Color, alpha float32) ui.Color {
+func withAlpha(c gfx.Color, alpha float32) gfx.Color {
 	c.Alpha *= alpha
 	return c
 }
 
 // mixColor 是官方 `color-mix(in srgb, a, b t)` 的等价写法（线性插值各通道）。
-func mixColor(a, b ui.Color, t float32) ui.Color {
-	return ui.Color{
+func mixColor(a, b gfx.Color, t float32) gfx.Color {
+	return gfx.Color{
 		Red:   a.Red + (b.Red-a.Red)*t,
 		Green: a.Green + (b.Green-a.Green)*t,
 		Blue:  a.Blue + (b.Blue-a.Blue)*t,

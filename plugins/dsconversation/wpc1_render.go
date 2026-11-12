@@ -8,6 +8,7 @@ import (
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
@@ -29,7 +30,7 @@ func (p *Plugin) codeStyle() mdlite.CodeBlockStyle {
 	return style
 }
 
-func (p *Plugin) rebuildCodeBlocks(canvas *ui.Canvas, index int, width float32) {
+func (p *Plugin) rebuildCodeBlocks(canvas *gfx.Canvas, index int, width float32) {
 	sources := p.views[index].Codes()
 	if len(sources) == 0 {
 		delete(p.codeBlocks, index)
@@ -73,7 +74,7 @@ func (p *Plugin) markdownExtraHeight(index int) float32 {
 	return extra
 }
 
-func (p *Plugin) HandleScroll(event ui.ScrollEvent) ui.EventResult {
+func (p *Plugin) HandleScroll(event gfx.ScrollEvent) gfx.EventResult {
 	// 官方 transcript（`conversation.view` 座位）的代码块自己接管横滚：
 	// 它只认本视口上的横向手势，纵向滚轮照旧落到 `m.view.Wheel`。
 	if p.officialTranscript != nil {
@@ -88,13 +89,13 @@ func (p *Plugin) HandleScroll(event ui.ScrollEvent) ui.EventResult {
 			}
 		}
 	}
-	return ui.EventResult{}
+	return gfx.EventResult{}
 }
 
-func (p *Plugin) paintMarkdown(canvas *ui.Canvas, env *pluginapi.Env, slot mdSlot, origin ui.Rect, clip ui.Rect) {
+func (p *Plugin) paintMarkdown(canvas *gfx.Canvas, env *pluginapi.Env, slot mdSlot, origin ui.Rect, clip ui.Rect) {
 	view := &p.views[slot.idx]
 	links := p.linkOpen(env, slot.idx)
-	var scope ui.Scope
+	var scope gfx.Scope
 	if links != nil && env.Tree != nil {
 		scope = env.Tree.Feature("markdown-links-" + slot.key)
 	}
@@ -141,7 +142,7 @@ func (p *Plugin) paintMarkdown(canvas *ui.Canvas, env *pluginapi.Env, slot mdSlo
 	}
 }
 
-func (p *Plugin) paintMarkdownBand(canvas *ui.Canvas, view *components.MarkdownView, slot mdSlot, origin ui.Rect, from, to, shift float32, scope ui.Scope, clip ui.Rect) {
+func (p *Plugin) paintMarkdownBand(canvas *gfx.Canvas, view *components.MarkdownView, slot mdSlot, origin ui.Rect, from, to, shift float32, scope gfx.Scope, clip ui.Rect) {
 	if to <= from {
 		return
 	}
@@ -199,7 +200,7 @@ func (p *Plugin) linkOpen(env *pluginapi.Env, index int) mdlite.OpenLinkFunc {
 	}
 }
 
-func (p *Plugin) dispatchMarkdownLink(canvas *ui.Canvas, env *pluginapi.Env, index int, view *components.MarkdownView, scope ui.Scope, open mdlite.OpenLinkFunc) {
+func (p *Plugin) dispatchMarkdownLink(canvas *gfx.Canvas, env *pluginapi.Env, index int, view *components.MarkdownView, scope gfx.Scope, open mdlite.OpenLinkFunc) {
 	clicked, ok := canvas.ClickedIn(scope)
 	if !ok || clicked < 0 || clicked >= view.LinkCount() {
 		return

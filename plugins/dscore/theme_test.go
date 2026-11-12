@@ -5,22 +5,22 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // 这个包以前一个测试都没有，而它是**所有插件共用的那一层**：
 // 颜色令牌、圆角、字号、viva 主题映射。它错了，错的是整个界面。
 //
 // 这里只钉一类最要命的错：**令牌没设**。
-// `ui.Color` 是 {Red,Green,Blue,Alpha float32}，零值 = 全透明。
+// `gfx.Color` 是 {Red,Green,Blue,Alpha float32}，零值 = 全透明。
 // 所以"少写一个字段"不会报错、不会崩，只会让用到它的那块**看不见**——
 // 而这正是这个仓反复撞上的那一类现象（按钮在、点得动、屏幕上没有）。
 
-var colorType = reflect.TypeOf(ui.Color{})
+var colorType = reflect.TypeOf(gfx.Color{})
 
-// colorTokens 把一个主题里所有 ui.Color 字段摊成 名字 → 颜色。
-func colorTokens(t *pluginapi.Theme) map[string]ui.Color {
-	out := map[string]ui.Color{}
+// colorTokens 把一个主题里所有 gfx.Color 字段摊成 名字 → 颜色。
+func colorTokens(t *pluginapi.Theme) map[string]gfx.Color {
+	out := map[string]gfx.Color{}
 	v := reflect.ValueOf(*t)
 	typ := v.Type()
 	for i := 0; i < typ.NumField(); i++ {
@@ -28,7 +28,7 @@ func colorTokens(t *pluginapi.Theme) map[string]ui.Color {
 		if f.Type != colorType {
 			continue
 		}
-		out[f.Name] = v.Field(i).Interface().(ui.Color)
+		out[f.Name] = v.Field(i).Interface().(gfx.Color)
 	}
 	return out
 }
@@ -88,13 +88,13 @@ func TestVivaThemeHasNoTransparentSlot(t *testing.T) {
 			fv := rv.Field(i)
 			switch {
 			case f.Type == colorType:
-				c := fv.Interface().(ui.Color)
+				c := fv.Interface().(gfx.Color)
 				if c.Alpha <= 0 {
 					t.Errorf("%s.VivaTheme.%s 的 Alpha = %v：viva 会回落到它自己的默认色", tc.name, f.Name, c.Alpha)
 				}
 			case f.Type.Kind() == reflect.Array && f.Type.Elem() == colorType:
 				for k := 0; k < fv.Len(); k++ {
-					c := fv.Index(k).Interface().(ui.Color)
+					c := fv.Index(k).Interface().(gfx.Color)
 					if c.Alpha <= 0 {
 						t.Errorf("%s.VivaTheme.%s[%d] 的 Alpha = %v", tc.name, f.Name, k, c.Alpha)
 					}
@@ -117,7 +117,7 @@ func TestThemesDiffer(t *testing.T) {
 	if dark.Name == light.Name || dark.Dark == light.Dark {
 		t.Fatalf("两个主题的 Name/Dark 没区分：%q/%v vs %q/%v", dark.Name, dark.Dark, light.Name, light.Dark)
 	}
-	for name, pair := range map[string][2]ui.Color{
+	for name, pair := range map[string][2]gfx.Color{
 		"BgBase":       {dark.BgBase, light.BgBase},
 		"LabelPrimary": {dark.LabelPrimary, light.LabelPrimary},
 	} {
@@ -136,11 +136,11 @@ func TestThemesDiffer(t *testing.T) {
 
 // luminance 是 WCAG 相对亮度的近似（viva 的 RGB24 把 sRGB 值当线性用，
 // 这里不额外做 gamma 反变换——比较的是**同一个空间里的相对关系**，够了）。
-func luminance(c ui.Color) float64 {
+func luminance(c gfx.Color) float64 {
 	return 0.2126*float64(c.Red) + 0.7152*float64(c.Green) + 0.0722*float64(c.Blue)
 }
 
-func contrastRatio(a, b ui.Color) float64 {
+func contrastRatio(a, b gfx.Color) float64 {
 	la, lb := luminance(a), luminance(b)
 	if la < lb {
 		la, lb = lb, la

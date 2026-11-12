@@ -15,7 +15,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -66,23 +66,24 @@ func runFileRefsHeadless(t *testing.T, width, height int) {
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	painter := conversation.Panels()[0]
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("file-refs-headless")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var invalidator app.Invalidator
 	data := pluginapi.Snapshot{Cur: m.cur, CWD: m.cwd, Msgs: m.msgs}
 	config := app.Config{
 		Title: "file-refs-headless", Width: width, Height: height, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, current ui.Size) {
-		bounds := ui.Rect{Width: current.Width, Height: current.Height}
+	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
+		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Act: m.actions, Tree: tree, Feat: feat, Canvas: canvas,
-			Bounds: bounds, MainWidth: current.Width, Scroll: view.ScrollState,
+			Bounds: bounds, MainWidth: current.Width,
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			painter.Draw(f, env)
 		})
 		painter.AfterDraw(canvas, env)

@@ -31,7 +31,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -39,8 +39,8 @@ import (
 type connHarness struct {
 	plugin *Plugin
 	kernel *uikernel.Kernel
-	tree   *ui.Tree
-	feat   ui.Scope
+	tree   *gfx.Tree
+	feat   gfx.Scope
 	theme  *pluginapi.Theme
 	// now 是注入给插件的假时钟：150ms 离场窗必须**确定**，不能靠 sleep。
 	now time.Time
@@ -60,7 +60,7 @@ func newConnHarness(t *testing.T) *connHarness {
 	if err := kernel.Load(&dscore.Plugin{Dark: true}, plugin); err != nil {
 		t.Fatalf("装配失败：%v", err)
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	h := &connHarness{
 		plugin: plugin,
 		kernel: kernel,
@@ -81,9 +81,9 @@ func newConnHarness(t *testing.T) *connHarness {
 // 为什么连容器一起画：连接指示**不再自画一行**（官方 `._indicator{flex:none}`），
 // 只画行里的一个子项。只调 `drawConnectionIndicator` 而不给 Row 的话，
 // 测的是"它自己会画一个胶囊"，测不到"它在设置行里"。
-func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *ui.Canvas {
+func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *gfx.Canvas {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(h.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
@@ -92,25 +92,26 @@ func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *ui.Canvas {
 		Theme: h.theme, Data: pluginapi.Snapshot{Cur: "s", Link: link},
 		Act:  h.act,
 		Tree: h.tree, Feat: h.feat, Canvas: canvas,
-		Bounds:   ui.Rect{Width: 280, Height: 200},
+		Bounds:   gfx.Rect{Width: 280, Height: 200},
 		Geometry: pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:      h.kernel.Has,
 	}
 	if h.hit != "" {
-		canvas.BeginEventPass(h.tree.ID(h.feat, h.hit))
+		canvas.BeginEventPass(h.tree.ID(h.feat, h.hit), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(h.theme), env.Bounds, func(f *flex.Frame) {
-		f.Column().FillWidth().Width(280).Children(func() {
-			row := f.Row().FillWidth().
+	pageTheme := dscore.VivaTheme(h.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
+		ui.Column(f).FillWidth().Width(280).Children(func() {
+			row := ui.Row(f).FillWidth().
 				MarginSides(connRowMarginY, -2, connRowMarginY, -2).
 				Background(h.theme.SidebarFill).
-				Items(flex.Center).Gap(connRowGap)
+				Items(ui.Center).Gap(connRowGap)
 			row.Children(func() {
 				// 官方这一行的第一个子项：设置启动器（`flex:1`、42 高）。
 				// 测试里用一棵定尺寸的盒子代替，只为量"同一行"。
-				f.Row().Height(connRowHeight).Grow(1).Children(func() {})
+				ui.Row(f).Height(connRowHeight).Grow(1).Children(func() {})
 				for _, painter := range h.kernel.Painters(uikernel.OffSidebarSettings) {
 					if painter.Draw != nil {
 						painter.Draw(f, env)
@@ -125,7 +126,7 @@ func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *ui.Canvas {
 // settle 画到入场动画稳定：官方 `_indicator-enter .15s ease-out` 让首帧是
 // opacity 0（等到 150ms 才全不透明），所以"静止态"断言要画两帧：
 // 第一帧把入场窗走起来，推过 150ms 再画第二帧。
-func (h *connHarness) settle(t *testing.T, link pluginapi.LinkState) *ui.Canvas {
+func (h *connHarness) settle(t *testing.T, link pluginapi.LinkState) *gfx.Canvas {
 	t.Helper()
 	h.frame(t, link)
 	h.now = h.now.Add(connEnterWindow)
@@ -133,7 +134,7 @@ func (h *connHarness) settle(t *testing.T, link pluginapi.LinkState) *ui.Canvas 
 }
 
 // connTexts 收画布上的文字。
-func connTexts(canvas *ui.Canvas) []string {
+func connTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -145,7 +146,7 @@ func connTexts(canvas *ui.Canvas) []string {
 //
 // Viva v0.5.1 起圆角填充也走三角形 mesh，所以"有没有三角形"不能当
 // "画没画图标"的判据——能区分的性质是不透明度。
-func countOpaqueTriangles(canvas *ui.Canvas) int {
+func countOpaqueTriangles(canvas *gfx.Canvas) int {
 	const opaque = 0.5
 	n := 0
 	for _, triangle := range canvas.Triangles() {
@@ -163,7 +164,7 @@ func countOpaqueTriangles(canvas *ui.Canvas) int {
 //
 //	外圈：高度 28、圆角 SM(8)、颜色 = 同色 20% 透明（color-mix 的等价）
 //	内层：高度 26、圆角 SM-1(7)、颜色 = tertiary 底
-func connPill(canvas *ui.Canvas, fill, border ui.Color) bool {
+func connPill(canvas *gfx.Canvas, fill, border gfx.Color) bool {
 	outer, inner := false, false
 	for _, rect := range canvas.Rectangles() {
 		if rect.Bounds.Height == connIndicatorHeight && rect.Radius == 8 && rect.Color == border {
@@ -177,23 +178,23 @@ func connPill(canvas *ui.Canvas, fill, border ui.Color) bool {
 }
 
 // connRowRect 找设置行矩形（测试台给行加了一枚侧栏底色，见 frame）。
-func connRowRect(canvas *ui.Canvas, fill ui.Color) (ui.Rectangle, bool) {
+func connRowRect(canvas *gfx.Canvas, fill gfx.Color) (gfx.Rectangle, bool) {
 	for _, rect := range canvas.Rectangles() {
 		if rect.Bounds.Height == connRowHeight && rect.Color == fill {
 			return rect, true
 		}
 	}
-	return ui.Rectangle{}, false
+	return gfx.Rectangle{}, false
 }
 
 // connPillRect 找胶囊外层（28 高、圆角 8 的描边矩形）。
-func connPillRect(canvas *ui.Canvas, border ui.Color) (ui.Rectangle, bool) {
+func connPillRect(canvas *gfx.Canvas, border gfx.Color) (gfx.Rectangle, bool) {
 	for _, rect := range canvas.Rectangles() {
 		if rect.Bounds.Height == connIndicatorHeight && rect.Radius == 8 && rect.Color == border {
 			return rect, true
 		}
 	}
-	return ui.Rectangle{}, false
+	return gfx.Rectangle{}, false
 }
 
 // ① 座位：唯一座位是官方 `sidebar.settings`，不许再占 `shell.bottom`，
@@ -265,27 +266,27 @@ func TestConnectionIndicatorFourStates(t *testing.T) {
 		name   string
 		link   pluginapi.LinkState
 		want   string
-		fill   func(*pluginapi.Theme) ui.Color // nil = 中性档（不许借用成功/异常底色）
-		border func(*pluginapi.Theme) ui.Color
+		fill   func(*pluginapi.Theme) gfx.Color // nil = 中性档（不许借用成功/异常底色）
+		border func(*pluginapi.Theme) gfx.Color
 		icons  int // 官方 glyph 的段数（0 = 这一档没有官方图标）
 	}{
 		{
 			name: "已连接", link: pluginapi.LinkConnected, want: zhConnectionConnected,
-			fill:   func(t *pluginapi.Theme) ui.Color { return t.SuccessTertiary },
-			border: func(t *pluginapi.Theme) ui.Color { return withAlpha(t.SuccessPrimary, connIndicatorBorderTint) },
+			fill:   func(t *pluginapi.Theme) gfx.Color { return t.SuccessTertiary },
+			border: func(t *pluginapi.Theme) gfx.Color { return withAlpha(t.SuccessPrimary, connIndicatorBorderTint) },
 			icons:  1,
 		},
 		{
 			name: "连接异常", link: pluginapi.LinkDown, want: zhConnectionError,
-			fill:   func(t *pluginapi.Theme) ui.Color { return t.WarnTertiary },
-			border: func(t *pluginapi.Theme) ui.Color { return withAlpha(t.WarnLabel, connIndicatorBorderTint) },
+			fill:   func(t *pluginapi.Theme) gfx.Color { return t.WarnTertiary },
+			border: func(t *pluginapi.Theme) gfx.Color { return withAlpha(t.WarnLabel, connIndicatorBorderTint) },
 			icons:  1,
 		},
 		{
 			// 官方 `connecting` 态：warning 色 + 加载弧 + `connection.connecting`。
 			name: "重新连接中", link: pluginapi.LinkConnecting, want: zhConnectionConnecting + zhConnectionDots,
-			fill:   func(t *pluginapi.Theme) ui.Color { return t.WarnTertiary },
-			border: func(t *pluginapi.Theme) ui.Color { return withAlpha(t.WarnLabel, connIndicatorBorderTint) },
+			fill:   func(t *pluginapi.Theme) gfx.Color { return t.WarnTertiary },
+			border: func(t *pluginapi.Theme) gfx.Color { return withAlpha(t.WarnLabel, connIndicatorBorderTint) },
 			icons:  1,
 		},
 		{
@@ -431,7 +432,7 @@ func TestConnectionEnterWindowIs150msEaseOut(t *testing.T) {
 }
 
 // 减动效档：官方 media query 把 animation/transition 全关——本仓由
-// `ui.Canvas.ReduceMotion()` 承担，首帧就该是不透明度 1，且不留任何待排帧。
+// `gfx.Canvas.ReduceMotion()` 承担，首帧就该是不透明度 1，且不留任何待排帧。
 func TestConnectionEnterSkippedUnderReducedMotion(t *testing.T) {
 	var a connectionAnim
 	a.reduceMotion = true
@@ -574,7 +575,7 @@ func TestConnectionIndicatorGeometryMatchesOfficial(t *testing.T) {
 func TestConnectionIconsAreOfficialSprites(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		icon     ui.Icon
+		icon     gfx.Icon
 		viewBox  float32
 		stroke   float32
 		paths    int // 官方 path 段数
@@ -585,7 +586,7 @@ func TestConnectionIconsAreOfficialSprites(t *testing.T) {
 		{"refresh-outline", refreshOutlineIcon(), 16, 1, 2, ui.Point{X: 14.5001, Y: 8}, "refresh-outline"},
 		// 官方 spinner（StateDot ongoing）：viewBox 24、stroke 2、cx=cy=12 r=9.5；
 		// 这一帧取周期起点（dash 12 → 72.3736°，从 3 点钟方向起）。
-		{"spinner-arc", spinnerGlyph(spinnerFrameAt(time.Unix(0, 0), false), ui.Color{Alpha: 1}), 24, 2, 1,
+		{"spinner-arc", spinnerGlyph(spinnerFrameAt(time.Unix(0, 0), false), gfx.Color{Alpha: 1}), 24, 2, 1,
 			ui.Point{X: 21.5, Y: 12}, "spinner(ongoing)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -597,7 +598,7 @@ func TestConnectionIconsAreOfficialSprites(t *testing.T) {
 			}
 			moves := 0
 			for _, command := range tc.icon.Commands {
-				if command.Kind == ui.PathCommandMove {
+				if command.Kind == gfx.PathCommandMove {
 					moves++
 				}
 			}
@@ -605,7 +606,7 @@ func TestConnectionIconsAreOfficialSprites(t *testing.T) {
 				t.Fatalf("%s path 段数 = %d，want %d（官方 sprite）", tc.iconName, moves, tc.paths)
 			}
 			first := tc.icon.Commands[0]
-			if first.Kind != ui.PathCommandMove || first.Point != tc.firstPt {
+			if first.Kind != gfx.PathCommandMove || first.Point != tc.firstPt {
 				t.Fatalf("%s 首命令 = %+v，want MoveTo(%v, %v)（官方 d 的起点）",
 					tc.iconName, first, tc.firstPt.X, tc.firstPt.Y)
 			}

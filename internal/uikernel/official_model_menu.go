@@ -40,7 +40,7 @@ package uikernel
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -139,6 +139,15 @@ type ModelMenuOptions struct {
 	Selected string
 	// Locked 表示本会话当前不允许改选择（官方 locked/busy）。
 	Locked bool
+	// PanelHeight 是**上一帧量到的**菜单面高度（0 = 还没量过）。
+	//
+	// v0.6.0 的 `Absolute` 子元素高度由内容决定，声明期拿不到，但"放不下翻到
+	// 下方"的判定要用它（见 official_popup_place.go 的 PlaceAbove）。调用方在
+	// AfterDraw 里量一次、下一帧传回来；0 按"放得下"处理，与 v0.5.1 首帧一致。
+	PanelHeight float32
+	// OnPanel 把这一帧声明的菜单面 Box 交给调用方，供它在 AfterDraw 里量高度。
+	// nil = 调用方不做翻面（永远按"放得下"处理）。
+	OnPanel func(ui.Box)
 	// Dispatch 把子槽交给内核画（**必须**是内核的 DrawSlot：这就是"父容器"的意义）。
 	Dispatch func(pluginapi.Slot)
 }
@@ -188,7 +197,7 @@ func ModelMenuMaxHeightFor(boundsHeight float32) float32 {
 // AfterDraw 的画"，因为那种画在界面上等于不存在。
 //
 // 返回 drawn=本帧画了命中区；clicked=这一帧点中了它（调用方据此切展开态）。
-func DrawModelTrigger(parent flex.Box, env *pluginapi.Env, opts ModelMenuOptions) (drawn, clicked bool) {
+func DrawModelTrigger(parent ui.Box, env *pluginapi.Env, opts ModelMenuOptions) (drawn, clicked bool) {
 	if env == nil || env.Tree == nil {
 		return false, false
 	}
@@ -201,7 +210,7 @@ func DrawModelTrigger(parent flex.Box, env *pluginapi.Env, opts ModelMenuOptions
 	}
 	box := parent.Size(opts.Anchor.Width, opts.Anchor.Height).HitWith(
 		env.Tree.ID(env.Feat, "model-menu-trigger"), zhModelMenuAria,
-		ui.HitOptions{Role: ui.RoleButton, Expandable: true, Expanded: opts.Open},
+		gfx.HitOptions{Role: gfx.RoleButton, Expandable: true, Expanded: opts.Open},
 	)
 	return true, box.Clicked()
 }
@@ -214,7 +223,7 @@ func DrawModelTrigger(parent flex.Box, env *pluginapi.Env, opts ModelMenuOptions
 //	!opts.Open                       菜单没展开
 //	!opts.Known                      provider 列表未知（宿主没这个能力）
 //	len(Providers)==0 且无 FetchFailure 宿主真的没有可配置 provider
-func DrawModelMenu(f *flex.Frame, env *pluginapi.Env, opts ModelMenuOptions) bool {
+func DrawModelMenu(f ui.C, env *pluginapi.Env, opts ModelMenuOptions) bool {
 	if f == nil || !opts.Open || !opts.Known {
 		return false
 	}
@@ -235,27 +244,52 @@ func DrawModelMenu(f *flex.Frame, env *pluginapi.Env, opts ModelMenuOptions) boo
 	maxHeight := ModelMenuMaxHeightFor(opts.Bounds.Height)
 
 	// 官方 `.menu` 是 portal 出去的一层：不占位、盖在其它节点上、被夹在框内。
-	menu := f.Popup().Above(opts.Anchor, ModelMenuAnchorGap, flex.End).Width(width)
-	menu.MaxHeight(maxHeight)
-	menu.Radius(t.Radii.MD).Background(t.BgLayer3).Border(1, t.BorderL1).
-		Shadow(ui.ShadowMD).Pad(ModelMenuPad).Gap(0).Children(func() {
-		if opts.FetchFailure != "" {
-			// 官方 `.error`：11/16 + error 色 + 6px 7px 内边距 + md 圆角。
-			f.Row().FillWidth().Radius(t.Radii.MD).
-				PadSides(ModelMenuErrorPadY, ModelMenuErrorPadX, ModelMenuErrorPadY, ModelMenuErrorPadX).
-				Children(func() {
-					f.Text(formatMenuMessage(zhModelProviderFail, opts.FetchFailure)).
-						FontSize(ModelMenuErrorFont).LineHeight(ModelMenuErrorLine).Color(t.Error).
-						Ellipsis()
-				})
+	//
+	// v0.6.0 不再导出 `frame.Popup()`（只有 Menu/Popover/Dialog/Overlay 四个公开浮层），
+	// 应用的自由浮层走 `ui.Overlay(Band, Bounds)` + 绝对定位的子面板。对齐等价：
+	// `Above(anchor, gap, ui.End)` = 右缘贴 anchor 右缘、底边落在 anchor 顶上方 gap。
+	layer := ui.Overlay(f, ui.OverlaySpec{Band: ui.LayerPaneChrome, Bounds: opts.Bounds})
+	layer.Children(func() {
+		// 纵向：贴在锚点顶上方 gap 处；**放不下翻到下方**（v0.5.1 `Popup().Above`
+		// 的翻面语义，见 official_popup_place.go）。高度取上一帧量到的菜单高。
+		//
+		// 用**边**钉不用坐标钉：`Absolute()` 子元素高度由内容决定，钉 `Bottom`
+		// 时内容往上长、钉 `Top` 时往下长，两种都正确；钉算出来的 top 会在
+		// "还没量过高度"的首帧让面板从锚点顶往下长、压住 trigger。
+		menu := ui.Column(f).Absolute().Width(width).
+			Right(opts.Bounds.Width - (opts.Anchor.X + opts.Anchor.Width))
+		if PlaceAbove(opts.Anchor, opts.PanelHeight, ModelMenuAnchorGap,
+			opts.Bounds.Height, ModelMenuEdgeMargin) == PopupBelow {
+			menu = menu.Top(opts.Anchor.Y + opts.Anchor.Height + ModelMenuAnchorGap)
+		} else {
+			menu = menu.Bottom(opts.Bounds.Height - opts.Anchor.Y + ModelMenuAnchorGap)
 		}
-		for _, provider := range opts.Providers {
-			drawModelProviderRow(f, t, provider, opts.Selected)
-		}
-		// 官方：`renderSlot('conversation.input.model.options', …)` 在 root pane 里、
-		// 一二级 cell 之后。本仓的 Team 开关（ds-agent-team 槽 ②）就落在这里。
-		if opts.Dispatch != nil {
-			opts.Dispatch(OffInputModelOptions)
+		menu.MaxHeight(maxHeight)
+		menu.Radius(t.Radii.MD).Background(t.BgLayer3).Border(1, t.BorderL1).
+			Shadow(gfx.ShadowMD).Pad(ModelMenuPad).Gap(0).Children(func() {
+			if opts.FetchFailure != "" {
+				// 官方 `.error`：11/16 + error 色 + 6px 7px 内边距 + md 圆角。
+				ui.Row(f).FillWidth().Radius(t.Radii.MD).
+					PadSides(ModelMenuErrorPadY, ModelMenuErrorPadX, ModelMenuErrorPadY, ModelMenuErrorPadX).
+					Children(func() {
+						ui.Text(f, formatMenuMessage(zhModelProviderFail, opts.FetchFailure)).
+							FontSize(ModelMenuErrorFont).LineHeight(ModelMenuErrorLine).Color(t.Error).
+							Ellipsis()
+					})
+			}
+			for _, provider := range opts.Providers {
+				drawModelProviderRow(f, t, provider, opts.Selected)
+			}
+			// 官方：`renderSlot('conversation.input.model.options', …)` 在 root pane 里、
+			// 一二级 cell 之后。本仓的 Team 开关（ds-agent-team 槽 ②）就落在这里。
+			if opts.Dispatch != nil {
+				opts.Dispatch(OffInputModelOptions)
+			}
+		})
+		// 把这一帧的菜单面交给调用方：它在 AfterDraw 里量高度，下一帧的
+		// PanelHeight 就是翻面判据的输入（声明期拿不到内容高度）。
+		if opts.OnPanel != nil {
+			opts.OnPanel(menu)
 		}
 	})
 	return true
@@ -263,7 +297,7 @@ func DrawModelMenu(f *flex.Frame, env *pluginapi.Env, opts ModelMenuOptions) boo
 
 // drawModelProviderRow 画一行 provider（官方 `.option`：min-height 34 / padding 5·7 /
 // gap 6 / 圆角 md；这里按 `.cell` 的 34 高 + 0·8 横向，因为它是只读目录行）。
-func drawModelProviderRow(f *flex.Frame, t *pluginapi.Theme, provider ModelProviderOption, selected string) {
+func drawModelProviderRow(f ui.C, t *pluginapi.Theme, provider ModelProviderOption, selected string) {
 	name := provider.DisplayName
 	if name == "" {
 		// 官方 displayName 必有；缺了就用 provider id（**不编**一个人话名字）。
@@ -275,19 +309,19 @@ func drawModelProviderRow(f *flex.Frame, t *pluginapi.Theme, provider ModelProvi
 	} else if selected != "" && selected == provider.Provider {
 		label = t.LabelPrimary
 	}
-	f.Column().FillWidth().PadSides(0, ModelMenuPad, 0, ModelMenuPad).Children(func() {
-		f.Row().FillWidth().Height(ModelMenuCellHeight).Items(flex.Center).
+	ui.Column(f).FillWidth().PadSides(0, ModelMenuPad, 0, ModelMenuPad).Children(func() {
+		ui.Row(f).FillWidth().Height(ModelMenuCellHeight).Items(ui.Center).
 			PadSides(0, ModelMenuCellPadX, 0, ModelMenuCellPadX).Gap(ModelMenuCellGap).Children(func() {
-			f.Text(name).FontSize(ModelMenuCellFont).LineHeight(ModelMenuCellLine).Color(label).Ellipsis()
+			ui.Text(f, name).FontSize(ModelMenuCellFont).LineHeight(ModelMenuCellLine).Color(label).Ellipsis()
 		})
 		if provider.Failure != "" {
-			f.Row().FillWidth().PadSides(0, ModelMenuCellPadX, 0, ModelMenuCellPadX).Children(func() {
-				f.Text(provider.Failure).FontSize(ModelMenuSeedFont).LineHeight(ModelMenuSeedLine).
+			ui.Row(f).FillWidth().PadSides(0, ModelMenuCellPadX, 0, ModelMenuCellPadX).Children(func() {
+				ui.Text(f, provider.Failure).FontSize(ModelMenuSeedFont).LineHeight(ModelMenuSeedLine).
 					Color(t.Error).Ellipsis()
 			})
 		} else if seed := provider.Seed; seed != "" {
-			f.Row().FillWidth().PadSides(0, ModelMenuCellPadX, ModelMenuPad, ModelMenuCellPadX).Children(func() {
-				f.Text(seed).FontSize(ModelMenuSeedFont).LineHeight(ModelMenuSeedLine).
+			ui.Row(f).FillWidth().PadSides(0, ModelMenuCellPadX, ModelMenuPad, ModelMenuCellPadX).Children(func() {
+				ui.Text(f, seed).FontSize(ModelMenuSeedFont).LineHeight(ModelMenuSeedLine).
 					Color(t.LabelTertiary).Ellipsis()
 			})
 		}

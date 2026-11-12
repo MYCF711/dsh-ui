@@ -1,9 +1,9 @@
 package main
 
-import "github.com/vivaui/viva/ui"
+import "github.com/vivaui/viva/gfx"
 
 var (
-	tree = ui.Tree{}
+	tree = gfx.Tree{}
 	home = tree.Feature("home")
 
 	btnNew    = tree.ID(home, "new")

@@ -11,7 +11,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -51,19 +51,20 @@ func openRightbarShot(t *testing.T, width, height int, msgs []apiclient.Message)
 	t.Helper()
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("traj-shot")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "traj-shot", Width: width, Height: height, Tree: tree}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Data: pluginapi.Snapshot{Cur: "traj-shot", Msgs: msgs},
 			Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
 			Has: func(pluginapi.Slot) bool { return true },
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) { p.draw(f, env) })
+		view.Draw(canvas, bounds, func(f ui.C) { p.draw(f, env) })
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {

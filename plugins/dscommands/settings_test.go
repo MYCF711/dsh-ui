@@ -8,7 +8,7 @@ import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dssettings"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // settings_test.go —— F2 面板里的「设置」行（A 方案）的行为钉子。
@@ -163,7 +163,7 @@ func TestSettingsServiceAppearsLastAndIsExecutable(t *testing.T) {
 	// 这一步证明"末行"和"光标/执行"是同一个位置，不是只在表里躺着。
 	p.shown = true
 	p.cursor = len(p.filtered()) - 1
-	if okay := p.HandleKey(ui.KeyEvent{Key: ui.KeyEnter}); !okay {
+	if okay := p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEnter}); !okay {
 		t.Fatal("面板开着时 Enter 必须被命令面板消费")
 	}
 	if fake.opens != 3 {

@@ -36,7 +36,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -69,14 +69,14 @@ func markdownEntry(text string) []TranscriptEntry {
 func markdownLines(lines ...string) string { return strings.Join(lines, "\n") }
 
 // renderMarkdown 渲染一段 markdown 正文（真实画布 + 覆画阶段）。
-func renderMarkdown(t *testing.T, text string) (*OfficialTranscriptView, *ui.Canvas) {
+func renderMarkdown(t *testing.T, text string) (*OfficialTranscriptView, *gfx.Canvas) {
 	t.Helper()
 	_, tree := newTranscriptCanvas()
 	return renderTranscript(t, markdownEntry(text), hostViewport(tree))
 }
 
 // canvasTextsWith 数出画布上等于 value 的文本条数（标记槽这类会重复）。
-func canvasTextsWith(canvas *ui.Canvas, value string) int {
+func canvasTextsWith(canvas *gfx.Canvas, value string) int {
 	count := 0
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
@@ -87,23 +87,23 @@ func canvasTextsWith(canvas *ui.Canvas, value string) int {
 }
 
 // canvasRect 在画布上找**满足条件的第一块矩形**（背景/边框都走这里）。
-func canvasRect(canvas *ui.Canvas, match func(ui.Rect) bool) (ui.Rect, bool) {
+func canvasRect(canvas *gfx.Canvas, match func(gfx.Rect) bool) (gfx.Rect, bool) {
 	for _, rect := range canvas.Rectangles() {
 		if match(rect.Bounds) {
 			return rect.Bounds, true
 		}
 	}
-	return ui.Rect{}, false
+	return gfx.Rect{}, false
 }
 
 // canvasHitLabel 按无障碍标签找命中区（按钮的真实可点区域）。
-func canvasHitLabel(canvas *ui.Canvas, label string) (ui.Hit, bool) {
+func canvasHitLabel(canvas *gfx.Canvas, label string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // ── 标题阶梯 ─────────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ func TestMarkdownHeadingLadder(t *testing.T) {
 		if text.Style.Size != want.Size {
 			t.Errorf("h%d 字号 = %v，应为 %v（derived 阶梯表）", level, text.Style.Size, want.Size)
 		}
-		if text.Style.Weight != ui.WeightSemibold {
+		if text.Style.Weight != gfx.WeightSemibold {
 			t.Errorf("h%d 字重 = %v，应为 semibold", level, text.Style.Weight)
 		}
 		if text.Bounds.Height < want.Line {
@@ -242,7 +242,7 @@ func TestMarkdownBlockquoteBorder(t *testing.T) {
 
 	// 左边框：宽度 == MarkdownQuoteBorderWidth 的竖线，且正文比它靠右正好
 	// MarkdownQuotePadLeft。
-	border, ok := canvasRect(canvas, func(r ui.Rect) bool {
+	border, ok := canvasRect(canvas, func(r gfx.Rect) bool {
 		return r.Width == MarkdownQuoteBorderWidth && r.Height > 0
 	})
 	if !ok {
@@ -262,7 +262,7 @@ func TestMarkdownBlockquoteBorder(t *testing.T) {
 func TestMarkdownRule(t *testing.T) {
 	view, canvas := renderMarkdown(t, markdownLines("上面", "", "---", "", "下面"))
 
-	rule, ok := canvasRect(canvas, func(r ui.Rect) bool { return r.Height == MarkdownRuleHeight })
+	rule, ok := canvasRect(canvas, func(r gfx.Rect) bool { return r.Height == MarkdownRuleHeight })
 	if !ok {
 		t.Fatalf("分隔线没有画出来（应有 %vpx 高的矩形）", MarkdownRuleHeight)
 	}
@@ -304,7 +304,7 @@ func TestMarkdownCodeBlockBanner(t *testing.T) {
 		t.Errorf("banner 语言标签字号 = %v，应为 %v", language.Style.Size, CodeBlockBannerFontSize)
 	}
 	// banner 自己那块底色矩形：高度 == 32（derived）。
-	banner, ok := canvasRect(canvas, func(r ui.Rect) bool {
+	banner, ok := canvasRect(canvas, func(r gfx.Rect) bool {
 		return r.Height == CodeBlockBannerHeight && r.Width > 0
 	})
 	if !ok {
@@ -360,7 +360,7 @@ func TestMarkdownCodeBlockScroll(t *testing.T) {
 	}
 	// 向右滚一屏：偏移必须真的变，且被夹紧在上限内。
 	before := view.codeBlocks[0].block.State().OffsetX
-	result := view.HandleScroll(ui.ScrollEvent{Target: viewport.ID, DeltaX: 1e6, Precise: true})
+	result := view.HandleScroll(gfx.ScrollEvent{Target: viewport.ID, DeltaX: 1e6, Precise: true})
 	if !result.Handled {
 		t.Fatal("横滚视口上的滚轮事件没有被接管")
 	}
@@ -373,7 +373,7 @@ func TestMarkdownCodeBlockScroll(t *testing.T) {
 	}
 
 	// 别处的滚轮（外层消息流）**不许**被代码块接管。
-	if result := view.HandleScroll(ui.ScrollEvent{Target: ui.Item(999), DeltaY: 120}); result.Handled {
+	if result := view.HandleScroll(gfx.ScrollEvent{Target: gfx.Item(999), DeltaY: 120}); result.Handled {
 		t.Error("别处的滚轮被代码块抢走了（会表现为消息列表滚不动）")
 	}
 }
@@ -392,7 +392,7 @@ func TestMarkdownCodeBlockCopy(t *testing.T) {
 	if !ok {
 		t.Fatalf("没有复制按钮的命中区；hits=%v", fixture.canvas.Hits())
 	}
-	fixture.canvas.BeginEventPass(copyHit.ID)
+	fixture.canvas.BeginEventPass(copyHit.ID, gfx.ClickInfo{})
 	fixture.draw()
 	fixture.canvas.EndEventPass()
 	fixture.canvas.RunAfterPaint()
@@ -424,7 +424,7 @@ func TestMarkdownCodeBlockCopyFailure(t *testing.T) {
 	if !ok {
 		t.Fatalf("没有复制按钮的命中区；hits=%v", fixture.canvas.Hits())
 	}
-	fixture.canvas.BeginEventPass(copyHit.ID)
+	fixture.canvas.BeginEventPass(copyHit.ID, gfx.ClickInfo{})
 	fixture.draw()
 	fixture.canvas.EndEventPass()
 	fixture.canvas.RunAfterPaint()
@@ -451,7 +451,7 @@ func TestMarkdownCodeBlockWrapToggle(t *testing.T) {
 	if !ok {
 		t.Fatalf("没有折行按钮的命中区；hits=%v", fixture.canvas.Hits())
 	}
-	fixture.canvas.BeginEventPass(wrapHit.ID)
+	fixture.canvas.BeginEventPass(wrapHit.ID, gfx.ClickInfo{})
 	fixture.draw()
 	fixture.canvas.EndEventPass()
 	fixture.canvas.RunAfterPaint()
@@ -509,7 +509,7 @@ func TestMarkdownAllBlocksRender(t *testing.T) {
 	}
 
 	// 分隔线 1 条（`---` 只算一条），代码块 banner 一条。
-	if _, ok := canvasRect(canvas, func(r ui.Rect) bool { return r.Height == MarkdownRuleHeight }); !ok {
+	if _, ok := canvasRect(canvas, func(r gfx.Rect) bool { return r.Height == MarkdownRuleHeight }); !ok {
 		t.Error("分隔线没有画出来")
 	}
 	if len(view.codeBlocks) != 1 {
@@ -541,8 +541,8 @@ func TestMarkdownAllBlocksRender(t *testing.T) {
 // markdownFixture 是一帧可重放的 markdown 渲染（事件通道必须重画同一棵树）。
 type markdownFixture struct {
 	view    *OfficialTranscriptView
-	canvas  *ui.Canvas
-	tree    *ui.Tree
+	canvas  *gfx.Canvas
+	tree    *gfx.Tree
 	theme   *pluginapi.Theme
 	env     *pluginapi.Env
 	copied  []string
@@ -557,7 +557,7 @@ func newMarkdownFixture() *markdownFixture {
 	fixture := &markdownFixture{view: view, canvas: canvas, tree: tree, theme: theme}
 	fixture.env = &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("markdown-block-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	fixture.env.Act.CopyResult = func(text string) error {
 		fixture.copied = append(fixture.copied, text)
@@ -569,8 +569,9 @@ func newMarkdownFixture() *markdownFixture {
 // draw 跑一帧：布局（Draw）→ 覆画（PaintCodeBlocks）。
 func (f *markdownFixture) draw() {
 	f.canvas.Reset()
-	var view flex.View
-	view.Draw(f.canvas, dscore.VivaTheme(f.theme), ui.Rect{Width: 900, Height: 700}, func(frame *flex.Frame) {
+	pageTheme := dscore.VivaTheme(f.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(f.canvas, gfx.Rect{Width: 900, Height: 700}, func(frame ui.C) {
 		f.view.Draw(frame, f.env, hostViewport(f.tree), markdownEntry(codeBlockSource))
 	})
 	f.view.PaintCodeBlocks(f.canvas, f.env)

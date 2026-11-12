@@ -34,7 +34,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -86,7 +86,7 @@ func (p *gxProbe) Panels() []pluginapi.Painter {
 		out = append(out, pluginapi.Painter{
 			ID:   "gx-probe:" + string(slot),
 			Slot: slot,
-			Draw: func(*flex.Frame, *pluginapi.Env) { p.counts[slot]++ },
+			Draw: func(ui.C, *pluginapi.Env) { p.counts[slot]++ },
 		})
 	}
 	return out
@@ -98,8 +98,8 @@ type gxProduct struct {
 	composer   *dscomposer.Plugin
 	team       *dsagentteam.Store
 	theme      *pluginapi.Theme
-	tree       *ui.Tree
-	feat       ui.Scope
+	tree       *gfx.Tree
+	feat       gfx.Scope
 	opts       uikernel.ShellOptions
 	dispatched map[pluginapi.Slot]int
 	probe      *gxProbe
@@ -118,7 +118,7 @@ func newGXProduct(t *testing.T, mode shellMode) *gxProduct {
 	p := &gxProduct{
 		kernel:     uikernel.New(fmt.Sprintf("gx-input-slots-%d", mode)),
 		composer:   &dscomposer.Plugin{},
-		tree:       &ui.Tree{},
+		tree:       &gfx.Tree{},
 		dispatched: map[pluginapi.Slot]int{},
 		mode:       mode,
 	}
@@ -150,9 +150,9 @@ func newGXProduct(t *testing.T, mode shellMode) *gxProduct {
 }
 
 // paint 画一帧产品路径；click 非空时按该交互 id 造一次事件。
-func (p *gxProduct) paint(t *testing.T, snap pluginapi.Snapshot, click string) *ui.Canvas {
+func (p *gxProduct) paint(t *testing.T, snap pluginapi.Snapshot, click string) *gfx.Canvas {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(p.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		n := 0
@@ -163,7 +163,7 @@ func (p *gxProduct) paint(t *testing.T, snap pluginapi.Snapshot, click string) *
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: p.tree, Feat: p.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
@@ -172,10 +172,11 @@ func (p *gxProduct) paint(t *testing.T, snap pluginapi.Snapshot, click string) *
 		delete(p.dispatched, slot)
 	}
 	if click != "" {
-		canvas.BeginEventPass(p.tree.ID(p.feat, click))
+		canvas.BeginEventPass(p.tree.ID(p.feat, click), gfx.ClickInfo{})
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.dispatched[slot]++
 			p.kernel.DrawSlot(f, slot, env)
@@ -199,9 +200,9 @@ func (p *gxProduct) paint(t *testing.T, snap pluginapi.Snapshot, click string) *
 // 为什么不复用 `paint`：官方骨架的 `BridgeLegacyComposer` 判据是"官方 composer
 // 座位有没有占用方"——dscomposer 注册了官方座位，所以官方骨架永远走官方座位；
 // 旧三栏档根本不经过官方骨架（dsshell 自己 dispatch `main.composer`）。
-func (p *gxProduct) paintLegacySeat(t *testing.T, snap pluginapi.Snapshot) *ui.Canvas {
+func (p *gxProduct) paintLegacySeat(t *testing.T, snap pluginapi.Snapshot) *gfx.Canvas {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(p.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		n := 0
@@ -212,7 +213,7 @@ func (p *gxProduct) paintLegacySeat(t *testing.T, snap pluginapi.Snapshot) *ui.C
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: p.tree, Feat: p.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
@@ -220,10 +221,11 @@ func (p *gxProduct) paintLegacySeat(t *testing.T, snap pluginapi.Snapshot) *ui.C
 	for slot := range p.dispatched {
 		delete(p.dispatched, slot)
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme2 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		// dsshell drawMain 的形状：中栏 Pad(12) 里 dispatch `main.composer`。
-		f.Column().FillWidth().FillHeight().Pad(12).Children(func() {
+		ui.Column(f).FillWidth().FillHeight().Pad(12).Children(func() {
 			p.dispatched[pluginapi.SlotMainComposer]++
 			p.kernel.DrawSlot(f, pluginapi.SlotMainComposer, env)
 		})
@@ -245,7 +247,7 @@ func gxSnap() pluginapi.Snapshot {
 }
 
 // gxTextCount 数一个精确文本出现次数。
-func gxTextCount(canvas *ui.Canvas, value string) int {
+func gxTextCount(canvas *gfx.Canvas, value string) int {
 	n := 0
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
@@ -256,7 +258,7 @@ func gxTextCount(canvas *ui.Canvas, value string) int {
 }
 
 // gxTexts 列画布文本（失败诊断用）。
-func gxTexts(canvas *ui.Canvas) []string {
+func gxTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -265,18 +267,18 @@ func gxTexts(canvas *ui.Canvas) []string {
 }
 
 // gxHasText 报告画布上有没有这段文本。
-func gxHasText(canvas *ui.Canvas, want string) bool {
+func gxHasText(canvas *gfx.Canvas, want string) bool {
 	return strings.Contains(strings.Join(gxTexts(canvas), "\n"), want)
 }
 
 // gxHit 取某个标签的命中区。
-func gxHit(canvas *ui.Canvas, label string) (ui.Hit, bool) {
+func gxHit(canvas *gfx.Canvas, label string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // TestOfficialComposerDispatchesInputSubSlots ①：官方座位每帧派发全部子槽各一次。
@@ -386,11 +388,11 @@ func TestLegacyComposerKeepsSingleModelLabel(t *testing.T) {
 }
 
 // gxSwitchHit 取官方 Team 开关本体的命中区（viva 的 Switch 命中标签固定是 "switch"）。
-func gxSwitchHit(canvas *ui.Canvas) (ui.Hit, bool) {
+func gxSwitchHit(canvas *gfx.Canvas) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == "switch" {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }

@@ -11,7 +11,7 @@ import (
 )
 
 // 这个文件只测**纯逻辑**：目录扫描、校验、模板变量、包装。
-// draw 里那些 f.Text(...) 靠无头截图验收（tmp/decl-on.png / tmp/decl-off.png）。
+// draw 里那些 ui.Text(f, ...) 靠无头截图验收（tmp/decl-on.png / tmp/decl-off.png）。
 
 func writeFile(t *testing.T, dir, name, body string) string {
 	t.Helper()

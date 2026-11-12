@@ -11,7 +11,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -50,7 +50,7 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 	}
 
 	// shot 画一帧，返回：卡片矩形、这一帧画出来的内容顶端、候选行数。
-	shot := func(t *testing.T, name, draft string, act pluginapi.Actions) (ui.Rect, float32, int) {
+	shot := func(t *testing.T, name, draft string, act pluginapi.Actions) (gfx.Rect, float32, int) {
 		t.Helper()
 		theme := dscore.Dark()
 		p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
@@ -62,25 +62,26 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 			act.Send = func(string) {}
 			act.Cancel = func() {}
 		}
-		tree := &ui.Tree{}
+		tree := &gfx.Tree{}
 		feat := tree.Feature("composer-mention-" + name)
-		var view flex.View
+		pageTheme := dscore.VivaTheme(theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 		var invalidator app.Invalidator
 		config := app.Config{
 			Title: "composer-mention-" + name, Width: 1182, Height: 832, Tree: tree,
 			WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 		}
-		config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-			bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+			bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 			canvas.Fill(bounds, theme.BgBase)
 			env := &pluginapi.Env{
 				Theme: theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
 				Bounds: bounds, MainWidth: 902,
 				Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 			}
-			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
-				f.Column().Width(902-24).FillHeight().PadSides(0, 0, 12, 0).Children(func() {
-					f.Spacer()
+			view.Draw(canvas, bounds, func(f ui.C) {
+				ui.Column(f).Width(902-24).FillHeight().PadSides(0, 0, 12, 0).Children(func() {
+					ui.Spacer(f)
 					p.draw(f, env)
 				})
 			})

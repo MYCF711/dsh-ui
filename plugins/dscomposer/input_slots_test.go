@@ -21,7 +21,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dsagentteam"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -61,7 +61,7 @@ func (p *probePlugin) Panels() []pluginapi.Painter {
 		out = append(out, pluginapi.Painter{
 			ID:   "probe:" + string(slot),
 			Slot: slot,
-			Draw: func(*flex.Frame, *pluginapi.Env) { p.counts[slot]++ },
+			Draw: func(ui.C, *pluginapi.Env) { p.counts[slot]++ },
 		})
 	}
 	return out
@@ -72,8 +72,8 @@ type slotHarness struct {
 	kernel     *uikernel.Kernel
 	team       *dsagentteam.Store
 	dispatched map[pluginapi.Slot]int
-	tree       *ui.Tree
-	feat       ui.Scope
+	tree       *gfx.Tree
+	feat       gfx.Scope
 	theme      *pluginapi.Theme
 }
 
@@ -100,7 +100,7 @@ func newSlotHarnessProbe(t *testing.T, withTeam, probe bool) *slotHarness {
 	h := &slotHarness{
 		kernel:     uikernel.New("composer-input-slots"),
 		dispatched: map[pluginapi.Slot]int{},
-		tree:       &ui.Tree{},
+		tree:       &gfx.Tree{},
 	}
 	plugins := []pluginapi.Plugin{&dscore.Plugin{Dark: true}, &Plugin{}}
 	if withTeam {
@@ -125,16 +125,16 @@ func newSlotHarnessProbe(t *testing.T, withTeam, probe bool) *slotHarness {
 }
 
 // paint 画一帧官方骨架（真 flex + 真画布），返回画布。
-func (h *slotHarness) paint(t *testing.T, opts uikernel.ShellOptions, snap pluginapi.Snapshot) *ui.Canvas {
+func (h *slotHarness) paint(t *testing.T, opts uikernel.ShellOptions, snap pluginapi.Snapshot) *gfx.Canvas {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(h.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
 	})
 	env := &pluginapi.Env{
 		Theme: h.theme, Data: snap, Tree: h.tree, Feat: h.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return h.kernel.Has(slot) },
@@ -143,8 +143,9 @@ func (h *slotHarness) paint(t *testing.T, opts uikernel.ShellOptions, snap plugi
 	for slot := range h.dispatched {
 		delete(h.dispatched, slot)
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(h.theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(h.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, opts, func(slot pluginapi.Slot) {
 			h.dispatched[slot]++
 			h.kernel.DrawSlot(f, slot, env)
@@ -180,7 +181,7 @@ func legacySeatOpts() uikernel.ShellOptions {
 }
 
 // countTexts 数一个精确文本出现次数（模型标签唯一性判据）。
-func countTexts(canvas *ui.Canvas, value string) int {
+func countTexts(canvas *gfx.Canvas, value string) int {
 	n := 0
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
@@ -191,7 +192,7 @@ func countTexts(canvas *ui.Canvas, value string) int {
 }
 
 // hasHitLabel 报告画布上有没有这个标签的命中区。
-func hasHitLabel(canvas *ui.Canvas, label string) bool {
+func hasHitLabel(canvas *gfx.Canvas, label string) bool {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return true
@@ -201,7 +202,7 @@ func hasHitLabel(canvas *ui.Canvas, label string) bool {
 }
 
 // canvasTexts 是失败诊断用的文本列表。
-func canvasTexts(canvas *ui.Canvas) []string {
+func canvasTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)

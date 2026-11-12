@@ -46,7 +46,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -66,8 +66,8 @@ type grProduct struct {
 	sidebar      *dssidebar.Plugin
 	conversation *dsconversation.Plugin
 	theme        *pluginapi.Theme
-	tree         *ui.Tree
-	feat         ui.Scope
+	tree         *gfx.Tree
+	feat         gfx.Scope
 	opts         uikernel.ShellOptions
 	dispatched   map[pluginapi.Slot]int
 }
@@ -83,7 +83,7 @@ func newGRProduct(t *testing.T) *grProduct {
 		composer:     &dscomposer.Plugin{},
 		sidebar:      &dssidebar.Plugin{},
 		conversation: &dsconversation.Plugin{},
-		tree:         &ui.Tree{},
+		tree:         &gfx.Tree{},
 		dispatched:   map[pluginapi.Slot]int{},
 	}
 	if err := p.kernel.Load(&dscore.Plugin{Dark: true}, p.sidebar, p.conversation, p.composer); err != nil {
@@ -109,16 +109,16 @@ func newGRProduct(t *testing.T) *grProduct {
 //
 // pressEnter 为真时把这一帧当成「输入框的 Enter 事件 pass」（viva 的
 // `BeginEventPass`：`field.Submitted()` 只在这一帧为真），这就是真键盘 Enter。
-func (p *grProduct) paint(t *testing.T, snap pluginapi.Snapshot, pressEnter bool, bind func(*pluginapi.Env)) (*ui.Canvas, *pluginapi.Env) {
+func (p *grProduct) paint(t *testing.T, snap pluginapi.Snapshot, pressEnter bool, bind func(*pluginapi.Env)) (*gfx.Canvas, *pluginapi.Env) {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(p.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: p.tree, Feat: p.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
@@ -127,11 +127,12 @@ func (p *grProduct) paint(t *testing.T, snap pluginapi.Snapshot, pressEnter bool
 		bind(env)
 	}
 	if pressEnter {
-		canvas.BeginEventPass(p.tree.ID(p.feat, "composer"))
+		canvas.BeginEventPass(p.tree.ID(p.feat, "composer"), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreenWithMeasure(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.dispatched[slot]++
 			p.kernel.DrawSlot(f, slot, env)
@@ -146,7 +147,7 @@ func (p *grProduct) paint(t *testing.T, snap pluginapi.Snapshot, pressEnter bool
 }
 
 // grTexts 列画布文本（失败诊断用）。
-func grTexts(canvas *ui.Canvas) []string {
+func grTexts(canvas *gfx.Canvas) []string {
 	values := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)
@@ -155,7 +156,7 @@ func grTexts(canvas *ui.Canvas) []string {
 }
 
 // grHasText 报告画布上有没有这段文本（前缀匹配：长文本会被省略号截断）。
-func grHasText(canvas *ui.Canvas, want string) bool {
+func grHasText(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want || strings.HasPrefix(text.Value, want) {
 			return true
@@ -165,13 +166,13 @@ func grHasText(canvas *ui.Canvas, want string) bool {
 }
 
 // grHasHit 报告画布上有没有这个标签的命中区。
-func grHasHit(canvas *ui.Canvas, label string) (ui.Hit, bool) {
+func grHasHit(canvas *gfx.Canvas, label string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // TestRealChainGROfficialComposer 真宿主 + 真 apiclient + 官方 composer 座位。
@@ -381,9 +382,9 @@ func TestRealChainGROfficialComposer(t *testing.T) {
 	}
 	shot := filepath.Join(dir, fmt.Sprintf("gr-official-composer-%d.png", time.Now().Unix()))
 	theme := product.theme
-	shotTree := &ui.Tree{}
+	shotTree := &gfx.Tree{}
 	var invalidator app.Invalidator
-	var shotFeat ui.Scope
+	var shotFeat gfx.Scope
 	shotFeat = shotTree.Feature("gr-shot")
 	capture := pluginapi.Snapshot{}
 	_ = capture
@@ -391,8 +392,8 @@ func TestRealChainGROfficialComposer(t *testing.T) {
 		Title: "gr-official-composer", Width: 1182, Height: 832, Tree: shotTree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		shotEnv := &pluginapi.Env{
 			Theme: theme, Data: finalSnap, Tree: shotTree, Feat: shotFeat, Canvas: canvas,
@@ -401,8 +402,9 @@ func TestRealChainGROfficialComposer(t *testing.T) {
 			Has:      func(slot pluginapi.Slot) bool { return product.kernel.Has(slot) },
 		}
 		bindSend(shotEnv)
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		pageTheme2 := dscore.VivaTheme(theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(canvas, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, shotEnv, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, shotEnv)
 			})

@@ -11,7 +11,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -53,26 +53,27 @@ func TestControlsHeadlessGeometryAndCapture(t *testing.T) {
 				p.field.SetText("继续")
 			}
 			act := pluginapi.Actions{Send: func(string) {}, Cancel: func() {}}
-			tree := &ui.Tree{}
+			tree := &gfx.Tree{}
 			feat := tree.Feature("composer-headless-" + tc.name)
-			var view flex.View
+			pageTheme := dscore.VivaTheme(theme)
+			view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 			var invalidator app.Invalidator
 			config := app.Config{
 				Title: "composer-" + tc.name, Width: tc.width, Height: tc.height, Tree: tree,
 				WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 			}
-			config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-				bounds := ui.Rect{Width: size.Width, Height: size.Height}
+			config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+				bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 				canvas.Fill(bounds, theme.BgBase)
 				env := &pluginapi.Env{
 					Theme: theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
 					Bounds: bounds, MainWidth: tc.mainWidth,
 					Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: tc.mainWidth},
 				}
-				view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+				view.Draw(canvas, bounds, func(f ui.C) {
 					// 与 composer_test 一样模拟 dsshell 的中栏内容框和底部 12px。
-					f.Column().Width(tc.mainWidth-24).FillHeight().PadSides(0, 0, 12, 0).Children(func() {
-						f.Spacer()
+					ui.Column(f).Width(tc.mainWidth-24).FillHeight().PadSides(0, 0, 12, 0).Children(func() {
+						ui.Spacer(f)
 						p.draw(f, env)
 					})
 				})

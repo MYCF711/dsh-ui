@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -335,10 +335,10 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 //
 // Ctrl+K 开关；开着时 ↑↓ 选、Enter 执行、Esc 关。
 // **Ctrl+K 只在 Ctrl 按下且 key 是 K 时吃**，其余一律放行。
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	// 用 F2 而不是 Ctrl+K：viva 的 OnKey **不送字母键**（字母走文本输入框），
 	// 所以 Ctrl+K 这种组合在这层拿不到。键枚举只有 F1-F12/方向/Enter/Esc 等。
-	if ev.Key == ui.KeyF2 {
+	if ev.Key == gfx.KeyF2 {
 		p.shown = !p.shown
 		p.query = nil
 		p.cursor = 0
@@ -353,20 +353,20 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		return false
 	}
 	switch ev.Key {
-	case ui.KeyEscape:
+	case gfx.KeyEscape:
 		p.shown = false
 		return true
-	case ui.KeyDown:
+	case gfx.KeyDown:
 		if n := len(p.filtered()); n > 0 {
 			p.cursor = (p.cursor + 1) % n
 		}
 		return true
-	case ui.KeyUp:
+	case gfx.KeyUp:
 		if n := len(p.filtered()); n > 0 {
 			p.cursor = (p.cursor + n - 1) % n
 		}
 		return true
-	case ui.KeyEnter:
+	case gfx.KeyEnter:
 		cs := p.filtered()
 		if p.cursor >= 0 && p.cursor < len(cs) && cs[p.cursor].Action != nil {
 			cs[p.cursor].Action()
@@ -380,7 +380,7 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 // draw 用**和 dsdemo 完全相同的结构**画（Row + Absolute + Top/Right 一类），
 // 因为那是本仓唯一被真机证明能出现在 shell.overlay 上的写法。
 // 面板贴右上角，宽度固定、高度随条目数。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	if !p.shown {
 		return
 	}
@@ -392,26 +392,26 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	// **必须用 Column 而不是 Row**：Row 会把所有子元素排成一行——我第一版
 	// 就是用 Row，结果面板只有一行高、下面几条全被压没了。Column 让高度由
 	// 内容 pref 决定（只给 Top/Right 时宽高就是内容 pref，见 dsshortcuts 注释）。
-	f.Column().Absolute().Top(56).Right(24).Width(w).
+	ui.Column(f).Absolute().Top(56).Right(24).Width(w).
 		Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
 		PadSides(14, 14, 12, 14).Gap(4).Children(func() {
-		f.Text("命令").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		ui.Text(f, "命令").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		q := string(p.query)
 		if q == "" {
 			q = "输入筛选…"
 		}
-		f.Text(q).FontSize(13).Color(t.LabelSecondary)
+		ui.Text(f, q).FontSize(13).Color(t.LabelSecondary)
 		if len(cs) == 0 {
-			f.Text("没有匹配的命令").FontSize(13).Color(t.LabelTertiary)
+			ui.Text(f, "没有匹配的命令").FontSize(13).Color(t.LabelTertiary)
 		}
 		for i, c := range cs {
 			col := t.LabelPrimary
 			if i == p.cursor {
 				col = t.Info // 选中项用 Info 色，和官方下拉的高亮一致
 			}
-			f.Row().FillWidth().Items(flex.Center).Gap(8).Children(func() {
-				f.Text(c.Name).FontSize(13).Color(col)
-				f.Text(c.Hint).FontSize(11).Color(t.LabelTertiary).Grow(1)
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {
+				ui.Text(f, c.Name).FontSize(13).Color(col)
+				ui.Text(f, c.Hint).FontSize(11).Color(t.LabelTertiary).Grow(1)
 			})
 		}
 	})

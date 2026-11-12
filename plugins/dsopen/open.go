@@ -31,7 +31,7 @@ package dsopen
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // 按钮落在会话头部的哪一格：这几个数与 `plugins/dstopbar` 的 header 几何同源
@@ -85,7 +85,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	}}
 }
 
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	destination, ok := openDestination(env)
 	if !ok {
 		return
@@ -93,18 +93,18 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	// **绝对定位，不是再声明一行**。
 	//
-	// 槽位拿到的是 dsshell 的中栏列（`f.Column()…Gap(8)`）。在它里面声明
-	// `f.Row()` 会变成 header 后面的**另一个子项**：按钮确实画出来了，但它
+	// 槽位拿到的是 dsshell 的中栏列（`ui.Column(f)…Gap(8)`）。在它里面声明
+	// `ui.Row(f)` 会变成 header 后面的**另一个子项**：按钮确实画出来了，但它
 	// 占掉 24+8 的流高、把正文整体往下推，而且落在 header 的分隔线之外
 	// （旧实现实测 y=96.5，而标题行是 22…52——看起来就像"按钮不见了"）。
 	//
 	// Absolute 不参与布局流：标题行、页签、正文的几何一位都不动，
 	// 绘制顺序仍在 header 之后，所以点击命中归按钮。
-	box := f.Row().Absolute().
+	box := ui.Row(f).Absolute().
 		Top(columnPad+headerPadTop+(titleRowHeight-buttonHeight)/2).
 		Right(utilitiesRight(env)).
 		Width(buttonWidth).Height(buttonHeight).
-		Items(flex.Center).Gap(6).PadSides(8, 8, 4, 4).
+		Items(ui.Center).Gap(6).PadSides(8, 8, 4, 4).
 		Radius(t.Radii.MD).Background(t.InputMajor).
 		Hit(env.Tree.ID(env.Feat, "open-in-app"), "在工作目录里打开")
 	if box.Clicked() {
@@ -113,7 +113,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		_ = env.Act.OpenFile(destination)
 	}
 	box.Children(func() {
-		f.Text("打开").FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
+		ui.Text(f, "打开").FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
 	})
 }
 

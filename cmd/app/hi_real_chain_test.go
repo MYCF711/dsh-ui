@@ -45,7 +45,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // hiShotDir 取截图目录（不存在就建）。
@@ -77,7 +77,7 @@ func hiLoadPNG(t *testing.T, path string) image.Image {
 }
 
 // hiLuminance 求一块矩形里的平均亮度（0..1）。越界自动夹到图内。
-func hiLuminance(img image.Image, rect ui.Rect) float64 {
+func hiLuminance(img image.Image, rect gfx.Rect) float64 {
 	bounds := img.Bounds()
 	x0, y0 := int(rect.X), int(rect.Y)
 	x1, y1 := int(rect.X+rect.Width), int(rect.Y+rect.Height)
@@ -111,7 +111,7 @@ func hiLuminance(img image.Image, rect ui.Rect) float64 {
 }
 
 // hiPixelDiff 数两块矩形里"明显不同"的像素数（动画是否真的在动）。
-func hiPixelDiff(a, b image.Image, rect ui.Rect) int {
+func hiPixelDiff(a, b image.Image, rect gfx.Rect) int {
 	bounds := a.Bounds()
 	x0, y0 := int(rect.X), int(rect.Y)
 	x1, y1 := int(rect.X+rect.Width), int(rect.Y+rect.Height)
@@ -149,7 +149,7 @@ func absInt(v int) int {
 }
 
 // hiOpaqueTrianglesIn 数矩形里的不透明三角形（glyph 是否画了）。
-func hiOpaqueTrianglesIn(canvas *ui.Canvas, rect ui.Rect) int {
+func hiOpaqueTrianglesIn(canvas *gfx.Canvas, rect gfx.Rect) int {
 	const opaque = 0.5
 	n := 0
 	for _, triangle := range canvas.Triangles() {
@@ -230,10 +230,10 @@ func TestRealChainHIAnimationAndIcons(t *testing.T) {
 	product.settle(t, base, act)
 
 	// waitLabel 重复画帧直到文案出现（真时钟 + 官方 800ms/2s 窗口都靠它兜）。
-	waitLabel := func(snap pluginapi.Snapshot, want string, timeout time.Duration) *ui.Canvas {
+	waitLabel := func(snap pluginapi.Snapshot, want string, timeout time.Duration) *gfx.Canvas {
 		t.Helper()
 		deadline := time.Now().Add(timeout)
-		var last *ui.Canvas
+		var last *gfx.Canvas
 		for {
 			canvas, _, _ := product.paintReal(t, snap, act, "")
 			last = canvas
@@ -269,7 +269,7 @@ func TestRealChainHIAnimationAndIcons(t *testing.T) {
 	if !hasPill {
 		t.Fatalf("① 完成后没有「%s」", dsstatusbar.OfficialDisconnectedLabel)
 	}
-	pillRegion := ui.Rect{
+	pillRegion := gfx.Rect{
 		X: pillText.X - 40, Y: pillText.Y - 10,
 		Width: pillText.Width + 80, Height: pillText.Height + 20,
 	}
@@ -327,7 +327,7 @@ func TestRealChainHIAnimationAndIcons(t *testing.T) {
 	spinA, spinB := hiLoadPNG(t, spinPathA), hiLoadPNG(t, spinPathB)
 	// spinner 是胶囊左侧那一枚 14px glyph：以胶囊文案反推它的位置。
 	// 官方 connecting 文案是「重新连接中」+ 逐点出现的省略号，所以按前缀找。
-	var spinText ui.Text
+	var spinText gfx.Text
 	okSpin := false
 	for _, text := range spinning.Texts() {
 		if strings.HasPrefix(text.Value, dsstatusbar.OfficialConnectingLabel) {
@@ -337,7 +337,7 @@ func TestRealChainHIAnimationAndIcons(t *testing.T) {
 	if !okSpin {
 		t.Fatalf("④ connecting 帧没有「%s」；texts=%v", dsstatusbar.OfficialConnectingLabel, hhTexts(spinning))
 	}
-	spinnerArea := ui.Rect{X: spinText.Bounds.X - 24, Y: spinText.Bounds.Y - 6, Width: 20, Height: 20}
+	spinnerArea := gfx.Rect{X: spinText.Bounds.X - 24, Y: spinText.Bounds.Y - 6, Width: 20, Height: 20}
 	diff := hiPixelDiff(spinA, spinB, spinnerArea)
 	t.Logf("④ spinner：250ms 两帧在胶囊图标区 %+v 的差异像素 = %d", spinnerArea, diff)
 	if diff == 0 {
@@ -346,7 +346,7 @@ func TestRealChainHIAnimationAndIcons(t *testing.T) {
 
 	// ── ⑤ gauge/database 官方图标：胶囊与弹窗标题的 14px 图标区必须有图元。
 	activity := waitLabel(base, dsstatusbar.OfficialConnectedLabel, 6*time.Second)
-	dockTexts := make([]ui.Text, 0, 2)
+	dockTexts := make([]gfx.Text, 0, 2)
 	for _, text := range activity.Texts() {
 		if strings.Contains(text.Value, " 轮 ") || strings.HasPrefix(text.Value, "用量") {
 			dockTexts = append(dockTexts, text)
@@ -359,7 +359,7 @@ func TestRealChainHIAnimationAndIcons(t *testing.T) {
 	for _, text := range dockTexts {
 		// 官方 `.pill{display:inline-flex;gap:6px}` + `.pill svg{width:14px;height:14px}`：
 		// 图标在文字左 20px（14 + 6）处开始。
-		iconRect := ui.Rect{X: text.Bounds.X - 20, Y: text.Bounds.Y, Width: 14, Height: 14}
+		iconRect := gfx.Rect{X: text.Bounds.X - 20, Y: text.Bounds.Y, Width: 14, Height: 14}
 		if n := hiOpaqueTrianglesIn(activity, iconRect); n == 0 {
 			t.Fatalf("⑤ 胶囊 %q 左侧没有 14px glyph（官方 gauge/database）；rect=%+v", text.Value, iconRect)
 		}
@@ -373,7 +373,7 @@ func TestRealChainHIAnimationAndIcons(t *testing.T) {
 	if !ok {
 		t.Fatalf("⑤ 弹窗标题没画出来；texts=%v", hhTexts(opened))
 	}
-	titleIcon := ui.Rect{X: titleRect.X - 20, Y: titleRect.Y, Width: 14, Height: 14}
+	titleIcon := gfx.Rect{X: titleRect.X - 20, Y: titleRect.Y, Width: 14, Height: 14}
 	if n := hiOpaqueTrianglesIn(opened, titleIcon); n == 0 {
 		t.Fatalf("⑤ 弹窗标题左侧 20px 没有 gauge 图标（viewBox 16 / 显示 14）rect=%+v", titleIcon)
 	}
@@ -391,7 +391,7 @@ func TestRealChainHIAnimationAndIcons(t *testing.T) {
 		t.Fatalf("③ 设置行没有「新版本」（官方 desktop.update.available）；texts=%v", hhTexts(updateCanvas))
 	}
 	updateText, _ := hhFindText(updateCanvas, "新版本")
-	updateIcon := ui.Rect{X: updateText.X - 18, Y: updateText.Y - 3, Width: 14, Height: 14}
+	updateIcon := gfx.Rect{X: updateText.X - 18, Y: updateText.Y - 3, Width: 14, Height: 14}
 	if n := hiOpaqueTrianglesIn(updateCanvas, updateIcon); n == 0 {
 		t.Fatalf("③ 更新指示左侧没有 14px glyph（官方 IconDownloadOutlineRegular）rect=%+v", updateIcon)
 	}

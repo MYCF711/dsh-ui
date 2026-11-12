@@ -52,7 +52,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -79,8 +79,8 @@ func gyUsage(u apiclient.Usage) pluginapi.Usage {
 type gyRealProduct struct {
 	kernel     *uikernel.Kernel
 	theme      *pluginapi.Theme
-	tree       *ui.Tree
-	feat       ui.Scope
+	tree       *gfx.Tree
+	feat       gfx.Scope
 	opts       uikernel.ShellOptions
 	dispatched map[pluginapi.Slot]int
 }
@@ -92,7 +92,7 @@ func newGYRealProduct(t *testing.T) *gyRealProduct {
 	tier.Set(true)
 	p := &gyRealProduct{
 		kernel:     uikernel.New("gy-real-chain"),
-		tree:       &ui.Tree{},
+		tree:       &gfx.Tree{},
 		dispatched: map[pluginapi.Slot]int{},
 	}
 	p.kernel.Root().Provide(uikernel.KeyShellTier, tier)
@@ -120,24 +120,25 @@ func newGYRealProduct(t *testing.T) *gyRealProduct {
 //
 // goal 走 `Actions.Goal` 闭包（不是快照字段）：官方 GoalBar 读的是会话投影，
 // 本仓壳把它包成每帧调用的闭包（`cmd/app/main.go` 的 `Act.Goal`）。
-func (p *gyRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, goal string) (*ui.Canvas, []string, map[pluginapi.Slot]int) {
+func (p *gyRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, goal string) (*gfx.Canvas, []string, map[pluginapi.Slot]int) {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(p.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: p.tree, Feat: p.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       p.kernel.Has,
 		Act:       pluginapi.Actions{Goal: func() string { return goal }, Send: func(string) {}, Cancel: func() {}},
 	}
 	p.dispatched = map[pluginapi.Slot]int{}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 			gyRealDrawSlot(f, p.kernel, slot, env, p.dispatched)
 		})
@@ -160,7 +161,7 @@ func (p *gyRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, goal string
 // 为什么不用 `kernel.DrawSlot`：它把 `Children` 的转发交回给内核自己的递归闭包，
 // 调用方拿不到子槽的派发计数——而本测试要断言的正是「官方子槽每帧 1 次」。
 // 语义逐行对齐（见 `uikernel/kernel.go` 的 drawSlot），只多了计数。
-func gyRealDrawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
+func gyRealDrawSlot(f ui.C, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
 	counts[slot]++
 	for _, painter := range k.Painters(slot) {
 		if painter.Draw != nil {
@@ -298,15 +299,15 @@ func TestRealChainGYGoalQuestionsStatusbar(t *testing.T) {
 	shot := filepath.Join(dir, fmt.Sprintf("gy-official-web-%d.png", time.Now().Unix()))
 
 	product := newGYRealProduct(t)
-	shotTree := &ui.Tree{}
+	shotTree := &gfx.Tree{}
 	shotFeat := shotTree.Feature("gy-shot")
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "gy-official", Width: 1182, Height: 832, Tree: shotTree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(c *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(c *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		c.Fill(bounds, product.theme.BgBase)
 		shotEnv := &pluginapi.Env{
 			Theme: product.theme, Data: snap, Tree: shotTree, Feat: shotFeat, Canvas: c,
@@ -316,8 +317,9 @@ func TestRealChainGYGoalQuestionsStatusbar(t *testing.T) {
 			Has:       product.kernel.Has,
 			Act:       pluginapi.Actions{Goal: func() string { return load.Goal }},
 		}
-		var view flex.View
-		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f *flex.Frame) {
+		pageTheme2 := dscore.VivaTheme(product.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(c, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, shotEnv, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, shotEnv)
 			})

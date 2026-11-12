@@ -17,7 +17,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -55,19 +55,20 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 		t.Fatal(err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("layout-drag")
 	// 壳给的侧栏偏好宽：官方默认 280（dssidebar.Plugin.Width()）。这里写死是因为
 	// 这条用例要验的正是「壳说 280、用户拖到 360 之后画出来的是 360」。
 	const sideWidth = 280
 
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "layout-drag", Width: layoutW, Height: layoutH,
 		Tree: tree, WindowMode: app.WindowFrameless,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		rightPref := size.Width * rightbarOpenFrac
 		env := &pluginapi.Env{
 			Theme: theme,
@@ -88,7 +89,7 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 			Has:       kernel.Has,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}
@@ -102,13 +103,13 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 }
 
 // findHit 在快照里按标签找命中区。
-func findHit(snapshot app.Snapshot, label string) (ui.Hit, bool) {
+func findHit(snapshot app.Snapshot, label string) (gfx.Hit, bool) {
 	for _, hit := range snapshot.Hits {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // TestLayoutDragHeadless 真窗口 + 真指针事件：拖侧栏分隔线，
@@ -135,7 +136,7 @@ func TestLayoutDragHeadless(t *testing.T) {
 	}
 	// 底部整行已经没人占（BottomHeight 0）→ 把手贯穿整个内容高度。
 	assertRect(t, "拖前侧栏把手", hit.Bounds,
-		ui.Rect{X: 280 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
+		gfx.Rect{X: 280 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 	if _, ok := findHit(before, "拖动调整右栏宽度"); !ok {
 		t.Fatal("右栏展开时应该有右栏拖拽把手")
 	}
@@ -215,7 +216,7 @@ func TestLayoutDragHeadless(t *testing.T) {
 		t.Fatalf("松手后把手不见了；hits=%+v", after.Hits)
 	}
 	assertRect(t, "拖后侧栏把手", afterHit.Bounds,
-		ui.Rect{X: 360 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
+		gfx.Rect{X: 360 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 	// 右栏没被牵动：左缘仍是 1920-864=1056。
 	if rb, ok := findHit(after, "拖动调整右栏宽度"); !ok || rb.Bounds.X != 1056-handleWidth/2 {
 		t.Fatalf("拖侧栏不该动右栏：%+v ok=%v", rb.Bounds, ok)
@@ -326,14 +327,14 @@ func TestLayoutWidthRestoredHeadless(t *testing.T) {
 		t.Fatalf("恢复后没有侧栏把手；hits=%+v", snapshot.Hits)
 	}
 	assertRect(t, "恢复的侧栏把手", hit.Bounds,
-		ui.Rect{X: 344 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
+		gfx.Rect{X: 344 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 	// 右栏 700：左缘 = 1920-700 = 1220。
 	rb, ok := findHit(snapshot, "拖动调整右栏宽度")
 	if !ok {
 		t.Fatalf("恢复后没有右栏把手；hits=%+v", snapshot.Hits)
 	}
 	assertRect(t, "恢复的右栏把手", rb.Bounds,
-		ui.Rect{X: 1220 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
+		gfx.Rect{X: 1220 - handleWidth/2, Y: 0, Width: handleWidth, Height: layoutH})
 
 	path := filepath.Join(dir, "layout-restored.png")
 	if err := session.Screenshot(path); err != nil {

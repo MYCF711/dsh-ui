@@ -8,7 +8,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -21,20 +21,20 @@ func streamingMarkdownData(stream string) pluginapi.Snapshot {
 	}
 }
 
-func drawStreamingMarkdownTest(t *testing.T, p *Plugin, data pluginapi.Snapshot) *ui.Canvas {
+func drawStreamingMarkdownTest(t *testing.T, p *Plugin, data pluginapi.Snapshot) *gfx.Canvas {
 	t.Helper()
 	theme := p.theme
 	const width = float32(900)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	canvas := newHeroTestCanvas(tree)
-	var view flex.View
-	f := view.Begin(canvas, dscore.VivaTheme(theme), ui.Rect{Width: width, Height: 700})
+	// v0.6.0 没有 Begin/End：Draw 内部就完成声明与解算，主题构造期给。
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("mdstream-test"), Canvas: canvas,
-		Bounds: ui.Rect{Width: width, Height: 700}, MainWidth: width,
+		Bounds: gfx.Rect{Width: width, Height: 700}, MainWidth: width,
 	}
-	p.draw(f, env)
-	f.End()
+	view.Draw(canvas, gfx.Rect{Width: width, Height: 700}, func(f ui.C) { p.draw(f, env) })
 	p.afterDraw(canvas, env)
 	return canvas
 }
@@ -55,7 +55,7 @@ func TestStreamingMarkdownReallyDrawsHeadingListAndInlineCode(t *testing.T) {
 		}
 		switch text.Value {
 		case "流式标题":
-			heading = text.Style.Weight >= ui.WeightSemibold && !text.Style.Mono
+			heading = text.Style.Weight >= gfx.WeightSemibold && !text.Style.Mono
 		case "•":
 			marker = true
 		case "第一项":
@@ -135,8 +135,8 @@ func TestStreamingMarkdownReusesFinalMessageCacheSlot(t *testing.T) {
 
 func TestStreamingMarkdownLayoutCacheBoundsRepeatedFrames(t *testing.T) {
 	p := newStreamingMarkdownTestPlugin()
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	measurements := 0
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {

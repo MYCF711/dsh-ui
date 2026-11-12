@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // TestSolveColumnsMatchesOfficial 用官方 computeColumns 的算例逐条对拍。
@@ -93,7 +93,7 @@ func TestLayoutUsesShellGeometry(t *testing.T) {
 	// 壳给了完整几何：与直接调 solveColumns 一致。
 	env := &pluginapi.Env{
 		Geometry: pluginapi.Geometry{Width: 1920, SidebarWidth: 280, RightWidth: 864},
-		Bounds:   ui.Rect{Width: 1920, Height: 1032},
+		Bounds:   gfx.Rect{Width: 1920, Height: 1032},
 		Data:     pluginapi.Snapshot{ShowRightbar: true},
 		Has:      hasAll,
 	}
@@ -104,7 +104,7 @@ func TestLayoutUsesShellGeometry(t *testing.T) {
 	// 壳没给 Geometry.Width → 退回 Bounds（整窗），右栏偏好取 45%。
 	env2 := &pluginapi.Env{
 		Geometry: pluginapi.Geometry{SidebarWidth: 280},
-		Bounds:   ui.Rect{Width: 1182, Height: 832},
+		Bounds:   gfx.Rect{Width: 1182, Height: 832},
 		Data:     pluginapi.Snapshot{ShowRightbar: true},
 		Has:      hasAll,
 	}
@@ -115,7 +115,7 @@ func TestLayoutUsesShellGeometry(t *testing.T) {
 	// 没有右栏占用方：右栏不出现，中栏吃掉全部剩余。
 	env3 := &pluginapi.Env{
 		Geometry: pluginapi.Geometry{Width: 1920, SidebarWidth: 280, RightWidth: 864},
-		Bounds:   ui.Rect{Width: 1920, Height: 1032},
+		Bounds:   gfx.Rect{Width: 1920, Height: 1032},
 		Data:     pluginapi.Snapshot{ShowRightbar: true},
 		Has:      func(s pluginapi.Slot) bool { return s != pluginapi.SlotRightbar },
 	}
@@ -126,7 +126,7 @@ func TestLayoutUsesShellGeometry(t *testing.T) {
 	// 壳说收起：即使占用方在也不出现。
 	env4 := &pluginapi.Env{
 		Geometry: pluginapi.Geometry{Width: 1920, SidebarWidth: 280, RightWidth: 864},
-		Bounds:   ui.Rect{Width: 1920, Height: 1032},
+		Bounds:   gfx.Rect{Width: 1920, Height: 1032},
 		Data:     pluginapi.Snapshot{ShowRightbar: false},
 		Has:      hasAll,
 	}
@@ -137,7 +137,7 @@ func TestLayoutUsesShellGeometry(t *testing.T) {
 	// 没有侧栏占用方：侧栏整列不占位（本插件既有约定），中栏从 0 起。
 	env5 := &pluginapi.Env{
 		Geometry: pluginapi.Geometry{Width: 1920, SidebarWidth: 280, RightWidth: 864},
-		Bounds:   ui.Rect{Width: 1920, Height: 1032},
+		Bounds:   gfx.Rect{Width: 1920, Height: 1032},
 		Data:     pluginapi.Snapshot{ShowRightbar: true},
 		Has: func(s pluginapi.Slot) bool {
 			return s != pluginapi.SlotSidebarHeader && s != pluginapi.SlotSidebarList &&

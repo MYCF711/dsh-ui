@@ -6,5 +6,5 @@ github.com/klauspost/compress v1.20.3 h1:zWNoFqq/lSuYQRim3dUXlXeA0IqwuZGicdG5ZTf
 github.com/klauspost/compress v1.20.3/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
 github.com/pelletier/go-toml/v2 v2.4.3 h1:GTRvJQutkOSftxIFD5xw9aepkYNuPWmVJpffdDPYVpY=
 github.com/pelletier/go-toml/v2 v2.4.3/go.mod h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8t9Stt+h56mCY=
-github.com/vivaui/viva v0.5.1 h1:c6xHo0yKsMDEYfVt9t70dpSDoK7dXqF3DtfD2sVcuSI=
-github.com/vivaui/viva v0.5.1/go.mod h1:iXOoCNuLlzKuz3cLna2y5bgXAFY8eLJSld6narLbpk4=
+github.com/vivaui/viva v0.6.0 h1:Thg9F5wTSwRPhQmfApvW5ACLVqUMWdSQVO6T41DR4zE=
+github.com/vivaui/viva v0.6.0/go.mod h1:iXOoCNuLlzKuz3cLna2y5bgXAFY8eLJSld6narLbpk4=

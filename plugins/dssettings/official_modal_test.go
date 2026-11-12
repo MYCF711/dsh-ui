@@ -1,11 +1,10 @@
 package dssettings
 
 import (
+	"github.com/vivaui/viva/gfx"
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/vivaui/viva/ui"
 )
 
 // TestDialogUsesAriaLabelledByNotAriaLabel 钉住 rc.2 D3。
@@ -86,11 +85,11 @@ func TestModalLayerTabCyclesAndWraps(t *testing.T) {
 	modal := NewModalLayer(func() { called++ })
 	modal.Open("title", []string{"a", "b", "c"}, "a", "")
 
-	tab := ui.KeyEvent{Key: ui.KeyTab}
-	shiftTab := ui.KeyEvent{Key: ui.KeyTab, Modifiers: ui.ModifierShift}
+	tab := gfx.KeyEvent{Key: gfx.KeyTab}
+	shiftTab := gfx.KeyEvent{Key: gfx.KeyTab, Modifiers: gfx.ModifierShift}
 
 	steps := []struct {
-		ev   ui.KeyEvent
+		ev   gfx.KeyEvent
 		want string
 	}{
 		{tab, "b"},
@@ -117,7 +116,7 @@ func TestModalLayerEscapeCloses(t *testing.T) {
 	called := 0
 	modal := NewModalLayer(func() { called++ })
 	modal.Open("title", []string{"a"}, "a", "trigger")
-	if !modal.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if !modal.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("Escape 必须被模态层消费")
 	}
 	if modal.Opened() {
@@ -132,9 +131,9 @@ func TestModalLayerEscapeCloses(t *testing.T) {
 func TestModalLayerIgnoresOtherKeys(t *testing.T) {
 	modal := NewModalLayer(nil)
 	modal.Open("title", []string{"a"}, "a", "")
-	for _, ev := range []ui.KeyEvent{
-		{Key: ui.KeyDown}, {Key: ui.KeyUp}, {Key: ui.KeyEnter},
-		{Key: ui.KeyF2}, {Key: ui.KeySpace, Text: "x"},
+	for _, ev := range []gfx.KeyEvent{
+		{Key: gfx.KeyDown}, {Key: gfx.KeyUp}, {Key: gfx.KeyEnter},
+		{Key: gfx.KeyF2}, {Key: gfx.KeySpace, Text: "x"},
 	} {
 		if modal.HandleKey(ev) {
 			t.Fatalf("键 %v 不该被模态层消费（面板自己的行导航要用）", ev.Key)
@@ -142,7 +141,7 @@ func TestModalLayerIgnoresOtherKeys(t *testing.T) {
 	}
 	// 关着的时候连 Escape 都不吃。
 	modal.Close()
-	if modal.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if modal.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("关着时不应消费 Escape")
 	}
 }

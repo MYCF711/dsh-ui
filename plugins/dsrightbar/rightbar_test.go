@@ -9,7 +9,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -90,18 +90,19 @@ func openRightbar(t *testing.T, width, height int, msgs []apiclient.Message) (*h
 	t.Helper()
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("rightbar-test")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "rightbar-v4a-test", Width: width, Height: height, Tree: tree}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Data: pluginapi.Snapshot{Cur: "session-v4a", Msgs: msgs},
 			Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
 			Has: func(pluginapi.Slot) bool { return true },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) { p.draw(f, env) })
+		view.Draw(canvas, bounds, func(f ui.C) { p.draw(f, env) })
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {
@@ -111,9 +112,9 @@ func openRightbar(t *testing.T, width, height int, msgs []apiclient.Message) (*h
 	return session, p
 }
 
-func sameColor(got, want ui.Color) bool { return got == want }
+func sameColor(got, want gfx.Color) bool { return got == want }
 
-func findText(t *testing.T, texts []ui.Text, value string) ui.Text {
+func findText(t *testing.T, texts []gfx.Text, value string) gfx.Text {
 	t.Helper()
 	for _, text := range texts {
 		if text.Value == value {
@@ -121,5 +122,5 @@ func findText(t *testing.T, texts []ui.Text, value string) ui.Text {
 		}
 	}
 	t.Fatalf("找不到文本 %q；texts=%+v", value, texts)
-	return ui.Text{}
+	return gfx.Text{}
 }

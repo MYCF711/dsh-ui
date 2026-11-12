@@ -15,14 +15,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // iconTrianglesIn 数落在一个矩形里的**不透明**三角形（图标描边的判据）。
 //
 // 为什么按矩形数：胶囊本身没有底色（官方 `.pill{background:transparent}`），
 // 所以胶囊左侧那 14px 里除了图标不该有任何不透明图元——数出来 >0 就是"图标真的画了"。
-func iconTrianglesIn(canvas *ui.Canvas, rect ui.Rect) int {
+func iconTrianglesIn(canvas *gfx.Canvas, rect gfx.Rect) int {
 	const opaque = 0.5
 	n := 0
 	for _, triangle := range canvas.Triangles() {
@@ -62,7 +62,7 @@ func TestOfficialPillDrawsGaugeAndDatabaseIcons(t *testing.T) {
 	}
 
 	h := newStatsDialogHarness(t)
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	canvas := h.frame(t, bounds, data, "", "")
 
 	// 活动胶囊是这一行的 DialogPill（有计时行 → 可点），矩形在 AfterDraw 里缓存。
@@ -77,7 +77,7 @@ func TestOfficialPillDrawsGaugeAndDatabaseIcons(t *testing.T) {
 		t.Fatalf("活动胶囊宽 = %v，官方公式 8+14+6+文字(%v)+8 = %v", rect.Width, textWidth, want)
 	}
 	// 左侧 14px 内必须有图标描边（文本从 x=28 才开始，不可能落进来）。
-	iconRect := ui.Rect{X: rect.X + pillPadX, Y: rect.Y, Width: StatsPillIconSize, Height: pillHeight}
+	iconRect := gfx.Rect{X: rect.X + pillPadX, Y: rect.Y, Width: StatsPillIconSize, Height: pillHeight}
 	if n := iconTrianglesIn(canvas, iconRect); n == 0 {
 		t.Fatalf("活动胶囊左侧 14px 里没有图元——gauge 图标没画（rect=%+v）", iconRect)
 	}
@@ -88,7 +88,7 @@ func TestOfficialPillDrawsGaugeAndDatabaseIcons(t *testing.T) {
 // 在 compact / plain / dialog 三个分支里用的是同一枚）。
 func TestUsagePillDrawsDatabaseIcon(t *testing.T) {
 	h := newStatsDialogHarness(t)
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	data := statsSnapshot(statsFullStats())
 	canvas := h.frame(t, bounds, data, "", "")
 	activity := h.plugin.dialog.pillRect
@@ -97,7 +97,7 @@ func TestUsagePillDrawsDatabaseIcon(t *testing.T) {
 	}
 	// 用量胶囊在活动胶囊右侧一个 dockGap(=12) 处；它的左 14px 里必须有图元。
 	usageX := activity.X + activity.Width + dockGap
-	iconRect := ui.Rect{X: usageX + pillPadX, Y: activity.Y, Width: StatsPillIconSize, Height: pillHeight}
+	iconRect := gfx.Rect{X: usageX + pillPadX, Y: activity.Y, Width: StatsPillIconSize, Height: pillHeight}
 	if n := iconTrianglesIn(canvas, iconRect); n == 0 {
 		t.Fatalf("用量胶囊左侧 14px 里没有图元——database 图标没画（rect=%+v）", iconRect)
 	}
@@ -136,7 +136,7 @@ func TestStatsDialogTitleLabelStartsWithOfficialGlyph(t *testing.T) {
 			titleX, panel.X+StatsDialogPad, StatsDialogTitleIconSize, StatsDialogTitleLabelGap, wantX)
 	}
 	// 图标占位区（章节名左侧 20px）里要有 gauge 的描边图元。
-	iconRect := ui.Rect{
+	iconRect := gfx.Rect{
 		X: titleX - StatsDialogTitleIconSize - StatsDialogTitleLabelGap, Y: titleY,
 		Width: StatsDialogTitleIconSize, Height: StatsDialogTitleIconSize,
 	}

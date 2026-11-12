@@ -17,7 +17,7 @@ package dsgoal
 import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 type Plugin struct {
@@ -58,7 +58,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		// **Order 5 < composer 的 10**：同一个槽里小的先画，于是它落在输入框上方。
 		// 官方就是"docked above the composer"——顺序在这里就是位置。
 		Order: 5,
-		Draw: func(f *flex.Frame, env *pluginapi.Env) {
+		Draw: func(f ui.C, env *pluginapi.Env) {
 			if p.composerSeatLive() {
 				return // 官方座位活着：旧槽这一帧不画（不双画）
 			}
@@ -73,7 +73,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 }
 
 // draw 画目标条。**没有目标就整块不画**——空白条会占掉一行高度却不说话。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	if env.Act.Goal == nil {
 		return
 	}
@@ -92,14 +92,14 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	// `PadSides(10,16,10,16)` / `PadSides(14,16,14,16)` / `PadSides(14,14,12,14)`
 	// 这种**四个数两两对称**的形状。这一条是唯一一条两个方向都不对称的，
 	// 而它出现在一个只画一行字的部件里——那不像设计，像把顺序写串了。
-	f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(6, 16, 6, 16).Children(func() {
+	ui.Row(f).FillWidth().Items(ui.Center).Gap(8).PadSides(6, 16, 6, 16).Children(func() {
 		// 官方 `.goalGlyph`：sprite `goal-outline`（viewBox 16）按 size 14 画，
 		// 左边中性色 `label-tertiary`。不用绿（绿在状态栏已经表示"连着宿主"，
 		// 复用会混淆），也不用圆点冒充图标（见 icons.go 的取证）。
-		f.Icon(goalOutlineIcon()).Size(goalGlyphSize, goalGlyphSize).Color(t.LabelTertiary)
-		f.Text("目标").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		ui.Icon(f, goalOutlineIcon()).Size(goalGlyphSize, goalGlyphSize).Color(t.LabelTertiary)
+		ui.Text(f, "目标").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		// Ellipsis：目标可能是一句话，但这一行只给一眼的高度。
 		// 完整内容该在别处看——这里的作用是"别忘了我",不是"读完我"。
-		f.Text(goal).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Grow(1).Ellipsis()
+		ui.Text(f, goal).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Grow(1).Ellipsis()
 	})
 }

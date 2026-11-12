@@ -17,7 +17,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -49,13 +49,14 @@ func TestConversationTabsReallyClickAndRememberSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("fg3-click")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "fg3-tabs", Width: 1182, Height: 832, Tree: tree, WindowMode: app.WindowFrameless}
-	config.TextInput = flex.Fields(composer.Fields()...)
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.TextInput = ui.Fields(composer.Fields()...)
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		data.Total = len(data.Msgs)
 		env := fg3TestEnv(theme, tree, feat, canvas, bounds, data, kernel)
 		env.Act = pluginapi.Actions{
@@ -67,7 +68,7 @@ func TestConversationTabsReallyClickAndRememberSession(t *testing.T) {
 			},
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 		for _, painter := range kernel.AllPainters() {
@@ -246,7 +247,7 @@ func TestConversationTabsReallyClickAndRememberSession(t *testing.T) {
 	}
 }
 
-func fg3TestEnv(theme *pluginapi.Theme, tree *ui.Tree, feat ui.Scope, canvas *ui.Canvas, bounds ui.Rect, data pluginapi.Snapshot, kernel *uikernel.Kernel) *pluginapi.Env {
+func fg3TestEnv(theme *pluginapi.Theme, tree *gfx.Tree, feat gfx.Scope, canvas *gfx.Canvas, bounds gfx.Rect, data pluginapi.Snapshot, kernel *uikernel.Kernel) *pluginapi.Env {
 	var right float32
 	if data.ShowRightbar {
 		right = bounds.Width * 0.45

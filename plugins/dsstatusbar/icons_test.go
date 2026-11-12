@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -115,18 +116,18 @@ func TestSpinnerReducedMotionIsStaticArc(t *testing.T) {
 // viewBox 24（官方 `<svg viewBox="0 0 24 24">`）、stroke 2、圆头、r=9.5 的圆环 track
 // （25% alpha + EvenOdd）。
 func TestSpinnerGlyphMatchesOfficialGeometry(t *testing.T) {
-	icon := spinnerGlyph(spinnerFrameAt(time.Unix(0, 0), false), ui.Color{Red: 1, Alpha: 1})
+	icon := spinnerGlyph(spinnerFrameAt(time.Unix(0, 0), false), gfx.Color{Red: 1, Alpha: 1})
 	if icon.ViewBox != 24 || icon.Stroke != 2 {
 		t.Fatalf("spinner viewBox/stroke = %v/%v，官方 24/2", icon.ViewBox, icon.Stroke)
 	}
-	if icon.Cap != ui.CapRound {
+	if icon.Cap != gfx.CapRound {
 		t.Fatalf("spinner cap = %v，官方 stroke-linecap:round", icon.Cap)
 	}
 	if len(icon.Layers) != 1 {
 		t.Fatalf("spinner 应有 1 层 track（25%% 圆环），实得 %d", len(icon.Layers))
 	}
 	layer := icon.Layers[0]
-	if layer.FillRule != ui.PathFillEvenOdd {
+	if layer.FillRule != gfx.PathFillEvenOdd {
 		t.Fatalf("track 填充规则 = %v，圆环必须 EvenOdd", layer.FillRule)
 	}
 	if math.Abs(float64(layer.Fill.Alpha-0.25)) > 1e-6 {
@@ -135,7 +136,7 @@ func TestSpinnerGlyphMatchesOfficialGeometry(t *testing.T) {
 	// track 是两个同心圆（外 r+1 / 内 r-1），各 4 段贝塞尔 + Close。
 	moves := 0
 	for _, command := range layer.Commands {
-		if command.Kind == ui.PathCommandMove {
+		if command.Kind == gfx.PathCommandMove {
 			moves++
 		}
 	}
@@ -148,7 +149,7 @@ func TestSpinnerGlyphMatchesOfficialGeometry(t *testing.T) {
 // viewBox 16 / weight regular=1 / 三条 path（两条 stroke + 一条 fill 圆点）/
 // 首点与官方 d 的起点逐位相同。
 func TestGaugeIconIsOfficialSprite(t *testing.T) {
-	tint := ui.Color{Red: 0.2, Green: 0.4, Blue: 0.8, Alpha: 1}
+	tint := gfx.Color{Red: 0.2, Green: 0.4, Blue: 0.8, Alpha: 1}
 	icon := gaugeOutlineIcon(tint)
 	if icon.ViewBox != 16 {
 		t.Fatalf("gauge viewBox = %v，官方 `viewBox=\"0 0 16 16\"`", icon.ViewBox)
@@ -157,20 +158,20 @@ func TestGaugeIconIsOfficialSprite(t *testing.T) {
 		t.Fatalf("gauge stroke = %v，官方 weight regular = 1", icon.Stroke)
 	}
 	first := icon.Commands[0]
-	if first.Kind != ui.PathCommandMove || first.Point != (ui.Point{X: 3.4041, Y: 13.096}) {
+	if first.Kind != gfx.PathCommandMove || first.Point != (ui.Point{X: 3.4041, Y: 13.096}) {
 		t.Fatalf("gauge 首命令 = %+v，官方 d 起点 M3.4041 13.096", first)
 	}
 	// 第二条 stroke：指针 M8 8.49994 L11.6114 4.88855。
 	pointer := -1
 	for i, command := range icon.Commands {
-		if command.Kind == ui.PathCommandMove && command.Point == (ui.Point{X: 8, Y: 8.49994}) {
+		if command.Kind == gfx.PathCommandMove && command.Point == (ui.Point{X: 8, Y: 8.49994}) {
 			pointer = i
 		}
 	}
 	if pointer < 0 {
 		t.Fatal("gauge 缺官方指针 path（M8 8.49994 L11.6114 4.88855）")
 	}
-	if icon.Commands[pointer+1] != ui.LineTo(11.6114, 4.88855) {
+	if icon.Commands[pointer+1] != gfx.LineTo(11.6114, 4.88855) {
 		t.Fatalf("gauge 指针终点 = %+v，官方 L11.6114 4.88855", icon.Commands[pointer+1])
 	}
 	// 第三条是 fill 圆点 → 必须落在 Layers（stroke 命令画不了 fill）。
@@ -181,7 +182,7 @@ func TestGaugeIconIsOfficialSprite(t *testing.T) {
 		t.Fatalf("gauge 圆点色 = %+v，应等于同一枚 tint（currentColor）", icon.Layers[0].Fill)
 	}
 	knob := icon.Layers[0].Commands
-	if knob[0].Kind != ui.PathCommandMove || knob[0].Point != (ui.Point{X: 8, Y: 9.75}) {
+	if knob[0].Kind != gfx.PathCommandMove || knob[0].Point != (ui.Point{X: 8, Y: 9.75}) {
 		t.Fatalf("gauge 圆点首命令 = %+v，官方 M8 9.75", knob[0])
 	}
 }
@@ -197,12 +198,12 @@ func TestDatabaseIconIsOfficialSprite(t *testing.T) {
 		t.Fatalf("database 不该有 fill 层，实得 %d", len(icon.Layers))
 	}
 	first := icon.Commands[0]
-	if first.Kind != ui.PathCommandMove || first.Point != (ui.Point{X: 13.1967, Y: 5.1869}) {
+	if first.Kind != gfx.PathCommandMove || first.Point != (ui.Point{X: 13.1967, Y: 5.1869}) {
 		t.Fatalf("database 首命令 = %+v，官方 d 起点 M13.1967 5.1869", first)
 	}
 	moves := 0
 	for _, command := range icon.Commands {
-		if command.Kind == ui.PathCommandMove {
+		if command.Kind == gfx.PathCommandMove {
 			moves++
 		}
 	}

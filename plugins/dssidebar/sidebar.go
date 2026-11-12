@@ -23,7 +23,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -106,10 +106,13 @@ type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
 
-	search         flex.Field
+	search         ui.Field
 	searchExpanded bool
 	frameBoxes     frameBoxes
-	activePanel    string
+	// scrollBox 是本帧的会话列表滚动区。v0.6.0 的滚动状态由声明方持有
+	// （没有 ID→ScrollState 查表），测试与内部要按 Box 取状态，所以记下它。
+	scrollBox   ui.Box
+	activePanel string
 	// pendingDelete 是"已经点过一次 ×、等第二次确认"的会话 id。
 	//
 	// 删除是**破坏性**的（宿主那边是从磁盘上删），所以做成两次点击。
@@ -171,7 +174,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 }
 
 // Fields 让壳把搜索框登记进 cfg.TextInput（不登记就收不到键盘）。
-func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.search} }
+func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.search} }
 
 // Width 返回侧栏占的宽度。
 func (p *Plugin) Width() float32 { return p.width }
@@ -210,17 +213,17 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 //     它照样可以写着「已连接 · N 条」。连接三态现在从 `Snapshot.Link` 读。
 //
 // 所以这一行只留"会话总数"这一个它自己知道的事实。
-func (p *Plugin) drawFooter(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawFooter(f ui.C, env *pluginapi.Env) {
 	t := p.theme
-	f.Row().FillWidth().Height(28).Items(flex.Center).Gap(6).Children(func() {
-		f.Text(itoa(len(env.Data.Sessions)) + " 个会话").
+	ui.Row(f).FillWidth().Height(28).Items(ui.Center).Gap(6).Children(func() {
+		ui.Text(f, itoa(len(env.Data.Sessions))+" 个会话").
 			FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-		f.Spacer()
+		ui.Spacer(f)
 	})
 }
 
 // drawList 画会话列表：有过滤词走**搜索结果卡**，没有才走分组树。
-func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 	q := normalizeQuery(p.search.Text())
 	if q != "" {
 		// 官方搜索态是另一棵平铺的树（`SearchResults` + `searchResultRow`），
@@ -255,16 +258,16 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 	// 宽度仍然必须钉死（ScrollArea 里用 FillWidth 时内容宽度算不出来，
 	// 标题会被压成竖排，或者整个内容列撑到窗口宽——都踩过）。
 	inner := p.width - sidebarInline
-	scrID := env.Tree.ID(env.Feat, "sidebar-scroll")
 	p.logSnapshot(env, q, groups, order)
-	f.ScrollArea(scrID).Width(inner).Grow(1).MinHeight(120).Clip().Children(func() {
+	p.scrollBox = ui.Scroll(f).Width(inner).Grow(1).MinHeight(120).Clip()
+	p.scrollBox.Children(func() {
 		// 外层 Gap(0)：行间 2、组间 4 是两档，不能用一个统一的 gap 冒充
 		// （official-specs §6 遗留第 2 条）。
-		f.Column().Width(inner).Gap(0).PadSides(0, 0, listBottomPadding, 0).Children(func() {
+		ui.Column(f).Width(inner).Gap(0).PadSides(0, 0, listBottomPadding, 0).Children(func() {
 			if len(order) == 0 {
 				// 走到这里只可能是"宿主一个会话都没有"：有过滤词时上面已经分流到
 				// 搜索结果卡（那条路有官方的「无匹配会话」空态）。
-				f.Text("没有会话").FontSize(t.Fonts.Caption).Color(t.LabelCaption).Pad(8)
+				ui.Text(f, "没有会话").FontSize(t.Fonts.Caption).Color(t.LabelCaption).Pad(8)
 				return
 			}
 			for gi, key := range order {
@@ -272,10 +275,10 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 				open := p.groupOpen(key)
 				if gi > 0 {
 					// `.GAkraW_groupSection+.GAkraW_groupSection{margin-top:4px}`
-					f.Row().Width(inner).Height(groupGap)
+					ui.Row(f).Width(inner).Height(groupGap)
 				}
 				gid := env.Tree.ID(env.Feat, "g-"+key)
-				f.Column().Width(inner).Gap(rowGap).Children(func() {
+				ui.Column(f).Width(inner).Gap(rowGap).Children(func() {
 					if p.prims.SectionHeader(f, gid, displayWorkspace(key), len(sessions), open).Clicked() {
 						p.toggleGroup(key)
 					}
@@ -299,7 +302,7 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 //
 // 键盘顺序 = 这一步画出来的卡片顺序（`lastOrder`），与分组态共用同一个字段，
 // HandleKey 和点击因此不需要为搜索态写第二套分支。
-func (p *Plugin) drawSearch(f *flex.Frame, env *pluginapi.Env, q string) {
+func (p *Plugin) drawSearch(f ui.C, env *pluginapi.Env, q string) {
 	t := p.theme
 	results := searchResults(env.Data.Sessions, q)
 	p.lastCur = env.Data.Cur
@@ -312,17 +315,17 @@ func (p *Plugin) drawSearch(f *flex.Frame, env *pluginapi.Env, q string) {
 
 	// 与分组态同一套宽度口径（侧栏内宽 + 吃掉右侧 12px 内边距），见 drawList。
 	inner := p.width - sidebarInline
-	scrID := env.Tree.ID(env.Feat, "sidebar-scroll")
-	f.ScrollArea(scrID).Width(inner).Grow(1).MinHeight(120).Clip().Children(func() {
-		f.Column().Width(inner).Gap(0).PadSides(0, 0, listBottomPadding, 0).Children(func() {
+	p.scrollBox = ui.Scroll(f).Width(inner).Grow(1).MinHeight(120).Clip()
+	p.scrollBox.Children(func() {
+		ui.Column(f).Width(inner).Gap(0).PadSides(0, 0, listBottomPadding, 0).Children(func() {
 			if len(results) == 0 {
 				// 官方 .GAkraW_empty{color:var(--dsw-alias-label-tertiary);padding:16px 12px;font-size:13px}
 				// 配 `search.noMatches`「无匹配会话」。
-				f.Text(officialSearchEmpty).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary).
+				ui.Text(f, officialSearchEmpty).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary).
 					PadSides(emptyStatePadY, emptyStatePadX, emptyStatePadY, emptyStatePadX)
 				return
 			}
-			f.Column().Width(inner).Gap(rowGap).Children(func() {
+			ui.Column(f).Width(inner).Gap(rowGap).Children(func() {
 				for i := range results {
 					p.drawSearchCard(f, env, results[i])
 				}
@@ -338,13 +341,13 @@ func (p *Plugin) drawSearch(f *flex.Frame, env *pluginapi.Env, q string) {
 // 没有 snippet 真值时 Snippet 是零值盒子，所以另给一个 HasSnippet 布尔，
 // 测试不需要去碰空盒子的 Rect()。
 type searchCardBoxes struct {
-	Card       flex.Box
-	Heading    flex.Box
-	Title      flex.Box
-	Dot        flex.Box
-	Meta       flex.Box
-	Workspace  flex.Box
-	Snippet    flex.Box
+	Card       ui.Box
+	Heading    ui.Box
+	Title      ui.Box
+	Dot        ui.Box
+	Meta       ui.Box
+	Workspace  ui.Box
+	Snippet    ui.Box
 	HasSnippet bool
 }
 
@@ -362,38 +365,38 @@ type searchCardBoxes struct {
 //
 // 第二行的时间**不画**：官方 searchResultRow 里没有时间元素，卡片只有
 // 标题 + workspace + snippet 两行；分组行的时间不受影响。
-func (p *Plugin) drawSearchCard(f *flex.Frame, env *pluginapi.Env, r searchResult) searchCardBoxes {
+func (p *Plugin) drawSearchCard(f ui.C, env *pluginapi.Env, r searchResult) searchCardBoxes {
 	t := p.theme
 	active := r.ID == env.Data.Cur
 	// 与分组态同一套 ID（`s-<会话ID>`）：点击/键盘/选中都不需要第二条通路。
 	id := env.Tree.ID(env.Feat, "s-"+r.ID)
 	var out searchCardBoxes
 	card := p.prims.ListRow(f, id, active, searchResultHeight, func() {
-		f.Column().FillWidth().Children(func() {
-			out.Heading = f.Row().FillWidth().Height(searchTitleLineHeight).Items(flex.Center).Gap(0).
+		ui.Column(f).FillWidth().Children(func() {
+			out.Heading = ui.Row(f).FillWidth().Height(searchTitleLineHeight).Items(ui.Center).Gap(0).
 				Children(func() {
 					// 图标槽 16×20（官方 .wnFoaW_slot）。里面只放当前会话的正向活动真值：
 					// 规则与分组行完全一致，别的卡片一律留空。
-					f.Row().Width(slotWidth).Height(slotHeight).Shrink(0).
-						Items(flex.Center).Justify(flex.Center).Children(func() {
+					ui.Row(f).Width(slotWidth).Height(slotHeight).Shrink(0).
+						Items(ui.Center).Justify(ui.Center).Children(func() {
 						if active && (env.Data.Busy || env.Data.Stream != "") {
 							out.Dot = p.prims.Dot(f, t.Info, 6)
 						}
 					})
-					out.Title = f.Text(r.Title).FontSize(t.Fonts.Body).
+					out.Title = ui.Text(f, r.Title).FontSize(t.Fonts.Body).
 						LineHeight(searchTitleLineHeight).Ellipsis().Grow(1).Color(t.LabelPrimary).
 						MarginSides(0, titleMarginRight, 0, titleMarginLeft)
 				})
-			out.Meta = f.Row().FillWidth().Height(searchMetaLineHeight).Items(flex.Center).
+			out.Meta = ui.Row(f).FillWidth().Height(searchMetaLineHeight).Items(ui.Center).
 				Gap(searchMetaGap).MarginSides(0, 0, 0, searchMetaMarginLeft).Children(func() {
-				out.Workspace = f.Text(r.Workspace).FontSize(t.Fonts.Caption).
+				out.Workspace = ui.Text(f, r.Workspace).FontSize(t.Fonts.Caption).
 					LineHeight(searchMetaLineHeight).Color(t.LabelTertiary).
 					MaxWidthPercent(searchWorkspaceCap(r.HasSnippet)).Shrink(0).Ellipsis()
 				// snippet 是有真值才有的元素（官方 `result.snippet !== void 0`）：
 				// 拿不到真值就整段不画，不留占位、不拼摘要。
 				if r.HasSnippet {
 					out.HasSnippet = true
-					out.Snippet = f.Text(r.Snippet).FontSize(t.Fonts.Caption).
+					out.Snippet = ui.Text(f, r.Snippet).FontSize(t.Fonts.Caption).
 						LineHeight(searchMetaLineHeight).Color(t.LabelSecondary).Grow(1).Ellipsis()
 				}
 			})
@@ -430,7 +433,7 @@ func (p *Plugin) drawSearchCard(f *flex.Frame, env *pluginapi.Env, r searchResul
 // 两者都是壳给的真值，并集只会**漏报**，不会把没跑的东西画成在跑。
 //
 // 这个点表示的是"我现在看的这个会话正在生成"，不是"别的会话在跑"。
-func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Session) {
+func (p *Plugin) drawSession(f ui.C, env *pluginapi.Env, s apiclient.Session) {
 	t := p.theme
 	active := s.ID == env.Data.Cur
 	// 删除入口只在壳接了 DeleteSession 时才画：老壳没这条线时，
@@ -450,16 +453,16 @@ func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Sess
 		// 缩进与图标槽都必须 Shrink(0)：标题长到被省略号截断时，flex 会把
 		// 可收缩的子元素一起压——实测一个很长的标题能把 16px 的图标槽压成 0，
 		// 于是这一行的标题比别的行左移 16px，整列对不齐。
-		f.Row().Width(indentStep).Height(1).Shrink(0) // 官方 depth*12 的缩进
-		f.Row().Width(slotWidth).Height(slotHeight).Shrink(0).
-			Items(flex.Center).Justify(flex.Center).Children(func() {
+		ui.Row(f).Width(indentStep).Height(1).Shrink(0) // 官方 depth*12 的缩进
+		ui.Row(f).Width(slotWidth).Height(slotHeight).Shrink(0).
+			Items(ui.Center).Justify(ui.Center).Children(func() {
 			// 只有当前会话、且壳给了真值（有 turn 在跑 / 正文真在流）时才点：
 			// 其他行没有任何逐会话真值，留空是唯一诚实的画法。
 			if active && (env.Data.Busy || env.Data.Stream != "") {
 				p.prims.Dot(f, t.Info, 6)
 			}
 		})
-		f.Text(title).FontSize(t.Fonts.Body).LineHeight(titleLineHeight).
+		ui.Text(f, title).FontSize(t.Fonts.Body).LineHeight(titleLineHeight).
 			Ellipsis().Grow(1).Color(t.LabelPrimary).
 			MarginSides(0, titleMarginRight, 0, titleMarginLeft)
 		// 时间位在确认态下换成「确认?」：**同一个位置**，不新增宽度。
@@ -469,7 +472,7 @@ func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Sess
 			if confirming {
 				text, color = "确认?", t.Error
 			}
-			f.Text(text).FontSize(10).LineHeight(timeLineHeight).
+			ui.Text(f, text).FontSize(10).LineHeight(timeLineHeight).
 				Color(color).Shrink(0)
 		}
 		if canDelete {
@@ -490,19 +493,19 @@ func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Sess
 // 嵌套命中是**安全的**：事件目标是这个 × 时，外层行自己的 `Clicked()` 是 false
 // （实测过，见 sidebar_test.go 的 TestDeleteBoxDoesNotAlsoOpenTheSession）。
 // 所以点删除不会顺手把会话切过去。
-func (p *Plugin) drawDeleteBox(f *flex.Frame, env *pluginapi.Env, s apiclient.Session, confirming bool) {
+func (p *Plugin) drawDeleteBox(f ui.C, env *pluginapi.Env, s apiclient.Session, confirming bool) {
 	t := p.theme
 	color := t.LabelCaption
 	label := "×"
 	if confirming {
 		color = t.Error
 	}
-	box := f.Row().Width(16).Height(16).Shrink(0).
-		Items(flex.Center).Justify(flex.Center).
-		Hover(flex.Look{}.Background(t.Hover)).
+	box := ui.Row(f).Width(16).Height(16).Shrink(0).
+		Items(ui.Center).Justify(ui.Center).
+		Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, "del-"+s.ID), "删除这个会话").
 		Children(func() {
-			f.Text(label).FontSize(t.Fonts.Tiny).Color(color)
+			ui.Text(f, label).FontSize(t.Fonts.Tiny).Color(color)
 		})
 	if box.Clicked() {
 		if confirming {
@@ -897,24 +900,24 @@ func normalizeQuery(s string) string {
 //
 // 为什么放在侧栏插件里而不是壳里：'下一个会话'取决于分组、过滤和折叠状态，
 // 只有这个插件知道。壳只负责把按键转发过来。
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	if ev.Modifiers != 0 {
 		return false // 带修饰键的是别的意图（留给别的插件）
 	}
 	switch ev.Key {
-	case ui.KeyEscape:
+	case gfx.KeyEscape:
 		if p.searchExpanded {
 			p.search.SetText("")
 			p.searchExpanded = false
 			return true
 		}
-	case ui.KeyUp:
+	case gfx.KeyUp:
 		return p.move(-1)
-	case ui.KeyDown:
+	case gfx.KeyDown:
 		return p.move(1)
-	case ui.KeyHome:
+	case gfx.KeyHome:
 		return p.moveTo(0)
-	case ui.KeyEnd:
+	case gfx.KeyEnd:
 		return p.moveTo(len(p.lastOrder) - 1)
 	}
 	return false

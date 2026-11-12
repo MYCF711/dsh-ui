@@ -16,7 +16,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -43,7 +43,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("fg5-headless")
 	data := pluginapi.Snapshot{
 		Cur: "fg5-real-layout", Status: "已连接",
@@ -55,17 +55,18 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 		// 这些窗口消息必须不能变成官方轮/步。
 		Msgs: []apiclient.Message{{Role: "assistant"}, {Role: "assistant"}, {Role: "tool"}},
 	}
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        flex.View
 		invalidator app.Invalidator
-		dockBox     flex.Box
+		dockBox     ui.Box
 	)
 	config := app.Config{
 		Title: "fg5-headless", Width: 1920, Height: 1032, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
@@ -76,12 +77,12 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 			},
 			Has: kernel.Has,
 		}
-		dockBox = flex.Box{}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
-			f.Column().FillWidth().FillHeight().Children(func() {
-				f.Row().Grow(1)
+		dockBox = ui.Box{}
+		view.Draw(canvas, bounds, func(f ui.C) {
+			ui.Column(f).FillWidth().FillHeight().Children(func() {
+				ui.Row(f).Grow(1)
 				// 与 dsshell 中栏一致：先 Pad(12)，再按 Order 画 composer 和 dock。
-				f.Column().FillWidth().Pad(12).Gap(8).Children(func() {
+				ui.Column(f).FillWidth().Pad(12).Gap(8).Children(func() {
 					for _, painter := range kernel.Painters(pluginapi.SlotMainComposer) {
 						if painter.ID == "dock" {
 							dockBox = status.drawDock(f, env)
@@ -92,7 +93,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 				})
 				// 连接指示的官方座位：`sidebar.settings`（官方左栏默认 280 宽）。
 				// 这里模拟骨架在 footArea 里 dispatch 那个槽（不再有 shell.bottom 整行）。
-				f.Row().Width(280).Height(connRowHeight + 2*connRowMarginY).Children(func() {
+				ui.Row(f).Width(280).Height(connRowHeight + 2*connRowMarginY).Children(func() {
 					for _, painter := range kernel.Painters(uikernel.OffSidebarSettings) {
 						painter.Draw(f, env)
 					}
@@ -287,7 +288,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 	if session.HasText("总量 12.3k") || session.HasText("上下文 2.0k") {
 		t.Fatalf("空会话显示了残留 usage；texts=%q", session.Texts())
 	}
-	if dockBox != (flex.Box{}) {
+	if dockBox != (ui.Box{}) {
 		t.Fatal("空会话仍创建了 dock 盒子")
 	}
 	t.Log("FG5_SESSION_ISOLATION A->B->empty passed; empty dock box absent")

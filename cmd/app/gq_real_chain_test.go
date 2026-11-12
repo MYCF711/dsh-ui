@@ -27,7 +27,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -55,7 +55,7 @@ const (
 // 与 gt3 的 `renderTranscriptSeat` 的唯一区别就是多调了覆画阶段——
 // 代码块的 banner/高亮/横滚视口/复制按钮全在覆画里画，少了这一步
 // 画布上只有一行空占位（这正是"必须先布局后覆画"的现场证据）。
-func gqRenderSeat(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, *dsconversation.Plugin) {
+func gqRenderSeat(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas, *dsconversation.Plugin) {
 	t.Helper()
 	conversation := &dsconversation.Plugin{}
 	kernel := uikernel.New("gq-real-chain")
@@ -63,20 +63,21 @@ func gqRenderSeat(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, *dsconvers
 		t.Fatalf("装配失败: %v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	canvas := &ui.Canvas{}
-	tree := &ui.Tree{}
+	canvas := &gfx.Canvas{}
+	tree := &gfx.Tree{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size
 	})
 	env := &pluginapi.Env{
 		Theme: theme, Data: snap, Tree: tree, Feat: tree.Feature("gq-real-chain"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
 	env.Act.CopyResult = func(string) error { return nil }
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, gfx.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		kernel.DrawSlot(f, pluginapi.Slot("conversation.view"), env)
 	})
 	conversation.OfficialTranscript().PaintCodeBlocks(canvas, env)
@@ -180,11 +181,11 @@ func TestGQRealChainMarkdownBlocks(t *testing.T) {
 }
 
 // canvasTextExact 找**完全等于** value 的文本（长文本会被省略号截断，这里不匹配前缀）。
-func canvasTextExact(canvas *ui.Canvas, value string) ui.Text {
+func canvasTextExact(canvas *gfx.Canvas, value string) gfx.Text {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return text
 		}
 	}
-	return ui.Text{}
+	return gfx.Text{}
 }

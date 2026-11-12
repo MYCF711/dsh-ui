@@ -6,7 +6,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // 这一组测试钉住三件事：
@@ -71,7 +71,7 @@ func selectedKeys(secs []Section) []string {
 // 一个设置动作都没有时，Shift+F2 不响应、Open 打不开、也不存在外观/模型/权限分区。
 func TestNoSettingsActionsMeansNoEntryAndNoPanel(t *testing.T) {
 	p := &Plugin{}
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyF2, Modifiers: ui.ModifierShift}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF2, Modifiers: gfx.ModifierShift}) {
 		t.Fatal("没有任何设置动作时，Shift+F2 不该被吃掉")
 	}
 	if p.Open() {
@@ -92,10 +92,10 @@ func TestPlainF2AlwaysFallsThrough(t *testing.T) {
 	r := &recorder{}
 	p := &Plugin{}
 	p.act = r.actions([]pluginapi.Model{{ID: "m1"}})
-	for _, ev := range []ui.KeyEvent{
-		{Key: ui.KeyF2},
-		{Key: ui.KeyF2, Modifiers: ui.ModifierControl},
-		{Key: ui.KeyF2, Modifiers: ui.ModifierShift | ui.ModifierControl},
+	for _, ev := range []gfx.KeyEvent{
+		{Key: gfx.KeyF2},
+		{Key: gfx.KeyF2, Modifiers: gfx.ModifierControl},
+		{Key: gfx.KeyF2, Modifiers: gfx.ModifierShift | gfx.ModifierControl},
 	} {
 		if p.HandleKey(ev) {
 			t.Fatalf("ev=%+v 不该被设置浮层吃掉（F2 是命令面板的）", ev)
@@ -109,20 +109,20 @@ func TestShiftF2OpensAndEscapeCloses(t *testing.T) {
 	p := &Plugin{}
 	p.act = r.actions([]pluginapi.Model{{ID: "m1"}})
 
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF2, Modifiers: ui.ModifierShift}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF2, Modifiers: gfx.ModifierShift}) {
 		t.Fatal("有设置动作时 Shift+F2 应打开浮层")
 	}
 	if !p.Shown() {
 		t.Fatal("Shift+F2 之后浮层没打开")
 	}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("浮层开着时 Esc 应被吃掉并关闭它")
 	}
 	if p.Shown() {
 		t.Fatal("Esc 之后浮层还开着")
 	}
 	// 关掉之后再按 Esc 必须放行——那是审批拒绝 / 停止 turn 的键。
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("浮层关着时 Esc 不该被吞（会顶掉审批拒绝/停止 turn）")
 	}
 }
@@ -441,7 +441,7 @@ func TestKeyboardMovesOnlyBetweenClickableRows(t *testing.T) {
 	p.act = r.actions([]pluginapi.Model{{ID: "m1"}})
 	p.rows = []Row{{Key: "a", Run: func() { r.theme = "a" }}, {Key: "b", Run: func() { r.theme = "b" }}}
 
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyDown}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyDown}) {
 		t.Fatal("浮层关着时 ↓ 不该被吞")
 	}
 	p.show("设置已打开")
@@ -449,27 +449,27 @@ func TestKeyboardMovesOnlyBetweenClickableRows(t *testing.T) {
 	if p.cursor != -1 {
 		t.Fatalf("打开时不该有光标，得到 %d", p.cursor)
 	}
-	p.HandleKey(ui.KeyEvent{Key: ui.KeyDown})
+	p.HandleKey(gfx.KeyEvent{Key: gfx.KeyDown})
 	if p.cursor != 0 {
 		t.Fatalf("第一次 ↓ 应落到 0，得到 %d", p.cursor)
 	}
-	p.HandleKey(ui.KeyEvent{Key: ui.KeyDown}) // 1
-	p.HandleKey(ui.KeyEvent{Key: ui.KeyDown}) // 回绕到 0
+	p.HandleKey(gfx.KeyEvent{Key: gfx.KeyDown}) // 1
+	p.HandleKey(gfx.KeyEvent{Key: gfx.KeyDown}) // 回绕到 0
 	if p.cursor != 0 {
 		t.Fatalf("↓ 应回绕到 0，得到 %d", p.cursor)
 	}
-	p.HandleKey(ui.KeyEvent{Key: ui.KeyUp})
+	p.HandleKey(gfx.KeyEvent{Key: gfx.KeyUp})
 	if p.cursor != 1 {
 		t.Fatalf("↑ 应回绕到 1，得到 %d", p.cursor)
 	}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyEnter}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEnter}) {
 		t.Fatal("浮层开着时 Enter 应被吃掉")
 	}
 	if r.theme != "b" {
 		t.Fatalf("Enter 应执行光标那一行（b），得到 %q", r.theme)
 	}
 	// 带修饰键的组合一律放行（Ctrl+Shift+C 复制之类）。
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyDown, Modifiers: ui.ModifierControl}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyDown, Modifiers: gfx.ModifierControl}) {
 		t.Fatal("带修饰键的方向键不该被吞")
 	}
 }

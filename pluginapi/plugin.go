@@ -23,7 +23,7 @@ package pluginapi
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -72,7 +72,7 @@ type Plugin interface {
 // Fields 是「要接键盘输入的插件」的可选接口：壳会把这些 Field 交给 viva 的
 // TextInput。不实现就等于这个插件收不到任何按键（搜索框、输入框都必须实现）。
 type Fields interface {
-	Fields() []*flex.Field
+	Fields() []*ui.Field
 }
 
 // KeyHandler 是「想接键盘的插件」的可选接口。
@@ -80,13 +80,13 @@ type Fields interface {
 // 壳把按键按装配顺序依次交给插件，**第一个返回 true 的赢**，壳自己不认识任何具体快捷键——
 // 这样「↑ 切会话」是侧栏插件的能力，不是壳里写死的 if。
 type KeyHandler interface {
-	HandleKey(ev ui.KeyEvent) bool
+	HandleKey(ev gfx.KeyEvent) bool
 }
 
 // ScrollHandler 让拥有内部横滚视口的部件先处理自己的手势；返回 Handled=false
 // 时壳继续走 View.Wheel，因此代码块的普通纵向滚动仍归消息区。
 type ScrollHandler interface {
-	HandleScroll(ev ui.ScrollEvent) ui.EventResult
+	HandleScroll(ev gfx.ScrollEvent) gfx.EventResult
 }
 
 // Panels 是「会画东西的插件」的可选接口。
@@ -146,20 +146,20 @@ type Painter struct {
 	// Order 决定同一个槽里谁先画：小的先（= 贴在上面）。
 	Order int
 	// Draw 画自己。frame 已经是这块槽的位置和尺寸，别自己算全局坐标。
-	Draw func(f *flex.Frame, env *Env)
+	Draw func(f ui.C, env *Env)
 	// AfterDraw 在整棵树布局完成之后调用，给那些「必须先知道位置才能画」的东西用：
 	// MarkdownView.Paint、自绘文本排版、代码块高亮。canvas 是全屏画布，
 	// 坐标要自己从 Draw 阶段量到的矩形来（拿 Box.Rect() 存起来）。
 	//
 	// 为什么需要它：viva 的绘制顺序不受调用方控制，在 Draw 里画一条线会被
 	// 后面的节点覆盖（踩过）。所以分两个阶段：先布局（Draw），再覆画（AfterDraw）。
-	AfterDraw func(canvas *ui.Canvas, env *Env)
+	AfterDraw func(canvas *gfx.Canvas, env *Env)
 	// Children 让一个槽位在画完自己之后，再把 f 交给下一层槽位。
 	//
 	// 这就是"高塔"的做法：壳只画 root 一个槽，框架插件在 root 里切出
 	// shell.leading / serveral 个列 / shell.bottom，再把 f 交给
 	// sidebar.* / main.* / rightbar。插件不需要知道自己在第几层。
-	Children func(f *flex.Frame, env *Env, drawSlot func(Slot))
+	Children func(f ui.C, env *Env, drawSlot func(Slot))
 }
 
 // Primitives 是基础组件的画法，由根本依赖插件（ds-core）提供。
@@ -169,22 +169,22 @@ type Painter struct {
 // 实现方必须自己加 `var _ pluginapi.Primitives = (*X)(nil)` 断言。
 type Primitives interface {
 	// ListRow 一条列表行：选中/悬停底色由实现决定，调用方只给状态。
-	ListRow(f *flex.Frame, id ui.ID, active bool, height float32, body func()) flex.Box
+	ListRow(f ui.C, id gfx.ID, active bool, height float32, body func()) ui.Box
 	// SectionHeader 一个分组头（标题 + 条数 + 展开/收起箭头）。
-	SectionHeader(f *flex.Frame, id ui.ID, title string, count int, open bool) flex.Box
+	SectionHeader(f ui.C, id gfx.ID, title string, count int, open bool) ui.Box
 	// Badge 行尾的小徽标。
-	Badge(f *flex.Frame, text string, color ui.Color) flex.Box
+	Badge(f ui.C, text string, color ui.Color) ui.Box
 	// Dot 一个状态圆点。
-	Dot(f *flex.Frame, color ui.Color, size float32) flex.Box
+	Dot(f ui.C, color ui.Color, size float32) ui.Box
 	// Divider 一条最轻的分隔线。
-	Divider(f *flex.Frame)
+	Divider(f ui.C)
 	// CircleButton 一个 28px 圆形图标按钮（官方 .action 的尺寸），返回是否被点击。
-	CircleButton(f *flex.Frame, id ui.ID, glyph string, filled bool) bool
+	CircleButton(f ui.C, id gfx.ID, glyph string, filled bool) bool
 	// Chip 一个只读小标签（官方的 .chip：inline-flex、gap 3px、business-primary 文字）。
-	Chip(f *flex.Frame, label string) flex.Box
+	Chip(f ui.C, label string) ui.Box
 	// Bubble 画一个用户气泡容器（官方 .bubble：radius xl、specific-bubble 底）。
 	// 调用方传进内容，气泡只管外观。
-	Bubble(f *flex.Frame, body func()) flex.Box
+	Bubble(f ui.C, body func()) ui.Box
 }
 
 // Env 是绘制期拿到的全部东西：只读快照 + 动作 + 主题。
@@ -197,13 +197,23 @@ type Env struct {
 	Act   Actions
 	// Tree / Feat 是这个槽所属的交互树与 feature 作用域。
 	// 插件自己用 env.Tree.ID(env.Feat, "名字") 造交互 id——不许写死数字。
-	Tree *ui.Tree
-	Feat ui.Scope
+	Tree *gfx.Tree
+	Feat gfx.Scope
 	// Canvas 只在 Draw 阶段有效：Markdown 排版这类必须先量后画的东西要它。
 	// （AfterDraw 收到的 canvas 是布局后的全屏画布，两者是同一个对象。）
-	Canvas *ui.Canvas
-	// Scroll 取某个滚动区的状态。viva 要求"要的时候再取"，所以给的是函数不是指针。
-	Scroll func(id ui.ID) *flex.ScrollState
+	Canvas *gfx.Canvas
+	// ScrollBox 把本帧的会话滚动区交给壳：插件声明完消息流滚动区后调用一次。
+	//
+	// 为什么不是"壳按 ID 查状态"：viva v0.6.0 删掉了 `ScrollState(id)` 这种按身份
+	// 查表的公开入口（滚动状态由**声明方**持有，`Box.ScrollState()` 且只在同一个
+	// paint 内有效）。壳要在布局之后存/恢复偏移，只能由声明方把盒子交回来，
+	// 壳在 `Draw` 返回后立刻用完就地丢弃（不跨帧保存 Box）。
+	ScrollBox func(box ui.Box)
+	// ViewportOffset 覆盖本帧视口虚拟化用的滚动偏移（非 nil 时用它，而不是真实偏移）。
+	// 给"主区被另一个视图接管、正文不该生成文本"的场景用（dsrightbar 的轨迹视图）：
+	// 偏移给一个远大于内容高度的值，消息就全部退化成 Slot。
+	// 生命周期只在本帧的 painter 链内：写者负责恢复原值。
+	ViewportOffset *float32
 	// Has 判断某个槽位有没有插件挂东西。框架插件靠它决定"这一列画不画"——
 	// 没有侧栏插件时不该留一条空栏。
 	Has func(Slot) bool

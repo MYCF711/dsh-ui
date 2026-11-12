@@ -43,7 +43,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 const (
@@ -476,7 +476,7 @@ func TestRealChainHJUsageDialog(t *testing.T) {
 }
 
 // hjHitLabels 列命中区的 aria 名（失败信息用）。
-func hjHitLabels(canvas *ui.Canvas) []string {
+func hjHitLabels(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Hits()))
 	for _, hit := range canvas.Hits() {
 		out = append(out, hit.Label)

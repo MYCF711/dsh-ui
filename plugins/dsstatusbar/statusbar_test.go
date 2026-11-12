@@ -8,7 +8,7 @@ import (
 )
 
 // 这个文件只测**纯函数**：不碰 flex / canvas / 窗口，所以能在 CI 里裸跑。
-// draw 里那些 f.Text(...) 靠无头截图验收（见 docs/plugin-api.md §8）。
+// draw 里那些 ui.Text(f, ...) 靠无头截图验收（见 docs/plugin-api.md §8）。
 
 func TestTok(t *testing.T) {
 	// tok 是状态栏上「↑9.5M ↓571.3k」的格式化。

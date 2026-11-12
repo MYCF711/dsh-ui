@@ -35,7 +35,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -78,7 +78,7 @@ const (
 
 // drawOfficialComposer 是官方 `conversation.composer` 座位的绘制入口
 // （**只给单测直调用**：没有内核就没有 `drawSlot`，所有子槽走只读回退）。
-func (p *Plugin) drawOfficialComposer(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawOfficialComposer(f ui.C, env *pluginapi.Env) {
 	p.drawOfficialComposerChildren(f, env, nil)
 }
 
@@ -98,11 +98,11 @@ func (p *Plugin) drawOfficialComposer(f *flex.Frame, env *pluginapi.Env) {
 //	└─ InputBar.root（padding-bottom 4）
 //	   ├─ .card（见 drawCard：附件 rail / 输入区 / 控件行）
 //	   └─ .dock（conversation.input.dock + 上下文读数）
-func (p *Plugin) drawOfficialComposerChildren(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) drawOfficialComposerChildren(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	p.lastData = env.Data
 	p.lastAct = env.Act
 	column := composerColumn(env)
-	f.Column().FillWidth().Gap(composerStackGap).Children(func() {
+	ui.Column(f).FillWidth().Gap(composerStackGap).Children(func() {
 		// 接管项：审批卡（Approval == nil 时 drawApproval 自己整条不画）。
 		p.drawApproval(f, env)
 		// `@` 候选菜单：在输入卡片上方（与旧座位同一条约定）。
@@ -120,8 +120,8 @@ func (p *Plugin) drawOfficialComposerChildren(f *flex.Frame, env *pluginapi.Env,
 // 高度是**内容驱动**的（卡片 98 + dock 26 + 底边距 4 = 128），不是钉死 122：
 // 官方 `.root` 也没有 height，它有 padding-bottom 4、子元素按内容排。座位容器
 // 给的高度只用于「没有占用方」的空壳结构（见 uikernel.drawComposerSeat）。
-func (p *Plugin) drawInputBar(f *flex.Frame, env *pluginapi.Env, column float32, drawSlot func(pluginapi.Slot)) {
-	f.Column().FillWidth().PadSides(0, 0, composerPadBottom, 0).Children(func() {
+func (p *Plugin) drawInputBar(f ui.C, env *pluginapi.Env, column float32, drawSlot func(pluginapi.Slot)) {
+	ui.Column(f).FillWidth().PadSides(0, 0, composerPadBottom, 0).Children(func() {
 		// .card：居中、定宽、圆角 panel(28)（见 drawCard）。
 		p.drawCard(f, env, column, drawSlot)
 		// .dock：卡片下方的读数行（官方 StatsPills / ContextMeter）。
@@ -141,18 +141,18 @@ func (p *Plugin) drawInputBar(f *flex.Frame, env *pluginapi.Env, column float32,
 //
 // 其余读数（Activity / Usage / 缓存率）归 dsstatusbar 的 dock，不在这里重复画：
 // 同一行两组数字会让人分不清哪个是"当前上下文"。
-func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env, cardW float32, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) drawDock(f ui.C, env *pluginapi.Env, cardW float32, drawSlot func(pluginapi.Slot)) {
 	t := p.theme
 	text := contextMeterText(env.Data)
-	f.Row().FillWidth().Height(composerDockPadTop+composerDockMinH).
-		PadSides(composerDockPadTop, 0, 0, 0).Justify(flex.Center).Gap(composerDockGap).Children(func() {
+	ui.Row(f).FillWidth().Height(composerDockPadTop+composerDockMinH).
+		PadSides(composerDockPadTop, 0, 0, 0).Justify(ui.Center).Gap(composerDockGap).Children(func() {
 		dispatchComposerSlot(drawSlot, uikernel.OffInputDock)
-		f.Row().Height(composerPillLineH+2*composerPillPadY).MaxWidth(cardW).
+		ui.Row(f).Height(composerPillLineH+2*composerPillPadY).MaxWidth(cardW).
 			Radius(t.Radii.SM).PadSides(composerPillPadY, composerPillPadX, composerPillPadY, composerPillPadX).
-			Items(flex.Center).Gap(composerPillGap).Children(func() {
-			f.Text(contextLabel).FontSize(composerPillFont).LineHeight(composerPillLineH).
+			Items(ui.Center).Gap(composerPillGap).Children(func() {
+			ui.Text(f, contextLabel).FontSize(composerPillFont).LineHeight(composerPillLineH).
 				Color(t.LabelTertiary)
-			f.Text(text).FontSize(composerPillFont).LineHeight(composerPillLineH).
+			ui.Text(f, text).FontSize(composerPillFont).LineHeight(composerPillLineH).
 				Color(t.LabelTertiary).Ellipsis()
 		})
 	})
@@ -263,21 +263,21 @@ func itoa(n int64) string {
 // 是 `input.commands`，`InputBar.tsx:505-520`），我们还没有命令注册表；
 // 文件引用是当前唯一真实的"添加"来源，所以这里让它打开 `@` 候选。
 // 等命令注册表落地，这一枚改成"加号 → 菜单（命令 / 附件 / 文件引用）"。
-func (p *Plugin) drawAddEntry(f *flex.Frame, env *pluginapi.Env) bool {
+func (p *Plugin) drawAddEntry(f ui.C, env *pluginapi.Env) bool {
 	if env.Act.FSList == nil || strings.TrimSpace(env.Data.CWD) == "" {
 		return false
 	}
 	t := p.theme
 	id := env.Tree.ID(env.Feat, "composer-add")
-	button := f.Row().Size(composerAddSize, composerAddSize).Radius(ui.RadiusFull).
-		Background(t.BgLayer3).Items(flex.Center).Justify(flex.Center).
-		Hover(flex.Look{}.Background(t.Hover))
-	clicked := button.HitWith(id, "添加文件引用", ui.HitOptions{
-		Role: ui.RoleButton,
+	button := ui.Row(f).Size(composerAddSize, composerAddSize).Radius(gfx.RadiusFull).
+		Background(t.BgLayer3).Items(ui.Center).Justify(ui.Center).
+		Hover(ui.Look{}.Background(t.Hover))
+	clicked := button.HitWith(id, "添加文件引用", gfx.HitOptions{
+		Role: gfx.RoleButton,
 		// 官方 onMouseDown=keepFocus：加号不抢输入框/IME 焦点。
 		SkipFocus: true,
 	}).Children(func() {
-		f.Icon(addPlusIcon).Size(composerAddIcon, composerAddIcon).Color(t.LabelPrimary)
+		ui.Icon(f, addPlusIcon).Size(composerAddIcon, composerAddIcon).Color(t.LabelPrimary)
 	}).Clicked()
 	if clicked {
 		// 插入一个 `@` 触发点：下一帧 computeMention 就会按 CWD 列候选。

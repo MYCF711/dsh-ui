@@ -18,7 +18,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -91,7 +91,7 @@ type Plugin struct {
 }
 
 type headerBoxes struct {
-	Root, Body, TitleRow, Tabs, ChatTab, TrajectoryTab, Corner, Divider flex.Box
+	Root, Body, TitleRow, Tabs, ChatTab, TrajectoryTab, Corner, Divider ui.Box
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -163,7 +163,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // 高度用 MinHeight（行）+ PadSides（内边距）撑，不用 Height + Shrink 组合：
 // 后者在 viva 里会让整行塌成 0 高（见 docs/plugin-api.md §7）。
 // 宽度用百分比：槽位里 f.Bounds().Width 拿到的是**整窗**宽，不是本列宽。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 
 	title, cwd, _ := titleOf(env)
@@ -171,32 +171,32 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	active := len(env.Data.Msgs) > 0 || env.Data.Stream != "" || env.Data.Busy
 
 	p.headerBoxes = headerBoxes{}
-	p.headerBoxes.Root = f.Column().WidthPercent(100).Children(func() {
+	p.headerBoxes.Root = ui.Column(f).WidthPercent(100).Children(func() {
 		if !hasSession {
 			// 官方 sessionless：上内边距 0、titleRow 高 0、没有下划线，只剩 10px。
-			p.headerBoxes.Body = f.Row().WidthPercent(100).Height(headerPadBottom)
+			p.headerBoxes.Body = ui.Row(f).WidthPercent(100).Height(headerPadBottom)
 			return
 		}
 		if !active {
 			// 官方 blank Session：隐藏标题、actions、utilities、tabs 与分割线，
 			// 但保留 headerCorner（右栏展开入口）。高度仍是 10 + 30。
-			p.headerBoxes.Body = f.Column().WidthPercent(100).
+			p.headerBoxes.Body = ui.Column(f).WidthPercent(100).
 				PadSides(headerPadTop, headerPadRight, 0, headerPadLeft).
 				Children(func() {
-					p.headerBoxes.TitleRow = f.Row().WidthPercent(100).MinHeight(titleRowHeight).
-						Items(flex.Center).Children(func() {
-						f.Spacer()
+					p.headerBoxes.TitleRow = ui.Row(f).WidthPercent(100).MinHeight(titleRowHeight).
+						Items(ui.Center).Children(func() {
+						ui.Spacer(f)
 						p.drawCorner(f, env)
 					})
 				})
 			return
 		}
 
-		p.headerBoxes.Body = f.Column().WidthPercent(100).MinHeight(activeHeaderHeight).
+		p.headerBoxes.Body = ui.Column(f).WidthPercent(100).MinHeight(activeHeaderHeight).
 			PadSides(headerPadTop, headerPadRight, 0, headerPadLeft).
 			Children(func() {
-				p.headerBoxes.TitleRow = f.Row().WidthPercent(100).MinHeight(titleRowHeight).
-					Items(flex.Center).Gap(0).Children(func() {
+				p.headerBoxes.TitleRow = ui.Row(f).WidthPercent(100).MinHeight(titleRowHeight).
+					Items(ui.Center).Gap(0).Children(func() {
 					p.drawTitleCluster(f, title, cwd)
 					p.drawCorner(f, env)
 				})
@@ -204,19 +204,19 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			})
 
 		// 官方 header 的下划线：`.5px solid border-l3`，横跨整列（含左右内边距）。
-		p.headerBoxes.Divider = f.Row().WidthPercent(100).Height(headerRule).Background(t.BorderL3)
+		p.headerBoxes.Divider = ui.Row(f).WidthPercent(100).Height(headerRule).Background(t.BorderL3)
 	})
 }
 
 // drawTitleCluster 画 nav.crumbs：`工作区 / 会话标题`。
-func (p *Plugin) drawTitleCluster(f *flex.Frame, title, cwd string) {
+func (p *Plugin) drawTitleCluster(f ui.C, title, cwd string) {
 	t := p.theme
-	f.Row().Grow(1).Items(flex.Center).Gap(titleClusterGap).MinWidth(0).Children(func() {
-		f.Row().Items(flex.Center).Gap(crumbsGap).MinWidth(0).Children(func() {
+	ui.Row(f).Grow(1).Items(ui.Center).Gap(titleClusterGap).MinWidth(0).Children(func() {
+		ui.Row(f).Items(ui.Center).Gap(crumbsGap).MinWidth(0).Children(func() {
 			// 祖先：工作区（官方祖先 crumb 是按钮，我们无对应 Action → 纯文本）
 			if ws := workspaceOf(cwd); ws != "" {
 				p.crumb(f, ws, false)
-				f.Text("/").FontSize(t.Fonts.Body).LineHeight(t.Fonts.SecondaryLine).
+				ui.Text(f, "/").FontSize(t.Fonts.Body).LineHeight(t.Fonts.SecondaryLine).
 					Color(t.LabelCaption)
 			}
 			// 当前：会话标题（官方 crumbCurrent：primary + 500）
@@ -227,29 +227,29 @@ func (p *Plugin) drawTitleCluster(f *flex.Frame, title, cwd string) {
 
 // drawTabs 画官方 ViewTabs：只有 chat / trajectory 两个有真实 painter 的页签。
 // 点击只改当前会话的本地 view store，不 OpenSession、不 reload、不 Cancel、不写 draft。
-func (p *Plugin) drawTabs(f *flex.Frame, env *pluginapi.Env) {
-	p.headerBoxes.Tabs = f.Row().WidthPercent(100).Height(tabsHeight).
+func (p *Plugin) drawTabs(f ui.C, env *pluginapi.Env) {
+	p.headerBoxes.Tabs = ui.Row(f).WidthPercent(100).Height(tabsHeight).
 		MarginSides(tabsMarginTop, 0, 0, 0).Gap(tabsGap).Children(func() {
 		p.headerBoxes.ChatTab = p.drawTab(f, env, viewapi.Chat, "对话")
 		p.headerBoxes.TrajectoryTab = p.drawTab(f, env, viewapi.Trajectory, "轨迹")
 	})
 }
 
-func (p *Plugin) drawTab(f *flex.Frame, env *pluginapi.Env, view, label string) flex.Box {
+func (p *Plugin) drawTab(f ui.C, env *pluginapi.Env, view, label string) ui.Box {
 	t := p.theme
 	active := p.Active(env.Data.Cur) == view
-	box := f.Column().Height(tabsHeight).
+	box := ui.Column(f).Height(tabsHeight).
 		Hit(env.Tree.ID(env.Feat, "view-"+view), label).Children(func() {
-		f.Row().Grow(1).Items(flex.Center).Children(func() {
-			text := f.Text(label).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
+		ui.Row(f).Grow(1).Items(ui.Center).Children(func() {
+			text := ui.Text(f, label).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
 				MaxLines(1).Ellipsis()
 			if active {
-				text.Color(t.LabelPrimary).Weight(ui.WeightMedium)
+				text.Color(t.LabelPrimary).Weight(gfx.WeightMedium)
 			} else {
 				text.Color(t.LabelTertiary)
 			}
 		})
-		rule := f.Row().WidthPercent(100).Height(tabRuleHeight)
+		rule := ui.Row(f).WidthPercent(100).Height(tabRuleHeight)
 		if active {
 			rule.Background(t.BorderL4)
 		}
@@ -261,9 +261,9 @@ func (p *Plugin) drawTab(f *flex.Frame, env *pluginapi.Env, view, label string) 
 }
 
 // drawCorner 画官方 headerCorner：最右角的那一个控件（右栏开合）。
-func (p *Plugin) drawCorner(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawCorner(f ui.C, env *pluginapi.Env) {
 	t := p.theme
-	f.Row().Items(flex.Center).MarginSides(0, cornerMarginRX, 0, cornerMarginLX).
+	ui.Row(f).Items(ui.Center).MarginSides(0, cornerMarginRX, 0, cornerMarginLX).
 		Children(func() {
 			// slot 不存在时开关没有可见效果，必须整颗隐藏；blank Session 也只在
 			// action 与 slot 都真实存在时保留官方 corner 入口。
@@ -273,10 +273,10 @@ func (p *Plugin) drawCorner(f *flex.Frame, env *pluginapi.Env) {
 				return
 			}
 			// 官方 ExpandButton 只在收起时出现；展开态由 ds-rightbar 的 PanelChrome 收起。
-			p.headerBoxes.Corner = f.Row().Width(28).Height(28).Radius(t.Radii.SM).
-				Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(t.Hover)).
+			p.headerBoxes.Corner = ui.Row(f).Width(28).Height(28).Radius(t.Radii.SM).
+				Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "toggle-rightbar"), "打开右侧边栏").Children(func() {
-				f.Icon(rightbarPanelIcon).Width(15).Height(15).Color(t.LabelSecondary)
+				ui.Icon(f, rightbarPanelIcon).Width(15).Height(15).Color(t.LabelSecondary)
 			})
 			if p.headerBoxes.Corner.Clicked() {
 				env.Act.ToggleRightbar()
@@ -286,13 +286,13 @@ func (p *Plugin) drawCorner(f *flex.Frame, env *pluginapi.Env) {
 
 // rightbarPanelIcon 与官方 ExpandButton 的镜像 PanelLeft 同属 panel-right 形状：
 // 24 viewBox、2px stroke、圆角外框 + 右侧栏分隔线。
-var rightbarPanelIcon = ui.Icon{
-	ViewBox: 24, Stroke: 2, Cap: ui.CapRound, Join: ui.JoinRound,
-	Commands: []ui.PathCommand{
-		ui.MoveTo(5, 3), ui.LineTo(19, 3), ui.QuadTo(21, 3, 21, 5),
-		ui.LineTo(21, 19), ui.QuadTo(21, 21, 19, 21), ui.LineTo(5, 21),
-		ui.QuadTo(3, 21, 3, 19), ui.LineTo(3, 5), ui.QuadTo(3, 3, 5, 3), ui.ClosePath(),
-		ui.MoveTo(15, 3), ui.LineTo(15, 21),
+var rightbarPanelIcon = gfx.Icon{
+	ViewBox: 24, Stroke: 2, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(5, 3), gfx.LineTo(19, 3), gfx.QuadTo(21, 3, 21, 5),
+		gfx.LineTo(21, 19), gfx.QuadTo(21, 21, 19, 21), gfx.LineTo(5, 21),
+		gfx.QuadTo(3, 21, 3, 19), gfx.LineTo(3, 5), gfx.QuadTo(3, 3, 5, 3), gfx.ClosePath(),
+		gfx.MoveTo(15, 3), gfx.LineTo(15, 21),
 	},
 }
 
@@ -301,15 +301,15 @@ var rightbarPanelIcon = ui.Icon{
 // 官方：`padding:4px 8px;border-radius:radius-md;max-width:220px;
 // font-size:14px;line-height:20px;color:label-tertiary`，
 // 当前项 `color:label-primary;font-weight:500`，超长省略。
-func (p *Plugin) crumb(f *flex.Frame, text string, current bool) {
+func (p *Plugin) crumb(f ui.C, text string, current bool) {
 	t := p.theme
-	b := f.Text(text).
+	b := ui.Text(f, text).
 		FontSize(t.Fonts.Body).LineHeight(t.Fonts.SecondaryLine).
 		MaxWidth(crumbMaxWidth).MaxLines(1).Ellipsis().
 		PadSides(crumbPadY, crumbPadX, crumbPadY, crumbPadX).
 		Radius(t.Radii.MD)
 	if current {
-		b.Color(t.LabelPrimary).Weight(ui.WeightMedium)
+		b.Color(t.LabelPrimary).Weight(gfx.WeightMedium)
 		return
 	}
 	// 祖先 crumb 没有可用的跳转 Action：保持官方底色/字号，但不给悬停反馈。

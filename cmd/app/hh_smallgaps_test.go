@@ -29,7 +29,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -37,14 +37,14 @@ import (
 type hhProduct struct {
 	kernel *uikernel.Kernel
 	theme  *pluginapi.Theme
-	tree   *ui.Tree
-	feat   ui.Scope
+	tree   *gfx.Tree
+	feat   gfx.Scope
 	opts   uikernel.ShellOptions
 	// measure 收骨架报上来的几何（行/列盒子），断言"同一行"就靠它。
 	//
 	// 存的是**盒子**不是矩形：`flex.Box.Rect()` 要等这一帧布局跑完才有效
 	// （在 measure 回调里取会拿到全 0），所以绘制结束后统一解一次。
-	measure map[string]flex.Box
+	measure map[string]ui.Box
 	// settings 是设置插件实例（触发按钮在它身上）。
 	settings *dssettings.Plugin
 	// statusbar 是状态栏插件实例（连接指示 + Activity 弹窗在它身上）。
@@ -62,8 +62,8 @@ func newHHProduct(t *testing.T, launcherHeight float32) *hhProduct {
 	tier.Set(true)
 	p := &hhProduct{
 		kernel:    uikernel.New("hh-smallgaps"),
-		tree:      &ui.Tree{},
-		measure:   map[string]flex.Box{},
+		tree:      &gfx.Tree{},
+		measure:   map[string]ui.Box{},
 		settings:  &dssettings.Plugin{},
 		statusbar: &dsstatusbar.Plugin{},
 	}
@@ -100,39 +100,40 @@ func (p *hhLauncherProbe) Register(pluginapi.Context) error { return nil }
 func (p *hhLauncherProbe) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
 		ID: "account-launcher.row", Slot: pluginapi.Slot("sidebar.settings"), Order: 60,
-		Draw: func(f *flex.Frame, env *pluginapi.Env) {
-			f.Row().FillWidth().Height(p.height).Children(func() {
-				f.Text("已登录").FontSize(14).LineHeight(22)
+		Draw: func(f ui.C, env *pluginapi.Env) {
+			ui.Row(f).FillWidth().Height(p.height).Children(func() {
+				ui.Text(f, "已登录").FontSize(14).LineHeight(22)
 			})
 		},
 	}}
 }
 
 // paint 画一帧产品路径（官方骨架 + 真 flex + 真 canvas）。
-func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.Actions, click string) *ui.Canvas {
+func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.Actions, click string) *gfx.Canvas {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(p.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: p.tree, Feat: p.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
 		Act:       act,
 	}
 	if click != "" {
-		canvas.BeginEventPass(p.tree.ID(p.feat, click))
+		canvas.BeginEventPass(p.tree.ID(p.feat, click), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreenWithMeasure(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.kernel.DrawSlot(f, slot, env)
-		}, func(name string, box flex.Box) {
+		}, func(name string, box ui.Box) {
 			p.measure[name] = box
 		})
 	})
@@ -145,7 +146,7 @@ func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.A
 }
 
 // hhTexts 收画布上的文字。
-func hhTexts(canvas *ui.Canvas) []string {
+func hhTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -154,17 +155,17 @@ func hhTexts(canvas *ui.Canvas) []string {
 }
 
 // hhFindText 找一条文字的矩形（找不到返回 ok=false）。
-func hhFindText(canvas *ui.Canvas, value string) (ui.Rect, bool) {
+func hhFindText(canvas *gfx.Canvas, value string) (gfx.Rect, bool) {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return text.Bounds, true
 		}
 	}
-	return ui.Rect{}, false
+	return gfx.Rect{}, false
 }
 
 // hhHasText 看画布上有没有这条文字（含前缀匹配：省略号/后缀不影响）。
-func hhHasText(canvas *ui.Canvas, want string) bool {
+func hhHasText(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want || strings.HasPrefix(text.Value, want) {
 			return true
@@ -229,7 +230,7 @@ func TestHHTriggerRowPutsSettingsAndConnectionOnOneLine(t *testing.T) {
 					tc.leftLabel, leftCenter, connCenter)
 			}
 			// 两个子项都必须落在这一行里（不是"行在，子项跑到别处"）。
-			for _, box := range []ui.Rect{left, conn} {
+			for _, box := range []gfx.Rect{left, conn} {
 				if box.Y < row.Y || box.Y+box.Height > row.Y+row.Height {
 					t.Fatalf("子项 %+v 越出设置行 %+v", box, row)
 				}
@@ -262,9 +263,9 @@ func TestHHTriggerRowRendersInLegacySidebarToo(t *testing.T) {
 		t.Fatalf("装配失败：%v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("hh-legacy-row")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -272,13 +273,14 @@ func TestHHTriggerRowRendersInLegacySidebarToo(t *testing.T) {
 	env := &pluginapi.Env{
 		Theme: theme, Data: pluginapi.Snapshot{Cur: "s", Link: pluginapi.LinkConnected},
 		Tree: tree, Feat: feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme2 := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		// 兼容桥档位：整列走旧三栏（`drawLegacySidebar`），设置行必须照样画出来。
 		uikernel.FirstScreenWithMeasure(f, env,
 			uikernel.ShellOptions{Phase: uikernel.PhaseActive, SidebarPreferred: 280, BridgeLegacy: true},
@@ -322,7 +324,7 @@ func TestHHEscClosesStatsDialogBeforeStoppingTurn(t *testing.T) {
 	}
 
 	// Esc：弹窗开着 → 关弹窗，turn 不许停。
-	if !p.kernel.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if !p.kernel.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("弹窗开着时 Esc 没有插件接（返回 false）")
 	}
 	if cancelled != 0 {
@@ -334,7 +336,7 @@ func TestHHEscClosesStatsDialogBeforeStoppingTurn(t *testing.T) {
 	}
 
 	// 再按一次 Esc：弹窗已关 → 落到 composer 的"停止当前 turn"。
-	if !p.kernel.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if !p.kernel.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("弹窗关着时 Esc 没有插件接（composer 的停止键丢了）")
 	}
 	if cancelled != 1 {
@@ -370,9 +372,9 @@ func TestHHComposerHasNoConnectionWording(t *testing.T) {
 				t.Fatalf("装配失败：%v", err)
 			}
 			theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-			tree := &ui.Tree{}
+			tree := &gfx.Tree{}
 			feat := tree.Feature("hh-composer")
-			canvas := &ui.Canvas{}
+			canvas := &gfx.Canvas{}
 			canvas.SetTree(tree)
 			canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 				return float32(len([]rune(value))) * size * 0.55
@@ -382,14 +384,15 @@ func TestHHComposerHasNoConnectionWording(t *testing.T) {
 				Data:  pluginapi.Snapshot{Cur: "s", Link: tc.link, Status: tc.status},
 				Act:   pluginapi.Actions{Send: func(string) {}},
 				Tree:  tree, Feat: feat, Canvas: canvas,
-				Bounds:    ui.Rect{Width: 902, Height: 400},
+				Bounds:    gfx.Rect{Width: 902, Height: 400},
 				MainWidth: 902,
 				Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 				Has:       func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 			}
-			var view flex.View
-			view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
-				f.Column().Width(878).Children(func() { kernel.DrawSlot(f, uikernel.OffConvComposer, env) })
+			pageTheme3 := dscore.VivaTheme(theme)
+			view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
+			view.Draw(canvas, env.Bounds, func(f ui.C) {
+				ui.Column(f).Width(878).Children(func() { kernel.DrawSlot(f, uikernel.OffConvComposer, env) })
 			})
 			joined := strings.Join(hhTexts(canvas), " ")
 			for _, word := range banned {

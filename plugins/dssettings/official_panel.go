@@ -24,7 +24,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -339,7 +339,7 @@ func derefRevision(p *int) int {
 // ── 绘制 ─────────────────────────────────────────────────────────────
 
 // drawOfficialPanel 画官方四区面板。没开 / 没接数据面时什么都不画。
-func (p *Plugin) drawOfficialPanel(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawOfficialPanel(f ui.C, env *pluginapi.Env) {
 	o := p.ensureOfficial()
 	p.syncPanel(env)
 	o.mu.Lock()
@@ -359,9 +359,9 @@ func (p *Plugin) drawOfficialPanel(f *flex.Frame, env *pluginapi.Env) {
 	layout, err := LayoutSettingsPanel(env.Bounds.Width, env.Bounds.Height, PanelOverlayTop)
 	if err != nil {
 		// 模板错了是编程错误：画一个可见的错误条，而不是静默空白。
-		f.Row().Absolute().Left(0).Top(0).Width(env.Bounds.Width).Height(24).
+		ui.Row(f).Absolute().Left(0).Top(0).Width(env.Bounds.Width).Height(24).
 			Background(ui.RGBA(180, 40, 40, 1)).Children(func() {
-			f.Text("设置面板布局失败: " + err.Error()).FontSize(12).Color(ui.RGBA(255, 255, 255, 1))
+			ui.Text(f, "设置面板布局失败: "+err.Error()).FontSize(12).Color(ui.RGBA(255, 255, 255, 1))
 		})
 		return
 	}
@@ -371,13 +371,13 @@ func (p *Plugin) drawOfficialPanel(f *flex.Frame, env *pluginapi.Env) {
 	o.mu.Unlock()
 
 	// ① 遮罩（createPortal 到 body 级的等价物：整窗、z-index 1000、拦截点击）。
-	f.Row().Absolute().Inset(0).Background(ui.RGBA(0, 0, 0, 0.24)).
+	ui.Row(f).Absolute().Inset(0).Background(ui.RGBA(0, 0, 0, 0.24)).
 		Hit(env.Tree.ID(env.Feat, "settings-mask"), "").Children(func() {
 		// ② 卡片：四区网格的相对坐标（children 坐标相对卡片 padding box）。
-		f.Row().Absolute().Left(layout.X).Top(layout.Y).
+		ui.Row(f).Absolute().Left(layout.X).Top(layout.Y).
 			Width(layout.Width).Height(layout.Height).
 			Radius(t.Radii.Panel).Background(t.BgLayer2).
-			Border(1, t.BorderL2).Shadow(ui.ShadowXS).Clip().
+			Border(1, t.BorderL2).Shadow(gfx.ShadowXS).Clip().
 			Children(func() {
 				if area, ok := layout.Area("title"); ok {
 					p.drawNavTitle(f, t, relArea(area, layout))
@@ -402,21 +402,21 @@ func relArea(a AreaRect, layout GridLayout) AreaRect {
 }
 
 // drawNavTitle 画左标题（aria-labelledby 指向它）。
-func (p *Plugin) drawNavTitle(f *flex.Frame, t *pluginapi.Theme, a AreaRect) {
-	f.Row().Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
+func (p *Plugin) drawNavTitle(f ui.C, t *pluginapi.Theme, a AreaRect) {
+	ui.Row(f).Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
 		PadSides(NavTitlePadTop, NavTitlePadRight, NavTitlePadBottom, NavTitlePadLeft).
-		Items(flex.Center).Children(func() {
-		f.Text("设置").FontSize(NavTitleFontSize).LineHeight(NavTitleLineHeight).
+		Items(ui.Center).Children(func() {
+		ui.Text(f, "设置").FontSize(NavTitleFontSize).LineHeight(NavTitleLineHeight).
 			Weight(NavTitleWeight).Color(t.LabelPrimary)
 	})
 }
 
 // drawPanelHeader 画右列头：action 区（空）+ 关闭按钮。
-func (p *Plugin) drawPanelHeader(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect) {
-	f.Row().Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
+func (p *Plugin) drawPanelHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect) {
+	ui.Row(f).Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
 		PadSides(HeaderPadTop, HeaderPadRight, HeaderPadBottom, HeaderPadLeft).
-		Gap(HeaderGap).Items(flex.Center).Children(func() {
-		f.Row().Grow(1)
+		Gap(HeaderGap).Items(ui.Center).Children(func() {
+		ui.Row(f).Grow(1)
 		if p.prims != nil {
 			if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "settings-close"), "×", false) {
 				p.CloseOfficial()
@@ -426,8 +426,8 @@ func (p *Plugin) drawPanelHeader(f *flex.Frame, env *pluginapi.Env, t *pluginapi
 }
 
 // drawPanelNav 画左导航（settings.section list）。
-func (p *Plugin) drawPanelNav(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect, model PanelModel, activeID string) {
-	f.Column().Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
+func (p *Plugin) drawPanelNav(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect, model PanelModel, activeID string) {
+	ui.Column(f).Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
 		PadSides(NavPadTop, NavPadX, 0, NavPadX).Gap(NavListGap).Children(func() {
 		for _, section := range model.Sections {
 			section := section
@@ -436,13 +436,13 @@ func (p *Plugin) drawPanelNav(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Th
 			if active {
 				bg = t.NavActive
 			}
-			if f.Column().Height(NavCellHeight).Radius(t.Radii.MD).
+			if ui.Column(f).Height(NavCellHeight).Radius(t.Radii.MD).
 				PadSides(NavCellPadTop, NavCellPadRight, NavCellPadBottom, NavCellPadLeft).
-				Gap(NavCellGap).Items(flex.Center).Background(bg).Hover(flex.Look{}.Background(t.Hover)).
+				Gap(NavCellGap).Items(ui.Center).Background(bg).Hover(ui.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "settings-nav-"+section.ID), section.Title).
 				Children(func() {
-					f.Text(IconGlyph(section.Icon)).FontSize(NavCellIconSize).Color(t.LabelSecondary)
-					f.Text(section.Title).FontSize(NavCellFontSize).LineHeight(NavCellLineHeight).
+					ui.Text(f, IconGlyph(section.Icon)).FontSize(NavCellIconSize).Color(t.LabelSecondary)
+					ui.Text(f, section.Title).FontSize(NavCellFontSize).LineHeight(NavCellLineHeight).
 						Color(t.LabelPrimary).Grow(1).Ellipsis()
 				}).Clicked() {
 				p.SelectSection(section.ID)
@@ -452,15 +452,15 @@ func (p *Plugin) drawPanelNav(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Th
 }
 
 // drawPanelOptions 画右页（active section 的行）。
-func (p *Plugin) drawPanelOptions(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect, section PanelSection, write WriteState) {
-	f.Column().Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
+func (p *Plugin) drawPanelOptions(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect, section PanelSection, write WriteState) {
+	ui.Column(f).Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
 		PadSides(OptionsPadTop, OptionsPadRight, OptionsPadBottom, OptionsPadLeft).Children(func() {
 		if section.Note != "" {
-			f.Text(section.Note).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
+			ui.Text(f, section.Note).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
 				Color(t.LabelTertiary).Ellipsis()
 		}
 		if write.Render() != "" && write.Failure() {
-			f.Text(write.Render()).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
+			ui.Text(f, write.Render()).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
 				Color(t.Error)
 		}
 		for i, row := range section.Rows {
@@ -490,26 +490,26 @@ func OfficialRowHeight(kind ItemKind) float32 {
 }
 
 // drawOfficialRow 画一行（选择器 / 开关 / stepper / cube / 按钮 / 版本）。
-func (p *Plugin) drawOfficialRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow) {
+func (p *Plugin) drawOfficialRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow) {
 	height := OfficialRowHeight(row.Kind)
 	id := env.Tree.ID(env.Feat, "settings-row-"+row.ID)
 	body := func() {
-		f.Column().Grow(1).Gap(RowTextGap).Children(func() {
-			f.Text(row.Title).FontSize(RowTitleFontSize).LineHeight(RowTitleLineHeight).
+		ui.Column(f).Grow(1).Gap(RowTextGap).Children(func() {
+			ui.Text(f, row.Title).FontSize(RowTitleFontSize).LineHeight(RowTitleLineHeight).
 				Color(t.LabelPrimary).Ellipsis()
 			if row.Desc != "" {
-				f.Text(row.Desc).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
+				ui.Text(f, row.Desc).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
 					Color(t.LabelTertiary).Ellipsis()
 			}
 			if row.Reason != "" {
-				f.Text(row.Reason).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
+				ui.Text(f, row.Reason).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
 					Color(t.Warn).Ellipsis()
 			}
 		})
 		p.drawRowControl(f, t, row)
 	}
-	box := f.Row().FillWidth().Height(height).
-		PadSides(RowPadY, 0, RowPadY, 0).Gap(RowGap).Items(flex.Center).
+	box := ui.Row(f).FillWidth().Height(height).
+		PadSides(RowPadY, 0, RowPadY, 0).Gap(RowGap).Items(ui.Center).
 		Hit(id, row.Title).Children(body)
 	if row.Writable() {
 		if box.Clicked() {
@@ -519,7 +519,7 @@ func (p *Plugin) drawOfficialRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi
 }
 
 // drawRowControl 画行尾控件（按 Kind 分支）。
-func (p *Plugin) drawRowControl(f *flex.Frame, t *pluginapi.Theme, row PanelRow) {
+func (p *Plugin) drawRowControl(f ui.C, t *pluginapi.Theme, row PanelRow) {
 	switch row.Kind {
 	case ItemSwitch:
 		on := row.Known && row.Selected == "true"
@@ -527,46 +527,46 @@ func (p *Plugin) drawRowControl(f *flex.Frame, t *pluginapi.Theme, row PanelRow)
 		if on {
 			bg = t.BrandPrimary
 		}
-		f.Row().Width(36).Height(20).Radius(10).Background(bg).PadSides(2, 2, 2, 2).
-			Justify(flex.End).Children(func() {
-			f.Row().Width(16).Height(16).Radius(8).Background(t.BgLayer2)
+		ui.Row(f).Width(36).Height(20).Radius(10).Background(bg).PadSides(2, 2, 2, 2).
+			Justify(ui.End).Children(func() {
+			ui.Row(f).Width(16).Height(16).Radius(8).Background(t.BgLayer2)
 		})
 	case ItemStepper:
-		f.Row().Height(SelectorHeight).Radius(t.Radii.MD).PadX(SelectorPadX).
-			Gap(SelectorGap).Items(flex.Center).Background(t.BgLayer3).Children(func() {
-			f.Text("−").FontSize(RowTitleFontSize).Color(t.LabelSecondary)
-			f.Text(row.Display()).FontSize(RowTitleFontSize).Color(t.LabelPrimary)
-			f.Text("+").FontSize(RowTitleFontSize).Color(t.LabelSecondary)
+		ui.Row(f).Height(SelectorHeight).Radius(t.Radii.MD).PadX(SelectorPadX).
+			Gap(SelectorGap).Items(ui.Center).Background(t.BgLayer3).Children(func() {
+			ui.Text(f, "−").FontSize(RowTitleFontSize).Color(t.LabelSecondary)
+			ui.Text(f, row.Display()).FontSize(RowTitleFontSize).Color(t.LabelPrimary)
+			ui.Text(f, "+").FontSize(RowTitleFontSize).Color(t.LabelSecondary)
 		})
 	case ItemCubes:
-		f.Row().Gap(SelectorGap).Items(flex.Center).Children(func() {
+		ui.Row(f).Gap(SelectorGap).Items(ui.Center).Children(func() {
 			for _, c := range row.Choices {
 				selected := row.Known && row.Selected == c.Value
 				bg := t.BgLayer3
 				if selected {
 					bg = t.ButtonPrimaryFill
 				}
-				f.Row().Width(28).Height(28).Radius(t.Radii.SM).Background(bg).
-					Justify(flex.Center).Items(flex.Center).Children(func() {
-					f.Text(firstRune(c.Label)).FontSize(RowDescFontSize).Color(t.LabelPrimary)
+				ui.Row(f).Width(28).Height(28).Radius(t.Radii.SM).Background(bg).
+					Justify(ui.Center).Items(ui.Center).Children(func() {
+					ui.Text(f, firstRune(c.Label)).FontSize(RowDescFontSize).Color(t.LabelPrimary)
 				})
 			}
 		})
 	case ItemButton:
-		f.Row().Height(ShortcutButtonHeight).MinWidth(ShortcutButtonMinWidth).
+		ui.Row(f).Height(ShortcutButtonHeight).MinWidth(ShortcutButtonMinWidth).
 			MaxWidth(ShortcutButtonMaxWidth).Radius(t.Radii.MD).PadX(ShortcutButtonPadX).
-			Items(flex.Center).Justify(flex.Center).Background(t.BgLayer3).Children(func() {
-			f.Text("编辑快捷键").FontSize(ShortcutDescFontSize).Color(t.LabelPrimary)
+			Items(ui.Center).Justify(ui.Center).Background(t.BgLayer3).Children(func() {
+			ui.Text(f, "编辑快捷键").FontSize(ShortcutDescFontSize).Color(t.LabelPrimary)
 		})
 	case ItemVersion:
 		// 官方：`当前版本：` + build 版本（缺失时整行不渲染，见 BuildPanel）。
-		f.Text("当前版本：" + row.Display()).FontSize(VersionRowFontSize).
+		ui.Text(f, "当前版本："+row.Display()).FontSize(VersionRowFontSize).
 			LineHeight(VersionRowLineHeight).Color(t.LabelPrimary)
 	default: // ItemSelector
-		f.Row().Height(SelectorHeight).Radius(t.Radii.MD).PadX(SelectorPadX).
-			Gap(SelectorGap).Items(flex.Center).Background(t.BgLayer3).Children(func() {
-			f.Text(row.Display()).FontSize(RowTitleFontSize).Color(t.LabelPrimary)
-			f.Text("›").FontSize(SelectorChevron).Color(t.LabelTertiary)
+		ui.Row(f).Height(SelectorHeight).Radius(t.Radii.MD).PadX(SelectorPadX).
+			Gap(SelectorGap).Items(ui.Center).Background(t.BgLayer3).Children(func() {
+			ui.Text(f, row.Display()).FontSize(RowTitleFontSize).Color(t.LabelPrimary)
+			ui.Text(f, "›").FontSize(SelectorChevron).Color(t.LabelTertiary)
 		})
 	}
 }
@@ -653,7 +653,7 @@ func (p *Plugin) setWriteState(state WriteState) {
 // handleOfficialKey 是官方面板的键盘路由。
 //
 // 返回 true 表示消费了这个键（后面插件看不到）。
-func (p *Plugin) handleOfficialKey(ev ui.KeyEvent) bool {
+func (p *Plugin) handleOfficialKey(ev gfx.KeyEvent) bool {
 	if ev.Release {
 		return false
 	}
@@ -661,8 +661,8 @@ func (p *Plugin) handleOfficialKey(ev ui.KeyEvent) bool {
 	shown := p.OfficialShown()
 
 	// 入口：Shift+F2（与旧浮层同一个键，产品里只会有其中一个生效）。
-	if ev.Key == ui.KeyF2 {
-		if ev.Modifiers != ui.ModifierShift {
+	if ev.Key == gfx.KeyF2 {
+		if ev.Modifiers != gfx.ModifierShift {
 			return false
 		}
 		if shown {
@@ -682,13 +682,13 @@ func (p *Plugin) handleOfficialKey(ev ui.KeyEvent) bool {
 		return false
 	}
 	switch ev.Key {
-	case ui.KeyDown:
+	case gfx.KeyDown:
 		p.moveOfficialCursor(1)
 		return true
-	case ui.KeyUp:
+	case gfx.KeyUp:
 		p.moveOfficialCursor(-1)
 		return true
-	case ui.KeyEnter:
+	case gfx.KeyEnter:
 		p.activateOfficialCursor()
 		return true
 	}

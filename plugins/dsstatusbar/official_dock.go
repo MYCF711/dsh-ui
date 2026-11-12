@@ -41,7 +41,7 @@ package dsstatusbar
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -64,7 +64,7 @@ func (p *Plugin) composerSeatLive() bool { return p.tier.Official() }
 // 可见性：**常驻**（有会话就画）；每枚胶囊的字段按宿主实际能力写数或写「未知」。
 // 有官方弹窗行的那一枚（活动）按官方 DialogPill 画成 button（hover + 命中区），
 // 并在被点开时画详情弹窗；其余保持官方 PlainPill 的静态读数。
-func (p *Plugin) drawOfficialDock(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawOfficialDock(f ui.C, env *pluginapi.Env) {
 	if !p.composerSeatLive() {
 		// 旧档位没有这个座位：弹窗跟着座位一起消失，别留一个飞在旧界面上的浮层。
 		p.closeStatsDialog()
@@ -78,11 +78,11 @@ func (p *Plugin) drawOfficialDock(f *flex.Frame, env *pluginapi.Env) {
 	}
 	t := p.themeOf(env)
 	specs := officialPillSpecs(env.Data)
-	var pill flex.Box
+	var pill ui.Box
 	var pillDrawn bool
-	f.Row().FillWidth().Height(dockPaddingTop+pillHeight).
+	ui.Row(f).FillWidth().Height(dockPaddingTop+pillHeight).
 		PadSides(dockPaddingTop, 0, 0, 0).
-		Items(flex.Center).Justify(flex.Center).Gap(dockGap).Children(func() {
+		Items(ui.Center).Justify(ui.Center).Gap(dockGap).Children(func() {
 		for _, spec := range specs {
 			box, drawn := p.officialPill(f, t, env, spec)
 			if spec.interactive {
@@ -109,17 +109,17 @@ func (p *Plugin) drawOfficialDock(f *flex.Frame, env *pluginapi.Env) {
 // 的「为什么内边距用定宽占位盒而不是 PadSides」。
 // 返回的 Box 是本帧胶囊（AfterDraw 从它读锚点矩形）；bool 表示这一帧真的画了
 // 一颗**可点**的胶囊（官方 DialogPill）。
-func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.Env, spec officialPillSpec) (flex.Box, bool) {
+func (p *Plugin) officialPill(f ui.C, t *pluginapi.Theme, env *pluginapi.Env, spec officialPillSpec) (ui.Box, bool) {
 	if !spec.interactive {
 		// 官方 PlainPill：静态 span。没有命中区、没有 hover——画一个点不开的
 		// 按钮比不画更糟（用户会以为它坏了）。
-		box := f.Row().Height(pillHeight).Radius(t.Radii.SM).
-			Items(flex.Center).Gap(0).Children(func() {
-			f.Row().Width(pillPadX).Height(pillHeight)
+		box := ui.Row(f).Height(pillHeight).Radius(t.Radii.SM).
+			Items(ui.Center).Gap(0).Children(func() {
+			ui.Row(f).Width(pillPadX).Height(pillHeight)
 			p.drawPillIcon(f, spec.icon, t.LabelTertiary)
-			f.Text(spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
+			ui.Text(f, spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
 				Color(t.LabelTertiary).Ellipsis()
-			f.Row().Width(pillPadX).Height(pillHeight)
+			ui.Row(f).Width(pillPadX).Height(pillHeight)
 		})
 		return box, false
 	}
@@ -139,22 +139,22 @@ func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.
 	if lit {
 		textColor = t.LabelSecondary
 	}
-	box := f.Row().Height(pillHeight).Radius(t.Radii.SM).Hover(flex.Look{}.Background(t.Hover))
+	box := ui.Row(f).Height(pillHeight).Radius(t.Radii.SM).Hover(ui.Look{}.Background(t.Hover))
 	if open {
 		// `button.pill[aria-expanded=true]{background: interactive-bg-hover}`
 		box = box.Background(t.Hover)
 	}
-	box = box.Items(flex.Center).Gap(0).Children(func() {
-		f.Row().Width(pillPadX).Height(pillHeight)
+	box = box.Items(ui.Center).Gap(0).Children(func() {
+		ui.Row(f).Width(pillPadX).Height(pillHeight)
 		p.drawPillIcon(f, spec.icon, textColor)
-		f.Text(spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
+		ui.Text(f, spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
 			Color(textColor).Ellipsis()
-		f.Row().Width(pillPadX).Height(pillHeight)
+		ui.Row(f).Width(pillPadX).Height(pillHeight)
 	})
 	if !id.IsZero() {
 		// 官方 trigger 是 button：`aria-haspopup="dialog"` + `aria-expanded={open}`。
-		box = box.HitWith(id, spec.text, ui.HitOptions{
-			Role: ui.RoleButton, Expandable: true, Expanded: open,
+		box = box.HitWith(id, spec.text, gfx.HitOptions{
+			Role: gfx.RoleButton, Expandable: true, Expanded: open,
 		})
 	}
 	return box, true
@@ -169,24 +169,24 @@ func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.
 // 图标颜色随胶囊文字色（官方 svg 无自带 color，继承 `.pill{color:…}`）：
 // 常态 label-tertiary、悬停/展开 label-secondary（本函数由调用方传色）。
 // `viewBox` 仍是官方 16，这里只按官方 CSS 渲染成 14×14。
-func (p *Plugin) drawPillIcon(f *flex.Frame, kind officialGlyph, tint ui.Color) {
+func (p *Plugin) drawPillIcon(f ui.C, kind officialGlyph, tint gfx.Color) {
 	if kind == glyphNone {
 		return
 	}
 	// 官方 `.pill{gap:6px}`：图标与文字之间那 6px 由这里给（不在图标里内缩）。
-	f.Row().Width(pillGap).Height(pillHeight)
-	f.Icon(pillIcon(kind, tint)).Size(StatsPillIconSize, StatsPillIconSize).Color(tint)
+	ui.Row(f).Width(pillGap).Height(pillHeight)
+	ui.Icon(f, pillIcon(kind, tint)).Size(StatsPillIconSize, StatsPillIconSize).Color(tint)
 }
 
 // pillIcon 按种类取官方 sprite（Activity = gauge-outline，Usage = database-outline）。
-func pillIcon(kind officialGlyph, tint ui.Color) ui.Icon {
+func pillIcon(kind officialGlyph, tint gfx.Color) gfx.Icon {
 	switch kind {
 	case glyphGauge:
 		return gaugeOutlineIcon(tint)
 	case glyphDatabase:
 		return databaseOutlineIcon()
 	default:
-		return ui.Icon{}
+		return gfx.Icon{}
 	}
 }
 

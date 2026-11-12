@@ -1,7 +1,6 @@
 package dstool
 
 import (
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -29,24 +28,24 @@ func bashRenderer() Renderer {
 		Body: func(b *BodyCtx) {
 			t := b.Env.Theme
 			if cmd := command(b.Card.Args); cmd != "" {
-				b.Frame.Text(cmd).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
+				ui.Text(b.Frame, cmd).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
 			}
 			code, rest := splitExit(b.Card.Summary)
 			switch {
 			case code != "":
-				b.Frame.Row().WidthPercent(100).Gap(8).Items(flex.Center).Children(func() {
+				ui.Row(b.Frame).WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
 					color := t.Success
 					if badExit(code) {
 						color = t.Error
 					}
 					b.Badge(code, color)
 					if rest != "" {
-						b.Frame.Text(rest).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(6)
+						ui.Text(b.Frame, rest).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(6)
 					}
 				})
 			case rest != "":
 				// 拆不出退出码：原样显示摘要，不硬造一个"exit 0"。
-				b.Frame.Text(rest).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
+				ui.Text(b.Frame, rest).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
 			}
 		},
 	}
@@ -111,23 +110,23 @@ func fileRenderer(spec fileSpec) Renderer {
 				}
 				shown++
 				label := argLabel(key)
-				b.Frame.Row().WidthPercent(100).Gap(8).Children(func() {
-					b.Frame.Text(label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+				ui.Row(b.Frame).WidthPercent(100).Gap(8).Children(func() {
+					ui.Text(b.Frame, label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 					// MaxWidth 是 Ellipsis 的边界：不给的话长路径会画到窗口外
 					// （和 drawCard 同一个坑，实测过）。
-					b.Frame.Text(value).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelSecondary).
+					ui.Text(b.Frame, value).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelSecondary).
 						MaxWidth(cw - 120).Ellipsis()
 				})
 			}
 			if shown == 0 && b.Card.Args != "" {
 				// 参数不是 JSON（或没有认得的键）：退回原文，别把内容吞掉。
-				b.Frame.Text(b.Card.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
+				ui.Text(b.Frame, b.Card.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
 			}
 			if spec.tool == "edit" {
 				drawEditDiff(b, args)
 			}
 			if b.Card.Summary != "" {
-				b.Frame.Text(b.Card.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
+				ui.Text(b.Frame, b.Card.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
 			}
 		},
 	}
@@ -150,9 +149,9 @@ func drawEditDiff(b *BodyCtx, args map[string]string) {
 		{label: "旧内容", value: oldValue, color: t.LabelTertiary},
 		{label: "新内容", value: newValue, color: t.LabelSecondary},
 	} {
-		b.Frame.Column().WidthPercent(100).Gap(2).Children(func() {
-			b.Frame.Text(field.label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			b.Frame.Text(field.value).Mono().FontSize(t.Fonts.Tiny).Color(field.color).MaxLines(6)
+		ui.Column(b.Frame).WidthPercent(100).Gap(2).Children(func() {
+			ui.Text(b.Frame, field.label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			ui.Text(b.Frame, field.value).Mono().FontSize(t.Fonts.Tiny).Color(field.color).MaxLines(6)
 		})
 	}
 }

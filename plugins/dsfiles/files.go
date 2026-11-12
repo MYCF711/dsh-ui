@@ -26,7 +26,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -78,7 +78,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // drawList 画侧栏底部的文件列表。
 //
 // **CWD 为空就整块不画**——没有工作区根，列出来的东西点了也读不了。
-func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 	if env.Data.CWD == "" || env.Act.FSList == nil {
 		return
 	}
@@ -101,15 +101,15 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 		shown = shown[:maxShown]
 	}
 
-	f.Column().FillWidth().Gap(2).PadY(4).Children(func() {
+	ui.Column(f).FillWidth().Gap(2).PadY(4).Children(func() {
 		title := "文件"
 		if p.curDir != "" {
 			title = "▸ " + p.curDir
 		}
-		f.Text(title).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		ui.Text(f, title).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		if p.curDir != "" {
 			if back := p.prims.ListRow(f, env.Tree.ID(env.Feat, "files-up"), false, 22, func() {
-				f.Text("← 上一级").FontSize(12).Color(t.LabelTertiary)
+				ui.Text(f, "← 上一级").FontSize(12).Color(t.LabelTertiary)
 			}); back.Clicked() {
 				p.curDir = parentDir(p.curDir)
 				p.sel = ""
@@ -125,7 +125,7 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 			}
 			active := !e.IsDir && e.Name == p.sel
 			row := p.prims.ListRow(f, env.Tree.ID(env.Feat, "file-"+e.Name), active, 22, func() {
-				f.Text(label).FontSize(12).Color(t.LabelSecondary)
+				ui.Text(f, label).FontSize(12).Color(t.LabelSecondary)
 			})
 			if !row.Clicked() {
 				continue
@@ -144,7 +144,7 @@ func (p *Plugin) drawList(f *flex.Frame, env *pluginapi.Env) {
 			}
 		}
 		if more > 0 {
-			f.Text("还有 " + itoa(more) + " 个").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Text(f, "还有 "+itoa(more)+" 个").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
 	})
 }
@@ -187,13 +187,13 @@ func (p *Plugin) open(env *pluginapi.Env, cwd, name string) {
 //
 // 用 Absolute + 显式 Width/Height（本仓唯一被真机证明能出现在 overlay 上的写法，
 // 见 dsshortcuts 的注释）；**必须 Column**，Row 会把所有内容挤成一行。
-func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
 	if p.sel == "" {
 		return
 	}
 	t := p.theme
-	f.Column().Absolute().Top(56).Right(24).Width(520).Children(func() {
-		f.Column().Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
+	ui.Column(f).Absolute().Top(56).Right(24).Width(520).Children(func() {
+		ui.Column(f).Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
 			PadSides(16, 16, 14, 16).Gap(8).Children(func() {
 			// 标题行：文件名 + 「用默认程序打开」。
 			//
@@ -203,10 +203,10 @@ func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
 			//
 			// 三个前置条件缺一不画：**读成功了**（读不出来还去开，开的是同一个坏路径）、
 			// **壳接了 OpenFile**（老壳没有这个动作）、**有选中文件**。
-			f.Row().FillWidth().Items(flex.Center).Gap(8).Children(func() {
-				f.Text(p.sel).FontSize(14).Color(t.LabelPrimary).Grow(1)
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {
+				ui.Text(f, p.sel).FontSize(14).Color(t.LabelPrimary).Grow(1)
 				if env.Act.OpenFile != nil && p.err == "" {
-					if f.Button(env.Tree.ID(env.Feat, "files-open-external"), "用默认程序打开").
+					if ui.Button(f, "用默认程序打开").
 						Small().Clicked() {
 						if dst, err := fileURL(dirPath(env.Data.CWD, p.curDir) + "/" + p.sel); err == nil {
 							// 失败由壳写状态栏（它统一管反馈），插件不重复报。
@@ -216,7 +216,7 @@ func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
 				}
 			})
 			if p.err != "" {
-				f.Text("读不出来：" + p.err).FontSize(12).Color(t.Error)
+				ui.Text(f, "读不出来："+p.err).FontSize(12).Color(t.Error)
 			} else {
 				// 正文用等宽、行高 18、最多 20 行——超出的截断（这也是"别卡住界面"）
 				lines := strings.Split(p.content, "\n")
@@ -224,7 +224,7 @@ func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
 					lines = append(lines[:20], "… 还有 "+itoa(len(lines)-20)+" 行")
 				}
 				for _, ln := range lines {
-					f.Text(ln).FontSize(12).Color(t.LabelSecondary)
+					ui.Text(f, ln).FontSize(12).Color(t.LabelSecondary)
 				}
 			}
 		})
@@ -259,4 +259,4 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
-var _ = ui.KeyEscape // 保留 import（后续加"Esc 关预览"时直接用）
+var _ = gfx.KeyEscape // 保留 import（后续加"Esc 关预览"时直接用）

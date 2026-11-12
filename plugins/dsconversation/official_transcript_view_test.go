@@ -16,14 +16,14 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // newTranscriptCanvas 用真实 flex 布局 + 确定性字宽测量器（不需要窗口）。
-func newTranscriptCanvas() (*ui.Canvas, *ui.Tree) {
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+func newTranscriptCanvas() (*gfx.Canvas, *gfx.Tree) {
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
@@ -32,17 +32,18 @@ func newTranscriptCanvas() (*ui.Canvas, *ui.Tree) {
 }
 
 // renderTranscript 在一张真实画布上跑一次 Draw。
-func renderTranscript(t *testing.T, entries []TranscriptEntry, vp TranscriptViewport) (*OfficialTranscriptView, *ui.Canvas) {
+func renderTranscript(t *testing.T, entries []TranscriptEntry, vp TranscriptViewport) (*OfficialTranscriptView, *gfx.Canvas) {
 	t.Helper()
 	theme := dscore.Dark()
 	view := NewOfficialTranscriptView(theme, &dscore.Primitives{Theme: theme})
 	canvas, tree := newTranscriptCanvas()
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("transcript-view-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
-	var fv flex.View
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	fv.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		view.Draw(f, env, vp, entries)
 	})
 	// 覆画阶段：代码块（banner / 高亮 / 横滚视口 / 复制按钮）要等布局
@@ -52,7 +53,7 @@ func renderTranscript(t *testing.T, entries []TranscriptEntry, vp TranscriptView
 }
 
 // hostViewport 造一个「外层已经有宿主滚动口」的视口（线上默认形态）。
-func hostViewport(tree *ui.Tree) TranscriptViewport {
+func hostViewport(tree *gfx.Tree) TranscriptViewport {
 	return TranscriptViewport{
 		HostScroll: true,
 		HostID:     tree.ID(tree.Feature("transcript-view-test"), "host-scroll"),
@@ -61,7 +62,7 @@ func hostViewport(tree *ui.Tree) TranscriptViewport {
 }
 
 // selfViewport 造一个「没有宿主滚动口、自滚动」的视口（独立挂载 Chat）。
-func selfViewport(tree *ui.Tree) TranscriptViewport {
+func selfViewport(tree *gfx.Tree) TranscriptViewport {
 	return TranscriptViewport{
 		HostScroll: false,
 		SelfID:     tree.ID(tree.Feature("transcript-view-test"), "self-scroll"),
@@ -69,27 +70,27 @@ func selfViewport(tree *ui.Tree) TranscriptViewport {
 }
 
 // canvasText 找一段文本；found=false 表示没画出来。
-func canvasText(canvas *ui.Canvas, value string) (ui.Text, bool) {
+func canvasText(canvas *gfx.Canvas, value string) (gfx.Text, bool) {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return text, true
 		}
 	}
-	return ui.Text{}, false
+	return gfx.Text{}, false
 }
 
 // canvasTextPrefix 按前缀找一段文本（省略号截断的文本用）。
-func canvasTextPrefix(canvas *ui.Canvas, prefix string) (ui.Text, bool) {
+func canvasTextPrefix(canvas *gfx.Canvas, prefix string) (gfx.Text, bool) {
 	for _, text := range canvas.Texts() {
 		if strings.HasPrefix(text.Value, prefix) {
 			return text, true
 		}
 	}
-	return ui.Text{}, false
+	return gfx.Text{}, false
 }
 
 // mustCanvasText 断言某段文本真的画在画布上。
-func mustCanvasText(t *testing.T, canvas *ui.Canvas, value string) ui.Text {
+func mustCanvasText(t *testing.T, canvas *gfx.Canvas, value string) gfx.Text {
 	t.Helper()
 	text, ok := canvasText(canvas, value)
 	if !ok {
@@ -396,11 +397,12 @@ func TestApprovalCardGeometryAndDisabled(t *testing.T) {
 	canvas, tree := newTranscriptCanvas()
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: tree.Feature("approval-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	var boxes ApprovalBoxes
-	var fv flex.View
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f *flex.Frame) {
+	pageTheme2 := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	fv.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		boxes = view.DrawApprovalCard(f, env, pluginapi.Approval{
 			RequestID: "",
 			Title:     "需要审批 bash",

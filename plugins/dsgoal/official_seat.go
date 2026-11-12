@@ -35,7 +35,7 @@ package dsgoal
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -127,7 +127,7 @@ func goalContentWidth(column float32) float32 {
 // ——后者今天由 composer 占用方转发、本仓占用方还没转发，见文件头。
 //
 // 可见性：**只在有活跃 goal 时显示**（`Act.Goal` 为空 → 整块不画，不留空条）。
-func (p *Plugin) drawOfficial(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawOfficial(f ui.C, env *pluginapi.Env) {
 	if !p.composerSeatLive() {
 		return
 	}
@@ -142,21 +142,21 @@ func (p *Plugin) drawOfficial(f *flex.Frame, env *pluginapi.Env) {
 	maxW := goalContentWidth(goalColumn(env))
 	// `.dock{margin:0 auto; width:calc(100% - 2*clearance - 4*inset)}`：
 	// 座位已扣掉 2×clearance(16)，这里补 dock 自己的左右 inset。
-	f.Row().FillWidth().MarginSides(0, goalDockInset, 0, goalDockInset).
-		Justify(flex.Center).Children(func() {
-		f.Row().FillWidth().MaxWidth(maxW).Height(goalBarHeight).
+	ui.Row(f).FillWidth().MarginSides(0, goalDockInset, 0, goalDockInset).
+		Justify(ui.Center).Children(func() {
+		ui.Row(f).FillWidth().MaxWidth(maxW).Height(goalBarHeight).
 			PadSides(goalBarPadTop, goalBarPadRight, goalBarPadBottom, goalBarPadLeft).
-			Items(flex.Center).Gap(goalBarGap).
-			Radius(t.Radii.MD).Background(t.BgLayer2).Shadow(ui.ShadowXS).
+			Items(ui.Center).Gap(goalBarGap).
+			Radius(t.Radii.MD).Background(t.BgLayer2).Shadow(gfx.ShadowXS).
 			Children(func() {
 				// `.goalGlyph{color:var(--dsw-alias-label-tertiary);flex:none;display:inline-flex}`：
 				// 官方 sprite `goal-outline`，`<IconGoalOutlineRegular size={14}/>`
 				// （GoalBar.tsx:137）。viewBox 保持官方的 16，缩放交给 Size(14)。
-				f.Icon(goalOutlineIcon()).Size(goalGlyphSize, goalGlyphSize).Color(t.LabelTertiary)
-				f.Text(goalLabelText).FontSize(goalLabelFont).LineHeight(goalLabelLine).
-					Weight(ui.WeightMedium).Color(t.LabelPrimary)
+				ui.Icon(f, goalOutlineIcon()).Size(goalGlyphSize, goalGlyphSize).Color(t.LabelTertiary)
+				ui.Text(f, goalLabelText).FontSize(goalLabelFont).LineHeight(goalLabelLine).
+					Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 				// `.objective`：一行，超出省略（完整内容在别处看）。
-				f.Text(goal).FontSize(goalObjectiveFont).LineHeight(goalObjectiveLine).
+				ui.Text(f, goal).FontSize(goalObjectiveFont).LineHeight(goalObjectiveLine).
 					Color(t.LabelSecondary).Grow(1).Ellipsis()
 			})
 	})

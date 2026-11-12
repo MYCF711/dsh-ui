@@ -23,7 +23,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -46,12 +46,12 @@ func officialApproval() pluginapi.Approval {
 }
 
 // drawSeat 在真 flex 画布上画一次官方座位，返回画布与回传记录。
-func drawSeat(t *testing.T, approval *pluginapi.Approval) (*ui.Canvas, *[]string) {
+func drawSeat(t *testing.T, approval *pluginapi.Approval) (*gfx.Canvas, *[]string) {
 	t.Helper()
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme}
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
@@ -60,22 +60,23 @@ func drawSeat(t *testing.T, approval *pluginapi.Approval) (*ui.Canvas, *[]string
 	data := pluginapi.Snapshot{Cur: "s-approval", Approval: approval}
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("approval-official"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 		Geometry: pluginapi.Geometry{MainWidth: 840},
 	}
 	env.Act.Approve = func(requestID, optionID string) { approved = append(approved, requestID+"|"+optionID) }
-	var fv flex.View
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	fv.Draw(canvas, gfx.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		// 官方座位 = 整个 composer 区（审批卡 overlay + InputBar fallback），
 		// 容器给官方侧边距 16（与 uikernel.drawComposerSeat 一致）。
-		f.Column().Width(840 - 2*composerClearance).PadX(composerClearance).Children(func() {
+		ui.Column(f).Width(840 - 2*composerClearance).PadX(composerClearance).Children(func() {
 			p.drawOfficialComposer(f, env)
 		})
 	})
 	return canvas, &approved
 }
 
-func seatTexts(canvas *ui.Canvas) []string {
+func seatTexts(canvas *gfx.Canvas) []string {
 	values := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)
@@ -83,7 +84,7 @@ func seatTexts(canvas *ui.Canvas) []string {
 	return values
 }
 
-func seatHas(canvas *ui.Canvas, want string) bool {
+func seatHas(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want || (len(text.Value) > len(want) && text.Value[:len(want)] == want) {
 			return true
@@ -193,7 +194,7 @@ func TestUnknownFieldsShowUnknown(t *testing.T) {
 func TestOfficialSeatRealClick(t *testing.T) {
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("approval-official-click")
 	ap := officialApproval()
 	var (
@@ -205,21 +206,22 @@ func TestOfficialSeatRealClick(t *testing.T) {
 		Title: "approval-official", Width: 1180, Height: 832, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	var fv flex.View
-	config.Paint = func(canvas *ui.Canvas, current ui.Size) {
-		bounds := ui.Rect{Width: current.Width, Height: current.Height}
+	pageTheme2 := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
+		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
-			Bounds: bounds, MainWidth: 840, Scroll: fv.ScrollState,
+			Bounds: bounds, MainWidth: 840,
 			Geometry: pluginapi.Geometry{MainWidth: 840},
 		}
 		env.Act.Approve = func(requestID, optionID string) { approved = append(approved, requestID+"|"+optionID) }
-		fv.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		fv.Draw(canvas, bounds, func(f ui.C) {
 			p.drawOfficialComposer(f, env)
 		})
 	}
-	config.OnScroll = func(event ui.ScrollEvent) ui.EventResult { return fv.Wheel(event) }
+	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult { return fv.Wheel(event) }
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {
 		t.Fatalf("headless 打不开：%v", err)
@@ -232,17 +234,18 @@ func TestOfficialSeatRealClick(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := tree.ID(feat, "approval-deny")
-	var hit ui.Hit
+	// v0.6.0 的 ui.Button 不带显式交互 ID（身份来自声明位置/Key），
+	// 所以按**文案**找命中区，再按它的真实矩形点下去——点击路径没变。
+	var hit gfx.Hit
 	found := false
 	for _, candidate := range session.Snapshot().Hits {
-		if candidate.ID == id {
+		if candidate.Label == "拒绝" && candidate.Role == gfx.RoleButton {
 			hit, found = candidate, true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("「拒绝」按钮没有命中区 id=%v；hits=%+v", id, session.Snapshot().Hits)
+		t.Fatalf("「拒绝」按钮没有命中区；hits=%+v", session.Snapshot().Hits)
 	}
 	x, y := hit.Bounds.X+hit.Bounds.Width/2, hit.Bounds.Y+hit.Bounds.Height/2
 	if err := session.Press(x, y); err != nil {
@@ -271,8 +274,8 @@ func TestBothSeatsSameCard(t *testing.T) {
 	// 只在画布上取**审批卡那几行**做对比。
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme}
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
@@ -280,12 +283,13 @@ func TestBothSeatsSameCard(t *testing.T) {
 	env := &pluginapi.Env{
 		Theme: theme, Data: pluginapi.Snapshot{Cur: "s-approval", Approval: &ap},
 		Tree: tree, Feat: tree.Feature("approval-legacy"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
+		Bounds: gfx.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 		Geometry: pluginapi.Geometry{MainWidth: 840},
 	}
 	env.Act.Approve = func(string, string) {}
-	var fv flex.View
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
+	pageTheme3 := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
+	fv.Draw(canvas, gfx.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		p.draw(f, env)
 	})
 	for _, want := range []string{"需要审批", "允许这一次", "这个会话里以后都允许", "拒绝"} {

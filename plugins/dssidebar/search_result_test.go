@@ -37,7 +37,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -49,7 +49,7 @@ type measuredText struct {
 }
 
 // searchFixture 在 v2Fixture 之上换一个记录型 measurer。
-func searchFixture(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *ui.Tree, *ui.Canvas, *[]measuredText) {
+func searchFixture(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *gfx.Tree, *gfx.Canvas, *[]measuredText) {
 	t.Helper()
 	p, rec, env, tree, canvas := v2Fixture()
 	texts := &[]measuredText{}
@@ -71,7 +71,7 @@ func mockdSessions() []apiclient.Session {
 }
 
 // drawSearchList 真实走一遍 `搜索框 → drawList`，返回实际绘制的行与文字。
-func drawSearchList(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *ui.Tree, *ui.Canvas, *[]measuredText) {
+func drawSearchList(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *gfx.Tree, *gfx.Canvas, *[]measuredText) {
 	t.Helper()
 	p, rec, env, tree, canvas, texts := searchFixture(t)
 	env.Data.Sessions = mockdSessions()
@@ -80,9 +80,10 @@ func drawSearchList(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.E
 	env.Act.OpenSession = func(string) {}
 	// "e" 命中三条会话 cwd 里的 DeepSeek：走的是与用户打字完全相同的 Field 路径。
 	p.search.SetText("e")
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 400}, func(f *flex.Frame) {
-		f.Column().FillHeight().Children(func() { p.drawList(f, env) })
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, gfx.Rect{Width: 268, Height: 400}, func(f ui.C) {
+		ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 	})
 	return p, rec, env, tree, canvas, texts
 }
@@ -190,9 +191,10 @@ func TestSearchNoMatchesUsesOfficialEmptyText(t *testing.T) {
 	p, rec, env, _, canvas, texts := searchFixture(t)
 	env.Data.Sessions = mockdSessions()
 	p.search.SetText("zzz-不存在的词")
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 400}, func(f *flex.Frame) {
-		f.Column().FillHeight().Children(func() { p.drawList(f, env) })
+	pageTheme2 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, gfx.Rect{Width: 268, Height: 400}, func(f ui.C) {
+		ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 	})
 	if len(rec.rows) != 0 || len(p.lastOrder) != 0 {
 		t.Fatalf("没有命中时不该画结果卡：rows=%d order=%v", len(rec.rows), p.lastOrder)
@@ -217,15 +219,16 @@ func TestSearchCardClickUsesRealSessionID(t *testing.T) {
 	env.Data.Cur = "s-001"
 	env.Act.OpenSession = func(id string) { opened = id }
 	p.search.SetText("e")
-	var view flex.View
+	pageTheme3 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 400}, func(f *flex.Frame) {
-			f.Column().FillHeight().Children(func() { p.drawList(f, env) })
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 400}, func(f ui.C) {
+			ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 		})
 	}
 	draw()
 	canvas.Reset()
-	canvas.BeginEventPass(tree.ID(env.Feat, "s-s-003"))
+	canvas.BeginEventPass(tree.ID(env.Feat, "s-s-003"), gfx.ClickInfo{})
 	draw()
 	canvas.EndEventPass()
 	if opened != "s-003" {
@@ -291,9 +294,10 @@ func TestSearchResultCardInnerGeometry(t *testing.T) {
 		}
 		results[0].Snippet, results[0].HasSnippet = "一段真实片段", hasSnippet
 		var boxes searchCardBoxes
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 200}, func(f *flex.Frame) {
-			f.Column().Width(268).Children(func() { boxes = p.drawSearchCard(f, env, results[0]) })
+		pageTheme4 := dscore.VivaTheme(p.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme4})
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 200}, func(f ui.C) {
+			ui.Column(f).Width(268).Children(func() { boxes = p.drawSearchCard(f, env, results[0]) })
 		})
 		return boxes
 	}
@@ -361,9 +365,10 @@ func TestSearchCardSnippetRendersOnlyWithTruth(t *testing.T) {
 		env.Act.OpenSession = func(string) {}
 		r := searchResult{ID: "x", Title: "标题", Workspace: "alpha", Snippet: "真实片段", HasSnippet: has}
 		var boxes searchCardBoxes
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 200}, func(f *flex.Frame) {
-			f.Column().Width(268).Children(func() { boxes = p.drawSearchCard(f, env, r) })
+		pageTheme5 := dscore.VivaTheme(p.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme5})
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 200}, func(f ui.C) {
+			ui.Column(f).Width(268).Children(func() { boxes = p.drawSearchCard(f, env, r) })
 		})
 		got := map[string]float32{}
 		for _, m := range *texts {

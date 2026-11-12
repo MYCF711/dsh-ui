@@ -5,28 +5,28 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
-func composerText(canvas *ui.Canvas, value string) (ui.Text, bool) {
+func composerText(canvas *gfx.Canvas, value string) (gfx.Text, bool) {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return text, true
 		}
 	}
-	return ui.Text{}, false
+	return gfx.Text{}, false
 }
 
-func composerHit(canvas *ui.Canvas, label string) (ui.Hit, bool) {
+func composerHit(canvas *gfx.Canvas, label string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
-func trianglesInside(canvas *ui.Canvas, bounds ui.Rect, color ui.Color) int {
+func trianglesInside(canvas *gfx.Canvas, bounds gfx.Rect, color gfx.Color) int {
 	count := 0
 	for _, triangle := range canvas.Triangles() {
 		if triangle.Color != color {
@@ -94,7 +94,7 @@ func TestKnownPermissionHasVectorIconBesideLabel(t *testing.T) {
 			}
 			// 官方 triggerIcon 为 14×14，位于 label 左侧、gap 4；这里只量这枚图标的座位，
 			// 避免发送键的矢量三角形误满足权限图标断言。
-			iconBounds := ui.Rect{X: label.Bounds.X - 18, Y: label.Bounds.Y + label.Bounds.Height/2 - 8, Width: 16, Height: 16}
+			iconBounds := gfx.Rect{X: label.Bounds.X - 18, Y: label.Bounds.Y + label.Bounds.Height/2 - 8, Width: 16, Height: 16}
 			if got := trianglesInside(canvas, iconBounds, p.theme.LabelSecondary); got == 0 {
 				t.Fatalf("权限 label 左侧没有 14px 矢量图标；label=%+v triangles=%d", label.Bounds, len(canvas.Triangles()))
 			}
@@ -132,7 +132,7 @@ func TestModelTriggerUsesOfficialWiderMaxWidth(t *testing.T) {
 		if text.Bounds.Width <= 220 {
 			t.Errorf("模型仍被权限的 220px 上限压住：文本宽 %.2f，官方模型 trigger 应取 360px 档", text.Bounds.Width)
 		}
-		if text.Bounds.Height != 20 || text.Style.Size != 13 || text.Style.Weight != ui.WeightRegular {
+		if text.Bounds.Height != 20 || text.Style.Size != 13 || text.Style.Weight != gfx.WeightRegular {
 			t.Errorf("模型 trigger 文本应为 13/20/400，实际 %+v %+v", text.Bounds, text.Style)
 		}
 	}

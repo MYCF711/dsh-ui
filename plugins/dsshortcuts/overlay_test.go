@@ -26,7 +26,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -52,9 +52,10 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 		t.Fatal(err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("u2-slot-proof")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var invalidator app.Invalidator
 	// notify 用带缓冲的 channel 收集：Paint 和测试主 goroutine 不是一个线程，
 	// 直接读写变量在 -race 下就是 data race。
@@ -63,8 +64,8 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 	config := app.Config{
 		Title: "u2-slot-proof", Width: sheetTestW, Height: sheetTestH,
 		Tree: tree, Invalidator: &invalidator,
-		Paint: func(canvas *ui.Canvas, size ui.Size) {
-			bounds := ui.Rect{Width: size.Width, Height: size.Height}
+		Paint: func(canvas *gfx.Canvas, size ui.Size) {
+			bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 			env := &pluginapi.Env{
 				Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
 				// Cur 非空 + 无消息：ds-conversation 画官方首屏（hero），
@@ -82,17 +83,17 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 				}
 				invalidator.Invalidate()
 			}
-			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+			view.Draw(canvas, bounds, func(f ui.C) {
 				kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 			})
 		},
 		// 真按键路径照 cmd/app 的 OnKey 写：HandleKey 成功就显式 Invalidate。
-		OnKey: func(ev ui.KeyEvent) ui.EventResult {
+		OnKey: func(ev gfx.KeyEvent) gfx.EventResult {
 			if kernel.HandleKey(ev) {
 				invalidator.Invalidate()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		},
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
@@ -109,7 +110,7 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 	}
 
 	// ① `-keys` 路径：不经过 OnKey，只有插件自己在 HandleKey 里发出的 Notify。
-	if !kernel.HandleKey(ui.KeyEvent{Key: ui.KeyF1}) {
+	if !kernel.HandleKey(gfx.KeyEvent{Key: gfx.KeyF1}) {
 		t.Fatal("-keys 路径：F1 没被 dsshortcuts 接住")
 	}
 	select {
@@ -184,7 +185,7 @@ func waitText(t *testing.T, session *headless.Session, value string, want bool) 
 	}
 }
 
-func assertColor(t *testing.T, picture image.Image, x, y int, want ui.Color, where string) {
+func assertColor(t *testing.T, picture image.Image, x, y int, want gfx.Color, where string) {
 	t.Helper()
 	r, g, b, _ := picture.At(x, y).RGBA()
 	wr, wg, wb := uint32(want.Red*255+0.5), uint32(want.Green*255+0.5), uint32(want.Blue*255+0.5)
@@ -194,7 +195,7 @@ func assertColor(t *testing.T, picture image.Image, x, y int, want ui.Color, whe
 	}
 }
 
-func assertNotColor(t *testing.T, picture image.Image, x, y int, unwanted ui.Color, where string) {
+func assertNotColor(t *testing.T, picture image.Image, x, y int, unwanted gfx.Color, where string) {
 	t.Helper()
 	r, g, b, _ := picture.At(x, y).RGBA()
 	wr, wg, wb := uint32(unwanted.Red*255+0.5), uint32(unwanted.Green*255+0.5), uint32(unwanted.Blue*255+0.5)
@@ -204,7 +205,7 @@ func assertNotColor(t *testing.T, picture image.Image, x, y int, unwanted ui.Col
 	}
 }
 
-// near 允许 ±2 的量化误差：ui.Color 是 float32，画到 8 位像素会有舍入。
+// near 允许 ±2 的量化误差：gfx.Color 是 float32，画到 8 位像素会有舍入。
 func near(value, want uint32) bool {
 	d := int(value) - int(want)
 	return d >= -2 && d <= 2

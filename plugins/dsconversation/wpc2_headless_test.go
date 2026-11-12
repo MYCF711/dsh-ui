@@ -13,7 +13,7 @@ import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -45,19 +45,24 @@ func runWPC2ConversationEvidence(t *testing.T, width, height int) {
 		}
 	}
 	data := pluginapi.Snapshot{Cur: "s-wpc2", Msgs: msgs, Truncated: true}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("wpc2-headless")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var invalidator app.Invalidator
 	config := app.Config{Title: "wpc2-headless", Width: width, Height: height, Tree: tree, WindowMode: app.WindowFrameless, Invalidator: &invalidator}
-	config.Paint = func(canvas *ui.Canvas, current ui.Size) {
-		bounds := ui.Rect{Width: current.Width, Height: current.Height}
+	// v0.6.0 没有 ID→ScrollState 查表：消息流滚动区由插件交给壳（env.ScrollBox），
+	// 这里把它记下来。区域每帧都声明，所以拿到的是同一个 ScrollState 对象。
+	var bodyState *ui.ScrollState
+	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
+		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
-		env := &pluginapi.Env{Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: current.Width, Scroll: view.ScrollState}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) { p.draw(f, env) })
+		env := &pluginapi.Env{Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: current.Width,
+			ScrollBox: func(box ui.Box) { bodyState = box.ScrollState() }}
+		view.Draw(canvas, bounds, func(f ui.C) { p.draw(f, env) })
 		p.afterDraw(canvas, env)
 	}
-	config.OnScroll = func(event ui.ScrollEvent) ui.EventResult {
+	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult {
 		if result := p.HandleScroll(event); result.Handled {
 			return result
 		}
@@ -78,7 +83,7 @@ func runWPC2ConversationEvidence(t *testing.T, width, height int) {
 	pump()
 	pump()
 
-	state := view.ScrollState(tree.ID(feat, "msgs-s-wpc2"))
+	state := bodyState
 	if state == nil || state.Max() <= 0 || !state.AtEnd() {
 		t.Fatalf("首载没有真实回底：%+v", state)
 	}

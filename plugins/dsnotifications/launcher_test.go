@@ -21,7 +21,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -43,12 +43,12 @@ func (p *probePlugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
 		ID:   p.id,
 		Slot: p.slot,
-		Draw: func(f *flex.Frame, env *pluginapi.Env) {
+		Draw: func(f ui.C, env *pluginapi.Env) {
 			p.mu.Lock()
 			p.drawn++
 			p.mu.Unlock()
 			// 真画一个盒子：避免"只计数、什么都没有"看起来像没画。
-			f.Row().Width(4).Height(4)
+			ui.Row(f).Width(4).Height(4)
 		},
 	}}
 }
@@ -79,27 +79,28 @@ func launcherChain(t *testing.T, p *Plugin, extra ...pluginapi.Plugin) (*uikerne
 // renderFromSlot 从某个槽位开始 dispatch 一帧，返回画布。
 //
 // 侧栏宽 280（官方 SIDEBAR_DEFAULT）——`wide` 判据与座位几何都依赖这个宽度。
-func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *ui.Canvas {
+func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *gfx.Canvas {
 	t.Helper()
 	const sidebarWidth float32 = uikernel.SidebarDefault // 280
 	theme := dscore.Dark()
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("launcher-chain")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
 	})
-	bounds := ui.Rect{Width: 1180, Height: 800}
+	bounds := gfx.Rect{Width: 1180, Height: 800}
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: 900,
 		Has:      k.Has,
 		Geometry: pluginapi.Geometry{Width: bounds.Width, Height: bounds.Height, SidebarWidth: sidebarWidth},
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, bounds, func(f ui.C) {
 		// 把链放进一条 280 宽的侧栏列：座位与行宽都按它算。
-		f.Column().Width(sidebarWidth).Children(func() {
+		ui.Column(f).Width(sidebarWidth).Children(func() {
 			k.DrawSlot(f, slot, env)
 		})
 	})

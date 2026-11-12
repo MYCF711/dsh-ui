@@ -49,7 +49,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsagentteam"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -278,15 +278,15 @@ func TestRealChainGXModelSlot(t *testing.T) {
 func gxCapture(t *testing.T, p *gxProduct, snap pluginapi.Snapshot, path string) {
 	t.Helper()
 	theme := p.theme
-	shotTree := &ui.Tree{}
+	shotTree := &gfx.Tree{}
 	shotFeat := shotTree.Feature("gx-shot")
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "gx-model-slot", Width: 1182, Height: 832, Tree: shotTree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: snap, Tree: shotTree, Feat: shotFeat, Canvas: canvas,
@@ -294,11 +294,12 @@ func gxCapture(t *testing.T, p *gxProduct, snap pluginapi.Snapshot, path string)
 			Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 			Has:      func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
 		}
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		pageTheme := dscore.VivaTheme(theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+		view.Draw(canvas, bounds, func(f ui.C) {
 			if p.mode == shellLegacy {
 				// 旧三栏档：dsshell 的形状（中栏 Pad(12) 里 dispatch `main.composer`）。
-				f.Column().FillWidth().FillHeight().Pad(12).Children(func() {
+				ui.Column(f).FillWidth().FillHeight().Pad(12).Children(func() {
 					p.kernel.DrawSlot(f, pluginapi.SlotMainComposer, env)
 				})
 				return

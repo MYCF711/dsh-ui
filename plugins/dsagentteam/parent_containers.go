@@ -59,7 +59,6 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -132,7 +131,7 @@ func (p *Plugin) containerPanels() []pluginapi.Painter {
 //
 // 锚点用**上一帧 trigger 的真实矩形**（`p.modelAnchor`，见 model_slot.go）：官方
 // 座位上的 trigger 就是本包画的，所以位置是准的。
-func (p *Plugin) modelMenuChildren(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) modelMenuChildren(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	p.drawModelMenuAt(f, env, p.modelAnchor(env), drawSlot)
 }
 
@@ -141,12 +140,12 @@ func (p *Plugin) modelMenuChildren(f *flex.Frame, env *pluginapi.Env, drawSlot f
 // 旧座位里模型 chip 由 dscomposer 画（本包拿不到它的 Box，插件之间没有共享
 // 几何的通道），所以按官方 composer 的公开几何重算。官方座位已迁到自己的 Box
 // （`modelMenuChildren`），这段只在旧三栏档（dsshell）里生效。
-func (p *Plugin) legacyModelMenuChildren(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) legacyModelMenuChildren(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	p.drawModelMenuAt(f, env, modelTriggerRect(env), drawSlot)
 }
 
 // drawModelMenuAt 是两个座位共用的菜单面绘制。
-func (p *Plugin) drawModelMenuAt(f *flex.Frame, env *pluginapi.Env, anchor ui.Rect, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) drawModelMenuAt(f ui.C, env *pluginapi.Env, anchor ui.Rect, drawSlot func(pluginapi.Slot)) {
 	if f == nil || env == nil {
 		return
 	}
@@ -161,7 +160,12 @@ func (p *Plugin) drawModelMenuAt(f *flex.Frame, env *pluginapi.Env, anchor ui.Re
 		FetchFailure: failure,
 		Selected:     env.Data.Model,
 		Locked:       env.Data.Busy,
-		Dispatch:     drawSlot,
+		// 翻面判据：上一帧量到的菜单面高度（0 = 还没量过 → 按"放得下"处理）。
+		PanelHeight: p.model.panelRect.Height,
+		OnPanel: func(box ui.Box) {
+			p.model.panel, p.model.panelDrawn = box, true
+		},
+		Dispatch: drawSlot,
 	})
 }
 
@@ -175,14 +179,14 @@ func (p *Plugin) drawModelMenuAt(f *flex.Frame, env *pluginapi.Env, anchor ui.Re
 //
 // 目录未知时不盖：没目录的点击只会打开一个空菜单，那是"假入口"（与官方
 // `available=false` 时 trigger 不可用的语义一致）。
-func (p *Plugin) drawModelMenuTrigger(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawModelMenuTrigger(f ui.C, env *pluginapi.Env) {
 	if f == nil || env == nil {
 		return
 	}
 	known, _, list := p.team.Providers()
 	anchor := modelTriggerRect(env)
 	// Absolute：不占 composer 列的布局空间（否则会把卡片挤走）。
-	box := f.Row().Absolute().Size(anchor.Width, anchor.Height).
+	box := ui.Row(f).Absolute().Size(anchor.Width, anchor.Height).
 		Right(anchorRightInset(env, anchor)).
 		Bottom(modelTriggerBottomInset - uikernel.LegacyColumnInset).Children(func() {})
 	_, clicked := uikernel.DrawModelTrigger(box, env, uikernel.ModelMenuOptions{
@@ -274,7 +278,7 @@ func anchorRightInset(env *pluginapi.Env, anchor ui.Rect) float32 {
 //
 // 命令节点只有一个来源：父级 `Store.SetCommand(...)`（宿主 v4 的 `command/run`
 // 还没有投影到 Transport，见报告 §7）。没有节点 → 一个像素都不画（"无命令"态）。
-func (p *Plugin) commandNodeChildren(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) commandNodeChildren(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	if f == nil || env == nil {
 		return
 	}
@@ -282,7 +286,7 @@ func (p *Plugin) commandNodeChildren(f *flex.Frame, env *pluginapi.Env, drawSlot
 }
 
 // drawCommandNodeCards 是容器 D 在 `Painter.Draw` 里的那一半：兜底卡（不 dispatch）。
-func (p *Plugin) drawCommandNodeCards(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawCommandNodeCards(f ui.C, env *pluginapi.Env) {
 	if f == nil || env == nil {
 		return
 	}

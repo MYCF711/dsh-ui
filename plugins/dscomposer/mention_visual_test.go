@@ -64,7 +64,8 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 		}
 		tree := &gfx.Tree{}
 		feat := tree.Feature("composer-mention-" + name)
-		var view ui.Page
+		pageTheme := dscore.VivaTheme(theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 		var invalidator app.Invalidator
 		config := app.Config{
 			Title: "composer-mention-" + name, Width: 1182, Height: 832, Tree: tree,
@@ -78,7 +79,7 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 				Bounds: bounds, MainWidth: 902,
 				Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 			}
-			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+			view.Draw(canvas, bounds, func(f ui.C) {
 				ui.Column(f).Width(902-24).FillHeight().PadSides(0, 0, 12, 0).Children(func() {
 					ui.Spacer(f)
 					p.draw(f, env)

@@ -215,8 +215,9 @@ func TestOfficialShellWiringDispatchesOfficialSlots(t *testing.T) {
 		Bounds: ui.Rect{Width: 1182, Height: 832},
 		Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		drawOfficialFirstScreen(f, m, env, opts)
 	})
 
@@ -246,8 +247,9 @@ func TestOfficialShellWiringDispatchesOfficialSlots(t *testing.T) {
 		Bounds: ui.Rect{Width: 1182, Height: 832},
 		Has:    func(slot pluginapi.Slot) bool { return clean.Has(slot) },
 	}
-	var view2 ui.Page
-	view2.Draw(canvas, dscore.VivaTheme(theme), env2.Bounds, func(f ui.C) {
+	pageTheme2 := dscore.VivaTheme(theme)
+	view2 := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view2.Draw(canvas, env2.Bounds, func(f ui.C) {
 		drawOfficialFirstScreen(f, m2, env2, opts2)
 	})
 	for _, slot := range *cleanDrawn {
@@ -298,8 +300,9 @@ func TestDrawnOfficialSlotsAreRegistered(t *testing.T) {
 		Bounds: ui.Rect{Width: 1920, Height: 1032},
 		Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme3 := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		drawOfficialFirstScreen(f, m, env, opts)
 	})
 	got := map[pluginapi.Slot]bool{}
@@ -381,8 +384,9 @@ func TestOfficialTierReallyDispatchesComposerSeat(t *testing.T) {
 			Bounds: ui.Rect{Width: 1182, Height: 832},
 			Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 		}
-		var view ui.Page
-		view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+		pageTheme4 := dscore.VivaTheme(theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme4})
+		view.Draw(canvas, env.Bounds, func(f ui.C) {
 			drawOfficialFirstScreen(f, m, env, opts)
 		})
 		out := map[pluginapi.Slot]int{}

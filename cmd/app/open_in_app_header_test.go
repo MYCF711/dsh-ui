@@ -64,8 +64,9 @@ func newOpenInAppRig(t *testing.T, m *model, width, height int) openInAppRig {
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	tree := &gfx.Tree{}
 	feat := tree.Feature("open-in-app-header")
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        ui.Page
 		invalidator app.Invalidator
 	)
 	config := app.Config{
@@ -84,7 +85,7 @@ func newOpenInAppRig(t *testing.T, m *model, width, height int) openInAppRig {
 			},
 			Has: func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

@@ -27,11 +27,12 @@ func newFrame(t *testing.T, click string) (*dscoreFrame, func()) {
 		return float32(len([]rune(value))) * size * 0.55
 	})
 	if click != "" {
-		canvas.BeginEventPass(tree.ID(feat, click))
+		canvas.BeginEventPass(tree.ID(feat, click), gfx.ClickInfo{})
 	}
-	var view ui.Page
+	pageTheme := VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var box ui.Box
-	view.Draw(canvas, VivaTheme(theme), ui.Rect{Width: 320, Height: 200}, func(f ui.C) {
+	view.Draw(canvas, ui.Rect{Width: 320, Height: 200}, func(f ui.C) {
 		box = p.ListRow(f, tree.ID(feat, "row-1"), false, 32, func() {
 			ui.Text(f, "一行").FontSize(14).Color(theme.LabelPrimary)
 		})
@@ -100,11 +101,12 @@ func TestCircleButtonReturnsClick(t *testing.T) {
 	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(string, float32, float32) float32 { return 10 })
-	canvas.BeginEventPass(tree.ID(feat, "send"))
+	canvas.BeginEventPass(tree.ID(feat, "send"), gfx.ClickInfo{})
 	defer canvas.EndEventPass()
 	var clicked bool
-	var view ui.Page
-	view.Draw(canvas, VivaTheme(theme), ui.Rect{Width: 320, Height: 200}, func(f ui.C) {
+	pageTheme2 := VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, ui.Rect{Width: 320, Height: 200}, func(f ui.C) {
 		clicked = p.CircleButton(f, tree.ID(feat, "send"), "↑", true)
 	})
 	if !clicked {

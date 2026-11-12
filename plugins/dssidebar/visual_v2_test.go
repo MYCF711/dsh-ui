@@ -79,8 +79,9 @@ func TestV2ActivityDotOnlyForCurrentSessionWithTruth(t *testing.T) {
 		env.Data = pluginapi.Snapshot{Cur: cur, Busy: busy, Stream: stream}
 		env.Act.OpenSession = func(string) {}
 		row := sess("current", "真实标题", `D:\work`, "2026-11-03T20:00:00+08:00")
-		var view ui.Page
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
+		pageTheme := dscore.VivaTheme(p.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+		view.Draw(canvas, ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
 			p.drawSession(f, env, row)
 		})
 		return recorder.dots
@@ -130,8 +131,9 @@ func TestV2SearchUsesFieldAndNarrowsRealRows(t *testing.T) {
 	}
 	env.Data.Cur = "b"
 	p.search.SetText("  ALPHA  ")
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 300}, func(f ui.C) {
+	pageTheme2 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, ui.Rect{Width: 268, Height: 300}, func(f ui.C) {
 		p.drawList(f, env)
 	})
 	if len(p.lastOrder) != 1 || p.lastOrder[0] != "a" {
@@ -151,9 +153,10 @@ func TestV2SelectionAndClickUseRealSessionID(t *testing.T) {
 	env.Act.OpenSession = func(id string) { opened = id }
 	a := sess("a", "Alpha", `D:\work`, "2026-11-03T10:00:00Z")
 	b := sess("b", "Beta", `D:\work`, "2026-11-03T11:00:00Z")
-	var view ui.Page
+	pageTheme3 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 80}, func(f ui.C) {
+		view.Draw(canvas, ui.Rect{Width: 268, Height: 80}, func(f ui.C) {
 			ui.Column(f).Children(func() {
 				p.drawSession(f, env, a)
 				p.drawSession(f, env, b)
@@ -170,7 +173,7 @@ func TestV2SelectionAndClickUseRealSessionID(t *testing.T) {
 		}
 	}
 	canvas.Reset()
-	canvas.BeginEventPass(tree.ID(env.Feat, "s-a"))
+	canvas.BeginEventPass(tree.ID(env.Feat, "s-a"), gfx.ClickInfo{})
 	draw()
 	canvas.EndEventPass()
 	if opened != "a" {
@@ -181,16 +184,17 @@ func TestV2SelectionAndClickUseRealSessionID(t *testing.T) {
 // TestV2GroupGeometryAndScroll 直接量 flex 布局：组头 34、会话 32、
 // 组头到首行 2、上一组末行到下一组头 4；wheel 必须移动这个列表自己的滚动区。
 func TestV2GroupGeometryAndScroll(t *testing.T) {
-	p, recorder, env, tree, canvas := v2Fixture()
+	p, recorder, env, _, canvas := v2Fixture()
 	for i := 0; i < 12; i++ {
 		env.Data.Sessions = append(env.Data.Sessions,
 			sess(itoa(i), "Alpha", `D:\work\a`, "2026-11-03T10:00:00Z"))
 	}
 	env.Data.Sessions = append(env.Data.Sessions,
 		sess("b", "Beta", `D:\work\b`, "2026-11-03T11:00:00Z"))
-	var view ui.Page
+	pageTheme4 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme4})
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 180}, func(f ui.C) {
+		view.Draw(canvas, ui.Rect{Width: 268, Height: 180}, func(f ui.C) {
 			ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 		})
 	}
@@ -219,8 +223,8 @@ func TestV2GroupGeometryAndScroll(t *testing.T) {
 	if got := second.Y - (secondHeader.Y + secondHeader.Height); got != 2 {
 		t.Fatalf("第二组头到首行间距 = %v，want 2", got)
 	}
-	scrollID := tree.ID(env.Feat, "sidebar-scroll")
-	state := view.ScrollState(scrollID)
+	// v0.6.0：没有 ID→ScrollState 查表，滚动状态从声明期的 Box 取。
+	state := p.scrollBox.ScrollState()
 	if state.Content <= state.Viewport || state.Max() <= 0 {
 		t.Fatalf("长列表没有形成可滚动内容：content=%v viewport=%v", state.Content, state.Viewport)
 	}

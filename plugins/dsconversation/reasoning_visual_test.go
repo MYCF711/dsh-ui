@@ -69,7 +69,8 @@ func openReasoningHarness(t *testing.T, width, height int, data pluginapi.Snapsh
 	theme := p.theme
 	tree := &gfx.Tree{}
 	feat := tree.Feature("reasoning-headless")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "reasoning-headless", Width: width, Height: height, Tree: tree,
@@ -80,9 +81,9 @@ func openReasoningHarness(t *testing.T, width, height int, data pluginapi.Snapsh
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
-			Bounds: bounds, MainWidth: current.Width, Scroll: view.ScrollState,
+			Bounds: bounds, MainWidth: current.Width,
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)

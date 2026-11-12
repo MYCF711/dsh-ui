@@ -639,8 +639,9 @@ func TestFirstScreenDrawMatchesLayout(t *testing.T) {
 
 	boxes := map[string]ui.Box{}
 	var layout ShellLayout
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		layout = FirstScreenWithMeasure(f, env, opts, func(pluginapi.Slot) {}, func(name string, box ui.Box) {
 			boxes[name] = box
 		})
@@ -673,8 +674,9 @@ func TestFirstScreenDispatchesEveryHostedSlot(t *testing.T) {
 	record := func(width, height float32, opts ShellOptions, has func(pluginapi.Slot) bool) map[pluginapi.Slot]bool {
 		env, canvas := newSkeletonEnv(width, height, has)
 		seen := map[pluginapi.Slot]bool{}
-		var view ui.Page
-		view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+		pageTheme2 := dscore.VivaTheme(theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(canvas, env.Bounds, func(f ui.C) {
 			FirstScreen(f, env, opts, func(slot pluginapi.Slot) { seen[slot] = true })
 		})
 		return seen

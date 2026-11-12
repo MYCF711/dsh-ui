@@ -63,8 +63,9 @@ func questionFrame(t *testing.T, tierOfficial, drawOfficial bool, msgs []apiclie
 		Geometry: pluginapi.Geometry{MainWidth: 902}, Has: kernel.Has,
 	}
 	counts := map[pluginapi.Slot]int{}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		if drawOfficial {
 			drawSeat(f, kernel, env, uikernel.OffConvComposer, counts)
 			return

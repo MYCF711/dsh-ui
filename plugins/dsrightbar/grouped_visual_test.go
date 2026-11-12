@@ -53,7 +53,8 @@ func openRightbarShot(t *testing.T, width, height int, msgs []apiclient.Message)
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
 	tree := &gfx.Tree{}
 	feat := tree.Feature("traj-shot")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "traj-shot", Width: width, Height: height, Tree: tree}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
@@ -63,7 +64,7 @@ func openRightbarShot(t *testing.T, width, height int, msgs []apiclient.Message)
 			Has: func(pluginapi.Slot) bool { return true },
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) { p.draw(f, env) })
+		view.Draw(canvas, bounds, func(f ui.C) { p.draw(f, env) })
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {

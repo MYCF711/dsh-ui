@@ -392,7 +392,7 @@ func TestMarkdownCodeBlockCopy(t *testing.T) {
 	if !ok {
 		t.Fatalf("没有复制按钮的命中区；hits=%v", fixture.canvas.Hits())
 	}
-	fixture.canvas.BeginEventPass(copyHit.ID)
+	fixture.canvas.BeginEventPass(copyHit.ID, gfx.ClickInfo{})
 	fixture.draw()
 	fixture.canvas.EndEventPass()
 	fixture.canvas.RunAfterPaint()
@@ -424,7 +424,7 @@ func TestMarkdownCodeBlockCopyFailure(t *testing.T) {
 	if !ok {
 		t.Fatalf("没有复制按钮的命中区；hits=%v", fixture.canvas.Hits())
 	}
-	fixture.canvas.BeginEventPass(copyHit.ID)
+	fixture.canvas.BeginEventPass(copyHit.ID, gfx.ClickInfo{})
 	fixture.draw()
 	fixture.canvas.EndEventPass()
 	fixture.canvas.RunAfterPaint()
@@ -451,7 +451,7 @@ func TestMarkdownCodeBlockWrapToggle(t *testing.T) {
 	if !ok {
 		t.Fatalf("没有折行按钮的命中区；hits=%v", fixture.canvas.Hits())
 	}
-	fixture.canvas.BeginEventPass(wrapHit.ID)
+	fixture.canvas.BeginEventPass(wrapHit.ID, gfx.ClickInfo{})
 	fixture.draw()
 	fixture.canvas.EndEventPass()
 	fixture.canvas.RunAfterPaint()
@@ -569,8 +569,9 @@ func newMarkdownFixture() *markdownFixture {
 // draw 跑一帧：布局（Draw）→ 覆画（PaintCodeBlocks）。
 func (f *markdownFixture) draw() {
 	f.canvas.Reset()
-	var view ui.Page
-	view.Draw(f.canvas, dscore.VivaTheme(f.theme), ui.Rect{Width: 900, Height: 700}, func(frame ui.C) {
+	pageTheme := dscore.VivaTheme(f.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(f.canvas, ui.Rect{Width: 900, Height: 700}, func(frame ui.C) {
 		f.view.Draw(frame, f.env, hostViewport(f.tree), markdownEntry(codeBlockSource))
 	})
 	f.view.PaintCodeBlocks(f.canvas, f.env)

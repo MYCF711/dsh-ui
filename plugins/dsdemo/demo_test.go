@@ -66,7 +66,7 @@ func drawOnce(t *testing.T, p *Plugin, click string) int {
 		return float32(len([]rune(value))) * size * 0.55
 	})
 	if click != "" {
-		canvas.BeginEventPass(tree.ID(feat, click))
+		canvas.BeginEventPass(tree.ID(feat, click), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
 	env := &pluginapi.Env{
@@ -74,8 +74,9 @@ func drawOnce(t *testing.T, p *Plugin, click string) int {
 		Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		p.draw(f, env)
 	})
 	return len(canvas.Rectangles())

@@ -37,7 +37,8 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	tree := &gfx.Tree{}
 	feat := tree.Feature("fg2-headless")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "fg2-sidebar", Width: 1920, Height: 1032, Tree: tree, WindowMode: app.WindowFrameless}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
@@ -55,7 +56,7 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 			Has: kernel.Has,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

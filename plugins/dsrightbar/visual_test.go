@@ -37,7 +37,8 @@ func TestV4AHeadlessResizeAndScreenshots(t *testing.T) {
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	tree := &gfx.Tree{}
 	feat := tree.Feature("v4a-headless")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	showRightbar := true
 	config := app.Config{Title: "v4a-shell-rightbar", Width: 1920, Height: 1032, Tree: tree, WindowMode: app.WindowFrameless}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
@@ -71,7 +72,7 @@ func TestV4AHeadlessResizeAndScreenshots(t *testing.T) {
 			},
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

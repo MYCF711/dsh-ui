@@ -32,8 +32,9 @@ func TestStreamingMarkdownHeadlessFrames(t *testing.T) {
 	theme := p.theme
 	tree := &gfx.Tree{}
 	feat := tree.Feature("mdstream-headless")
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        ui.Page
 		invalidator app.Invalidator
 		data        = streamingMarkdownData("")
 	)
@@ -48,7 +49,7 @@ func TestStreamingMarkdownHeadlessFrames(t *testing.T) {
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: size.Width,
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)

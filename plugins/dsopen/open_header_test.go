@@ -34,8 +34,9 @@ func openHeaderSession(t *testing.T, data *pluginapi.Snapshot, act pluginapi.Act
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	tree := &gfx.Tree{}
 	feat := tree.Feature("open-header")
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        ui.Page
 		invalidator app.Invalidator
 	)
 	config := app.Config{
@@ -54,7 +55,7 @@ func openHeaderSession(t *testing.T, data *pluginapi.Snapshot, act pluginapi.Act
 			},
 			Has: func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

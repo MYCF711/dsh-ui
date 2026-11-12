@@ -92,24 +92,20 @@ func (p *Plugin) drawTrajectoryWorkspace(f ui.C, env *pluginapi.Env, data plugin
 	}
 
 	shown, hidden := clipGroups(filtered, maxEntries)
-	scrID := env.Tree.ID(env.Feat, scrollKey+data.Cur)
-	var scrollState *ui.ScrollState
-	if env.Scroll != nil {
-		scrollState = env.Scroll(scrID)
-	}
 	searchScope := data.Cur + "\x00" + scrollKey
+	rows := p.buildTrajectoryRows(data, shown, hidden, query)
+
+	// v0.6.0：滚动状态由**声明方**持有（没有 ID→ScrollState 查表，Box 只在同一帧
+	// 有效），所以先声明滚动区、再取状态。Offset/Viewport 是上一帧布局的值，
+	// 与旧 `env.Scroll(id)` 拿到的是同一份。身份仍然按会话区分（Key），
+	// 否则切会话时右栏的滚动位置会串。
+	area := ui.Scroll(f.Key(scrollKey + data.Cur)).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip()
+	scrollState := area.ScrollState()
 	if previous, ok := p.lastSearch[searchScope]; !ok || previous != query {
 		p.lastSearch[searchScope] = query
-		if scrollState != nil {
-			scrollState.ScrollTo(0)
-		}
+		scrollState.ScrollTo(0)
 	}
-	rows := p.buildTrajectoryRows(data, shown, hidden, query)
-	viewport := float32(0)
-	offset := float32(0)
-	if scrollState != nil {
-		viewport, offset = scrollState.Viewport, scrollState.Offset
-	}
+	viewport, offset := scrollState.Viewport, scrollState.Offset
 	if viewport <= 0 {
 		viewport = f.Bounds().Height - 150
 		if viewport < 120 {
@@ -118,7 +114,7 @@ func (p *Plugin) drawTrajectoryWorkspace(f ui.C, env *pluginapi.Env, data plugin
 	}
 	const overscan = 84.0 // 两条收起 Step；不把整批 80/1000 条都建为文本节点。
 
-	ui.Scroll(f).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip().Children(func() {
+	area.Children(func() {
 		ui.Column(f).WidthPercent(100).Gap(2).Children(func() {
 			top := float32(0)
 			for i := range rows {

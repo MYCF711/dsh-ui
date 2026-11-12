@@ -64,8 +64,9 @@ func drawSeat(t *testing.T, approval *pluginapi.Approval) (*gfx.Canvas, *[]strin
 		Geometry: pluginapi.Geometry{MainWidth: 840},
 	}
 	env.Act.Approve = func(requestID, optionID string) { approved = append(approved, requestID+"|"+optionID) }
-	var fv ui.Page
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	fv.Draw(canvas, ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		// 官方座位 = 整个 composer 区（审批卡 overlay + InputBar fallback），
 		// 容器给官方侧边距 16（与 uikernel.drawComposerSeat 一致）。
 		ui.Column(f).Width(840 - 2*composerClearance).PadX(composerClearance).Children(func() {
@@ -205,17 +206,18 @@ func TestOfficialSeatRealClick(t *testing.T) {
 		Title: "approval-official", Width: 1180, Height: 832, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	var fv ui.Page
+	pageTheme2 := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
-			Bounds: bounds, MainWidth: 840, Scroll: fv.ScrollState,
+			Bounds: bounds, MainWidth: 840,
 			Geometry: pluginapi.Geometry{MainWidth: 840},
 		}
 		env.Act.Approve = func(requestID, optionID string) { approved = append(approved, requestID+"|"+optionID) }
-		fv.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		fv.Draw(canvas, bounds, func(f ui.C) {
 			p.drawOfficialComposer(f, env)
 		})
 	}
@@ -232,17 +234,18 @@ func TestOfficialSeatRealClick(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := tree.ID(feat, "approval-deny")
+	// v0.6.0 的 ui.Button 不带显式交互 ID（身份来自声明位置/Key），
+	// 所以按**文案**找命中区，再按它的真实矩形点下去——点击路径没变。
 	var hit gfx.Hit
 	found := false
 	for _, candidate := range session.Snapshot().Hits {
-		if candidate.ID == id {
+		if candidate.Label == "拒绝" && candidate.Role == gfx.RoleButton {
 			hit, found = candidate, true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("「拒绝」按钮没有命中区 id=%v；hits=%+v", id, session.Snapshot().Hits)
+		t.Fatalf("「拒绝」按钮没有命中区；hits=%+v", session.Snapshot().Hits)
 	}
 	x, y := hit.Bounds.X+hit.Bounds.Width/2, hit.Bounds.Y+hit.Bounds.Height/2
 	if err := session.Press(x, y); err != nil {
@@ -284,8 +287,9 @@ func TestBothSeatsSameCard(t *testing.T) {
 		Geometry: pluginapi.Geometry{MainWidth: 840},
 	}
 	env.Act.Approve = func(string, string) {}
-	var fv ui.Page
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
+	pageTheme3 := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
+	fv.Draw(canvas, ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		p.draw(f, env)
 	})
 	for _, want := range []string{"需要审批", "允许这一次", "这个会话里以后都允许", "拒绝"} {

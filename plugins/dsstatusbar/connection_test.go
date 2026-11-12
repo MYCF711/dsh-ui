@@ -97,11 +97,12 @@ func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *gfx.Canvas 
 		Has:      h.kernel.Has,
 	}
 	if h.hit != "" {
-		canvas.BeginEventPass(h.tree.ID(h.feat, h.hit))
+		canvas.BeginEventPass(h.tree.ID(h.feat, h.hit), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(h.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(h.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		ui.Column(f).FillWidth().Width(280).Children(func() {
 			row := ui.Row(f).FillWidth().
 				MarginSides(connRowMarginY, -2, connRowMarginY, -2).

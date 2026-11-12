@@ -56,7 +56,7 @@ func TestConfigureFrameWindowUsesVivaNativeControls(t *testing.T) {
 type frameChromeHarness struct {
 	chrome      frameChrome
 	field       ui.Field
-	view        ui.Page
+	view        *ui.Page
 	inv         app.Invalidator
 	newSessions int
 	toggles     int
@@ -69,6 +69,8 @@ func newFrameChromeHarness(t *testing.T) (*frameChromeHarness, *app.Driver) {
 	h.chrome.newSession = func() { h.newSessions++ }
 	h.chrome.toggleRightbar = func() { h.toggles++ }
 	theme := ui.DarkTheme()
+	// v0.6.0：主题是构造期给的（Draw 不再收 theme）。
+	h.view = ui.NewPage(ui.PageConfig{Theme: &theme})
 	cfg := app.Config{Tree: &tree, Title: "dsh-ui-frame-test", Width: 1182, Height: 832, Invalidator: &h.inv}
 	configureFrameWindow(&cfg, true, theme)
 	cfg.TextInput = h.chrome.wrapTextInput(ui.Fields(&h.field))
@@ -78,7 +80,7 @@ func newFrameChromeHarness(t *testing.T) (*frameChromeHarness, *app.Driver) {
 		}
 		canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, theme.Background)
 		layout := h.chrome.paintCaption(canvas, theme, size)
-		h.view.Draw(canvas, theme, layout.Content, func(f ui.C) {
+		h.view.Draw(canvas, layout.Content, func(f ui.C) {
 			ui.Column(f).Fill().Children(func() {
 				ui.TextFieldID(f, draftID, &h.field, "输入", "输入消息").Height(32)
 			})

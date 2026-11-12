@@ -21,15 +21,17 @@ func drawTopbarVisualTest(t *testing.T, data pluginapi.Snapshot, hasRightbar boo
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
 	})
-	var view ui.Page
-	f := view.Begin(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 90})
-	p.draw(f, &pluginapi.Env{
-		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("topbar-visual-test"), Canvas: canvas,
-		Bounds: ui.Rect{Width: 900, Height: 832}, MainWidth: 900,
-		Act: pluginapi.Actions{ToggleRightbar: func() {}},
-		Has: func(slot pluginapi.Slot) bool { return slot == pluginapi.SlotRightbar && hasRightbar },
+	// v0.6.0 没有 Begin/End：Draw 内部就完成声明与解算，主题构造期给。
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, ui.Rect{Width: 900, Height: 90}, func(f ui.C) {
+		p.draw(f, &pluginapi.Env{
+			Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("topbar-visual-test"), Canvas: canvas,
+			Bounds: ui.Rect{Width: 900, Height: 832}, MainWidth: 900,
+			Act: pluginapi.Actions{ToggleRightbar: func() {}},
+			Has: func(slot pluginapi.Slot) bool { return slot == pluginapi.SlotRightbar && hasRightbar },
+		})
 	})
-	f.End()
 	return canvas, p
 }
 

@@ -46,12 +46,13 @@ func (d *deleteProbe) draw(t *testing.T, click string) {
 	tree := d.tree
 	canvas := v2Canvas(tree)
 	if click != "" {
-		canvas.BeginEventPass(tree.ID(d.feature, click))
+		canvas.BeginEventPass(tree.ID(d.feature, click), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
 	row := sess("s1", "一个会话", `D:\work`, "2026-11-03T20:00:00+08:00")
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(d.plugin.theme), ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(d.plugin.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
 		d.plugin.drawSession(f, d.env, row)
 	})
 }

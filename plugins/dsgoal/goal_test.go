@@ -31,8 +31,9 @@ func renderGoal(t *testing.T, p *Plugin, act pluginapi.Actions) *gfx.Canvas {
 		Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		p.draw(f, env)
 	})
 	return canvas

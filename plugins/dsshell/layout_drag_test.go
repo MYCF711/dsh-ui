@@ -173,8 +173,9 @@ func newDragFixture(t *testing.T, width, height float32) *dragFixture {
 func (f *dragFixture) paint() {
 	f.canvas.Reset()
 	f.boxes = map[pluginapi.Slot]ui.Box{}
-	var view ui.Page
-	view.Draw(f.canvas, dscore.VivaTheme(f.theme), f.bounds, func(fr ui.C) {
+	pageTheme := dscore.VivaTheme(f.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(f.canvas, f.bounds, func(fr ui.C) {
 		f.plugin.children(fr, f.env, func(slot pluginapi.Slot) {
 			switch slot {
 			case pluginapi.SlotMainBody:
@@ -197,8 +198,9 @@ func (f *dragFixture) event(kind gfx.PointerEventKind, target gfx.ID, x float32)
 		Kind: kind, Button: gfx.PointerButtonPrimary, X: x, Y: 120, Target: target,
 	}, ui.Size{Width: f.bounds.Width, Height: f.bounds.Height}, func(c *gfx.Canvas, size ui.Size) {
 		// DeliverPointer 已经 Reset/BeginFrame，这里不再自己开帧。
-		var view ui.Page
-		view.Draw(c, dscore.VivaTheme(f.theme), f.bounds, func(fr ui.C) {
+		pageTheme2 := dscore.VivaTheme(f.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(c, f.bounds, func(fr ui.C) {
 			f.plugin.children(fr, f.env, func(slot pluginapi.Slot) {
 				ui.Slot(fr).FillWidth()
 			})
@@ -383,8 +385,9 @@ func (f *dragFixture) event2(kind gfx.PointerEventKind, button gfx.PointerButton
 	return f.canvas.DeliverPointer(gfx.PointerEvent{
 		Kind: kind, Button: button, X: x, Y: 120, Target: target,
 	}, ui.Size{Width: f.bounds.Width, Height: f.bounds.Height}, func(c *gfx.Canvas, size ui.Size) {
-		var view ui.Page
-		view.Draw(c, dscore.VivaTheme(f.theme), f.bounds, func(fr ui.C) {
+		pageTheme3 := dscore.VivaTheme(f.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
+		view.Draw(c, f.bounds, func(fr ui.C) {
 			f.plugin.children(fr, f.env, func(slot pluginapi.Slot) {
 				ui.Slot(fr).FillWidth()
 			})

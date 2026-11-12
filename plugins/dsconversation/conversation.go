@@ -77,6 +77,14 @@ type Plugin struct {
 	bodyBox   ui.Box
 	bodyRect  ui.Rect
 	bodyReady bool
+	// v0.6.0：滚动状态由声明方持有（没有 ID→ScrollState 查表，Box 只在同一帧有效）。
+	// scrollOffset / scrollAtEnd 是**上一帧布局后**的真值，只给"声明在滚动区之前"
+	// 的 Turn 导航用——导航本来就按上一帧锚点算，时序与旧 env.Scroll(id) 一致。
+	scrollOffset float32
+	scrollAtEnd  bool
+	// scrollJump 是延迟到滚动区声明时执行的跳转（Turn 导航的 ←/→ 按钮）。
+	scrollJump float32
+	jumpReady  bool
 	// turnBoxes 仅属于本帧；turnAnchors 是 AfterDraw 提取的上一帧矩形值，
 	// 不把失效的 flex.Box 带到下一帧。
 	turnBoxes   map[string]ui.Box
@@ -325,12 +333,9 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 		return
 	}
 
-	// 每个会话一个滚动 id：否则切会话时滚动位置会串（viva flex/scroll.go:174）。
-	scrID := env.Tree.ID(env.Feat, "msgs-"+env.Data.Cur)
-	var scrollState *ui.ScrollState
-	if env.Scroll != nil {
-		scrollState = env.Scroll(scrID)
-	}
+	// 每个会话一个滚动区：否则切会话时滚动位置会串。
+	// v0.6.0 的滚动区身份来自声明名（Key），不再接受显式交互 ID。
+	bodyKey := "msgs-" + env.Data.Cur
 
 	// Turn 导航只从当前已加载且带真实身份的消息段生成；搜索态不把过滤后的
 	// 局部内容冒充完整 Turn。锚点来自上一帧真实布局，未加载历史没有入口。
@@ -338,7 +343,7 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	if q == "" {
 		turns = buildLoadedTurns(env.Data, vis)
 	}
-	p.drawTurnNavigation(f, env, scrID, turns)
+	p.drawTurnNavigation(f, turns)
 	p.turnBoxes = map[string]ui.Box{}
 	starts := map[int]loadedTurn{}
 	ends := map[int]loadedTurn{}
@@ -350,7 +355,23 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// 内容列必须**显式给宽度**：ScrollArea 里用 FillWidth 时宽度算不出来，
 	// 元素会被推到父容器外面（踩过两次：一次是消息画到侧栏上，一次是现在这样）。
 	// 用百分比而不是像素：像素得先知道列宽，而槽位里拿不到。
-	p.bodyBox = ui.Scroll(f).WidthPercent(100).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip().Children(func() {
+	//
+	// v0.6.0：滚动状态由**声明方**持有（没有 ID→ScrollState 查表），所以先声明
+	// 滚动区、立刻取状态，再把子元素挂上去。取到的 Offset 是上一帧布局的值——
+	// 与旧 `env.Scroll(id)` 的时序完全一致，虚拟化不需要改判断。
+	p.bodyBox = ui.Scroll(f.Key(bodyKey)).WidthPercent(100).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip()
+	scrollState := p.bodyBox.ScrollState()
+	if p.jumpReady {
+		// Turn 导航的 ←/→ 是"声明期排队、滚动区一出就落位"：按钮在滚动区之前
+		// 声明，而 v0.6.0 的 ScrollTo 只能通过声明期的 Box 拿到状态。
+		scrollState.ScrollTo(p.scrollJump)
+		p.jumpReady = false
+	}
+	// 把盒子交给壳：壳在 Draw 返回后（布局已定）用它每帧记偏移、切会话时恢复。
+	if env.ScrollBox != nil {
+		env.ScrollBox(p.bodyBox)
+	}
+	p.bodyBox.Children(func() {
 		ui.Column(f).WidthPercent(100).Gap(6).Children(func() {
 			if env.Data.Truncated {
 				ui.Row(f).WidthPercent(100).Pad(8).Children(func() {
@@ -371,11 +392,14 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 				acc += heights[k] + 6
 			}
 
-			var vpOffset, vpHeight float32
-			if scrollState != nil {
-				vpOffset = scrollState.Offset
+			// 视口偏移：声明期拿到的真值（上一帧布局的结果）。
+			vpOffset := scrollState.Offset
+			// 主区被别的视图接管时（dsrightbar 的轨迹视图），接管方用
+			// ViewportOffset 把正文推到视口外：消息全部退化成 Slot，不生成文本纹理。
+			if env.ViewportOffset != nil {
+				vpOffset = *env.ViewportOffset
 			}
-			vpHeight = f.Bounds().Height - 220
+			vpHeight := f.Bounds().Height - 220
 			if vpHeight < 240 {
 				vpHeight = 240
 			}
@@ -403,7 +427,7 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// Follow(true) 只在用户明确位于底部时跟随；用户回看后新帧不会改写 Offset。
 	// 回底入口只在确有内容且当前非底部时出现，点击才显式恢复 Follow。
 	hasContent := len(msgs) > 0 || env.Data.Stream != "" || len(env.Data.Outgoing) > 0 || len(env.Data.TurnEvents) > 0
-	if hasContent && scrollState != nil && !scrollState.AtEnd() {
+	if hasContent && !scrollState.AtEnd() {
 		ui.Row(f).WidthPercent(100).Justify(ui.End).PadY(2).Children(func() {
 			if ui.Button(f, "回到底部").Small().Clicked() {
 				scrollState.ScrollToEnd()
@@ -733,6 +757,11 @@ func (p *Plugin) afterDraw(canvas *gfx.Canvas, env *pluginapi.Env) {
 	// 跨帧保存会在下一帧索引到错误节点。
 	if p.bodyReady {
 		p.bodyRect = p.bodyBox.Rect()
+		// 滚动偏移同理：只抄**值**。本帧的 Box 在这里（Draw 之后、同一帧内）
+		// 仍然有效，viva 也把"Draw 之后从 box.ScrollState() 读回settled 值"
+		// 写成了推荐用法；跨帧保存指针才是禁止的。
+		st := p.bodyBox.ScrollState()
+		p.scrollOffset, p.scrollAtEnd = st.Offset, st.AtEnd()
 	}
 	p.turnAnchors = make(map[string]ui.Rect, len(p.turnBoxes))
 	for key, box := range p.turnBoxes {

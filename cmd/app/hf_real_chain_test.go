@@ -115,8 +115,9 @@ func hfOfficialSidebarFrame(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas,
 	// 与 main.go 同源：这一帧没走兼容桥，官方子槽活着。
 	tier.SetLegacyBridge(opts.BridgeLegacy)
 	counts := map[pluginapi.Slot]int{}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, opts, func(slot pluginapi.Slot) {
 			hfDrawSlot(f, kernel, slot, env, counts)
 		})
@@ -347,8 +348,9 @@ func hfCapture(t *testing.T, product *gyRealProduct, snap pluginapi.Snapshot, go
 			Has:      product.kernel.Has,
 			Act:      pluginapi.Actions{Goal: func() string { return goal }},
 		}
-		var view ui.Page
-		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f ui.C) {
+		pageTheme2 := dscore.VivaTheme(product.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(c, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, env, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, env)
 			})

@@ -32,8 +32,9 @@ func renderContainer(t *testing.T, width, height float32, env *pluginapi.Env, bo
 		env = containerEnv(width, height)
 	}
 	canvas := env.Canvas
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(dscore.Dark()), env.Bounds, body)
+	pageTheme := dscore.VivaTheme(dscore.Dark())
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, body)
 	return canvas
 }
 

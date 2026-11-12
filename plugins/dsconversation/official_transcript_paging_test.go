@@ -155,8 +155,9 @@ func pagingView(t *testing.T, entries []TranscriptEntry, history pluginapi.Histo
 		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	env.Act.LoadOlder = onLoadOlder
-	var fv ui.Page
-	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	fv.Draw(canvas, ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		view.Draw(f, env, hostViewport(tree), entries)
 	})
 	return view, canvas
@@ -286,16 +287,17 @@ func TestPagingButtonRealClick(t *testing.T) {
 		Title: "paging-headless", Width: 900, Height: 700, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	var fv ui.Page
+	pageTheme2 := dscore.VivaTheme(theme)
+	fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
-			Bounds: bounds, MainWidth: current.Width, Scroll: fv.ScrollState,
+			Bounds: bounds, MainWidth: current.Width,
 		}
 		env.Act.LoadOlder = func() { loads++ }
-		fv.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		fv.Draw(canvas, bounds, func(f ui.C) {
 			view.Draw(f, env, TranscriptViewport{HostScroll: true, HostID: tree.ID(feat, "host"), SelfID: tree.ID(feat, "self")}, pagingEntries())
 		})
 	}
@@ -312,17 +314,17 @@ func TestPagingButtonRealClick(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := tree.ID(feat, "history-older")
+	// v0.6.0 的 ui.Button 不带显式交互 ID，按**文案**找命中区（点击仍走真实矩形）。
 	var hit gfx.Hit
 	found := false
 	for _, candidate := range session.Snapshot().Hits {
-		if candidate.ID == id {
+		if candidate.Label == "加载更早" && candidate.Role == gfx.RoleButton {
 			hit, found = candidate, true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("「加载更早」按钮没有命中区 id=%v；hits=%+v", id, session.Snapshot().Hits)
+		t.Fatalf("「加载更早」按钮没有命中区；hits=%+v", session.Snapshot().Hits)
 	}
 	x, y := hit.Bounds.X+hit.Bounds.Width/2, hit.Bounds.Y+hit.Bounds.Height/2
 	if err := session.Press(x, y); err != nil {
@@ -387,9 +389,10 @@ func TestDrawProductTranscriptTakeover(t *testing.T) {
 				Theme: theme, Data: c.data, Tree: tree, Feat: tree.Feature("takeover"),
 				Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
 			}
-			var fv ui.Page
+			pageTheme3 := dscore.VivaTheme(theme)
+			fv := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
 			got := false
-			fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
+			fv.Draw(canvas, ui.Rect{Width: 900, Height: 700}, func(f ui.C) {
 				got = p.drawProductTranscript(f, env, true)
 			})
 			if got != c.want {

@@ -120,10 +120,11 @@ func (p *heRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, click strin
 		Act:       pluginapi.Actions{Send: func(string) {}, Cancel: func() {}},
 	}
 	if click != "" {
-		canvas.BeginEventPass(p.tree.ID(p.feat, click))
+		canvas.BeginEventPass(p.tree.ID(p.feat, click), gfx.ClickInfo{})
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.kernel.DrawSlot(f, slot, env)
 		})
@@ -434,8 +435,9 @@ func heCapture(t *testing.T, p *heRealProduct, snap pluginapi.Snapshot, path str
 			Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 			Has:      func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
 		}
-		var view ui.Page
-		view.Draw(canvas, dscore.VivaTheme(p.theme), bounds, func(f ui.C) {
+		pageTheme2 := dscore.VivaTheme(p.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(canvas, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 				p.kernel.DrawSlot(f, slot, env)
 			})

@@ -54,7 +54,8 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	tree := &gfx.Tree{}
 	feat := tree.Feature("u2-slot-proof")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var invalidator app.Invalidator
 	// notify 用带缓冲的 channel 收集：Paint 和测试主 goroutine 不是一个线程，
 	// 直接读写变量在 -race 下就是 data race。
@@ -82,7 +83,7 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 				}
 				invalidator.Invalidate()
 			}
-			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+			view.Draw(canvas, bounds, func(f ui.C) {
 				kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 			})
 		},

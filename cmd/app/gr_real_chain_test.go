@@ -127,11 +127,12 @@ func (p *grProduct) paint(t *testing.T, snap pluginapi.Snapshot, pressEnter bool
 		bind(env)
 	}
 	if pressEnter {
-		canvas.BeginEventPass(p.tree.ID(p.feat, "composer"))
+		canvas.BeginEventPass(p.tree.ID(p.feat, "composer"), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreenWithMeasure(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.dispatched[slot]++
 			p.kernel.DrawSlot(f, slot, env)
@@ -401,8 +402,9 @@ func TestRealChainGROfficialComposer(t *testing.T) {
 			Has:      func(slot pluginapi.Slot) bool { return product.kernel.Has(slot) },
 		}
 		bindSend(shotEnv)
-		var view ui.Page
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		pageTheme2 := dscore.VivaTheme(theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(canvas, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, shotEnv, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, shotEnv)
 			})

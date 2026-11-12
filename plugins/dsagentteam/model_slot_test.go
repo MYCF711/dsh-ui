@@ -87,10 +87,11 @@ func (h *modelSlotHarness) paint(t *testing.T, snap pluginapi.Snapshot, click st
 	}
 	h.rendered = nil
 	if click != "" {
-		canvas.BeginEventPass(h.tree.ID(h.feat, click))
+		canvas.BeginEventPass(h.tree.ID(h.feat, click), gfx.ClickInfo{})
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		// 把 trigger 放在窗口下半部（模拟它真实的位置：composer 在底部）。
 		// 顶部贴边的话 `Popup.Above` 会被窗口边界夹住，"菜单在 trigger 上方"
 		// 这条就测不出来了。

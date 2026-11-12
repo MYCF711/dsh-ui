@@ -48,8 +48,9 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 			}
 
 			boxes := map[pluginapi.Slot]ui.Box{}
-			var view ui.Page
-			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+			pageTheme := dscore.VivaTheme(theme)
+			view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+			view.Draw(canvas, bounds, func(f ui.C) {
 				p.draw(f, env)
 				p.children(f, env, func(slot pluginapi.Slot) {
 					switch slot {
@@ -114,8 +115,9 @@ func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 	}
 	rightDrawn := false
 	var main ui.Box
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+	pageTheme2 := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, bounds, func(f ui.C) {
 		p.children(f, env, func(slot pluginapi.Slot) {
 			switch slot {
 			case pluginapi.SlotRightbar:

@@ -37,8 +37,12 @@ type Plugin struct {
 	fullscreen map[string]bool
 	// viewData 在 main.body 的 chat 前后两个 painter 之间保存一帧原始快照。
 	// 这是公共 Actions 尚无 SelectConversationView 时的最小本地适配。
-	viewData   *pluginapi.Snapshot
-	viewScroll func(gfx.ID) *ui.ScrollState
+	viewData *pluginapi.Snapshot
+	// viewOffset 保存被覆盖前的 env.ViewportOffset（通常 nil），Order=30 恢复。
+	// v0.6.0 没有 ID→ScrollState 查表，所以"把正文推到视口外"改成给一个偏移覆盖，
+	// 由 dsconversation 自己在虚拟化时采用（见 pluginapi.Env.ViewportOffset）。
+	viewOffset       *float32
+	trajectoryOffset float32
 	// turnOpen 记「哪一组 turn 被用户手动收/开过」。
 	//
 	// 只在本机内存里、按会话隔开：切回同一会话还是原样，进程重启就回到默认。
@@ -336,22 +340,23 @@ func (p *Plugin) chromeButton(f ui.C, env *pluginapi.Env, name, label string, ic
 // composer、rightbar、statusbar 和下一帧仍读原始快照；原消息切片从不被改写。
 func (p *Plugin) beginTrajectoryView(_ ui.C, env *pluginapi.Env) {
 	p.viewData = nil
-	p.viewScroll = nil
+	p.viewOffset = nil
 	if p.views == nil || p.views.Active(env.Data.Cur) != viewapi.Trajectory {
 		return
 	}
 	data := env.Data
 	p.viewData = &data
-	p.viewScroll = env.Scroll
+	p.viewOffset = env.ViewportOffset
 	if len(env.Data.Msgs) == 0 {
 		// 零值只用于通过 chat 的正常列表分支；下面的视口投影保证它不会被读取或实画。
 		env.Data.Msgs = []apiclient.Message{{}}
 	}
 	env.Data.Stream = ""
 	env.Data.Busy = true
-	env.Scroll = func(gfx.ID) *ui.ScrollState {
-		return &ui.ScrollState{Offset: 1e9}
-	}
+	// 偏移给一个远大于任何内容高度的值：dsconversation 的视口虚拟化于是把每条
+	// 消息都当成"在视口外"，只留 Slot，不生成文本/Markdown 槽位。
+	p.trajectoryOffset = 1e9
+	env.ViewportOffset = &p.trajectoryOffset
 }
 
 // drawTrajectoryView 是 main.body 的 Order=30 真实轨迹 painter。
@@ -362,8 +367,8 @@ func (p *Plugin) drawTrajectoryView(f ui.C, env *pluginapi.Env) {
 	data := *p.viewData
 	p.viewData = nil
 	env.Data = data
-	env.Scroll = p.viewScroll
-	p.viewScroll = nil
+	env.ViewportOffset = p.viewOffset
+	p.viewOffset = nil
 	ui.Column(f).Absolute().Left(0).Top(0).WidthPercent(100).HeightPercent(100).
 		Background(p.theme.BgBase).Clip().
 		Hit(env.Tree.ID(env.Feat, "main-trajectory"), "主区轨迹").Children(func() {

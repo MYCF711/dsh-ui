@@ -92,7 +92,8 @@ func openRightbar(t *testing.T, width, height int, msgs []apiclient.Message) (*h
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
 	tree := &gfx.Tree{}
 	feat := tree.Feature("rightbar-test")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "rightbar-v4a-test", Width: width, Height: height, Tree: tree}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
@@ -101,7 +102,7 @@ func openRightbar(t *testing.T, width, height int, msgs []apiclient.Message) (*h
 			Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
 			Has: func(pluginapi.Slot) bool { return true },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) { p.draw(f, env) })
+		view.Draw(canvas, bounds, func(f ui.C) { p.draw(f, env) })
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {

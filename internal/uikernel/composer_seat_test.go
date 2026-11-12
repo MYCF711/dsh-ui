@@ -30,8 +30,9 @@ func seatFrame(t *testing.T, opts ShellOptions, occupied map[pluginapi.Slot]bool
 	env, canvas := newSkeletonEnv(1182, 832, func(slot pluginapi.Slot) bool { return occupied[slot] })
 	counts := map[pluginapi.Slot]int{}
 	boxes := map[string]ui.Box{}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		FirstScreenWithMeasure(f, env, opts, func(slot pluginapi.Slot) { counts[slot]++ }, func(name string, box ui.Box) {
 			boxes[name] = box
 		})

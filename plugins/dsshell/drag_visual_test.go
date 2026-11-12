@@ -61,7 +61,8 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 	// 这条用例要验的正是「壳说 280、用户拖到 360 之后画出来的是 360」。
 	const sideWidth = 280
 
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "layout-drag", Width: layoutW, Height: layoutH,
 		Tree: tree, WindowMode: app.WindowFrameless,
@@ -88,7 +89,7 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 			Has:       kernel.Has,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

@@ -103,8 +103,9 @@ func runWPC1Headless(t *testing.T, width, height int) {
 	painter := conversation.Panels()[0]
 	tree := &gfx.Tree{}
 	feat := tree.Feature("wpc1-headless")
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        ui.Page
 		invalidator app.Invalidator
 	)
 	// 快照每帧重建并在锁内拷贝：插件拿到的必须是**这一帧的副本**。
@@ -130,15 +131,18 @@ func runWPC1Headless(t *testing.T, width, height int) {
 		Title: "wpc1-headless", Width: width, Height: height, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
+	// v0.6.0 没有 ID→ScrollState 查表：消息流滚动区由插件交给壳（env.ScrollBox）。
+	// 区域每帧都声明，所以拿到的是同一个 ScrollState 对象，可以跨帧读。
+	var bodyState *ui.ScrollState
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: snapshot(), Act: m.actions, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: current.Width,
-			Scroll: view.ScrollState,
+			ScrollBox: func(box ui.Box) { bodyState = box.ScrollState() },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			painter.Draw(f, env)
 		})
 		painter.AfterDraw(canvas, env)
@@ -205,10 +209,8 @@ func runWPC1Headless(t *testing.T, width, height int) {
 	}
 
 	m.mu.Lock()
-	cur := m.cur
 	m.mu.Unlock()
-	mainID := tree.ID(feat, "msgs-"+cur)
-	mainState := view.ScrollState(mainID)
+	mainState := bodyState
 	if mainState == nil || mainState.Max() <= 0 {
 		t.Fatalf("测试需要可纵向滚动的消息区：%+v", mainState)
 	}

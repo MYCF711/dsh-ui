@@ -294,8 +294,9 @@ func gxCapture(t *testing.T, p *gxProduct, snap pluginapi.Snapshot, path string)
 			Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 			Has:      func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
 		}
-		var view ui.Page
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		pageTheme := dscore.VivaTheme(theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+		view.Draw(canvas, bounds, func(f ui.C) {
 			if p.mode == shellLegacy {
 				// 旧三栏档：dsshell 的形状（中栏 Pad(12) 里 dispatch `main.composer`）。
 				ui.Column(f).FillWidth().FillHeight().Pad(12).Children(func() {

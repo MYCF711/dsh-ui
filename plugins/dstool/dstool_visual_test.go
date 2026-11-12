@@ -53,7 +53,8 @@ func TestToolCardCustomRenderings(t *testing.T) {
 
 	tree := &gfx.Tree{}
 	feat := tree.Feature("dstool-visual")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "dstool-visual", Width: 900, Height: 720, Tree: tree,
 		WindowMode: app.WindowFrameless,
@@ -65,7 +66,7 @@ func TestToolCardCustomRenderings(t *testing.T) {
 			Bounds: bounds, MainWidth: size.Width,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			ui.Column(f).WidthPercent(100).Pad(16).Gap(6).Children(func() {
 				for _, card := range data {
 					cards.Render(f, env, card)

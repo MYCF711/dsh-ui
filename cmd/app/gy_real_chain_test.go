@@ -136,8 +136,9 @@ func (p *gyRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, goal string
 		Act:       pluginapi.Actions{Goal: func() string { return goal }, Send: func(string) {}, Cancel: func() {}},
 	}
 	p.dispatched = map[pluginapi.Slot]int{}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 			gyRealDrawSlot(f, p.kernel, slot, env, p.dispatched)
 		})
@@ -316,8 +317,9 @@ func TestRealChainGYGoalQuestionsStatusbar(t *testing.T) {
 			Has:       product.kernel.Has,
 			Act:       pluginapi.Actions{Goal: func() string { return load.Goal }},
 		}
-		var view ui.Page
-		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f ui.C) {
+		pageTheme2 := dscore.VivaTheme(product.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(c, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, shotEnv, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, shotEnv)
 			})

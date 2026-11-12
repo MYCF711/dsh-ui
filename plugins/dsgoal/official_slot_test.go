@@ -61,8 +61,9 @@ func officialFrame(t *testing.T, tierOfficial bool, goal func() string) *gfx.Can
 		Geometry: pluginapi.Geometry{Width: 1182, Height: 832, MainWidth: 902},
 		Has:      kernel.Has,
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		drawSeat(f, kernel, env, uikernel.OffConvComposer)
 	})
 	return canvas
@@ -112,8 +113,9 @@ func TestGoalLegacySeatStaysSilentOnOfficialTier(t *testing.T) {
 		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 		Geometry: pluginapi.Geometry{MainWidth: 902}, Has: kernel.Has,
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme2 := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		drawSeat(f, kernel, env, pluginapi.SlotMainComposer)
 	})
 	if rects := canvas.Rectangles(); len(rects) != 0 {

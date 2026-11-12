@@ -27,14 +27,14 @@ func drawStreamingMarkdownTest(t *testing.T, p *Plugin, data pluginapi.Snapshot)
 	const width = float32(900)
 	tree := &gfx.Tree{}
 	canvas := newHeroTestCanvas(tree)
-	var view ui.Page
-	f := view.Begin(canvas, dscore.VivaTheme(theme), ui.Rect{Width: width, Height: 700})
+	// v0.6.0 没有 Begin/End：Draw 内部就完成声明与解算，主题构造期给。
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("mdstream-test"), Canvas: canvas,
 		Bounds: ui.Rect{Width: width, Height: 700}, MainWidth: width,
 	}
-	p.draw(f, env)
-	f.End()
+	view.Draw(canvas, ui.Rect{Width: width, Height: 700}, func(f ui.C) { p.draw(f, env) })
 	p.afterDraw(canvas, env)
 	return canvas
 }

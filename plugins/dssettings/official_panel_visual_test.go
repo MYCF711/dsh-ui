@@ -155,7 +155,8 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 
 	h.tree = &gfx.Tree{}
 	h.feat = h.tree.Feature("official-settings")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(h.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "official-settings", Width: width, Height: height, Tree: h.tree,
 		WindowMode: app.WindowFrameless,
@@ -165,12 +166,11 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 		env := &pluginapi.Env{
 			Theme: h.theme, Tree: h.tree, Feat: h.feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: size.Width,
-			Scroll: view.ScrollState,
-			Act:    act,
-			Has:    h.kernel.Has,
+			Act: act,
+			Has: h.kernel.Has,
 		}
 		canvas.Fill(bounds, h.theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(h.theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			h.kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

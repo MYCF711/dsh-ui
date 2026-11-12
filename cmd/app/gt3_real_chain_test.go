@@ -224,8 +224,9 @@ func renderTranscriptSeat(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas, *
 		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, ui.Rect{Width: 1180, Height: 832}, func(f ui.C) {
 		// **走官方槽**：这就是真机上 `ChatView.column` 那一次 drawSlot。
 		kernel.DrawSlot(f, pluginapi.Slot("conversation.view"), env)
 	})

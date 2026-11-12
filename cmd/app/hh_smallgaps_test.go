@@ -125,11 +125,12 @@ func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.A
 		Act:       act,
 	}
 	if click != "" {
-		canvas.BeginEventPass(p.tree.ID(p.feat, click))
+		canvas.BeginEventPass(p.tree.ID(p.feat, click), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreenWithMeasure(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.kernel.DrawSlot(f, slot, env)
 		}, func(name string, box ui.Box) {
@@ -277,8 +278,9 @@ func TestHHTriggerRowRendersInLegacySidebarToo(t *testing.T) {
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme2 := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		// 兼容桥档位：整列走旧三栏（`drawLegacySidebar`），设置行必须照样画出来。
 		uikernel.FirstScreenWithMeasure(f, env,
 			uikernel.ShellOptions{Phase: uikernel.PhaseActive, SidebarPreferred: 280, BridgeLegacy: true},
@@ -387,8 +389,9 @@ func TestHHComposerHasNoConnectionWording(t *testing.T) {
 				Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 				Has:       func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 			}
-			var view ui.Page
-			view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+			pageTheme3 := dscore.VivaTheme(theme)
+			view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
+			view.Draw(canvas, env.Bounds, func(f ui.C) {
 				ui.Column(f).Width(878).Children(func() { kernel.DrawSlot(f, uikernel.OffConvComposer, env) })
 			})
 			joined := strings.Join(hhTexts(canvas), " ")

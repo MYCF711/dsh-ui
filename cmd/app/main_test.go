@@ -337,8 +337,13 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 		scrollPos:     map[string]float32{},
 	}
 
+	// v0.6.0：主题是构造期给的（Draw 不再收 theme）；滚动状态由声明方持有，
+	// 壳拿到的是插件交回来的 Box（这里由本支架自己声明并交回）。
+	pageTheme := ui.LightTheme()
+	m.view = ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+
 	// 首开先画的是空消息 Hero；此时还没有 ScrollArea 的内容高度。
-	if m.applyPendingScroll() {
+	if m.applyPendingScroll(ui.Box{}, false) {
 		t.Fatal("空消息 Hero 帧没有可虚拟化的消息，不应请求补帧")
 	}
 	if m.pendingScroll != id {
@@ -349,18 +354,19 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 	for i := range m.msgs {
 		m.msgs[i] = apiclient.Message{Seq: i + 1, Role: "assistant", Text: fmt.Sprintf("message-%02d", i+1)}
 	}
-	scrID := tree.ID(home, "msgs-"+id)
 	draw := func() (*gfx.Canvas, bool) {
 		t.Helper()
 		canvas := &gfx.Canvas{}
 		canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 			return float32(len(value)) * size / 2
 		})
-		m.view.Draw(canvas, ui.LightTheme(), ui.Rect{Width: 100, Height: 100}, func(f ui.C) {
+		var area ui.Box
+		m.view.Draw(canvas, ui.Rect{Width: 100, Height: 100}, func(f ui.C) {
 			ui.Column(f).Fill().Children(func() {
-				ui.Scroll(f).Grow(1).Follow(true).Children(func() {
+				area = ui.Scroll(f).Grow(1).Follow(true)
+				area.Children(func() {
 					// 与 dsconversation 相同的声明期虚拟化时序：Offset 是上一帧的值。
-					offset := m.view.ScrollState(scrID).Offset
+					offset := area.ScrollState().Offset
 					for i := range m.msgs {
 						y := float32(i * 30)
 						if y+30 < offset || y > offset+100 {
@@ -372,7 +378,8 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 				})
 			})
 		})
-		repaint := m.applyPendingScroll()
+		// 产品路径里这一步是壳用插件交回的 Box 做的（env.ScrollBox）。
+		repaint := m.applyPendingScroll(area, true)
 		return canvas, repaint
 	}
 	hasLast := func(canvas *gfx.Canvas) bool {
@@ -400,5 +407,61 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 	}
 	if !hasLast(second) {
 		t.Fatal("Follow 已移动到尾部后，补帧仍没有实画尾消息")
+	}
+}
+
+// TestPendingScrollRestoresOffset 钉住"切回会话恢复阅读位置"那条链的**后半段**：
+// m.scrollPos → Box.ScrollState().ScrollTo。
+//
+// 背景：v0.6.0 没有 `ScrollState(id)` 这种按身份查表的入口，滚动状态由声明方持有。
+// 壳的做法是——插件把本帧滚动区的 Box 交给壳（Env.ScrollBox），壳在 Draw 返回后
+// （布局已定）先恢复、再记偏移。**顺序不能反**：先记的话，切会话那一帧新滚动区
+// 是从 0 布局的，会把切走前的位置覆盖成 0。
+func TestPendingScrollRestoresOffset(t *testing.T) {
+	const id = "restore"
+	pageTheme := ui.LightTheme()
+	m := &model{
+		cur:           id,
+		view:          ui.NewPage(ui.PageConfig{Theme: &pageTheme}),
+		pendingScroll: id,
+		scrollPos:     map[string]float32{id: 120},
+	}
+	m.msgs = make([]apiclient.Message, 20)
+	for i := range m.msgs {
+		m.msgs[i] = apiclient.Message{Seq: i + 1, Role: "assistant", Text: fmt.Sprintf("message-%02d", i+1)}
+	}
+
+	canvas := &gfx.Canvas{}
+	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
+		return float32(len(value)) * size / 2
+	})
+	var area ui.Box
+	m.view.Draw(canvas, ui.Rect{Width: 100, Height: 100}, func(f ui.C) {
+		ui.Column(f).Fill().Children(func() {
+			area = ui.Scroll(f).Grow(1).Follow(true)
+			area.Children(func() {
+				for i := range m.msgs {
+					ui.Text(f, m.msgs[i].Text).Height(30)
+				}
+			})
+		})
+	})
+
+	// 产品这一段就是 settleScroll：先恢复，再记偏移（顺序反了会把待恢复值覆盖成 0）。
+	if !m.settleScroll(area, true) {
+		t.Fatal("有待恢复的偏移时 settleScroll 必须请求补帧")
+	}
+	if got := area.ScrollState().Offset; got != 120 {
+		t.Fatalf("恢复后的偏移 = %v，want 120（切走前记下的值）", got)
+	}
+	if m.pendingScroll != "" {
+		t.Fatal("恢复之后 pendingScroll 必须清空，否则每帧都会重绘")
+	}
+	if got := m.scrollPos[id]; got != 120 {
+		t.Fatalf("settleScroll 记下的偏移 = %v，want 120（先记后恢复会把这里写成 0）", got)
+	}
+	// 再调一次：pendingScroll 已消费，不该再要求补帧。
+	if m.settleScroll(area, true) {
+		t.Fatal("pendingScroll 已消费，不应再要求补帧")
 	}
 }

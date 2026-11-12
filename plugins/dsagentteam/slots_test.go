@@ -115,8 +115,9 @@ func renderWith(t *testing.T, p *Plugin, draw func(f ui.C, env *pluginapi.Env)) 
 		Theme: theme, Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: ui.Rect{Width: 1180, Height: 800}, MainWidth: 900,
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		draw(f, env)
 	})
 	return canvas
@@ -467,9 +468,11 @@ func hitContains(canvas *gfx.Canvas, fragment string) (gfx.Hit, bool) {
 //
 // 注：viva 的 `Switch` 不给 label（只给 id），命中区的 Label 是框架默认的 "switch"，
 // 所以判据是"存在一个 switch 命中区"，而不是按文案找。
+// hasSwitchHit 找开关的命中区：v0.6.0 的 ui.Switch 不带显式交互 ID，
+// 可访问名被 .Label() 覆盖成用户看到的文案，所以按 **role** 认。
 func hasSwitchHit(canvas *gfx.Canvas) bool {
 	for _, hit := range canvas.Hits() {
-		if hit.Label == "switch" {
+		if hit.Role == gfx.RoleSwitch {
 			return true
 		}
 	}

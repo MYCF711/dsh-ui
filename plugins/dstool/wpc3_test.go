@@ -22,13 +22,14 @@ func drawWPC3SingleCard(t *testing.T, card Card) *headless.Session {
 	cards := New(&dscore.Primitives{Theme: theme})
 	tree := &gfx.Tree{}
 	feat := tree.Feature("wpc3-single")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "wpc3-single", Width: 900, Height: 500, Tree: tree, WindowMode: app.WindowFrameless}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: size.Width}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			ui.Column(f).WidthPercent(100).Pad(16).Children(func() { cards.Render(f, env, card) })
 		})
 	}

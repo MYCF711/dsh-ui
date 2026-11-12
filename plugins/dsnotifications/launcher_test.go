@@ -96,8 +96,9 @@ func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *gfx.
 		Has:      k.Has,
 		Geometry: pluginapi.Geometry{Width: bounds.Width, Height: bounds.Height, SidebarWidth: sidebarWidth},
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, bounds, func(f ui.C) {
 		// 把链放进一条 280 宽的侧栏列：座位与行宽都按它算。
 		ui.Column(f).Width(sidebarWidth).Children(func() {
 			k.DrawSlot(f, slot, env)

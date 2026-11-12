@@ -117,10 +117,11 @@ func (p *hhRealProduct) paintReal(t *testing.T, snap pluginapi.Snapshot, act plu
 		Act:       act,
 	}
 	if click != "" {
-		canvas.BeginEventPass(p.tree.ID(p.feat, click))
+		canvas.BeginEventPass(p.tree.ID(p.feat, click), gfx.ClickInfo{})
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreenWithMeasure(f, env, p.opts, func(slot pluginapi.Slot) {
 			counts[slot]++
 			p.kernel.DrawSlot(f, slot, env)
@@ -179,8 +180,9 @@ func (p *hhRealProduct) shot(t *testing.T, snap pluginapi.Snapshot, act pluginap
 			Has:      p.kernel.Has,
 			Act:      act,
 		}
-		var view ui.Page
-		view.Draw(c, dscore.VivaTheme(p.theme), bounds, func(f ui.C) {
+		pageTheme2 := dscore.VivaTheme(p.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(c, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 				p.kernel.DrawSlot(f, slot, env)
 			})

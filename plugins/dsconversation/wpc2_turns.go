@@ -6,7 +6,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -68,45 +67,46 @@ func sameLoadedTurn(group loadedTurn, id string, number *int64) bool {
 	return false
 }
 
-func (p *Plugin) turnOffset(env *pluginapi.Env, scrollID gfx.ID, group loadedTurn) (float32, bool) {
-	if env.Scroll == nil {
-		return 0, false
-	}
+// jumpTo 记下这次跳转，等本帧稍后滚动区声明出来再落位。
+//
+// 为什么排队：Turn 导航声明在滚动区**之前**（它要排在消息上方），而 v0.6.0 的
+// ScrollState 只能从声明期的 Box 上取——没有按 ID 查表的入口了。
+func (p *Plugin) jumpTo(offset float32) {
+	p.scrollJump, p.jumpReady = offset, true
+}
+
+// turnOffset 用**上一帧布局后**的滚动偏移把 Turn 锚点换算成内容偏移。
+//
+// v0.6.0 没有按 ID 查滚动状态的入口，偏移由 afterDraw 记在 p.scrollOffset 上；
+// 与旧 env.Scroll(id) 拿到的是同一份值（上一帧 settled 的 Offset），时序不变。
+func (p *Plugin) turnOffset(group loadedTurn) (float32, bool) {
 	box, ok := p.turnAnchors[group.key]
 	if !ok || p.bodyRect.Height <= 0 {
 		return 0, false
 	}
-	state := env.Scroll(scrollID)
-	if state == nil {
-		return 0, false
-	}
 	// Box 的屏幕坐标来自上一帧完整布局；换算回内容偏移后，虚拟化之外
 	// 的已加载 Turn 也能定位，不需要宿主提供未加载大纲。
-	target := state.Offset + box.Y - p.bodyRect.Y
+	target := p.scrollOffset + box.Y - p.bodyRect.Y
 	if target < 0 {
 		target = 0
 	}
 	return target, true
 }
 
-func (p *Plugin) drawTurnNavigation(f ui.C, env *pluginapi.Env, scrollID gfx.ID, turns []loadedTurn) {
+func (p *Plugin) drawTurnNavigation(f ui.C, turns []loadedTurn) {
 	if len(turns) == 0 {
 		return
 	}
 	t := p.theme
 	current := 0
-	if env.Scroll != nil {
-		if state := env.Scroll(scrollID); state != nil {
-			if state.AtEnd() {
-				// 回底是明确的用户意图：最新已加载 Turn 就是当前项，不能
-				// 因本帧尚未完成锚点布局而留在上一轮。
-				current = len(turns) - 1
-			} else {
-				for i, group := range turns {
-					if target, ok := p.turnOffset(env, scrollID, group); ok && target <= state.Offset+8 {
-						current = i
-					}
-				}
+	if p.scrollAtEnd {
+		// 回底是明确的用户意图：最新已加载 Turn 就是当前项，不能
+		// 因本帧尚未完成锚点布局而留在上一轮。
+		current = len(turns) - 1
+	} else {
+		for i, group := range turns {
+			if target, ok := p.turnOffset(group); ok && target <= p.scrollOffset+8 {
+				current = i
 			}
 		}
 	}
@@ -115,8 +115,8 @@ func (p *Plugin) drawTurnNavigation(f ui.C, env *pluginapi.Env, scrollID gfx.ID,
 		if current > 0 {
 			target := turns[current-1]
 			if ui.Button(f, "← "+target.label).Ghost().Small().Clicked() {
-				if offset, ok := p.turnOffset(env, scrollID, target); ok {
-					env.Scroll(scrollID).ScrollTo(offset)
+				if offset, ok := p.turnOffset(target); ok {
+					p.jumpTo(offset)
 				}
 			}
 		}
@@ -124,8 +124,8 @@ func (p *Plugin) drawTurnNavigation(f ui.C, env *pluginapi.Env, scrollID gfx.ID,
 		if current+1 < len(turns) {
 			target := turns[current+1]
 			if ui.Button(f, target.label+" →").Ghost().Small().Clicked() {
-				if offset, ok := p.turnOffset(env, scrollID, target); ok {
-					env.Scroll(scrollID).ScrollTo(offset)
+				if offset, ok := p.turnOffset(target); ok {
+					p.jumpTo(offset)
 				}
 			}
 		}

@@ -32,7 +32,7 @@ func renderFiles(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi
 		return float32(len([]rune(value))) * size * 0.55
 	})
 	if click != "" {
-		canvas.BeginEventPass(tree.ID(feat, click))
+		canvas.BeginEventPass(tree.ID(feat, click), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
 	env := &pluginapi.Env{
@@ -41,8 +41,9 @@ func renderFiles(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi
 		MainWidth: 320,
 		Geometry:  pluginapi.Geometry{Width: 320, Height: 900, SidebarWidth: 280},
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		p.drawList(f, env)
 	})
 }
@@ -188,7 +189,7 @@ func TestPreviewOpensInDefaultApp(t *testing.T) {
 	p := &Plugin{sel: "a.go", content: "package main", curDir: "plugins", theme: dscore.Dark()}
 	p.prims = &dscore.Primitives{Theme: p.theme}
 
-	drawPreviewOnce(t, p, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`}, act, "files-open-external")
+	drawPreviewOnce(t, p, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`}, act, "用默认程序打开")
 	if len(opened) != 1 {
 		t.Fatalf("点了「用默认程序打开」，OpenFile 被调 %d 次，want 1", len(opened))
 	}
@@ -199,7 +200,7 @@ func TestPreviewOpensInDefaultApp(t *testing.T) {
 	// 读失败时不该有这个按钮：那个路径本来就是坏的，开它只会再失败一次。
 	p2 := &Plugin{sel: "a.go", err: "文件不存在", theme: dscore.Dark()}
 	p2.prims = &dscore.Primitives{Theme: p2.theme}
-	drawPreviewOnce(t, p2, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`}, act, "files-open-external")
+	drawPreviewOnce(t, p2, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`}, act, "用默认程序打开")
 	if len(opened) != 1 {
 		t.Errorf("读失败时仍然调了 OpenFile（%v）", opened[1:])
 	}
@@ -207,32 +208,59 @@ func TestPreviewOpensInDefaultApp(t *testing.T) {
 	// 壳没接 OpenFile（老壳）时按钮不画，点了也不该有任何动作。
 	p3 := &Plugin{sel: "a.go", content: "x", theme: dscore.Dark()}
 	p3.prims = &dscore.Primitives{Theme: p3.theme}
-	drawPreviewOnce(t, p3, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`}, pluginapi.Actions{}, "files-open-external")
+	drawPreviewOnce(t, p3, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`}, pluginapi.Actions{}, "用默认程序打开")
 	if len(opened) != 1 {
 		t.Errorf("OpenFile 为 nil 时仍然调用了（%v）", opened[1:])
 	}
 }
 
 // drawPreviewOnce 画一帧预览浮层。
-func drawPreviewOnce(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) {
+func drawPreviewOnce(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, clickLabel string) {
 	t.Helper()
-	tree := &gfx.Tree{}
-	feat := tree.Feature("files-preview-test")
-	canvas := &gfx.Canvas{}
-	canvas.SetTree(tree)
-	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
-		return float32(len([]rune(value))) * size * 0.55
-	})
-	if click != "" {
-		canvas.BeginEventPass(tree.ID(feat, click))
-		defer canvas.EndEventPass()
+	// 先声明再赋值：闭包里要递归调用自己（画一帧 → 找到真实命中区 → 再画一次）。
+	var draw func(clickID gfx.ID)
+	draw = func(clickID gfx.ID) {
+		tree := &gfx.Tree{}
+		feat := tree.Feature("files-preview-test")
+		canvas := &gfx.Canvas{}
+		canvas.SetTree(tree)
+		canvas.SetMeasurer(func(value string, size, weight float32) float32 {
+			return float32(len([]rune(value))) * size * 0.55
+		})
+		if !clickID.IsZero() {
+			canvas.BeginEventPass(clickID, gfx.ClickInfo{})
+			defer canvas.EndEventPass()
+		}
+		env := &pluginapi.Env{
+			Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
+			Bounds: ui.Rect{Width: 1182, Height: 832},
+		}
+		pageTheme2 := dscore.VivaTheme(p.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(canvas, env.Bounds, func(f ui.C) {
+			p.drawPreview(f, env)
+		})
+		if !clickID.IsZero() {
+			return
+		}
+		// 无点击的一帧：如果给了文案，就用这一帧的真实命中区再点一次。
+		// v0.6.0 的 ui.Button 没有显式交互 ID，v0.5.x 那套"按 ID 造点击目标"
+		// 对预览按钮不再成立；点中的仍是同一个按钮、触发同一条链。
+		if clickLabel == "" {
+			return
+		}
+		var target gfx.ID
+		for _, hit := range canvas.Hits() {
+			if hit.Label == clickLabel && hit.Role == gfx.RoleButton {
+				target = hit.ID
+			}
+		}
+		if target.IsZero() {
+			// 没有这个按钮是**被测行为本身**（读失败/壳没接 OpenFile 时按钮不画），
+			// 所以这里不报错、也不再点：调用方的"OpenFile 被调 0 次"就是判据。
+			return
+		}
+		draw(target)
 	}
-	env := &pluginapi.Env{
-		Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832},
-	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
-		p.drawPreview(f, env)
-	})
+	draw(gfx.ID{})
 }

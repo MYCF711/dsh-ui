@@ -77,10 +77,11 @@ func (h *statsDialogHarness) frame(t *testing.T, bounds ui.Rect, data pluginapi.
 		Has:      h.kernel.Has,
 	}
 	if click != "" {
-		canvas.BeginEventPass(h.tree.ID(h.feat, click))
+		canvas.BeginEventPass(h.tree.ID(h.feat, click), gfx.ClickInfo{})
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(h.theme), bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(h.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, bounds, func(f ui.C) {
 		// 产品形状：dock 在输入卡片下方、贴着主区底部。用 Spacer 把它压到底，
 		// 这样弹窗的"向上展开"路径（官方首选方向）才是被验收的那一条。
 		ui.Column(f).FillWidth().FillHeight().Children(func() {

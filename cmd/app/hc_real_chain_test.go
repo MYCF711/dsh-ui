@@ -316,8 +316,9 @@ func hcCaptureStatusbar(t *testing.T, snap pluginapi.Snapshot, path string) {
 			Has:       product.kernel.Has,
 			Act:       pluginapi.Actions{Goal: func() string { return "" }},
 		}
-		var view ui.Page
-		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f ui.C) {
+		pageTheme := dscore.VivaTheme(product.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+		view.Draw(c, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, shotEnv, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, shotEnv)
 			})

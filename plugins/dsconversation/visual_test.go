@@ -28,13 +28,15 @@ func drawHeroTest(t *testing.T, data pluginapi.Snapshot, mainWidth float32) (*gf
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
 	tree := &gfx.Tree{}
 	canvas := newHeroTestCanvas(tree)
-	var view ui.Page
-	f := view.Begin(canvas, dscore.VivaTheme(theme), ui.Rect{Width: mainWidth, Height: 700})
-	p.draw(f, &pluginapi.Env{
-		Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("hero-test"), Canvas: canvas,
-		Bounds: ui.Rect{Width: mainWidth, Height: 700}, MainWidth: mainWidth,
+	// v0.6.0 没有 Begin/End：Draw 内部就完成声明与解算，主题构造期给。
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, ui.Rect{Width: mainWidth, Height: 700}, func(f ui.C) {
+		p.draw(f, &pluginapi.Env{
+			Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("hero-test"), Canvas: canvas,
+			Bounds: ui.Rect{Width: mainWidth, Height: 700}, MainWidth: mainWidth,
+		})
 	})
-	f.End()
 	// 鲸鱼与 Markdown 一样走真实的第二阶段覆画；漏掉这一步会把测试支架
 	// 自己的问题误报成实现没有品牌标记。
 	p.afterDraw(canvas, &pluginapi.Env{Theme: theme, Data: data, Bounds: ui.Rect{Width: mainWidth, Height: 700}})

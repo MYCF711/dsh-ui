@@ -35,15 +35,16 @@ func renderOpen(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.
 		return float32(len([]rune(value))) * size * 0.55
 	})
 	if click != "" {
-		canvas.BeginEventPass(tree.ID(feat, click))
+		canvas.BeginEventPass(tree.ID(feat, click), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		// 槽位给的是一个列（真实壳就是中栏列）：本插件只借它定位，不占它的流。
 		ui.Column(f).Width(902).Height(76).Children(func() { p.draw(f, env) })
 	})

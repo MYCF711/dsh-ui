@@ -36,7 +36,8 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 
 	tree := &gfx.Tree{}
 	feat := tree.Feature("files-preview-headless")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "files-preview", Width: 1182, Height: 832, Tree: tree,
@@ -50,7 +51,7 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 			Bounds: bounds, MainWidth: 902,
 			Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			p.drawPreview(f, env)
 		})
 	}

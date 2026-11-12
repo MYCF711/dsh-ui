@@ -118,7 +118,8 @@ func openSettingsHarness(t *testing.T, width, height int) *settingsHarness {
 
 	h.tree = &gfx.Tree{}
 	h.feat = h.tree.Feature("settings-visual")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(h.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "settings-visual", Width: width, Height: height, Tree: h.tree,
 		WindowMode: app.WindowFrameless,
@@ -133,12 +134,11 @@ func openSettingsHarness(t *testing.T, width, height int) *settingsHarness {
 				Width: size.Width, Height: size.Height, SidebarWidth: sidebar,
 				MainWidth: size.Width - sidebar,
 			},
-			Scroll: view.ScrollState,
-			Act:    h.act,
-			Has:    h.kernel.Has,
+			Act: h.act,
+			Has: h.kernel.Has,
 		}
 		canvas.Fill(bounds, h.theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(h.theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			h.kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

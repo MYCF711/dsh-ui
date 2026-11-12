@@ -14,7 +14,18 @@ import (
 // renderComposer 用真实 flex 布局和真实 ds-core 图元画一帧，不启动窗口。
 // click 非空时走 canvas 的事件 pass，因此测试到的是按钮实际 Clicked 分支，
 // 不是直接调用一个与界面脱节的辅助函数。
+// renderComposer 按 v0.5.x 的写法点一帧：click 是一个**名字**，用它在本次的树里
+// 造出交互 ID。ds-core 的 prims 控件（发送/停止/提及面板…）仍然是显式 ID 的，
+// 所以这条老路径对它们依旧成立。
 func renderComposer(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, mainWidth, windowWidth float32, click string) *gfx.Canvas {
+	t.Helper()
+	return renderComposerAt(t, p, data, act, mainWidth, windowWidth, click, gfx.ID{})
+}
+
+// renderComposerAt 是唯一渲染入口：点击目标要么按名字造（clickName），要么直接用
+// 真实命中区 ID（clickID）。v0.6.0 的 ui.Button 不再有显式交互 ID，approval.go 里
+// 那几个按钮只能先画一帧拿到真实 ID 再点（见 renderComposerClickLabel）。
+func renderComposerAt(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, mainWidth, windowWidth float32, clickName string, clickID gfx.ID) *gfx.Canvas {
 	t.Helper()
 	if p.theme == nil {
 		p.theme = dscore.Dark()
@@ -29,8 +40,11 @@ func renderComposer(t *testing.T, p *Plugin, data pluginapi.Snapshot, act plugin
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
 	})
-	if click != "" {
-		canvas.BeginEventPass(tree.ID(feat, click))
+	if clickName != "" {
+		clickID = tree.ID(feat, clickName)
+	}
+	if !clickID.IsZero() {
+		canvas.BeginEventPass(clickID, gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
 	env := &pluginapi.Env{
@@ -41,14 +55,38 @@ func renderComposer(t *testing.T, p *Plugin, data pluginapi.Snapshot, act plugin
 			Width: windowWidth, Height: 400, SidebarWidth: 280, MainWidth: mainWidth,
 		},
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		// 模拟 dsshell 的中栏内容框：MainWidth 减去壳的左右 12px padding。
 		// 直接在最外层调用会把整窗误当中栏，测的就不是真实装配几何了。
 		ui.Column(f).Width(mainWidth - 24).Children(func() { p.draw(f, env) })
 	})
 	p.afterDraw(canvas, env)
 	return canvas
+}
+
+// renderComposerClickLabel 按**文案**点一帧。
+//
+// 为什么需要它：v0.6.0 的 `ui.Button` 没有显式交互 ID（身份来自声明位置），
+// 审批卡（approval.go）用的正是 ui.Button，所以 v0.5.x 那套"按 ID 造点击目标"
+// 对它不再成立。这里先普通画一帧拿到真实命中区，再用它的 ID 走一次事件 pass；
+// 点中的仍然是同一个按钮、触发同一个回调，断言强度不变。
+func renderComposerClickLabel(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, mainWidth, windowWidth float32, label string) *gfx.Canvas {
+	t.Helper()
+	probe := renderComposerAt(t, p, data, act, mainWidth, windowWidth, "", gfx.ID{})
+	var target gfx.ID
+	labels := make([]string, 0, len(probe.Hits()))
+	for _, hit := range probe.Hits() {
+		labels = append(labels, hit.Label)
+		if hit.Label == label && hit.Role == gfx.RoleButton {
+			target = hit.ID
+		}
+	}
+	if target.IsZero() {
+		t.Fatalf("没有文案为 %q 的按钮命中区；实际命中区文案=%v", label, labels)
+	}
+	return renderComposerAt(t, p, data, act, mainWidth, windowWidth, "", target)
 }
 
 func largestSurface(canvas *gfx.Canvas, color ui.Color) (gfx.Rectangle, bool) {
@@ -289,14 +327,16 @@ func TestActivityLabelTruthAndEmptyStates(t *testing.T) {
 }
 
 func TestApprovalButtonsPreserveOriginalIDsThroughLayout(t *testing.T) {
+	// v0.6.0 起 ui.Button 没有显式交互 ID，按**文案**点（文案来自宿主的
+	// ApprovalOption.Name，approval.go 直接用它当按钮文字）。
 	cases := []struct {
 		name  string
-		click string
+		label string
 		want  string
 	}{
-		{name: "允许这一次", click: "approval-allow", want: "allow-once"},
-		{name: "以后都允许", click: "approval-allow-always", want: "allow-always"},
-		{name: "拒绝", click: "approval-deny", want: "reject-once"},
+		{name: "允许这一次", label: "允许这一次", want: "allow-once"},
+		{name: "以后都允许", label: "这个会话里以后都允许", want: "allow-always"},
+		{name: "拒绝", label: "拒绝", want: "reject-once"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -308,7 +348,7 @@ func TestApprovalButtonsPreserveOriginalIDsThroughLayout(t *testing.T) {
 				calls++
 				gotReq, gotOpt = requestID, optionID
 			}}
-			renderComposer(t, p, pluginapi.Snapshot{Approval: &ap}, act, 902, 1182, tc.click)
+			renderComposerClickLabel(t, p, pluginapi.Snapshot{Approval: &ap}, act, 902, 1182, tc.label)
 			if calls != 1 || gotReq != ap.RequestID || gotOpt != tc.want {
 				t.Fatalf("审批按钮回传错误：calls=%d req=%q opt=%q", calls, gotReq, gotOpt)
 			}

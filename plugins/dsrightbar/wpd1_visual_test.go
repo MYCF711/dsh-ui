@@ -48,7 +48,8 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 	data.MessageMeta[pubapi.MessageKey(wpd1SessionID, msgs[1], 1)] = pubapi.MessageMetadata{Time: 1762222445123}
 	tree := &gfx.Tree{}
 	feat := tree.Feature("wpd1-two-size")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "wpd1-two-size", Width: 1182, Height: 832, Tree: tree, WindowMode: app.WindowFrameless,
 		TextInput: ui.Fields(rightbar.Fields()...),
@@ -63,8 +64,7 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 				Width: size.Width, Height: size.Height, SidebarWidth: 280,
 				RightWidth: rightPref, MainWidth: size.Width - 280 - rightPref, BottomHeight: 24,
 			},
-			Scroll: view.ScrollState,
-			Act:    pluginapi.Actions{ToggleRightbar: func() { data.ShowRightbar = !data.ShowRightbar }},
+			Act: pluginapi.Actions{ToggleRightbar: func() { data.ShowRightbar = !data.ShowRightbar }},
 			Has: func(slot pluginapi.Slot) bool {
 				if slot == pluginapi.SlotShellOverlay {
 					return false
@@ -73,7 +73,7 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 			},
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

@@ -83,7 +83,10 @@ type rightbarSessionState struct {
 const cacheLimit = 5
 
 type model struct {
-	view   ui.Page
+	// view 是整窗的 ui.Page（v0.6.0 把 flex.View 并进了 ui.Page）。
+	// 主题是**构造期**给的：这里传的是包级 `theme` 的地址，所以运行时换主题
+	// （applyPendingTheme 在 Paint 里改 theme）下一帧就生效，不必重建 Page。
+	view   *ui.Page
 	draft  ui.Field
 	search ui.Field // 侧栏过滤（按标题 + cwd 匹配）
 	inv    app.Invalidator
@@ -404,11 +407,8 @@ func (m *model) integrateLoadWithContextWindowLocked(id string, result *apiclien
 }
 
 func (m *model) openSession(id string) {
-	// 切走之前记下当前会话滚到哪了
-	m.mu.Lock()
-	prev := m.cur
-	m.mu.Unlock()
-	m.saveScroll(prev)
+	// 滚动位置不用在这里存：m.recordScroll 每帧都在抄（v0.6.0 没有可回头查的
+	// 滚动状态入口，见 recordScroll 的注释）。
 
 	// 切会话必须丢掉上一个会话的 Markdown 文档树，否则切三次就是三份 200 条的
 	// Layout 结果全常驻（实测 168.7 MB）
@@ -708,20 +708,38 @@ func (m *model) loadDir(dir string) {
 	m.inv.Invalidate() // 拉到了就重绘，插件下一帧才看得见
 }
 
-// saveScroll 记下某个会话当前的滚动偏移。
-func (m *model) saveScroll(id string) {
-	if id == "" {
+// settleScroll 是 Draw 返回后对滚动区的全部处理：先恢复待恢复的位置，再记本帧偏移。
+//
+// **顺序不能反**：recordScroll 会覆盖 m.scrollPos，而切会话那一帧新滚动区是从 0
+// 布局的——先记再恢复就会把"切走前的位置"覆盖成 0，恢复等于没恢复。
+// 回归测试：TestPendingScrollRestoresOffset（它调的就是这个函数）。
+func (m *model) settleScroll(box ui.Box, handed bool) bool {
+	repaint := m.applyPendingScroll(box, handed)
+	m.recordScroll(box, handed)
+	return repaint
+}
+
+// recordScroll 把本帧消息流滚动区的偏移抄进 m.scrollPos。
+//
+// v0.6.0 起**没有**"按 ID 查 ScrollState"的入口：滚动状态由声明方（消息流插件）
+// 持在 `Box` 上，`Box.ScrollState()` 只在同一个 paint 内有效。所以壳不再在
+// "切会话那一刻回头查上一帧"，改成**每帧抄一次**——切走时 m.scrollPos[prev]
+// 已经是上一帧的真值，语义等价，且不依赖任何跨帧的 Box/指针。
+//
+// box/handed 为空（本帧没有消息流滚动区，比如没有 ds-conversation 插件）时跳过。
+func (m *model) recordScroll(box ui.Box, handed bool) {
+	if !handed {
 		return
 	}
-	st := m.view.ScrollState(tree.ID(home, "msgs-"+id))
-	if st == nil {
-		return
-	}
+	st := box.ScrollState()
+	offset := st.Offset
 	m.mu.Lock()
 	if m.scrollPos == nil {
 		m.scrollPos = map[string]float32{}
 	}
-	m.scrollPos[id] = st.Offset
+	if m.cur != "" {
+		m.scrollPos[m.cur] = offset
+	}
 	m.mu.Unlock()
 }
 
@@ -729,7 +747,10 @@ func (m *model) saveScroll(id string) {
 //
 // Follow 到布局末尾才把 Offset 移到尾部，而消息虚拟化在声明时读的是旧 Offset。
 // 空消息 Hero 帧不能消费 pendingScroll；否则首载只有尾部占位，没有下一帧实画。
-func (m *model) applyPendingScroll() bool {
+//
+// 恢复必须在布局**之后**做（ScrollTo 的落位要拿本次布局的 Content/Viewport 判断
+// "是否停在末尾"），所以用本帧插件交回来的 Box；没有任何滚动区时只报告"要不要补帧"。
+func (m *model) applyPendingScroll(box ui.Box, handed bool) bool {
 	m.mu.Lock()
 	id := m.pendingScroll
 	if id == "" || id != m.cur || len(m.msgs) == 0 {
@@ -740,12 +761,11 @@ func (m *model) applyPendingScroll() bool {
 	m.pendingScroll = ""
 	m.mu.Unlock()
 
-	st := m.view.ScrollState(tree.ID(home, "msgs-"+id))
-	if st == nil {
+	if !handed {
 		return false
 	}
 	if restore {
-		st.ScrollTo(off)
+		box.ScrollState().ScrollTo(off)
 	}
 	return true
 }
@@ -1740,6 +1760,10 @@ func newConfig(m *model) app.Config {
 		if approvalView == nil {
 			approvalView = demoApprovalView()
 		}
+		// 本帧消息流滚动区：插件在声明后交回来（见 env.ScrollBox）。
+		// Box 只在同一个 paint 内有效，所以这里只用一帧、用完即弃。
+		var scrollBox ui.Box
+		var hasScrollBox bool
 		env := &pluginapi.Env{
 			Theme: m.theme,
 			Data: pluginapi.Snapshot{
@@ -1801,8 +1825,10 @@ func newConfig(m *model) app.Config {
 			Canvas:    canvas,
 			Bounds:    contentBounds,
 			MainWidth: mainWidth,
-			// viva 要求滚动状态"要的时候再取"，所以传函数而不是指针。
-			Scroll: m.view.ScrollState,
+			// v0.6.0 没有"按 ID 查滚动状态"的入口了：滚动区状态由声明方
+			// （消息流插件）持在 Box 上，且只在同一个 paint 内有效。所以改成
+			// 声明方把盒子交回来，壳在 Draw 返回后（布局已定）立刻用完就丢。
+			ScrollBox: func(box ui.Box) { scrollBox, hasScrollBox = box, true },
 		}
 		env.Has = func(slot pluginapi.Slot) bool { return m.kernel.Has(slot) }
 		// 三栏几何由壳算：它知道侧栏要的宽度、右栏开不开、白名单里有没有底部整行。
@@ -1827,7 +1853,7 @@ func newConfig(m *model) app.Config {
 			}
 		}
 
-		m.view.Draw(canvas, theme, contentBounds, func(f ui.C) {
+		m.view.Draw(canvas, contentBounds, func(f ui.C) {
 			if shellTier == shellOfficial {
 				// 官方骨架：结构/槽名/几何来自 internal/uikernel，内容仍是插件。
 				drawOfficialFirstScreen(f, m, env, shellOpts)
@@ -1837,10 +1863,16 @@ func newConfig(m *model) app.Config {
 			drawSlot(f, m.kernel, pluginapi.SlotShellRoot, env)
 		})
 
-		// 布局已定：先恢复待恢复的滚动位置，再跑插件的 AfterDraw
+		// 布局已定：先恢复待恢复的滚动位置，再记本帧偏移，然后跑插件的 AfterDraw
 		// （插件负责 Markdown 这类"先布局后覆画"的东西，壳不再画内容）。
+		//
+		// **顺序不能反**：recordScroll 会把本帧的 Offset 写进 m.scrollPos，
+		// 而切会话那一帧的新滚动区是从 0 布局的——先记再恢复就会把"切走前的位置"
+		// 覆盖成 0，恢复等于没恢复（这条有专门的回归测试：
+		// TestPendingScrollRestoresOffset）。
+		//
 		// 第一批消息的高度/尾部 Offset 刚确定，必须再绘一帧让虚拟化实画尾部。
-		if m.applyPendingScroll() {
+		if m.settleScroll(scrollBox, hasScrollBox) {
 			m.inv.Invalidate()
 		}
 		for _, painter := range m.kernel.AllPainters() {
@@ -2284,6 +2316,11 @@ func main() {
 	m.theme = m.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	m.prims = m.kernel.MustGet(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	theme = dscore.VivaTheme(m.theme)
+	// 整窗的 Page：一个 Page 活过所有帧（名字/作用域/滚动状态都挂在它身上），
+	// 所以必须在这里建一次，不能在 Paint 里每帧新建。
+	// Theme 传包级 `theme` 的地址 → applyPendingTheme 改 theme，下一帧跟着换。
+	// Tree 给整窗的交互树（与 app.Config{Tree: &tree} 是同一棵）。
+	m.view = ui.NewPage(ui.PageConfig{Tree: &tree, Theme: &theme})
 	m.actions = pluginapi.Actions{
 		// 宿主 ui-config.json 的读写。ConfigGet 给的是**缓存**（插件要同步返回），
 		// ConfigSet 异步写、失败只报状态栏——插件不等待也不重试。

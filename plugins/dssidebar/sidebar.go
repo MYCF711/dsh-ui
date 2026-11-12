@@ -109,7 +109,10 @@ type Plugin struct {
 	search         ui.Field
 	searchExpanded bool
 	frameBoxes     frameBoxes
-	activePanel    string
+	// scrollBox 是本帧的会话列表滚动区。v0.6.0 的滚动状态由声明方持有
+	// （没有 ID→ScrollState 查表），测试与内部要按 Box 取状态，所以记下它。
+	scrollBox   ui.Box
+	activePanel string
 	// pendingDelete 是"已经点过一次 ×、等第二次确认"的会话 id。
 	//
 	// 删除是**破坏性**的（宿主那边是从磁盘上删），所以做成两次点击。
@@ -256,7 +259,8 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 	// 标题会被压成竖排，或者整个内容列撑到窗口宽——都踩过）。
 	inner := p.width - sidebarInline
 	p.logSnapshot(env, q, groups, order)
-	ui.Scroll(f).Width(inner).Grow(1).MinHeight(120).Clip().Children(func() {
+	p.scrollBox = ui.Scroll(f).Width(inner).Grow(1).MinHeight(120).Clip()
+	p.scrollBox.Children(func() {
 		// 外层 Gap(0)：行间 2、组间 4 是两档，不能用一个统一的 gap 冒充
 		// （official-specs §6 遗留第 2 条）。
 		ui.Column(f).Width(inner).Gap(0).PadSides(0, 0, listBottomPadding, 0).Children(func() {
@@ -311,7 +315,8 @@ func (p *Plugin) drawSearch(f ui.C, env *pluginapi.Env, q string) {
 
 	// 与分组态同一套宽度口径（侧栏内宽 + 吃掉右侧 12px 内边距），见 drawList。
 	inner := p.width - sidebarInline
-	ui.Scroll(f).Width(inner).Grow(1).MinHeight(120).Clip().Children(func() {
+	p.scrollBox = ui.Scroll(f).Width(inner).Grow(1).MinHeight(120).Clip()
+	p.scrollBox.Children(func() {
 		ui.Column(f).Width(inner).Gap(0).PadSides(0, 0, listBottomPadding, 0).Children(func() {
 			if len(results) == 0 {
 				// 官方 .GAkraW_empty{color:var(--dsw-alias-label-tertiary);padding:16px 12px;font-size:13px}

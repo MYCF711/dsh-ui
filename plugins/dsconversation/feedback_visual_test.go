@@ -95,8 +95,9 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 	tree := &gfx.Tree{}
 	feat := tree.Feature("feedback-headless")
 	data := feedbackShotData()
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        ui.Page
 		invalidator app.Invalidator
 	)
 	config := app.Config{
@@ -113,7 +114,7 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 			// （没有 Actor 时按钮本来就不画，那样就证明不了"同一排"）。
 			Act: withRowActions(cfg.actions()),
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)

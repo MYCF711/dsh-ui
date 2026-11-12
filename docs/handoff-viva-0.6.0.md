@@ -420,3 +420,104 @@ func (p *Page) Draw(canvas *gfx.Canvas, bounds Rect, view func(C))
 | `go vet` 输出（20 处全清单） | `_v062/11-vet.log` |
 | `go test` 输出（15 ok / 20 build failed） | `_v062/12-test.log` |
 | 被改写的文件清单（88 个 `f.`/`fr.` 面；`plugins/dstool/render.go` 另计 1） | `_v062/13-rewritten-files.txt` |
+
+## 11. V-06-3 实测（阶段二第三步：`ui.Page` 面收尾 —— `Draw`/`ScrollState`/`Begin`+`End`）
+
+> 现场：同一隔离 worktree（分支 `chore/viva-0.6.0-stage2`，起点 HEAD `ab2b9db` = V-06-2 提交），**未 commit**（按约定由 Lead 统一提交）。
+
+### 11.1 结论
+
+| 项 | 结果 |
+|---|---|
+| `CGO_ENABLED=0 go build ./...` | **绿**（V-06-2 收尾时红 4 处，全在 `cmd/app/main.go`） |
+| `CGO_ENABLED=0 go vet ./...` | **绿**（V-06-2 收尾时红 20 处 / 20 包） |
+| `CGO_ENABLED=0 go test ./... -count=1` | **绿：35 包 ok / 0 包红 / 0 条运行期失败**（V-06-2 时 15 ok + 20 `[build failed]`） |
+| `gofmt -l .` | **0** 个文件 |
+| 新增回归测试 | **1 条**：`cmd/app/main_test.go` `TestPendingScrollRestoresOffset`（壳侧"切回会话恢复阅读位置"，含 `settleScroll` 顺序的变异验证） |
+| 改动面 | **90 文件**（代码 89：非测试 **7** / 测试 **82**；另 1 份本文档），`+920 / −421` |
+| `view.Draw` 去 theme | **117 处 / 82 文件**（脚本改写 105 + 手改 12；不含 `main.go` 产品 1 处与 `spike/*`） |
+| `view.ScrollState(id)` | **6 处**（`main.go` 3 + 测试 3）全部按 v0.6.0 的"声明方持有"重写 |
+| `view.Begin` / `f.End` | **3 组**（`dsconversation` ×2、`dstopbar` ×1）改写成 `Draw` |
+| `canvas.BeginEventPass` | **27 处**补 `gfx.ClickInfo{}`（零值 = 无修饰键的普通单击，语义等价） |
+
+一句话：**阶段二的编译面到此闭合**——`flex.View` → `ui.Page` 的类型搬家（V-06-1）与元素函数改写（V-06-2）之后，`ui.Page` 自己那层方法面（`Draw` 的 theme 形参、`ScrollState(id)` 查表、`Begin`/`End`）在本轮按 v0.6.0 的**所有权模型**重新接了一遍，三档门禁全绿。
+
+### 11.2 四个形状变化点（都以上游 v0.6.0 源码为准，不照报错猜）
+
+1. **主题是构造期的，不是 `Draw` 的形参**：`Page.Draw(canvas, bounds, view)`。壳的做法是
+   `ui.NewPage(ui.PageConfig{Tree: &tree, Theme: &theme})` —— `Theme` 给的是**包级 `theme` 的地址**，
+   而 `Page.currentTheme()` 每次 paint 都解引用它，所以 `applyPendingTheme` 在 Paint 里改 `theme`
+   之后**下一帧就换色**，不需要重建 Page（这是本轮唯一"必须想清楚"的主题问题）。
+2. **没有 `Page.ScrollState(id)`**：v0.6.0 只有 `Box.ScrollState()`，而且只在**同一个 paint 内**有效
+   （`scrollStore` 按帧 sweep，未声明的滚动区当场丢状态）。所以"壳按 ID 回头查"这条路**不存在**，
+   见 §11.3。
+3. **没有 `Page.Begin` / `Page.End`**：`Draw` 内部完成声明与解算（`paintOnce` + `reportScrolls`），
+   harness 里 `f := view.Begin(canvas, theme, bounds)` … `f.End()` 的整段写法按
+   `view.Draw(canvas, bounds, func(c ui.C) {...})` 重写。
+4. **`canvas.BeginEventPass(id)` → `(id, gfx.ClickInfo{})`**：`ClickInfo` 的注释写明
+   "The zero value is a plain click with no modifier"，所以补 `gfx.ClickInfo{}` 与旧行为等价。
+
+### 11.3 `ScrollState` 的替代：`Env.ScrollBox` + 每帧抄偏移（本轮唯一的接口改动）
+
+v0.6.0 的设计取向是"**应用不持滚动状态**"（`ui.Scroll`/`ScrollAt` 声明、`Page.Wheel` 滚轮、
+`Box.ScrollState()` 读回），而我们的壳原本是"按 ID 查上一帧"（`saveScroll`/`applyPendingScroll`/`Env.Scroll`）。
+本轮按"声明方持有"落地，**没有**改成 `ScrollAt`（那会把滚轮控制权交给应用，见 §11.5）：
+
+| 位置 | 旧形状 | 新形状 |
+|---|---|---|
+| `pluginapi.Env.Scroll func(gfx.ID) *ui.ScrollState` | 壳→插件按 ID 查表 | **删除** |
+| `pluginapi.Env.ScrollBox func(ui.Box)` | — | 插件声明完消息流滚动区后把**本帧的 Box** 交回壳 |
+| `pluginapi.Env.ViewportOffset *float32` | 右栏伪造 `&ui.ScrollState{Offset:1e9}` 骗虚拟化 | 壳/接管方给一个偏移覆盖值（轨迹视图把正文推到视口外） |
+| `cmd/app` `saveScroll(id)` | 切会话时回头查上一帧 | `recordScroll(box, handed)`：**每帧**从壳收到的 Box 抄一次偏移 |
+| `cmd/app` `applyPendingScroll()` | `st := view.ScrollState(id)` 再 `ScrollTo` | `applyPendingScroll(box, handed)`：布局后（`Draw` 返回）用同一个 Box 做 `ScrollTo` |
+| `cmd/app` Draw 之后的处理顺序 | 无此问题（旧实现是先恢复、后无记录） | 收进 `settleScroll(box, handed)`：**先恢复、再记偏移**。反了的话切会话那一帧的新滚动区是从 0 布局的，`recordScroll` 会把"切走前的位置"覆盖成 0 → 恢复等于没恢复。新增回归测试 `TestPendingScrollRestoresOffset`，并把 `settleScroll` 内部两行对调做过变异验证（红：`恢复后的偏移 = 500，want 120`；复原后绿） |
+| `dsconversation` 消息流 | `env.Scroll(scrID)` | 自己声明滚动区（身份用 `f.Key("msgs-"+会话ID)`，保住"每会话一份滚动位置"）后 `p.bodyBox.ScrollState()` |
+| `dsconversation` Turn 导航 | 声明期 `env.Scroll(...)` | 用 `afterDraw` 抄下的 `scrollOffset`/`scrollAtEnd` 值（**值的时序与旧实现一致**：都是"上一帧 settled"） |
+| `dsconversation` Turn 跳转 | `env.Scroll(id).ScrollTo(...)` | 先排队（`jumpTo`），滚动区声明时再落位 |
+| `dsrightbar` 轨迹列表 | `env.Scroll(scrID)` | 自己声明的 Box 取 `Viewport`/`Offset`，搜索词变化时 `ScrollTo(0)` |
+| `dssidebar` 列表 | — | 插件多存一个 `scrollBox ui.Box` 字段（测试按 Box 取状态） |
+
+为什么不用 `ui.ScrollAt(c, offset)` 做恢复：它会把 `scrollManual` 置真，
+`view.Wheel` 遇到 manual 区**直接返回未处理**（`ui/scroll.go:209`），滚轮就废了。
+精确恢复留给 V-06-4 连同"应用自己接管滚轮"一起做。
+
+### 11.4 显式交互 ID 消失带来的测试改写（7 处，只改测试，不改产品语义）
+
+V-06-2 的 `Button`(22)/`ScrollArea`(10)/`Switch`(1) 丢了显式 ID，身份改由 `Key`/`Part`/声明位置决定。
+之前这些包是 `[build failed]`（跑不到），本轮一编译就暴露了 5 个包的断言：
+
+| 文件 | 旧断言 | 新断言（强度不变） |
+|---|---|---|
+| `dsshortcuts/shortcuts_guard_test.go` | 扫 `ui.KeyXxx`（AST） | 认 `ui.` **和** `gfx.` 两个包名（V-06-1 把键常量搬到了 `gfx`） |
+| `dsagentteam/toggle_test.go` `switchHit` | `hit.Label == "switch"` | `hit.Role == gfx.RoleSwitch`（`.Label()` 现在写的是用户文案） |
+| `dsagentteam/slots_test.go` `hasSwitchHit` | 同上 | 同上 |
+| `dscomposer/approval_official_test.go` | 按旧 ID `approval-deny` 找命中区 | 按文案「拒绝」+ `RoleButton` 找，再按它的真实矩形 `Press/Release` |
+| `dscomposer/composer_test.go` | 按旧 ID `approval-*` 造点击目标 | 新增 `renderComposerClickLabel`：先画一帧拿真实命中区，再用它的 ID 走事件 pass |
+| `dsconversation/official_transcript_paging_test.go` | 按旧 ID `history-older` | 按文案「加载更早」+ `RoleButton` |
+| `dsfiles/files_test.go` | 按旧 ID `files-open-external` | 按文案「用默认程序打开」（负例"按钮不该存在"时不点，由调用方的断言兜底） |
+
+**这不是放宽**：点中的仍是同一个按钮、触发同一条回调；只是"怎么找到那个按钮"从 ID 换成了文案/role。
+产品侧 `Button`/`ScrollArea` 是否需要在 v0.6.0 里补回显式 ID，属 V-06-4 的设计判断（见 §11.5）。
+
+### 11.5 还剩什么（V-06-4 / 后续；本轮**记录并跳过**）
+
+1. **显式交互 ID 的产品语义**：`Button`/`ScrollArea` 现在只有"位置身份"，跨帧稳定但不可寻址。
+   需要一次全量 hits/交互矩阵复核（谁是 Key、谁是位置、有没有两行同时出现导致身份交换）。
+2. **`Popup` 的"放不下翻到另一面"**：V-06-2 已登记（`Overlay` 绝对定位不翻面），仍在。
+3. **按 Turn 精确恢复滚动位置**：现在靠 `recordScroll`/`applyPendingScroll` + `ScrollTo` 恢复了会话级偏移，
+   但"应用自己管滚轮"（`ScrollAt`）那条路没走；若将来要 `ScrollAt`，必须同时接管滚轮。
+4. **视觉对照**：本轮只做到"编译 + 35 包测试全绿"，画面对照仍是 V-06-5。
+5. **`spike/*` 五个子模块**：各自 `go.mod` pin 在 `viva v0.2.3`，不在 `./...` 门禁内，
+   且 V-06-1/V-06-2 按新 API 改过之后**本来就不能编译**（`go.mod` 没跟着升）。本轮不动，
+   要恢复得单独一条"spike 模块升 v0.6.0"的活。
+
+### 11.6 证据位置
+
+| 内容 | 路径 |
+|---|---|
+| 批量改写脚本（Draw 去 theme + 页面构造 + Env.Scroll 删除；`--apply` 才写盘） | `DSH-GO/tmp/GO8-RC2/_v063/migrate.py` |
+| 站点扫描（括号/方括号/花括号配平，只认 `ui.Page` 型接收者） | `_v063/scan.py` |
+| 起始红点 | `_v063/build0.log`、`_v063/vet0.log` |
+| 最终三档 | `_v063/final-build.log`、`final-vet.log`、`final-test.log`（35 ok / 0 FAIL） |
+| 产品路径补丁快照（V-06-3 中途） | `_v063/product.patch` |
+| 逐条报告 | `DSH-GO/tmp/GO8-RC2/reports/V06-3-page-migration.md` |

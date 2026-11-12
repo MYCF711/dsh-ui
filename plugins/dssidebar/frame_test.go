@@ -60,8 +60,9 @@ func TestFG2OfficialGeometryConstants(t *testing.T) {
 func TestFG2BrandNewSessionAndNavigationGeometry(t *testing.T) {
 	p, _, env, _, canvas, _ := searchFixture(t)
 	env.Act.NewSession = func() {}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 256, Height: 420}, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, ui.Rect{Width: 256, Height: 420}, func(f ui.C) {
 		p.drawHeader(f, env)
 	})
 
@@ -128,15 +129,16 @@ func TestFG2NewSessionClickCallsRealActionOnce(t *testing.T) {
 	calls := 0
 	env.Act.NewSession = func() { calls++ }
 	p.activePanel = "schedules"
-	var view ui.Page
+	pageTheme2 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 256, Height: 420}, func(f ui.C) {
+		view.Draw(canvas, ui.Rect{Width: 256, Height: 420}, func(f ui.C) {
 			p.drawHeader(f, env)
 		})
 	}
 	draw()
 	canvas.Reset()
-	canvas.BeginEventPass(tree.ID(env.Feat, "new-session"))
+	canvas.BeginEventPass(tree.ID(env.Feat, "new-session"), gfx.ClickInfo{})
 	draw()
 	canvas.EndEventPass()
 	if calls != 1 {
@@ -169,9 +171,10 @@ func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 		}
 	}
 
-	var view ui.Page
+	pageTheme3 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f ui.C) {
+		view.Draw(canvas, env.Bounds, func(f ui.C) {
 			ui.Column(f).FillWidth().FillHeight().Children(func() {
 				p.drawHeader(f, env)
 				p.drawActivePanel(f, env)
@@ -186,7 +189,7 @@ func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 	}
 
 	canvas.Reset()
-	canvas.BeginEventPass(tree.ID(env.Feat, "panel-schedules"))
+	canvas.BeginEventPass(tree.ID(env.Feat, "panel-schedules"), gfx.ClickInfo{})
 	draw()
 	canvas.EndEventPass()
 	if p.activePanel != "schedules" {
@@ -205,13 +208,13 @@ func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 	// 会话行仍是返回会话的真实路由；不能重载、清草稿或新建会话。
 	row := sess("session-sentinel", "真会话", `D:\work`, "2026-11-03T10:00:00Z")
 	drawRow := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
+		view.Draw(canvas, ui.Rect{Width: 268, Height: 40}, func(f ui.C) {
 			p.drawSession(f, env, row)
 		})
 	}
 	drawRow()
 	canvas.Reset()
-	canvas.BeginEventPass(tree.ID(env.Feat, "s-session-sentinel"))
+	canvas.BeginEventPass(tree.ID(env.Feat, "s-session-sentinel"), gfx.ClickInfo{})
 	drawRow()
 	canvas.EndEventPass()
 	if opened != "session-sentinel" || p.activePanel != "" {
@@ -240,9 +243,10 @@ func TestFG2NavigationUsesRealRoutesAndExtensionVisibility(t *testing.T) {
 func TestFG2WorkspaceHeaderCollapseExpandAndSearch(t *testing.T) {
 	p, _, env, tree, canvas, _ := searchFixture(t)
 	p.known = []string{"workspace"}
-	var view ui.Page
+	pageTheme4 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme4})
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 50}, func(f ui.C) {
+		view.Draw(canvas, ui.Rect{Width: 268, Height: 50}, func(f ui.C) {
 			p.drawWorkspaceHeader(f, env)
 		})
 	}
@@ -256,7 +260,7 @@ func TestFG2WorkspaceHeaderCollapseExpandAndSearch(t *testing.T) {
 	fg2Text(t, canvas, "工作区")
 
 	canvas.Reset()
-	canvas.BeginEventPass(tree.ID(env.Feat, "workspace-search"))
+	canvas.BeginEventPass(tree.ID(env.Feat, "workspace-search"), gfx.ClickInfo{})
 	draw()
 	canvas.EndEventPass()
 	if !p.searchExpanded {
@@ -278,7 +282,7 @@ func TestFG2WorkspaceHeaderCollapseExpandAndSearch(t *testing.T) {
 	// 右侧视图按钮接既有的真实“全部收起”行为，不是无动作装饰。
 	draw()
 	canvas.Reset()
-	canvas.BeginEventPass(tree.ID(env.Feat, "workspace-view-options"))
+	canvas.BeginEventPass(tree.ID(env.Feat, "workspace-view-options"), gfx.ClickInfo{})
 	draw()
 	canvas.EndEventPass()
 	if !p.collapsed["workspace"] {

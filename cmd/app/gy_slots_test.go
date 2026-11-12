@@ -97,8 +97,9 @@ func gyFrame(t *testing.T, official bool) ([]string, map[pluginapi.Slot]int) {
 		Has:       kernel.Has,
 	}
 	counts := map[pluginapi.Slot]int{}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		if !official {
 			gyDrawSlot(f, kernel, pluginapi.SlotShellRoot, env, counts)
 			return

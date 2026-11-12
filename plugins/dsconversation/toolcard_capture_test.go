@@ -60,7 +60,8 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 	feat := tree.Feature("tool-card")
 	data := toolCardData()
 
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "tool-card", Width: 900, Height: 700, Tree: tree,
 		WindowMode: app.WindowFrameless,
@@ -72,7 +73,7 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 			Bounds: bounds, MainWidth: size.Width,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)

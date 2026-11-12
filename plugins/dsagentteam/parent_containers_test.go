@@ -91,8 +91,9 @@ func (h *containerHarness) drawContainer(t *testing.T, painterID string) *gfx.Ca
 	env := *h.env
 	env.Canvas = canvas
 	h.rendered = nil
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		// 与内核同一个顺序：先 Draw（命中区/兜底卡），再 Children（dispatch）。
 		if target.Draw != nil {
 			target.Draw(f, &env)

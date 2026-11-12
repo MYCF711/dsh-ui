@@ -202,8 +202,18 @@ type Env struct {
 	// Canvas 只在 Draw 阶段有效：Markdown 排版这类必须先量后画的东西要它。
 	// （AfterDraw 收到的 canvas 是布局后的全屏画布，两者是同一个对象。）
 	Canvas *gfx.Canvas
-	// Scroll 取某个滚动区的状态。viva 要求"要的时候再取"，所以给的是函数不是指针。
-	Scroll func(id gfx.ID) *ui.ScrollState
+	// ScrollBox 把本帧的会话滚动区交给壳：插件声明完消息流滚动区后调用一次。
+	//
+	// 为什么不是"壳按 ID 查状态"：viva v0.6.0 删掉了 `ScrollState(id)` 这种按身份
+	// 查表的公开入口（滚动状态由**声明方**持有，`Box.ScrollState()` 且只在同一个
+	// paint 内有效）。壳要在布局之后存/恢复偏移，只能由声明方把盒子交回来，
+	// 壳在 `Draw` 返回后立刻用完就地丢弃（不跨帧保存 Box）。
+	ScrollBox func(box ui.Box)
+	// ViewportOffset 覆盖本帧视口虚拟化用的滚动偏移（非 nil 时用它，而不是真实偏移）。
+	// 给"主区被另一个视图接管、正文不该生成文本"的场景用（dsrightbar 的轨迹视图）：
+	// 偏移给一个远大于内容高度的值，消息就全部退化成 Slot。
+	// 生命周期只在本帧的 painter 链内：写者负责恢复原值。
+	ViewportOffset *float32
 	// Has 判断某个槽位有没有插件挂东西。框架插件靠它决定"这一列画不画"——
 	// 没有侧栏插件时不该留一条空栏。
 	Has func(Slot) bool

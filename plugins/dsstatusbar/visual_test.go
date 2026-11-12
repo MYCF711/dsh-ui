@@ -55,8 +55,9 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 		// 这些窗口消息必须不能变成官方轮/步。
 		Msgs: []apiclient.Message{{Role: "assistant"}, {Role: "assistant"}, {Role: "tool"}},
 	}
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        ui.Page
 		invalidator app.Invalidator
 		dockBox     ui.Box
 	)
@@ -77,7 +78,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 			Has: kernel.Has,
 		}
 		dockBox = ui.Box{}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			ui.Column(f).FillWidth().FillHeight().Children(func() {
 				ui.Row(f).Grow(1)
 				// 与 dsshell 中栏一致：先 Pad(12)，再按 Order 画 composer 和 dock。

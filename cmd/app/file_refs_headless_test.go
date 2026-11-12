@@ -68,7 +68,8 @@ func runFileRefsHeadless(t *testing.T, width, height int) {
 	painter := conversation.Panels()[0]
 	tree := &gfx.Tree{}
 	feat := tree.Feature("file-refs-headless")
-	var view ui.Page
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var invalidator app.Invalidator
 	data := pluginapi.Snapshot{Cur: m.cur, CWD: m.cwd, Msgs: m.msgs}
 	config := app.Config{
@@ -80,9 +81,9 @@ func runFileRefsHeadless(t *testing.T, width, height int) {
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Act: m.actions, Tree: tree, Feat: feat, Canvas: canvas,
-			Bounds: bounds, MainWidth: current.Width, Scroll: view.ScrollState,
+			Bounds: bounds, MainWidth: current.Width,
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			painter.Draw(f, env)
 		})
 		painter.AfterDraw(canvas, env)

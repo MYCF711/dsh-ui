@@ -90,8 +90,9 @@ func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *gfx.
 		Has:      k.Has,
 		Geometry: pluginapi.Geometry{Width: bounds.Width, Height: bounds.Height, SidebarWidth: 280},
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, bounds, func(f ui.C) {
 		k.DrawSlot(f, slot, env)
 	})
 	return canvas

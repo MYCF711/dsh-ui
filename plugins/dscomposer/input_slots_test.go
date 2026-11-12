@@ -143,8 +143,9 @@ func (h *slotHarness) paint(t *testing.T, opts uikernel.ShellOptions, snap plugi
 	for slot := range h.dispatched {
 		delete(h.dispatched, slot)
 	}
-	var view ui.Page
-	view.Draw(canvas, dscore.VivaTheme(h.theme), env.Bounds, func(f ui.C) {
+	pageTheme := dscore.VivaTheme(h.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, opts, func(slot pluginapi.Slot) {
 			h.dispatched[slot]++
 			h.kernel.DrawSlot(f, slot, env)

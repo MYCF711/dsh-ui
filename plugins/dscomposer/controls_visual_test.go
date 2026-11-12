@@ -55,7 +55,8 @@ func TestControlsHeadlessGeometryAndCapture(t *testing.T) {
 			act := pluginapi.Actions{Send: func(string) {}, Cancel: func() {}}
 			tree := &gfx.Tree{}
 			feat := tree.Feature("composer-headless-" + tc.name)
-			var view ui.Page
+			pageTheme := dscore.VivaTheme(theme)
+			view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 			var invalidator app.Invalidator
 			config := app.Config{
 				Title: "composer-" + tc.name, Width: tc.width, Height: tc.height, Tree: tree,
@@ -69,7 +70,7 @@ func TestControlsHeadlessGeometryAndCapture(t *testing.T) {
 					Bounds: bounds, MainWidth: tc.mainWidth,
 					Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: tc.mainWidth},
 				}
-				view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f ui.C) {
+				view.Draw(canvas, bounds, func(f ui.C) {
 					// 与 composer_test 一样模拟 dsshell 的中栏内容框和底部 12px。
 					ui.Column(f).Width(tc.mainWidth-24).FillHeight().PadSides(0, 0, 12, 0).Children(func() {
 						ui.Spacer(f)

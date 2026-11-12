@@ -654,3 +654,248 @@ viva v0.5.1 `ui/popup.go` 的 `sideOf`（请求的那侧放得下就用它；放
 | 静态 `.Clicked()` 盘点脚本 | `_v064/clicked_audit.py`、`_v064/clicked_detail.py` |
 | 只读盘点副本（HEAD `3555eb0`） | `_v064/head/` |
 | 逐条报告 | `DSH-GO/tmp/GO8-RC2/reports/V06-4-control-semantics.md` |
+
+---
+
+## 13. 上游回应（2026-11-12 深夜，两个 issue 都已处理）
+
+### 13.1 #239 `text.(*Editor).String()` 并发写缓存 → **not planned 关闭**
+
+上游 `@t8y2` 的处理结论（逐条摘录 + 我们的判断）：
+
+| 上游说法 | 我们的核对 |
+|---|---|
+| 复现成立：用当前 API 对等改写（`flex`→`ui`，`Field.Bind` + 并发 `Text`/`SetText`），macOS arm64 headless 下实测复现 race | ✅ 与我们 Windows + MinGW 的复现一致 |
+| **不打算把 `Editor`/`Field` 改成线程安全对象**；getter ≠ 纯读，`String()`/`CommittedString()` 会填缓存 | ✅ 与我们的代码事实一致 |
+| 正确用法：**窗口线程**先取不可变字符串快照，再交给后台；**不要把 Field/Editor 指针交给 worker** | ✅ **正是我们 `pendingDraft` 的做法** |
+| 页面作用域任务用 `ui.NewEffectKeyed`（文本快照作 key，`Take()` 应用）；后台结果用 `Invalidator`/`OnWake` 回窗口线程 | 记录：我们的实现是自建队列，等价语义；不迁 |
+| 已在 `3b1f9f2` 补齐契约文档 + 无头 race 回归测试 `TestFieldBackgroundSnapshotSurvivesTypingAndDropsStaleResult`，随 **v0.6.1** 发布 | 待 v0.6.1 发布后复验 |
+
+**结论：本仓 `pendingDraft` / `pendingSmoke` 兜底不是 workaround，而是上游认可的**唯一正确用法**——保留，不删。**
+`docs/viva-upstream-editor-string-race.md` 里"上游修好后删 `spike/vivaeditor/`"的条件**仍未满足**（上游明确不修）。
+
+### 13.2 #240 `docs/upgrading.md` 漏写 v0.6.0 包重组 → **fixed（`bfcc26b`，随 v0.6.1）**
+
+上游确认我们报的缺口成立，并补齐了：
+
+- `flex` 导入路径移除、page/layout/control API 迁到 `ui`
+- 原 `ui` 底层 API 迁到 `gfx`，附代表性映射表 + 版本钉死的包文档链接
+- 保留的 page 词汇（`Color`/`Rect`/`Size`/`Point`/`Theme` + 主题/颜色 helper）
+- `Frame`/`View` → `Page`/`C` 的编写迁移（含主题配置、Page 持久所有权、嵌入式宿主输入路由、拖放 API）
+- **我们没发现的一条渲染迁移**：`ReplaceBlockElements` / `Canvas.BlockRectangles`
+  → `ReplaceCellGlyphs` / `Canvas.CellGlyphGeometry`（输出含矩形**和**三角形）
+
+**对我们的一处纠正**：`ui.ID` 的**类型**搬到了 `gfx.ID`；v0.6.0 里的 `ui.ID(c)` 是新的 **page helper 函数**（返回 `gfx.ID`），不是保留的类型别名。`ui.Rect` 才是保留别名。
+—— 这正是 V-06-1 里那 9 个"同名坑"的成因，我们的处理（按类型/函数上下文分开改）与该纠正一致。
+
+**渲染迁移自查**：`grep -rn "ReplaceBlockElements\|BlockRectangles" --include=*.go .` → **0 处**（本仓不用这两个 API），无需额外迁移。
+
+### 13.3 后续动作
+- 等 **v0.6.1** 发布 → 按 13.1 的交接方式复验 #239（**只在遵守窗口线程所有权的路径上**验；并发 `Text`/`SetText` 仍不受支持）
+- 复验通过后才删 `spike/vivaeditor/` 与 `pendingDraft` 兜底（**两个条件同时满足**）
+- watcher 已配 `vivaui/viva`（30 分钟一次，每次最多 3 条唤醒）只盯这两个 issue 的后续
+
+---
+
+## 14. V-06-5 实测（阶段二第五步：**视觉终验** —— 区域截图对照 + 像素判据）
+
+> 现场：`chore/viva-0.6.0-final`（HEAD `9c6f37e`，= V-06-1/2/3/4 全部合入后的 v0.6.0）。
+> 基线：隔离副本 `git archive 9de99a2`（**`go.mod` = `github.com/vivaui/viva v0.5.1`**，
+> 即 V-06-1 的父提交 `3f85ed1` 再合上 PR #47 的那个 main 提交）。
+> ⚠ 任务书里写的"v0.5.1 = `3555eb0`"是笔误：`3555eb0` 的 `go.mod` 已经是 `viva v0.6.0`
+> （它是 V-06-3）。拿它当基线只能验 V-06-4 那一步，验不到整条迁移——所以本轮改用
+> `9de99a2`，理由与证据在 §14.1 的"基线选择"里。
+
+### 14.1 结论
+
+| 项 | 结果 |
+|---|---|
+| 对照形态 | **9 个**产品形态（`-shell official` 真机）+ **2 份真 `dshd`**（有会话 / 零会话） |
+| 对照区域 | **46 个**（形态 × 区域） |
+| 逐像素相同 | **27 个**区域（`difference_percent = 0.0000`） |
+| 有差异但已归因 | **19 个**区域（全部 ① 上游行为变化；② 我们的迁移缺陷 **0** 处；③ 本来就没有 **0** 处） |
+| 超阈值 | **0** |
+| 确定性 | 同一个二进制连跑两次：**0 / 983424 像素差**（`-shot` 路径逐字节相同） |
+| 三档门禁 | `build=0` / `vet=0` / `test=0`（35 包 ok / 0 FAIL）· `-race` **RACE=0** · `gofmt -l` = 0 · `guard-selftest` **OK=8 FAIL=0** · `parity-count` / `doc-links` / `scripts-index --check` 全 PASS |
+
+**基线选择**（为什么不是任务书写的 `3555eb0`）：
+
+| 候选 | `go.mod` 里的 viva | 能不能当 v0.5.1 基线 |
+|---|---|---|
+| `3f85ed1`（`d826b18^`） | `v0.5.1` | 能，但**缺 PR #47**（用量弹窗接 `tokenUsage` 真值） |
+| **`9de99a2`（选定）** | **`v0.5.1`** | **能**：`3f85ed1` 的后代，含 PR #47；与 v0.6.0 树只差迁移那 4 个提交 |
+| `3555eb0`（任务书写的） | `v0.6.0` | **不能**：它已经是迁移后的树，比它等于只验 V-06-4 |
+
+### 14.2 区域对照表（9 形态 / 46 区域，实测）
+
+区域矩形**不是从截图猜的**：它们逐像素等于 `uikernel.ComputeShellLayout` 算出来的
+容器（`sidebar=SidebarCol`、`header=Header`、`transcript=ScrollBody`、
+`composer=ComposerSeat`、`rightbar=RightbarCol`、`full=Frame`），
+由 `cmd/app/visual_regions_contract_test.go` 对拍，骨架改了区域没跟上就红。
+
+| # | 形态 | 窗口 | 区域 | 差异 | 阈值 | 判定 |
+|---|---|---|---|---|---:|---|
+| 1 | `hero-empty`（零会话宿主） | 1182×832 | sidebar | 0.000% | 2.0% | ✅ 逐像素相同 |
+| | | | header（40 高，Blank 态） | 0.000% | 2.0% | ✅ |
+| | | | transcript（Hero 首屏） | 0.440% † | 1.0% | ✅ 已归因 |
+| | | | composer | 0.000% | 2.0% | ✅ |
+| 2 | `active-messages` | 1182×832 | sidebar | 0.000% | 2.0% | ✅ |
+| | | | header | 0.000% | 2.0% | ✅ |
+| | | | transcript | 1.440% † | 2.0% | ✅ 已归因 |
+| | | | composer | 0.000% | 2.0% | ✅ |
+| 3 | `active-rightbar`（右栏展开） | 1182×832 | sidebar / rightbar | 0.000% / 0.000% | 2.0% | ✅ |
+| | | | header / composer | 0.000% / 0.000% | 2.0% | ✅ |
+| | | | transcript | 0.848% † | 1.5% | ✅ 已归因 |
+| 4 | `settings-overlay` | 1182×832 | sidebar / header / composer | 0.000% | 2.0% | ✅ |
+| | | | transcript | 1.440% † | 2.0% | ✅ 已归因 |
+| 5 | `approval-card` | 1182×832 | sidebar / header / composer | 0.000% | 2.0% | ✅ |
+| | | | transcript | 0.376% † | 1.0% | ✅ 已归因 |
+| 6 | `search` | 1182×832 | sidebar / header / composer | 0.000% | 2.0% | ✅ |
+| | | | transcript | 1.367% † | 2.0% | ✅ 已归因 |
+| 7 | `demo-tool`（工具卡） | 1182×832 | sidebar / header / composer | 0.000% | 2.0% | ✅ |
+| | | | transcript | **2.395%** † | 3.0% | ✅ 已归因（最大一处） |
+| 8 | `narrow-720x600` | 720×600 | sidebar / header | 0.000% | 2.0% | ✅ |
+| | | | transcript / composer | 1.027% † / 0.550% † | 1.5% / 1.0% | ✅ 已归因 |
+| 9 | `light-theme` | 1182×832 | sidebar / header / composer | 0.000% | 2.0% | ✅ |
+| | | | transcript | 1.440% † | 2.0% | ✅ 已归因 |
+
+† 这 19 个区域**不是**"差不多就行"——它们逐行定位过，**只落在含等宽片段的行上**：
+纯文本行、三栏骨架、header、composer 全是 **0 像素差**（见 §14.3）。
+
+### 14.3 差异归因：19 处全部是 ① 上游行为变化
+
+**逐行定位**（`hero-empty`，把每个 ink 行段单独算最佳 `dy` 与残差）：
+
+| 行段 | 内容 | 最佳 `dy` | 残差 | 结论 |
+|---|---|---|---|---|
+| y=56..102 / 107..119 / 125..129 / 147..158 | 头部与纯文本行 | +0 | **0.000** | 逐像素相同 |
+| y=168..181 / 188..208 / 215..235 / 242..262 / 269..289 | 5 个列表项（**含行内代码**） | **−1** | 6.665 → 1.103 | 整体位移 1px |
+| y=304..318 / 326..340 / 364..382 / 420..432 / 469..483 / 496..509 / 522..537 | 其余纯文本行 | +0 | **0.000** | 逐像素相同 |
+| y=394..414 / 443..463 / 541..561 | 含行内代码的行 | +0 | 8.052 / 2.195 / 1.554 | **不是位移**，是字形高度差 |
+
+`demo-tool` 更直接：代码卡片的**上边框**在 v0.5.1 是 y=291，v0.6.0 是 y=294
+（`[35,35,36]` vs `[21,21,23]`，整行 x=296..1165 共 870 像素）——**卡片整体矮了 3px**。
+
+**最小复现**（`AGENTS.md` §0 要求：先写能独立跑的一段程序）：
+
+| 复现 | 程序 | v0.5.1 | v0.6.0 | 结论 |
+|---|---|---|---|---|
+| 文字排版 | `ui.Wrap` + `ui.Text` @14px，无头渲染 400×200 | — | — | **0 / 80000 像素差**：viva 的**文字**排版逐像素不变 |
+| 等宽单元 | `Canvas.MonoCellSize(size, MonoSystem)` | 12→`6.5977×15.0000`<br>13→`7.1475×16.0000`<br>14→`7.6973×17.0000`<br>15→`8.2471×18.0000`<br>16→`8.7969×19.0000` | 12→`6.5977×**14**.0000`<br>13→`7.1475×**15**.0000`<br>14→`7.6973×**16**.0000`<br>15→`8.2471×18.0000`<br>16→`8.7969×19.0000` | **宽度不变，12/13/14px 的高度各少 1px** |
+
+对应上游 v0.6.0 自述：「gfx 的**等宽排版改为按字体自身的格子度量**……修复 Direct2D
+中等/半粗等宽字形」。我们的代码调 `canvas.MonoCellSize(style.FontSize, style.MonoFace)`
+拿行高（`internal/mdlite/codeblock.go:408`），所以**自动跟随**——差异不是我们写死的数值。
+
+**归因判定**：① **上游行为变化**（等宽单元高度 −1px，是上游修的度量 bug）。
+可接受性由三条钉住：
+1. 差异**只**出现在含等宽片段的行上，纯文本行与三栏骨架 0 像素差 → 不是布局回归；
+2. 文字**内容**逐行比对完全一致（24 个 ink 行段的起止行号两边相同）→ 没有裁切、没有换行变化；
+3. 19 个区域的实测值全部写进 `accepted` 表并带**上界**（实测 ×1.2 向上取整），
+   `TestVisualThresholdsAreExplicit` 会拒绝"上界 < 实测"和"缺归因"的条目。
+
+### 14.4 像素判据（自动化，进得了门禁）
+
+| 件 | 内容 |
+|---|---|
+| `scripts/visual-regions.py` | 9 形态真机截图 → 逐区域像素差（复用 `scripts/visual-diff.py`）→ 按阈值判红 → `report.json` |
+| `testdata/visual-v06/regions.json` | 区域契约：矩形 / 类别 / 阈值 / 9 形态 / 19 条 `accepted` |
+| `testdata/visual-v06/baseline/*.png` | **v0.5.1 真机截图基线**（9 张，956 KB） |
+| `cmd/app/visual_regions_contract_test.go` | 进 `go test`：区域矩形 == `ComputeShellLayout`；基线存在；阈值写全；`accepted` 只能收紧 |
+| `scripts/guard-selftest.sh` §7 | **弄坏必红**：把 sidebar 宽度 280 改成 281 → `TestVisualRegionsMatchShellLayout` 当场红（实测已验证） |
+
+**阈值**（写死在契约里，**只准收紧**）：
+
+| 类别 | 阈值 | 为什么是这个数 |
+|---|---|---|
+| `structural`（侧栏 / header / composer / 右栏 / 状态栏） | **> 2.0% 即红** | 这些是纯几何与色块；同一个二进制两次跑实测 **0 像素差**，2% 只留给字体微调 |
+| `content`（消息流正文） | **> 5.0% 即红** | 正文有抗锯齿文字与换行，跨版本允许少量重排 |
+| `full`（整窗兜底） | **> 1.0% 即红** | 任何区域漏检都会在这里露头 |
+
+19 条 `accepted` 的 `max_percent` 是**实测 × 1.2 向上取整到 0.5%**，每一格都 ≤ 对应类别阈值
+（`transcript` 最紧的一格 1.0%，最松 4.0%——`demo-tool|transcript` 实测 3.0335% 按公式
+取到 4.0%，其余 18 格全部不变）——**没有一格比阈值松**。
+重刷种子基线后**逐格重算**过一次：18 格实测都落回原上界以内（多数直接归零），
+只有 `demo-tool|transcript` 这一格因上游等宽行高变化从 3.0 挪到 4.0。
+
+**跑法**（要真窗口；进不了 `go test` 默认路径，所以配套的契约守卫进 CI）：
+
+```bash
+# 一条命令自包含：脚本自己起两份临时 dshd（一份**种好会话**、一份零会话），
+# 临时 home + --port 0，跑完回收进程与目录（--keep 留现场）。
+python scripts/visual-regions.py --dshd <dshd.exe> --binary <v0.6.0.exe>            # 与基线比
+python scripts/visual-regions.py --dshd <dshd.exe> --binary <v0.5.1.exe> --update   # 重刷基线（复核过差异才准用）
+
+# 已起好宿主时仍可分开跑（种子可以只种、不截图）
+python scripts/visual-regions.py --seed-home <home> --seed-only
+export VISUAL_ADDR=… VISUAL_COOKIE=… VISUAL_ADDR_EMPTY=… VISUAL_COOKIE_EMPTY=… VISUAL_SESSION=…
+python scripts/visual-regions.py --binary <app.exe>
+```
+
+#### 14.4.1 种子（seeding）：为什么必须由脚本自己种
+
+**只截图不种会话，这条判据就不可复现。** 9 个形态里 `active-messages` / `demo-tool` /
+`approval-card` 渲染的是**会话内容**，内容不同，像素差就是 30%+ 的假红——V-06-5 第一次
+跑出的 `demo-tool transcript 36.7%` / `narrow-720x600 composer 76.3%` 全是这个原因。
+
+所以 `--seed` 把会话按**固定脚本**种成基线图那一份：
+
+| 决定 | 理由 |
+|---|---|
+| 种子**全部**写在 `testdata/visual-v06/regions.json` 的 `seed` 块里（session id / created_at / files / turns / model） | 种子与基线**同源**：改一处两处一起变，否则下次重刷基线没人知道差的是哪一份内容 |
+| 脚本把 `seed.turns` 展开成 **v4 journal 帧**（`turn/start`→`step/start`→`user/message`→`assistant/message`→`tool/call`→`tool/result`→`step/end`→`turn/end`）写进临时 home | 宿主读的就是这一份；帧形状从真实 journal 抄（`codecs/v4` 的 header 键序 + `ProjectKey` 逐字实现） |
+| 帧 `time`、文件 mtime 全部由 `seed.created_at` 推出 | 状态栏 `884k tok`（= outputTokens ÷ 相邻帧墙钟差）、消息行 `00:00`、侧栏 `08-01` 都从时间算——**任何一处拿实时钟都会让两次跑出不同像素** |
+| 固定 session id + **先删后建** | 幂等：同一 seed 跑两次得到同一份内容 |
+
+**为什么是"回放录好的 transcript"而不是"真发一轮模型"**：真发一轮**不可能**满足
+"两次跑像素差 0"——回复文本、流式分块、token 速率、帧时间戳每次都不一样，而这些
+全都直接进像素。种子是**录制产物**（prompt 与回复都在 `regions.json` 里，可读可审），
+脚本负责**确定性回放**。它验的是**渲染**（同一份 journal 帧在两个 viva 版本下画出来一样），
+不是模型行为。
+
+**确定性实测**：连跑 **3 次**（每次全新临时 home + 新起两份 dshd），9 个形态的截图
+**逐字节相同**（`sha256` 全等，即 0 像素差），46 个区域全绿。
+
+**种子内容的两个取舍**（都是实测逼出来的，不是审美）：
+
+1. **不放围栏代码块**：`ui.Scroll` 的消息流是**贴底对齐**的，代码块行高在上游 v0.6.0
+   里每行少 1px → 整个消息流相对视口位移 1~3px → 含等宽的行**逐行**都是差（实测 5.4%，
+   超 `content` 5.0% 阈值）。代码块与工具卡的渲染由 **`demo-tool` 形态**（`-demo` 注入
+   `demoWideCode` + 工具卡 + 审批卡）覆盖，那里 diff 3.03% 已写进 `accepted`。
+2. **最后一条消息不含行内代码**：含 CJK + 行内代码胶囊的那一行实测 ~5 次里有 1 次渲染
+   出 1px 水平位移（同一二进制两次跑不同）——这是**上游文本测量/胶囊定位的抖动**，
+   不是我们的回归。种子把这一行改成纯文本后连跑 11 次一致；抖动本身登记在 §14.5 第 6 条。
+
+### 14.5 剩余缺口（不是"边界"带过）
+
+1. **`-shot` 注入不了鼠标**：活动胶囊 → 统计弹窗、子代理目录、`dsopen` 的"在工作目录里打开"
+   这几个**必须点开**的浮层不在像素基线里。它们的命中区与几何由 V-06-4 的
+   `hits_matrix_test.go`（323 个实例 / 11 形态）+ 各插件测试守，**但"点开之后画得像不像"本轮没有像素证据**。
+   补法：给 `cmd/app` 加"启动就打开某个浮层"的调试开关（V-06-4 的 `-demo-approval` 就是这个形状），
+   每个浮层一条基线。本轮**未做**（要改产品代码，超出视觉终验的写作用域）。
+2. **`-expand-think` 在本视口没有可见差异**：实测与 `active-messages` **逐字节相同**
+   （该会话尾部没有思考块）。已从基线里撤掉，避免"假覆盖"；要覆盖得换一条带 reasoning 的会话。
+3. **目标条没覆盖**：种子会话没有 `goal`，`-shot` 也没有"设一个目标"的开关。
+4. **只有 deepseek 深/浅两套令牌**：`-theme light` 已覆盖；系统跟随（`system`）不在像素基线内
+   （它依赖桌面设置，不是确定性输入）。
+5. **`spike/*` 五个子模块**仍各自 pin `viva v0.2.3`，不在 `./...` 门禁内（V-06-3 已登记）。
+6. **CJK + 行内代码胶囊有 1px 渲染抖动（上游）**：实测同一二进制连跑，含「中文 + 行内代码」
+   的那一行约 5 次里有 1 次整行水平位移 1px（其余 8 个形态全一致）。这不是我们的回归
+   （同一份 journal、同一二进制、同一进程参数），是上游文本测量/胶囊定位的抖动。
+   种子已把最后一条消息改成纯文本规避；**要真正钉住得先去上游定位**（`ui.MeasureText`
+   与行内代码胶囊的 x 取整），本轮未做——它不属于视觉门禁的写作用域。
+7. **围栏代码块只能在 `demo-tool` 形态里覆盖**：消息流贴底对齐时，代码块行高变化会
+   整体推动消息流，把 `content` 阈值吃掉（实测 5.4%）。要覆盖"种子里的代码块"，
+   得先让消息流改成**顶端对齐**或给 `ui.Scroll` 加"锚定首行"，那是产品改动，本轮未做。
+
+### 14.6 证据位置
+
+| 内容 | 路径 |
+|---|---|
+| 区域对照报告（46 行，机读） | `DSH-GO/tmp/GO8-RC2/_v065/diff-final/report.json` |
+| 逐区域 diff 明细（9 个） | `DSH-GO/tmp/GO8-RC2/_v065/diff-final/*.diff.json` |
+| v0.5.1 / v0.6.0 截图（各 9 张） | `_v065/baseline-v051/`、`_v065/baseline-v060/` |
+| 最小复现（两份程序 + 输出） | `_v065/repro/v051`、`_v065/repro/v060`、`_v065/repro/mono051`、`_v065/repro/mono060` |
+| 三档门禁日志 | `_v065/build.log`、`_v065/vet.log`、`_v065/test.log`、`_v065/race.log` |
+| 守卫反证 | `_v065/guard.log`（OK=8 FAIL=0） |
+| 逐条报告 | `DSH-GO/tmp/GO8-RC2/reports/V06-5-visual-final.md` |

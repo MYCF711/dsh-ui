@@ -172,22 +172,62 @@ expect_red "改了产品名但没重生成 .syso" "TestVersionInfoResourceMatche
 restore cmd/app/brand.go
 
 echo
-echo "== 对照组：副本原样时六组守卫都必须是绿的 =="
-# 没有这一段，把六个守卫全改成"永远失败"也能过上面六条——那就从"假绿"翻到"假红"。
+echo "== 7. 视觉区域契约（区域矩形与骨架布局分叉） =="
+# 这是 V-06-5 的像素判据的**区域定义**：`testdata/visual-v06/regions.json`
+# 里的矩形必须逐像素等于 `uikernel.ComputeShellLayout` 算出来的容器。
+# 弄坏的形态是"侧栏宽度 280 → 281"——一个看起来无害的 1px，
+# 但它会让截图比对的区域整体偏 1 列，而脚本照样报 PASS（比错了部件）。
+#
+# ⚠ 本脚本验的是 `git archive HEAD`（**提交里的**守卫）。V-06-5 的新文件
+# 还没提交时这条用例在副本里没有输入，**跳过并说明**——绝不静默绿
+# （静默绿等于这条守卫不存在）。
+if ! git ls-tree -r --name-only HEAD -- testdata/visual-v06/regions.json | grep -q .; then
+  echo "  NOTE  跳过：HEAD 里还没有 testdata/visual-v06/regions.json（V-06-5 未提交）；提交后这条自动生效"
+else
+  python - "$iso" <<'PY'
+import io, json, sys
+p = sys.argv[1] + '/testdata/visual-v06/regions.json'
+d = json.load(io.open(p, encoding='utf-8'))
+regions = d['region_sets']['default']
+for region in regions:
+    if region['name'] == 'sidebar':
+        if region['rect'] != [0, 0, 280, 832]:
+            sys.exit('sidebar 矩形不是 [0,0,280,832]（用例失效）')
+        region['rect'] = [0, 0, 281, 832]
+        break
+else:
+    sys.exit('找不到 sidebar 区域，用例失效')
+io.open(p, 'w', encoding='utf-8', newline='').write(
+    json.dumps(d, ensure_ascii=False, indent=2) + '\n')
+PY
+  expect_red "区域矩形与骨架布局分叉" "TestVisualRegionsMatchShellLayout"
+  restore testdata/visual-v06/regions.json
+fi
+
+echo
+echo "== 对照组：副本原样时各组守卫都必须是绿的 =="
+# 没有这一段，把守卫全改成"永远失败"也能过上面几条——那就从"假绿"翻到"假红"。
 GUARDS='TestEveryHandledKeyIsDocumented|TestNoTwoPanelsShareOneSlotAndOrder|TestSnapshotCoversEveryCalledMethod|TestEveryUsedActionIsWired|TestEveryPluginDirIsImported|TestVersionInfoResourceMatchesBrand'
+GUARD_LIST='TestEveryHandledKeyIsDocumented TestNoTwoPanelsShareOneSlotAndOrder TestSnapshotCoversEveryCalledMethod TestEveryUsedActionIsWired TestEveryPluginDirIsImported TestVersionInfoResourceMatchesBrand'
+# 视觉区域契约只在**提交里有输入**时进对照组（见上：未提交时那条用例没有输入）。
+if git ls-tree -r --name-only HEAD -- testdata/visual-v06/regions.json | grep -q .; then
+  GUARDS="$GUARDS|TestVisualRegionsMatchShellLayout"
+  GUARD_LIST="$GUARD_LIST TestVisualRegionsMatchShellLayout"
+fi
 out=$(cd "$iso" && CGO_ENABLED=0 go test ./... -run "$GUARDS" -count=1 -v 2>&1)
 rc=$?
-# 先确认六条**都真的跑了**——一条都没跑到时 `go test` 也是 exit 0。
+# 先确认每条**都真的跑了**——一条都没跑到时 `go test` 也是 exit 0。
 missing=""
-for g in TestEveryHandledKeyIsDocumented TestNoTwoPanelsShareOneSlotAndOrder TestSnapshotCoversEveryCalledMethod TestEveryUsedActionIsWired TestEveryPluginDirIsImported TestVersionInfoResourceMatchesBrand; do
+for g in $GUARD_LIST; do
   ran_a_test "$out" "$g" || missing="$missing $g"
 done
+count=$(printf '%s\n' "$GUARD_LIST" | wc -w)
 if [ -n "$missing" ]; then
-  chk "对照组：六条守卫都跑到" 1 "没跑到：$missing"
+  chk "对照组：$count 条守卫都跑到" 1 "没跑到：$missing"
 else
-  chk "对照组：六条守卫都跑到" 0
+  chk "对照组：$count 条守卫都跑到" 0
 fi
-chk "原样副本上六组守卫全绿" "$rc" "$(printf '%s\n' "$out" | grep -E '^(FAIL|--- FAIL)' | head -2 | tr '\n' ' ')"
+chk "原样副本上各组守卫全绿" "$rc" "$(printf '%s\n' "$out" | grep -E '^(FAIL|--- FAIL)' | head -2 | tr '\n' ' ')"
 
 echo
 echo "----- 合计 OK=$ok FAIL=$bad"

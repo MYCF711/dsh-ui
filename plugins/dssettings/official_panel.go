@@ -438,7 +438,7 @@ func (p *Plugin) drawPanelNav(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Th
 			}
 			if f.Column().Height(NavCellHeight).Radius(t.Radii.MD).
 				PadSides(NavCellPadTop, NavCellPadRight, NavCellPadBottom, NavCellPadLeft).
-				Gap(NavCellGap).Items(flex.Center).Background(bg).HoverBackground(t.Hover).
+				Gap(NavCellGap).Items(flex.Center).Background(bg).Hover(flex.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "settings-nav-"+section.ID), section.Title).
 				Children(func() {
 					f.Text(IconGlyph(section.Icon)).FontSize(NavCellIconSize).Color(t.LabelSecondary)

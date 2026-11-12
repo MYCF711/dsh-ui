@@ -492,7 +492,7 @@ func (p *Plugin) drawDeleteBox(f *flex.Frame, env *pluginapi.Env, s apiclient.Se
 	}
 	box := f.Row().Width(16).Height(16).Shrink(0).
 		Items(flex.Center).Justify(flex.Center).
-		HoverBackground(t.Hover).
+		Hover(flex.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, "del-"+s.ID), "删除这个会话").
 		Children(func() {
 			f.Text(label).FontSize(t.Fonts.Tiny).Color(color)

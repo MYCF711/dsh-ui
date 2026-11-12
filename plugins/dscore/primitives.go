@@ -37,7 +37,7 @@ func (p *Primitives) ListRow(f *flex.Frame, id ui.ID, active bool, height float3
 	if active {
 		row = row.Background(t.Hover)
 	} else {
-		row = row.HoverBackground(t.Hover)
+		row = row.Hover(flex.Look{}.Background(t.Hover))
 	}
 	return row.Hit(id, "").Children(body)
 }
@@ -54,7 +54,7 @@ func (p *Primitives) CircleButton(f *flex.Frame, id ui.ID, glyph string, filled 
 	}
 	return f.Row().Width(28).Height(28).Radius(14).Background(bg).
 		Items(flex.Center).Justify(flex.Center).
-		HoverBackground(t.Hover).Hit(id, "").Children(func() {
+		Hover(flex.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
 		f.Text(glyph).FontSize(15).Color(fg)
 	}).Clicked()
 }
@@ -96,7 +96,7 @@ func (p *Primitives) SectionHeader(f *flex.Frame, id ui.ID, title string, count 
 		arrow = "▾"
 	}
 	return f.Row().FillWidth().Height(34).Radius(t.Radii.MD).PadX(8).
-		Items(flex.Center).Gap(6).HoverBackground(t.Hover).Hit(id, "").Children(func() {
+		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
 		f.Text(arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
 		f.Text(title).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Ellipsis()
 		f.Spacer()

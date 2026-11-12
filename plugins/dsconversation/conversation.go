@@ -580,7 +580,7 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 	// 官方折叠行（如 .LOmM4q_compactionRow）：高 24、radius sm、左侧 16px 展开位、
 	// 标题 13px。高度用 MinHeight + PadY 撑，不用 Height(x).Shrink(0)——那会塌成 0 高。
 	if f.Row().WidthPercent(100).MinHeight(24).PadX(4).Radius(t.Radii.SM).
-		Items(flex.Center).Gap(6).HoverBackground(t.Hover).
+		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, "think-"+key), "").Children(func() {
 		// 左侧 16px 展开位（和工具行同一个位置，视线不用跳）
 		f.Row().Width(16).Items(flex.Center).Children(func() {

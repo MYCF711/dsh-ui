@@ -115,7 +115,7 @@ func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
 		})
 
 		newBox := f.Row().FillWidth().Height(newSessionHeight).Radius(t.Radii.MD).
-			Background(t.BgLayer2).Border(0.5, t.BorderL3).HoverBackground(t.Hover).
+			Background(t.BgLayer2).Border(0.5, t.BorderL3).Hover(flex.Look{}.Background(t.Hover)).
 			MarginSides(newSessionMarginTop, 2, newSessionMarginBottom, 2).
 			Items(flex.Center).Justify(flex.Center).Hit(env.Tree.ID(env.Feat, "new-session"), "新建会话").Children(func() {
 			f.Row().Items(flex.Center).Gap(6).Children(func() {
@@ -190,7 +190,7 @@ func (p *Plugin) drawWorkspaceHeaderMargin(f *flex.Frame, env *pluginapi.Env, ma
 				f.Field(&p.search, env.Tree.ID(env.Feat, "search"), "搜索", "过滤会话…").
 					Grow(1).Height(searchHeight).FontSize(t.Fonts.Secondary)
 				clear := f.Row().Width(28).Height(searchHeight).Shrink(0).Radius(t.Radii.SM).
-					Items(flex.Center).Justify(flex.Center).HoverBackground(t.Hover).
+					Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(t.Hover)).
 					Hit(env.Tree.ID(env.Feat, "workspace-search-clear"), "清空搜索").Children(func() {
 					f.Text("×").FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
 				})
@@ -220,7 +220,7 @@ func (p *Plugin) drawWorkspaceHeaderMargin(f *flex.Frame, env *pluginapi.Env, ma
 
 func (p *Plugin) workspaceIconButton(f *flex.Frame, env *pluginapi.Env, id, glyph, label string) (flex.Box, bool) {
 	box := f.Row().Width(workspaceIconSize).Height(workspaceIconSize).Shrink(0).Radius(p.theme.Radii.SM).
-		Items(flex.Center).Justify(flex.Center).HoverBackground(p.theme.Hover).
+		Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(p.theme.Hover)).
 		Hit(env.Tree.ID(env.Feat, id), label).Children(func() {
 		f.Text(glyph).FontSize(14).LineHeight(20).Color(p.theme.LabelSecondary)
 	})

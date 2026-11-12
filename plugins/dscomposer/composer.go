@@ -523,7 +523,7 @@ func (p *Plugin) sendButton(f *flex.Frame, env *pluginapi.Env, running bool) {
 	button := f.Row().Size(sendSize, sendSize).Radius(ui.RadiusFull).Background(fill).
 		Items(flex.Center).Justify(flex.Center).MarginY(-sendLift)
 	if !disabled {
-		button = button.HoverBackground(t.Info)
+		button = button.Hover(flex.Look{}.Background(t.Info))
 	}
 	p.controls.Primary = button
 	clicked := button.HitWith(id, label, ui.HitOptions{

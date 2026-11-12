@@ -274,7 +274,7 @@ func (p *Plugin) drawCorner(f *flex.Frame, env *pluginapi.Env) {
 			}
 			// 官方 ExpandButton 只在收起时出现；展开态由 ds-rightbar 的 PanelChrome 收起。
 			p.headerBoxes.Corner = f.Row().Width(28).Height(28).Radius(t.Radii.SM).
-				Items(flex.Center).Justify(flex.Center).HoverBackground(t.Hover).
+				Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "toggle-rightbar"), "打开右侧边栏").Children(func() {
 				f.Icon(rightbarPanelIcon).Width(15).Height(15).Color(t.LabelSecondary)
 			})

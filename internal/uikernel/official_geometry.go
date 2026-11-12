@@ -221,7 +221,14 @@ const (
 	// composer 卡片：radius-panel 28、padding-top 8、gap 12；
 	// 输入区 min-height 36（hero 52）、padding 4px 8px 0 14px；
 	// 控件行 gap 12、padding 2px 8px 6px；主按钮 34×34；
-	// dock gap 12、padding-top 4；seat 内含三段 → 静止高度 122px。
+	// dock gap 12、padding-top 4；seat 内含三段 → 静止高度 128px。
+	//
+	// 控件行高度**不是** 28（trigger 高）+ padding：官方 `.row` 没有 height，
+	// 它被子元素撑开，而最矮的 trigger 是 28、主按钮是 **34**（`.primary` 的
+	// `transform:translateY(-2px)` 不参与布局，只挪视觉位置）。所以内容高 = 34，
+	// 行高 = 2+34+6 = 42，卡片 = 8+36+12+42 = 98，座位 = 98+26+4 = **128**。
+	// 早先按 28 算出的 36/92/122 与真渲染差 6px（dscomposer 的卡片一直是 98）——
+	// 两个数字对不上，就是这一条。
 	ComposerCardRadius  float32 = 28
 	ComposerCardPadTop  float32 = 8
 	ComposerCardGap     float32 = 12
@@ -234,7 +241,7 @@ const (
 	ComposerRowPadTop   float32 = 2
 	ComposerRowPadBot   float32 = 6
 	ComposerRowPadX     float32 = 8
-	ComposerRowHeight   float32 = 28 + ComposerRowPadTop + ComposerRowPadBot
+	ComposerRowHeight   float32 = ComposerPrimarySize + ComposerRowPadTop + ComposerRowPadBot
 	ComposerPrimarySize float32 = 34
 	ComposerDockGap     float32 = 12
 	ComposerDockPadTop  float32 = 4
@@ -246,6 +253,25 @@ const (
 	ComposerSideClearance float32 = 16
 	ComposerDockInset     float32 = 8
 	ComposerTextMaxHeight float32 = 336
+
+	// 控件行左端的「加号」命令/附件入口（官方 `.add`，InputBar.module.css:336-348）：
+	// 28×28 圆形、背景 --dsw-specific-selector（主题里是 BgLayer3）、图标
+	// IconPlusOutlineMedium size=14、disabled 时 opacity .5。
+	ComposerAddSize   float32 = 28
+	ComposerAddIcon   float32 = 14
+	ComposerAddRadius float32 = 999
+	ComposerAddDim    float32 = 0.5
+
+	// 卡片下方 dock 里的读数胶囊（官方 StatsPills `.pill` + ContextMeter
+	// `.trigger`，ui-chat/src/client/chat/StatsPills.module.css:13-60、
+	// ui-conversation/src/client/skeleton/ContextMeter.module.css:9-38）：
+	// padding 1px 8px、gap 6、radius-sm、字号 calc(13px-1px)、行高 20、图标 14。
+	ComposerPillPadY   float32 = 1
+	ComposerPillPadX   float32 = 8
+	ComposerPillGap    float32 = 6
+	ComposerPillFont   float32 = 12
+	ComposerPillLineH  float32 = 20
+	ComposerPillIconWH float32 = 14
 )
 
 // ── ChatView / HeroShell ─────────────────────────────────────────────
@@ -548,6 +574,28 @@ var officialGeometry = []GeoRow{
 		Anchor: "ui-conversation/src/client/skeleton/InputBar.module.css:19"},
 	{Node: "InputBar.dock", Prop: "min-height (non-hero)", Official: ComposerDockMinH, Impl: ComposerDockMinH, Unit: UnitPx, Status: GeoDerived,
 		Anchor: "ui-conversation/src/client/skeleton/InputBar.module.css:22-52", Formula: "calc(22px + font-delta-secondary)"},
+	// 控件行左端「加号」入口（官方 `.add`，命令/附件入口）。
+	{Node: "InputBar.row.add", Prop: "width/height", Official: ComposerAddSize, Impl: ComposerAddSize, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-conversation/src/client/skeleton/InputBar.module.css:340-341"},
+	{Node: "InputBar.row.add", Prop: "border-radius", Official: ComposerAddRadius, Impl: ComposerAddRadius, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-conversation/src/client/skeleton/InputBar.module.css:343"},
+	{Node: "InputBar.row.add", Prop: "icon size", Official: ComposerAddIcon, Impl: ComposerAddIcon, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-conversation/src/client/skeleton/InputBar.tsx:517"},
+	{Node: "InputBar.row.add", Prop: "disabled opacity", Official: ComposerAddDim, Impl: ComposerAddDim, Unit: UnitRatio, Status: GeoAligned,
+		Anchor: "ui-conversation/src/client/skeleton/InputBar.module.css:356-358"},
+	// dock 里的读数胶囊（StatsPills `.pill` / ContextMeter `.trigger`）。
+	{Node: "InputBar.dock.pill", Prop: "padding-block", Official: ComposerPillPadY, Impl: ComposerPillPadY, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-chat/src/client/chat/StatsPills.module.css:13-60"},
+	{Node: "InputBar.dock.pill", Prop: "padding-inline", Official: ComposerPillPadX, Impl: ComposerPillPadX, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-chat/src/client/chat/StatsPills.module.css:13-60"},
+	{Node: "InputBar.dock.pill", Prop: "gap", Official: ComposerPillGap, Impl: ComposerPillGap, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-chat/src/client/chat/StatsPills.module.css:13-60"},
+	{Node: "InputBar.dock.pill", Prop: "font-size", Official: ComposerPillFont, Impl: ComposerPillFont, Unit: UnitPx, Status: GeoDerived,
+		Anchor: "ui-chat/src/client/chat/StatsPills.module.css:13-60", Formula: "calc(13px - 1px)"},
+	{Node: "InputBar.dock.pill", Prop: "line-height", Official: ComposerPillLineH, Impl: ComposerPillLineH, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-chat/src/client/chat/StatsPills.module.css:13-60"},
+	{Node: "InputBar.dock.pill", Prop: "icon size", Official: ComposerPillIconWH, Impl: ComposerPillIconWH, Unit: UnitPx, Status: GeoAligned,
+		Anchor: "ui-conversation/src/client/skeleton/ContextMeter.module.css:9-38"},
 
 	// ChatView
 	{Node: "ChatView.scroll", Prop: "padding-block", Official: ChatScrollPad, Impl: ChatScrollPad, Unit: UnitPx, Status: GeoAligned,

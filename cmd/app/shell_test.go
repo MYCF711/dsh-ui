@@ -323,3 +323,99 @@ func TestDrawnOfficialSlotsAreRegistered(t *testing.T) {
 		t.Logf("额外 dispatch 的槽（官方默认组合的空槽）：%v", sortedSlots(*drawn))
 	}
 }
+
+// TestComposerBridgeFollowsOfficialSeat 壳的 composer 兼容桥判据：
+// **官方座位有占用方 → 走官方座位**（旧槽这一帧不 dispatch）。
+//
+// 为什么这一条必须单独测：`BridgeLegacy` 是整列一个开关（sidebar/header/body
+// 都还有旧部件），如果 composer 也跟着它，`-shell official` 下官方座位永远
+// dispatch 不到——GP 报告 §5 第 1 条就是这个。
+func TestComposerBridgeFollowsOfficialSeat(t *testing.T) {
+	// 产品形状：dscomposer 同时注册 main.composer 与 conversation.composer。
+	product, _ := newProbeKernel(t, "product",
+		pluginapi.SlotSidebarList, pluginapi.SlotMainBody,
+		pluginapi.SlotMainComposer, uikernel.OffConvComposer)
+	opts := shellOptionsFor(&model{cur: "s1"}, product, 1182, 832)
+	if !opts.BridgeLegacy {
+		t.Fatal("sidebar.list / main.body 还占着槽，整列兼容桥必须开着（header/正文仍走旧槽）")
+	}
+	if opts.BridgeLegacyComposer {
+		t.Fatal("官方 composer 座位有占用方时，composer 不该走兼容桥（官方座位就永远 dispatch 不到）")
+	}
+
+	// 纯旧插件集：官方座位没人 → composer 退回 main.composer（不黑屏）。
+	legacy, _ := newProbeKernel(t, "legacy-only",
+		pluginapi.SlotMainBody, pluginapi.SlotMainComposer)
+	legacyOpts := shellOptionsFor(&model{cur: "s1"}, legacy, 1182, 832)
+	if !legacyOpts.BridgeLegacyComposer {
+		t.Fatal("官方座位没人、旧槽有人时 composer 必须走兼容桥")
+	}
+
+	// 官方座位有人、旧槽没人：同样走官方座位。
+	officialOnly, _ := newProbeKernel(t, "official-only", uikernel.OffConvComposer)
+	officialOpts := shellOptionsFor(&model{cur: "s1"}, officialOnly, 1182, 832)
+	if officialOpts.BridgeLegacyComposer {
+		t.Fatal("只有官方座位有占用方时 composer 不该走兼容桥")
+	}
+}
+
+// TestOfficialTierReallyDispatchesComposerSeat `-shell official` 的产品形状：
+// 中栏 header/正文走兼容桥（旧槽），**composer 走官方座位**。
+//
+// 断言的是「真的 dispatch 了」：座位有人时官方槽被调用一次、旧槽零次；
+// 反过来（官方座位没人）旧槽一次。任何一边为 0 都是 GP 报告 §5 的那条缺口
+// 又回来了。
+func TestOfficialTierReallyDispatchesComposerSeat(t *testing.T) {
+	counts := func(t *testing.T, slots ...pluginapi.Slot) map[pluginapi.Slot]int {
+		t.Helper()
+		kernel, drawn := newProbeKernel(t, "composer-tier", slots...)
+		m := &model{kernel: kernel, cur: "s1"}
+		opts := shellOptionsFor(m, kernel, 1182, 832)
+		tree := &ui.Tree{}
+		canvas := &ui.Canvas{}
+		canvas.SetTree(tree)
+		canvas.SetMeasurer(func(value string, size, weight float32) float32 { return float32(len([]rune(value))) * size / 2 })
+		theme := dscore.Dark()
+		env := &pluginapi.Env{
+			Theme: theme, Tree: tree, Feat: tree.Feature("composer-tier-test"), Canvas: canvas,
+			Bounds: ui.Rect{Width: 1182, Height: 832},
+			Has:    func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
+		}
+		var view flex.View
+		view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+			drawOfficialFirstScreen(f, m, env, opts)
+		})
+		out := map[pluginapi.Slot]int{}
+		for _, slot := range *drawn {
+			out[slot]++
+		}
+		return out
+	}
+
+	// 产品形状：旧 header/正文 + 官方 composer 座位。
+	product := counts(t, pluginapi.SlotSidebarList, pluginapi.SlotMainBody,
+		pluginapi.SlotMainHeader, pluginapi.SlotMainComposer, uikernel.OffConvComposer)
+	if product[uikernel.OffConvComposer] != 1 {
+		t.Fatalf("官方 composer 座位 dispatch 次数 = %d，want 1（counts=%v）",
+			product[uikernel.OffConvComposer], product)
+	}
+	if product[pluginapi.SlotMainComposer] != 0 {
+		t.Fatalf("官方座位活着时 main.composer 也被 dispatch（双画）：%v", product)
+	}
+	// 兼容桥的其余部分不动：header / 正文仍走旧槽。
+	for _, slot := range []pluginapi.Slot{pluginapi.SlotMainHeader, pluginapi.SlotMainBody, pluginapi.SlotSidebarList} {
+		if product[slot] != 1 {
+			t.Fatalf("兼容桥旧槽 %q dispatch 次数 = %d，want 1（counts=%v）", slot, product[slot], product)
+		}
+	}
+
+	// 纯旧插件集：官方座位没人 → 旧槽一次。
+	legacy := counts(t, pluginapi.SlotMainBody, pluginapi.SlotMainComposer)
+	if legacy[pluginapi.SlotMainComposer] != 1 {
+		t.Fatalf("纯旧插件集 main.composer dispatch 次数 = %d，want 1（counts=%v）",
+			legacy[pluginapi.SlotMainComposer], legacy)
+	}
+	if legacy[uikernel.OffConvComposer] != 0 {
+		t.Fatalf("官方座位没人却 dispatch 了它：%v", legacy)
+	}
+}

@@ -340,9 +340,14 @@ func TestGeometryTableDrivesLayout(t *testing.T) {
 	if layout.ComposerSeat.Height != ComposerSeatHeight {
 		t.Fatalf("composer 座高度 = %v，表里是 %v", layout.ComposerSeat.Height, ComposerSeatHeight)
 	}
-	// composer 座 = 卡片(8+36+12+36=92) + dock(4+22=26) + 底边距 4 = 122
-	if ComposerSeatHeight != 122 {
-		t.Fatalf("composer 座高度常量 = %v，官方三块相加应为 122", ComposerSeatHeight)
+	// composer 座 = 卡片(8+36+12+42=98) + dock(4+22=26) + 底边距 4 = 128。
+	//
+	// 控件行是 42 不是 36：官方 `.row` 没有 height，被最高的子元素撑开，而主按钮
+	// 是 34（`.primary` 的 translateY(-2px) 只挪视觉、不参与布局），
+	// 所以行高 = 2+34+6。按 trigger 的 28 算出来的 36/92/122 与真渲染差 6px
+	// （dscomposer 的卡片一直是 98）—— 两个数字对不上就是这一条。
+	if ComposerSeatHeight != 128 {
+		t.Fatalf("composer 座高度常量 = %v，官方三块相加应为 128", ComposerSeatHeight)
 	}
 }
 
@@ -545,13 +550,13 @@ func TestFirstScreenGeometryAtOfficialSizes(t *testing.T) {
 		assertRect(t, "titleRow", l.TitleRow, ui.Rect{X: 300, Y: 50, Width: 728, Height: 30})
 		assertRect(t, "tabsRow", l.TabsRow, ui.Rect{X: 308, Y: 90, Width: 720, Height: 25})
 		assertRect(t, "body", l.Body, ui.Rect{X: 280, Y: 116, Width: 776, Height: 916})
-		assertRect(t, "scrollBody", l.ScrollBody, ui.Rect{X: 280, Y: 116, Width: 776, Height: 794})
+		assertRect(t, "scrollBody", l.ScrollBody, ui.Rect{X: 280, Y: 116, Width: 776, Height: 788})
 		// 正文列：clamp(680, 776*.64=496.6, 920) = 680，滚动区两侧 16+16 → 710 可用，居中。
-		assertRect(t, "column", l.Column, ui.Rect{X: 327, Y: 132, Width: 680, Height: 762})
-		assertRect(t, "composerSeat", l.ComposerSeat, ui.Rect{X: 280, Y: 910, Width: 776, Height: 122})
-		assertRect(t, "composerRoot", l.ComposerRoot, ui.Rect{X: 296, Y: 910, Width: 744, Height: 122})
-		assertRect(t, "composerCard", l.ComposerCard, ui.Rect{X: 312, Y: 910, Width: 712, Height: 92})
-		assertRect(t, "composerRow", l.ComposerRow, ui.Rect{X: 312, Y: 966, Width: 712, Height: 36})
+		assertRect(t, "column", l.Column, ui.Rect{X: 327, Y: 132, Width: 680, Height: 756})
+		assertRect(t, "composerSeat", l.ComposerSeat, ui.Rect{X: 280, Y: 904, Width: 776, Height: 128})
+		assertRect(t, "composerRoot", l.ComposerRoot, ui.Rect{X: 296, Y: 904, Width: 744, Height: 128})
+		assertRect(t, "composerCard", l.ComposerCard, ui.Rect{X: 312, Y: 904, Width: 712, Height: 98})
+		assertRect(t, "composerRow", l.ComposerRow, ui.Rect{X: 312, Y: 960, Width: 712, Height: 42})
 		assertRect(t, "composerDock", l.ComposerDock, ui.Rect{X: 296, Y: 1002, Width: 744, Height: 26})
 		assertRect(t, "overlay", l.Overlay, ui.Rect{Width: 1920, Height: 1032})
 		if l.LeadingSeat.X != 88 || l.LeadingSeat.Y != 11 {
@@ -567,9 +572,9 @@ func TestFirstScreenGeometryAtOfficialSizes(t *testing.T) {
 		assertRect(t, "rightbarCol", l.RightbarCol, ui.Rect{X: 680, Width: 502, Height: 832})
 		assertRect(t, "titleRow", l.TitleRow, ui.Rect{X: 300, Y: 10, Width: 352, Height: 30})
 		// 正文列被可用宽度夹住：710 → 398-2-64=332? 实际 innerW=398-2-64=332。
-		assertRect(t, "column", l.Column, ui.Rect{X: 312, Y: 92, Width: 334, Height: 602})
+		assertRect(t, "column", l.Column, ui.Rect{X: 312, Y: 92, Width: 334, Height: 596})
 		// 主栏 400 时 composer 卡片宽 = clamp(680,…)=680 + 32 = 712 → 被可用宽夹到 368。
-		assertRect(t, "composerCard", l.ComposerCard, ui.Rect{X: 296, Y: 710, Width: 368, Height: 92})
+		assertRect(t, "composerCard", l.ComposerCard, ui.Rect{X: 296, Y: 704, Width: 368, Height: 98})
 	})
 }
 

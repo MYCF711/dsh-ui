@@ -58,9 +58,14 @@ package main
 // journal 换代、或 `sinceSeq` 之前的历史已滑出内存 journal。后者**就是
 // "没有更早的了"**（见 `journalEvictedError`），不能当成失败去重建——重建会把
 // 尾窗再拉一遍，然后同一次点击又能再点，用户看到的是"点了永远在转圈"。
+//
+// 两者靠**结构化**的 `details.reason` 区分（`stale_epoch` / `history_evicted`，
+// 见 `conflictReason` 与 `DSH-GO/docs/transport-contract.md` §3D）；匹配 message
+// 文本只留给不带这个字段的老宿主兜底。
 
 import (
 	"context"
+	"errors"
 	"log"
 	"sort"
 	"strings"
@@ -469,26 +474,70 @@ func (m *model) finishOlder(id string, frames []apiclient.Frame, epoch int64, li
 	}
 }
 
+// frameConflictReason* 是宿主 409 的 `details.reason` 取值（只列本文件要分支的）。
+//
+// 唯一权威是 `DSH-GO/docs/transport-contract.md` §3D 的取值表；宿主侧
+// `transport.ConflictReasons()` 是它的可执行副本，加新值两侧一起改。
+const (
+	// frameConflictReasonStaleEpoch：journal 换代 / 水位比当前还大 → 重建基线。
+	frameConflictReasonStaleEpoch = "stale_epoch"
+	// frameConflictReasonHistoryEvicted：更早的历史已滑出内存 journal →
+	// 这就是"没有更早的了"，**不要**重建基线。
+	frameConflictReasonHistoryEvicted = "history_evicted"
+)
+
+// conflictReason 返回 409 的**结构化** reason；老宿主没有这个字段时返回空串。
+//
+// 为什么先看结构：409 的两种来源共用 code `stale_epoch`，而 message 是给人看的
+// 文案——拿它当判据等于把契约挂在文案上，改一个字就静默失效（GP 报告 §5 第 3 条）。
+// 宿主现在把语义放在信封顶层 `details.reason`（`error` 的兄弟，四字段不变）。
+func conflictReason(err error) string {
+	var apiErr *apiclient.APIError
+	if !errors.As(err, &apiErr) || apiErr == nil || apiErr.Details == nil {
+		return ""
+	}
+	reason, _ := apiErr.Details["reason"].(string)
+	return reason
+}
+
 // staleEpochError 判断一条错误是不是 journal 换代的 409 `stale_epoch`。
 //
 // 契约：宿主回 409 时错误体是四字段，`code` 就是 `stale_epoch`；apiclient
-// 把它包成 `APIError`，这里只匹配码本身，不猜别的 409。
+// 把它包成 `APIError`，`details.reason` 带上来源。**结构优先**：有 reason 就只
+// 认 `stale_epoch`（`history_evicted` 是另一种来源，见 journalEvictedError）。
 func staleEpochError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "stale_epoch")
+	if err == nil {
+		return false
+	}
+	if reason := conflictReason(err); reason != "" {
+		return reason == frameConflictReasonStaleEpoch
+	}
+	// 兜底：0.2.2-rc.2-gs2 之前的宿主没有 `details.reason`。只认码本身，不猜别的 409。
+	return strings.Contains(err.Error(), "stale_epoch")
 }
 
 // journalEvictedError 判断一条 409 是不是「更早的历史已经滑出宿主内存 journal」。
 //
 // 宿主对两种 409 回**同一个码** `stale_epoch`（`internal/transport/server.go`
-// 的 handleSessionHistory）：
+// 的 handleSessionHistory），靠 `details.reason` 分开：
 //
-//	① journal 换代                 → 该重建基线；
-//	② sinceSeq 之前已滑出内存 journal → **这就是"没有更早的了"**，不是失败。
+//	① stale_epoch       journal 换代                 → 该重建基线；
+//	② history_evicted   sinceSeq 之前已滑出内存 journal → **这就是"没有更早的了"**，不是失败。
 //
-// 错误体只有四字段（code/message/hint/retryable），没有能区分的结构化字段；
-// 宿主在 message 里写清了是哪种（"…已经滑出内存 journal（只保留最近 N 帧）…"），
-// 这里按那句话分。**判错的代价**：当成 ① 会多重建一次基线（点第二次才到头），
-// 当成 ② 会少一页——所以下面这条测试同时钉住"能认出来"和"认不出时的兜底"。
+// 判错的代价：当成 ① 会多重建一次基线（点第二次才到头），当成 ② 会少一页——
+// 所以结构判据优先，文本匹配只在老宿主上兜底。
 func journalEvictedError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "滑出内存")
+	if err == nil {
+		return false
+	}
+	if reason := conflictReason(err); reason != "" {
+		return reason == frameConflictReasonHistoryEvicted
+	}
+	// 兜底（老宿主）：message 里写清了是哪种（"…已经滑出内存 journal…"），这里按那句话分。
+	//
+	// **何时可删**：宿主最低支持版本 ≥ `details.reason` 落地之后（契约
+	// `DSH-GO/docs/transport-contract.md` §3D 已冻结）。那时 `staleEpochError`
+	// 的 `strings.Contains` 与这里的 `"滑出内存"` 一起删——两处是同一批历史包袱，
+	// 只删一处会留下"新宿主走结构、老宿主走文本"的半吊子双轨。
+	return strings.Contains(err.Error(), "滑出内存")
 }

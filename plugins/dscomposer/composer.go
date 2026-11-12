@@ -176,14 +176,18 @@ func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.field} }
 //
 // # 两个座位（同一帧只有一个活）
 //
-//	main.composer          旧三栏 / 官方骨架的**旧部件兼容桥** —— 今天的产品路径
-//	conversation.composer  官方 `InputBar` 上方（rc.2 终态，`uikernel.OffConvComposer`）
+//	main.composer          旧三栏（`-shell legacy`）/ 纯旧插件集的**兼容桥**
+//	conversation.composer  官方 `InputBar`（rc.2 终态，`uikernel.OffConvComposer`）
 //
-// 为什么两个都挂：壳按 `ShellOptions.BridgeLegacy` **一帧一个值**决定 dispatch
-// 哪一边（`uikernel/shell_skeleton.go` 的 drawLegacyConversation /
-// drawComposerSkeleton）。旧部件（dsconversation 的 `main.body`）还占着槽时
-// 走兼容桥，官方子槽根本没人 dispatch；反过来官方槽全量 dispatch 时旧槽没人画。
-// 两个座位互斥，**不会双画** —— 与 transcript 的双座位是同一条判据。
+// 为什么两个都挂：壳按 `ShellOptions.BridgeLegacyComposer` **一帧一个值**决定
+// dispatch 哪一边（`uikernel/shell_skeleton.go` 的 `drawComposerSeat`）。
+// 判据是"官方 composer 座位有没有占用方"——本插件注册了官方座位，所以在
+// `-shell official` 下**官方座位真的被 dispatch**（GP 报告 §5 第 1 条），旧槽
+// 这一帧没人画。反过来 `-shell legacy`（dsshell 三栏）只 dispatch 旧槽，
+// 官方座位没人画。两个座位互斥，**不会双画** —— 与 transcript 的双座位同一条判据。
+//
+// 输入框本体（`Fields()` 登记的 `flex.Field`）两个座位共用一份：`drawInput` 在
+// 两个 Draw 里都调用它，但只有活的那个座位会执行。
 //
 // 审批卡的座位归属：官方审批走 **composer 接管**（`ChatView.tsx:293-295`
 // 的注释：approvals take over the composer），不是消息流里的一段。所以两个
@@ -193,11 +197,12 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{ID: "composer", Slot: pluginapi.SlotMainComposer, Order: 10,
 			Draw: p.draw, AfterDraw: p.afterDraw},
-		// 官方座位：只画审批卡（输入卡片本身在官方骨架里由
-		// `drawComposerSkeleton` 摆位，输入 Field 由本插件的 Fields() 登记）。
-		// 没有审批请求时这个方法**什么都不画**（`Approval == nil` 整条不渲染）。
-		{ID: "approval-official", Slot: pluginapi.Slot(offConversationComposer), Order: 10,
-			Draw: p.drawOfficialApprovalSeat},
+		// 官方座位（rc.2 终态）：`conversation.composer` 是 **chain** 槽，
+		// 占用方接管整个 composer 区（审批卡 overlay + InputBar fallback）。
+		// 没有审批请求时它是**输入卡片本体**，不是"只画审批卡"——GP 报告 §5
+		// 第 2 条记的就是这个缺口。
+		{ID: "composer-official", Slot: pluginapi.Slot(offConversationComposer), Order: 10,
+			Draw: p.drawOfficialComposer, AfterDraw: p.afterDraw},
 	}
 }
 
@@ -336,6 +341,10 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32) 
 	f.Row().FillWidth().Height(rowPadTop+sendSize+rowPadBottom).
 		PadSides(rowPadTop-sendLift, rowPadSide, rowPadBottom+sendLift, rowPadSide).
 		Items(flex.Center).Justify(flex.Between).Gap(cardGap).Children(func() {
+		// 官方 `.tools`：命令/附件入口在**最左**（`.add` 28×28 圆钮），
+		// 然后是 modes（permission/plan）。这一枚只在真有内容可加时出现
+		// （见 official_seat.go 的 drawAddEntry：没有 FSList/CWD 就不画）。
+		p.drawAddEntry(f, env)
 		// 官方 DOM 的左 modes 只有 permission/plan；model 属于右 standardControls。
 		if permission != "" {
 			icon, hasIcon := permissionIconFor(strings.TrimSpace(env.Data.Permission), t.LabelSecondary)
@@ -571,8 +580,25 @@ func onInfo(t *pluginapi.Theme) ui.Color {
 // 不能被抢掉：viva 的分发顺序是「先 OnKey → 没被处理才交给聚焦控件」，
 // 这里返回 true 就等于把 Enter 从 TextInput 手里拿走，所以门槛必须卡在
 // approvalVisible 上（见 approval_test.go 的 TestHandleKeyTakesEnterOnlyWhenVisible）。
+//
+// # Shift+Enter 必须被吃掉
+//
+// 官方 composer 是多行编辑器：Enter 发送、**Shift+Enter 换行**。viva 的
+// `flex.Field` 是单行（`field.go` 注释写死「A field is one line, so Enter is
+// free to mean done」），没有多行编辑态，所以"插换行"这一半做不了——但
+// **"不发送"这一半必须做**：不拦的话 Shift+Enter 会落到驱动器的提交路径
+// （`painter.key` → `ClickedByKey`），用户以为在换行，草稿已经发出去了。
+//
+// 所以这里无条件吃掉 Shift+Enter（不调 Send、不清草稿）。真正的换行编辑是
+// Viva 上游缺口（flex 没有 Textarea），最小复现与后续见报告 §未实现项。
 func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
-	if ev.Release || ev.Modifiers != 0 {
+	if ev.Release {
+		return false
+	}
+	if ev.Key == ui.KeyEnter && ev.Modifiers&ui.ModifierShift != 0 {
+		return true
+	}
+	if ev.Modifiers != 0 {
 		return false
 	}
 	if !approvalVisible(p.lastData) {

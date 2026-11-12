@@ -114,6 +114,15 @@ func shellOptionsFor(m *model, kernel *uikernel.Kernel, width, height float32) u
 	// 旧部件还在时打开兼容桥：它们挂在 sidebar.* / main.* 旧槽上。
 	if kernel != nil {
 		opts.BridgeLegacy = kernel.Has(pluginapi.SlotSidebarList) || kernel.Has(pluginapi.SlotMainBody)
+		// composer 那一段单独判：dscomposer 同时注册了 `main.composer`（旧三栏）
+		// 与 `conversation.composer`（官方 chain）。官方座位有人时**走官方座位**，
+		// 旧槽这一帧不 dispatch —— 这就是「同帧只有一个活」的判据。
+		//
+		// 为什么不用 BridgeLegacy 那一条：中栏其余部件（dstopbar 的 main.header、
+		// dsconversation 的 main.body）今天仍是旧槽，整列一个开关会把 composer
+		// 永远按在兼容桥上，官方座位永远 dispatch 不到（GP 报告 §5 第 1 条）。
+		opts.BridgeLegacyComposer = kernel.Has(pluginapi.SlotMainComposer) &&
+			!kernel.Has(uikernel.OffConvComposer)
 	}
 	return opts
 }

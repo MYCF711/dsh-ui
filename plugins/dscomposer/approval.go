@@ -446,20 +446,6 @@ func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
-// drawOfficialApprovalSeat 是**官方 `conversation.composer` 座位**的审批卡
-// （rc.2 终态；`uikernel.OffConvComposer`，host = `ConversationRoot.composerSeat`）。
-//
-// 与旧座位（`main.composer` 的 `draw`）画的是**同一张卡、同一份计划**：
-// 座位只是壳的挂载点不同（`uikernel/shell_tier.go` 的 `OfficialSlotsLive`），
-// 卡片的官方几何（radius-xl / strip 10-16 / body 12-16-0 / actionRow 14-16）
-// 本来就写在 `drawApproval` 里，这里不再抄一份——两份迟早会漂。
-//
-// 两个座位**同一帧只有一个活**（壳二选一 dispatch），所以不会双画。
-// 没有审批请求时 `drawApproval` 自己整条不画（`Approval == nil`）。
-func (p *Plugin) drawOfficialApprovalSeat(f *flex.Frame, env *pluginapi.Env) {
-	p.drawApproval(f, env)
-}
-
 // press 是绘制层对 decide() 的薄封装：按钮点击走这里（键盘走 decideKey）。
 func (p *Plugin) press(env *pluginapi.Env, allow bool) {
 	ap := env.Data.Approval

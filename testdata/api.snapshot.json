@@ -18,6 +18,11 @@
       "message": "string",
       "hint": "string",
       "retryable": "bool"
+    },
+    "details": {
+      "reason": "string?",
+      "note": "409 的稳定机器字段（DSH-GO/docs/transport-contract.md §3D）。**可选**：老宿主不带，客户端必须能判空并走 message 文本兜底（cmd/app/frames.go journalEvictedError）。它是 error 的**兄弟**，不是四字段之一——error 仍然恰好 code/message/hint/retryable。",
+      "envelope_example": "{\"error\":{\"code\":\"stale_epoch\",\"message\":\"…\",\"hint\":\"…\",\"retryable\":true},\"journalEpoch\":7,\"lastSeq\":1024,\"details\":{\"reason\":\"history_evicted\"}}"
     }
   },
   "errors": {
@@ -26,6 +31,31 @@
     "invalid_arg": "参数不合法，hint 写清怎么改",
     "unsupported": "该方法本版本未实现",
     "internal": "宿主内部错误"
+  },
+  "conflict_reasons": {
+    "note": "409 的 details.reason 取值表。宿主侧唯一来源是 DSH-GO internal/transport/ConflictReasons()（快照 internal/transport/testdata/api.snapshot.json 的 conflict_reasons 段），两侧同表：加新值必须一起改。",
+    "values": [
+      "stale_epoch",
+      "history_evicted",
+      "revision_conflict",
+      "job_finished",
+      "job_owner_not_live",
+      "stale_head",
+      "agent_busy",
+      "NO_CONTINUABLE_FAILURE_OR_PENDING_INPUT",
+      "conflict"
+    ],
+    "semantics": {
+      "stale_epoch": "journal 换代 / 水位比当前还大 → 丢掉旧水位重新 load 基线",
+      "history_evicted": "sinceSeq 之前的历史已滑出内存 journal → 这就是「没有更早的了」，不要重建（UI 消费：cmd/app/frames.go）",
+      "revision_conflict": "乐观并发 revision 过期 → 重新读最新 revision",
+      "job_finished": "任务已结束 → 只读 jobs.output",
+      "job_owner_not_live": "任务 owner 已不在（官方 JOB_OWNER_NOT_LIVE）",
+      "stale_head": "forge 写入基于旧 head（远端已前进）",
+      "agent_busy": "会话/管理器正忙（code=busy）→ 等 turn/done",
+      "NO_CONTINUABLE_FAILURE_OR_PENDING_INPUT": "官方 session/agent-busy 的逐字 reason（不是 agent_busy）",
+      "conflict": "叫不出更细名字的 409（兜底）"
+    }
   },
   "stream": {
     "path": "/ws",

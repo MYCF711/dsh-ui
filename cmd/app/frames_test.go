@@ -351,3 +351,85 @@ func TestStaleEpochErrorMatches(t *testing.T) {
 		t.Fatal("nil 被当成 stale_epoch")
 	}
 }
+
+// TestConflictReasonStructuredFirst 钉住 409 的**结构优先**（GP 报告 §5 第 3 条）。
+//
+// 宿主在信封顶层给 `details.reason`（`stale_epoch` / `history_evicted`），
+// UI 必须按它分支；message 文本只留给不带这个字段的老宿主兜底。
+func TestConflictReasonStructuredFirst(t *testing.T) {
+	// ① reason 说 history_evicted：认（哪怕文案换了说法）。
+	evicted := &apiclient.APIError{
+		Code:    "stale_epoch",
+		Message: "sinceSeq=0 之前的历史已经滑出内存 journal（只保留最近 300 帧）",
+		Details: map[string]any{"reason": frameConflictReasonHistoryEvicted},
+	}
+	if !journalEvictedError(fmt.Errorf("history: %w", evicted)) {
+		t.Fatal("结构化 history_evicted 没被认出来")
+	}
+	if staleEpochError(evicted) {
+		t.Fatal("history_evicted 被当成了 journal 换代（会多重建一次基线，点了永远在转圈）")
+	}
+
+	// ② 结构优先的另一半：reason 说 stale_epoch 时，**即使文案里带着"滑出内存"**
+	//    也不能当成到头了——文案不是契约。
+	changed := &apiclient.APIError{
+		Code:    "stale_epoch",
+		Message: "journal 世代或水位对不上，需要重新 load 基线（旧文案里的「滑出内存」只是历史包袱）",
+		Details: map[string]any{"reason": frameConflictReasonStaleEpoch},
+	}
+	if journalEvictedError(changed) {
+		t.Fatal("reason=stale_epoch 时按 message 文本误判成了 history_evicted（结构必须优先）")
+	}
+	if !staleEpochError(changed) {
+		t.Fatal("reason=stale_epoch 没被认出来")
+	}
+
+	// ③ 别的 409 来源两条都不认：别把 revision_conflict 当分页信号。
+	other := &apiclient.APIError{
+		Code:    "revision_conflict",
+		Message: "滑出内存（这段文案不该生效）",
+		Details: map[string]any{"reason": "revision_conflict"},
+	}
+	if journalEvictedError(other) || staleEpochError(other) {
+		t.Fatal("无关的 409 被当成了 journal 换代 / 滑出内存")
+	}
+}
+
+// TestConflictReasonFallbackForOldHost 钉住**文本兜底**：老宿主没有 details.reason。
+//
+// 兜底是可删的过渡态（见 journalEvictedError 注释里的"何时可删"）；
+// 在宿主最低支持版本升上来之前，它必须还在，否则老宿主上所有 409 都变成"重新加载"。
+func TestConflictReasonFallbackForOldHost(t *testing.T) {
+	evicted := &apiclient.APIError{
+		Code:    "stale_epoch",
+		Message: "sinceSeq=0 之前的历史已经滑出内存 journal（只保留最近 300 帧）",
+	}
+	if evicted.Details != nil {
+		t.Fatal("夹具应当模拟老宿主（Details == nil）")
+	}
+	if !journalEvictedError(fmt.Errorf("history: %w", evicted)) {
+		t.Fatal("老宿主的「滑出内存」409 没被兜底认出来")
+	}
+	changed := &apiclient.APIError{
+		Code:    "stale_epoch",
+		Message: "journal 世代或水位对不上，需要重新 load 基线",
+	}
+	if journalEvictedError(changed) {
+		t.Fatal("老宿主的换代 409 被当成滑出内存（会少重建一次基线）")
+	}
+	if !staleEpochError(changed) {
+		t.Fatal("老宿主的 stale_epoch 没被认出来")
+	}
+
+	// 空 details（新宿主但没给 reason）与 nil 等价：同样走兜底。
+	if !journalEvictedError(&apiclient.APIError{Code: "stale_epoch", Message: "滑出内存", Details: map[string]any{}}) {
+		t.Fatal("details 为空对象时应当走文本兜底")
+	}
+	// 非 APIError（连不上/超时）不是 409 来源。
+	if journalEvictedError(fmt.Errorf("连不上 127.0.0.1:1")) {
+		t.Fatal("网络错误被当成了「滑出内存」")
+	}
+	if journalEvictedError(nil) || staleEpochError(nil) {
+		t.Fatal("nil 被当成了 409 来源")
+	}
+}

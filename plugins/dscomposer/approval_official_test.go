@@ -66,7 +66,11 @@ func drawSeat(t *testing.T, approval *pluginapi.Approval) (*ui.Canvas, *[]string
 	env.Act.Approve = func(requestID, optionID string) { approved = append(approved, requestID+"|"+optionID) }
 	var fv flex.View
 	fv.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
-		p.drawOfficialApprovalSeat(f, env)
+		// 官方座位 = 整个 composer 区（审批卡 overlay + InputBar fallback），
+		// 容器给官方侧边距 16（与 uikernel.drawComposerSeat 一致）。
+		f.Column().Width(840 - 2*composerClearance).PadX(composerClearance).Children(func() {
+			p.drawOfficialComposer(f, env)
+		})
 	})
 	return canvas, &approved
 }
@@ -99,13 +103,22 @@ func TestOfficialSeatDrawsApprovalCard(t *testing.T) {
 	}
 }
 
-// TestOfficialSeatEmptyDrawsNothing 没有审批请求时官方座位**一个像素都不画**。
+// TestOfficialSeatEmptyDrawsOnlyInputCard 没有审批请求时官方座位只画输入卡片。
 //
-// 画一个空壳等于告诉用户"这里本来有个东西"，比没有更糟。
-func TestOfficialSeatEmptyDrawsNothing(t *testing.T) {
+// 官方座位是 **chain** 槽：fallback 是 InputBar（常在），overlay 才是审批卡。
+// 所以"没有审批"= 审批那几行一条都不画，但输入卡片必须还在——画一个空壳
+// 等于告诉用户"这里本来有个东西"，比没有更糟；反过来连输入卡片都没有，
+// 就是 GP 报告 §5 第 2 条那个缺口（官方座位只画审批卡）。
+func TestOfficialSeatEmptyDrawsOnlyInputCard(t *testing.T) {
 	canvas, _ := drawSeat(t, nil)
-	if texts := seatTexts(canvas); len(texts) != 0 {
-		t.Fatalf("没有审批时官方座位画了 %v", texts)
+	texts := seatTexts(canvas)
+	for _, banned := range []string{"需要审批", "允许这一次", "拒绝"} {
+		if seatHas(canvas, banned) {
+			t.Fatalf("没有审批时官方座位画了审批内容 %q：%v", banned, texts)
+		}
+	}
+	if !seatHas(canvas, placeholderText) {
+		t.Fatalf("没有审批时官方座位必须还画输入卡片（占位文案）：%v", texts)
 	}
 }
 
@@ -203,7 +216,7 @@ func TestOfficialSeatRealClick(t *testing.T) {
 		}
 		env.Act.Approve = func(requestID, optionID string) { approved = append(approved, requestID+"|"+optionID) }
 		fv.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
-			p.drawOfficialApprovalSeat(f, env)
+			p.drawOfficialComposer(f, env)
 		})
 	}
 	config.OnScroll = func(event ui.ScrollEvent) ui.EventResult { return fv.Wheel(event) }

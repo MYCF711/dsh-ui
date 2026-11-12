@@ -147,11 +147,21 @@ type LoadResult struct {
 }
 
 // APIError 是契约里的 error 对象。
+//
+// 四字段（code/message/hint/retryable）是**冻结契约**；`Details` 是信封顶层
+// `details` 的解码结果（error 的**兄弟**，不是四字段之一），目前用于 409 的
+// 稳定机器字段 `details.reason`（`DSH-GO/docs/transport-contract.md` §3D）。
+//
+// json tag 是 `-`：它**不参与** APIError 自身的序列化（四字段形状不变，
+// 也不会把内部附加信息漏进日志/快照）。老宿主不带 `details` → nil，
+// 调用方必须能安全判空（`if apiErr.Details == nil` / 读 map 得零值）。
 type APIError struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`
 	Hint      string `json:"hint"`
 	Retryable bool   `json:"retryable"`
+	// Details 是信封顶层的结构化附加信息（**可选**，老宿主没有）。
+	Details map[string]any `json:"-"`
 }
 
 func (e *APIError) Error() string {
@@ -237,6 +247,12 @@ func (c *Client) SetCookies(cks []*http.Cookie) {
 type envelope struct {
 	Result json.RawMessage `json:"result"`
 	Error  json.RawMessage `json:"error"`
+	// Details 是信封顶层的结构化附加信息（**error 的兄弟**，不是四字段的一部分）。
+	//
+	// 用 RawMessage 而不是 map：`details` 形状不对时只应当**忽略这一截**，
+	// 不能让整个信封解析失败（那会把 401/404 吞成一条看不懂的报错，
+	// 与 Error 字段当初用 RawMessage 的理由相同）。
+	Details json.RawMessage `json:"details"`
 }
 
 // parseError 把 error 字段的两种形状都解成 APIError。
@@ -295,6 +311,15 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 	// 和 {"error":"unauthorized"}（真宿主当前形状，见 DSH-GO/AGENTS.md §12 的 H8）。
 	if envOK && len(env.Error) > 0 {
 		if apiErr := parseError(env.Error); apiErr != nil {
+			// 顶层 `details` 只附加到**错误**上（成功响应里没有这种附加信息）。
+			// 解不出来就当没有：老宿主不带它，形状坏了也不该让错误本身变成
+			// "响应不是合法 JSON"。
+			if len(env.Details) > 0 {
+				var details map[string]any
+				if err := json.Unmarshal(env.Details, &details); err == nil {
+					apiErr.Details = details
+				}
+			}
 			return apiErr
 		}
 	}

@@ -141,6 +141,21 @@ type ShellOptions struct {
 	PanellistRows int
 	// BridgeLegacy 打开旧插件兼容桥（见文件头）。
 	BridgeLegacy bool
+	// BridgeLegacyComposer 是**中栏 composer 那一段**的兼容桥开关。
+	//
+	// 为什么要单独一条：composer 是第一个迁到官方座位的部件（dscomposer 同时
+	// 注册了 `main.composer`（旧三栏）与 `conversation.composer`（官方 chain）），
+	// 而中栏其余部件（dstopbar 的 header、dsconversation 的 transcript）今天仍走
+	// 旧槽。整列一个开关的话，composer 永远只能跟着旧路径走——官方座位就永远
+	// 不会被 dispatch（GP 报告 §5 第 1 条）。
+	//
+	// 判据由壳给出（`cmd/app/shell.go` 的 shellOptionsFor）：
+	//
+	//	官方 composer 座位有占用方 → false（走官方座位，旧槽这一帧不 dispatch）
+	//	官方座位没人、旧槽有人 → true（纯旧插件集：退回 main.composer）
+	//
+	// 两个座位**同一帧只有一个活**，所以不会双画。
+	BridgeLegacyComposer bool
 }
 
 // ShellLayout 是一帧的几何结果；节点树与绘制都从这里取数，避免两处各算一遍。
@@ -803,15 +818,9 @@ func drawConversationSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLay
 				})
 			})
 		})
-		// composer seat
-		if layout.ComposerSeat.Height > 0 {
-			seatBox := f.Column().FillWidth().Height(layout.ComposerSeat.Height)
-			note("ConversationRoot.composerSeat", seatBox)
-			seatBox.Children(func() {
-				f.Column().FillWidth().Grow(1).Children(func() { dispatch(OffConvComposer) })
-				drawComposerSkeleton(f, env, layout, dispatch, measure)
-			})
-		}
+		// composer seat：官方 `conversation.composer` 是 chain 槽，占用方接管
+		// 整个 composer 区（见 drawComposerSeat 的注释）。
+		drawComposerSeat(f, env, layout, dispatch, measure, ComposerSideClearance)
 	})
 }
 
@@ -900,19 +909,77 @@ func drawComposerSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout,
 }
 
 // drawLegacyConversation 是「旧插件还没迁走」时的兼容路径：中栏按 dsshell
-// 时代的 12px 内边距 + gap 8 摆 header / body / composer 三个旧槽。
+// 时代的 12px 内边距 + gap 8 摆 header / body 两个旧槽，composer 那一段再按
+// `BridgeLegacyComposer` 二选一（官方座位 / 旧 main.composer）。
 //
 // 这是官方结构树 §7 记的「多造」之一（自造栏内边距），所以 official_geometry.go
-// 里对应三行是 deviation；等 dstopbar / dsconversation / dscomposer 迁到
-// conversation.* 官方槽位后整段删除。
+// 里对应行是 deviation；等 dstopbar / dsconversation 迁到 conversation.* 官方槽位后
+// 整段删除。composer 先迁走（它是第一个有官方座位占用方的部件），所以座位画在
+// 12px 内边距**外面**：官方 composer 的侧边距是 16（相对正文列），不是 12+16。
 func drawLegacyConversation(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	f.Column().FillWidth().FillHeight().Pad(LegacyColumnInset).Gap(8).Children(func() {
-		if env.Has != nil && env.Has(pluginapi.SlotMainHeader) {
-			dispatch(pluginapi.SlotMainHeader)
-		}
-		f.Column().FillWidth().Grow(1).MinHeight(0).Children(func() { dispatch(pluginapi.SlotMainBody) })
-		dispatch(pluginapi.SlotMainComposer)
+	f.Column().FillWidth().FillHeight().Children(func() {
+		// header + 正文：旧三栏的 12px 栏内边距（遗留桥）。
+		f.Column().FillWidth().Grow(1).MinHeight(0).Pad(LegacyColumnInset).Gap(8).Children(func() {
+			if env.Has != nil && env.Has(pluginapi.SlotMainHeader) {
+				dispatch(pluginapi.SlotMainHeader)
+			}
+			f.Column().FillWidth().Grow(1).MinHeight(0).Children(func() { dispatch(pluginapi.SlotMainBody) })
+		})
+		// composer：官方座位。它画在 12px 内边距**外面**（上面那个 Grow 列才有 padding），
+		// 所以侧边距直接给官方的 16——官方 `InputBar.root` 的 clearance 是相对正文列的，
+		// 不是"再叠一层 12"。
+		drawComposerSeat(f, env, layout, dispatch, measure, ComposerSideClearance)
 	})
+}
+
+// drawComposerSeat 画 composer 座位（官方 `ConversationRoot.composerSeat`）。
+//
+// 官方语义（`ConversationContent.tsx:147-186`）：`conversation.composer` 是 **chain**
+// 槽，`renderSlotChain(..., {fallback: composerBar, overlay: true})` ——
+//
+//	fallback = composerStack（InputBar 卡片 + dock）
+//	overlay  = 接管项（审批卡 / 问题条），画在 fallback 之上
+//
+// 所以**有占用方就由它接管整个 composer 区**：骨架不再画一份 InputBar（否则卡片
+// 双画、命中区重叠）。没有占用方时才画骨架（空壳结构，给没有 composer 插件的
+// 宿主/单测用）。
+//
+// 高度：没有占用方时用几何表的静止高度（`ComposerSeatHeight` = 卡片 98 + dock 26
+// + 底边距 4 = 128）；有占用方时**不钉死**——InputBar.root 的高度由卡片 + dock 的
+// 内容决定，钉死等于把同一份算术写两遍，字号/行高一变就漂。
+func drawComposerSeat(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc, sidePad float32) {
+	// 纯旧插件集：官方座位没人、旧槽有人 → 走兼容桥（与官方座位二选一）。
+	if layout.Options.BridgeLegacyComposer {
+		dispatch(pluginapi.SlotMainComposer)
+		return
+	}
+	if sidePad < 0 {
+		sidePad = 0
+	}
+	occupied := env.Has != nil && env.Has(OffConvComposer)
+	// 空壳：座位按几何表的静止高度，**自己**画官方 InputBar 骨架（含它自己的
+	// 侧边距与底边距），所以这里不再补 padding。
+	if !occupied {
+		if layout.ComposerSeat.Height <= 0 {
+			return
+		}
+		seat := f.Column().FillWidth().Height(layout.ComposerSeat.Height)
+		if measure != nil {
+			measure("ConversationRoot.composerSeat", seat)
+		}
+		seat.Children(func() {
+			dispatch(OffConvComposer)
+			drawComposerSkeleton(f, env, layout, dispatch, measure)
+		})
+		return
+	}
+	// 有占用方：高度内容驱动；侧边距由座位给（官方 InputBar.root 的左右
+	// clearance），底边距 4 归 InputBar.root 自己（`padding:0 16 4`）。
+	seat := f.Column().FillWidth().PadX(sidePad)
+	if measure != nil {
+		measure("ConversationRoot.composerSeat", seat)
+	}
+	seat.Children(func() { dispatch(OffConvComposer) })
 }
 
 // drawRightbarSkeleton 画右栏默认组合：面板 → tab strip / guide / tab menu。

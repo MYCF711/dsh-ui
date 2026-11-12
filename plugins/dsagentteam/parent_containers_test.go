@@ -283,15 +283,23 @@ func TestModelMenuContainerFourStates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newContainerHarness(t)
 			tc.setup(t, h)
-			canvas := h.drawContainer(t, "agent-team.model-menu-legacy")
+			canvas := h.drawContainer(t, "agent-team.model-menu")
 
 			if !tc.wantMenu {
-				if len(canvas.Rectangles()) != 0 || len(canvas.Texts()) != 0 {
-					t.Fatalf("该整段隐藏，却画了 %d 矩形 / %d 文本（文本=%v）",
-						len(canvas.Rectangles()), len(canvas.Texts()), textValues(canvas))
-				}
+				// 菜单不画，但**占用方本身还在**：trigger 降级成只读 chip
+				// （宿主没给模型 → 「未知」），它不是菜单、没有命中区。
 				if h.renderedSlot(SlotInputModelOptions) != 0 {
 					t.Fatalf("隐藏态不该 dispatch 子槽；rendered=%v", h.rendered)
+				}
+				if hasHitLabel(canvas, zhModelMenuAria) {
+					t.Fatalf("目录不可用时不该给可点 trigger（假入口）；hits=%v", hitLabels(canvas))
+				}
+				if hasText(canvas, "DeepSeek") || anyTextContains(canvas, "未接线") {
+					t.Fatalf("隐藏态菜单里不该出现 provider/error 行；文本=%v", textValues(canvas))
+				}
+				if !hasText(canvas, zhModelUnknown) {
+					t.Fatalf("占用方降级态应显示 %q 的只读 chip；文本=%v", zhModelUnknown,
+						textValues(canvas))
 				}
 				return
 			}
@@ -316,14 +324,14 @@ func TestModelMenuContainerFourStates(t *testing.T) {
 func TestModelMenuTriggerOnlyWhenProvidersKnown(t *testing.T) {
 	h := newContainerHarness(t)
 	// 未配置：不该有 "模型与推理等级" 这个 trigger 命中区。
-	h.drawContainer(t, "agent-team.model-menu-legacy")
+	h.drawContainer(t, "agent-team.model-menu")
 	if hasHitLabel(h.canvas, zhModelMenuAria) {
 		t.Fatal("目录未知时不该给 trigger 命中区（点了只会打开空菜单 = 假入口）")
 	}
 
 	// 有目录：trigger 命中区出现（点了才可能开菜单）。
 	h.store.SetProviders(true, "", []ModelProviderOption{{Provider: "deepseek", DisplayName: "DeepSeek"}})
-	h.drawContainer(t, "agent-team.model-menu-legacy")
+	h.drawContainer(t, "agent-team.model-menu")
 	if !hasHitLabel(h.canvas, zhModelMenuAria) {
 		t.Fatalf("有目录时必须有 trigger 命中区；hits=%v", hitLabels(h.canvas))
 	}
@@ -351,7 +359,7 @@ func TestModelMenuProvidersComeFromApiclient(t *testing.T) {
 
 	h.store = store
 	h.env = containerHarnessEnv()
-	canvas := h.drawContainer(t, "agent-team.model-menu-legacy")
+	canvas := h.drawContainer(t, "agent-team.model-menu")
 	if !anyTextContains(canvas, "服务端给的 DeepSeek") {
 		t.Fatalf("apiclient 拿到的 provider 没有出现在菜单里；文本=%v", textValues(canvas))
 	}

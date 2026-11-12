@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
@@ -193,6 +194,11 @@ func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.field} }
 // 的注释：approvals take over the composer），不是消息流里的一段。所以两个
 // 座位上都只有 **composer 侧**画审批卡，transcript 侧一条都不画
 // （dsconversation 的 Panels 注释写了为什么）。
+// 两个座位都是**父容器**：全部内容在 `Children` 里画，因为官方
+// `conversation.input.*` 子槽只有在那里才能拿到内核的 `drawSlot`（见
+// input_slots.go 的文件头）。`Draw` 留空是有意的，不是漏写：viva 的
+// `Painter.Draw` 拿不到 `drawSlot`，而内核的装配校验只要求「Draw 或 AfterDraw
+// 有一个」——这里的 AfterDraw 是真实的（重绘 Field 表面），所以两半都是实事。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{ID: "composer", Slot: pluginapi.SlotMainComposer, Order: 10,
@@ -202,7 +208,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		// 没有审批请求时它是**输入卡片本体**，不是"只画审批卡"——GP 报告 §5
 		// 第 2 条记的就是这个缺口。
 		{ID: "composer-official", Slot: pluginapi.Slot(offConversationComposer), Order: 10,
-			Draw: p.drawOfficialComposer, AfterDraw: p.afterDraw},
+			AfterDraw: p.afterDraw, Children: p.drawOfficialComposerChildren},
 	}
 }
 
@@ -213,28 +219,38 @@ const offConversationComposer = "conversation.composer"
 
 // draw 画一列：审批条（有才画）+ 输入卡片。
 //
+// **只给单测/调试直调用**：生产路径一律走 `Panels()` 的 `Children`
+// （`drawLegacyComposerChildren` / `drawOfficialComposerChildren`），那里才有
+// 内核的 `drawSlot`。这里传 nil 等于"没有子槽占用方"，所有位置走只读回退。
+//
 // 位置照官方 .GRgSLq_root：左右各留 --dsh-composer-side-clearance(16)。壳已经给
 // 中栏 12 的 padding，所以这里只补差值——补整 16 会让卡片比官方窄 8。
 func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+	p.drawLegacyComposerChildren(f, env, nil)
+}
+
+// drawLegacyComposerChildren 画旧三栏座位（`main.composer`）。
+//
+// 与官方座位的差别只有外壳：旧三栏的中栏已经有 12px 内边距（dsshell 的
+// `columnPad`），本插件只补到官方的 16；dock（上下文读数）仍只在官方座位画，
+// 保持旧外观不变。卡片、控件行、`conversation.input.*` 派发两侧共用。
+func (p *Plugin) drawLegacyComposerChildren(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	p.lastData = env.Data
 	p.lastAct = env.Act
 	// 中栏内容宽度：壳算好的 Geometry.MainWidth 优先，退到 Env.MainWidth。
-	column := env.Geometry.MainWidth
-	if column <= 0 {
-		column = env.MainWidth
-	}
+	column := composerColumn(env)
 	extra := float32(composerClearance - shellMainPad)
 	if extra < 0 {
 		extra = 0
 	}
 	// ConversationRoot .composerStack 的 --dsh-composer-stack-gap 是 6px。
-	f.Column().FillWidth().PadX(extra).Gap(6).Children(func() {
+	f.Column().FillWidth().PadX(extra).Gap(composerStackGap).Children(func() {
 		// 审批条：Approval == nil 时这里什么都不画（不留空框）。
 		p.drawApproval(f, env)
 		// `@` 候选菜单：位置在输入卡片**上方**，和 GoalBar / 问题条同一条约定
 		// （越靠近输入框的东西越紧急）。没有候选就整块不画。
 		p.drawMention(f, env, column)
-		p.drawCard(f, env, column)
+		p.drawCard(f, env, column, drawSlot)
 	})
 }
 
@@ -242,7 +258,14 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 //
 // 官方的 max-width 是「会话栏宽 * .64 收在 680…920，再加 32」，不是百分比——
 // 所以这里必须先算出像素宽度再定宽，交给 flex 的 MaxWidth 只会按整窗解析。
-func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, column float32) {
+//
+// 卡片内部按官方 InputBar 的子槽位置排：
+//
+//	.card
+//	├─ conversation.input.attachments   附件 rail（占用方在 → 它占高；空 rail 不占位）
+//	├─ .input                           真 flex.Field + conversation.input.overlay（绝对定位覆盖层）
+//	└─ .row                             控件行（见 drawControls 的子槽派发）
+func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, column float32, drawSlot func(pluginapi.Slot)) {
 	t := p.theme
 	w := cardWidth(column)
 	// 这里**不加**底 padding：官方 `.GRgSLq_root` 的 4px 是相对**窗口底部**的，
@@ -254,8 +277,16 @@ func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, column float32) {
 		f.Column().Width(w).Radius(t.Radii.Panel).Background(t.InputMajor).
 			Shadow(ui.ShadowXS).
 			PadSides(cardPadTop, 0, 0, 0).Gap(cardGap).Children(func() {
-			p.drawInput(f, env, w)
-			p.drawControls(f, env, w)
+			// `.input` 区：附件 rail 在真 Field 上方；覆盖层绝对定位盖在整块输入区上。
+			// 这一列没有 gap：空 rail 不产生节点，卡片高仍是 8+36+12+42。
+			f.Column().FillWidth().Children(func() {
+				dispatchComposerSlot(drawSlot, uikernel.OffInputAttachments)
+				p.drawInput(f, env, w)
+				f.Row().Absolute().Inset(0).Children(func() {
+					dispatchComposerSlot(drawSlot, uikernel.OffInputOverlay)
+				})
+			})
+			p.drawControls(f, env, w, drawSlot)
 		})
 	})
 }
@@ -327,9 +358,22 @@ func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
 }
 
 // drawControls 按官方层级画底部控件行：permission 在左 tools；model、activity、
-// primary 依次在右 trailing。命令/附件没有真实 Action，不画加号；model/permission
-// 只有当前真值、没有目录与切换 Action，因此都是只读文本而不是假下拉。
-func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32) {
+// primary 依次在右 trailing。
+//
+// # 子槽派发（每帧一次，位置照官方 DOM）
+//
+//	左 .tools ：.add（本插件）→ conversation.input.permission → .plan → .left
+//	右 trailing：conversation.input.right → .model → .activity → .pending → .primary
+//
+// `permission` / `model` / `activity` 三枚是**占用方优先**：本座位有内核
+// `drawSlot`（官方座位）且官方槽这一帧有占用方（`env.Has`）→ 由占用方画，本插件
+// 不画；否则（没有派发通道，或槽空着）退回本插件的只读 chip。判据与壳判
+// `BridgeLegacyComposer` 用的是同一个内核事实，所以**同帧只有一个活**，不会出现
+// "两个模型标签"（顺序理由见 input_slots.go 的 composerDispatchTo）。
+//
+// `.left` / `.right` / `.plan` 本插件没有对应实现（官方也是空的默认组合），
+// 只派发、不画回退。
+func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32, drawSlot func(pluginapi.Slot)) {
 	p.controls = composerControlBoxes{}
 	model, permission := hostLabels(env.Data)
 	status := activityLabel(env.Data)
@@ -346,21 +390,31 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32) 
 		// （见 official_seat.go 的 drawAddEntry：没有 FSList/CWD 就不画）。
 		p.drawAddEntry(f, env)
 		// 官方 DOM 的左 modes 只有 permission/plan；model 属于右 standardControls。
-		if permission != "" {
-			icon, hasIcon := permissionIconFor(strings.TrimSpace(env.Data.Permission), t.LabelSecondary)
-			p.controls.Permission = p.hostChip(f, permission, permissionChipWeight, permissionChipW, icon, hasIcon)
-		}
+		// 三个槽都是"有占用方就派发、否则走本插件的回退/什么都不画"。
+		f.Row().Items(flex.Center).Gap(cardGap).Children(func() {
+			if composerDispatchTo(drawSlot, env, uikernel.OffInputPermission) {
+				dispatchComposerSlot(drawSlot, uikernel.OffInputPermission)
+			} else if permission != "" {
+				icon, hasIcon := permissionIconFor(strings.TrimSpace(env.Data.Permission), t.LabelSecondary)
+				p.controls.Permission = p.hostChip(f, permission, permissionChipWeight, permissionChipW, icon, hasIcon)
+			}
+			dispatchComposerSlot(drawSlot, uikernel.OffInputPlan)
+			dispatchComposerSlot(drawSlot, uikernel.OffInputLeft)
+		})
 		// 即使左边为空，Spacer 也把右侧 trailing 固定到卡片右缘。
 		f.Spacer()
 		f.Row().Items(flex.Center).Gap(cardGap).Children(func() {
-			if model != "" {
-				maxW := cardW * modelCardRatio
-				if maxW > modelChipMaxW {
-					maxW = modelChipMaxW
-				}
-				p.controls.Model = p.hostChip(f, model, modelChipWeight, maxW, ui.Icon{}, false)
+			dispatchComposerSlot(drawSlot, uikernel.OffInputRight)
+			if composerDispatchTo(drawSlot, env, composerInputSlotModel) {
+				// 官方 `conversation.input.model`（single）：官方模型菜单（dsagentteam）
+				// 就是它的占用方——trigger + 菜单都由它画。
+				dispatchComposerSlot(drawSlot, composerInputSlotModel)
+			} else if model != "" {
+				p.controls.Model = p.drawModelChip(f, env, cardW, model)
 			}
-			if status != "" {
+			if composerDispatchTo(drawSlot, env, uikernel.OffInputActivity) {
+				dispatchComposerSlot(drawSlot, uikernel.OffInputActivity)
+			} else if status != "" {
 				p.hostChip(f, status, modelChipWeight, permissionChipW, ui.Icon{}, false)
 			}
 			if running {
@@ -370,6 +424,20 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32) 
 			p.sendButton(f, env, running)
 		})
 	})
+}
+
+// drawModelChip 画只读的模型 chip（旧 chip 的回退绘制）。
+//
+// 只在官方 `conversation.input.model` 这一帧**没有占用方**时用：有占用方时由它
+// 画（官方模型菜单的 trigger / 降级 chip）。几何与官方 ModelSelect trigger 同档：
+// 高 28、radius sm、padding 左 8 右 8（不画 chevron，所以右边不留 4）、13/20/400、
+// max-width min(360, 45cqw)。
+func (p *Plugin) drawModelChip(f *flex.Frame, env *pluginapi.Env, cardW float32, model string) flex.Box {
+	maxW := cardW * modelCardRatio
+	if maxW > modelChipMaxW {
+		maxW = modelChipMaxW
+	}
+	return p.hostChip(f, model, modelChipWeight, maxW, ui.Icon{}, false)
 }
 
 // activityLabel 是 activity 槽的文本。优先原样显示壳/宿主给的 Status；只有 turn

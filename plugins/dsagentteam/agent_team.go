@@ -88,6 +88,9 @@ type Plugin struct {
 	providers ProvidersRemote
 	// catalog 是子代理目录父容器（GC 的容器 B）的界面态。
 	catalog catalogUI
+	// model 是官方 `conversation.input.model` 座位（本包占用的模型 trigger）的
+	// 跨帧几何：上一帧 trigger 矩形，供菜单锚点（见 model_slot.go）。
+	model modelSlotState
 }
 
 // ID 实现 pluginapi.Plugin。

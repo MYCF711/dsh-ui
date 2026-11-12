@@ -27,6 +27,7 @@ import (
 	"strconv"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
@@ -53,6 +54,8 @@ type Question struct {
 type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
+	// tier 是壳档位（nil = 按 official 处理）。两个座位靠它二选一。
+	tier *uikernel.ShellTier
 	// act 由 draw 每帧刷新：HandleKey 里没有 env，只能靠它。
 	act pluginapi.Actions
 	// cur 是当前显示的那条问题（draw 填、HandleKey 读）。
@@ -70,9 +73,22 @@ func (*Plugin) Requires() []string {
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	// 可选注入：没有这个能力键（单测 / 旧壳）时按 official（官方槽是终态）。
+	if v := ctx.Inject(uikernel.KeyShellTier); v != nil {
+		if tier, ok := v.(*uikernel.ShellTier); ok {
+			p.tier = tier
+		}
+	}
 	return nil
 }
 
+// Panels 把提问卡挂到**两个座位**，同一帧只有一个活（判据 `composerSeatLive`）：
+//
+//	conversation.composer  官方 chain 座位（ui-user-questions index.ts:383）—— rc.2 终态
+//	main.composer          dsshell 三栏 / 官方骨架兼容桥 —— legacy 档位的旧路径
+//
+// 官方是 selector 路由接管；本仓内核没有 selector，所以官方座位上的这一块
+// 画在常住 composer 上方（见 official_seat.go 文件头的差异登记）。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
 		ID:   "questions-bar",
@@ -80,7 +96,17 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		// Order 3 < GoalBar 的 5 < composer 的 10：最上面是问题，然后是目标，然后是输入框。
 		// **等回答的时候问题比目标更紧急**——所以它在更上面。
 		Order: 3,
-		Draw:  p.draw,
+		Draw: func(f *flex.Frame, env *pluginapi.Env) {
+			if p.composerSeatLive() {
+				return // 官方座位活着：旧槽这一帧不画（不双画）
+			}
+			p.draw(f, env)
+		},
+	}, {
+		ID:    "questions-bar-official",
+		Slot:  uikernel.OffConvComposer,
+		Order: questionsOrder,
+		Draw:  p.drawOfficial,
 	}}
 }
 

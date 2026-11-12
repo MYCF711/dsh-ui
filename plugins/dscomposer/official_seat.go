@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
@@ -50,6 +51,10 @@ const (
 	// min-height calc(22px + font-delta-secondary)（:22-52）。
 	composerDockPadTop = 4
 	composerDockMinH   = 22
+
+	// InputBar.dock 里各条目之间的 gap：`justify-content:center;gap:12px`
+	// （InputBar.module.css:13-19 的 `.dock`）。
+	composerDockGap = 12
 
 	// dock 里的读数胶囊：StatsPills `.pill` / ContextMeter `.trigger` 两个组件
 	// 的几何一致（padding 1px 8px、gap 6、radius-sm、行高 20、图标 14、
@@ -71,12 +76,29 @@ const (
 	contextLabel = "上下文"
 )
 
-// drawOfficialComposer 是官方 `conversation.composer` 座位的绘制入口。
+// drawOfficialComposer 是官方 `conversation.composer` 座位的绘制入口
+// （**只给单测直调用**：没有内核就没有 `drawSlot`，所有子槽走只读回退）。
+func (p *Plugin) drawOfficialComposer(f *flex.Frame, env *pluginapi.Env) {
+	p.drawOfficialComposerChildren(f, env, nil)
+}
+
+// drawOfficialComposerChildren 画官方座位，并把它作为**父容器**派发
+// `conversation.input.*` 子槽（见 input_slots.go 的文件头：为什么必须在这里派发）。
 //
 // 官方这一格是 **chain**：fallback 是 InputBar（本函数画的 composerStack），
 // overlay 是接管项（审批卡）。两者同帧共存，审批卡在上、输入卡在下，
 // 与旧座位的相对位置一致（用户不会因为切档位而换个地方找按钮）。
-func (p *Plugin) drawOfficialComposer(f *flex.Frame, env *pluginapi.Env) {
+//
+// 顺序（官方 ConversationContent / InputBar 的结构）：
+//
+//	composerStack（gap 6）
+//	├─ 审批卡（接管项，Approval == nil 时整条不画）
+//	├─ `@` 候选菜单（输入卡上方）
+//	├─ conversation.composer.dock    Queue/Todo dock（贴卡片上方；空则不产生节点）
+//	└─ InputBar.root（padding-bottom 4）
+//	   ├─ .card（见 drawCard：附件 rail / 输入区 / 控件行）
+//	   └─ .dock（conversation.input.dock + 上下文读数）
+func (p *Plugin) drawOfficialComposerChildren(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	p.lastData = env.Data
 	p.lastAct = env.Act
 	column := composerColumn(env)
@@ -85,8 +107,11 @@ func (p *Plugin) drawOfficialComposer(f *flex.Frame, env *pluginapi.Env) {
 		p.drawApproval(f, env)
 		// `@` 候选菜单：在输入卡片上方（与旧座位同一条约定）。
 		p.drawMention(f, env, column)
+		// 官方 `conversation.composer.dock`（Queue/Todo dock）：贴在输入卡片上方。
+		// 直接派发在 stack 里（不套空容器）：没有占用方就不产生节点、不多吃一个 gap。
+		dispatchComposerSlot(drawSlot, uikernel.OffConvComposerDock)
 		// fallback：InputBar 本体。
-		p.drawInputBar(f, env, column)
+		p.drawInputBar(f, env, column, drawSlot)
 	})
 }
 
@@ -95,21 +120,12 @@ func (p *Plugin) drawOfficialComposer(f *flex.Frame, env *pluginapi.Env) {
 // 高度是**内容驱动**的（卡片 98 + dock 26 + 底边距 4 = 128），不是钉死 122：
 // 官方 `.root` 也没有 height，它有 padding-bottom 4、子元素按内容排。座位容器
 // 给的高度只用于「没有占用方」的空壳结构（见 uikernel.drawComposerSeat）。
-func (p *Plugin) drawInputBar(f *flex.Frame, env *pluginapi.Env, column float32) {
-	t := p.theme
-	w := cardWidth(column)
+func (p *Plugin) drawInputBar(f *flex.Frame, env *pluginapi.Env, column float32, drawSlot func(pluginapi.Slot)) {
 	f.Column().FillWidth().PadSides(0, 0, composerPadBottom, 0).Children(func() {
-		// .card：居中、定宽、圆角 panel(28)。elevation 用 Shadow 表达，
-		// 不塞占布局的 Border（否则宽高各偏 1–2px，与旧座位同一条理由）。
-		f.Row().FillWidth().Justify(flex.Center).Children(func() {
-			f.Column().Width(w).Radius(t.Radii.Panel).Background(t.InputMajor).
-				Shadow(ui.ShadowXS).PadSides(cardPadTop, 0, 0, 0).Gap(cardGap).Children(func() {
-				p.drawInput(f, env, w)
-				p.drawControls(f, env, w)
-			})
-		})
+		// .card：居中、定宽、圆角 panel(28)（见 drawCard）。
+		p.drawCard(f, env, column, drawSlot)
 		// .dock：卡片下方的读数行（官方 StatsPills / ContextMeter）。
-		p.drawDock(f, env, w)
+		p.drawDock(f, env, cardWidth(column), drawSlot)
 	})
 }
 
@@ -120,13 +136,17 @@ func (p *Plugin) drawInputBar(f *flex.Frame, env *pluginapi.Env, column float32)
 // 的「未知显式化」规则改成显示「未知」：这一格是**结构位置**，空着会让用户以为
 // 这一版没有上下文读数，而真相是宿主没给。
 //
+// `conversation.input.dock`（list/session，官方 composer 底部 dock）在读数前面
+// 派发：占用方（Activity/Usage 胶囊等）画出来的节点与本胶囊同一行、同一 gap。
+//
 // 其余读数（Activity / Usage / 缓存率）归 dsstatusbar 的 dock，不在这里重复画：
 // 同一行两组数字会让人分不清哪个是"当前上下文"。
-func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env, cardW float32) {
+func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env, cardW float32, drawSlot func(pluginapi.Slot)) {
 	t := p.theme
 	text := contextMeterText(env.Data)
 	f.Row().FillWidth().Height(composerDockPadTop+composerDockMinH).
-		PadSides(composerDockPadTop, 0, 0, 0).Justify(flex.Center).Children(func() {
+		PadSides(composerDockPadTop, 0, 0, 0).Justify(flex.Center).Gap(composerDockGap).Children(func() {
+		dispatchComposerSlot(drawSlot, uikernel.OffInputDock)
 		f.Row().Height(composerPillLineH+2*composerPillPadY).MaxWidth(cardW).
 			Radius(t.Radii.SM).PadSides(composerPillPadY, composerPillPadX, composerPillPadY, composerPillPadX).
 			Items(flex.Center).Gap(composerPillGap).Children(func() {

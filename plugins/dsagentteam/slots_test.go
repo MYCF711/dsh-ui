@@ -230,8 +230,9 @@ func TestPanelsRegisterFourOfficialSlots(t *testing.T) {
 
 // TestContainerPanelsAreMounted 断言两个父容器的 painter 真的挂在槽上。
 //
-// 判据：模型菜单与命令节点必须在**官方座位**和**旧三栏过渡座位**各有一条；
-// 没有官方座位那条 = 官方骨架活过来时容器消失；没有旧座位那条 = 今天的产品上看不见。
+// 判据：模型菜单在**官方座位**（`conversation.input.model`，本包画真实 trigger）
+// 与**旧三栏座位**（`main.composer`，只画透明命中区）各一条；两个 composer 座位
+// 每帧只派发其中一个槽，所以永远不会同帧双菜单。命令节点同样两个座位各一条。
 func TestContainerPanelsAreMounted(t *testing.T) {
 	p := newTestPlugin(nil)
 	panels := p.Panels()
@@ -261,6 +262,16 @@ func TestContainerPanelsAreMounted(t *testing.T) {
 		if found.Children == nil {
 			t.Fatalf("父容器 %q 必须有 Children（父容器的全部意义就是里面那次 drawSlot）", tc.id)
 		}
+	}
+	// 两个座位**不得**挂在同一个模型槽上：那会让同一帧画两个菜单面。
+	var modelPainters int
+	for _, painter := range panels {
+		if painter.Slot == uikernel.OffInputModel {
+			modelPainters++
+		}
+	}
+	if modelPainters != 1 {
+		t.Fatalf("官方模型槽 %q 上有 %d 个 painter，want 1（双菜单来源）", uikernel.OffInputModel, modelPainters)
 	}
 }
 

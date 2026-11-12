@@ -13,6 +13,7 @@ package dsstatusbar
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
 )
 
@@ -40,6 +41,8 @@ const (
 type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
+	// tier 是壳档位（nil = 按 official 处理）。两个座位靠它二选一。
+	tier *uikernel.ShellTier
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -57,18 +60,32 @@ func (*Plugin) Requires() []string {
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	// 可选注入：没有这个能力键（单测 / 旧壳）时按 official（官方槽是终态）。
+	if v := ctx.Inject(uikernel.KeyShellTier); v != nil {
+		if tier, ok := v.(*uikernel.ShellTier); ok {
+			p.tier = tier
+		}
+	}
 	return nil
 }
 
-// Panels 把统计与连接状态拆到各自应在的位置。Order20 保证 dock 跟在
-// ds-composer 的卡片(order10) 后；这不是对官方 conversation.composer.dock
-// 槽契约的冒名声明，而是现有 main.composer 槽内的等价布局集成。
+// Panels 把「用量 dock」挂到两个座位（同帧只有一个活），连接状态仍留在 shell.bottom。
+//
+//	conversation.composer  官方 chain 座位（官方 conversation.composer.dock 今天
+//	                       不可达，见 official_dock.go 文件头）—— rc.2 终态（常驻 + 未知）
+//	main.composer          旧三栏 / 兼容桥的 dock 位置 —— legacy 档位的旧路径
+//
+// 连接行（shell.bottom）不在这里二选一：官方骨架没有底部整行时它本来就不占位。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{ID: "dock", Slot: pluginapi.SlotMainComposer, Order: 20, Draw: func(f *flex.Frame, env *pluginapi.Env) {
+			if p.composerSeatLive() {
+				return // 官方座位活着：旧槽这一帧不画（不双画）
+			}
 			p.drawDock(f, env)
 		}},
 		{ID: "connection", Slot: pluginapi.SlotShellBottom, Order: 10, Draw: p.draw},
+		{ID: "dock-official", Slot: uikernel.OffConvComposer, Order: dockOfficialOrder, Draw: p.drawOfficialDock},
 	}
 }
 
@@ -171,46 +188,60 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
-// usageSegments 决定 dock 当前能显示的真值段，返回空 = 整段不占位。
+// usageSegments 决定 legacy dock 当前能显示的真值段，返回空 = 整段不占位。
+//
+// 两段各自独立：用量（`usageTokenSegment`）与上下文（`contextSegment`）。
+// legacy 档位保持「没真值就整段不画」的旧行为；官方 dock 走 `officialSegments`，
+// 那里把同一份真值换成「未知」而不是消失（见 official_dock.go）。
+func usageSegments(d pluginapi.Snapshot) []string {
+	var segments []string
+	if segment := usageTokenSegment(d); segment != "" {
+		segments = append(segments, segment)
+	}
+	if segment := contextSegment(contextUsed(d), d.ContextWindow); segment != "" {
+		segments = append(segments, segment)
+	}
+	return segments
+}
+
+// usageTokenSegment 是「用量」那一段；空串 = 宿主没给（未知）。
 //
 // UsageTotal 是真宿主 whole-log 累计，totalTokens 由宿主按 input+output 合计；
 // 旧 mockd Usage.TotalTokens 则是最后一次 assistant 的上下文占用，两者不能互换。
-// ContextTokens 与累计相互独立，压缩后允许回落；缺 ContextWindow 时只画原始数量。
-func usageSegments(d pluginapi.Snapshot) []string {
+func usageTokenSegment(d pluginapi.Snapshot) string {
+	wholeLog := d.UsageTotal.Known()
 	in, out := d.UsageTotal.InputTokens, d.UsageTotal.OutputTokens
 	total := d.UsageTotal.TotalTokens
-	ctx := d.ContextTokens
-	wholeLog := d.UsageTotal.Known()
 	if !wholeLog {
 		in, out = d.Usage.InputTokens, d.Usage.OutputTokens
 		// 旧 Usage 没有 whole-log total；它的 TotalTokens 只能退回原始上下文数量。
 		total = 0
-		if ctx == 0 && d.ContextWindow <= 0 {
-			// 旧 mockd 没有容量字段才允许走兼容值；正容量必须搭配显式 ContextTokens，
-			// 否则会把另一条旧 Usage 总量冒充成当前占用并算出假百分比。
-			ctx = d.Usage.TotalTokens
-		}
 	}
-
-	var segments []string
 	if wholeLog && total > 0 {
-		segments = append(segments, "总量 "+tok(total))
-	} else {
-		// total 字段缺席时保留可证明的 input/output；零值在当前 Snapshot 里表示
-		// 未知，所以只画有真值的一侧，不能给另一侧补 ↓0 / ↑0。
-		switch {
-		case in > 0 && out > 0:
-			segments = append(segments, "↑"+tok(in)+" ↓"+tok(out))
-		case in > 0:
-			segments = append(segments, "↑"+tok(in))
-		case out > 0:
-			segments = append(segments, "↓"+tok(out))
-		}
+		return "总量 " + tok(total)
 	}
-	if segment := contextSegment(ctx, d.ContextWindow); segment != "" {
-		segments = append(segments, segment)
+	// total 字段缺席时保留可证明的 input/output；零值在当前 Snapshot 里表示
+	// 未知，所以只画有真值的一侧，不能给另一侧补 ↓0 / ↑0。
+	switch {
+	case in > 0 && out > 0:
+		return "↑" + tok(in) + " ↓" + tok(out)
+	case in > 0:
+		return "↑" + tok(in)
+	case out > 0:
+		return "↓" + tok(out)
 	}
-	return segments
+	return ""
+}
+
+// contextUsed 是当前上下文占用；0 = 未知（不是"占用 0"）。
+//
+// 旧 mockd 没有 Capacity 字段时才允许把旧 Usage.TotalTokens 当占用；正容量
+// 必须搭配显式 ContextTokens，否则会把另一条旧 Usage 总量冒充成当前占用。
+func contextUsed(d pluginapi.Snapshot) int64 {
+	if d.ContextTokens != 0 || d.ContextWindow > 0 || d.UsageTotal.Known() {
+		return d.ContextTokens
+	}
+	return d.Usage.TotalTokens
 }
 
 // contextSegment 分开处理占用与容量：未知容量保留原始占用，超容量/负占用明确

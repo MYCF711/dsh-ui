@@ -90,19 +90,28 @@ const providerFetchTimeout = 10 * time.Second
 
 // ── 挂载点 ────────────────────────────────────────────────────────────
 
-// containerPanels 返回本单两个父容器的 4 条 painter（每容器 2 个座位）。
+// containerPanels 返回本单两个父容器的 painter 清单。
 //
-// 由 `Plugin.Panels()` 追加在 4 个官方槽贡献之后；`Draw` 一律为空、全部逻辑在
-// `Children` 里，因为"父容器"这件事本身就是要拿到内核的 `drawSlot` 才能成立。
+// 由 `Plugin.Panels()` 追加在 4 个官方槽贡献之后。
 func (p *Plugin) containerPanels() []pluginapi.Painter {
 	return []pluginapi.Painter{
-		// 容器 C：模型菜单。官方座位 + 旧三栏过渡座位。
-		//   Draw     = trigger 命中区（不需要 dispatch）
-		//   Children = 菜单面 + `conversation.input.model.options` 的 drawSlot
+		// 容器 C：官方 `conversation.input.model`（single/session）的**占用方**。
+		//
+		//	Draw      = 模型 trigger（降级时是只读 chip），真实像素，见 model_slot.go
+		//	Children  = 菜单面 + `conversation.input.model.options` 的 drawSlot
+		//	AfterDraw = 把 trigger 的真实矩形留给下一帧当菜单锚点
+		//
+		// 为什么只挂这一个座位：两个 composer 座位（官方 `conversation.composer`
+		// 与旧三栏 `main.composer`）都由 dscomposer 作为父容器**派发同一个**
+		// `conversation.input.model` 子槽，所以这里只认官方槽名，旧座位不再需要
+		// 一块"过渡用"的重复实现（同帧双菜单的来源）。
 		{ID: "agent-team.model-menu", Slot: uikernel.OffInputModel, Order: 80,
-			Draw: p.drawModelMenuTrigger, Children: p.modelMenuChildren},
+			Draw: p.drawModelSlot, AfterDraw: p.afterModelSlot, Children: p.modelMenuChildren},
+		// 旧三栏过渡座位：模型 chip 仍由 dscomposer 硬编码画在 `main.composer` 列里，
+		// 本包只盖一块**透明命中区**（再画一个 trigger 就是同屏两个模型名）。
+		// 两个座位互斥（composer 每帧只派发其中一个槽），所以不会双菜单。
 		{ID: "agent-team.model-menu-legacy", Slot: pluginapi.SlotMainComposer, Order: 80,
-			Draw: p.drawModelMenuTrigger, Children: p.modelMenuChildren},
+			Draw: p.drawModelMenuTrigger, Children: p.legacyModelMenuChildren},
 		// 容器 D：chat 命令节点渲染器。官方 chat 列 + 旧 transcript 座位。
 		//   Draw     = 官方兜底卡（没被认领的命令）
 		//   Children = 认领行的 `.callRow` + `conversation.chat.commandview` 的 drawSlot
@@ -115,21 +124,35 @@ func (p *Plugin) containerPanels() []pluginapi.Painter {
 
 // ── 容器 C：模型菜单 ──────────────────────────────────────────────────
 
-// modelMenuChildren 画模型菜单父容器，并把子槽交回内核。
+// modelMenuChildren 画模型菜单父容器（官方 `MenuSurface`），并把子槽交回内核。
 //
 // 顺序（官方 ModelSelect 的 root pane）：
 //
-//	trigger 命中区（透明，盖在 composer 的模型 chip 上）→ 点它开/关菜单
 //	菜单面（Open && Known && 有 provider）→ 内部 dispatch `conversation.input.model.options`
+//
+// 锚点用**上一帧 trigger 的真实矩形**（`p.modelAnchor`，见 model_slot.go）：官方
+// 座位上的 trigger 就是本包画的，所以位置是准的。
 func (p *Plugin) modelMenuChildren(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+	p.drawModelMenuAt(f, env, p.modelAnchor(env), drawSlot)
+}
+
+// legacyModelMenuChildren 是旧三栏座位的菜单：锚点仍是**过渡几何**。
+//
+// 旧座位里模型 chip 由 dscomposer 画（本包拿不到它的 Box，插件之间没有共享
+// 几何的通道），所以按官方 composer 的公开几何重算。官方座位已迁到自己的 Box
+// （`modelMenuChildren`），这段只在旧三栏档（dsshell）里生效。
+func (p *Plugin) legacyModelMenuChildren(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+	p.drawModelMenuAt(f, env, modelTriggerRect(env), drawSlot)
+}
+
+// drawModelMenuAt 是两个座位共用的菜单面绘制。
+func (p *Plugin) drawModelMenuAt(f *flex.Frame, env *pluginapi.Env, anchor ui.Rect, drawSlot func(pluginapi.Slot)) {
 	if f == nil || env == nil {
 		return
 	}
-	theme := p.themeFor(env)
-	anchor := modelTriggerRect(env)
 	known, failure, list := p.team.Providers()
 	uikernel.DrawModelMenu(f, env, uikernel.ModelMenuOptions{
-		Theme:        theme,
+		Theme:        p.themeFor(env),
 		Anchor:       anchor,
 		Bounds:       env.Bounds,
 		Open:         p.team.ModelMenuOpen(),
@@ -142,13 +165,13 @@ func (p *Plugin) modelMenuChildren(f *flex.Frame, env *pluginapi.Env, drawSlot f
 	})
 }
 
-// drawModelMenuTrigger 是容器 C 在 `Painter.Draw` 里的那一半：官方 trigger 的
+// drawModelMenuTrigger 是旧三栏座位在 `Painter.Draw` 里的那一半：官方 trigger 的
 // **透明命中区**（点它开/关菜单）。
 //
-// 为什么不画 trigger 本体：本仓 composer 的模型 chip 由 `plugins/dscomposer` 画成
-// 只读文本（`TestModelReadOnlyHasNoDropdownSemantics` 守着"没有目录就不做假下拉"），
-// 再画一枚就是同屏两个模型名。有了真目录之后，chip 变成官方 trigger 的视觉，
-// 这枚命中区正好是它自己的点击面——所以只盖命中区，不重画。
+// 为什么不画 trigger 本体：旧座位里模型 chip 由 `plugins/dscomposer` 画成只读
+// 文本（`TestModelReadOnlyHasNoDropdownSemantics` 守着"没有目录就不做假下拉"），
+// 再画一枚就是同屏两个模型名。官方座位（`conversation.input.model`）已经由本包
+// 画真实 trigger，这一块只留给旧三栏档。
 //
 // 目录未知时不盖：没目录的点击只会打开一个空菜单，那是"假入口"（与官方
 // `available=false` 时 trigger 不可用的语义一致）。
@@ -162,7 +185,7 @@ func (p *Plugin) drawModelMenuTrigger(f *flex.Frame, env *pluginapi.Env) {
 	box := f.Row().Absolute().Size(anchor.Width, anchor.Height).
 		Right(anchorRightInset(env, anchor)).
 		Bottom(modelTriggerBottomInset - uikernel.LegacyColumnInset).Children(func() {})
-	drawn, clicked := uikernel.DrawModelTrigger(box, env, uikernel.ModelMenuOptions{
+	_, clicked := uikernel.DrawModelTrigger(box, env, uikernel.ModelMenuOptions{
 		Theme:     p.themeFor(env),
 		Anchor:    anchor,
 		Bounds:    env.Bounds,
@@ -170,26 +193,23 @@ func (p *Plugin) drawModelMenuTrigger(f *flex.Frame, env *pluginapi.Env) {
 		Known:     known,
 		Providers: menuProviders(list),
 	})
-	_ = drawn
 	if clicked {
 		p.team.ToggleModelMenu()
 	}
 }
 
-// modelTriggerRect 是本仓 composer 模型触发器的矩形（窗口坐标）。
+// modelTriggerRect 是**程序化打开**模型菜单时的兜底锚点（窗口坐标）。
 //
-// **这是过渡几何**：官方 trigger 的锚点来自 `conversation.input.model` 自己的座位
-// （`anchor-name: --dsh-model-anchor`）。本仓模型 chip 由 dscomposer 在旧
-// `main.composer` 槽里按它自己的常量排版，插件之间拿不到它的 Box，所以这里按
-// 官方 composer 的公开几何重算一次：
+// 正常路径不用它：trigger 由本包画在官方 `conversation.input.model` 座位里，
+// 锚点来自上一帧的真实矩形（`modelAnchor`）。只有"还没画过 trigger 就把菜单打开"
+// （单测、或将来别处直接开菜单）才走到这里，按官方 composer 的公开几何重算一次：
 //
 //	卡片宽 = clamp(680, 主列宽*0.64, 920) + 32      （--dsh-composer-card-max-width）
 //	卡片水平居中于主列                               （.card max-width + 居中）
 //	trigger 高 28 / max-width min(360, 45cqw)        （ModelSelect.module.css:11-38）
-//	trigger 右缘 = 卡片右缘 - 8(pad) - 34(主按钮) - 12(row gap)
+//	trigger 右缘 = 卡片右缘 - 8(pad) - 34(主按钮) - 12(row gap) - 活动 chip - 12
 //
-// 差异登记在报告 §8：dscomposer 迁到官方 `conversation.input.model` 座位后，
-// 这个函数整段删掉，改用座位自己的 Box。
+// 这条路径没人点，位置不精确也不影响交互；真机上的菜单位置由座位自己的矩形决定。
 func modelTriggerRect(env *pluginapi.Env) ui.Rect {
 	column := env.Geometry.MainWidth
 	if column <= 0 {
@@ -238,8 +258,8 @@ const (
 //
 // Absolute 的边距是相对**当前容器**的 padding box；旧三栏的 composer 列
 // 就是从窗口左边到窗口右边整宽，所以窗口右缘距离可以直接当 Right 用。
-// （官方座位上的容器是 composer 行，宽度等于窗口宽减去左右栏——那时
-// `modelTriggerRect` 会跟着换实现，见它的注释。）
+// （官方座位上的容器是 composer row，宽度等于窗口宽减去左右栏——那时锚点
+// 来自座位自己的 Box，见 model_slot.go。）
 func anchorRightInset(env *pluginapi.Env, anchor ui.Rect) float32 {
 	inset := env.Bounds.Width - (anchor.X + anchor.Width)
 	if inset < 0 {

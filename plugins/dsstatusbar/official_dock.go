@@ -138,7 +138,7 @@ func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.
 	if lit {
 		textColor = t.LabelSecondary
 	}
-	box := f.Row().Height(pillHeight).Radius(t.Radii.SM).HoverBackground(t.Hover)
+	box := f.Row().Height(pillHeight).Radius(t.Radii.SM).Hover(flex.Look{}.Background(t.Hover))
 	if open {
 		// `button.pill[aria-expanded=true]{background: interactive-bg-hover}`
 		box = box.Background(t.Hover)

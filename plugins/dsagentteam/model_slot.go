@@ -166,7 +166,7 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 		// `.trigger[aria-expanded=true]{background:interactive-bg-hover}`（:34-38）。
 		chip = chip.Background(t.Hover)
 	} else {
-		chip = chip.HoverBackground(t.Hover)
+		chip = chip.Hover(flex.Look{}.Background(t.Hover))
 	}
 	chip = chip.Children(func() {
 		f.Row().Width(inset(modelChipPadLeft))

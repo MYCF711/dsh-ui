@@ -150,7 +150,7 @@ func (p *Plugin) drawTurnGroup(f *flex.Frame, env *pluginapi.Env, session, scope
 	title := "第 " + itoa(g.turn) + " 轮 · " + itoa(len(g.calls)) + " 次工具"
 
 	header := f.Row().WidthPercent(100).MinHeight(24).Radius(t.Radii.SM).PadX(2).
-		Items(flex.Center).Gap(6).HoverBackground(t.Hover).
+		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).
 		// 标签就是看得见的那行字：读屏和 -keys/无头点击都按它找，
 		// 不另起一个用户看不见的名字。
 		Hit(env.Tree.ID(env.Feat, scope+"turn-"+g.key), title).Children(func() {
@@ -324,7 +324,7 @@ func (p *Plugin) drawFullscreenButton(f *flex.Frame, env *pluginapi.Env) {
 func (p *Plugin) chromeButton(f *flex.Frame, env *pluginapi.Env, name, label string, icon ui.Icon) flex.Box {
 	t := p.theme
 	return f.Row().Width(28).Height(28).Radius(t.Radii.SM).
-		Items(flex.Center).Justify(flex.Center).HoverBackground(t.Hover).
+		Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, name), label).Children(func() {
 		f.Icon(icon).Width(16).Height(16).Color(t.LabelSecondary)
 	})

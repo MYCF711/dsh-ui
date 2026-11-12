@@ -5,10 +5,9 @@ go 1.27.3
 require github.com/ebitengine/purego v0.11.1 // indirect
 
 require (
-	example.com/dsh-hello v0.0.0
 	github.com/coder/websocket v1.8.15
 	github.com/klauspost/compress v1.20.3
-	github.com/vivaui/viva v0.2.3
+	github.com/vivaui/viva v0.5.1
 )
 
 replace example.com/dsh-hello => ../dsh-ui-plugins/hello

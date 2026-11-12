@@ -155,7 +155,7 @@ func (p *Plugin) drawFeedback(f *flex.Frame, env *pluginapi.Env, index int) {
 		id := env.Tree.ID(env.Feat, "feedback-"+value+"-"+itoa(index))
 		if f.Row().Width(feedbackHitSize).Height(feedbackHitSize).
 			Radius(t.Radii.SM).Items(flex.Center).Justify(flex.Center).
-			HoverBackground(t.Hover).Hit(id, label).Children(func() {
+			Hover(flex.Look{}.Background(t.Hover)).Hit(id, label).Children(func() {
 			f.Icon(thumbIcon(up, active)).Width(feedbackIconSize).
 				Height(feedbackIconSize).Color(t.LabelPrimary)
 		}).Clicked() {

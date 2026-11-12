@@ -83,6 +83,21 @@ func connTexts(canvas *ui.Canvas) []string {
 //	内层：高度 26、圆角 SM-1(7)、颜色 = tertiary 底
 //
 // 两件都要在：只断言其一的话，"只有描边没有底"或"只有底没有描边"都会漏过。
+// countOpaqueTriangles 数**不透明**三角形：图标描边是 α=1，胶囊底色是 α=0.12。
+//
+// 见 TestConnectionIndicatorThreeStates 里那段注释——Viva v0.5.1 起圆角填充也走
+// 三角形 mesh，所以"有没有三角形"不能当"画没画图标"的判据。
+func countOpaqueTriangles(canvas *ui.Canvas) int {
+	const opaque = 0.5
+	n := 0
+	for _, triangle := range canvas.Triangles() {
+		if triangle.Color.Alpha >= opaque {
+			n++
+		}
+	}
+	return n
+}
+
 func connPill(canvas *ui.Canvas, fill, border ui.Color) bool {
 	outer, inner := false, false
 	for _, rect := range canvas.Rectangles() {
@@ -205,13 +220,21 @@ func TestConnectionIndicatorThreeStates(t *testing.T) {
 					t.Fatalf("未知态借用了成功/异常底色：rects=%+v", canvas.Rectangles())
 				}
 			}
-			// 图标：官方 glyph 是描边（三角化），段数与 view 见 icons.go。
-			if tc.icons == 0 {
-				if n := len(canvas.Triangles()); n != 0 {
-					t.Fatalf("未知态不该画成功/异常图标，却画了 %d 个三角形", n)
+			// 图标：官方 glyph 是**不透明**描边（三角化），view 见 icons.go。
+			//
+			// 为什么不能直接数 `len(Triangles()) == 0`：Viva v0.5.1 起圆角矩形的填充也会
+			// 三角化进同一条 mesh（胶囊底色 α=0.12 就是 64 个三角形），于是"有没有三角形"
+			// 不再等价于"画没画图标"。真正能区分的性质是**不透明度**——
+			// 图标描边 α=1（实测 success 14 个 / down 88 个，全是 1），胶囊底色 α=0.12。
+			// 所以断言"没有不透明三角形"，既钉住"未知态不借用 success/warning 图标"，
+			// 又不随上游三角化策略变化而假红。
+			const opaque = 0.5
+			if n := countOpaqueTriangles(canvas); tc.icons == 0 {
+				if n != 0 {
+					t.Fatalf("未知态不该画成功/异常图标，却画了 %d 个不透明三角形", n)
 				}
-			} else if len(canvas.Triangles()) == 0 {
-				t.Fatalf("%s 态缺官方 glyph（没有任何描边三角形）", tc.name)
+			} else if n == 0 {
+				t.Fatalf("%s 态缺官方 glyph（没有不透明描边三角形）", tc.name)
 			}
 			if tc.link == pluginapi.LinkUnknown {
 				for _, banned := range []string{"就绪", "已连接", zhConnectionConnected} {

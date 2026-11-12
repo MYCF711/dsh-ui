@@ -357,7 +357,7 @@ func (p *Plugin) drawTrajectoryTurnRow(f *flex.Frame, env *pluginapi.Env, data p
 	}
 	selected := p.selectedTurn[data.Cur] == g.key
 	header := f.Row().WidthPercent(100).MinHeight(24).Radius(t.Radii.SM).PadX(2).
-		Items(flex.Center).Gap(6).HoverBackground(t.Hover).
+		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, scope+"turn-"+g.key), title)
 	if selected {
 		header = header.Background(t.BgLayer2)
@@ -393,7 +393,7 @@ func (p *Plugin) drawTrajectoryStepRow(f *flex.Frame, env *pluginapi.Env, data p
 	}
 	label += name
 	row := f.Row().WidthPercent(100).Gap(8).PadY(4).Radius(t.Radii.SM).
-		HoverBackground(t.Hover).Hit(env.Tree.ID(env.Feat, scope+"step-"+key), label)
+		Hover(flex.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, scope+"step-"+key), label)
 	if p.selectedStep[data.Cur] == key {
 		row = row.Background(t.BgLayer2)
 	}

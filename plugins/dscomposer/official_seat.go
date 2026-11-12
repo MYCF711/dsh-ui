@@ -271,7 +271,7 @@ func (p *Plugin) drawAddEntry(f *flex.Frame, env *pluginapi.Env) bool {
 	id := env.Tree.ID(env.Feat, "composer-add")
 	button := f.Row().Size(composerAddSize, composerAddSize).Radius(ui.RadiusFull).
 		Background(t.BgLayer3).Items(flex.Center).Justify(flex.Center).
-		HoverBackground(t.Hover)
+		Hover(flex.Look{}.Background(t.Hover))
 	clicked := button.HitWith(id, "添加文件引用", ui.HitOptions{
 		Role: ui.RoleButton,
 		// 官方 onMouseDown=keepFocus：加号不抢输入框/IME 焦点。

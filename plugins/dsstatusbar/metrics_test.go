@@ -14,14 +14,32 @@ func int64ptr(v int64) *int64 { return &v }
 func TestActivityPillRequiresOfficialWholeLogStats(t *testing.T) {
 	tests := []struct {
 		name  string
-		stats *sessionStats
+		stats *apiclient.SessionStats
 		want  string
 	}{
 		{name: "projection 缺席", stats: nil, want: ""},
-		{name: "没有 assistant step", stats: &sessionStats{Turns: 4}, want: ""},
-		{name: "唯一 turn 与 assistant step", stats: &sessionStats{Turns: 2, Steps: 3}, want: "2 轮 · 3 步"},
-		{name: "decode 真值速率", stats: &sessionStats{Turns: 2, Steps: 3, DecodeTokens: 200, DecodeMs: 5000}, want: "2 轮 · 3 步 · 40.0 tok/s"},
-		{name: "缺 decodeMs 不编速率", stats: &sessionStats{Turns: 2, Steps: 3, DecodeTokens: 200}, want: "2 轮 · 3 步"},
+		{name: "没有 assistant step", stats: &apiclient.SessionStats{Turns: 4}, want: ""},
+		// 官方 zh 文案 `stats.counts` = `{turns} 轮 {steps} 步`（locale.ts:84）：
+		// 两个计数之间是空格，不是分隔符。
+		{name: "唯一 turn 与 assistant step", stats: &apiclient.SessionStats{Turns: 2, Steps: 3}, want: "2 轮 3 步"},
+		// 官方 `formatTokensPerSecond`：≥10 取整（40.0 → "40 tok/s"）。
+		{name: "decode 真值速率", stats: &apiclient.SessionStats{Turns: 2, Steps: 3, DecodeTokens: 200, DecodeMs: 5000}, want: "2 轮 3 步 · 40 tok/s"},
+		// <10 保留一位小数（2.2 不能被取整成 2）。
+		{name: "低速保留一位小数", stats: &apiclient.SessionStats{Turns: 1, Steps: 2, DecodeTokens: 22, DecodeMs: 10000}, want: "1 轮 2 步 · 2.2 tok/s"},
+		// 真实 0 token 速率是"报了 0"，不是未知——与"缺 decodeMs"是两件事。
+		{name: "真实零速率", stats: &apiclient.SessionStats{Turns: 1, Steps: 1, DecodeMs: 5000}, want: "1 轮 1 步 · 0 tok/s"},
+		{name: "缺 decodeMs 不编速率", stats: &apiclient.SessionStats{Turns: 2, Steps: 3, DecodeTokens: 200}, want: "2 轮 3 步"},
+		// 八字段全给（含 llm/tool/ttft）时读数不变：官方 ActivityPill 的**读数**
+		// 只有 counts + 速率，llmMs/toolMs/ttftMs/ttftSteps 只在 dialog 里出现。
+		{
+			name: "八字段齐全",
+			stats: &apiclient.SessionStats{
+				Turns: 3, Steps: 4, LLMMs: 1500, ToolMs: 800, TTFTMs: 120,
+				TTFTSteps: 2, DecodeMs: 5000, DecodeTokens: 204,
+			},
+			// 204/5 = 40.8 → 官方取整 41。
+			want: "3 轮 4 步 · 41 tok/s",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -29,6 +47,36 @@ func TestActivityPillRequiresOfficialWholeLogStats(t *testing.T) {
 				t.Fatalf("activityText() = %q，want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestActivitySegmentTwoStates 钉住「有投影显示真值 / 没投影写未知」两态，
+// 并反向断言**绝不出现 0 轮 0 步**（未知不是零）。
+func TestActivitySegmentTwoStates(t *testing.T) {
+	unknown := pluginapi.Snapshot{Cur: "s"}
+	if got := activitySegment(unknown); got != zhActivityUnknown {
+		t.Fatalf("没有 sessionStats 投影时 = %q，want %q", got, zhActivityUnknown)
+	}
+	for _, banned := range []string{"0 轮", "0 步", "tok/s"} {
+		if strings.Contains(activitySegment(unknown), banned) {
+			t.Fatalf("没有投影时编造了 %q：%q", banned, activitySegment(unknown))
+		}
+	}
+
+	// 投影存在但 steps=0（空会话）：同样是「未知」，不是 "0 轮 0 步"。
+	empty := pluginapi.Snapshot{Cur: "s", SessionStats: &apiclient.SessionStats{}}
+	if got := activitySegment(empty); got != zhActivityUnknown {
+		t.Fatalf("空会话（steps=0）时 = %q，want %q", got, zhActivityUnknown)
+	}
+
+	known := pluginapi.Snapshot{Cur: "s", SessionStats: &apiclient.SessionStats{
+		Turns: 2, Steps: 3, DecodeMs: 5000, DecodeTokens: 200,
+	}}
+	if got := activitySegment(known); got != "2 轮 3 步 · 40 tok/s" {
+		t.Fatalf("有投影时 = %q，want 官方读数", got)
+	}
+	if strings.Contains(activitySegment(known), "未知") {
+		t.Fatalf("有真值时仍写「未知」：%q", activitySegment(known))
 	}
 }
 

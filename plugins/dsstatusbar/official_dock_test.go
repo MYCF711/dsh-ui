@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
@@ -150,6 +151,46 @@ func TestOfficialDockStaysResidentAndNeverInventsZero(t *testing.T) {
 	}
 }
 
+// ②' 有投影时活动段写**官方读数**（真消费 sessionStats），不是恒「未知」。
+func TestOfficialDockConsumesSessionStats(t *testing.T) {
+	data := pluginapi.Snapshot{
+		Cur:          "s",
+		SessionStats: &apiclient.SessionStats{Turns: 2, Steps: 3, DecodeMs: 5000, DecodeTokens: 200},
+		UsageTotal:   pluginapi.Usage{TotalTokens: 12345},
+	}
+	texts, _ := dockFrame(t, true, true, data)
+	want := "2 轮 3 步 · 40 tok/s"
+	found := false
+	for _, text := range texts {
+		if text == want {
+			found = true
+		}
+		if text == zhActivityUnknown {
+			t.Fatalf("有 sessionStats 投影时仍写「未知」：%v", texts)
+		}
+	}
+	if !found {
+		t.Fatalf("官方 dock 缺真实活动读数 %q：texts=%v", want, texts)
+	}
+
+	// 没有投影：写「未知」，且不出现任何编造的轮/步数字。
+	unknown, _ := dockFrame(t, true, true, pluginapi.Snapshot{Cur: "s"})
+	found = false
+	for _, text := range unknown {
+		if text == zhActivityUnknown {
+			found = true
+		}
+		for _, banned := range []string{"0 轮", "0 步", "tok/s"} {
+			if strings.Contains(text, banned) {
+				t.Fatalf("没有投影时编造了 %q：%v", banned, unknown)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("没有投影时必须写「活动 未知」：texts=%v", unknown)
+	}
+}
+
 // ④ 两个座位互斥；且重复转发只画一次。
 func TestStatusbarSeatsAreMutuallyExclusive(t *testing.T) {
 	data := pluginapi.Snapshot{
@@ -185,5 +226,33 @@ func TestOfficialDockRedrawsOncePerFrame(t *testing.T) {
 	}
 	if usagePills != 1 {
 		t.Fatalf("第二帧用量胶囊画了 %d 次，want 1", usagePills)
+	}
+}
+
+// TestOfficialDockActivityIsNotClipped 钉住「活动」读数**完整可见**。
+//
+// 为什么值得一条：读数被省略号截断时用户看到的是「1 轮 2 步 · 571 tok…」——
+// 数字对了但单位/含义丢了，等于没显示。这个位置的可用宽度是整窗（居中、两枚
+// 胶囊），没有任何理由截断。
+func TestOfficialDockActivityIsNotClipped(t *testing.T) {
+	// 用真机跑出来的形状：turns=1 steps=2 decodeMs=21 decodeTokens=12 → 571.4 tok/s。
+	data := pluginapi.Snapshot{Cur: "s", SessionStats: &apiclient.SessionStats{
+		Turns: 1, Steps: 2, DecodeMs: 21, DecodeTokens: 12,
+	}}
+	texts, _ := dockFrame(t, true, true, data)
+	var activity string
+	for _, text := range texts {
+		if strings.Contains(text, " 轮 ") {
+			activity = text
+		}
+	}
+	if activity == "" {
+		t.Fatalf("没有活动读数：texts=%v", texts)
+	}
+	if strings.Contains(activity, "…") || strings.Contains(activity, "...") {
+		t.Fatalf("活动读数被截断：%q", activity)
+	}
+	if want := "1 轮 2 步 · 571 tok/s"; activity != want {
+		t.Fatalf("活动读数 = %q，want %q", activity, want)
 	}
 }

@@ -338,6 +338,18 @@ type Snapshot struct {
 	// 只有 ContextWindow>0 且 ContextTokens>=0 时才可计算真实占用百分比；
 	// used>capacity 是异常，不得钳成 100%。
 	ContextWindow int64
+	// SessionStats 是宿主 whole-log `sessionStats` 投影（八字段，官方
+	// `dsh-session-stats/lib/types/projection.js:154-167`），状态栏「活动」
+	// 读数的**唯一**来源。
+	//
+	// **nil = 未知**（老宿主 / 还没拉到 / 键缺失 / 查询失败）：那时状态栏写
+	// 「活动 未知」，**不许**拿 `Msgs` 窗口数轮/步凑一个看起来像真值的数字
+	// （窗口是 tail，既不是全量也不区分 step——官方 ActivityPill 的注释点名
+	// 过这份折叠只能由 durable 投影给出）。
+	//
+	// 非 nil 时八个数全是宿主的真值，包括真实的 0（空会话 = 0 步，那是真话；
+	// 显示什么由插件按官方「steps === 0 整枚不渲染」的规则决定）。
+	SessionStats *apiclient.SessionStats
 	// Model 是宿主 §12 H4 给的最近一次 request/context 的模型名。
 	// 空串 = 不知道；插件不许拿自己的默认值冒充。
 	Model string

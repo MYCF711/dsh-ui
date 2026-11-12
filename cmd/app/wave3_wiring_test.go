@@ -9,6 +9,8 @@ package main
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
@@ -183,7 +185,7 @@ func TestWave3FeedProjections(t *testing.T) {
 	m := &model{kernel: k}
 	w.attach(m)
 
-	// 没有拉过投影：目录未知（不画 0 条）。
+	// 没有拉过投影：目录未知（不画 0 条），Team 开关不渲染，活动写「未知」。
 	w.feed("s1", 280)
 	view := w.team.View()
 	if view.CatalogKnown {
@@ -192,14 +194,27 @@ func TestWave3FeedProjections(t *testing.T) {
 	if view.ProjectionKnown {
 		t.Fatal("没拉过投影时 ProjectionKnown 必须 false（Team 开关不渲染）")
 	}
+	if view.ModelSelectionKnown {
+		t.Fatal("没拉过投影时 ModelSelectionKnown 必须 false（开关禁用）")
+	}
+	if stats := w.sessionStatsSnapshot("s1"); stats != nil {
+		t.Fatalf("没拉过投影时 sessionStats 必须 nil（未知，不编 0 步）：%+v", stats)
+	}
+	// 切到别的会话同样未知（不许跨会话复用）。
+	if stats := w.sessionStatsSnapshot("s-other"); stats != nil {
+		t.Fatalf("别的会话不该有 sessionStats：%+v", stats)
+	}
 
-	// 拉到两条目录 + teamMode.enabled=true。
+	// 拉到两条目录 + teamMode.enabled=true + sessionStats 真值 + modelSelection。
 	w.mu.Lock()
 	w.projSession = "s1"
 	w.projCatalogKnown = true
 	w.projCatalog = []dsagentteam.CatalogEntry{{ID: "child-1", Label: "调研"}}
 	w.projTeamKnown = true
 	w.projTeamEnabled = true
+	w.projStats = &apiclient.SessionStats{Turns: 2, Steps: 3, DecodeMs: 5000, DecodeTokens: 200}
+	w.projModelKnown = true
+	w.projModelLastUsed = true
 	w.mu.Unlock()
 	w.feed("s1", 280)
 	view = w.team.View()
@@ -213,15 +228,31 @@ func TestWave3FeedProjections(t *testing.T) {
 		t.Fatalf("teamMode 没喂进去：known=%v enabled=%v",
 			view.ProjectionKnown, view.Projection.Enabled)
 	}
+	// 官方 TeamModeToggle 的两个附加判据必须来自 `modelSelection` 投影
+	// （宿主总是给这个键；给不出来时开关禁用，不许"看起来能点"）。
+	if !view.ModelSelectionKnown || !view.ModelLastUsed {
+		t.Fatalf("modelSelection 判据没喂进去：known=%v lastUsed=%v",
+			view.ModelSelectionKnown, view.ModelLastUsed)
+	}
+	stats := w.sessionStatsSnapshot("s1")
+	if stats == nil || stats.Turns != 2 || stats.Steps != 3 || stats.DecodeMs != 5000 || stats.DecodeTokens != 200 {
+		t.Fatalf("sessionStats 没喂进去：%+v", stats)
+	}
 	// 编造检查：tasks 面宿主没有，界面不许编任务出来。
 	if len(view.Projection.Tasks) != 0 {
 		t.Fatalf("宿主没给 tasks，界面却编了 %d 条", len(view.Projection.Tasks))
 	}
 
-	// 切到另一个还没拉过的会话：立刻回到"未知"（不许沿用别人的目录）。
+	// 切到另一个还没拉过的会话：立刻回到"未知"（不许沿用别人的目录/数字）。
 	w.feed("s2", 280)
 	if view = w.team.View(); view.CatalogKnown {
 		t.Fatal("切到未拉取过的会话后必须回到未知，不能沿用上一个会话的目录")
+	}
+	if view.ProjectionKnown || view.ModelSelectionKnown {
+		t.Fatalf("切到未拉取过的会话后 Team 判据必须未知：%+v", view)
+	}
+	if stats := w.sessionStatsSnapshot("s2"); stats != nil {
+		t.Fatalf("切到未拉取过的会话后 sessionStats 必须 nil（不跨会话复用）：%+v", stats)
 	}
 }
 
@@ -260,5 +291,98 @@ func TestLauncherWideThreshold(t *testing.T) {
 		if got := dsnotifications.LauncherWide(tc.width); got != tc.want {
 			t.Fatalf("宽 %.0f（%s）：应得 %v，实际 %v", tc.width, tc.why, tc.want, got)
 		}
+	}
+}
+
+// TestWave3FetchProjectionsFeedsConsumers 是**真 HTTP** 一条：`session.projections`
+// 回什么，缓存里就有什么（`fetchProjections` 的解析 + 存储 + 视图三重接线）。
+//
+// 为什么不能只测 `feed`：`feed` 读的是缓存，缓存字段手写等于"看起来接线了"。
+// 这条从 JSON 一路走到 `View` / `sessionStatsSnapshot`，任何一处漏解都会红。
+func TestWave3FetchProjectionsFeedsConsumers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/session.projections" {
+			t.Fatalf("路径 = %q，want /api/session.projections", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"asOfSeq":12,"values":{
+			"subagentCatalog":[{"id":"child-1","createdAt":1762900000000,"mode":"continuable","label":"调研"}],
+			"teamMode":{"enabled":true},
+			"sessionStats":{"turns":2,"steps":3,"llmMs":1500,"toolMs":800,"ttftMs":120,"ttftSteps":2,"decodeMs":5000,"decodeTokens":204},
+			"modelSelection":{"lastUsed":{"provider":"deepseek","model":"group/deepseek-v4.1-flash-1017"},"next":null}
+		}}`))
+	}))
+	defer srv.Close()
+
+	w := newWave3Wiring()
+	k := uikernel.New("wave3-fetch-proj")
+	w.provide(k, nil)
+	if err := k.Load(&dscore.Plugin{Dark: true}, &dsagentteam.Plugin{}); err != nil {
+		t.Fatalf("装配失败：%v", err)
+	}
+	m := &model{kernel: k, cli: apiclient.New(srv.URL)}
+	w.attach(m)
+
+	w.fetchProjections(m, "sess-root")
+
+	stats := w.sessionStatsSnapshot("sess-root")
+	if stats == nil {
+		t.Fatal("sessionStats 没进缓存（状态栏只能写「未知」）")
+	}
+	want := apiclient.SessionStats{
+		Turns: 2, Steps: 3, LLMMs: 1500, ToolMs: 800,
+		TTFTMs: 120, TTFTSteps: 2, DecodeMs: 5000, DecodeTokens: 204,
+	}
+	if *stats != want {
+		t.Fatalf("sessionStats 解错：%+v，want %+v", *stats, want)
+	}
+	if known, lastUsed := w.modelSelectionSnapshot("sess-root"); !known || !lastUsed {
+		t.Fatalf("modelSelection 判据 = (known %v, lastUsed %v)，want (true, true)", known, lastUsed)
+	}
+	_, _, _, teamEnabled, teamKnown := w.projectionSnapshot("sess-root")
+	if !teamKnown || !teamEnabled {
+		t.Fatalf("teamMode 没进缓存：known=%v enabled=%v", teamKnown, teamEnabled)
+	}
+
+	// 切到没拉过的会话：三个投影全部回到未知（不跨会话复用）。
+	if stats := w.sessionStatsSnapshot("sess-other"); stats != nil {
+		t.Fatalf("别的会话不该有 sessionStats：%+v", stats)
+	}
+	if known, _ := w.modelSelectionSnapshot("sess-other"); known {
+		t.Fatal("别的会话不该有 modelSelection 判据")
+	}
+}
+
+// TestWave3FetchProjectionsCapabilityMissingIsUnknown 钉住降级：老宿主没有
+// `session.projections`（501 not_implemented）时，两个投影都必须是**未知**，
+// 不许把"没有这个能力"写成"0 轮 0 步 / 已关闭"。
+func TestWave3FetchProjectionsCapabilityMissingIsUnknown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotImplemented)
+		_, _ = w.Write([]byte(`{"error":{"code":"not_implemented","message":"session.projections","hint":"","retryable":false}}`))
+	}))
+	defer srv.Close()
+
+	w := newWave3Wiring()
+	k := uikernel.New("wave3-fetch-missing")
+	w.provide(k, nil)
+	if err := k.Load(&dscore.Plugin{Dark: true}, &dsagentteam.Plugin{}); err != nil {
+		t.Fatalf("装配失败：%v", err)
+	}
+	m := &model{kernel: k, cli: apiclient.New(srv.URL)}
+	w.attach(m)
+
+	w.fetchProjections(m, "sess-old")
+	if stats := w.sessionStatsSnapshot("sess-old"); stats != nil {
+		t.Fatalf("老宿主没有 sessionStats 时必须未知（不编 0）：%+v", stats)
+	}
+	if known, _ := w.modelSelectionSnapshot("sess-old"); known {
+		t.Fatal("老宿主没有 modelSelection 时必须未知")
+	}
+	_, _, errText, _, teamKnown := w.projectionSnapshot("sess-old")
+	if teamKnown {
+		t.Fatal("老宿主没有 teamMode 时必须未知（开关不渲染）")
+	}
+	if errText != "" {
+		t.Fatalf("能力缺失不该画成加载失败：%q", errText)
 	}
 }

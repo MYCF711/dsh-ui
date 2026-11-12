@@ -27,6 +27,12 @@
 
 `metrics.go` 中的 `sessionStats/tokenUsage/contextPressure` 是插件内的官方公式适配层，不冒充 Transport 已有字段。指针保留“缺席”和“真实 0”的区别；当前生产快照没有这些 projections，所以对应 pill 不会出现。
 
+> **2026-11-12 更新（HC）**：`sessionStats` 已经接上——`session.projections.sessionStats`
+> → `internal/apiclient.SessionStats` → `pluginapi.Snapshot.SessionStats`（`nil = 未知`），
+> 状态栏「活动」按官方 `{turns} 轮 {steps} 步 [· {tps} tok/s]` 写真值；`tokenUsage` /
+> `contextPressure` 仍未接（缓存率与上下文百分比照旧隐藏）。接线 file:line、两态断言与
+> 真机截图见 `DSH-GO/tmp/GO8-RC2/reports/HC-consume-projections.md`。
+
 ## 2. 24px / 40px 几何校正
 
 **24px 和 40px 都不是官方 composer dock 固定高。**

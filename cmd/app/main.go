@@ -1702,11 +1702,14 @@ func newConfig(m *model) app.Config {
 				},
 				ContextTokens: contextTokens,
 				ContextWindow: contextWindow,
-				Model:         modelName,
-				Permission:    permission,
-				Approval:      approvalView,
-				Busy:          busy,
-				ShowRightbar:  showRightbar,
+				// whole-log `sessionStats` 投影（状态栏「活动」的唯一来源）。
+				// nil = 还没拉到 / 老宿主没有这个键 → 写「未知」，不拿 Msgs 凑。
+				SessionStats: m.wave3.sessionStatsSnapshot(cur),
+				Model:        modelName,
+				Permission:   permission,
+				Approval:     approvalView,
+				Busy:         busy,
+				ShowRightbar: showRightbar,
 				// 连不上时状态栏那颗绿点必须变红说「已断开」，而不是继续「就绪」。
 				Disconnected: wsDown,
 				// 当前会话的工作目录：插件拼文件路径的前提，空串=不知道。

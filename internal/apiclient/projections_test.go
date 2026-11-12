@@ -31,6 +31,14 @@ func TestSessionProjectionsWireShape(t *testing.T) {
 					{"id":"child-2","createdAt":1762900100000,"mode":"continuable","label":""}
 				],
 				"teamMode": {"enabled": true},
+				"sessionStats": {
+					"turns": 3, "steps": 4, "llmMs": 1500, "toolMs": 800,
+					"ttftMs": 120, "ttftSteps": 2, "decodeMs": 5000, "decodeTokens": 204
+				},
+				"modelSelection": {
+					"lastUsed": {"provider":"deepseek","model":"group/deepseek-v4.1-flash-1017","reasoningEffort":"max"},
+					"next": null
+				},
 				"title": "别的键我们不解码",
 				"todos": null
 			}
@@ -70,6 +78,32 @@ func TestSessionProjectionsWireShape(t *testing.T) {
 	if !ok || mode == nil || !mode.Enabled {
 		t.Fatalf("teamMode.enabled=true 应解出来，得到 ok=%v mode=%+v", ok, mode)
 	}
+
+	// sessionStats：八个字段一个都不能少、不能串位（状态栏「活动」的整份读数）。
+	stats, ok := proj.SessionStats()
+	if !ok || stats == nil {
+		t.Fatal("sessionStats 键存在，应判为已知")
+	}
+	wantStats := SessionStats{
+		Turns: 3, Steps: 4, LLMMs: 1500, ToolMs: 800,
+		TTFTMs: 120, TTFTSteps: 2, DecodeMs: 5000, DecodeTokens: 204,
+	}
+	if *stats != wantStats {
+		t.Fatalf("sessionStats 解错：%+v，want %+v", *stats, wantStats)
+	}
+
+	// modelSelection：lastUsed 是 Team 开关"关闭前确认"的判据，next 允许 null。
+	selection, ok := proj.ModelSelection()
+	if !ok || selection == nil {
+		t.Fatal("modelSelection 键存在，应判为已知")
+	}
+	if selection.LastUsed == nil || selection.LastUsed.Model != "group/deepseek-v4.1-flash-1017" ||
+		selection.LastUsed.Provider != "deepseek" || selection.LastUsed.ReasoningEffort != "max" {
+		t.Fatalf("modelSelection.lastUsed 解错：%+v", selection.LastUsed)
+	}
+	if selection.Next != nil {
+		t.Fatalf("next=null 必须解成 nil（不是空结构体），得到 %+v", selection.Next)
+	}
 }
 
 func TestSessionProjectionsMissingKeysAreUnknown(t *testing.T) {
@@ -89,11 +123,17 @@ func TestSessionProjectionsMissingKeysAreUnknown(t *testing.T) {
 	if _, ok := proj.TeamMode(); ok {
 		t.Fatal("teamMode 键缺失时必须回 known=false（不许当成已关闭）")
 	}
+	if _, ok := proj.SessionStats(); ok {
+		t.Fatal("sessionStats 键缺失时必须回 known=false（状态栏写「未知」，不编 0 步）")
+	}
+	if _, ok := proj.ModelSelection(); ok {
+		t.Fatal("modelSelection 键缺失时必须回 known=false（Team 开关禁用）")
+	}
 }
 
 func TestSessionProjectionsNullValuesAreUnknown(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"asOfSeq":7,"values":{"subagentCatalog":null,"teamMode":null}}`))
+		_, _ = w.Write([]byte(`{"asOfSeq":7,"values":{"subagentCatalog":null,"teamMode":null,"sessionStats":null,"modelSelection":null}}`))
 	}))
 	defer srv.Close()
 
@@ -106,6 +146,35 @@ func TestSessionProjectionsNullValuesAreUnknown(t *testing.T) {
 	}
 	if _, ok := proj.TeamMode(); ok {
 		t.Fatal("teamMode=null 是“未知”，不是 enabled=false")
+	}
+	if _, ok := proj.SessionStats(); ok {
+		t.Fatal("sessionStats=null 是“未知”，不是全 0 的真值")
+	}
+	if _, ok := proj.ModelSelection(); ok {
+		t.Fatal("modelSelection=null 是“未知”，不是空选择")
+	}
+}
+
+// TestSessionProjectionsModelSelectionPresentButNull 钉住一处**容易混淆**的区别：
+// `modelSelection` 键存在、但两侧都是 null，是**已知**（这个会话还没选过模型），
+// 不是"没有这个能力"。官方 TeamModeToggle 的可用性判据是 `modelSelection !== undefined`，
+// 把"键在"当成"键不在"会让开关在本该可用的会话上永远禁用。
+func TestSessionProjectionsModelSelectionPresentButNull(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"asOfSeq":9,"values":{"modelSelection":{"lastUsed":null,"next":null}}}`))
+	}))
+	defer srv.Close()
+
+	proj, err := New(srv.URL).SessionProjections(context.Background(), "s1")
+	if err != nil {
+		t.Fatalf("应当成功：%v", err)
+	}
+	selection, ok := proj.ModelSelection()
+	if !ok || selection == nil {
+		t.Fatal("modelSelection 键存在（两侧 null）应判为已知")
+	}
+	if selection.LastUsed != nil || selection.Next != nil {
+		t.Fatalf("两侧都应为 nil，得到 %+v / %+v", selection.LastUsed, selection.Next)
 	}
 }
 

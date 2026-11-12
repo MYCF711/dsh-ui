@@ -69,15 +69,23 @@ func TestFmt1(t *testing.T) {
 }
 
 func TestRate(t *testing.T) {
-	// rate 只加个单位；这里钉住单位写法（中间一个空格、小写 tok/s），
-	// 否则状态栏上会出现「40.7tok/s」「40.7 TOK/S」这类不一致。
+	// rate 是官方 `formatTokensPerSecond` 的移植：≥10 取整（`Math.round`），
+	// <10 一位小数；单位写作「 tok/s」（一个空格、小写）。
+	// 边界重要性：
+	//   · 9.96 按官方先看 "<10" 再 `Math.round(99.6)/10 = 10` → "10"，不能出 "10.0"；
+	//   · 4.35 → "4.4"（一位小数）；
+	//   · 负数/NaN 没有速率语义 → 夹到 0（不能画 "NaN tok/s"）。
 	cases := []struct {
 		in   float64
 		want string
 	}{
-		{0, "0.0 tok/s"},
-		{40.7, "40.7 tok/s"},
-		{132.2, "132.2 tok/s"},
+		{0, "0 tok/s"},
+		{4.35, "4.4 tok/s"},
+		{9.96, "10 tok/s"},
+		{10, "10 tok/s"},
+		{40.7, "41 tok/s"},
+		{132.2, "132 tok/s"},
+		{-1.2, "0 tok/s"},
 	}
 	for _, tc := range cases {
 		if got := rate(tc.in); got != tc.want {

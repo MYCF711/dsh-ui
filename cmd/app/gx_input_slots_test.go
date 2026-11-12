@@ -384,3 +384,13 @@ func TestLegacyComposerKeepsSingleModelLabel(t *testing.T) {
 			canvas.Hits())
 	}
 }
+
+// gxSwitchHit 取官方 Team 开关本体的命中区（viva 的 Switch 命中标签固定是 "switch"）。
+func gxSwitchHit(canvas *ui.Canvas) (ui.Hit, bool) {
+	for _, hit := range canvas.Hits() {
+		if hit.Label == "switch" {
+			return hit, true
+		}
+	}
+	return ui.Hit{}, false
+}

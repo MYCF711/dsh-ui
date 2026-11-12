@@ -3,18 +3,13 @@ package dsstatusbar
 import (
 	"math"
 	"strings"
+
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 )
 
 // 这些类型只描述官方 projection 的统计口径，不是 Transport 契约的替代品。
-// 指针字段刻意保留“字段缺席”和“真实 0”的区别；C-STATS 接线前，生产 Snapshot
-// 不会构造它们，因此 Activity、缓存率和上下文百分比不会靠窗口消息或零值出现。
-type sessionStats struct {
-	Turns        int
-	Steps        int
-	DecodeTokens int64
-	DecodeMs     int64
-}
-
+// 指针字段刻意保留“字段缺席”和“真实 0”的区别（`SessionStats` 用 nil 表示整份
+// 投影缺席）；Activity、缓存率和上下文百分比不会靠窗口消息或零值出现。
 type tokenUsage struct {
 	UncachedInputTokens *int64
 	CacheReadTokens     *int64
@@ -26,19 +21,54 @@ type contextPressure struct {
 	ContextWindow *int64
 }
 
-// activityText 对照官方 ActivityPill：turns 是 whole-log 唯一 turn 数，steps 是
-// assistant/step 数，速率只由 decodeTokens/decodeMs 得出。没有 projection 或没有
-// assistant step 时整枚隐藏；只有墙钟时间、消息 role 或 tool 数都不能进入这里。
-func activityText(stats *sessionStats) string {
+// activityText 对照官方 ActivityPill 的**非 compact 读数**
+// （`StatsPills.tsx:299-305`）：`stats.counts` + 可选速率。
+//
+// 官方文案（`locale.ts:84` 的 zh 字典，逐字）是 `{turns} 轮 {steps} 步`——
+// 两个计数之间是空格，不是分隔符；只有 counts 与速率之间才是 ` · `（`reading()`）。
+//
+// 速率只由 `decodeTokens/decodeMs` 得出（官方 `decodeSpeed`），且只有
+// `decodeMs > 0` 时才画：没有 decode 墙钟就没有速率，**不写 0 tok/s 冒充**。
+// 没有 projection（nil）或没有 assistant step（`steps <= 0`）时整枚隐藏——
+// 官方 `stats.steps === 0 → null`；调用方据此写「活动 未知」。
+func activityText(stats *apiclient.SessionStats) string {
 	if stats == nil || stats.Steps <= 0 {
 		return ""
 	}
-	parts := []string{itoa(stats.Turns) + " 轮 · " + itoa(stats.Steps) + " 步"}
-	if stats.DecodeMs > 0 && stats.DecodeTokens >= 0 {
+	parts := []string{itoa(int(stats.Turns)) + " 轮 " + itoa(int(stats.Steps)) + " 步"}
+	if stats.DecodeMs > 0 {
 		perSecond := float64(stats.DecodeTokens) / (float64(stats.DecodeMs) / 1000)
 		parts = append(parts, rate(perSecond))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// rate 是官方 `formatTokensPerSecond` 的移植（`message-chrome.ts:71-74`）：
+//
+//	clamped >= 10  → 取整（`Math.round`）
+//	clamped <  10  → 一位小数（`Math.round(x*10)/10`）
+//
+// 为什么不是"永远一位小数"：官方 ≥10 时取整，40.7 显示成 `41 tok/s`。
+// 负速率没有语义（墙钟回退已在投影里按 `Math.max(0, …)` 夹过），这里再夹一次 0；
+// NaN 不写成 `NaN tok/s`（那不是一个读数），按 0 处理。
+func rate(v float64) string {
+	clamped := v
+	if math.IsNaN(clamped) || clamped < 0 {
+		clamped = 0
+	}
+	if clamped >= 10 {
+		return itoa(int(math.Round(clamped))) + " tok/s"
+	}
+	return compactDecimal(math.Round(clamped*10)/10) + " tok/s"
+}
+
+// compactDecimal 复刻 JS `String(x)` 的数字形状：整数不补 `.0`（`String(4)` = "4"），
+// 否则用一位小数（`String(4.4)` = "4.4"）。官方速率走的就是这个形状。
+func compactDecimal(v float64) string {
+	if v == math.Trunc(v) {
+		return itoa(int(v))
+	}
+	return fmt1(v)
 }
 
 // cacheHitPercent 对照官方 UsagePill。命中率是 cacheRead /

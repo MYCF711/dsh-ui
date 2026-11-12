@@ -12,8 +12,10 @@ package main
 //
 //	provider 目录  真 `llm.listConfigurableProviders`（本机 magpie 网关的配置）
 //	模型/权限/上下文 真 `session.load`
-//	Team 投影      真 `session.projections`（`teamMode` 键；**宿主今天还没有这条事件**
-//	               → `ProjectionKnown=false` → 官方开关不渲染，正是官方 undefined 语义）
+//	Team 投影      真 `session.projections`（**先真调 `agentTeams.setEnabled(true)`**，
+//	               宿主按官方形状 append `team/mode {enabled:true}`，投影折出
+//	               `teamMode={"enabled":true}` → 官方开关出现且为「开」）
+//	modelSelection 真 `session.projections`（开关可用性判据）
 //
 // # 五条判据
 //
@@ -114,32 +116,46 @@ func TestRealChainGXModelSlot(t *testing.T) {
 		t.Logf("真 provider 目录 %d 项：%+v", len(providers), providers)
 	}
 
-	// ── 真 Team 投影（`session.projections` 的 `teamMode` 键）。
+	// ── 真 Team 投影：**先开 Team**，否则宿主没有 `team/mode` 事件，
+	// `session.projections` 不会给 `teamMode` 键（官方 undefined 语义下开关不渲染）。
+	enableCtx, enableCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	if err := client.SetAgentTeamEnabled(enableCtx, sessionID, true); err != nil {
+		enableCancel()
+		t.Fatalf("agentTeams.setEnabled(true) 失败：%v", err)
+	}
+	enableCancel()
+
 	var teamMode *apiclient.TeamModeProjection
 	teamKnown := false
+	modelSelectionKnown, modelLastUsed := false, false
 	projCtx, projCancel := context.WithTimeout(context.Background(), 20*time.Second)
 	projections, projErr := client.SessionProjections(projCtx, sessionID)
 	projCancel()
 	if projErr == nil && projections != nil {
 		teamMode, teamKnown = projections.TeamMode()
+		if selection, ok := projections.ModelSelection(); ok {
+			modelSelectionKnown = true
+			modelLastUsed = selection != nil && selection.LastUsed != nil
+		}
 	}
-	if teamKnown {
-		t.Logf("真 teamMode 投影：enabled=%v", teamMode.Enabled)
-	} else {
-		// 宿主今天没有 `team/mode` 事件（`agentTeams.setEnabled` 只写 durable 选择、
-		// 不 append 事件），所以官方开关按 undefined 语义不渲染。这不是本仓能补的。
-		t.Log("宿主没有 teamMode 投影（ProjectionKnown=false）→ 官方 Team 开关不渲染（官方 undefined 语义）")
+	if !teamKnown {
+		t.Fatalf("开了 Team 之后宿主仍没有 teamMode 投影（err=%v）——GUI 的官方开关无从渲染", projErr)
 	}
+	if !modelSelectionKnown {
+		t.Fatal("宿主没给 modelSelection 投影（官方 Team 开关的可用性判据）")
+	}
+	t.Logf("真 teamMode 投影：enabled=%v；modelSelection known=%v lastUsed=%v",
+		teamMode.Enabled, modelSelectionKnown, modelLastUsed)
 
 	p := newGXProduct(t, shellOfficial)
 	p.team.SetProviders(provErr == nil, "", gxRealProviders(providers))
-	if teamKnown {
-		p.team.SetView(dsagentteam.View{
-			SessionID:       sessionID,
-			ProjectionKnown: true,
-			Projection:      dsagentteam.TeamProjection{Enabled: teamMode.Enabled},
-		})
-	}
+	p.team.SetView(dsagentteam.View{
+		SessionID:           sessionID,
+		ProjectionKnown:     true,
+		Projection:          dsagentteam.TeamProjection{Enabled: teamMode.Enabled},
+		ModelSelectionKnown: modelSelectionKnown,
+		ModelLastUsed:       modelLastUsed,
+	})
 	snap := gxRealSnap(sessionID, load)
 
 	// ── ① 子槽派发 + ② 单一模型标签 + ③ trigger 在控件行。
@@ -198,9 +214,18 @@ func TestRealChainGXModelSlot(t *testing.T) {
 	} else if provErr != nil && !gxHasText(canvas, "未接线") {
 		t.Fatalf("目录取失败时菜单应显示官方 error 行；文本=%v", gxTexts(canvas))
 	}
-	if teamKnown && !gxHasText(canvas, gxTeamModeLabel) {
+	if !gxHasText(canvas, gxTeamModeLabel) {
 		t.Fatalf("Team 投影已知时官方开关应出现在菜单里（缺 %q）；文本=%v",
 			gxTeamModeLabel, gxTexts(canvas))
+	}
+	// 开关状态必须等于宿主真值（`team/mode {enabled:true}` → checked），
+	// 而且 `modelSelection` 已知时**可用**（不是灰着的假开关）。
+	if hit, ok := gxSwitchHit(canvas); !ok {
+		t.Fatalf("官方 Team 开关没有命中区；hits=%v", canvas.Hits())
+	} else if !hit.Checked {
+		t.Fatalf("宿主 teamMode.enabled=true，开关却是「关」：%+v", hit)
+	} else if hit.Disabled {
+		t.Fatalf("modelSelection 已知时开关不该禁用：%+v", hit)
 	}
 	if got := gxTextCount(canvas, label); got != 1 {
 		t.Fatalf("菜单展开后模型标签出现 %d 次，want 1；文本=%v", got, gxTexts(canvas))

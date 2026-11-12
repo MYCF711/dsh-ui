@@ -294,9 +294,6 @@ func tok(n int64) string {
 	}
 }
 
-// rate 是官方 decodeTokens/decodeMs 速率的显示格式。
-func rate(v float64) string { return fmt1(v) + " tok/s" }
-
 // fmt1 是一位小数格式化（不引 fmt：这一层保持极简依赖）。
 func fmt1(v float64) string {
 	if v < 0 {

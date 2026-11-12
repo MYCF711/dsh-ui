@@ -10,7 +10,10 @@
 //     （官方 `update(state, reset)`，结构树 §5.5）。数据来源是宿主真实的
 //     `account.getState`（本波新增的客户端方法），**不是猜**。
 //  3. `Store.SetView(View)`：把 `session.projections` 的两块真值喂给目录容器
-//     （`subagentCatalog` → 目录行，`teamMode` → Team 开关状态）。
+//     （`subagentCatalog` → 目录行，`teamMode` → Team 开关状态，
+//     `modelSelection` → 开关的**可用性**判据）。
+//  4. `Snapshot.SessionStats`：状态栏「活动」的 whole-log `sessionStats` 投影
+//     （八字段；nil = 未知 → 写「未知」，不编 0）。
 //
 // # 三条"不编"（与 AGENTS §2 同口径）
 //
@@ -90,8 +93,16 @@ type wave3Wiring struct {
 	projCatalogErr   string
 	projTeamEnabled  bool
 	projTeamKnown    bool
-	projAt           time.Time
-	projPending      bool
+	// projStats 是 whole-log `sessionStats` 投影（nil = 未知）。指向的结构体
+	// 存进缓存后**永不原地改**（每次拉取换一个新指针），所以读方拿指针安全。
+	projStats *apiclient.SessionStats
+	// projModelKnown / projModelLastUsed 是 `modelSelection` 投影的两个官方判据：
+	// 键存在 = 开关可用（`modelSelection !== undefined`）；
+	// `lastUsed !== null` = 关闭前要先弹停用确认（TeamModeToggle.tsx:43/47）。
+	projModelKnown    bool
+	projModelLastUsed bool
+	projAt            time.Time
+	projPending       bool
 }
 
 // newWave3Wiring 造一份接线状态（壳在装配前调用）。
@@ -173,6 +184,37 @@ func (w *wave3Wiring) projectionSnapshot(session string) (catalog []dsagentteam.
 	return w.projCatalog, w.projCatalogKnown, w.projCatalogErr, w.projTeamEnabled, w.projTeamKnown
 }
 
+// sessionStatsSnapshot 取某会话的 whole-log `sessionStats` 投影。
+//
+// 返回 nil = **未知**（切到还没拉过的会话 / 查询失败 / 老宿主没有这个键）。
+// 状态栏据此写「活动 未知」——不许拿当前窗口的 `Msgs` 数轮/步（那是 tail，
+// 既不是全量也不区分 step）。
+//
+// 返回的指针在缓存里被换掉而不是原地改（见 wave3Wiring 的字段注释），
+// 所以调用方跨帧持有也安全。
+func (w *wave3Wiring) sessionStatsSnapshot(session string) *apiclient.SessionStats {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if session == "" || session != w.projSession {
+		return nil
+	}
+	return w.projStats
+}
+
+// modelSelectionSnapshot 取 `modelSelection` 投影的两个官方判据。
+//
+// known=false = 键缺失（老宿主 / 没拉到）→ 官方 `modelSelection === undefined`，
+// Team 开关**禁用**（不是隐藏；隐藏由 teamMode 缺失那一层负责）。
+// lastUsed=true = 这个会话已经用过模型 → 关闭 Team 前要弹停用确认。
+func (w *wave3Wiring) modelSelectionSnapshot(session string) (known, lastUsed bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if session == "" || session != w.projSession {
+		return false, false
+	}
+	return w.projModelKnown, w.projModelLastUsed
+}
+
 // feed 每帧把真值喂给两个运行时（绘制之前调）。
 //
 // `wide` 由壳按侧栏真实宽度折算（官方这个值是设置外壳的运行时 props；
@@ -191,6 +233,9 @@ func (w *wave3Wiring) feed(sessionID string, sidebarWidth float32) {
 	}
 	if w.team != nil {
 		catalog, catKnown, catErr, teamEnabled, teamKnown := w.projectionSnapshot(sessionID)
+		// 官方 TeamModeToggle 的两个附加判据（同一份 `session.projections`）：
+		// `modelSelection === undefined` → 开关禁用；`lastUsed !== null` → 关闭前确认。
+		modelKnown, modelLastUsed := w.modelSelectionSnapshot(sessionID)
 		w.team.SetView(dsagentteam.View{
 			SessionID: sessionID,
 			// 官方投影叫 `agentTeam`（enabled + tasks + failure）；本仓宿主只有
@@ -202,6 +247,9 @@ func (w *wave3Wiring) feed(sessionID string, sidebarWidth float32) {
 			CatalogKnown:    catKnown,
 			CatalogError:    catErr,
 			Members:         len(catalog),
+			// 缺 `modelSelection` 时开关**禁用**（官方 undefined 语义），不是隐藏。
+			ModelSelectionKnown: modelKnown,
+			ModelLastUsed:       modelLastUsed,
 		})
 	}
 }
@@ -285,6 +333,11 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 		w.projCatalog = nil
 		w.projTeamKnown = false
 		w.projTeamEnabled = false
+		// 查询失败 = **未知**：状态栏写「活动 未知」、Team 开关禁用/隐藏，
+		// 不沿用上一个会话的数字（跨会话复用比"未知"更坏）。
+		w.projStats = nil
+		w.projModelKnown = false
+		w.projModelLastUsed = false
 		if isCapabilityMissing(err) {
 			// 宿主没有 session.projections：目录**未知**（隐藏），不画错误行。
 			w.projCatalogKnown = false
@@ -301,6 +354,9 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 
 	entries, catalogKnown := proj.SubagentCatalog()
 	mode, teamKnown := proj.TeamMode()
+	// whole-log 统计（状态栏「活动」）与模型选择（Team 开关可用性）。
+	stats, statsKnown := proj.SessionStats()
+	selection, selectionKnown := proj.ModelSelection()
 
 	w.mu.Lock()
 	w.projSession = sessionID
@@ -317,6 +373,13 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 	w.projCatalogErr = ""
 	w.projTeamKnown = teamKnown
 	w.projTeamEnabled = teamKnown && mode != nil && mode.Enabled
+	if statsKnown {
+		w.projStats = stats
+	} else {
+		w.projStats = nil
+	}
+	w.projModelKnown = selectionKnown
+	w.projModelLastUsed = selectionKnown && selection != nil && selection.LastUsed != nil
 	w.mu.Unlock()
 
 	// 与壳里另外二十处一致：Invalidator 是值类型，没法判 nil（装配后才有 waker）。

@@ -79,13 +79,30 @@ func (p *Plugin) drawOfficialDock(f *flex.Frame, env *pluginapi.Env) {
 		PadSides(dockPaddingTop, 0, 0, 0).
 		Items(flex.Center).Justify(flex.Center).Gap(dockGap).Children(func() {
 		for _, segment := range segments {
-			f.Row().Height(pillHeight).Radius(t.Radii.SM).
-				PadSides(pillPadY, pillPadX, pillPadY, pillPadX).
-				Items(flex.Center).Gap(pillGap).Children(func() {
-				f.Text(segment).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
-					Color(t.LabelTertiary).Ellipsis()
-			})
+			p.officialPill(f, t, segment)
 		}
+	})
+}
+
+// officialPill 画一枚读数胶囊（官方 `.pill`：20 行高、左右 8、radius sm）。
+//
+// # 为什么左右内边距用**定宽占位盒**而不是 `PadSides`
+//
+// viva 的换行判据是 `TextWidthWeight(line) <= rect.Width - padX()`。胶囊的宽度
+// 是"文字 pref + 左右 padding"再减回 padding，float32 往返会差 ~1e-7，于是
+// 刚好放得下的读数被判成放不下，末尾被吃掉几个字符——真机验收里
+// 「1 轮 2 步 · 571 tok/s」被截成「1 轮 2 步 · 571 tok…」（HC 真机报告）。
+//
+// 用定宽占位盒时，文字节点拿到的就是**它自己的 pref 宽度**（不是容器宽减
+// padding），不存在这次往返。同样的修法见 `plugins/dsagentteam/model_slot.go`
+// 的「为什么内边距用定宽占位盒而不是 PadSides」。
+func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, segment string) {
+	f.Row().Height(pillHeight).Radius(t.Radii.SM).
+		Items(flex.Center).Gap(0).Children(func() {
+		f.Row().Width(pillPadX).Height(pillHeight)
+		f.Text(segment).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
+			Color(t.LabelTertiary).Ellipsis()
+		f.Row().Width(pillPadX).Height(pillHeight)
 	})
 }
 
@@ -100,9 +117,10 @@ func (p *Plugin) drawOfficialDock(f *flex.Frame, env *pluginapi.Env) {
 //
 // # 两枚的结构位置永远在，值按宿主能力给
 //
-//   - 活动（官方 ActivityPill）：宿主还没有 whole-log sessionStats 投影
-//     （`Snapshot` 里没有 Turns/Steps 字段，`metrics.go` 的 `sessionStats` 只被
-//     单测覆盖）→ 显式「未知」，**不拿消息窗口数轮/步凑数**。
+//   - 活动（官方 ActivityPill）：读 `Snapshot.SessionStats`（宿主 whole-log
+//     `sessionStats` 投影的八字段）。有值就按官方读数写 `{turns} 轮 {steps} 步`
+//     （`decodeMs > 0` 时再拼 ` · {tps} tok/s`）；**没有投影**（老宿主 / 还没拉到）
+//     才写「未知」。绝不拿消息窗口数轮/步。
 //   - 用量（官方 UsagePill）：`UsageTotal` / 旧 `Usage` 的真值，缺则「未知」。
 func officialSegments(d pluginapi.Snapshot) []string {
 	return []string{
@@ -117,17 +135,20 @@ const (
 	zhUsageUnknown    = "用量 未知"
 )
 
-// activitySegment 只接受 whole-log sessionStats。
+// activitySegment 是「活动」那一枚：官方 whole-log `sessionStats` 投影的读数。
 //
-// 今天**没有生产者**：`metrics.go` 的 `sessionStats` 只有一个纯函数消费者
-// （`activityText`，单测在钉），`pluginapi.Snapshot` 里没有 Turns/Steps 字段，
-// 宿主也还没有 `sessionStats` 投影。所以这里恒为「未知」。
+// 两态（这就是"真消费投影"的判据）：
+//
+//	有投影   → `activityText` 的官方读数（`2 轮 3 步 · 41 tok/s`）
+//	没有投影 → 「活动 未知」
 //
 // 为什么不能从 `Msgs` 数：轮数是 whole-log 的唯一 turn 数、步数是 assistant/step
 // 数，消息窗口（tail）既不是全量也不区分 step；用窗口消息凑出来的数字**看起来
-// 像真值**，是这一层最坏的一种假。等宿主接上投影后，在本函数里把真值接进来即可
-// （不要改这里的可见性：位置常驻、值按能力）。
-func activitySegment(pluginapi.Snapshot) string { return zhActivityUnknown }
+// 像真值**，是这一层最坏的一种假（`TestWindowMessagesNeverBecomeOfficialTurnsOrSteps`
+// 钉住这条）。**未知不写成 0 步。**
+func activitySegment(d pluginapi.Snapshot) string {
+	return orUnknown(activityText(d.SessionStats), zhActivityUnknown)
+}
 
 // orUnknown 是「有真值写数、没真值写未知」的唯一入口（不写 0、不写空）。
 func orUnknown(segment, unknown string) string {

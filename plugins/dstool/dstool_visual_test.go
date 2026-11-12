@@ -12,6 +12,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -51,14 +52,14 @@ func TestToolCardCustomRenderings(t *testing.T) {
 	cards := New(&dscore.Primitives{Theme: theme})
 	data := visualCards()
 
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("dstool-visual")
 	var view flex.View
 	config := app.Config{
 		Title: "dstool-visual", Width: 900, Height: 720, Tree: tree,
 		WindowMode: app.WindowFrameless,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Tree: tree, Feat: feat, Canvas: canvas,
@@ -106,11 +107,11 @@ func TestToolCardCustomRenderings(t *testing.T) {
 	}
 
 	snapshot := session.Snapshot()
-	texts := map[string]ui.Text{}
+	texts := map[string]gfx.Text{}
 	for _, text := range snapshot.Texts {
 		texts[text.Value] = text
 	}
-	require := func(value string) ui.Text {
+	require := func(value string) gfx.Text {
 		t.Helper()
 		text, ok := texts[value]
 		if !ok {
@@ -158,11 +159,11 @@ func TestToolCardCustomRenderings(t *testing.T) {
 }
 
 // hitByID 按交互 id 找命中区（工具标题行的标签是空串，唯一身份是 id）。
-func hitByID(snapshot app.Snapshot, id ui.ID) (ui.Hit, bool) {
+func hitByID(snapshot app.Snapshot, id gfx.ID) (gfx.Hit, bool) {
 	for _, hit := range snapshot.Hits {
 		if hit.ID == id {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }

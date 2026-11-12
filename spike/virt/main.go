@@ -21,11 +21,12 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 var (
-	tree   = ui.Tree{}
+	tree   = gfx.Tree{}
 	home   = tree.Feature("virt")
 	listID = tree.ID(home, "list")
 )
@@ -88,7 +89,7 @@ func seed(n int) []string {
 
 func newConfig(m *model) app.Config {
 	cfg := app.Config{Tree: &tree, Title: "视口虚拟化原型", Width: 1000, Height: 720}
-	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	cfg.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		theme := ui.DarkTheme()
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.Background)
@@ -152,7 +153,7 @@ func main() {
 
 	log.Printf("模式=%s 条数=%d 估算总高=%.0fpx", listMode, len(msgs), totalHeight())
 
-	var canvas ui.Canvas
+	var canvas gfx.Canvas
 	if err := app.RunCanvas(newConfig(&model{}), &canvas); err != nil {
 		log.Fatal(err)
 	}

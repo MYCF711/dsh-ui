@@ -8,13 +8,14 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // renderComposer 用真实 flex 布局和真实 ds-core 图元画一帧，不启动窗口。
 // click 非空时走 canvas 的事件 pass，因此测试到的是按钮实际 Clicked 分支，
 // 不是直接调用一个与界面脱节的辅助函数。
-func renderComposer(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, mainWidth, windowWidth float32, click string) *ui.Canvas {
+func renderComposer(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, mainWidth, windowWidth float32, click string) *gfx.Canvas {
 	t.Helper()
 	if p.theme == nil {
 		p.theme = dscore.Dark()
@@ -22,9 +23,9 @@ func renderComposer(t *testing.T, p *Plugin, data pluginapi.Snapshot, act plugin
 	if p.prims == nil {
 		p.prims = &dscore.Primitives{Theme: p.theme}
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("composer-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -51,8 +52,8 @@ func renderComposer(t *testing.T, p *Plugin, data pluginapi.Snapshot, act plugin
 	return canvas
 }
 
-func largestSurface(canvas *ui.Canvas, color ui.Color) (ui.Rectangle, bool) {
-	var best ui.Rectangle
+func largestSurface(canvas *gfx.Canvas, color ui.Color) (gfx.Rectangle, bool) {
+	var best gfx.Rectangle
 	found := false
 	for _, r := range canvas.Rectangles() {
 		if r.Color != color {
@@ -123,7 +124,7 @@ func TestPrimaryButtonMatchesOfficialSizeAndColor(t *testing.T) {
 	if !closeEnough(primary.Bounds.Width, 34) || !closeEnough(primary.Bounds.Height, 34) {
 		t.Fatalf("主按钮 = %.2fx%.2f，官方 34x34", primary.Bounds.Width, primary.Bounds.Height)
 	}
-	if primary.Radius != ui.RadiusFull && !closeEnough(primary.Radius, 17) {
+	if primary.Radius != gfx.RadiusFull && !closeEnough(primary.Radius, 17) {
 		t.Fatalf("主按钮圆角 = %.2f，官方 999px 全圆角应映射为 RadiusFull/17", primary.Radius)
 	}
 }
@@ -221,7 +222,7 @@ func TestEscapeWithoutApprovalPreservesCancelRoute(t *testing.T) {
 	cancelled := 0
 	p.lastData = pluginapi.Snapshot{}
 	p.lastAct = pluginapi.Actions{Cancel: func() { cancelled++ }}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("无审批时 Esc 应走停止路由")
 	}
 	if cancelled != 1 {
@@ -234,7 +235,7 @@ func TestApprovalCardMatchesOfficialSurface(t *testing.T) {
 	ap := hostFrame()
 	canvas := renderComposer(t, p, pluginapi.Snapshot{Cur: "s-001", Approval: &ap}, pluginapi.Actions{}, 902, 1182, "")
 	foundOuter, foundFill := false, false
-	var outer, composer ui.Rectangle
+	var outer, composer gfx.Rectangle
 	for _, r := range canvas.Rectangles() {
 		if r.Color == p.theme.Warn && closeEnough(r.Radius, 20) && closeEnough(r.Bounds.Width, 680) {
 			foundOuter, outer = true, r

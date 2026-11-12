@@ -9,6 +9,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
@@ -25,7 +26,7 @@ type linkVisualFixture struct {
 
 func TestLinksHeadlessRealRegionsCallbacksAndBoundaries(t *testing.T) {
 	theme := ui.DarkTheme()
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feature := tree.Feature("link-actions")
 	fixture := &linkVisualFixture{look: components.MarkdownLookFor(theme)}
 	open := func(target LinkTarget) { fixture.opened = append(fixture.opened, target) }
@@ -43,9 +44,9 @@ func TestLinksHeadlessRealRegionsCallbacksAndBoundaries(t *testing.T) {
 	fixture.actions = MarkdownLinkActions{Scope: tree.Sub(feature, tree.Name("markdown-links")), Open: open}
 
 	config := app.Config{Title: "link-actions", Width: 760, Height: 320, Tree: tree, WindowMode: app.WindowFrameless}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, theme.Background)
-		style := ui.TextStyle{Size: 14, Color: fixture.look.Link}
+		style := gfx.TextStyle{Size: 14, Color: fixture.look.Link}
 		fixture.http.Draw(canvas, ui.Rect{X: 20, Y: 20, Width: 600, Height: 28}, tree.ID(feature, "http"), style)
 		fixture.file.Draw(canvas, ui.Rect{X: 20, Y: 60, Width: 600, Height: 28}, tree.ID(feature, "file"), style)
 		fixture.view.Layout(canvas, components.MarkdownStyle{Size: 14}, &fixture.markdown, 600)
@@ -64,7 +65,7 @@ func TestLinksHeadlessRealRegionsCallbacksAndBoundaries(t *testing.T) {
 		if !ok {
 			t.Fatalf("link %q has no reachable hit region; hits=%+v", label, session.Snapshot().Hits)
 		}
-		if hit.Role != ui.RoleLink || hit.Bounds.Width <= 0 || hit.Bounds.Height <= 0 {
+		if hit.Role != gfx.RoleLink || hit.Bounds.Width <= 0 || hit.Bounds.Height <= 0 {
 			t.Errorf("link %q is only painted text, hit=%+v", label, hit)
 		}
 		assertLinkBoundary(t, session, hit)
@@ -109,7 +110,7 @@ func TestLinksHeadlessRealRegionsCallbacksAndBoundaries(t *testing.T) {
 	t.Logf("MDLITE_CAPTURE path=%s size=760x320 bytes=%d http_file_markdown_callbacks=3 boundary_checks=3", path, info.Size())
 }
 
-func assertLinkBoundary(t *testing.T, session *headless.Session, hit ui.Hit) {
+func assertLinkBoundary(t *testing.T, session *headless.Session, hit gfx.Hit) {
 	t.Helper()
 	centerY := hit.Bounds.Y + hit.Bounds.Height/2
 	if id, ok := session.Driver().HitTest(hit.Bounds.X+0.5, centerY); !ok || id != hit.ID {

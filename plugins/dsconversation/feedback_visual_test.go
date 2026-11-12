@@ -13,6 +13,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -92,7 +93,7 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("feedback-headless")
 	data := feedbackShotData()
 	var (
@@ -103,7 +104,7 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 		Title: "feedback-headless", Width: 900, Height: 620, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
@@ -144,7 +145,7 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 	// 官方 .Hyy-Wa_action 是 28×28；本排的 Ghost/Small 按钮盒高也是 28
 	// （viva ControlHeight 32 - 4），所以两者底边和中心必须落在同一像素行上。
 	const wantHit = 28
-	for name, hit := range map[string]ui.Hit{"👍": upHit, "👎": downHit, "复制": copyHit} {
+	for name, hit := range map[string]gfx.Hit{"👍": upHit, "👎": downHit, "复制": copyHit} {
 		if hit.Bounds.Height != wantHit {
 			t.Errorf("%s 命中区高 = %v，期望 %d（官方 .Hyy-Wa_action / viva Small 按钮）", name, hit.Bounds.Height, wantHit)
 		}

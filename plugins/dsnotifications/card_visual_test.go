@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -45,7 +46,7 @@ func activePlugin(t *testing.T, notices ...apiclient.Notification) *Plugin {
 }
 
 // cardRect 从画布上找那张卡：半径 16 的矩形里最宽的那个（正文区/背景层都更小）。
-func cardRect(canvas *ui.Canvas) (ui.Rect, bool) {
+func cardRect(canvas *gfx.Canvas) (ui.Rect, bool) {
 	var best ui.Rect
 	found := false
 	for _, r := range canvas.Rectangles() {
@@ -60,22 +61,22 @@ func cardRect(canvas *ui.Canvas) (ui.Rect, bool) {
 	return best, found
 }
 
-func hitByLabel(canvas *ui.Canvas, label string) (ui.Hit, bool) {
+func hitByLabel(canvas *gfx.Canvas, label string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
-func textByValue(canvas *ui.Canvas, value string) (ui.Text, bool) {
+func textByValue(canvas *gfx.Canvas, value string) (gfx.Text, bool) {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return text, true
 		}
 	}
-	return ui.Text{}, false
+	return gfx.Text{}, false
 }
 
 func near(a, b float32) bool { return math.Abs(float64(a-b)) < 0.51 }
@@ -180,13 +181,13 @@ func TestStackDepthScale(t *testing.T) {
 	}
 }
 
-func findByRadius(rects []ui.Rectangle, radius float32) (ui.Rectangle, bool) {
+func findByRadius(rects []gfx.Rectangle, radius float32) (gfx.Rectangle, bool) {
 	for _, r := range rects {
 		if near(r.Radius, radius) {
 			return r, true
 		}
 	}
-	return ui.Rectangle{}, false
+	return gfx.Rectangle{}, false
 }
 
 // TestOnlyForegroundIsInteractive：官方非前景卡 pointer-events:none。

@@ -6,13 +6,14 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // Identities are names in a tree: the application declares the tree once, and every
 // control it paints is a name inside a feature of it.
 var (
-	tree = ui.Tree{}
+	tree = gfx.Tree{}
 	home = tree.Feature("home")
 
 	increment = tree.ID(home, "increment")
@@ -30,7 +31,7 @@ func newConfig(m *model) app.Config {
 	theme := ui.LightTheme()
 	config := app.Config{Tree: &tree, Title: "hello", Width: 420, Height: 260}
 
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.Background)
 
@@ -55,7 +56,7 @@ func newConfig(m *model) app.Config {
 }
 
 func main() {
-	var canvas ui.Canvas
+	var canvas gfx.Canvas
 	if err := app.RunCanvas(newConfig(&model{}), &canvas); err != nil {
 		log.Fatal(err)
 	}

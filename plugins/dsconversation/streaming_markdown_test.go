@@ -9,6 +9,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -21,11 +22,11 @@ func streamingMarkdownData(stream string) pluginapi.Snapshot {
 	}
 }
 
-func drawStreamingMarkdownTest(t *testing.T, p *Plugin, data pluginapi.Snapshot) *ui.Canvas {
+func drawStreamingMarkdownTest(t *testing.T, p *Plugin, data pluginapi.Snapshot) *gfx.Canvas {
 	t.Helper()
 	theme := p.theme
 	const width = float32(900)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	canvas := newHeroTestCanvas(tree)
 	var view flex.View
 	f := view.Begin(canvas, dscore.VivaTheme(theme), ui.Rect{Width: width, Height: 700})
@@ -55,7 +56,7 @@ func TestStreamingMarkdownReallyDrawsHeadingListAndInlineCode(t *testing.T) {
 		}
 		switch text.Value {
 		case "流式标题":
-			heading = text.Style.Weight >= ui.WeightSemibold && !text.Style.Mono
+			heading = text.Style.Weight >= gfx.WeightSemibold && !text.Style.Mono
 		case "•":
 			marker = true
 		case "第一项":
@@ -135,8 +136,8 @@ func TestStreamingMarkdownReusesFinalMessageCacheSlot(t *testing.T) {
 
 func TestStreamingMarkdownLayoutCacheBoundsRepeatedFrames(t *testing.T) {
 	p := newStreamingMarkdownTestPlugin()
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	measurements := 0
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {

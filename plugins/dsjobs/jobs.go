@@ -16,6 +16,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // maxShown 最多列几条。
@@ -75,7 +76,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			if j.Done && j.ExitCode != 0 {
 				dot = t.Error
 			}
-			f.Row().FillWidth().Items(flex.Center).Gap(6).Children(func() {
+			f.Row().FillWidth().Items(ui.Center).Gap(6).Children(func() {
 				p.prims.Dot(f, dot, 5)
 				f.Text(shortCmd(j.Command)).FontSize(12).Color(t.LabelSecondary).Grow(1).Ellipsis()
 				f.Text(sizeLabel(j.Bytes)).FontSize(11).Color(t.LabelTertiary)

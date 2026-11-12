@@ -7,21 +7,21 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 var wpc3StatusLabels = []string{"准备中", "运行中", "完成", "失败", "已停止"}
 
-func wpc3TextAt(texts []ui.Text, value string) (ui.Text, bool) {
+func wpc3TextAt(texts []gfx.Text, value string) (gfx.Text, bool) {
 	for _, text := range texts {
 		if text.Value == value {
 			return text, true
 		}
 	}
-	return ui.Text{}, false
+	return gfx.Text{}, false
 }
 
-func requireWPC3HeaderStatus(t *testing.T, texts []ui.Text, tool, status string) {
+func requireWPC3HeaderStatus(t *testing.T, texts []gfx.Text, tool, status string) {
 	t.Helper()
 	title, ok := wpc3TextAt(texts, tool)
 	if !ok {

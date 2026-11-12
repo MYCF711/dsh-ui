@@ -11,9 +11,8 @@
 package dssidebar
 
 import (
+	"github.com/vivaui/viva/gfx"
 	"sync"
-
-	"github.com/vivaui/viva/ui"
 )
 
 // fishViewBox 是官方 FISH_LOGO_VIEWBOX 原值。
@@ -34,11 +33,11 @@ const fishLogoPath = `M22.9168 1.43018C22.6713 1.31018 22.5658 1.53918 22.4223 1
 // 官方这条路径是纯填充（Stroke=0），正好对上 Icon.Commands 的语义。
 var (
 	fishOnce   sync.Once
-	fishCached ui.Icon
+	fishCached gfx.Icon
 )
 
 // fishIcon 返回官方的鲸鱼标记（纯填充，viewBox 23.16 x 17.04）。
-func fishIcon() ui.Icon {
+func fishIcon() gfx.Icon {
 	fishOnce.Do(func() {
 		commands, ok := parseSVGPath(fishLogoPath)
 		if !ok {
@@ -46,7 +45,7 @@ func fishIcon() ui.Icon {
 			// 但也不会崩、不会画半个形状。
 			return
 		}
-		fishCached = ui.Icon{ViewBox: fishViewBoxW, ViewHeight: fishViewBoxH, Commands: commands}
+		fishCached = gfx.Icon{ViewBox: fishViewBoxW, ViewHeight: fishViewBoxH, Commands: commands}
 	})
 	return fishCached
 }

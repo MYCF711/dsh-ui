@@ -43,6 +43,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -238,12 +239,12 @@ func drawGenericCommandCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Them
 	if state == "error" {
 		summaryColor = t.Error
 	}
-	row := f.Row().FillWidth().Items(flex.Center).Gap(CommandNodeRowGap)
+	row := f.Row().FillWidth().Items(ui.Center).Gap(CommandNodeRowGap)
 	if expandable && toggle != nil {
 		// 可展开行才是命中区（官方 DisclosureRow 的同款语义）。
 		id := commandRowID(env, node.Command)
-		clicked := row.HitWith(id, title, ui.HitOptions{
-			Role: ui.RoleButton, Expandable: true, Expanded: open,
+		clicked := row.HitWith(id, title, gfx.HitOptions{
+			Role: gfx.RoleButton, Expandable: true, Expanded: open,
 		}).Clicked()
 		if clicked {
 			toggle(node.Command)
@@ -252,7 +253,7 @@ func drawGenericCommandCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Them
 	row.Children(func() {
 		// leading 图标 14×14：官方是 IconApiOutlineRegular；本仓统一用命令图标。
 		f.Row().Width(CommandNodeIconSize).Height(CommandNodeIconSize).
-			Items(flex.Center).Justify(flex.Center).Children(func() {
+			Items(ui.Center).Justify(ui.Center).Children(func() {
 			f.Icon(commandNodeIcon()).Size(CommandNodeIconSize, CommandNodeIconSize).
 				Color(t.LabelTertiary)
 		})
@@ -296,23 +297,23 @@ func commandState(outcome *CommandOutcome) string {
 // 没有这一枚（`$DSH_HOME/dsh-ui-official/assets/icons/` 下没有 api-outline），
 // 这里按官方 viewBox=16 / stroke=1 画一枚**斜杠**（`/` —— 命令行的通用记号），
 // 并在报告 §8 的差异表里登记"官方 api 图标缺失，用斜杠占位"。
-func commandNodeIcon() ui.Icon {
-	return ui.Icon{
+func commandNodeIcon() gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 16,
 		Stroke:  1,
-		Cap:     ui.CapRound,
-		Join:    ui.JoinRound,
-		Commands: []ui.PathCommand{
-			ui.MoveTo(12.05, 3.95),
-			ui.LineTo(3.95, 12.05),
+		Cap:     gfx.CapRound,
+		Join:    gfx.JoinRound,
+		Commands: []gfx.PathCommand{
+			gfx.MoveTo(12.05, 3.95),
+			gfx.LineTo(3.95, 12.05),
 		},
 	}
 }
 
 // commandRowID 造兜底行交互 id（官方 DisclosureRow 的 row 是 button）。
-func commandRowID(env *pluginapi.Env, name string) ui.ID {
+func commandRowID(env *pluginapi.Env, name string) gfx.ID {
 	if env == nil || env.Tree == nil {
-		return ui.ID{}
+		return gfx.ID{}
 	}
 	return env.Tree.ID(env.Feat, "command:"+name)
 }

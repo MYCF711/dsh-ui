@@ -23,6 +23,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -30,8 +31,8 @@ import (
 type statsDialogHarness struct {
 	plugin *Plugin
 	kernel *uikernel.Kernel
-	tree   *ui.Tree
-	feat   ui.Scope
+	tree   *gfx.Tree
+	feat   gfx.Scope
 	theme  *pluginapi.Theme
 }
 
@@ -45,7 +46,7 @@ func newStatsDialogHarness(t *testing.T) *statsDialogHarness {
 	if err := kernel.Load(&dscore.Plugin{Dark: true}, plugin); err != nil {
 		t.Fatalf("装配失败：%v", err)
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	return &statsDialogHarness{
 		plugin: plugin,
 		kernel: kernel,
@@ -60,15 +61,15 @@ func newStatsDialogHarness(t *testing.T) *statsDialogHarness {
 // 与 `uikernel.Kernel.DrawSlot` 同义（Draw → Children 转发），只是**顺手**把
 // AfterDraw 也跑一遍——弹窗的锚点矩形就是在那里缓存的，不跑 AfterDraw 的帧
 // 只能走过渡几何。
-func (h *statsDialogHarness) frame(t *testing.T, bounds ui.Rect, data pluginapi.Snapshot, click, hover string) *ui.Canvas {
+func (h *statsDialogHarness) frame(t *testing.T, bounds ui.Rect, data pluginapi.Snapshot, click, hover string) *gfx.Canvas {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(h.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
 	})
 	if hover != "" {
-		canvas.SetInteraction(h.tree.ID(h.feat, hover), ui.ID{}, ui.ID{}, false)
+		canvas.SetInteraction(h.tree.ID(h.feat, hover), gfx.ID{}, gfx.ID{}, false)
 	}
 	env := &pluginapi.Env{
 		Theme: h.theme, Data: data, Tree: h.tree, Feat: h.feat, Canvas: canvas,
@@ -114,14 +115,14 @@ func (h *statsDialogHarness) drawSlot(f *flex.Frame, env *pluginapi.Env, slot pl
 
 // openDialog 画两帧把弹窗点开：第一帧只画胶囊（AfterDraw 缓存真实矩形），
 // 第二帧在胶囊的命中区上造一次点击。返回第二帧的画布。
-func (h *statsDialogHarness) openDialog(t *testing.T, data pluginapi.Snapshot) *ui.Canvas {
+func (h *statsDialogHarness) openDialog(t *testing.T, data pluginapi.Snapshot) *gfx.Canvas {
 	t.Helper()
 	bounds := ui.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "")
 	return h.frame(t, bounds, data, statsPillHitName, "")
 }
 
-func statsDialogTexts(canvas *ui.Canvas) []string {
+func statsDialogTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -129,7 +130,7 @@ func statsDialogTexts(canvas *ui.Canvas) []string {
 	return out
 }
 
-func statsDialogHasText(canvas *ui.Canvas, want string) bool {
+func statsDialogHasText(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want {
 			return true
@@ -138,22 +139,22 @@ func statsDialogHasText(canvas *ui.Canvas, want string) bool {
 	return false
 }
 
-func statsDialogJoined(canvas *ui.Canvas) string {
+func statsDialogJoined(canvas *gfx.Canvas) string {
 	return strings.Join(statsDialogTexts(canvas), "\n")
 }
 
 // statsDialogHit 按 aria 名找命中区（官方支持的名字：胶囊读数 / 会话统计）。
-func statsDialogHit(canvas *ui.Canvas, label string) (ui.Hit, bool) {
+func statsDialogHit(canvas *gfx.Canvas, label string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // statsDialogHitByName 按交互名找命中区（Tree 名字比 aria 名稳定）。
-func statsDialogHitByName(t *testing.T, h *statsDialogHarness, canvas *ui.Canvas, name string) (ui.Hit, bool) {
+func statsDialogHitByName(t *testing.T, h *statsDialogHarness, canvas *gfx.Canvas, name string) (gfx.Hit, bool) {
 	t.Helper()
 	id := h.tree.ID(h.feat, name)
 	for _, hit := range canvas.Hits() {
@@ -161,7 +162,7 @@ func statsDialogHitByName(t *testing.T, h *statsDialogHarness, canvas *ui.Canvas
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // statsFullStats 是真机跑出来的那份八字段形状（HC 报告 §4.1）。
@@ -194,7 +195,7 @@ func TestStatsDialogStructureFollowsOfficialTree(t *testing.T) {
 	if !ok {
 		t.Fatal("活动胶囊没有命中区（官方 DialogPill 是 button）")
 	}
-	if pill.Role != ui.RoleButton || !pill.Expandable || pill.Expanded {
+	if pill.Role != gfx.RoleButton || !pill.Expandable || pill.Expanded {
 		t.Fatalf("胶囊命中区 = %+v，want button/expandable/未展开", pill)
 	}
 
@@ -232,7 +233,7 @@ func TestStatsDialogStructureFollowsOfficialTree(t *testing.T) {
 	if !ok {
 		t.Fatalf("弹窗没有角色命中区（官方 role=dialog aria-label=会话统计）；hits=%v", open.Hits())
 	}
-	if panel.Role != ui.RoleGroup {
+	if panel.Role != gfx.RoleGroup {
 		t.Fatalf("弹窗角色 = %v，want RoleGroup（viva v0.2.3 没有 RoleDialog）", panel.Role)
 	}
 	// 展开后胶囊的 aria-expanded 要变 true（官方 trigger 的语义）。
@@ -359,7 +360,7 @@ func TestStatsDialogPillHoverState(t *testing.T) {
 }
 
 // statsDialogTextColor 取某段文本的颜色。
-func statsDialogTextColor(canvas *ui.Canvas, want string) ui.Color {
+func statsDialogTextColor(canvas *gfx.Canvas, want string) ui.Color {
 	for _, text := range canvas.Texts() {
 		if text.Value == want {
 			return text.Style.Color
@@ -418,14 +419,14 @@ func TestStatsDialogClosesOnEscape(t *testing.T) {
 	if !h.plugin.dialog.open {
 		t.Fatal("前置：弹窗应已展开")
 	}
-	if h.plugin.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) != true {
+	if h.plugin.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) != true {
 		t.Fatal("展开时 Esc 没被接住")
 	}
 	if h.plugin.dialog.open {
 		t.Fatal("Esc 之后弹窗仍展开")
 	}
 	// 没展开时 Esc 必须放行（不能抢 composer 的"停止 turn"）。
-	if h.plugin.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if h.plugin.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("没展开时 Esc 被吞掉了")
 	}
 }
@@ -476,7 +477,7 @@ func TestUsagePillStaysPlainWithoutTokenUsage(t *testing.T) {
 	canvas := h.frame(t, ui.Rect{Width: 1182, Height: 832}, data, "", "")
 	pills := 0
 	for _, hit := range canvas.Hits() {
-		if hit.Role == ui.RoleButton {
+		if hit.Role == gfx.RoleButton {
 			pills++
 		}
 	}

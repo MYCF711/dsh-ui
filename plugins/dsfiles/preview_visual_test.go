@@ -11,6 +11,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -34,7 +35,7 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 	data := pluginapi.Snapshot{Cur: "s-001", CWD: `D:\ws`}
 	act := pluginapi.Actions{OpenFile: func(string) error { return nil }}
 
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("files-preview-headless")
 	var view flex.View
 	var invalidator app.Invalidator
@@ -42,7 +43,7 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 		Title: "files-preview", Width: 1182, Height: 832, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{

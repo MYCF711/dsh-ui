@@ -19,6 +19,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -38,7 +39,7 @@ func drawSeat(f *flex.Frame, k *uikernel.Kernel, env *pluginapi.Env, slot plugin
 }
 
 // officialFrame 画一帧「官方 composer 座位」，返回画布。
-func officialFrame(t *testing.T, tierOfficial bool, goal func() string) *ui.Canvas {
+func officialFrame(t *testing.T, tierOfficial bool, goal func() string) *gfx.Canvas {
 	t.Helper()
 	tier := uikernel.NewShellTier()
 	tier.Set(tierOfficial)
@@ -48,8 +49,8 @@ func officialFrame(t *testing.T, tierOfficial bool, goal func() string) *ui.Canv
 		t.Fatalf("装配失败：%v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
@@ -101,8 +102,8 @@ func TestGoalLegacySeatStaysSilentOnOfficialTier(t *testing.T) {
 		t.Fatalf("装配失败：%v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 { return 8 })
 	env := &pluginapi.Env{

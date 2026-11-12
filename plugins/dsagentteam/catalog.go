@@ -52,6 +52,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -335,7 +336,7 @@ func (p *Plugin) drawCatalogTriggerBody(f *flex.Frame, env *pluginapi.Env) {
 	id := env.Tree.ID(env.Feat, "subagent-catalog")
 	count := len(facts.entries)
 
-	row := f.Row().MinHeight(catalogTriggerMinHeight).Items(flex.Center).
+	row := f.Row().MinHeight(catalogTriggerMinHeight).Items(ui.Center).
 		Gap(catalogTriggerGap).
 		PadSides(catalogTriggerPadV, catalogTriggerPadH, catalogTriggerPadV, catalogTriggerPadH).
 		Radius(t.Radii.SM).
@@ -343,8 +344,8 @@ func (p *Plugin) drawCatalogTriggerBody(f *flex.Frame, env *pluginapi.Env) {
 		// 那句计数文案（不是另编一个"目录"）；目录未知时退回树的可访问名。
 		Hit(id, catalogTriggerAria(facts)).Children(func() {
 		// `.activitySlot{width:14px;height:14px}`：users 图标（官方 IconUsersOutlineRegular 14）。
-		f.Row().Size(catalogActivitySize, catalogActivitySize).Items(flex.Center).
-			Justify(flex.Center).Children(func() {
+		f.Row().Size(catalogActivitySize, catalogActivitySize).Items(ui.Center).
+			Justify(ui.Center).Children(func() {
 			f.Icon(usersIcon()).Size(catalogActivitySize-2, catalogActivitySize-2).
 				Color(t.LabelTertiary)
 		})
@@ -395,7 +396,7 @@ func (p *Plugin) drawCatalogPanel(f *flex.Frame, env *pluginapi.Env, drawSlot fu
 
 	panel := f.Column().Absolute().Top(top).Right(right).Width(width).
 		MaxHeight(catalogMenuMaxHeight).Radius(catalogMenuRadius).
-		Background(t.BgLayer1).Border(1, t.BorderL2).Shadow(ui.ShadowMD).
+		Background(t.BgLayer1).Border(1, t.BorderL2).Shadow(gfx.ShadowMD).
 		Pad(catalogMenuPad)
 	// 面板本体吃掉点击：官方点菜单里面不会关（只有菜单外的 pointerdown 才关）。
 	panel.Hit(env.Tree.ID(env.Feat, "subagent-catalog-menu"), zhCatalogTreeAria)
@@ -438,11 +439,11 @@ func catalogMenuTopFromHeader() float32 { return catalogMenuTopBase + catalogMen
 
 // drawCatalogSectionHeader 画 `.sectionHeader`（图标 + "子智能体" + 进度）。
 func (p *Plugin) drawCatalogSectionHeader(f *flex.Frame, t *pluginapi.Theme) {
-	f.Row().FillWidth().Items(flex.Start).Gap(catalogSectionGap).
+	f.Row().FillWidth().Items(ui.Start).Gap(catalogSectionGap).
 		PadSides(catalogSectionPadTop, catalogSectionPadH, catalogSectionPadBottom, catalogSectionPadH).
 		Children(func() {
-			f.Row().Size(catalogSectionIconW, catalogSectionIconH).Items(flex.Center).
-				Justify(flex.Center).Children(func() {
+			f.Row().Size(catalogSectionIconW, catalogSectionIconH).Items(ui.Center).
+				Justify(ui.Center).Children(func() {
 				f.Icon(usersIcon()).Size(catalogSectionIconW-2, catalogSectionIconW-2).
 					Color(t.LabelTertiary)
 			})
@@ -466,7 +467,7 @@ func (p *Plugin) catalogProgressLabel() string { return "" }
 
 // drawCatalogError 画官方错误态（`.error` + 重试按钮）。
 func (p *Plugin) drawCatalogError(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, reason string) {
-	f.Row().FillWidth().Items(flex.Start).Gap(catalogSectionGap).
+	f.Row().FillWidth().Items(ui.Start).Gap(catalogSectionGap).
 		PadSides(catalogSectionPadTop, catalogSectionPadH, catalogSectionPadBottom, catalogSectionPadH).
 		Children(func() {
 			f.Text(zhCatalogLoadError + "：" + reason).FillWidth().Grow(1).
@@ -489,7 +490,7 @@ func (p *Plugin) drawCatalogError(f *flex.Frame, env *pluginapi.Env, t *pluginap
 // inactive 三态）。点行 = 打开那个子会话（官方 openChild）。
 func (p *Plugin) drawCatalogRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, entry CatalogEntry) {
 	id := env.Tree.ID(env.Feat, "subagent-catalog-row-"+entry.ID)
-	row := f.Row().FillWidth().MinHeight(catalogRowMinHeight).Items(flex.Start).
+	row := f.Row().FillWidth().MinHeight(catalogRowMinHeight).Items(ui.Start).
 		Gap(catalogRowGap).
 		PadSides(catalogRowPadV, catalogRowPadRight, catalogRowPadV, catalogRowPadLeft).
 		Radius(t.Radii.MD).Hit(id, entry.catalogLabel()).Children(func() {

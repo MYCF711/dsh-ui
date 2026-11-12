@@ -24,6 +24,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -106,7 +107,7 @@ type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
 
-	search         flex.Field
+	search         ui.Field
 	searchExpanded bool
 	frameBoxes     frameBoxes
 	activePanel    string
@@ -171,7 +172,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 }
 
 // Fields 让壳把搜索框登记进 cfg.TextInput（不登记就收不到键盘）。
-func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.search} }
+func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.search} }
 
 // Width 返回侧栏占的宽度。
 func (p *Plugin) Width() float32 { return p.width }
@@ -212,7 +213,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // 所以这一行只留"会话总数"这一个它自己知道的事实。
 func (p *Plugin) drawFooter(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
-	f.Row().FillWidth().Height(28).Items(flex.Center).Gap(6).Children(func() {
+	f.Row().FillWidth().Height(28).Items(ui.Center).Gap(6).Children(func() {
 		f.Text(itoa(len(env.Data.Sessions)) + " 个会话").
 			FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		f.Spacer()
@@ -338,13 +339,13 @@ func (p *Plugin) drawSearch(f *flex.Frame, env *pluginapi.Env, q string) {
 // 没有 snippet 真值时 Snippet 是零值盒子，所以另给一个 HasSnippet 布尔，
 // 测试不需要去碰空盒子的 Rect()。
 type searchCardBoxes struct {
-	Card       flex.Box
-	Heading    flex.Box
-	Title      flex.Box
-	Dot        flex.Box
-	Meta       flex.Box
-	Workspace  flex.Box
-	Snippet    flex.Box
+	Card       ui.Box
+	Heading    ui.Box
+	Title      ui.Box
+	Dot        ui.Box
+	Meta       ui.Box
+	Workspace  ui.Box
+	Snippet    ui.Box
 	HasSnippet bool
 }
 
@@ -370,12 +371,12 @@ func (p *Plugin) drawSearchCard(f *flex.Frame, env *pluginapi.Env, r searchResul
 	var out searchCardBoxes
 	card := p.prims.ListRow(f, id, active, searchResultHeight, func() {
 		f.Column().FillWidth().Children(func() {
-			out.Heading = f.Row().FillWidth().Height(searchTitleLineHeight).Items(flex.Center).Gap(0).
+			out.Heading = f.Row().FillWidth().Height(searchTitleLineHeight).Items(ui.Center).Gap(0).
 				Children(func() {
 					// 图标槽 16×20（官方 .wnFoaW_slot）。里面只放当前会话的正向活动真值：
 					// 规则与分组行完全一致，别的卡片一律留空。
 					f.Row().Width(slotWidth).Height(slotHeight).Shrink(0).
-						Items(flex.Center).Justify(flex.Center).Children(func() {
+						Items(ui.Center).Justify(ui.Center).Children(func() {
 						if active && (env.Data.Busy || env.Data.Stream != "") {
 							out.Dot = p.prims.Dot(f, t.Info, 6)
 						}
@@ -384,7 +385,7 @@ func (p *Plugin) drawSearchCard(f *flex.Frame, env *pluginapi.Env, r searchResul
 						LineHeight(searchTitleLineHeight).Ellipsis().Grow(1).Color(t.LabelPrimary).
 						MarginSides(0, titleMarginRight, 0, titleMarginLeft)
 				})
-			out.Meta = f.Row().FillWidth().Height(searchMetaLineHeight).Items(flex.Center).
+			out.Meta = f.Row().FillWidth().Height(searchMetaLineHeight).Items(ui.Center).
 				Gap(searchMetaGap).MarginSides(0, 0, 0, searchMetaMarginLeft).Children(func() {
 				out.Workspace = f.Text(r.Workspace).FontSize(t.Fonts.Caption).
 					LineHeight(searchMetaLineHeight).Color(t.LabelTertiary).
@@ -452,7 +453,7 @@ func (p *Plugin) drawSession(f *flex.Frame, env *pluginapi.Env, s apiclient.Sess
 		// 于是这一行的标题比别的行左移 16px，整列对不齐。
 		f.Row().Width(indentStep).Height(1).Shrink(0) // 官方 depth*12 的缩进
 		f.Row().Width(slotWidth).Height(slotHeight).Shrink(0).
-			Items(flex.Center).Justify(flex.Center).Children(func() {
+			Items(ui.Center).Justify(ui.Center).Children(func() {
 			// 只有当前会话、且壳给了真值（有 turn 在跑 / 正文真在流）时才点：
 			// 其他行没有任何逐会话真值，留空是唯一诚实的画法。
 			if active && (env.Data.Busy || env.Data.Stream != "") {
@@ -498,8 +499,8 @@ func (p *Plugin) drawDeleteBox(f *flex.Frame, env *pluginapi.Env, s apiclient.Se
 		color = t.Error
 	}
 	box := f.Row().Width(16).Height(16).Shrink(0).
-		Items(flex.Center).Justify(flex.Center).
-		Hover(flex.Look{}.Background(t.Hover)).
+		Items(ui.Center).Justify(ui.Center).
+		Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, "del-"+s.ID), "删除这个会话").
 		Children(func() {
 			f.Text(label).FontSize(t.Fonts.Tiny).Color(color)
@@ -897,24 +898,24 @@ func normalizeQuery(s string) string {
 //
 // 为什么放在侧栏插件里而不是壳里：'下一个会话'取决于分组、过滤和折叠状态，
 // 只有这个插件知道。壳只负责把按键转发过来。
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	if ev.Modifiers != 0 {
 		return false // 带修饰键的是别的意图（留给别的插件）
 	}
 	switch ev.Key {
-	case ui.KeyEscape:
+	case gfx.KeyEscape:
 		if p.searchExpanded {
 			p.search.SetText("")
 			p.searchExpanded = false
 			return true
 		}
-	case ui.KeyUp:
+	case gfx.KeyUp:
 		return p.move(-1)
-	case ui.KeyDown:
+	case gfx.KeyDown:
 		return p.move(1)
-	case ui.KeyHome:
+	case gfx.KeyHome:
 		return p.moveTo(0)
-	case ui.KeyEnd:
+	case gfx.KeyEnd:
 		return p.moveTo(len(p.lastOrder) - 1)
 	}
 	return false

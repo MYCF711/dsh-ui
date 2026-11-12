@@ -17,6 +17,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -51,7 +52,7 @@ func TestParseWinSize(t *testing.T) {
 
 func TestParseKeys(t *testing.T) {
 	keys := parseKeys("down,up,home,end,esc,enter")
-	want := []ui.Key{ui.KeyDown, ui.KeyUp, ui.KeyHome, ui.KeyEnd, ui.KeyEscape, ui.KeyEnter}
+	want := []gfx.Key{gfx.KeyDown, gfx.KeyUp, gfx.KeyHome, gfx.KeyEnd, gfx.KeyEscape, gfx.KeyEnter}
 	if len(keys) != len(want) {
 		t.Fatalf("解析出 %d 个键，期望 %d", len(keys), len(want))
 	}
@@ -61,11 +62,11 @@ func TestParseKeys(t *testing.T) {
 		}
 	}
 	// 大小写与空白都要容忍（命令行手写时常见的）
-	if got := parseKeys(" DOWN , Esc "); len(got) != 2 || got[0].Key != ui.KeyDown || got[1].Key != ui.KeyEscape {
+	if got := parseKeys(" DOWN , Esc "); len(got) != 2 || got[0].Key != gfx.KeyDown || got[1].Key != gfx.KeyEscape {
 		t.Fatalf("大小写/空白容忍失败：%v", got)
 	}
 	// Shift+F2 是设置浮层的入口：**修饰键必须保留**，否则注入的按键只会打开命令面板。
-	if got := parseKeys("shift+f2"); len(got) != 1 || got[0].Key != ui.KeyF2 || got[0].Modifiers != ui.ModifierShift {
+	if got := parseKeys("shift+f2"); len(got) != 1 || got[0].Key != gfx.KeyF2 || got[0].Modifiers != gfx.ModifierShift {
 		t.Fatalf("shift+f2 应解析成带 Shift 的 F2，得到 %+v", got)
 	}
 	// 不认识的键静默跳过，不 panic
@@ -350,9 +351,9 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 		m.msgs[i] = apiclient.Message{Seq: i + 1, Role: "assistant", Text: fmt.Sprintf("message-%02d", i+1)}
 	}
 	scrID := tree.ID(home, "msgs-"+id)
-	draw := func() (*ui.Canvas, bool) {
+	draw := func() (*gfx.Canvas, bool) {
 		t.Helper()
-		canvas := &ui.Canvas{}
+		canvas := &gfx.Canvas{}
 		canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 			return float32(len(value)) * size / 2
 		})
@@ -375,7 +376,7 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 		repaint := m.applyPendingScroll()
 		return canvas, repaint
 	}
-	hasLast := func(canvas *ui.Canvas) bool {
+	hasLast := func(canvas *gfx.Canvas) bool {
 		for _, text := range canvas.Texts() {
 			if text.Value == "message-20" {
 				return true

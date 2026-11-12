@@ -5,7 +5,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func toolMsg(args string) apiclient.Message {
@@ -87,10 +87,10 @@ func TestF7F8PickOptions(t *testing.T) {
 	p.act = pluginapi.Actions{Send: func(s string) { sent = append(sent, s) }}
 	p.cur = Question{Options: []Option{{Label: "A"}, {Label: "B"}}}
 
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF7}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF7}) {
 		t.Fatal("F7 应当被消费")
 	}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF8}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF8}) {
 		t.Fatal("F8 应当被消费")
 	}
 	if len(sent) != 2 || sent[0] != "A" || sent[1] != "B" {
@@ -105,7 +105,7 @@ func TestF8WithoutSecondOptionNotConsumed(t *testing.T) {
 	p := &Plugin{}
 	p.act = pluginapi.Actions{Send: func(string) {}}
 	p.cur = Question{Options: []Option{{Label: "唯一一个"}}}
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyF8}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF8}) {
 		t.Fatal("没有第二个选项时不该消费 F8")
 	}
 }
@@ -114,7 +114,7 @@ func TestF8WithoutSecondOptionNotConsumed(t *testing.T) {
 func TestNoOptionsNotConsumed(t *testing.T) {
 	p := &Plugin{}
 	p.act = pluginapi.Actions{Send: func(string) {}}
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyF7}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF7}) {
 		t.Fatal("没有问题时不该消费 F7")
 	}
 }

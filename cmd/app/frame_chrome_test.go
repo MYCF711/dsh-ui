@@ -6,6 +6,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/ui"
 )
@@ -55,7 +56,7 @@ func TestConfigureFrameWindowUsesVivaNativeControls(t *testing.T) {
 
 type frameChromeHarness struct {
 	chrome      frameChrome
-	field       flex.Field
+	field       ui.Field
 	view        flex.View
 	inv         app.Invalidator
 	newSessions int
@@ -71,8 +72,8 @@ func newFrameChromeHarness(t *testing.T) (*frameChromeHarness, *app.Driver) {
 	theme := ui.DarkTheme()
 	cfg := app.Config{Tree: &tree, Title: "dsh-ui-frame-test", Width: 1182, Height: 832, Invalidator: &h.inv}
 	configureFrameWindow(&cfg, true, theme)
-	cfg.TextInput = h.chrome.wrapTextInput(flex.Fields(&h.field))
-	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	cfg.TextInput = h.chrome.wrapTextInput(ui.Fields(&h.field))
+	cfg.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		if id, ok := canvas.ClickTarget(); ok {
 			h.clickErr = h.chrome.handleClick(id)
 		}
@@ -94,7 +95,7 @@ func newFrameChromeHarness(t *testing.T) (*frameChromeHarness, *app.Driver) {
 	return h, driver
 }
 
-func frameHit(t *testing.T, driver *app.Driver, id ui.ID) ui.Rect {
+func frameHit(t *testing.T, driver *app.Driver, id gfx.ID) ui.Rect {
 	t.Helper()
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == id {
@@ -105,7 +106,7 @@ func frameHit(t *testing.T, driver *app.Driver, id ui.ID) ui.Rect {
 	return ui.Rect{}
 }
 
-func clickFrameID(t *testing.T, driver *app.Driver, id ui.ID) {
+func clickFrameID(t *testing.T, driver *app.Driver, id gfx.ID) {
 	t.Helper()
 	bounds := frameHit(t, driver, id)
 	if err := driver.Click(bounds.X+bounds.Width/2, bounds.Y+bounds.Height/2); err != nil {
@@ -127,7 +128,7 @@ func TestFrameChromeCaptionDragAndMenuControls(t *testing.T) {
 	if got := driver.PressAt(12, 20); got != app.PressMove {
 		t.Fatalf("空白 caption PressAt = %v，期望 PressMove", got)
 	}
-	for _, id := range []ui.ID{chromeApplicationID, chromeEditID} {
+	for _, id := range []gfx.ID{chromeApplicationID, chromeEditID} {
 		bounds := frameHit(t, driver, id)
 		if got := driver.PressAt(bounds.X+bounds.Width/2, bounds.Y+bounds.Height/2); got != app.PressControl {
 			t.Fatalf("菜单 %v PressAt = %v，期望 PressControl，不能拖动窗口", id, got)
@@ -165,7 +166,7 @@ func TestFrameChromeMenuDismissRestoresEditorFocusAndSelection(t *testing.T) {
 				if err := driver.Click(1100, 700); err != nil {
 					t.Fatal(err)
 				}
-			} else if err := driver.Key(ui.KeyEscape, 0); err != nil {
+			} else if err := driver.Key(gfx.KeyEscape, 0); err != nil {
 				t.Fatal(err)
 			}
 			if err := driver.Pump(); err != nil {

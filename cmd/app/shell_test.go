@@ -21,6 +21,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -205,8 +206,8 @@ func TestOfficialShellWiringDispatchesOfficialSlots(t *testing.T) {
 		t.Fatal("内核里有 sidebar.list / main.body 占用方，兼容桥必须打开")
 	}
 
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 { return float32(len([]rune(value))) * size / 2 })
 	theme := dscore.Dark()
@@ -288,8 +289,8 @@ func TestDrawnOfficialSlotsAreRegistered(t *testing.T) {
 		uikernel.OffSessionHeaderLineage, uikernel.OffRightbarSession)
 	m := &model{kernel: kernel, showRightbar: true, cur: "s1"}
 	opts := shellOptionsFor(m, kernel, 1920, 1032)
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 { return float32(len([]rune(value))) * size / 2 })
 	theme := dscore.Dark()
@@ -371,8 +372,8 @@ func TestOfficialTierReallyDispatchesComposerSeat(t *testing.T) {
 		kernel, drawn := newProbeKernel(t, "composer-tier", slots...)
 		m := &model{kernel: kernel, cur: "s1"}
 		opts := shellOptionsFor(m, kernel, 1182, 832)
-		tree := &ui.Tree{}
-		canvas := &ui.Canvas{}
+		tree := &gfx.Tree{}
+		canvas := &gfx.Canvas{}
 		canvas.SetTree(tree)
 		canvas.SetMeasurer(func(value string, size, weight float32) float32 { return float32(len([]rune(value))) * size / 2 })
 		theme := dscore.Dark()

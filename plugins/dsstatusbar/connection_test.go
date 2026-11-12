@@ -32,6 +32,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -39,8 +40,8 @@ import (
 type connHarness struct {
 	plugin *Plugin
 	kernel *uikernel.Kernel
-	tree   *ui.Tree
-	feat   ui.Scope
+	tree   *gfx.Tree
+	feat   gfx.Scope
 	theme  *pluginapi.Theme
 	// now 是注入给插件的假时钟：150ms 离场窗必须**确定**，不能靠 sleep。
 	now time.Time
@@ -60,7 +61,7 @@ func newConnHarness(t *testing.T) *connHarness {
 	if err := kernel.Load(&dscore.Plugin{Dark: true}, plugin); err != nil {
 		t.Fatalf("装配失败：%v", err)
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	h := &connHarness{
 		plugin: plugin,
 		kernel: kernel,
@@ -81,9 +82,9 @@ func newConnHarness(t *testing.T) *connHarness {
 // 为什么连容器一起画：连接指示**不再自画一行**（官方 `._indicator{flex:none}`），
 // 只画行里的一个子项。只调 `drawConnectionIndicator` 而不给 Row 的话，
 // 测的是"它自己会画一个胶囊"，测不到"它在设置行里"。
-func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *ui.Canvas {
+func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *gfx.Canvas {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(h.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
@@ -106,7 +107,7 @@ func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *ui.Canvas {
 			row := f.Row().FillWidth().
 				MarginSides(connRowMarginY, -2, connRowMarginY, -2).
 				Background(h.theme.SidebarFill).
-				Items(flex.Center).Gap(connRowGap)
+				Items(ui.Center).Gap(connRowGap)
 			row.Children(func() {
 				// 官方这一行的第一个子项：设置启动器（`flex:1`、42 高）。
 				// 测试里用一棵定尺寸的盒子代替，只为量"同一行"。
@@ -123,7 +124,7 @@ func (h *connHarness) frame(t *testing.T, link pluginapi.LinkState) *ui.Canvas {
 }
 
 // connTexts 收画布上的文字。
-func connTexts(canvas *ui.Canvas) []string {
+func connTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -135,7 +136,7 @@ func connTexts(canvas *ui.Canvas) []string {
 //
 // Viva v0.5.1 起圆角填充也走三角形 mesh，所以"有没有三角形"不能当
 // "画没画图标"的判据——能区分的性质是不透明度。
-func countOpaqueTriangles(canvas *ui.Canvas) int {
+func countOpaqueTriangles(canvas *gfx.Canvas) int {
 	const opaque = 0.5
 	n := 0
 	for _, triangle := range canvas.Triangles() {
@@ -153,7 +154,7 @@ func countOpaqueTriangles(canvas *ui.Canvas) int {
 //
 //	外圈：高度 28、圆角 SM(8)、颜色 = 同色 20% 透明（color-mix 的等价）
 //	内层：高度 26、圆角 SM-1(7)、颜色 = tertiary 底
-func connPill(canvas *ui.Canvas, fill, border ui.Color) bool {
+func connPill(canvas *gfx.Canvas, fill, border ui.Color) bool {
 	outer, inner := false, false
 	for _, rect := range canvas.Rectangles() {
 		if rect.Bounds.Height == connIndicatorHeight && rect.Radius == 8 && rect.Color == border {
@@ -167,23 +168,23 @@ func connPill(canvas *ui.Canvas, fill, border ui.Color) bool {
 }
 
 // connRowRect 找设置行矩形（测试台给行加了一枚侧栏底色，见 frame）。
-func connRowRect(canvas *ui.Canvas, fill ui.Color) (ui.Rectangle, bool) {
+func connRowRect(canvas *gfx.Canvas, fill ui.Color) (gfx.Rectangle, bool) {
 	for _, rect := range canvas.Rectangles() {
 		if rect.Bounds.Height == connRowHeight && rect.Color == fill {
 			return rect, true
 		}
 	}
-	return ui.Rectangle{}, false
+	return gfx.Rectangle{}, false
 }
 
 // connPillRect 找胶囊外层（28 高、圆角 8 的描边矩形）。
-func connPillRect(canvas *ui.Canvas, border ui.Color) (ui.Rectangle, bool) {
+func connPillRect(canvas *gfx.Canvas, border ui.Color) (gfx.Rectangle, bool) {
 	for _, rect := range canvas.Rectangles() {
 		if rect.Bounds.Height == connIndicatorHeight && rect.Radius == 8 && rect.Color == border {
 			return rect, true
 		}
 	}
-	return ui.Rectangle{}, false
+	return gfx.Rectangle{}, false
 }
 
 // ① 座位：唯一座位是官方 `sidebar.settings`，不许再占 `shell.bottom`，
@@ -415,7 +416,7 @@ func TestConnectionIndicatorGeometryMatchesOfficial(t *testing.T) {
 func TestConnectionIconsAreOfficialSprites(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		icon     ui.Icon
+		icon     gfx.Icon
 		viewBox  float32
 		stroke   float32
 		paths    int // 官方 path 段数
@@ -436,7 +437,7 @@ func TestConnectionIconsAreOfficialSprites(t *testing.T) {
 			}
 			moves := 0
 			for _, command := range tc.icon.Commands {
-				if command.Kind == ui.PathCommandMove {
+				if command.Kind == gfx.PathCommandMove {
 					moves++
 				}
 			}
@@ -444,7 +445,7 @@ func TestConnectionIconsAreOfficialSprites(t *testing.T) {
 				t.Fatalf("%s path 段数 = %d，want %d（官方 sprite）", tc.iconName, moves, tc.paths)
 			}
 			first := tc.icon.Commands[0]
-			if first.Kind != ui.PathCommandMove || first.Point != tc.firstPt {
+			if first.Kind != gfx.PathCommandMove || first.Point != tc.firstPt {
 				t.Fatalf("%s 首命令 = %+v，want MoveTo(%v, %v)（官方 d 的起点）",
 					tc.iconName, first, tc.firstPt.X, tc.firstPt.Y)
 			}

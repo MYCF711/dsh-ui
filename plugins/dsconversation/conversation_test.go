@@ -1,9 +1,8 @@
 package dsconversation
 
 import (
+	"github.com/vivaui/viva/gfx"
 	"testing"
-
-	"github.com/vivaui/viva/ui"
 )
 
 // 这个文件只测**纯函数**：不碰 flex / canvas / 窗口，所以能在 CI 里裸跑。
@@ -67,15 +66,15 @@ func TestIsKey(t *testing.T) {
 	// 所以按住 Shift 打出来的也仍然是 "c"。这里必须两端都认。
 	cases := []struct {
 		name   string
-		ev     ui.KeyEvent
+		ev     gfx.KeyEvent
 		letter string
 		want   bool
 	}{
-		{"小写 text", ui.KeyEvent{Text: "c"}, "c", true},
-		{"大写 text（Shift 之后）", ui.KeyEvent{Text: "C"}, "c", true},
-		{"只填 Typed", ui.KeyEvent{Typed: "r"}, "r", true},
-		{"两者都没有", ui.KeyEvent{}, "c", false},
-		{"别的字母", ui.KeyEvent{Text: "x"}, "c", false},
+		{"小写 text", gfx.KeyEvent{Text: "c"}, "c", true},
+		{"大写 text（Shift 之后）", gfx.KeyEvent{Text: "C"}, "c", true},
+		{"只填 Typed", gfx.KeyEvent{Typed: "r"}, "r", true},
+		{"两者都没有", gfx.KeyEvent{}, "c", false},
+		{"别的字母", gfx.KeyEvent{Text: "x"}, "c", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

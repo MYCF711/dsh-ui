@@ -15,6 +15,7 @@ package dscore
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -137,14 +138,14 @@ func Dark() *pluginapi.Theme {
 		Name: "ds-dark",
 		Dark: true,
 
-		BgBase:      ui.RGB24(staticNeutralBluish950),
-		SidebarFill: ui.RGB24(staticNeutralBluish900),
-		BgLayer1:    ui.RGB24(staticNeutralBluish875),
-		BgLayer2:    ui.RGB24(staticNeutralBluish850),
-		BgLayer3:    ui.RGB24(staticNeutralBluish800),
+		BgBase:      gfx.RGB24(staticNeutralBluish950),
+		SidebarFill: gfx.RGB24(staticNeutralBluish900),
+		BgLayer1:    gfx.RGB24(staticNeutralBluish875),
+		BgLayer2:    gfx.RGB24(staticNeutralBluish850),
+		BgLayer3:    gfx.RGB24(staticNeutralBluish800),
 
-		NavActive: ui.RGB24(staticNeutralBluish750),
-		NavHover:  ui.RGB24(staticNeutralBluish850),
+		NavActive: gfx.RGB24(staticNeutralBluish750),
+		NavHover:  gfx.RGB24(staticNeutralBluish850),
 		Hover:     ui.RGBA(255, 255, 255, 0.08), // --dsw-alias-interactive-bg-hover = #ffffff14
 
 		BorderL1: ui.RGBA(255, 255, 255, 0.06), // #ffffff0f
@@ -152,44 +153,44 @@ func Dark() *pluginapi.Theme {
 		BorderL3: ui.RGBA(255, 255, 255, 0.16), // #ffffff29
 		BorderL4: ui.RGBA(255, 255, 255, 0.20), // #ffffff33
 
-		LabelPrimary:   ui.RGB24(staticNeutralBluish50),
-		LabelSecondary: ui.RGB24(staticNeutralBluish300),
-		LabelTertiary:  ui.RGB24(staticNeutralBluish400),
-		LabelCaption:   ui.RGB24(staticNeutralBluish600),
-		LabelDimmed:    ui.RGB24(staticNeutralBluish750),
+		LabelPrimary:   gfx.RGB24(staticNeutralBluish50),
+		LabelSecondary: gfx.RGB24(staticNeutralBluish300),
+		LabelTertiary:  gfx.RGB24(staticNeutralBluish400),
+		LabelCaption:   gfx.RGB24(staticNeutralBluish600),
+		LabelDimmed:    gfx.RGB24(staticNeutralBluish750),
 
-		Link:              ui.RGB24(staticDeepseek400),
-		BrandPrimary:      ui.RGB24(staticNeutralBluish50),
-		ButtonPrimaryFill: ui.RGB24(staticNeutralBluish50),
-		ButtonPrimaryFg:   ui.RGB24(staticNeutralBluish1000),
+		Link:              gfx.RGB24(staticDeepseek400),
+		BrandPrimary:      gfx.RGB24(staticNeutralBluish50),
+		ButtonPrimaryFill: gfx.RGB24(staticNeutralBluish50),
+		ButtonPrimaryFg:   gfx.RGB24(staticNeutralBluish1000),
 
-		CodeBlock:  ui.RGB24(staticNeutralBluish900),
-		CodeBanner: ui.RGB24(staticNeutralBluish850),
-		InlineCode: ui.RGB24(staticNeutral800),
+		CodeBlock:  gfx.RGB24(staticNeutralBluish900),
+		CodeBanner: gfx.RGB24(staticNeutralBluish850),
+		InlineCode: gfx.RGB24(staticNeutral800),
 		// 语法色官方没有公开令牌，这六个是我们自己的取值（已用真实代码块目视校验）。
-		CodeComment:  ui.RGB24(0x6a9955),
-		CodeString:   ui.RGB24(0xce9178),
-		CodeNumber:   ui.RGB24(0xb5cea8),
-		CodeKeyword:  ui.RGB24(0x569cd6),
-		CodeFunction: ui.RGB24(0xdcdcaa),
-		CodeVariable: ui.RGB24(0x9cdcfe),
+		CodeComment:  gfx.RGB24(0x6a9955),
+		CodeString:   gfx.RGB24(0xce9178),
+		CodeNumber:   gfx.RGB24(0xb5cea8),
+		CodeKeyword:  gfx.RGB24(0x569cd6),
+		CodeFunction: gfx.RGB24(0xdcdcaa),
+		CodeVariable: gfx.RGB24(0x9cdcfe),
 
-		Bubble:     ui.RGB24(staticNeutralBluish850), // --dsw-specific-bubble
-		InputMajor: ui.RGB24(staticNeutralBluish850), // --dsw-specific-input-major
+		Bubble:     gfx.RGB24(staticNeutralBluish850), // --dsw-specific-bubble
+		InputMajor: gfx.RGB24(staticNeutralBluish850), // --dsw-specific-input-major
 
-		Scrollbar:      ui.RGB24(staticNeutral700),
-		ScrollbarHover: ui.RGB24(staticNeutral600),
+		Scrollbar:      gfx.RGB24(staticNeutral700),
+		ScrollbarHover: gfx.RGB24(staticNeutral600),
 
-		Success: ui.RGB24(staticGreen500),
-		Error:   ui.RGB24(staticRed400),
-		Warn:    ui.RGB24(staticAmber500),
-		Info:    ui.RGB24(staticDeepseek400),
+		Success: gfx.RGB24(staticGreen500),
+		Error:   gfx.RGB24(staticRed400),
+		Warn:    gfx.RGB24(staticAmber500),
+		Info:    gfx.RGB24(staticDeepseek400),
 
 		// 暗色：tertiary = 900 档（官方 design-platform.css 的暗色别名解析）。
-		SuccessTertiary: ui.RGB24(staticGreen900),
-		SuccessPrimary:  ui.RGB24(staticGreen500),
-		WarnTertiary:    ui.RGB24(staticAmber900),
-		WarnLabel:       ui.RGB24(staticAmber600),
+		SuccessTertiary: gfx.RGB24(staticGreen900),
+		SuccessPrimary:  gfx.RGB24(staticGreen500),
+		WarnTertiary:    gfx.RGB24(staticAmber900),
+		WarnLabel:       gfx.RGB24(staticAmber600),
 
 		Selection: ui.RGBA(59, 130, 246, 0.40), // --dsw-alias-bg-document-selection
 
@@ -204,14 +205,14 @@ func Light() *pluginapi.Theme {
 		Name: "ds-light",
 		Dark: false,
 
-		BgBase:      ui.RGB24(staticNeutralBluish00),
-		SidebarFill: ui.RGB24(staticNeutralBluish50),
-		BgLayer1:    ui.RGB24(staticNeutralBluish00),
-		BgLayer2:    ui.RGB24(staticNeutralBluish00),
-		BgLayer3:    ui.RGB24(staticNeutralBluish00),
+		BgBase:      gfx.RGB24(staticNeutralBluish00),
+		SidebarFill: gfx.RGB24(staticNeutralBluish50),
+		BgLayer1:    gfx.RGB24(staticNeutralBluish00),
+		BgLayer2:    gfx.RGB24(staticNeutralBluish00),
+		BgLayer3:    gfx.RGB24(staticNeutralBluish00),
 
-		NavActive: ui.RGB24(staticNeutralBluish100),
-		NavHover:  ui.RGB24(staticNeutralBluish75),
+		NavActive: gfx.RGB24(staticNeutralBluish100),
+		NavHover:  gfx.RGB24(staticNeutralBluish75),
 		Hover:     ui.RGBA(38, 49, 72, 0.06), // #2631480f
 
 		BorderL1: ui.RGBA(0, 0, 0, 0.04), // #0000000a
@@ -219,43 +220,43 @@ func Light() *pluginapi.Theme {
 		BorderL3: ui.RGBA(0, 0, 0, 0.12), // #0000001f
 		BorderL4: ui.RGBA(0, 0, 0, 0.16), // #00000029
 
-		LabelPrimary:   ui.RGB24(0x000000),
-		LabelSecondary: ui.RGB24(staticNeutralBluish700),
-		LabelTertiary:  ui.RGB24(staticNeutralBluish600),
-		LabelCaption:   ui.RGB24(staticNeutralBluish400),
-		LabelDimmed:    ui.RGB24(staticNeutralBluish200),
+		LabelPrimary:   gfx.RGB24(0x000000),
+		LabelSecondary: gfx.RGB24(staticNeutralBluish700),
+		LabelTertiary:  gfx.RGB24(staticNeutralBluish600),
+		LabelCaption:   gfx.RGB24(staticNeutralBluish400),
+		LabelDimmed:    gfx.RGB24(staticNeutralBluish200),
 
-		Link:              ui.RGB24(staticDeepseek500),
-		BrandPrimary:      ui.RGB24(staticNeutralBluish1000),
-		ButtonPrimaryFill: ui.RGB24(staticNeutralBluish1000),
-		ButtonPrimaryFg:   ui.RGB24(staticNeutralBluish00),
+		Link:              gfx.RGB24(staticDeepseek500),
+		BrandPrimary:      gfx.RGB24(staticNeutralBluish1000),
+		ButtonPrimaryFill: gfx.RGB24(staticNeutralBluish1000),
+		ButtonPrimaryFg:   gfx.RGB24(staticNeutralBluish00),
 
-		CodeBlock:    ui.RGB24(staticNeutralBluish50),
-		CodeBanner:   ui.RGB24(staticNeutralBluish50),
-		InlineCode:   ui.RGB24(staticNeutralBluish50),
-		CodeComment:  ui.RGB24(0x6a9955),
-		CodeString:   ui.RGB24(0xa31515),
-		CodeNumber:   ui.RGB24(0x098658),
-		CodeKeyword:  ui.RGB24(0x0000ff),
-		CodeFunction: ui.RGB24(0x795e26),
-		CodeVariable: ui.RGB24(0x001080),
+		CodeBlock:    gfx.RGB24(staticNeutralBluish50),
+		CodeBanner:   gfx.RGB24(staticNeutralBluish50),
+		InlineCode:   gfx.RGB24(staticNeutralBluish50),
+		CodeComment:  gfx.RGB24(0x6a9955),
+		CodeString:   gfx.RGB24(0xa31515),
+		CodeNumber:   gfx.RGB24(0x098658),
+		CodeKeyword:  gfx.RGB24(0x0000ff),
+		CodeFunction: gfx.RGB24(0x795e26),
+		CodeVariable: gfx.RGB24(0x001080),
 
-		Bubble:     ui.RGB24(staticDeepseek50), // --dsw-specific-bubble
-		InputMajor: ui.RGB24(staticNeutralBluish00),
+		Bubble:     gfx.RGB24(staticDeepseek50), // --dsw-specific-bubble
+		InputMajor: gfx.RGB24(staticNeutralBluish00),
 
-		Scrollbar:      ui.RGB24(staticNeutral200),
-		ScrollbarHover: ui.RGB24(staticNeutral300),
+		Scrollbar:      gfx.RGB24(staticNeutral200),
+		ScrollbarHover: gfx.RGB24(staticNeutral300),
 
-		Success: ui.RGB24(staticGreen500),
-		Error:   ui.RGB24(staticRed600),
-		Warn:    ui.RGB24(staticAmber500),
-		Info:    ui.RGB24(staticDeepseek500),
+		Success: gfx.RGB24(staticGreen500),
+		Error:   gfx.RGB24(staticRed600),
+		Warn:    gfx.RGB24(staticAmber500),
+		Info:    gfx.RGB24(staticDeepseek500),
 
 		// 亮色：tertiary = 100 档。
-		SuccessTertiary: ui.RGB24(staticGreen100),
-		SuccessPrimary:  ui.RGB24(staticGreen500),
-		WarnTertiary:    ui.RGB24(staticAmber100),
-		WarnLabel:       ui.RGB24(staticAmber600),
+		SuccessTertiary: gfx.RGB24(staticGreen100),
+		SuccessPrimary:  gfx.RGB24(staticGreen500),
+		WarnTertiary:    gfx.RGB24(staticAmber100),
+		WarnLabel:       gfx.RGB24(staticAmber600),
 
 		Selection: ui.RGBA(59, 130, 246, 0.30),
 
@@ -270,7 +271,7 @@ func Light() *pluginapi.Theme {
 // Spinner）只认 ui.Theme。不给它一套和令牌同源的色，输入框、按钮、滚动条
 // 就会是 viva 默认的灰蓝，和我们照抄的官方色打架——「外表像」就漏了。
 func VivaTheme(t *pluginapi.Theme) ui.Theme {
-	base := ui.DefaultMetrics()
+	base := gfx.DefaultMetrics()
 	base.RadiusControl = t.Radii.SM
 	return ui.Theme{
 		Background:          t.BgBase,
@@ -296,11 +297,11 @@ func VivaTheme(t *pluginapi.Theme) ui.Theme {
 		Ring:                t.Link,
 		Success:             t.Success,
 		Danger:              t.Error,
-		DangerForeground:    ui.RGB24(staticNeutralBluish00),
+		DangerForeground:    gfx.RGB24(staticNeutralBluish00),
 		Chart: [5]ui.Color{
 			t.Link, t.Info, t.CodeKeyword, t.Success, t.Warn,
 		},
 		Metrics:    base,
-		Transition: ui.DefaultMotion(),
+		Transition: gfx.DefaultMotion(),
 	}
 }

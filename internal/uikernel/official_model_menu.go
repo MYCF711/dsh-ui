@@ -41,6 +41,7 @@ package uikernel
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -188,7 +189,7 @@ func ModelMenuMaxHeightFor(boundsHeight float32) float32 {
 // AfterDraw 的画"，因为那种画在界面上等于不存在。
 //
 // 返回 drawn=本帧画了命中区；clicked=这一帧点中了它（调用方据此切展开态）。
-func DrawModelTrigger(parent flex.Box, env *pluginapi.Env, opts ModelMenuOptions) (drawn, clicked bool) {
+func DrawModelTrigger(parent ui.Box, env *pluginapi.Env, opts ModelMenuOptions) (drawn, clicked bool) {
 	if env == nil || env.Tree == nil {
 		return false, false
 	}
@@ -201,7 +202,7 @@ func DrawModelTrigger(parent flex.Box, env *pluginapi.Env, opts ModelMenuOptions
 	}
 	box := parent.Size(opts.Anchor.Width, opts.Anchor.Height).HitWith(
 		env.Tree.ID(env.Feat, "model-menu-trigger"), zhModelMenuAria,
-		ui.HitOptions{Role: ui.RoleButton, Expandable: true, Expanded: opts.Open},
+		gfx.HitOptions{Role: gfx.RoleButton, Expandable: true, Expanded: opts.Open},
 	)
 	return true, box.Clicked()
 }
@@ -235,10 +236,10 @@ func DrawModelMenu(f *flex.Frame, env *pluginapi.Env, opts ModelMenuOptions) boo
 	maxHeight := ModelMenuMaxHeightFor(opts.Bounds.Height)
 
 	// 官方 `.menu` 是 portal 出去的一层：不占位、盖在其它节点上、被夹在框内。
-	menu := f.Popup().Above(opts.Anchor, ModelMenuAnchorGap, flex.End).Width(width)
+	menu := f.Popup().Above(opts.Anchor, ModelMenuAnchorGap, ui.End).Width(width)
 	menu.MaxHeight(maxHeight)
 	menu.Radius(t.Radii.MD).Background(t.BgLayer3).Border(1, t.BorderL1).
-		Shadow(ui.ShadowMD).Pad(ModelMenuPad).Gap(0).Children(func() {
+		Shadow(gfx.ShadowMD).Pad(ModelMenuPad).Gap(0).Children(func() {
 		if opts.FetchFailure != "" {
 			// 官方 `.error`：11/16 + error 色 + 6px 7px 内边距 + md 圆角。
 			f.Row().FillWidth().Radius(t.Radii.MD).
@@ -276,7 +277,7 @@ func drawModelProviderRow(f *flex.Frame, t *pluginapi.Theme, provider ModelProvi
 		label = t.LabelPrimary
 	}
 	f.Column().FillWidth().PadSides(0, ModelMenuPad, 0, ModelMenuPad).Children(func() {
-		f.Row().FillWidth().Height(ModelMenuCellHeight).Items(flex.Center).
+		f.Row().FillWidth().Height(ModelMenuCellHeight).Items(ui.Center).
 			PadSides(0, ModelMenuCellPadX, 0, ModelMenuCellPadX).Gap(ModelMenuCellGap).Children(func() {
 			f.Text(name).FontSize(ModelMenuCellFont).LineHeight(ModelMenuCellLine).Color(label).Ellipsis()
 		})

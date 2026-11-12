@@ -18,6 +18,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -55,7 +56,7 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 		t.Fatal(err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("layout-drag")
 	// 壳给的侧栏偏好宽：官方默认 280（dssidebar.Plugin.Width()）。这里写死是因为
 	// 这条用例要验的正是「壳说 280、用户拖到 360 之后画出来的是 360」。
@@ -66,7 +67,7 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 		Title: "layout-drag", Width: layoutW, Height: layoutH,
 		Tree: tree, WindowMode: app.WindowFrameless,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		rightPref := size.Width * rightbarOpenFrac
 		env := &pluginapi.Env{
@@ -102,13 +103,13 @@ func layoutWindow(t *testing.T, shell *Plugin, act pluginapi.Actions) (*headless
 }
 
 // findHit 在快照里按标签找命中区。
-func findHit(snapshot app.Snapshot, label string) (ui.Hit, bool) {
+func findHit(snapshot app.Snapshot, label string) (gfx.Hit, bool) {
 	for _, hit := range snapshot.Hits {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // TestLayoutDragHeadless 真窗口 + 真指针事件：拖侧栏分隔线，

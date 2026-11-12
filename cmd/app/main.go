@@ -52,6 +52,7 @@ import (
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
@@ -84,8 +85,8 @@ const cacheLimit = 5
 
 type model struct {
 	view   flex.View
-	draft  flex.Field
-	search flex.Field // 侧栏过滤（按标题 + cwd 匹配）
+	draft  ui.Field
+	search ui.Field // 侧栏过滤（按标题 + cwd 匹配）
 	inv    app.Invalidator
 	cli    *apiclient.Client
 	cache  map[string]*cachedSession
@@ -1590,18 +1591,18 @@ func newConfig(m *model) app.Config {
 		MinWidth: 760, MinHeight: 520, Invalidator: &m.inv}
 	// 插件的输入框也要登记，否则收不到键盘（viva 只把登记过的 Field 当输入焦点候选）。
 	// 走一次统一的聚合：以后再加插件不用改这里。
-	fields := []*flex.Field{&m.draft}
+	fields := []*ui.Field{&m.draft}
 	for _, p := range m.kernel.Plugins() {
 		if withFields, ok := p.(pluginapi.Fields); ok {
 			fields = append(fields, withFields.Fields()...)
 		}
 	}
 	configureFrameWindow(&cfg, runtime.GOOS == "windows", theme)
-	cfg.TextInput = m.chrome.wrapTextInput(flex.Fields(fields...))
+	cfg.TextInput = m.chrome.wrapTextInput(ui.Fields(fields...))
 	m.chrome.newSession = m.newSession
 	m.chrome.toggleRightbar = m.toggleRightbar
 
-	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	cfg.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		if runtime.GOOS == "windows" {
 			if id, ok := canvas.ClickTarget(); ok {
 				if err := m.chrome.handleClick(id); err != nil {
@@ -1867,7 +1868,7 @@ func newConfig(m *model) app.Config {
 	// 用 viva 自带的 `View.Wheel`：它按**指针位置**找最内层能滚的 ScrollArea，
 	// 滚到头再往外层找，行为跟浏览器一致。自己拿当前会话的 ScrollState 去 Wheel
 	// 只覆盖"消息区"一个区域，侧栏/轨迹栏在指针下时就不该滚消息区。
-	cfg.OnScroll = func(ev ui.ScrollEvent) ui.EventResult {
+	cfg.OnScroll = func(ev gfx.ScrollEvent) gfx.EventResult {
 		for _, plugin := range m.kernel.Plugins() {
 			if handler, ok := plugin.(pubapi.ScrollHandler); ok {
 				if result := handler.HandleScroll(ev); result.Handled {
@@ -1878,9 +1879,9 @@ func newConfig(m *model) app.Config {
 		return m.view.Wheel(ev)
 	}
 
-	cfg.OnKey = func(ev ui.KeyEvent) ui.EventResult {
+	cfg.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
 		if ev.Release {
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		}
 		if runtime.GOOS == "windows" {
 			if result := m.chrome.handleKey(ev); result.Handled {
@@ -1893,9 +1894,9 @@ func newConfig(m *model) app.Config {
 			// shell.overlay 里的画重新执行。实测：F1 把插件状态切成 shown=true，
 			// 但之后一帧都没再画，面板永远不出现（key 16 handled=true 却看不见东西）。
 			m.inv.Invalidate()
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
 
 	cfg.OnResize = func(ui.Size) { m.inv.Invalidate() }
@@ -1907,19 +1908,19 @@ func newConfig(m *model) app.Config {
 // 为什么返回 KeyEvent 而不是 ui.Key：**修饰键也是路由的一部分**。
 // 设置浮层的入口是 Shift+F2，而普通 F2 是命令面板——只翻键名会把 Shift 丢掉，
 // 注入的按键就永远打不开设置，而"打不开"看起来会像"插件没装/没接上"。
-func parseKeys(seq string) []ui.KeyEvent {
-	var out []ui.KeyEvent
+func parseKeys(seq string) []gfx.KeyEvent {
+	var out []gfx.KeyEvent
 	for _, raw := range strings.Split(seq, ",") {
 		name := strings.TrimSpace(strings.ToLower(raw))
-		var mods ui.Modifiers
+		var mods gfx.Modifiers
 		if rest, ok := strings.CutPrefix(name, "shift+"); ok {
-			mods, name = ui.ModifierShift, rest
+			mods, name = gfx.ModifierShift, rest
 		}
 		key, ok := keyFromName(name)
 		if !ok {
 			continue
 		}
-		out = append(out, ui.KeyEvent{Key: key, Modifiers: mods})
+		out = append(out, gfx.KeyEvent{Key: key, Modifiers: mods})
 	}
 	return out
 }
@@ -1928,37 +1929,37 @@ func parseKeys(seq string) []ui.KeyEvent {
 //
 // 加插件键位的同一条规矩：插件吃哪个键，这里就得认识哪个名字，
 // 否则截图时按键静默无效（F5 加的时候踩过）。
-func keyFromName(name string) (ui.Key, bool) {
+func keyFromName(name string) (gfx.Key, bool) {
 	switch name {
 	case "down":
-		return ui.KeyDown, true
+		return gfx.KeyDown, true
 	case "up":
-		return ui.KeyUp, true
+		return gfx.KeyUp, true
 	case "f1":
-		return ui.KeyF1, true
+		return gfx.KeyF1, true
 	case "f2":
-		return ui.KeyF2, true
+		return gfx.KeyF2, true
 	case "f5":
 		// 终端面板（dsterminal）。
-		return ui.KeyF5, true
+		return gfx.KeyF5, true
 	case "f6":
-		return ui.KeyF6, true
+		return gfx.KeyF6, true
 	case "f7":
-		return ui.KeyF7, true
+		return gfx.KeyF7, true
 	case "f8":
-		return ui.KeyF8, true
+		return gfx.KeyF8, true
 	case "f12":
-		return ui.KeyF12, true
+		return gfx.KeyF12, true
 	case "home":
-		return ui.KeyHome, true
+		return gfx.KeyHome, true
 	case "end":
-		return ui.KeyEnd, true
+		return gfx.KeyEnd, true
 	case "esc":
-		return ui.KeyEscape, true
+		return gfx.KeyEscape, true
 	case "enter":
 		// 审批条可见时 Enter = 允许（dscomposer 的 HandleKey 只在可见时接管）。
 		// 加它不是为了别的：验「允许之后宿主真的执行工具」必须有办法按下允许。
-		return ui.KeyEnter, true
+		return gfx.KeyEnter, true
 	}
 	return 0, false
 }
@@ -2598,7 +2599,7 @@ func main() {
 		startShot(m, shotPath, time.Duration(*shotWait)*time.Second, *chromeReport, *chromeProbe)
 	}
 
-	var canvas ui.Canvas
+	var canvas gfx.Canvas
 	if err := app.RunCanvas(newConfig(m), &canvas); err != nil {
 		log.Fatal(err)
 	}

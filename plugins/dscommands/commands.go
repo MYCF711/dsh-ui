@@ -14,6 +14,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -335,10 +336,10 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 //
 // Ctrl+K 开关；开着时 ↑↓ 选、Enter 执行、Esc 关。
 // **Ctrl+K 只在 Ctrl 按下且 key 是 K 时吃**，其余一律放行。
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	// 用 F2 而不是 Ctrl+K：viva 的 OnKey **不送字母键**（字母走文本输入框），
 	// 所以 Ctrl+K 这种组合在这层拿不到。键枚举只有 F1-F12/方向/Enter/Esc 等。
-	if ev.Key == ui.KeyF2 {
+	if ev.Key == gfx.KeyF2 {
 		p.shown = !p.shown
 		p.query = nil
 		p.cursor = 0
@@ -353,20 +354,20 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		return false
 	}
 	switch ev.Key {
-	case ui.KeyEscape:
+	case gfx.KeyEscape:
 		p.shown = false
 		return true
-	case ui.KeyDown:
+	case gfx.KeyDown:
 		if n := len(p.filtered()); n > 0 {
 			p.cursor = (p.cursor + 1) % n
 		}
 		return true
-	case ui.KeyUp:
+	case gfx.KeyUp:
 		if n := len(p.filtered()); n > 0 {
 			p.cursor = (p.cursor + n - 1) % n
 		}
 		return true
-	case ui.KeyEnter:
+	case gfx.KeyEnter:
 		cs := p.filtered()
 		if p.cursor >= 0 && p.cursor < len(cs) && cs[p.cursor].Action != nil {
 			cs[p.cursor].Action()
@@ -409,7 +410,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			if i == p.cursor {
 				col = t.Info // 选中项用 Info 色，和官方下拉的高亮一致
 			}
-			f.Row().FillWidth().Items(flex.Center).Gap(8).Children(func() {
+			f.Row().FillWidth().Items(ui.Center).Gap(8).Children(func() {
 				f.Text(c.Name).FontSize(13).Color(col)
 				f.Text(c.Hint).FontSize(11).Color(t.LabelTertiary).Grow(1)
 			})

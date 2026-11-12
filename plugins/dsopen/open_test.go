@@ -6,6 +6,7 @@ import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -22,14 +23,14 @@ import (
 
 // renderOpen 画一帧会话头部，返回这一帧画出来的矩形。
 // click 非空时走 canvas 的事件 pass，测到的是 box.Clicked() 的真实分支。
-func renderOpen(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) []ui.Rectangle {
+func renderOpen(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) []gfx.Rectangle {
 	t.Helper()
 	if p.theme == nil {
 		p.theme = dscore.Dark()
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("open-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55

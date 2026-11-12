@@ -3,6 +3,7 @@ package dscore
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -30,14 +31,14 @@ type Primitives struct {
 //     我们原来的 NavActive 是自造的深一档色，官方没有这个东西。
 //
 // height 由调用方给（官方会话行 32、项目行 34），这里只管形状。
-func (p *Primitives) ListRow(f *flex.Frame, id ui.ID, active bool, height float32, body func()) flex.Box {
+func (p *Primitives) ListRow(f *flex.Frame, id gfx.ID, active bool, height float32, body func()) ui.Box {
 	t := p.Theme
 	row := f.Row().FillWidth().Height(height).Radius(t.Radii.MD).
-		PadX(8).PadY(0).Items(flex.Center).Gap(0)
+		PadX(8).PadY(0).Items(ui.Center).Gap(0)
 	if active {
 		row = row.Background(t.Hover)
 	} else {
-		row = row.Hover(flex.Look{}.Background(t.Hover))
+		row = row.Hover(ui.Look{}.Background(t.Hover))
 	}
 	return row.Hit(id, "").Children(body)
 }
@@ -46,23 +47,23 @@ func (p *Primitives) ListRow(f *flex.Frame, id ui.ID, active bool, height float3
 //
 // 用文字字形（+ ↑ ×）而不是矢量图标：viva 的 Icon 是分层路径，为三个字形引一套
 // 图标构造不划算；这个尺寸下字形和图标看不出差别。
-func (p *Primitives) CircleButton(f *flex.Frame, id ui.ID, glyph string, filled bool) bool {
+func (p *Primitives) CircleButton(f *flex.Frame, id gfx.ID, glyph string, filled bool) bool {
 	t := p.Theme
 	bg, fg := t.BgLayer3, t.LabelSecondary
 	if filled {
 		bg, fg = t.ButtonPrimaryFill, t.ButtonPrimaryFg
 	}
 	return f.Row().Width(28).Height(28).Radius(14).Background(bg).
-		Items(flex.Center).Justify(flex.Center).
-		Hover(flex.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
+		Items(ui.Center).Justify(ui.Center).
+		Hover(ui.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
 		f.Text(glyph).FontSize(15).Color(fg)
 	}).Clicked()
 }
 
 // Chip 一个只读小标签。官方 .chip：max-width 240、gap 3px、business-primary 文字。
-func (p *Primitives) Chip(f *flex.Frame, label string) flex.Box {
+func (p *Primitives) Chip(f *flex.Frame, label string) ui.Box {
 	t := p.Theme
-	return f.Row().Height(20).Radius(t.Radii.XS).PadX(6).Items(flex.Center).
+	return f.Row().Height(20).Radius(t.Radii.XS).PadX(6).Items(ui.Center).
 		Background(t.BgLayer2).Children(func() {
 		f.Text(label).FontSize(t.Fonts.Tiny).Color(t.Info)
 	})
@@ -70,7 +71,7 @@ func (p *Primitives) Chip(f *flex.Frame, label string) flex.Box {
 
 // Bubble 一个用户气泡容器。官方 .bubble：radius xl、specific-bubble 底、
 // font-size/line-height 跟正文令牌走。
-func (p *Primitives) Bubble(f *flex.Frame, body func()) flex.Box {
+func (p *Primitives) Bubble(f *flex.Frame, body func()) ui.Box {
 	t := p.Theme
 	return f.Column().Pad(10).Radius(t.Radii.XL).Background(t.Bubble).Children(body)
 }
@@ -89,14 +90,14 @@ func (p *Primitives) Bubble(f *flex.Frame, body func()) flex.Box {
 //
 // 所以它比会话行**高 2px（34 vs 32）**、字是正文色而不是灰字——
 // 原来那版 26px 的灰字按钮和官方不是一个东西。
-func (p *Primitives) SectionHeader(f *flex.Frame, id ui.ID, title string, count int, open bool) flex.Box {
+func (p *Primitives) SectionHeader(f *flex.Frame, id gfx.ID, title string, count int, open bool) ui.Box {
 	t := p.Theme
 	arrow := "▸"
 	if open {
 		arrow = "▾"
 	}
 	return f.Row().FillWidth().Height(34).Radius(t.Radii.MD).PadX(8).
-		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
+		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
 		f.Text(arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
 		f.Text(title).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Ellipsis()
 		f.Spacer()
@@ -109,17 +110,17 @@ func (p *Primitives) SectionHeader(f *flex.Frame, id ui.ID, title string, count 
 }
 
 // Badge 是行尾的小徽标（状态、条数、错误）。
-func (p *Primitives) Badge(f *flex.Frame, text string, color ui.Color) flex.Box {
+func (p *Primitives) Badge(f *flex.Frame, text string, color ui.Color) ui.Box {
 	t := p.Theme
-	return f.Row().Height(18).Radius(t.Radii.XS).PadX(5).Items(flex.Center).
+	return f.Row().Height(18).Radius(t.Radii.XS).PadX(5).Items(ui.Center).
 		Background(t.BgLayer3).Children(func() {
 		f.Text(text).FontSize(t.Fonts.Tiny).Color(color)
 	})
 }
 
 // Dot 是一个状态圆点（未读、运行中、错误）。
-func (p *Primitives) Dot(f *flex.Frame, color ui.Color, size float32) flex.Box {
-	return f.Row().Width(size).Height(size).Radius(ui.RadiusFull).Background(color)
+func (p *Primitives) Dot(f *flex.Frame, color ui.Color, size float32) ui.Box {
+	return f.Row().Width(size).Height(size).Radius(gfx.RadiusFull).Background(color)
 }
 
 // Divider 是一条最轻的分隔线（官方 border-l1）。
@@ -156,11 +157,11 @@ func (p *Primitives) Hairline(f *flex.Frame) {
 //
 // 左边距 12 取 `--dsh-sidebar-inline-padding`，这样底部条的文字和侧栏文字左对齐，
 // 而不是从窗口中间（中栏）开始。
-func (p *Primitives) StatusBarRow(f *flex.Frame, height float32, body func()) flex.Box {
+func (p *Primitives) StatusBarRow(f *flex.Frame, height float32, body func()) ui.Box {
 	t := p.Theme
 	return f.Column().FillWidth().Height(height).Background(t.BgBase).Children(func() {
 		p.Hairline(f)
-		f.Row().FillWidth().FillHeight().PadX(12).Items(flex.Center).Gap(6).Children(body)
+		f.Row().FillWidth().FillHeight().PadX(12).Items(ui.Center).Gap(6).Children(body)
 	})
 }
 

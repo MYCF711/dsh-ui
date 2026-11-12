@@ -16,6 +16,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -66,7 +67,7 @@ func runFileRefsHeadless(t *testing.T, width, height int) {
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	painter := conversation.Panels()[0]
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("file-refs-headless")
 	var view flex.View
 	var invalidator app.Invalidator
@@ -75,7 +76,7 @@ func runFileRefsHeadless(t *testing.T, width, height int) {
 		Title: "file-refs-headless", Width: width, Height: height, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, current ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{

@@ -6,6 +6,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -19,9 +20,9 @@ import (
 type deleteProbe struct {
 	plugin   *Plugin
 	env      *pluginapi.Env
-	canvas   *ui.Canvas
-	tree     *ui.Tree
-	feature  ui.Scope
+	canvas   *gfx.Canvas
+	tree     *gfx.Tree
+	feature  gfx.Scope
 	deleted  []string
 	opened   []string
 	notified []string

@@ -11,6 +11,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -33,7 +34,7 @@ func TestGoalBarHeadlessCapture(t *testing.T) {
 	data := pluginapi.Snapshot{Cur: "s-001"}
 	act := pluginapi.Actions{Goal: func() string { return "把 DSH 重写成 Go 版本，界面用 dsh-ui" }}
 
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("goal-headless")
 	var view flex.View
 	var invalidator app.Invalidator
@@ -41,7 +42,7 @@ func TestGoalBarHeadlessCapture(t *testing.T) {
 		Title: "goal-bar", Width: 1182, Height: 832, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{

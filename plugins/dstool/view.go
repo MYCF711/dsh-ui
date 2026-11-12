@@ -6,6 +6,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // 这个文件画宿主声明的结构化结果（apiclient.ViewSpec）。
@@ -24,7 +25,7 @@ func (s *Cards) drawView(f *flex.Frame, env *pluginapi.Env, v *apiclient.ViewSpe
 
 	// 头：工具名 + 徽标
 	if v.Title != "" || v.Badge != "" {
-		f.Row().Gap(8).Items(flex.Center).Children(func() {
+		f.Row().Gap(8).Items(ui.Center).Children(func() {
 			f.Text(v.Title).Mono().Bold().FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
 			f.Spacer()
 			if v.Badge != "" {

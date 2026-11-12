@@ -5,6 +5,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -52,21 +53,21 @@ func TestParseFishPathCommandCounts(t *testing.T) {
 	if len(commands) != 80 {
 		t.Fatalf("命令数 = %d，want 80", len(commands))
 	}
-	counts := map[ui.PathCommandKind]int{}
+	counts := map[gfx.PathCommandKind]int{}
 	for _, c := range commands {
 		counts[c.Kind]++
 	}
-	if counts[ui.PathCommandMove] != 4 {
-		t.Fatalf("M = %d，want 4", counts[ui.PathCommandMove])
+	if counts[gfx.PathCommandMove] != 4 {
+		t.Fatalf("M = %d，want 4", counts[gfx.PathCommandMove])
 	}
-	if counts[ui.PathCommandCubic] != 71 {
-		t.Fatalf("C = %d，want 71", counts[ui.PathCommandCubic])
+	if counts[gfx.PathCommandCubic] != 71 {
+		t.Fatalf("C = %d，want 71", counts[gfx.PathCommandCubic])
 	}
-	if counts[ui.PathCommandLine] != 1 {
-		t.Fatalf("L = %d，want 1", counts[ui.PathCommandLine])
+	if counts[gfx.PathCommandLine] != 1 {
+		t.Fatalf("L = %d，want 1", counts[gfx.PathCommandLine])
 	}
-	if counts[ui.PathCommandClose] != 4 {
-		t.Fatalf("Z = %d，want 4", counts[ui.PathCommandClose])
+	if counts[gfx.PathCommandClose] != 4 {
+		t.Fatalf("Z = %d，want 4", counts[gfx.PathCommandClose])
 	}
 }
 
@@ -81,7 +82,7 @@ func TestParseFishPathGeometry(t *testing.T) {
 	for i, c := range commands {
 		// 曲线终点必须落在 viewBox 里：坐标错位（比如把 C 的 6 个参数当成 2 个点）
 		// 会让图形炸到画布外，而它照样"能画"——所以要看值域。
-		if c.Kind == ui.PathCommandClose {
+		if c.Kind == gfx.PathCommandClose {
 			continue
 		}
 		if c.Point.X < 0 || c.Point.X > dsbrand.FishViewBoxW || c.Point.Y < 0 || c.Point.Y > dsbrand.FishViewBoxH {

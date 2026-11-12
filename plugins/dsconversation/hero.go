@@ -7,6 +7,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -104,7 +105,7 @@ const (
 //     官方那是个按钮（开工作区选择器），我们没有对应 Action，所以这里画成纯标签。
 //   - `conversation.hero.options` / `agentPreset`：需要真实的模型/预设动作，未实现。
 type heroBoxes struct {
-	Root, Stack, Headline, Mark, TitleGroup, Badge, WorkspaceRow, Workspace flex.Box
+	Root, Stack, Headline, Mark, TitleGroup, Badge, WorkspaceRow, Workspace ui.Box
 }
 
 // heroStackWidth 是官方 `--dsh-composer-card-max-width`：
@@ -129,10 +130,10 @@ func (p *Plugin) drawHero(f *flex.Frame, env *pluginapi.Env) {
 	}
 
 	p.heroBoxes.Root = f.Column().WidthPercent(100).Grow(1).MinHeight(160).
-		Justify(flex.Center).Items(flex.Center).PadX(heroPadX).Children(func() {
+		Justify(ui.Center).Items(ui.Center).PadX(heroPadX).Children(func() {
 		p.heroBoxes.Stack = f.Column().WidthPercent(100).MaxWidth(heroStackWidth(mainWidth)).Gap(heroStackGap).Children(func() {
 			// headline：品牌标记 + (标题 + 徽标)，三者垂直居中、整体水平居中。
-			p.heroBoxes.Headline = f.Row().FillWidth().Items(flex.Center).Justify(flex.Center).
+			p.heroBoxes.Headline = f.Row().FillWidth().Items(ui.Center).Justify(ui.Center).
 				Gap(heroHeadlineGapX).Children(func() {
 				// 品牌标记：官方 34px 宽的鲸鱼，纯填充，颜色 label-primary。
 				// 品牌标记：优先用注入的（ui.brand），没有就退回包级默认。
@@ -145,10 +146,10 @@ func (p *Plugin) drawHero(f *flex.Frame, env *pluginapi.Env) {
 				p.heroBoxes.Mark = f.Icon(brandIcon).Width(brandW).Height(brandW * dsbrand.FishViewBoxH / dsbrand.FishViewBoxW).
 					Color(t.LabelPrimary)
 
-				p.heroBoxes.TitleGroup = f.Row().Items(flex.Center).Gap(heroTitleGapX).Children(func() {
+				p.heroBoxes.TitleGroup = f.Row().Items(ui.Center).Gap(heroTitleGapX).Children(func() {
 					f.Text(heroHeadlineText).
 						FontSize(heroHeadlineSize).LineHeight(heroHeadlineLine).
-						Weight(ui.WeightMedium).Color(t.LabelPrimary)
+						Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 					p.drawPreviewBadge(f)
 				})
 			})
@@ -159,10 +160,10 @@ func (p *Plugin) drawHero(f *flex.Frame, env *pluginapi.Env) {
 					PadSides(0, heroWorkspaceRowPadRight, 0, heroWorkspaceRowPadLeft).
 					Children(func() {
 						p.heroBoxes.Workspace = f.Row().Height(heroWorkspaceMinHeight).MaxWidth(heroWorkspaceMaxWidth).
-							PadX(heroWorkspacePadX).Radius(t.Radii.SM).Items(flex.Center).Children(func() {
+							PadX(heroWorkspacePadX).Radius(t.Radii.SM).Items(ui.Center).Children(func() {
 							f.Text(ws).
 								FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
-								Weight(ui.WeightMedium).Color(t.LabelPrimary).
+								Weight(gfx.WeightMedium).Color(t.LabelPrimary).
 								MaxLines(1).Ellipsis()
 						})
 					})
@@ -216,9 +217,9 @@ func (p *Plugin) drawPreviewBadge(f *flex.Frame) {
 		PadSides(heroBadgePadTop, heroBadgePadX, 0, heroBadgePadX).
 		MarginSides(heroBadgeMarginTop, 0, 0, 0).
 		Radius(heroBadgeRadius).Border(heroBadgeBorder, t.Hover).
-		Background(t.BgLayer3).Items(flex.Center).Children(func() {
+		Background(t.BgLayer3).Items(ui.Center).Children(func() {
 		f.Text(heroBadgeText).
-			FontSize(t.Fonts.Caption).Weight(ui.WeightMedium).Mono().
+			FontSize(t.Fonts.Caption).Weight(gfx.WeightMedium).Mono().
 			Color(t.LabelPrimary)
 	})
 }

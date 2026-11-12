@@ -8,12 +8,13 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // Fields 让壳把两个 Trajectory 搜索框登记给真实文本输入系统。主区与右栏可以
 // 同屏出现，因此它们不是同一个 flex.Field；查询是否一致不影响同一份 Snapshot。
-func (p *Plugin) Fields() []*flex.Field {
-	return []*flex.Field{&p.searchField, &p.mainSearchField}
+func (p *Plugin) Fields() []*ui.Field {
+	return []*ui.Field{&p.searchField, &p.mainSearchField}
 }
 
 func (p *Plugin) initWPD1() {
@@ -34,7 +35,7 @@ func (p *Plugin) initWPD1() {
 	}
 }
 
-func (p *Plugin) trajectoryField(scrollKey string) *flex.Field {
+func (p *Plugin) trajectoryField(scrollKey string) *ui.Field {
 	if strings.HasPrefix(scrollKey, "main-") {
 		return &p.mainSearchField
 	}
@@ -56,7 +57,7 @@ func (p *Plugin) drawTrajectoryWorkspace(f *flex.Frame, env *pluginapi.Env, data
 	query := strings.TrimSpace(rawQuery)
 	filtered, matches := filterTrajectoryGroups(data, groups, query)
 
-	f.Row().WidthPercent(100).MinHeight(30).Gap(6).Items(flex.Center).Children(func() {
+	f.Row().WidthPercent(100).MinHeight(30).Gap(6).Items(ui.Center).Children(func() {
 		f.Field(field, env.Tree.ID(env.Feat, "trajectory-search-"+scrollKey+data.Cur), "搜索当前窗口", "Turn / Step / 工具 / 参数 / 结果 / 错误").
 			Grow(1).FontSize(t.Fonts.Caption)
 		if query != "" {
@@ -68,7 +69,7 @@ func (p *Plugin) drawTrajectoryWorkspace(f *flex.Frame, env *pluginapi.Env, data
 			}
 		}
 	})
-	f.Row().WidthPercent(100).MinHeight(18).Items(flex.Center).Children(func() {
+	f.Row().WidthPercent(100).MinHeight(18).Items(ui.Center).Children(func() {
 		f.Text("仅当前已加载窗口").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 	})
 
@@ -77,14 +78,14 @@ func (p *Plugin) drawTrajectoryWorkspace(f *flex.Frame, env *pluginapi.Env, data
 		if data.Cur == "" {
 			msg = "先选一个会话"
 		}
-		f.Column().WidthPercent(100).Grow(1).Justify(flex.Center).Items(flex.Center).PadX(12).Children(func() {
+		f.Column().WidthPercent(100).Grow(1).Justify(ui.Center).Items(ui.Center).PadX(12).Children(func() {
 			f.Text(msg).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
 				Color(t.LabelTertiary).TextCenter()
 		})
 		return
 	}
 	if query != "" && matches == 0 {
-		f.Column().WidthPercent(100).Grow(1).Justify(flex.Center).Items(flex.Center).PadX(12).Children(func() {
+		f.Column().WidthPercent(100).Grow(1).Justify(ui.Center).Items(ui.Center).PadX(12).Children(func() {
 			f.Text("没有匹配「" + query + "」的 Step").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
 				Color(t.LabelTertiary).TextCenter()
 		})
@@ -93,7 +94,7 @@ func (p *Plugin) drawTrajectoryWorkspace(f *flex.Frame, env *pluginapi.Env, data
 
 	shown, hidden := clipGroups(filtered, maxEntries)
 	scrID := env.Tree.ID(env.Feat, scrollKey+data.Cur)
-	var scrollState *flex.ScrollState
+	var scrollState *ui.ScrollState
 	if env.Scroll != nil {
 		scrollState = env.Scroll(scrID)
 	}
@@ -357,7 +358,7 @@ func (p *Plugin) drawTrajectoryTurnRow(f *flex.Frame, env *pluginapi.Env, data p
 	}
 	selected := p.selectedTurn[data.Cur] == g.key
 	header := f.Row().WidthPercent(100).MinHeight(24).Radius(t.Radii.SM).PadX(2).
-		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).
+		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, scope+"turn-"+g.key), title)
 	if selected {
 		header = header.Background(t.BgLayer2)
@@ -393,19 +394,19 @@ func (p *Plugin) drawTrajectoryStepRow(f *flex.Frame, env *pluginapi.Env, data p
 	}
 	label += name
 	row := f.Row().WidthPercent(100).Gap(8).PadY(4).Radius(t.Radii.SM).
-		Hover(flex.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, scope+"step-"+key), label)
+		Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, scope+"step-"+key), label)
 	if p.selectedStep[data.Cur] == key {
 		row = row.Background(t.BgLayer2)
 	}
 	row.Children(func() {
-		f.Column().Width(14).Items(flex.Center).Children(func() {
+		f.Column().Width(14).Items(ui.Center).Children(func() {
 			p.prims.Dot(f, dotColor(t, failed, msg.View), 6)
 			if !last {
 				f.Column().Width(2).Grow(1).Background(t.BorderL2)
 			}
 		})
 		f.Column().Grow(1).Gap(2).Children(func() {
-			f.Row().WidthPercent(100).Gap(6).Items(flex.Center).Children(func() {
+			f.Row().WidthPercent(100).Gap(6).Items(ui.Center).Children(func() {
 				arrow := "▸"
 				if open {
 					arrow = "▾"

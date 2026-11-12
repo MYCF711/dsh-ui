@@ -16,6 +16,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -38,7 +39,7 @@ type Plugin struct {
 	// viewData 在 main.body 的 chat 前后两个 painter 之间保存一帧原始快照。
 	// 这是公共 Actions 尚无 SelectConversationView 时的最小本地适配。
 	viewData   *pluginapi.Snapshot
-	viewScroll func(ui.ID) *flex.ScrollState
+	viewScroll func(gfx.ID) *ui.ScrollState
 	// turnOpen 记「哪一组 turn 被用户手动收/开过」。
 	//
 	// 只在本机内存里、按会话隔开：切回同一会话还是原样，进程重启就回到默认。
@@ -48,8 +49,8 @@ type Plugin struct {
 
 	// WP-D1：主区与右栏各有真实输入框，避免同屏时共享 Field.id 抢焦点。
 	// 查询、展开与选择都只作用于当前已加载 Snapshot，不触发任何历史请求。
-	searchField     flex.Field
-	mainSearchField flex.Field
+	searchField     ui.Field
+	mainSearchField ui.Field
 	stepOpen        map[string]bool
 	selectedTurn    map[string]string
 	selectedStep    map[string]string
@@ -120,7 +121,7 @@ func (p *Plugin) drawTimeline(f *flex.Frame, env *pluginapi.Env, data pluginapi.
 		total += len(groups[i].calls)
 	}
 
-	f.Row().WidthPercent(100).MinHeight(28).Items(flex.Center).Gap(6).Children(func() {
+	f.Row().WidthPercent(100).MinHeight(28).Items(ui.Center).Gap(6).Children(func() {
 		f.Text("轨迹").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
 		f.Spacer()
 		if total > 0 {
@@ -150,7 +151,7 @@ func (p *Plugin) drawTurnGroup(f *flex.Frame, env *pluginapi.Env, session, scope
 	title := "第 " + itoa(g.turn) + " 轮 · " + itoa(len(g.calls)) + " 次工具"
 
 	header := f.Row().WidthPercent(100).MinHeight(24).Radius(t.Radii.SM).PadX(2).
-		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).
+		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).
 		// 标签就是看得见的那行字：读屏和 -keys/无头点击都按它找，
 		// 不另起一个用户看不见的名字。
 		Hit(env.Tree.ID(env.Feat, scope+"turn-"+g.key), title).Children(func() {
@@ -321,10 +322,10 @@ func (p *Plugin) drawFullscreenButton(f *flex.Frame, env *pluginapi.Env) {
 	}
 }
 
-func (p *Plugin) chromeButton(f *flex.Frame, env *pluginapi.Env, name, label string, icon ui.Icon) flex.Box {
+func (p *Plugin) chromeButton(f *flex.Frame, env *pluginapi.Env, name, label string, icon gfx.Icon) ui.Box {
 	t := p.theme
 	return f.Row().Width(28).Height(28).Radius(t.Radii.SM).
-		Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(t.Hover)).
+		Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, name), label).Children(func() {
 		f.Icon(icon).Width(16).Height(16).Color(t.LabelSecondary)
 	})
@@ -349,8 +350,8 @@ func (p *Plugin) beginTrajectoryView(_ *flex.Frame, env *pluginapi.Env) {
 	}
 	env.Data.Stream = ""
 	env.Data.Busy = true
-	env.Scroll = func(ui.ID) *flex.ScrollState {
-		return &flex.ScrollState{Offset: 1e9}
+	env.Scroll = func(gfx.ID) *ui.ScrollState {
+		return &ui.ScrollState{Offset: 1e9}
 	}
 }
 
@@ -371,33 +372,33 @@ func (p *Plugin) drawTrajectoryView(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
-var rightbarCollapseIcon = ui.Icon{
-	ViewBox: 24, Stroke: 2, Cap: ui.CapRound, Join: ui.JoinRound,
-	Commands: []ui.PathCommand{
-		ui.MoveTo(5, 3), ui.LineTo(19, 3), ui.QuadTo(21, 3, 21, 5),
-		ui.LineTo(21, 19), ui.QuadTo(21, 21, 19, 21), ui.LineTo(5, 21),
-		ui.QuadTo(3, 21, 3, 19), ui.LineTo(3, 5), ui.QuadTo(3, 3, 5, 3), ui.ClosePath(),
-		ui.MoveTo(15, 3), ui.LineTo(15, 21),
+var rightbarCollapseIcon = gfx.Icon{
+	ViewBox: 24, Stroke: 2, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(5, 3), gfx.LineTo(19, 3), gfx.QuadTo(21, 3, 21, 5),
+		gfx.LineTo(21, 19), gfx.QuadTo(21, 21, 19, 21), gfx.LineTo(5, 21),
+		gfx.QuadTo(3, 21, 3, 19), gfx.LineTo(3, 5), gfx.QuadTo(3, 3, 5, 3), gfx.ClosePath(),
+		gfx.MoveTo(15, 3), gfx.LineTo(15, 21),
 	},
 }
 
-var rightbarFullscreenIcon = ui.Icon{
-	ViewBox: 16, Stroke: 1, Cap: ui.CapRound, Join: ui.JoinRound,
-	Commands: []ui.PathCommand{
-		ui.MoveTo(6, 2), ui.LineTo(2, 2), ui.LineTo(2, 6),
-		ui.MoveTo(10, 2), ui.LineTo(14, 2), ui.LineTo(14, 6),
-		ui.MoveTo(6, 14), ui.LineTo(2, 14), ui.LineTo(2, 10),
-		ui.MoveTo(10, 14), ui.LineTo(14, 14), ui.LineTo(14, 10),
+var rightbarFullscreenIcon = gfx.Icon{
+	ViewBox: 16, Stroke: 1, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(6, 2), gfx.LineTo(2, 2), gfx.LineTo(2, 6),
+		gfx.MoveTo(10, 2), gfx.LineTo(14, 2), gfx.LineTo(14, 6),
+		gfx.MoveTo(6, 14), gfx.LineTo(2, 14), gfx.LineTo(2, 10),
+		gfx.MoveTo(10, 14), gfx.LineTo(14, 14), gfx.LineTo(14, 10),
 	},
 }
 
-var rightbarRestoreIcon = ui.Icon{
-	ViewBox: 16, Stroke: 1, Cap: ui.CapRound, Join: ui.JoinRound,
-	Commands: []ui.PathCommand{
-		ui.MoveTo(2, 6), ui.LineTo(6, 6), ui.LineTo(6, 2),
-		ui.MoveTo(14, 6), ui.LineTo(10, 6), ui.LineTo(10, 2),
-		ui.MoveTo(2, 10), ui.LineTo(6, 10), ui.LineTo(6, 14),
-		ui.MoveTo(14, 10), ui.LineTo(10, 10), ui.LineTo(10, 14),
+var rightbarRestoreIcon = gfx.Icon{
+	ViewBox: 16, Stroke: 1, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(2, 6), gfx.LineTo(6, 6), gfx.LineTo(6, 2),
+		gfx.MoveTo(14, 6), gfx.LineTo(10, 6), gfx.LineTo(10, 2),
+		gfx.MoveTo(2, 10), gfx.LineTo(6, 10), gfx.LineTo(6, 14),
+		gfx.MoveTo(14, 10), gfx.LineTo(10, 10), gfx.LineTo(10, 14),
 	},
 }
 
@@ -413,7 +414,7 @@ func (p *Plugin) drawEntry(f *flex.Frame, msg apiclient.Message, last bool) {
 	// 行高用 MinHeight + PadY 撑，不要写 Height(...).Shrink(0)：
 	// 那组合会让整行塌成 0 高、一根线都不画（踩过，见 docs/plugin-api.md §7）。
 	f.Row().WidthPercent(100).Gap(8).PadY(4).Children(func() {
-		f.Column().Width(14).Items(flex.Center).Children(func() {
+		f.Column().Width(14).Items(ui.Center).Children(func() {
 			p.prims.Dot(f, dotColor(t, failed, msg.View), 6)
 			if !last {
 				f.Column().Width(2).Grow(1).Background(t.BorderL2)
@@ -421,7 +422,7 @@ func (p *Plugin) drawEntry(f *flex.Frame, msg apiclient.Message, last bool) {
 		})
 
 		f.Column().Grow(1).Gap(2).Children(func() {
-			f.Row().WidthPercent(100).Gap(6).Items(flex.Center).Children(func() {
+			f.Row().WidthPercent(100).Gap(6).Items(ui.Center).Children(func() {
 				f.Text(name).Mono().FontSize(t.Fonts.Caption).
 					Color(t.LabelSecondary).Ellipsis().Grow(1)
 				if failed {

@@ -19,6 +19,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -26,7 +27,7 @@ import (
 //
 // 用 flex.View.Draw 而不是手搓 Frame：popup/absolute 这些位置规则只有在真正的
 // 布局+绘制里才成立，手搓的 Frame 量不到"菜单贴在 trigger 上方 8px"。
-func renderContainer(t *testing.T, width, height float32, env *pluginapi.Env, body func(f *flex.Frame)) *ui.Canvas {
+func renderContainer(t *testing.T, width, height float32, env *pluginapi.Env, body func(f *flex.Frame)) *gfx.Canvas {
 	t.Helper()
 	if env == nil {
 		env = containerEnv(width, height)
@@ -39,8 +40,8 @@ func renderContainer(t *testing.T, width, height float32, env *pluginapi.Env, bo
 
 // containerEnv 造一个够用的 Env（真实 Canvas + 测量函数）。
 func containerEnv(width, height float32) *pluginapi.Env {
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size / 2
@@ -444,7 +445,7 @@ func TestCommandNodeSeparatorMatchesOfficial(t *testing.T) {
 
 // ── 小工具 ─────────────────────────────────────────────────────────
 
-func containerTexts(canvas *ui.Canvas) []string {
+func containerTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -452,7 +453,7 @@ func containerTexts(canvas *ui.Canvas) []string {
 	return out
 }
 
-func containerHasText(canvas *ui.Canvas, want string) bool {
+func containerHasText(canvas *gfx.Canvas, want string) bool {
 	for _, text := range containerTexts(canvas) {
 		if text == want || contains(text, want) {
 			return true

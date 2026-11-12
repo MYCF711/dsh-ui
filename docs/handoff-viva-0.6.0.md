@@ -244,3 +244,86 @@ func (p *Page) Draw(canvas *gfx.Canvas, bounds Rect, view func(C))
 2. **上游文档缺口未提**：`docs/upgrading.md` 漏了 `flex`→`ui` 合并与 `ui`→`gfx` 拆分（§1 注）。按本仓规矩可提 issue/文档 PR，但**对外动作需用户当次明确授权**；本轮只记录，未发。
 3. **issue #239 仍开**：上游 v0.5.1/v0.6.0 都未修（§5），我们继续兜底；不需要重提。
 4. 本 worktree **未 commit**（按任务约定由 Lead 统一提交）。
+
+---
+
+## 9. V-06-1 实测（阶段二第一步：`flex`→`ui` 类型搬家 + `ui`→`gfx` 拆分）
+
+> 现场：隔离 worktree `../dsh-ui-v06`（`D:/DeepSeek Harness/default-workspace/dsh-ui-v06`），分支 `chore/viva-0.6.0-stage2`，从 `origin/main`（`3f85ed1`，PR #46 后）拉出，**未 commit**。
+> `go.mod`: `github.com/vivaui/viva v0.6.0`；`go.sum` 为该版本 tidy 后的 10 行（由诊断副本 `go mod tidy` 全绿产出后回填）。
+> 本节数字全部是**本轮实测**（AST 计数 + 编译器），替代 §4.2 里那份偏低的估算（74 标识符 / 1225 处 / 144 文件）。
+
+### 9.1 结论
+
+| 项 | 结果 |
+|---|---|
+| `flex.*` → `ui.*` 类型搬家 | **完成**（本仓用到的 9 个 flex 名字 / 382 处 / 73 文件全部改到 `ui`） |
+| `ui.*` → `gfx.*` 拆分 | **完成**（81 个标识符 / 1737 处 / 166 文件） |
+| `gofmt -l` | **0 个文件** |
+| `go build ./...` | **红**——唯一根因是 `github.com/vivaui/viva/flex` 在 v0.6.0 不存在（146 个文件仍 import 它，里面是 `flex.Frame`/`flex.View`，属 V-06-2/V-06-3） |
+| `go vet ./...` / `go test ./...` | 同根因：受影响包 `[setup failed]`，**没有一条错误属于 V-06-1 类**（见 9.5 的编译器验证） |
+
+结论一句话：**V-06-1 的改名已 100% 做完且可证明没有残留**；build 不绿是 V-06-2/3 的施工面（`flex.Frame`/`flex.View` 不再导出），不是改名没做完。
+
+### 9.2 四张上游名单（从模块缓存源码抽的，不是照 release notes 猜）
+
+| 面 | v0.5.1 | v0.6.0 | 本仓用到 |
+|---|---|---|---|
+| `ui` 导出类型 | 86 | **54** | — |
+| `ui` 导出名（含函数/常量） | 259 | 177 | 改名后仍有 **1066** 处 `ui.*`（全部命中 v0.6.0 `ui`） |
+| 从 `ui` 消失的导出名 | — | **241**，其中 **240** 在 `gfx` 同名存在（唯一例外 `ReplaceBlockElements`，本仓 0 处） | 81 个 |
+| `flex` 导出名 | 35 | **包整体不存在**；33 个原样进 `ui`，`Frame`/`View` 不再导出 | 9 个 |
+
+保留不动的 5 个名字是**类型别名**（`ui/vocab.go`）：`type Color = gfx.Color`、`Rect`、`Size`、`Point`、`Theme`——所以本仓剩下的 `ui.Rect/Color/Size/Point/Theme` 与 `gfx` 侧完全可互操作，不用改。
+
+### 9.3 9 个"同名不同类型"的实测（§4.3 的坑，实际比预估窄）
+
+`ID / Tree / Row / Column / Grid / Text / Icon / Image / State` 在 v0.6.0 的 `ui` 里是元素函数、类型搬去 `gfx`。本仓实测：
+
+| 名字 | 作为**类型**用法 | 处理 |
+|---|---|---|
+| `Tree` | 127 | → `gfx.Tree` |
+| `ID` | 65 | → `gfx.ID` |
+| `Icon` | 64 | → `gfx.Icon` |
+| `Text` | 39 | → `gfx.Text` |
+| `Row` / `Column` / `Grid` / `Image` / `State` | **0**（本仓没有当类型用过） | 无需改 |
+
+为什么这批可以按名字判而不会误伤：在**旧树**（v0.5.1）里这 9 个名字在 `ui` 中**只有类型身份**，所以任何 `ui.X` 出现都只能是类型用法 → 改到 `gfx` 恒等价；改完用 v0.6.0 的 `ui`/`gfx` 导出名单全量校验，`ui.*` 1066 处、`gfx.*` 1737 处**零未知名**（0 处 `is not a type`、0 处 `undefined`）。
+
+### 9.4 改名清单（实测）
+
+`flex.*` → `ui.*`（9 名 / **382 处** / 73 文件）：`Center` 188、`Box` 109、`Field` 26、`Look` 23、`End` 11、`Start` 11、`Fields` 6、`ScrollState` 6、`Between` 2。
+
+`ui.*` → `gfx.*`（81 名 / **1737 处** / 166 文件），前 20：`Canvas` 282、`CubicTo` 160、`LineTo` 136、`Tree` 127、`KeyEvent` 87、`RGB24` 75、`MoveTo` 73、`ID` 65、`Icon` 64、`Hit` 48、`PathCommand` 42、`Text` 39、`EventResult` 37、`KeyEscape` 33、`ClosePath` 29、`Scope` 23、`WeightMedium` 22、`KeyEnter` 20、`ModifierShift` 20、`KeyDown` 19；其余 61 个见报告。
+
+批量改动：**188 个 .go 文件 + go.mod + go.sum**（`1996 insertions / 1854 deletions`）；import 面：`ui` 164 文件、`gfx` 166 文件（135 个文件同时 import 两个），`flex` 仍是 146 文件（V-06-2/3 残留）。**注释零丢失**（`//` 行 16895 → 16895）。
+
+### 9.5 怎么做的（可复现的配方）
+
+1. `names.exe` 从**模块缓存源码**抽四个名单（v0.5.1 `ui`/`flex`、v0.6.0 `ui`/`gfx`），算 `move_gfx`（从 `ui` 搬走的 **240** 个 + 9 个"同名类型变函数" = **249** 个；本仓命中 **81** 个）与 `flex_move`（33 个，本仓命中 9 个）。
+2. `rename.exe`：`go/parser` 拿 **selector 精确字节区间**改写（不是正则/不是 sed），import 声明**每个 decl 至多一次编辑**（保留注释与顺序），改完**回读解析校验**，任何不解析的文件自动回滚并记 `parse_fail`（本次 0）。
+3. `check_names.py`：把改后树里每个 `ui.X`/`gfx.X` 与 v0.6.0 导出名单比对（先剥注释/字符串）→ `ui` 0 未知、`gfx` 0 未知。
+4. **诊断副本**（一次性，不进交付树）：把 `*flex.Frame`→`ui.C`、`flex.View`→`ui.Page` 机械铺开后再 `go mod tidy`（**绿**）+ `go build`——剩 22 个包 / 168 行错误，**全部**是 `f.X undefined (type ui.C has no field or method X)`，即 V-06-2 的施工面；**没有一条** `undefined: ui.<搬走的类型>` 或 `is not a type`。这条是"V-06-1 无残留"的编译器级证据。
+
+### 9.6 还剩什么（下一步的准确工作量）
+
+| 归属 | 内容 | 实测 |
+|---|---|---|
+| **V-06-2** | `flex.Frame`→`ui.C` + `f.X()`→`ui.X(f)` | frame 方法调用 **912 处 / 85 文件**：`Text` 301、`Row` 267、`Column` 199、`Slot` 36、`Button` 22、`Icon` 22、`Spacer` 18、`Wrap` 12、`ScrollArea` 10、`Field` 7、`Bounds` 6、`Divider` 5、`Popup` 3、`Paragraph` 1、`Spinner` 1、`Switch` 1、`Theme` 1；减掉 `Bounds`(6)/`Theme`(1)（v0.6.0 `Ctx` 保留同名方法）→ **需改写 905 处**。另 `*flex.Frame` 形参 **371 处**、`f.End()` 3 处（测试收尾） |
+| **V-06-3** | `flex.View`→`ui.Page` | **119 处 / 85 文件**；`var view flex.View` 97 处 / 69 文件、`view.Draw(` 113、`view.Begin(` 4；**非测试文件只有 6 处**（`cmd/app/main.go` + 5 个 `spike/*/main.go`），其余全在测试 harness |
+| **V-06-4** | 控件面语义改写 | 落在 V-06-2 的调用里：`Button` 22、`ScrollArea` 10、`Field` 7、`Popup` 3、`Switch` 1；`f.Dialog(` / `f.Scroll(` **本仓 0 处**（§4.4 里 Dialog 2 / Scroll 8 是清点误差，实际 frame 上没有这两个调用） |
+
+上游其它包的签名变化已核对：`app`/`components`/`headless`/`keymap` 共 **192 个函数**把参数/返回值里的 `ui.X` 换成 `gfx.X`，因 `Color/Rect/Size/Point/Theme` 是**别名**、其余都是被搬走的真类型，**调用点无需改**；`gfx.Canvas.BlockRectangles` 在 v0.6.0 删除，本仓 0 处使用。搬走类型的**方法面不回退**（抽查 `Canvas` 193→224 个方法、`Tree` 18→18、`Icon` 6→6、`KeyEvent` 1→1）。
+
+### 9.7 门禁与证据位置
+
+| 门禁 | 结果 | 证据 |
+|---|---|---|
+| `gofmt -l` | **0** | — |
+| `CGO_ENABLED=0 go build ./...` | 红：`pluginapi/plugin.go:26: no required module provides package github.com/vivaui/viva/flex` | `DSH-GO/tmp/GO8-RC2/_v06/06-final-build.log` |
+| `CGO_ENABLED=0 go vet ./...` | 同上 | `_v06/07-final-vet.log` |
+| `CGO_ENABLED=0 go test ./... -count=1` | 各包 `[setup failed]`（同根因，无 V-06-1 类失败） | `_v06/08-final-test.log` |
+| 诊断副本 tidy/build | tidy **绿**；build 只剩 V-06-2 类 | `_v06/03-diag-tidy.log`、`_v06/04-diag-build.log`、`_v06/05-diag-vet.log` |
+| 名字全量校验 | `ui` 0 未知 / `gfx` 0 未知 | `_v06/rename-report.json`、`check_names.py` 输出 |
+
+给 V-06-2 的可选起点：`DSH-GO/tmp/GO8-RC2/_v06/v061-seed-frame-view.patch`（146 文件，`git apply --check` 通过）——它把 `*flex.Frame`→`ui.C`、`flex.View`→`ui.Page` 机械铺开，铺开后 `go build` 会直接列出需要 `ui.X(f)` 的每个点。**该 patch 不在本交付树里**，是否采用由 V-06-2 决定；V-06-2 也可以从本 worktree 的干净状态自己做。

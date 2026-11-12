@@ -8,15 +8,16 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
-func drawTopbarVisualTest(t *testing.T, data pluginapi.Snapshot, hasRightbar bool) (*ui.Canvas, *Plugin) {
+func drawTopbarVisualTest(t *testing.T, data pluginapi.Snapshot, hasRightbar bool) (*gfx.Canvas, *Plugin) {
 	t.Helper()
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
@@ -33,7 +34,7 @@ func drawTopbarVisualTest(t *testing.T, data pluginapi.Snapshot, hasRightbar boo
 	return canvas, p
 }
 
-func topbarTestText(t *testing.T, canvas *ui.Canvas, value string) ui.Text {
+func topbarTestText(t *testing.T, canvas *gfx.Canvas, value string) gfx.Text {
 	t.Helper()
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
@@ -41,10 +42,10 @@ func topbarTestText(t *testing.T, canvas *ui.Canvas, value string) ui.Text {
 		}
 	}
 	t.Fatalf("顶栏缺少文本 %q；实际文本：%+v", value, canvas.Texts())
-	return ui.Text{}
+	return gfx.Text{}
 }
 
-func topbarHasText(canvas *ui.Canvas, value string) bool {
+func topbarHasText(canvas *gfx.Canvas, value string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return true
@@ -83,7 +84,7 @@ func TestActiveHeaderUsesOfficialCrumbTypography(t *testing.T) {
 		Model: "real-model", Permission: "ask",
 	}, true)
 	title := topbarTestText(t, canvas, "真实会话")
-	if title.Style.Size != 14 || title.Bounds.Height != 20 || title.Style.Weight != ui.WeightMedium {
+	if title.Style.Size != 14 || title.Bounds.Height != 20 || title.Style.Weight != gfx.WeightMedium {
 		t.Errorf("官方当前 crumb 应为 14/20/500，实际 size=%v line=%v weight=%v",
 			title.Style.Size, title.Bounds.Height, title.Style.Weight)
 	}
@@ -116,7 +117,7 @@ func TestHeaderGeometryMatchesOfficialBlankActiveAndSessionless(t *testing.T) {
 	if got := blank.headerBoxes.Corner.Rect(); got.Width != 28 || got.Height != 28 {
 		t.Errorf("corner 几何 = %+v，官方 28×28", got)
 	}
-	if blank.headerBoxes.Divider != (flex.Box{}) {
+	if blank.headerBoxes.Divider != (ui.Box{}) {
 		t.Errorf("blank 不应声明分割线，实际 %+v", blank.headerBoxes.Divider.Rect())
 	}
 	t.Logf("V1_GEOMETRY blank root=%+v body=%+v titleRow=%+v corner=%+v",
@@ -167,7 +168,7 @@ func TestCornerOnlyExpandsCollapsedRightbar(t *testing.T) {
 	}
 }
 
-func topbarTestHit(t *testing.T, canvas *ui.Canvas, label string) ui.Hit {
+func topbarTestHit(t *testing.T, canvas *gfx.Canvas, label string) gfx.Hit {
 	t.Helper()
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
@@ -175,10 +176,10 @@ func topbarTestHit(t *testing.T, canvas *ui.Canvas, label string) ui.Hit {
 		}
 	}
 	t.Fatalf("顶栏缺少命中区 %q；实际命中：%+v", label, canvas.Hits())
-	return ui.Hit{}
+	return gfx.Hit{}
 }
 
-func topbarHasRightbarControl(canvas *ui.Canvas, label string) bool {
+func topbarHasRightbarControl(canvas *gfx.Canvas, label string) bool {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return true

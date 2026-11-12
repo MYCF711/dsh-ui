@@ -24,6 +24,7 @@ package pluginapi
 import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -72,7 +73,7 @@ type Plugin interface {
 // Fields 是「要接键盘输入的插件」的可选接口：壳会把这些 Field 交给 viva 的
 // TextInput。不实现就等于这个插件收不到任何按键（搜索框、输入框都必须实现）。
 type Fields interface {
-	Fields() []*flex.Field
+	Fields() []*ui.Field
 }
 
 // KeyHandler 是「想接键盘的插件」的可选接口。
@@ -80,13 +81,13 @@ type Fields interface {
 // 壳把按键按装配顺序依次交给插件，**第一个返回 true 的赢**，壳自己不认识任何具体快捷键——
 // 这样「↑ 切会话」是侧栏插件的能力，不是壳里写死的 if。
 type KeyHandler interface {
-	HandleKey(ev ui.KeyEvent) bool
+	HandleKey(ev gfx.KeyEvent) bool
 }
 
 // ScrollHandler 让拥有内部横滚视口的部件先处理自己的手势；返回 Handled=false
 // 时壳继续走 View.Wheel，因此代码块的普通纵向滚动仍归消息区。
 type ScrollHandler interface {
-	HandleScroll(ev ui.ScrollEvent) ui.EventResult
+	HandleScroll(ev gfx.ScrollEvent) gfx.EventResult
 }
 
 // Panels 是「会画东西的插件」的可选接口。
@@ -153,7 +154,7 @@ type Painter struct {
 	//
 	// 为什么需要它：viva 的绘制顺序不受调用方控制，在 Draw 里画一条线会被
 	// 后面的节点覆盖（踩过）。所以分两个阶段：先布局（Draw），再覆画（AfterDraw）。
-	AfterDraw func(canvas *ui.Canvas, env *Env)
+	AfterDraw func(canvas *gfx.Canvas, env *Env)
 	// Children 让一个槽位在画完自己之后，再把 f 交给下一层槽位。
 	//
 	// 这就是"高塔"的做法：壳只画 root 一个槽，框架插件在 root 里切出
@@ -169,22 +170,22 @@ type Painter struct {
 // 实现方必须自己加 `var _ pluginapi.Primitives = (*X)(nil)` 断言。
 type Primitives interface {
 	// ListRow 一条列表行：选中/悬停底色由实现决定，调用方只给状态。
-	ListRow(f *flex.Frame, id ui.ID, active bool, height float32, body func()) flex.Box
+	ListRow(f *flex.Frame, id gfx.ID, active bool, height float32, body func()) ui.Box
 	// SectionHeader 一个分组头（标题 + 条数 + 展开/收起箭头）。
-	SectionHeader(f *flex.Frame, id ui.ID, title string, count int, open bool) flex.Box
+	SectionHeader(f *flex.Frame, id gfx.ID, title string, count int, open bool) ui.Box
 	// Badge 行尾的小徽标。
-	Badge(f *flex.Frame, text string, color ui.Color) flex.Box
+	Badge(f *flex.Frame, text string, color ui.Color) ui.Box
 	// Dot 一个状态圆点。
-	Dot(f *flex.Frame, color ui.Color, size float32) flex.Box
+	Dot(f *flex.Frame, color ui.Color, size float32) ui.Box
 	// Divider 一条最轻的分隔线。
 	Divider(f *flex.Frame)
 	// CircleButton 一个 28px 圆形图标按钮（官方 .action 的尺寸），返回是否被点击。
-	CircleButton(f *flex.Frame, id ui.ID, glyph string, filled bool) bool
+	CircleButton(f *flex.Frame, id gfx.ID, glyph string, filled bool) bool
 	// Chip 一个只读小标签（官方的 .chip：inline-flex、gap 3px、business-primary 文字）。
-	Chip(f *flex.Frame, label string) flex.Box
+	Chip(f *flex.Frame, label string) ui.Box
 	// Bubble 画一个用户气泡容器（官方 .bubble：radius xl、specific-bubble 底）。
 	// 调用方传进内容，气泡只管外观。
-	Bubble(f *flex.Frame, body func()) flex.Box
+	Bubble(f *flex.Frame, body func()) ui.Box
 }
 
 // Env 是绘制期拿到的全部东西：只读快照 + 动作 + 主题。
@@ -197,13 +198,13 @@ type Env struct {
 	Act   Actions
 	// Tree / Feat 是这个槽所属的交互树与 feature 作用域。
 	// 插件自己用 env.Tree.ID(env.Feat, "名字") 造交互 id——不许写死数字。
-	Tree *ui.Tree
-	Feat ui.Scope
+	Tree *gfx.Tree
+	Feat gfx.Scope
 	// Canvas 只在 Draw 阶段有效：Markdown 排版这类必须先量后画的东西要它。
 	// （AfterDraw 收到的 canvas 是布局后的全屏画布，两者是同一个对象。）
-	Canvas *ui.Canvas
+	Canvas *gfx.Canvas
 	// Scroll 取某个滚动区的状态。viva 要求"要的时候再取"，所以给的是函数不是指针。
-	Scroll func(id ui.ID) *flex.ScrollState
+	Scroll func(id gfx.ID) *ui.ScrollState
 	// Has 判断某个槽位有没有插件挂东西。框架插件靠它决定"这一列画不画"——
 	// 没有侧栏插件时不该留一条空栏。
 	Has func(Slot) bool

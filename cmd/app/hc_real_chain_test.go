@@ -55,6 +55,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -298,14 +299,14 @@ func hcFrameTypes(frames []apiclient.Frame) []string {
 func hcCaptureStatusbar(t *testing.T, snap pluginapi.Snapshot, path string) {
 	t.Helper()
 	product := newGYRealProduct(t)
-	shotTree := &ui.Tree{}
+	shotTree := &gfx.Tree{}
 	shotFeat := shotTree.Feature("hc-shot")
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "hc-statusbar", Width: 1182, Height: 832, Tree: shotTree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(c *ui.Canvas, size ui.Size) {
+	config.Paint = func(c *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		c.Fill(bounds, product.theme.BgBase)
 		shotEnv := &pluginapi.Env{

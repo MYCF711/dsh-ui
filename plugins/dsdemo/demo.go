@@ -11,6 +11,7 @@ package dsdemo
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -52,8 +53,8 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // HandleKey 实现 pluginapi.KeyHandler：F12 切换显隐。
 //
 // 键盘按装配顺序转发，第一个返回 true 的插件赢；返回 false 表示「这个键我不要」。
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
-	if ev.Key != ui.KeyF12 || ev.Modifiers != 0 {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
+	if ev.Key != gfx.KeyF12 || ev.Modifiers != 0 {
 		return false
 	}
 	p.shown = !p.shown
@@ -77,7 +78,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 
 	f.Row().Absolute().Top(16).Right(16).MaxWidth(360).
 		Radius(t.Radii.MD).Background(t.BgLayer2).Border(1, t.BorderL2).
-		PadX(12).PadY(8).Items(flex.Center).Gap(8).Children(func() {
+		PadX(12).PadY(8).Items(ui.Center).Gap(8).Children(func() {
 		f.Text("ds-demo 插件已接入 · 按 F12 收起").
 			FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis()
 		// 关闭按钮：28px 圆钮交给 prims，不自己拼尺寸/颜色。

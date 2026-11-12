@@ -598,7 +598,7 @@ func FirstScreen(f *flex.Frame, env *pluginapi.Env, opts ShellOptions, dispatch 
 
 // MeasureFunc 让调用方（测试 / 证据脚本）拿到**实际布出来**的容器矩形，
 // 用来核对「布局表算的」与「flex 真画的」是同一份几何。
-type MeasureFunc func(name string, box flex.Box)
+type MeasureFunc func(name string, box ui.Box)
 
 // FirstScreenWithMeasure 是 FirstScreen 的可测量版本（measure 为 nil 时等价）。
 func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions, dispatch func(pluginapi.Slot), measure MeasureFunc) ShellLayout {
@@ -611,7 +611,7 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 	}
 	layout := ComputeShellLayout(bounds.Width, bounds.Height, opts)
 
-	note := func(name string, box flex.Box) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
@@ -709,7 +709,7 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 
 // drawSidebarSkeleton 画 SidebarRoot 的带结构（logoRow / newSession / scrollRegion / footArea）。
 func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	note := func(name string, box flex.Box) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
@@ -750,7 +750,7 @@ func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, 
 			settingsRow := f.Row().FillWidth().
 				MarginSides(SettingsTriggerRowMarginY, -SettingsTriggerRowInset,
 					SettingsTriggerRowMarginY, -SettingsTriggerRowInset).
-				Items(flex.Center).Gap(SettingsTriggerRowGap)
+				Items(ui.Center).Gap(SettingsTriggerRowGap)
 			settingsRow.Children(func() { dispatch(OffSidebarSettings) })
 			// 必须在 Children 之后报：布局跑完才量得到行高（顺序反了报的是 0）。
 			note("SettingsRoot.triggerRow", settingsRow)
@@ -762,7 +762,7 @@ func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, 
 // sidebar.header / sidebar.list / sidebar.footer 三个旧槽上，按 dsshell 时代的
 // 12px 内联 padding + gap 8 排版（official_geometry.go 的 deviation 行）。
 func drawLegacySidebar(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	note := func(name string, box flex.Box) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
@@ -785,7 +785,7 @@ func drawLegacySidebar(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, di
 		settingsRow := f.Row().FillWidth().
 			MarginSides(SettingsTriggerRowMarginY, -SettingsTriggerRowInset,
 				SettingsTriggerRowMarginY, -SettingsTriggerRowInset).
-			Items(flex.Center).Gap(SettingsTriggerRowGap)
+			Items(ui.Center).Gap(SettingsTriggerRowGap)
 		settingsRow.Children(func() { dispatch(OffSidebarSettings) })
 		// 必须在 Children 之后报：布局跑完才量得到行高（顺序反了报的是 0）。
 		note("SettingsRoot.triggerRow (legacy bridge)", settingsRow)
@@ -794,7 +794,7 @@ func drawLegacySidebar(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, di
 
 // drawConversationSkeleton 画 ConversationRoot：header（titleRow + tabs）+ body（scrollBody + composerSeat）。
 func drawConversationSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	note := func(name string, box flex.Box) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
@@ -865,20 +865,20 @@ func drawConversationSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLay
 // stack 宽度上限 = composer 卡片宽，三块依次是标题（鱼标 + 标题 + 预览徽标）、
 // 工作区行、composer 卡片。
 func drawHeroSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	note := func(name string, box flex.Box) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
 	}
 	heroBox := f.Column().FillWidth().Grow(1).PadX(HeroPadX)
 	note("Hero.frame", heroBox)
-	heroBox.Items(flex.Center).Children(func() {
+	heroBox.Items(ui.Center).Children(func() {
 		stack := f.Column().Width(layout.HeroStack.Width).Gap(HeroStackGap)
 		note("Hero.stack", stack)
 		stack.Children(func() {
 			dispatch(OffHeroFrame)
 			// 标题行：鱼标（brand mark）+ 标题 + 预览徽标
-			f.Row().FillWidth().Height(HeroHeadlineLineH).Items(flex.Center).Gap(HeroHeadlineGapCol).Children(func() {
+			f.Row().FillWidth().Height(HeroHeadlineLineH).Items(ui.Center).Gap(HeroHeadlineGapCol).Children(func() {
 				dispatch(OffHeroBrandMark)
 			})
 			// 工作区行：workspace / agentPreset / options
@@ -918,7 +918,7 @@ func drawComposerSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout,
 			// dock：卡片上方的整行条目（官方 conversation.input.dock）
 			dispatch(OffInputDock)
 			// 卡片
-			cardRow := f.Row().FillWidth().Height(layout.ComposerCard.Height).Justify(flex.Center)
+			cardRow := f.Row().FillWidth().Height(layout.ComposerCard.Height).Justify(ui.Center)
 			cardRow.Children(func() {
 				cardBox := f.Column().Width(layout.ComposerCard.Width).FillHeight().PadSides(ComposerCardPadTop, 0, 0, 0).Gap(ComposerCardGap)
 				if measure != nil {

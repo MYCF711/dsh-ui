@@ -24,6 +24,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -35,7 +36,7 @@ const officialSeatColumn = 902
 // 容器模拟 `uikernel.drawComposerSeat` 给占用方的形状：左右各 clearance(16)、
 // 上下无内边距（底边距归 InputBar.root 自己）。click 非空时走事件 pass，
 // 测到的是按钮真实的 Clicked 分支。
-func renderOfficialSeat(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) *ui.Canvas {
+func renderOfficialSeat(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) *gfx.Canvas {
 	t.Helper()
 	if p.theme == nil {
 		p.theme = dscore.Dark()
@@ -43,9 +44,9 @@ func renderOfficialSeat(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pl
 	if p.prims == nil {
 		p.prims = &dscore.Primitives{Theme: p.theme}
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("official-seat-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
@@ -104,7 +105,7 @@ func TestOfficialSeatRendersInputCardElements(t *testing.T) {
 		}
 	}
 	// 输入框：真 flex.Field 的命中区（role=text field）。
-	var field ui.Hit
+	var field gfx.Hit
 	found := false
 	for _, hit := range canvas.Hits() {
 		if hit.Label == "输入" {
@@ -299,7 +300,7 @@ func TestShiftEnterDoesNotSend(t *testing.T) {
 	sent := 0
 	p.lastAct = pluginapi.Actions{Send: func(string) { sent++ }}
 	p.field.SetText("换行测试")
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyEnter, Modifiers: ui.ModifierShift}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEnter, Modifiers: gfx.ModifierShift}) {
 		t.Fatal("Shift+Enter 必须被 HandleKey 吃掉（否则会落到提交路径）")
 	}
 	if sent != 0 {
@@ -309,12 +310,12 @@ func TestShiftEnterDoesNotSend(t *testing.T) {
 		t.Fatalf("Shift+Enter 改动了草稿：%q", got)
 	}
 	// 普通 Enter 必须**让回去**：输入框的 Submitted 才是发送路径。
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyEnter}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEnter}) {
 		t.Fatal("普通 Enter 被 HandleKey 抢走了，输入框就永远收不到提交")
 	}
 	// 其它修饰键组合也不接管（Ctrl+Enter 之类留给将来的插话/多行语义）。
-	for _, mod := range []ui.Modifiers{ui.ModifierControl, ui.ModifierAlt} {
-		if p.HandleKey(ui.KeyEvent{Key: ui.KeyEnter, Modifiers: mod}) {
+	for _, mod := range []gfx.Modifiers{gfx.ModifierControl, gfx.ModifierAlt} {
+		if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEnter, Modifiers: mod}) {
 			t.Fatalf("修饰键 %v+Enter 被接管了", mod)
 		}
 	}
@@ -324,8 +325,8 @@ func TestShiftEnterDoesNotSend(t *testing.T) {
 //
 // 不能只用 largestSurface：审批卡也是 InputMajor 底（radius 20/19），
 // 它比输入卡片还高（156 vs 98），按面积取会拿到审批卡。
-func inputCardSurface(canvas *ui.Canvas, color ui.Color) (ui.Rectangle, bool) {
-	var best ui.Rectangle
+func inputCardSurface(canvas *gfx.Canvas, color ui.Color) (gfx.Rectangle, bool) {
+	var best gfx.Rectangle
 	found := false
 	for _, r := range canvas.Rectangles() {
 		if r.Color != color || r.Radius != 28 {
@@ -340,7 +341,7 @@ func inputCardSurface(canvas *ui.Canvas, color ui.Color) (ui.Rectangle, bool) {
 }
 
 // canvasHasTextPrefix 断言画布上存在以 prefix 开头的文本。
-func canvasHasTextPrefix(canvas *ui.Canvas, prefix string) bool {
+func canvasHasTextPrefix(canvas *gfx.Canvas, prefix string) bool {
 	for _, text := range canvas.Texts() {
 		if len(text.Value) >= len(prefix) && text.Value[:len(prefix)] == prefix {
 			return true
@@ -376,7 +377,7 @@ func TestContextMeterTextFormat(t *testing.T) {
 }
 
 // canvasTextValues 列画布文本（失败诊断用）。
-func canvasTextValues(canvas *ui.Canvas) []string {
+func canvasTextValues(canvas *gfx.Canvas) []string {
 	values := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)

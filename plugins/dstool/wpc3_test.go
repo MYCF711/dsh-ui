@@ -12,6 +12,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -20,11 +21,11 @@ func drawWPC3SingleCard(t *testing.T, card Card) *headless.Session {
 	t.Helper()
 	theme := dscore.Dark()
 	cards := New(&dscore.Primitives{Theme: theme})
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("wpc3-single")
 	var view flex.View
 	config := app.Config{Title: "wpc3-single", Width: 900, Height: 500, Tree: tree, WindowMode: app.WindowFrameless}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: size.Width}
 		canvas.Fill(bounds, theme.BgBase)

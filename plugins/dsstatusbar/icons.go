@@ -28,48 +28,48 @@
 // viewBox 一律官方 16；显示尺寸由调用方给官方的 14（._icon_16cyo_71{width:14px;height:14px}）。
 package dsstatusbar
 
-import "github.com/vivaui/viva/ui"
+import "github.com/vivaui/viva/gfx"
 
 // connectionIconSize 是官方 ._icon_16cyo_71{width:14px;height:14px}。
 const connectionIconSize float32 = 14
 
 // checkOutlineIcon 是官方 sprite `check-outline`（成功态：已连接 / 已恢复）。
-func checkOutlineIcon() ui.Icon {
-	return ui.Icon{
+func checkOutlineIcon() gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 16,
 		Stroke:  1,
-		Commands: []ui.PathCommand{
+		Commands: []gfx.PathCommand{
 			// 第 1 段（官方 path #1）
-			ui.MoveTo(2.25, 8.5),
-			ui.LineTo(5.49732, 11.7473),
-			ui.CubicTo(5.90519, 12.1552, 6.57263, 12.1344, 6.95426, 11.7018),
-			ui.LineTo(13.75, 4),
+			gfx.MoveTo(2.25, 8.5),
+			gfx.LineTo(5.49732, 11.7473),
+			gfx.CubicTo(5.90519, 12.1552, 6.57263, 12.1344, 6.95426, 11.7018),
+			gfx.LineTo(13.75, 4),
 		},
 	}
 }
 
 // refreshOutlineIcon 是官方 sprite `refresh-outline`（异常态：断开 / 正在重试）。
-func refreshOutlineIcon() ui.Icon {
-	return ui.Icon{
+func refreshOutlineIcon() gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 16,
 		Stroke:  1,
-		Commands: []ui.PathCommand{
+		Commands: []gfx.PathCommand{
 			// 第 1 段（官方 path #1）
-			ui.MoveTo(14.5001, 8),
-			ui.CubicTo(14.5, 9.28552, 14.1188, 10.5422, 13.4045, 11.611),
-			ui.CubicTo(12.6903, 12.6799, 11.6752, 13.5129, 10.4875, 14.0049),
-			ui.CubicTo(9.29982, 14.4968, 7.99295, 14.6255, 6.73212, 14.3747),
-			ui.CubicTo(5.4713, 14.124, 4.31314, 13.505, 3.4041, 12.596),
-			ui.CubicTo(2.49514, 11.687, 1.87614, 10.5288, 1.62537, 9.26798),
-			ui.CubicTo(1.37459, 8.00716, 1.50331, 6.70028, 1.99525, 5.51261),
-			ui.CubicTo(2.48719, 4.32494, 3.32025, 3.30981, 4.3891, 2.59557),
-			ui.CubicTo(5.45795, 1.88134, 6.71458, 1.50008, 8.0001, 1.5),
-			ui.CubicTo(9.9001, 1.5, 11.7001, 2.3, 13.0001, 3.6),
-			ui.LineTo(14.5001, 5.1),
+			gfx.MoveTo(14.5001, 8),
+			gfx.CubicTo(14.5, 9.28552, 14.1188, 10.5422, 13.4045, 11.611),
+			gfx.CubicTo(12.6903, 12.6799, 11.6752, 13.5129, 10.4875, 14.0049),
+			gfx.CubicTo(9.29982, 14.4968, 7.99295, 14.6255, 6.73212, 14.3747),
+			gfx.CubicTo(5.4713, 14.124, 4.31314, 13.505, 3.4041, 12.596),
+			gfx.CubicTo(2.49514, 11.687, 1.87614, 10.5288, 1.62537, 9.26798),
+			gfx.CubicTo(1.37459, 8.00716, 1.50331, 6.70028, 1.99525, 5.51261),
+			gfx.CubicTo(2.48719, 4.32494, 3.32025, 3.30981, 4.3891, 2.59557),
+			gfx.CubicTo(5.45795, 1.88134, 6.71458, 1.50008, 8.0001, 1.5),
+			gfx.CubicTo(9.9001, 1.5, 11.7001, 2.3, 13.0001, 3.6),
+			gfx.LineTo(14.5001, 5.1),
 			// 第 2 段（官方 path #2）
-			ui.MoveTo(14.4999, 1.5),
-			ui.LineTo(14.4999, 5.1),
-			ui.LineTo(10.8999, 5.1),
+			gfx.MoveTo(14.4999, 1.5),
+			gfx.LineTo(14.4999, 5.1),
+			gfx.LineTo(10.8999, 5.1),
 		},
 	}
 }
@@ -109,13 +109,13 @@ func refreshOutlineIcon() ui.Icon {
 //
 // 72° 圆弧的三次贝塞尔近似：k = 4/3·tan(θ/4) = 4/3·tan18° = 0.43321，
 // 半径 9.5 → 控制点偏移 4.1155。
-func loadingArcIcon() ui.Icon {
-	return ui.Icon{
+func loadingArcIcon() gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 24,
 		Stroke:  2,
-		Commands: []ui.PathCommand{
-			ui.MoveTo(12, 2.5),
-			ui.CubicTo(16.1155, 2.5, 19.7645, 5.1517, 21.0371, 9.0641),
+		Commands: []gfx.PathCommand{
+			gfx.MoveTo(12, 2.5),
+			gfx.CubicTo(16.1155, 2.5, 19.7645, 5.1517, 21.0371, 9.0641),
 		},
 	}
 }

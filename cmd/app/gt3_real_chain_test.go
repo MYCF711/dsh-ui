@@ -36,6 +36,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -205,7 +206,7 @@ func newRealModel(client *apiclient.Client, mux *apiclient.Mux, sessionID string
 }
 
 // renderTranscriptSeat 用真内核 + 真画布跑一次产品绘制路径。
-func renderTranscriptSeat(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, *dsconversation.Plugin) {
+func renderTranscriptSeat(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas, *dsconversation.Plugin) {
 	t.Helper()
 	conversation := &dsconversation.Plugin{}
 	kernel := uikernel.New("gt3-real-chain")
@@ -213,8 +214,8 @@ func renderTranscriptSeat(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, *d
 		t.Fatalf("装配失败: %v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	canvas := &ui.Canvas{}
-	tree := &ui.Tree{}
+	canvas := &gfx.Canvas{}
+	tree := &gfx.Tree{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
@@ -233,7 +234,7 @@ func renderTranscriptSeat(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, *d
 }
 
 // canvasHas 报告画布上有没有这段文本（前缀匹配：长文本会被省略号截断）。
-func canvasHas(canvas *ui.Canvas, want string) bool {
+func canvasHas(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want || strings.HasPrefix(text.Value, want) {
 			return true
@@ -242,7 +243,7 @@ func canvasHas(canvas *ui.Canvas, want string) bool {
 	return false
 }
 
-func canvasTextValues(canvas *ui.Canvas) []string {
+func canvasTextValues(canvas *gfx.Canvas) []string {
 	values := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)

@@ -25,6 +25,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -377,7 +378,7 @@ func (p *Plugin) drawOfficialPanel(f *flex.Frame, env *pluginapi.Env) {
 		f.Row().Absolute().Left(layout.X).Top(layout.Y).
 			Width(layout.Width).Height(layout.Height).
 			Radius(t.Radii.Panel).Background(t.BgLayer2).
-			Border(1, t.BorderL2).Shadow(ui.ShadowXS).Clip().
+			Border(1, t.BorderL2).Shadow(gfx.ShadowXS).Clip().
 			Children(func() {
 				if area, ok := layout.Area("title"); ok {
 					p.drawNavTitle(f, t, relArea(area, layout))
@@ -405,7 +406,7 @@ func relArea(a AreaRect, layout GridLayout) AreaRect {
 func (p *Plugin) drawNavTitle(f *flex.Frame, t *pluginapi.Theme, a AreaRect) {
 	f.Row().Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
 		PadSides(NavTitlePadTop, NavTitlePadRight, NavTitlePadBottom, NavTitlePadLeft).
-		Items(flex.Center).Children(func() {
+		Items(ui.Center).Children(func() {
 		f.Text("设置").FontSize(NavTitleFontSize).LineHeight(NavTitleLineHeight).
 			Weight(NavTitleWeight).Color(t.LabelPrimary)
 	})
@@ -415,7 +416,7 @@ func (p *Plugin) drawNavTitle(f *flex.Frame, t *pluginapi.Theme, a AreaRect) {
 func (p *Plugin) drawPanelHeader(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect) {
 	f.Row().Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
 		PadSides(HeaderPadTop, HeaderPadRight, HeaderPadBottom, HeaderPadLeft).
-		Gap(HeaderGap).Items(flex.Center).Children(func() {
+		Gap(HeaderGap).Items(ui.Center).Children(func() {
 		f.Row().Grow(1)
 		if p.prims != nil {
 			if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "settings-close"), "×", false) {
@@ -438,7 +439,7 @@ func (p *Plugin) drawPanelNav(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Th
 			}
 			if f.Column().Height(NavCellHeight).Radius(t.Radii.MD).
 				PadSides(NavCellPadTop, NavCellPadRight, NavCellPadBottom, NavCellPadLeft).
-				Gap(NavCellGap).Items(flex.Center).Background(bg).Hover(flex.Look{}.Background(t.Hover)).
+				Gap(NavCellGap).Items(ui.Center).Background(bg).Hover(ui.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "settings-nav-"+section.ID), section.Title).
 				Children(func() {
 					f.Text(IconGlyph(section.Icon)).FontSize(NavCellIconSize).Color(t.LabelSecondary)
@@ -509,7 +510,7 @@ func (p *Plugin) drawOfficialRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi
 		p.drawRowControl(f, t, row)
 	}
 	box := f.Row().FillWidth().Height(height).
-		PadSides(RowPadY, 0, RowPadY, 0).Gap(RowGap).Items(flex.Center).
+		PadSides(RowPadY, 0, RowPadY, 0).Gap(RowGap).Items(ui.Center).
 		Hit(id, row.Title).Children(body)
 	if row.Writable() {
 		if box.Clicked() {
@@ -528,18 +529,18 @@ func (p *Plugin) drawRowControl(f *flex.Frame, t *pluginapi.Theme, row PanelRow)
 			bg = t.BrandPrimary
 		}
 		f.Row().Width(36).Height(20).Radius(10).Background(bg).PadSides(2, 2, 2, 2).
-			Justify(flex.End).Children(func() {
+			Justify(ui.End).Children(func() {
 			f.Row().Width(16).Height(16).Radius(8).Background(t.BgLayer2)
 		})
 	case ItemStepper:
 		f.Row().Height(SelectorHeight).Radius(t.Radii.MD).PadX(SelectorPadX).
-			Gap(SelectorGap).Items(flex.Center).Background(t.BgLayer3).Children(func() {
+			Gap(SelectorGap).Items(ui.Center).Background(t.BgLayer3).Children(func() {
 			f.Text("−").FontSize(RowTitleFontSize).Color(t.LabelSecondary)
 			f.Text(row.Display()).FontSize(RowTitleFontSize).Color(t.LabelPrimary)
 			f.Text("+").FontSize(RowTitleFontSize).Color(t.LabelSecondary)
 		})
 	case ItemCubes:
-		f.Row().Gap(SelectorGap).Items(flex.Center).Children(func() {
+		f.Row().Gap(SelectorGap).Items(ui.Center).Children(func() {
 			for _, c := range row.Choices {
 				selected := row.Known && row.Selected == c.Value
 				bg := t.BgLayer3
@@ -547,7 +548,7 @@ func (p *Plugin) drawRowControl(f *flex.Frame, t *pluginapi.Theme, row PanelRow)
 					bg = t.ButtonPrimaryFill
 				}
 				f.Row().Width(28).Height(28).Radius(t.Radii.SM).Background(bg).
-					Justify(flex.Center).Items(flex.Center).Children(func() {
+					Justify(ui.Center).Items(ui.Center).Children(func() {
 					f.Text(firstRune(c.Label)).FontSize(RowDescFontSize).Color(t.LabelPrimary)
 				})
 			}
@@ -555,7 +556,7 @@ func (p *Plugin) drawRowControl(f *flex.Frame, t *pluginapi.Theme, row PanelRow)
 	case ItemButton:
 		f.Row().Height(ShortcutButtonHeight).MinWidth(ShortcutButtonMinWidth).
 			MaxWidth(ShortcutButtonMaxWidth).Radius(t.Radii.MD).PadX(ShortcutButtonPadX).
-			Items(flex.Center).Justify(flex.Center).Background(t.BgLayer3).Children(func() {
+			Items(ui.Center).Justify(ui.Center).Background(t.BgLayer3).Children(func() {
 			f.Text("编辑快捷键").FontSize(ShortcutDescFontSize).Color(t.LabelPrimary)
 		})
 	case ItemVersion:
@@ -564,7 +565,7 @@ func (p *Plugin) drawRowControl(f *flex.Frame, t *pluginapi.Theme, row PanelRow)
 			LineHeight(VersionRowLineHeight).Color(t.LabelPrimary)
 	default: // ItemSelector
 		f.Row().Height(SelectorHeight).Radius(t.Radii.MD).PadX(SelectorPadX).
-			Gap(SelectorGap).Items(flex.Center).Background(t.BgLayer3).Children(func() {
+			Gap(SelectorGap).Items(ui.Center).Background(t.BgLayer3).Children(func() {
 			f.Text(row.Display()).FontSize(RowTitleFontSize).Color(t.LabelPrimary)
 			f.Text("›").FontSize(SelectorChevron).Color(t.LabelTertiary)
 		})
@@ -653,7 +654,7 @@ func (p *Plugin) setWriteState(state WriteState) {
 // handleOfficialKey 是官方面板的键盘路由。
 //
 // 返回 true 表示消费了这个键（后面插件看不到）。
-func (p *Plugin) handleOfficialKey(ev ui.KeyEvent) bool {
+func (p *Plugin) handleOfficialKey(ev gfx.KeyEvent) bool {
 	if ev.Release {
 		return false
 	}
@@ -661,8 +662,8 @@ func (p *Plugin) handleOfficialKey(ev ui.KeyEvent) bool {
 	shown := p.OfficialShown()
 
 	// 入口：Shift+F2（与旧浮层同一个键，产品里只会有其中一个生效）。
-	if ev.Key == ui.KeyF2 {
-		if ev.Modifiers != ui.ModifierShift {
+	if ev.Key == gfx.KeyF2 {
+		if ev.Modifiers != gfx.ModifierShift {
 			return false
 		}
 		if shown {
@@ -682,13 +683,13 @@ func (p *Plugin) handleOfficialKey(ev ui.KeyEvent) bool {
 		return false
 	}
 	switch ev.Key {
-	case ui.KeyDown:
+	case gfx.KeyDown:
 		p.moveOfficialCursor(1)
 		return true
-	case ui.KeyUp:
+	case gfx.KeyUp:
 		p.moveOfficialCursor(-1)
 		return true
-	case ui.KeyEnter:
+	case gfx.KeyEnter:
 		p.activateOfficialCursor()
 		return true
 	}

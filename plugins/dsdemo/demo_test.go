@@ -6,6 +6,7 @@ import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -22,8 +23,8 @@ func TestF12TogglesAndNothingElse(t *testing.T) {
 	p.shown = true
 
 	// 别的键一律不认，必须让回去（抢了别人的键，别的插件就收不到）。
-	for _, k := range []ui.Key{ui.KeyF1, ui.KeyEnter, ui.KeyEscape, ui.KeyDown} {
-		if p.HandleKey(ui.KeyEvent{Key: k}) {
+	for _, k := range []gfx.Key{gfx.KeyF1, gfx.KeyEnter, gfx.KeyEscape, gfx.KeyDown} {
+		if p.HandleKey(gfx.KeyEvent{Key: k}) {
 			t.Errorf("%v 被 dsdemo 吃掉了——它只该认 F12", k)
 		}
 	}
@@ -32,20 +33,20 @@ func TestF12TogglesAndNothingElse(t *testing.T) {
 	}
 
 	// 带修饰键的 F12 不算：Ctrl+F12 是别的意思（而且 viva 的组合键路由不同）。
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyF12, Modifiers: ui.ModifierControl}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF12, Modifiers: gfx.ModifierControl}) {
 		t.Error("Ctrl+F12 不该被当成 F12")
 	}
 	if !p.shown {
 		t.Fatal("带修饰键的 F12 不该切换显隐")
 	}
 
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF12}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF12}) {
 		t.Fatal("F12 应当被处理（返回 true），否则键盘路由会继续往下传")
 	}
 	if p.shown {
 		t.Fatal("F12 之後应当收起")
 	}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF12}) || !p.shown {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF12}) || !p.shown {
 		t.Fatal("再按一次 F12 应当展开")
 	}
 }
@@ -58,9 +59,9 @@ func drawOnce(t *testing.T, p *Plugin, click string) int {
 	if p.prims == nil {
 		p.prims = &dscore.Primitives{Theme: theme}
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("demo-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55

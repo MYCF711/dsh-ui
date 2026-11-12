@@ -34,6 +34,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -154,8 +155,8 @@ func (p *Plugin) drawFeedback(f *flex.Frame, env *pluginapi.Env, index int) {
 		}
 		id := env.Tree.ID(env.Feat, "feedback-"+value+"-"+itoa(index))
 		if f.Row().Width(feedbackHitSize).Height(feedbackHitSize).
-			Radius(t.Radii.SM).Items(flex.Center).Justify(flex.Center).
-			Hover(flex.Look{}.Background(t.Hover)).Hit(id, label).Children(func() {
+			Radius(t.Radii.SM).Items(ui.Center).Justify(ui.Center).
+			Hover(ui.Look{}.Background(t.Hover)).Hit(id, label).Children(func() {
 			f.Icon(thumbIcon(up, active)).Width(feedbackIconSize).
 				Height(feedbackIconSize).Color(t.LabelPrimary)
 		}).Clicked() {
@@ -171,15 +172,15 @@ func (p *Plugin) drawFeedback(f *flex.Frame, env *pluginapi.Env, index int) {
 // 官方用 IconLikeOutlineRegular / IconLikeFillRegular 这两枚图标表达"没评/已评"，
 // 颜色不变。这里用同一份路径的两种画法达到同样的读法——不引入彩色 emoji：
 // 一排单色次要按钮里突然两个黄色 emoji，不是同一个视觉语言。
-func thumbIcon(up, filled bool) ui.Icon {
+func thumbIcon(up, filled bool) gfx.Icon {
 	commands := thumbCommands()
 	if !up {
 		commands = mirrorY(commands)
 	}
-	icon := ui.Icon{
+	icon := gfx.Icon{
 		ViewBox:  16,
-		Cap:      ui.CapRound,
-		Join:     ui.JoinRound,
+		Cap:      gfx.CapRound,
+		Join:     gfx.JoinRound,
 		Commands: commands,
 	}
 	if !filled {
@@ -189,10 +190,10 @@ func thumbIcon(up, filled bool) ui.Icon {
 }
 
 // mirrorY 把 16 高的字形上下翻过来：👎 就是 👍 的镜像，不另画一份。
-func mirrorY(commands []ui.PathCommand) []ui.PathCommand {
-	out := make([]ui.PathCommand, len(commands))
+func mirrorY(commands []gfx.PathCommand) []gfx.PathCommand {
+	out := make([]gfx.PathCommand, len(commands))
 	for i, c := range commands {
-		if c.Kind == ui.PathCommandClose {
+		if c.Kind == gfx.PathCommandClose {
 			out[i] = c
 			continue
 		}
@@ -209,32 +210,32 @@ func mirrorY(commands []ui.PathCommand) []ui.PathCommand {
 // 两条独立子路径（和 Feather 那类线性图标的做法一致）：掌根是圆角矩形，
 // 手背从掌根右侧起笔，拇指向上抬起并在指尖收圆，指背落回手背顶边。
 // 路径同时用于描边与填充，所以两种状态的法线一致，切换时不会"跳形"。
-func thumbCommands() []ui.PathCommand {
-	return []ui.PathCommand{
+func thumbCommands() []gfx.PathCommand {
+	return []gfx.PathCommand{
 		// 掌根（左侧圆角矩形）。
-		ui.MoveTo(2.6, 8.3),
-		ui.LineTo(3.9, 8.3),
-		ui.QuadTo(4.9, 8.3, 4.9, 9.3),
-		ui.LineTo(4.9, 13.4),
-		ui.QuadTo(4.9, 14.4, 3.9, 14.4),
-		ui.LineTo(2.6, 14.4),
-		ui.QuadTo(1.6, 14.4, 1.6, 13.4),
-		ui.LineTo(1.6, 9.3),
-		ui.QuadTo(1.6, 8.3, 2.6, 8.3),
-		ui.ClosePath(),
+		gfx.MoveTo(2.6, 8.3),
+		gfx.LineTo(3.9, 8.3),
+		gfx.QuadTo(4.9, 8.3, 4.9, 9.3),
+		gfx.LineTo(4.9, 13.4),
+		gfx.QuadTo(4.9, 14.4, 3.9, 14.4),
+		gfx.LineTo(2.6, 14.4),
+		gfx.QuadTo(1.6, 14.4, 1.6, 13.4),
+		gfx.LineTo(1.6, 9.3),
+		gfx.QuadTo(1.6, 8.3, 2.6, 8.3),
+		gfx.ClosePath(),
 
 		// 手背 + 拇指。
-		ui.MoveTo(5.6, 14.4),
-		ui.LineTo(5.6, 8.9),
-		ui.LineTo(6.3, 5.6),
-		ui.LineTo(7.1, 3.2),
-		ui.QuadTo(8.0, 1.9, 8.9, 3.2),
-		ui.LineTo(9.2, 5.0),
-		ui.LineTo(9.9, 8.0),
-		ui.LineTo(12.6, 8.0),
-		ui.QuadTo(13.8, 8.0, 13.8, 9.2),
-		ui.LineTo(13.8, 13.2),
-		ui.QuadTo(13.8, 14.4, 12.6, 14.4),
-		ui.ClosePath(),
+		gfx.MoveTo(5.6, 14.4),
+		gfx.LineTo(5.6, 8.9),
+		gfx.LineTo(6.3, 5.6),
+		gfx.LineTo(7.1, 3.2),
+		gfx.QuadTo(8.0, 1.9, 8.9, 3.2),
+		gfx.LineTo(9.2, 5.0),
+		gfx.LineTo(9.9, 8.0),
+		gfx.LineTo(12.6, 8.0),
+		gfx.QuadTo(13.8, 8.0, 13.8, 9.2),
+		gfx.LineTo(13.8, 13.2),
+		gfx.QuadTo(13.8, 14.4, 12.6, 14.4),
+		gfx.ClosePath(),
 	}
 }

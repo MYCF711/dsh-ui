@@ -18,6 +18,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 type Plugin struct {
@@ -92,7 +93,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	// `PadSides(10,16,10,16)` / `PadSides(14,16,14,16)` / `PadSides(14,14,12,14)`
 	// 这种**四个数两两对称**的形状。这一条是唯一一条两个方向都不对称的，
 	// 而它出现在一个只画一行字的部件里——那不像设计，像把顺序写串了。
-	f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(6, 16, 6, 16).Children(func() {
+	f.Row().FillWidth().Items(ui.Center).Gap(8).PadSides(6, 16, 6, 16).Children(func() {
 		// 官方 `.goalGlyph`：sprite `goal-outline`（viewBox 16）按 size 14 画，
 		// 左边中性色 `label-tertiary`。不用绿（绿在状态栏已经表示"连着宿主"，
 		// 复用会混淆），也不用圆点冒充图标（见 icons.go 的取证）。

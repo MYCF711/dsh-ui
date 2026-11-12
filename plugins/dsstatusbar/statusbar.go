@@ -18,6 +18,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // 官方 InputBar/StatsPills 几何。24 是旧 shell.bottom，40 是 FG-1 caption；
@@ -131,15 +132,15 @@ func dockHeight(segments []string) float32 {
 
 // drawDock 在输入卡之后画现有 Snapshot 能证明的用量段。Activity、缓存率和
 // ContextMeter 百分比只有各自 projection 到位后才能加入，不能在这里拿消息凑数。
-func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env) flex.Box {
+func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env) ui.Box {
 	// 官方 composer dock 是 session 作用域；空会话时即便上游残留了旧数字也不画。
 	if env.Data.Cur == "" {
-		return flex.Box{}
+		return ui.Box{}
 	}
 	segments := usageSegments(env.Data)
 	height := dockHeight(segments)
 	if height == 0 {
-		return flex.Box{}
+		return ui.Box{}
 	}
 	extra := dockComposerClearance - dockShellMainPad
 	if extra < 0 {
@@ -147,7 +148,7 @@ func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env) flex.Box {
 	}
 	return f.Row().FillWidth().Height(height).
 		PadSides(dockPaddingTop, extra, 0, extra).
-		Items(flex.Center).Justify(flex.Center).Gap(dockGap).Children(func() {
+		Items(ui.Center).Justify(ui.Center).Gap(dockGap).Children(func() {
 		for _, segment := range segments {
 			p.pill(f, segment)
 		}
@@ -160,7 +161,7 @@ func (p *Plugin) pill(f *flex.Frame, label string) {
 	t := p.theme
 	f.Row().Height(pillHeight).Radius(t.Radii.SM).
 		PadSides(pillPadY, pillPadX, pillPadY, pillPadX).
-		Items(flex.Center).Gap(pillGap).Children(func() {
+		Items(ui.Center).Gap(pillGap).Children(func() {
 		f.Text(label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
 	})
 }

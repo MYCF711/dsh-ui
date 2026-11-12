@@ -17,7 +17,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // Kernel 是插件运行时的根。
@@ -273,7 +273,7 @@ func (k *Kernel) drawSlot(f *flex.Frame, slot pluginapi.Slot, env *pluginapi.Env
 //
 // 插件顺序就是装配顺序（= 依赖顺序），所以根本插件天然排在最前，
 // 但它不实现 KeyHandler，按键会继续往下走。
-func (k *Kernel) HandleKey(ev ui.KeyEvent) bool {
+func (k *Kernel) HandleKey(ev gfx.KeyEvent) bool {
 	for _, id := range k.order {
 		if h, ok := k.byID[id].(pluginapi.KeyHandler); ok && h.HandleKey(ev) {
 			return true

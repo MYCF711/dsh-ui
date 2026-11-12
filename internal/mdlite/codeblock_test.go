@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
@@ -66,8 +67,8 @@ func TestCodeBlockLongUnicodeLineWrapsOrScrollsWithoutTruncation(t *testing.T) {
 	longLine := "const 演示 = \"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-你好🙂-tail\""
 	code := CodeBlock{Language: "go", Code: longLine + "\n第二行"}
 	style := DefaultCodeBlockStyle(ui.DarkTheme())
-	ids := CodeBlockIDs{Copy: ui.Item(1), Wrap: ui.Item(2), Scroll: ui.Item(3)}
-	var canvas ui.Canvas
+	ids := CodeBlockIDs{Copy: gfx.Item(1), Wrap: gfx.Item(2), Scroll: gfx.Item(3)}
+	var canvas gfx.Canvas
 	const width = float32(240)
 
 	height := code.Height(&canvas, width, style)
@@ -107,10 +108,10 @@ func TestCodeBlockLongUnicodeLineWrapsOrScrollsWithoutTruncation(t *testing.T) {
 
 func TestCodeBlockEmptyAndHighlightStillPaint(t *testing.T) {
 	style := DefaultCodeBlockStyle(ui.DarkTheme())
-	var canvas ui.Canvas
+	var canvas gfx.Canvas
 	empty := CodeBlock{Language: "python", Title: "空.py"}
 	height := empty.Height(&canvas, 320, style)
-	geometry := empty.Draw(&canvas, ui.Rect{Width: 320, Height: height}, CodeBlockIDs{Copy: ui.Item(4)}, style)
+	geometry := empty.Draw(&canvas, ui.Rect{Width: 320, Height: height}, CodeBlockIDs{Copy: gfx.Item(4)}, style)
 	if geometry.Bounds.Height <= style.BannerHeight || len(canvas.Hits()) == 0 {
 		t.Fatalf("empty code block lost banner/copy target: geometry=%+v hits=%+v", geometry, canvas.Hits())
 	}
@@ -136,7 +137,7 @@ func TestCodeBlockEmptyAndHighlightStillPaint(t *testing.T) {
 	}
 }
 
-func monoTextValues(texts []ui.Text) []string {
+func monoTextValues(texts []gfx.Text) []string {
 	var values []string
 	for _, text := range texts {
 		if text.Style.Mono {

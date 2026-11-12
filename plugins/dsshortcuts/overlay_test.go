@@ -27,6 +27,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -52,7 +53,7 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 		t.Fatal(err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("u2-slot-proof")
 	var view flex.View
 	var invalidator app.Invalidator
@@ -63,7 +64,7 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 	config := app.Config{
 		Title: "u2-slot-proof", Width: sheetTestW, Height: sheetTestH,
 		Tree: tree, Invalidator: &invalidator,
-		Paint: func(canvas *ui.Canvas, size ui.Size) {
+		Paint: func(canvas *gfx.Canvas, size ui.Size) {
 			bounds := ui.Rect{Width: size.Width, Height: size.Height}
 			env := &pluginapi.Env{
 				Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
@@ -87,12 +88,12 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 			})
 		},
 		// 真按键路径照 cmd/app 的 OnKey 写：HandleKey 成功就显式 Invalidate。
-		OnKey: func(ev ui.KeyEvent) ui.EventResult {
+		OnKey: func(ev gfx.KeyEvent) gfx.EventResult {
 			if kernel.HandleKey(ev) {
 				invalidator.Invalidate()
-				return ui.EventResult{Handled: true, Repaint: true}
+				return gfx.EventResult{Handled: true, Repaint: true}
 			}
-			return ui.EventResult{}
+			return gfx.EventResult{}
 		},
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
@@ -109,7 +110,7 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 	}
 
 	// ① `-keys` 路径：不经过 OnKey，只有插件自己在 HandleKey 里发出的 Notify。
-	if !kernel.HandleKey(ui.KeyEvent{Key: ui.KeyF1}) {
+	if !kernel.HandleKey(gfx.KeyEvent{Key: gfx.KeyF1}) {
 		t.Fatal("-keys 路径：F1 没被 dsshortcuts 接住")
 	}
 	select {

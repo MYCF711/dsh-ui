@@ -22,6 +22,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -33,7 +34,7 @@ type containerHarness struct {
 	plugin *Plugin
 	store  *Store
 	env    *pluginapi.Env
-	canvas *ui.Canvas
+	canvas *gfx.Canvas
 	// rendered 记录本帧真的调过哪些槽位（drawSlot 的记账，供断言用）。
 	rendered []pluginapi.Slot
 }
@@ -50,8 +51,8 @@ func newContainerHarness(t *testing.T) *containerHarness {
 	if !ok {
 		t.Fatalf("ServiceKey 不是 *Store：%T", kernel.Get(ServiceKey))
 	}
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -65,7 +66,7 @@ func newContainerHarness(t *testing.T) *containerHarness {
 }
 
 // drawContainer 画某个父容器 painter，dispatch 走**真内核**的 DrawSlot。
-func (h *containerHarness) drawContainer(t *testing.T, painterID string) *ui.Canvas {
+func (h *containerHarness) drawContainer(t *testing.T, painterID string) *gfx.Canvas {
 	t.Helper()
 	var target *pluginapi.Painter
 	panels := h.panels()
@@ -82,7 +83,7 @@ func (h *containerHarness) drawContainer(t *testing.T, painterID string) *ui.Can
 		t.Fatalf("父容器 %q 没有 Children = 里面没有 drawSlot", painterID)
 	}
 	theme := dscore.Dark()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(h.env.Tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -396,8 +397,8 @@ func waitProviders(t *testing.T, store *Store, _ *bool) {
 // ── 小工具 ─────────────────────────────────────────────────────────
 
 func containerHarnessEnv() *pluginapi.Env {
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -409,7 +410,7 @@ func containerHarnessEnv() *pluginapi.Env {
 	}
 }
 
-func hasHitLabel(canvas *ui.Canvas, label string) bool {
+func hasHitLabel(canvas *gfx.Canvas, label string) bool {
 	for _, got := range hitLabels(canvas) {
 		if strings.Contains(got, label) {
 			return true

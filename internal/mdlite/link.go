@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -61,7 +62,7 @@ func LinkTargetForURL(destination string) (LinkTarget, bool) {
 
 // Draw 画文本链接并返回真实可见 hit 矩形。区域宽度按文字测量并受 bounds
 // 裁剪，不给整行空白处制造“幽灵链接”。点击通过 AfterPaint 调宿主回调。
-func (l Link) Draw(canvas *ui.Canvas, bounds ui.Rect, id ui.ID, style ui.TextStyle) ui.Rect {
+func (l Link) Draw(canvas *gfx.Canvas, bounds ui.Rect, id gfx.ID, style gfx.TextStyle) ui.Rect {
 	if bounds.Width <= 0 || bounds.Height <= 0 || l.Text == "" {
 		return ui.Rect{}
 	}
@@ -75,8 +76,8 @@ func (l Link) Draw(canvas *ui.Canvas, bounds ui.Rect, id ui.ID, style ui.TextSty
 	textBounds := region
 	canvas.Label(l.Text, textBounds, style)
 	if !id.IsZero() {
-		canvas.HitWithOptions(id, region, l.Text, ui.HitOptions{
-			Role: ui.RoleLink, Cursor: ui.PointerCursorHand,
+		canvas.HitWithOptions(id, region, l.Text, gfx.HitOptions{
+			Role: gfx.RoleLink, Cursor: gfx.PointerCursorHand,
 			Value: l.Target.Destination, Disabled: l.Open == nil,
 		})
 	}
@@ -94,7 +95,7 @@ func (l Link) Draw(canvas *ui.Canvas, bounds ui.Rect, id ui.ID, style ui.TextSty
 // 和回调分发；它不解析文档、不接管流式 Markdown 入口。多个 view 可共享
 // Scope，调用方用 Base 传入此前所有 view 的 LinkCount 总和。
 type MarkdownLinkActions struct {
-	Scope ui.Scope
+	Scope gfx.Scope
 	Base  int
 	Open  OpenLinkFunc
 }
@@ -102,12 +103,12 @@ type MarkdownLinkActions struct {
 // Paint 实画 Markdown 并把点击映射回同一 fragment 的 Destination。
 // Viva parser 本身只生成 HTTP(S)/mailto 节点；文件链接由调用方用 Link/
 // NewFileLink 显式实画，避免从普通文本猜宿主路径。
-func (a MarkdownLinkActions) Paint(canvas *ui.Canvas, view *components.MarkdownView, paint components.MarkdownPaint) {
+func (a MarkdownLinkActions) Paint(canvas *gfx.Canvas, view *components.MarkdownView, paint components.MarkdownPaint) {
 	if view == nil {
 		return
 	}
 	if a.Open == nil || a.Scope.IsZero() {
-		paint.Links = ui.Scope(0)
+		paint.Links = gfx.Scope(0)
 		view.Paint(canvas, paint)
 		return
 	}

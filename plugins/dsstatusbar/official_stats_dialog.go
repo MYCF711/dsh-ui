@@ -51,6 +51,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -71,11 +72,11 @@ type statsDialogState struct {
 	open    bool
 	session string // 展开时所在会话；切会话即关闭
 
-	pill      flex.Box
+	pill      ui.Box
 	pillDrawn bool
 	pillRect  ui.Rect
 
-	panel      flex.Box
+	panel      ui.Box
 	panelDrawn bool
 	panelRect  ui.Rect
 }
@@ -114,9 +115,9 @@ func (p *Plugin) themeOf(env *pluginapi.Env) *pluginapi.Theme {
 }
 
 // statsTreeID 造一个交互 id；没有 Tree（纯几何单测）时返回零值 = 不接交互。
-func statsTreeID(env *pluginapi.Env, name string) ui.ID {
+func statsTreeID(env *pluginapi.Env, name string) gfx.ID {
 	if env == nil || env.Tree == nil {
-		return ui.ID{}
+		return gfx.ID{}
 	}
 	return env.Tree.ID(env.Feat, name)
 }
@@ -125,7 +126,7 @@ func statsTreeID(env *pluginapi.Env, name string) ui.ID {
 //
 // 官方 `button.pill:hover` 与 `[aria-expanded=true]` 用的是同一套视觉（底 =
 // interactive-bg-hover、字 = label-secondary），所以展开态与悬停/按下/聚焦取并集。
-func statsHovered(env *pluginapi.Env, id ui.ID, open bool) bool {
+func statsHovered(env *pluginapi.Env, id gfx.ID, open bool) bool {
 	if open {
 		return true
 	}
@@ -154,7 +155,7 @@ func (p *Plugin) drawStatsDialog(f *flex.Frame, env *pluginapi.Env, t *pluginapi
 	// 点弹窗内部落在面板自己的命中区上（不会误关）。
 	if env.Bounds.Width > 0 && env.Bounds.Height > 0 {
 		backdrop := f.Popup().At(0, 0).Size(env.Bounds.Width, env.Bounds.Height).
-			HitWith(statsTreeID(env, statsDialogBackdrop), "", ui.HitOptions{SkipFocus: true})
+			HitWith(statsTreeID(env, statsDialogBackdrop), "", gfx.HitOptions{SkipFocus: true})
 		if backdrop.Clicked() {
 			p.closeStatsDialog()
 			return
@@ -164,24 +165,24 @@ func (p *Plugin) drawStatsDialog(f *flex.Frame, env *pluginapi.Env, t *pluginapi
 	// ② 面板：锚在胶囊上方 8px（官方 bottom: anchor(top)+8）、宽按 max-content 夹。
 	width := statsDialogWidth(env, rows, counts)
 	anchor := statsDialogAnchor(p.statsDialogPillRect(env), width, env.Bounds)
-	panel := f.Popup().Above(anchor, StatsDialogAnchorGap, flex.Start).Width(width)
-	panel = panel.Radius(t.Radii.LG).Background(t.BgLayer3).Shadow(ui.ShadowLG).
+	panel := f.Popup().Above(anchor, StatsDialogAnchorGap, ui.Start).Width(width)
+	panel = panel.Radius(t.Radii.LG).Background(t.BgLayer3).Shadow(gfx.ShadowLG).
 		Pad(StatsDialogPad)
 	// 弹窗本体吃掉点击：官方点框内不关闭（stat-dialog.ts 只认"外面"）。
 	// 角色用 RoleGroup：viva v0.2.3 没有 RoleDialog，Group 是"成组的非动作区域"。
 	panel = panel.HitWith(statsTreeID(env, statsDialogPanelHit), zhStatsDialogTitle,
-		ui.HitOptions{Role: ui.RoleGroup})
+		gfx.HitOptions{Role: gfx.RoleGroup})
 
 	labelColumn := statsDialogLabelColumn(env, rows)
 	panel.Children(func() {
 		// .title：章节名左、头条数值右（flex space-between + gap16 + mb8 + 500）。
-		f.Row().FillWidth().Items(flex.Center).Gap(StatsDialogTitleGap).
+		f.Row().FillWidth().Items(ui.Center).Gap(StatsDialogTitleGap).
 			MarginSides(0, 0, StatsDialogTitleMarginBottom, 0).Children(func() {
 			f.Text(zhStatsDialogTitle).FontSize(StatsDialogFontSize).
-				LineHeight(StatsDialogLineHeight).Weight(ui.WeightMedium).Color(t.LabelPrimary)
+				LineHeight(StatsDialogLineHeight).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 			f.Spacer()
 			f.Text(counts).FontSize(StatsDialogFontSize).LineHeight(StatsDialogLineHeight).
-				Weight(ui.WeightMedium).Color(t.LabelPrimary)
+				Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 		})
 		// .titleRule：0.5px border-top（border-l2）+ mb10。
 		f.Column().FillWidth().Height(StatsDialogTitleRuleHeight).Background(t.BorderL2).
@@ -189,7 +190,7 @@ func (p *Plugin) drawStatsDialog(f *flex.Frame, env *pluginapi.Env, t *pluginapi
 		// dl.details：两列 + 行距 6；dt 列宽 = max(76, 最长标签)（官方 minmax(76px,auto)）。
 		f.Column().FillWidth().Gap(StatsDialogDetailsRowGap).Children(func() {
 			for _, row := range rows {
-				f.Row().FillWidth().Items(flex.Center).Gap(StatsDialogDetailsColumnGap).Children(func() {
+				f.Row().FillWidth().Items(ui.Center).Gap(StatsDialogDetailsColumnGap).Children(func() {
 					f.Row().Width(labelColumn).Children(func() {
 						f.Text(row.Label).FontSize(StatsDialogFontSize).
 							LineHeight(StatsDialogLineHeight).Color(t.LabelTertiary).Ellipsis()
@@ -339,7 +340,7 @@ func (p *Plugin) closeStatsDialog() {
 }
 
 // afterOfficialDock 在布局之后缓存胶囊与面板的真实矩形（下一帧的锚点与几何断言）。
-func (p *Plugin) afterOfficialDock(_ *ui.Canvas, _ *pluginapi.Env) {
+func (p *Plugin) afterOfficialDock(_ *gfx.Canvas, _ *pluginapi.Env) {
 	if p.dialog.pillDrawn {
 		if rect := p.dialog.pill.Rect(); rect.Width > 0 && rect.Height > 0 {
 			p.dialog.pillRect = rect
@@ -366,11 +367,11 @@ func (p *Plugin) statsDialogOpen(d pluginapi.Snapshot) bool {
 // dscomposer 之后，而 dscomposer 在"没有审批"时把 Esc 当"停止 turn"。所以生产
 // 路径上"turn 正在跑"时 Esc 会先被 composer 吃掉，弹窗还在——这是已知差异，报告
 // §剩余差距登记。没有可取消的 turn 时（Cancel 未接线 / 测试）Esc 会落到这里。
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	if ev.Release || !p.dialog.open {
 		return false
 	}
-	if ev.Key != ui.KeyEscape || ev.Modifiers != 0 {
+	if ev.Key != gfx.KeyEscape || ev.Modifiers != 0 {
 		return false
 	}
 	p.closeStatsDialog()

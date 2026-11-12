@@ -6,6 +6,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -43,17 +44,17 @@ const (
 // frameBoxes 记录真实 flex 矩形，供两档无头窗口和组件测试量测。
 // 不使用“常量等于自己”的自证代替布局证据。
 type frameBoxes struct {
-	Brand           flex.Box
-	BrandIdentity   flex.Box
-	BrandMark       flex.Box
-	BrandName       flex.Box
-	NewSession      flex.Box
-	PanelList       flex.Box
-	PanelRows       []flex.Box
-	WorkspaceHeader flex.Box
-	SearchButton    flex.Box
-	Search          flex.Box
-	ActivePanel     flex.Box
+	Brand           ui.Box
+	BrandIdentity   ui.Box
+	BrandMark       ui.Box
+	BrandName       ui.Box
+	NewSession      ui.Box
+	PanelList       ui.Box
+	PanelRows       []ui.Box
+	WorkspaceHeader ui.Box
+	SearchButton    ui.Box
+	Search          ui.Box
+	ActivePanel     ui.Box
 }
 
 // panelRoute 是本插件当前真正可切换的面板描述。
@@ -95,18 +96,18 @@ func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	p.frameBoxes.PanelRows = p.frameBoxes.PanelRows[:0]
 	f.Column().FillWidth().Children(func() {
-		p.frameBoxes.Brand = f.Row().FillWidth().Height(logoRowHeight).Items(flex.Center).Children(func() {
-			p.frameBoxes.BrandIdentity = f.Row().Height(brandIdentityHeight).Gap(brandGap).Items(flex.Center).Children(func() {
+		p.frameBoxes.Brand = f.Row().FillWidth().Height(logoRowHeight).Items(ui.Center).Children(func() {
+			p.frameBoxes.BrandIdentity = f.Row().Height(brandIdentityHeight).Gap(brandGap).Items(ui.Center).Children(func() {
 				p.frameBoxes.BrandMark = f.Icon(fishIcon()).Width(brandMarkSize).
 					Height(brandMarkSize * fishAspect(fishViewBoxW, fishViewBoxH)).Color(t.LabelPrimary)
 				p.frameBoxes.BrandName = f.Row().Width(brandNameWidth).Height(brandNameHeight).
-					Gap(6).Items(flex.Center).Children(func() {
+					Gap(6).Items(ui.Center).Children(func() {
 					f.Text("deepseek").FontSize(brandNameFontSize).LineHeight(brandNameLineHeight).
 						Color(t.LabelPrimary).Grow(1).Ellipsis()
 					f.Row().Width(brandBadgeWidth).Height(brandBadgeHeight).Radius(t.Radii.XS).
-						Background(t.LabelPrimary).Items(flex.Center).Justify(flex.Center).Children(func() {
+						Background(t.LabelPrimary).Items(ui.Center).Justify(ui.Center).Children(func() {
 						f.Text("HARNESS").FontSize(9).LineHeight(brandBadgeHeight).
-							Weight(ui.WeightMedium).Color(t.ButtonPrimaryFg)
+							Weight(gfx.WeightMedium).Color(t.ButtonPrimaryFg)
 					})
 				})
 			})
@@ -115,14 +116,14 @@ func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
 		})
 
 		newBox := f.Row().FillWidth().Height(newSessionHeight).Radius(t.Radii.MD).
-			Background(t.BgLayer2).Border(0.5, t.BorderL3).Hover(flex.Look{}.Background(t.Hover)).
+			Background(t.BgLayer2).Border(0.5, t.BorderL3).Hover(ui.Look{}.Background(t.Hover)).
 			MarginSides(newSessionMarginTop, 2, newSessionMarginBottom, 2).
-			Items(flex.Center).Justify(flex.Center).Hit(env.Tree.ID(env.Feat, "new-session"), "新建会话").Children(func() {
-			f.Row().Items(flex.Center).Gap(6).Children(func() {
+			Items(ui.Center).Justify(ui.Center).Hit(env.Tree.ID(env.Feat, "new-session"), "新建会话").Children(func() {
+			f.Row().Items(ui.Center).Gap(6).Children(func() {
 				f.Text("+").FontSize(newSessionFontSize).LineHeight(newSessionLineHeight).
-					Weight(ui.WeightMedium).Color(t.LabelPrimary)
+					Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 				f.Text("新会话").FontSize(newSessionFontSize).LineHeight(newSessionLineHeight).
-					Weight(ui.WeightMedium).Color(t.LabelPrimary)
+					Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 			})
 		})
 		p.frameBoxes.NewSession = newBox
@@ -135,18 +136,18 @@ func (p *Plugin) drawHeader(f *flex.Frame, env *pluginapi.Env) {
 
 		routes := p.panelRoutes()
 		if len(routes) == 0 {
-			p.frameBoxes.PanelList = flex.Box{}
+			p.frameBoxes.PanelList = ui.Box{}
 			return
 		}
 		p.frameBoxes.PanelList = f.Column().FillWidth().Gap(panelListGap).
 			MarginSides(0, 0, panelListBottom, 0).Children(func() {
 			for _, route := range routes {
 				route := route
-				var row flex.Box
+				var row ui.Box
 				f.Row().FillWidth().PadSides(0, 2, 0, 2).Children(func() {
 					row = p.prims.ListRow(f, env.Tree.ID(env.Feat, "panel-"+route.ID),
 						p.activePanel == route.ID, panelRowHeight, func() {
-							f.Row().Width(16).Height(22).Shrink(0).Items(flex.Center).Justify(flex.Center).Children(func() {
+							f.Row().Width(16).Height(22).Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
 								f.Text(route.Glyph).FontSize(16).LineHeight(22).Color(t.LabelSecondary)
 							})
 							f.Text(route.Label).FontSize(t.Fonts.Body).LineHeight(22).
@@ -176,21 +177,21 @@ func (p *Plugin) drawWorkspaceHeader(f *flex.Frame, env *pluginapi.Env) {
 
 func (p *Plugin) drawWorkspaceHeaderMargin(f *flex.Frame, env *pluginapi.Env, marginTop float32) {
 	t := p.theme
-	p.frameBoxes.SearchButton = flex.Box{}
-	p.frameBoxes.Search = flex.Box{}
+	p.frameBoxes.SearchButton = ui.Box{}
+	p.frameBoxes.Search = ui.Box{}
 	p.frameBoxes.WorkspaceHeader = f.Row().Width(p.width-sidebarInline-8).Height(workspaceHeaderHeight).
 		MarginSides(marginTop, -4, workspaceHeaderBottom, 4).Background(t.SidebarFill).
-		Items(flex.Center).Gap(4).Children(func() {
+		Items(ui.Center).Gap(4).Children(func() {
 		if p.searchExpanded {
 			p.frameBoxes.Search = f.Row().FillWidth().Height(searchHeight).Radius(t.Radii.MD).
-				Border(0.5, t.BorderL4).Items(flex.Center).Children(func() {
-				f.Row().Width(28).Height(searchHeight).Shrink(0).Items(flex.Center).Justify(flex.Center).Children(func() {
+				Border(0.5, t.BorderL4).Items(ui.Center).Children(func() {
+				f.Row().Width(28).Height(searchHeight).Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
 					f.Text("⌕").FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
 				})
 				f.Field(&p.search, env.Tree.ID(env.Feat, "search"), "搜索", "过滤会话…").
 					Grow(1).Height(searchHeight).FontSize(t.Fonts.Secondary)
 				clear := f.Row().Width(28).Height(searchHeight).Shrink(0).Radius(t.Radii.SM).
-					Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(t.Hover)).
+					Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 					Hit(env.Tree.ID(env.Feat, "workspace-search-clear"), "清空搜索").Children(func() {
 					f.Text("×").FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
 				})
@@ -218,9 +219,9 @@ func (p *Plugin) drawWorkspaceHeaderMargin(f *flex.Frame, env *pluginapi.Env, ma
 	})
 }
 
-func (p *Plugin) workspaceIconButton(f *flex.Frame, env *pluginapi.Env, id, glyph, label string) (flex.Box, bool) {
+func (p *Plugin) workspaceIconButton(f *flex.Frame, env *pluginapi.Env, id, glyph, label string) (ui.Box, bool) {
 	box := f.Row().Width(workspaceIconSize).Height(workspaceIconSize).Shrink(0).Radius(p.theme.Radii.SM).
-		Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(p.theme.Hover)).
+		Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(p.theme.Hover)).
 		Hit(env.Tree.ID(env.Feat, id), label).Children(func() {
 		f.Text(glyph).FontSize(14).LineHeight(20).Color(p.theme.LabelSecondary)
 	})
@@ -230,7 +231,7 @@ func (p *Plugin) workspaceIconButton(f *flex.Frame, env *pluginapi.Env, id, glyp
 // drawActivePanel 在主列实画当前路由。它不改写 conversation、composer 或其状态，
 // 因而返回会话不会丢 session id、草稿或滚动位置；F1 快捷键层仍可在其上显示。
 func (p *Plugin) drawActivePanel(f *flex.Frame, env *pluginapi.Env) {
-	p.frameBoxes.ActivePanel = flex.Box{}
+	p.frameBoxes.ActivePanel = ui.Box{}
 	if p.activePanel == "" {
 		return
 	}
@@ -272,7 +273,7 @@ func (p *Plugin) drawActivePanel(f *flex.Frame, env *pluginapi.Env) {
 func (p *Plugin) drawPluginsPanel(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	f.Column().FillWidth().Gap(8).Children(func() {
-		f.Text("插件").FontSize(24).LineHeight(32).Weight(ui.WeightMedium).Color(t.LabelPrimary)
+		f.Text("插件").FontSize(24).LineHeight(32).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 		f.Text("当前二进制已登记的插件").FontSize(t.Fonts.Secondary).LineHeight(20).Color(t.LabelTertiary)
 		f.Column().FillWidth().Gap(2).PadSides(12, 0, 0, 0).Children(func() {
 			for _, id := range pluginapi.Registered() {
@@ -287,7 +288,7 @@ func (p *Plugin) drawPluginsPanel(f *flex.Frame, env *pluginapi.Env) {
 func (p *Plugin) drawSchedulesPanel(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
 	f.Column().FillWidth().Gap(8).Children(func() {
-		f.Text("自动化任务").FontSize(24).LineHeight(32).Weight(ui.WeightMedium).Color(t.LabelPrimary)
+		f.Text("自动化任务").FontSize(24).LineHeight(32).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 		f.Text("当前宿主未提供任务目录").FontSize(t.Fonts.Body).LineHeight(22).Color(t.LabelTertiary)
 		// 没有 schedule catalog/history/action 时不编任务、不画新建/删除死按钮。
 	})

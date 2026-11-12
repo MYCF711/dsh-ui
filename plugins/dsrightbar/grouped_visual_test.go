@@ -12,6 +12,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -51,11 +52,11 @@ func openRightbarShot(t *testing.T, width, height int, msgs []apiclient.Message)
 	t.Helper()
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("traj-shot")
 	var view flex.View
 	config := app.Config{Title: "traj-shot", Width: width, Height: height, Tree: tree}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Data: pluginapi.Snapshot{Cur: "traj-shot", Msgs: msgs},

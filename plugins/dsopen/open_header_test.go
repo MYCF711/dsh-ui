@@ -14,6 +14,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -32,7 +33,7 @@ func openHeaderSession(t *testing.T, data *pluginapi.Snapshot, act pluginapi.Act
 		t.Fatal(err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("open-header")
 	var (
 		view        flex.View
@@ -42,7 +43,7 @@ func openHeaderSession(t *testing.T, data *pluginapi.Snapshot, act pluginapi.Act
 		Title: "open-in-app-header", Width: width, Height: height, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{

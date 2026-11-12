@@ -6,11 +6,12 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // fg2Text 返回这一帧实际绘制的文字；找不到就立即失败，避免用空零值误判字号。
-func fg2Text(t *testing.T, canvas *ui.Canvas, value string) ui.Text {
+func fg2Text(t *testing.T, canvas *gfx.Canvas, value string) gfx.Text {
 	t.Helper()
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
@@ -18,10 +19,10 @@ func fg2Text(t *testing.T, canvas *ui.Canvas, value string) ui.Text {
 		}
 	}
 	t.Fatalf("画面缺少 %q；实际文字=%v", value, canvas.Texts())
-	return ui.Text{}
+	return gfx.Text{}
 }
 
-func fg2HasText(canvas *ui.Canvas, value string) bool {
+func fg2HasText(canvas *gfx.Canvas, value string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return true
@@ -98,7 +99,7 @@ func TestFG2BrandNewSessionAndNavigationGeometry(t *testing.T) {
 		t.Errorf("Windows 新会话 margin-top=%v，want 8", got)
 	}
 	label := fg2Text(t, canvas, "新会话")
-	if label.Style.Size != 14 || label.Bounds.Height != 22 || label.Style.Weight != ui.WeightMedium {
+	if label.Style.Size != 14 || label.Bounds.Height != 22 || label.Style.Weight != gfx.WeightMedium {
 		t.Errorf("新会话字体/行高/字重=%v/%v/%v，want 14/22/500", label.Style.Size, label.Bounds.Height, label.Style.Weight)
 	}
 	if len(boxes.PanelRows) != 2 {
@@ -271,7 +272,7 @@ func TestFG2WorkspaceHeaderCollapseExpandAndSearch(t *testing.T) {
 		t.Fatal("搜索展开时 section label 应隐藏")
 	}
 	p.search.SetText("Alpha")
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) || p.searchExpanded || p.search.Text() != "" {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) || p.searchExpanded || p.search.Text() != "" {
 		t.Fatalf("Esc 应清空并收起搜索：expanded=%v query=%q", p.searchExpanded, p.search.Text())
 	}
 

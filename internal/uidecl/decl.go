@@ -515,7 +515,7 @@ func (p *declPlugin) drawLabel(f *flex.Frame, env *pluginapi.Env, t *pluginapi.T
 	if text == "" {
 		return
 	}
-	f.Row().FillWidth().Height(d.height()).Items(flex.Center).Children(func() {
+	f.Row().FillWidth().Height(d.height()).Items(ui.Center).Children(func() {
 		f.Text(text).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
 	})
 }
@@ -528,7 +528,7 @@ func (p *declPlugin) drawKeyValue(f *flex.Frame, env *pluginapi.Env, t *pluginap
 	if label == "" && value == "" {
 		return
 	}
-	f.Row().FillWidth().Height(d.height()).Items(flex.Center).Gap(8).Children(func() {
+	f.Row().FillWidth().Height(d.height()).Items(ui.Center).Gap(8).Children(func() {
 		if label != "" {
 			// Shrink(0)：标签不许被压缩，空间不够时被省略的永远是右值。
 			f.Text(label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis().Shrink(0)
@@ -546,7 +546,7 @@ func (p *declPlugin) drawDot(f *flex.Frame, env *pluginapi.Env, t *pluginapi.The
 	if text == "" {
 		return
 	}
-	f.Row().FillWidth().Height(d.height()).Items(flex.Center).Gap(6).Children(func() {
+	f.Row().FillWidth().Height(d.height()).Items(ui.Center).Gap(6).Children(func() {
 		if p.prims != nil {
 			p.prims.Dot(f, d.color(t), 6)
 		}
@@ -567,7 +567,7 @@ func (p *declPlugin) drawList(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Th
 			if s == "" {
 				continue
 			}
-			f.Row().FillWidth().Height(listLineHeight).Items(flex.Center).Children(func() {
+			f.Row().FillWidth().Height(listLineHeight).Items(ui.Center).Children(func() {
 				f.Text(s).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
 			})
 		}

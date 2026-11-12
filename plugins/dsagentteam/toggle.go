@@ -54,11 +54,11 @@ func (p *Plugin) drawToggle(f *flex.Frame, env *pluginapi.Env) {
 	t := p.themeFor(env)
 	pending := p.team.Pending()
 
-	f.Row().FillWidth().Items(flex.Center).Justify(flex.Between).Gap(toggleGap).
+	f.Row().FillWidth().Items(ui.Center).Justify(ui.Between).Gap(toggleGap).
 		MinHeight(toggleMinHeight).PadSides(0, togglePadH, 0, togglePadH).
 		Radius(t.Radii.MD).Children(func() {
 		// .label：文案 + 信息按钮（信息按钮有自己的命中区，挡在 Switch 的整行命中面上）。
-		f.Row().Items(flex.Center).Gap(labelGap).Children(func() {
+		f.Row().Items(ui.Center).Gap(labelGap).Children(func() {
 			f.Text(zhModeLabel).FontSize(toggleFontSize).LineHeight(toggleLine).
 				Color(t.LabelPrimary)
 			infoID := env.Tree.ID(env.Feat, "team-mode-info")
@@ -101,5 +101,5 @@ func toggleVisible(view View) bool {
 	return view.ProjectionKnown
 }
 
-var _ = flex.Center
+var _ = ui.Center
 var _ = ui.Color{}

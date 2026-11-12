@@ -7,6 +7,7 @@ import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -24,9 +25,9 @@ func renderFiles(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi
 	if p.prims == nil {
 		p.prims = &dscore.Primitives{Theme: p.theme}
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("files-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -216,9 +217,9 @@ func TestPreviewOpensInDefaultApp(t *testing.T) {
 // drawPreviewOnce 画一帧预览浮层。
 func drawPreviewOnce(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) {
 	t.Helper()
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("files-preview-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55

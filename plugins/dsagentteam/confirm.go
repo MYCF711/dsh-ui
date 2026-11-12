@@ -23,6 +23,7 @@ package dsagentteam
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -71,9 +72,9 @@ func (p *Plugin) drawConfirm(f *flex.Frame, env *pluginapi.Env) {
 		// 对话本体也吃掉点击：官方点框内不关闭，只有遮罩/ESC 才关。
 		Hit(env.Tree.ID(env.Feat, "team-disable-dialog"), zhDisableTitle).
 		Radius(t.Radii.XL).Background(t.InputMajor).Border(1, t.BorderL2).
-		Shadow(ui.ShadowMD).Pad(dialogPad).Gap(dialogGap).Children(func() {
+		Shadow(gfx.ShadowMD).Pad(dialogPad).Gap(dialogGap).Children(func() {
 		// 标题（Modal 的 title；tone=warning 由黄色圆点表达）。
-		f.Row().FillWidth().Items(flex.Center).Gap(errGap).Children(func() {
+		f.Row().FillWidth().Items(ui.Center).Gap(errGap).Children(func() {
 			f.Row().Width(dotSize).Height(dotSize).Radius(dotSize / 2).Background(t.Warn)
 			f.Text(zhDisableTitle).FontSize(modalTitleZ).LineHeight(24).Weight(500).
 				Color(t.LabelPrimary).Grow(1)
@@ -90,7 +91,7 @@ func (p *Plugin) drawConfirm(f *flex.Frame, env *pluginapi.Env) {
 			f.Text(state.Message).FillWidth().FontSize(t.Fonts.Caption).Color(t.Error)
 		}
 		// footer：取消（outline）+ 确认停用（primary），saving 期间两个都禁用。
-		f.Row().FillWidth().Items(flex.Center).Justify(flex.End).Gap(8).Children(func() {
+		f.Row().FillWidth().Items(ui.Center).Justify(ui.End).Gap(8).Children(func() {
 			cancel := f.Button(env.Tree.ID(env.Feat, "team-disable-cancel"), zhDisableCancel).
 				Outline().Small()
 			if saving {

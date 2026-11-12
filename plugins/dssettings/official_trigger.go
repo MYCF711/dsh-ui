@@ -54,6 +54,7 @@ package dssettings
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // slotSettingsLauncher 是官方 `settings.launcher`（`ui-settings-general/index.ts:237`
@@ -84,10 +85,10 @@ func (p *Plugin) drawSettingsTrigger(f *flex.Frame, env *pluginapi.Env) {
 	id := env.Tree.ID(env.Feat, "settings-trigger")
 	row := f.Row().Height(TriggerHeight).Grow(1).
 		PadSides(0, TriggerPadRight, 0, TriggerPadLeft).
-		Radius(t.Radii.MD).Items(flex.Center).Gap(TriggerGap).
+		Radius(t.Radii.MD).Items(ui.Center).Gap(TriggerGap).
 		Hit(id, zhSettingsTrigger).
 		// `.trigger:hover{background:var(--dsw-alias-interactive-bg-hover)}`。
-		Hover(flex.Look{}.Background(t.Hover))
+		Hover(ui.Look{}.Background(t.Hover))
 	row.Children(func() {
 		// 宽态图标 16（`chrome.tsx:22-29` 的 `wide ? 16 : 18`）。
 		f.Icon(settingsTriggerIcon()).Size(TriggerIconSize, TriggerIconSize).Color(t.LabelPrimary)

@@ -157,10 +157,10 @@ func (s *Cards) Render(f *flex.Frame, env *pluginapi.Env, c Card) {
 
 	// 标题行：点它展开。结构逐字沿用抽取前的那一段（像素对比见 tmp/tool-*.png）。
 	head := f.Row().WidthPercent(100).PadX(4).PadY(2).Radius(t.Radii.SM).
-		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).
+		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, "tool-"+strconv.Itoa(c.Seq)), "").Children(func() {
 		// leading：16px 方框里的展开箭头（官方也是这个位置放 chevron）
-		f.Row().Width(16).Items(flex.Center).Children(func() {
+		f.Row().Width(16).Items(ui.Center).Children(func() {
 			arrow := "▸"
 			if open {
 				arrow = "▾"

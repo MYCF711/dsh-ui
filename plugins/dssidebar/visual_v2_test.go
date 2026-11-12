@@ -8,44 +8,45 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // v2RecordedRow 记录真实 drawSession 传给图元的选中态、行高和最终布局矩形。
 type v2RecordedRow struct {
-	id     ui.ID
+	id     gfx.ID
 	active bool
 	height float32
-	box    flex.Box
+	box    ui.Box
 }
 
 // v2RecordingPrimitives 只记录、不改写 dscore 的真实布局与命中行为。
 type v2RecordingPrimitives struct {
 	*dscore.Primitives
 	rows    []v2RecordedRow
-	headers []flex.Box
+	headers []ui.Box
 	dots    int
 }
 
-func (r *v2RecordingPrimitives) ListRow(f *flex.Frame, id ui.ID, active bool, height float32, body func()) flex.Box {
+func (r *v2RecordingPrimitives) ListRow(f *flex.Frame, id gfx.ID, active bool, height float32, body func()) ui.Box {
 	box := r.Primitives.ListRow(f, id, active, height, body)
 	r.rows = append(r.rows, v2RecordedRow{id: id, active: active, height: height, box: box})
 	return box
 }
 
-func (r *v2RecordingPrimitives) SectionHeader(f *flex.Frame, id ui.ID, title string, count int, open bool) flex.Box {
+func (r *v2RecordingPrimitives) SectionHeader(f *flex.Frame, id gfx.ID, title string, count int, open bool) ui.Box {
 	box := r.Primitives.SectionHeader(f, id, title, count, open)
 	r.headers = append(r.headers, box)
 	return box
 }
 
-func (r *v2RecordingPrimitives) Dot(f *flex.Frame, color ui.Color, size float32) flex.Box {
+func (r *v2RecordingPrimitives) Dot(f *flex.Frame, color ui.Color, size float32) ui.Box {
 	r.dots++
 	return r.Primitives.Dot(f, color, size)
 }
 
-func v2Canvas(tree *ui.Tree) *ui.Canvas {
-	canvas := &ui.Canvas{}
+func v2Canvas(tree *gfx.Tree) *gfx.Canvas {
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size / 2
@@ -53,10 +54,10 @@ func v2Canvas(tree *ui.Tree) *ui.Canvas {
 	return canvas
 }
 
-func v2Fixture() (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *ui.Tree, *ui.Canvas) {
+func v2Fixture() (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *gfx.Tree, *gfx.Canvas) {
 	theme := dscore.Dark()
 	recorder := &v2RecordingPrimitives{Primitives: &dscore.Primitives{Theme: theme}}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feature := tree.Feature("visual-v2-test")
 	plugin := &Plugin{theme: theme, prims: recorder, width: 280, collapsed: map[string]bool{}}
 	env := &pluginapi.Env{Theme: theme, Tree: tree, Feat: feature}
@@ -228,7 +229,7 @@ func TestV2GroupGeometryAndScroll(t *testing.T) {
 	if got := state.Content - (last.Y + last.Height); got != 16 {
 		t.Fatalf("滚动内容底部留白 = %v，want 16（官方 .GAkraW_list padding-bottom）", got)
 	}
-	result := view.Wheel(ui.ScrollEvent{X: 20, Y: 50, DeltaY: 24, Precise: true})
+	result := view.Wheel(gfx.ScrollEvent{X: 20, Y: 50, DeltaY: 24, Precise: true})
 	if !result.Handled || state.Offset != 24 {
 		t.Fatalf("wheel 未滚动侧栏：handled=%v offset=%v，want true/24", result.Handled, state.Offset)
 	}

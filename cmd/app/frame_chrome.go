@@ -6,6 +6,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/ui"
 )
@@ -130,7 +131,7 @@ func (selection frameSelection) restore(editor *text.Editor) {
 }
 
 type frameEditorSnapshot struct {
-	id        ui.ID
+	id        gfx.ID
 	editor    *text.Editor
 	selection frameSelection
 	secure    bool
@@ -144,7 +145,7 @@ type frameMenuEntry struct {
 
 // frameChrome 是壳自己的 Windows 菜单。它不经过插件 SPI，也不伪造壳尚不具备的动作。
 type frameChrome struct {
-	open        ui.ID
+	open        gfx.ID
 	last        frameEditorSnapshot
 	saved       frameEditorSnapshot
 	menuScroll  components.MenuScroll
@@ -178,7 +179,7 @@ func (chrome *frameChrome) wrapTextInput(base app.TextInputProvider) app.TextInp
 	}
 }
 
-func (chrome *frameChrome) openMenu(id ui.ID) {
+func (chrome *frameChrome) openMenu(id gfx.ID) {
 	if id.IsZero() {
 		return
 	}
@@ -199,13 +200,13 @@ func (chrome *frameChrome) closeMenu(restoreSelection bool) {
 	if chrome.open.IsZero() {
 		return
 	}
-	chrome.open = ui.ID{}
+	chrome.open = gfx.ID{}
 	chrome.menuScroll = components.MenuScroll{}
 	chrome.restoreNext = true
 	chrome.restoreSel = restoreSelection
 }
 
-func (chrome *frameChrome) handleClick(id ui.ID) error {
+func (chrome *frameChrome) handleClick(id gfx.ID) error {
 	switch id {
 	case chromeApplicationID, chromeEditID:
 		chrome.openMenu(id)
@@ -234,20 +235,20 @@ func (chrome *frameChrome) handleClick(id ui.ID) error {
 	}
 }
 
-func (chrome *frameChrome) handleKey(event ui.KeyEvent) ui.EventResult {
+func (chrome *frameChrome) handleKey(event gfx.KeyEvent) gfx.EventResult {
 	if event.Release {
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
-	if event.Key == ui.KeyEscape && !chrome.open.IsZero() {
+	if event.Key == gfx.KeyEscape && !chrome.open.IsZero() {
 		chrome.closeMenu(true)
-		return ui.EventResult{Handled: true, Repaint: true}
+		return gfx.EventResult{Handled: true, Repaint: true}
 	}
 	triggers := []components.MenubarTrigger{{ID: chromeApplicationID, Label: "应用"}, {ID: chromeEditID, Label: "编辑"}}
 	if event.Target == chromeApplicationID || event.Target == chromeEditID {
 		before := chrome.open
 		state, focus, ok := components.MenubarKeyDown(event.Target, triggers, components.MenubarState(chrome.open), components.LTR, event.Key)
 		if ok {
-			next := ui.ID(state)
+			next := gfx.ID(state)
 			if next != before {
 				if next.IsZero() {
 					chrome.closeMenu(true)
@@ -258,18 +259,18 @@ func (chrome *frameChrome) handleKey(event ui.KeyEvent) ui.EventResult {
 					focus = chrome.firstEnabledItem(chrome.menuEntries())
 				}
 			}
-			return ui.EventResult{Handled: true, Repaint: true, Focus: focus, FocusVisible: true}
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: focus, FocusVisible: true}
 		}
 	}
 	if !chrome.open.IsZero() {
 		if target, ok := chrome.menuScroll.Navigate(event.Key, event.Target, true); ok {
-			return ui.EventResult{Handled: true, Repaint: true, Focus: target, FocusVisible: true}
+			return gfx.EventResult{Handled: true, Repaint: true, Focus: target, FocusVisible: true}
 		}
 	}
-	return ui.EventResult{}
+	return gfx.EventResult{}
 }
 
-func (chrome *frameChrome) paintCaption(canvas *ui.Canvas, theme ui.Theme, size ui.Size) frameChromeLayout {
+func (chrome *frameChrome) paintCaption(canvas *gfx.Canvas, theme ui.Theme, size ui.Size) frameChromeLayout {
 	if chrome.restoreNext {
 		if chrome.saved.editor != nil && !chrome.saved.id.IsZero() {
 			if chrome.restoreSel {
@@ -281,13 +282,13 @@ func (chrome *frameChrome) paintCaption(canvas *ui.Canvas, theme ui.Theme, size 
 	}
 	_, trailing := app.TitlebarInsets()
 	layout := layoutFrameChrome(size, true, trailing,
-		canvas.TextWidthWeight("应用", frameMenuFontSize, ui.WeightRegular),
-		canvas.TextWidthWeight("编辑", frameMenuFontSize, ui.WeightRegular))
+		canvas.TextWidthWeight("应用", frameMenuFontSize, gfx.WeightRegular),
+		canvas.TextWidthWeight("编辑", frameMenuFontSize, gfx.WeightRegular))
 	chrome.lastLayout = layout
 	canvas.MoveRegion(layout.Caption)
 	canvas.Fill(layout.Caption, theme.Background)
 	menubar := ui.Rect{X: frameMenuStart, Width: max(size.Width-trailing-frameMenuStart, 0), Height: frameCaptionHeight}
-	canvas.Container(menubar, ui.RoleMenubar, "菜单栏")
+	canvas.Container(menubar, gfx.RoleMenubar, "菜单栏")
 	if !chrome.open.IsZero() {
 		// popup 的 backdrop 不能盖住另一枚菜单按钮；两枚触发器与菜单同属一个 scope，
 		// 才能在菜单已打开时真实切换，而不是先外点关闭。
@@ -303,7 +304,7 @@ func (chrome *frameChrome) paintCaption(canvas *ui.Canvas, theme ui.Theme, size 
 	return layout
 }
 
-func (chrome *frameChrome) paintTrigger(canvas *ui.Canvas, theme ui.Theme, id ui.ID, label string, bounds ui.Rect) {
+func (chrome *frameChrome) paintTrigger(canvas *gfx.Canvas, theme ui.Theme, id gfx.ID, label string, bounds ui.Rect) {
 	if bounds.Width <= 0 || bounds.Height <= 0 {
 		return
 	}
@@ -314,15 +315,15 @@ func (chrome *frameChrome) paintTrigger(canvas *ui.Canvas, theme ui.Theme, id ui
 		canvas.Rounded(bounds, frameMenuRadius, theme.Muted)
 		foreground = theme.Foreground
 	}
-	canvas.LabelCenter(label, bounds, ui.TextStyle{Size: frameMenuFontSize, Weight: ui.WeightRegular, Color: foreground})
-	canvas.HitWithOptions(id, bounds, label, ui.HitOptions{
-		Role: ui.RoleMenuItem, Selected: open, Expanded: open, Expandable: true,
+	canvas.LabelCenter(label, bounds, gfx.TextStyle{Size: frameMenuFontSize, Weight: gfx.WeightRegular, Color: foreground})
+	canvas.HitWithOptions(id, bounds, label, gfx.HitOptions{
+		Role: gfx.RoleMenuItem, Selected: open, Expanded: open, Expandable: true,
 		// 与官方 pointerdown.preventDefault 一致：点击菜单不抢走编辑器的键盘焦点。
 		SkipFocus: true,
 	})
 }
 
-func (chrome *frameChrome) paintPopup(canvas *ui.Canvas, theme ui.Theme, size ui.Size) {
+func (chrome *frameChrome) paintPopup(canvas *gfx.Canvas, theme ui.Theme, size ui.Size) {
 	if chrome.open.IsZero() {
 		return
 	}
@@ -358,13 +359,13 @@ func (chrome *frameChrome) paintPopup(canvas *ui.Canvas, theme ui.Theme, size ui
 	menu.End()
 }
 
-func (chrome *frameChrome) firstEnabledItem(entries []frameMenuEntry) ui.ID {
+func (chrome *frameChrome) firstEnabledItem(entries []frameMenuEntry) gfx.ID {
 	for _, entry := range entries {
 		if !entry.separator && !entry.item.Disabled && !entry.item.ID.IsZero() {
 			return entry.item.ID
 		}
 	}
-	return ui.ID{}
+	return gfx.ID{}
 }
 
 func (chrome *frameChrome) menuEntries() []frameMenuEntry {
@@ -394,7 +395,7 @@ func (chrome *frameChrome) menuEntries() []frameMenuEntry {
 	}
 	hasSelection := selection.Ordered().Start != selection.Ordered().End
 	mutable := hasEditor && !readOnly
-	item := func(id ui.ID, label, shortcut string, enabled bool) frameMenuEntry {
+	item := func(id gfx.ID, label, shortcut string, enabled bool) frameMenuEntry {
 		return frameMenuEntry{item: components.MenubarItem{ID: id, Label: label, Shortcut: shortcut, Disabled: !enabled}}
 	}
 	return []frameMenuEntry{
@@ -410,7 +411,7 @@ func (chrome *frameChrome) menuEntries() []frameMenuEntry {
 	}
 }
 
-func (chrome *frameChrome) executeEdit(id ui.ID) error {
+func (chrome *frameChrome) executeEdit(id gfx.ID) error {
 	saved := chrome.saved
 	editor := saved.editor
 	if editor == nil {

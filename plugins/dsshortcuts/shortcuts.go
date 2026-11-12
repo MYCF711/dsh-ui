@@ -16,6 +16,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -98,9 +99,9 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // setStatus）。少了这一步，`-keys f1` 的日志是 `key 16 handled=true`、
 // 屏幕上却什么都没有：上一轮「面板画不出来」卡的就是这里，不是 Absolute 布局
 // （布局在 overlay_test.go 里用真 kernel + 真 dsshell 验过）。
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	switch ev.Key {
-	case ui.KeyF1:
+	case gfx.KeyF1:
 		p.mu.Lock()
 		p.shown = !p.shown
 		shown, notify := p.shown, p.notify
@@ -113,7 +114,7 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 			}
 		}
 		return true
-	case ui.KeyEscape:
+	case gfx.KeyEscape:
 		p.mu.Lock()
 		shown, notify := p.shown, p.notify
 		p.shown = false
@@ -183,12 +184,12 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		Children(func() {
 			f.Column().FillWidth().Radius(t.Radii.Panel).
 				Background(t.InputMajor).
-				Shadow(ui.ShadowXS).
+				Shadow(gfx.ShadowXS).
 				PadSides(20, 20, 16, 20).Gap(10).Children(func() {
 				f.Text("键盘快捷键").FontSize(18).Color(t.LabelPrimary)
 				f.Text("按 F1 或 Esc 关闭").FontSize(12).Color(t.LabelSecondary)
 				for _, bd := range bindings {
-					f.Row().FillWidth().Height(rowH).Items(flex.Center).Gap(12).Children(func() {
+					f.Row().FillWidth().Height(rowH).Items(ui.Center).Gap(12).Children(func() {
 						// 键名列定宽，右对齐——键名长短不一时才看得成一列
 						// 键名列定宽即可，不折腾右对齐（flex.Box 没有 AlignH）
 						f.Text(bd.Key).FontSize(13).Color(t.LabelPrimary).Width(120)

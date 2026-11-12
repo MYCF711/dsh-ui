@@ -22,6 +22,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -79,13 +80,13 @@ func launcherChain(t *testing.T, p *Plugin, extra ...pluginapi.Plugin) (*uikerne
 // renderFromSlot 从某个槽位开始 dispatch 一帧，返回画布。
 //
 // 侧栏宽 280（官方 SIDEBAR_DEFAULT）——`wide` 判据与座位几何都依赖这个宽度。
-func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *ui.Canvas {
+func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *gfx.Canvas {
 	t.Helper()
 	const sidebarWidth float32 = uikernel.SidebarDefault // 280
 	theme := dscore.Dark()
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("launcher-chain")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55

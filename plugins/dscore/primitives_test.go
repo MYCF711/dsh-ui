@@ -5,6 +5,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -19,9 +20,9 @@ func newFrame(t *testing.T, click string) (*dscoreFrame, func()) {
 	t.Helper()
 	theme := Dark()
 	p := &Primitives{Theme: theme}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("dscore-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -30,7 +31,7 @@ func newFrame(t *testing.T, click string) (*dscoreFrame, func()) {
 		canvas.BeginEventPass(tree.ID(feat, click))
 	}
 	var view flex.View
-	var box flex.Box
+	var box ui.Box
 	view.Draw(canvas, VivaTheme(theme), ui.Rect{Width: 320, Height: 200}, func(f *flex.Frame) {
 		box = p.ListRow(f, tree.ID(feat, "row-1"), false, 32, func() {
 			f.Text("一行").FontSize(14).Color(theme.LabelPrimary)
@@ -44,10 +45,10 @@ func newFrame(t *testing.T, click string) (*dscoreFrame, func()) {
 }
 
 type dscoreFrame struct {
-	box    flex.Box
-	canvas *ui.Canvas
-	tree   *ui.Tree
-	feat   ui.Scope
+	box    ui.Box
+	canvas *gfx.Canvas
+	tree   *gfx.Tree
+	feat   gfx.Scope
 }
 
 // TestListRowHitMatchesID 钉住点击契约。
@@ -95,9 +96,9 @@ func TestListRowGeometry(t *testing.T) {
 func TestCircleButtonReturnsClick(t *testing.T) {
 	theme := Dark()
 	p := &Primitives{Theme: theme}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("dscore-circle")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(string, float32, float32) float32 { return 10 })
 	canvas.BeginEventPass(tree.ID(feat, "send"))

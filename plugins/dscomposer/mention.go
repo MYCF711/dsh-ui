@@ -6,6 +6,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // mention.go 是 `@` 文件引用：在输入框里敲 `@` 之后的路径，弹一串候选，选中就把
@@ -196,7 +197,7 @@ func (p *Plugin) drawMention(f *flex.Frame, env *pluginapi.Env, column float32) 
 	p.mentionRows, p.mentionRef = st.Rows, st.Ref
 	t := p.theme
 	w := cardWidth(column)
-	f.Row().FillWidth().Justify(flex.Center).Children(func() {
+	f.Row().FillWidth().Justify(ui.Center).Children(func() {
 		f.Column().Width(w).Radius(t.Radii.SM).Background(t.BgLayer1).
 			PadY(4).Children(func() {
 			for i, e := range st.Rows {
@@ -223,7 +224,7 @@ func (p *Plugin) drawMentionRow(f *flex.Frame, env *pluginapi.Env, e pluginapi.F
 		hint = "Enter"
 	}
 	// 行是**值类型盒子**，`.Clicked()` 直接问它这一帧有没有被点。
-	row := f.Row().FillWidth().MinHeight(24).PadX(8).Items(flex.Center).Gap(8).
+	row := f.Row().FillWidth().MinHeight(24).PadX(8).Items(ui.Center).Gap(8).
 		Background(bg).Hit(env.Tree.ID(env.Feat, "mention-"+e.Name), "").
 		Children(func() {
 			f.Text(icon).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)

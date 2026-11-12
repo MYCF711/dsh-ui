@@ -6,6 +6,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -126,10 +127,10 @@ type dragFixture struct {
 	plugin *Plugin
 	theme  *pluginapi.Theme
 	env    *pluginapi.Env
-	tree   *ui.Tree
-	canvas *ui.Canvas
+	tree   *gfx.Tree
+	canvas *gfx.Canvas
 	bounds ui.Rect
-	boxes  map[pluginapi.Slot]flex.Box
+	boxes  map[pluginapi.Slot]ui.Box
 	// host 是宿主 ui-config.json 的替身：拖拽松手时插件会往它里面写。
 	host *fakeHostConfig
 }
@@ -137,8 +138,8 @@ type dragFixture struct {
 func newDragFixture(t *testing.T, width, height float32) *dragFixture {
 	t.Helper()
 	theme := dscore.Dark()
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size / 2
@@ -150,7 +151,7 @@ func newDragFixture(t *testing.T, width, height float32) *dragFixture {
 		tree:   tree,
 		canvas: canvas,
 		bounds: ui.Rect{Width: width, Height: height},
-		boxes:  map[pluginapi.Slot]flex.Box{},
+		boxes:  map[pluginapi.Slot]ui.Box{},
 		host:   &fakeHostConfig{kv: map[string]string{}},
 	}
 	f.env = &pluginapi.Env{
@@ -172,7 +173,7 @@ func newDragFixture(t *testing.T, width, height float32) *dragFixture {
 // paint 只画一帧（不住窗口），命中区留在 canvas.Hits() 里。
 func (f *dragFixture) paint() {
 	f.canvas.Reset()
-	f.boxes = map[pluginapi.Slot]flex.Box{}
+	f.boxes = map[pluginapi.Slot]ui.Box{}
 	var view flex.View
 	view.Draw(f.canvas, dscore.VivaTheme(f.theme), f.bounds, func(fr *flex.Frame) {
 		f.plugin.children(fr, f.env, func(slot pluginapi.Slot) {
@@ -192,10 +193,10 @@ func (f *dragFixture) paint() {
 
 // event 跑一次指针事件的事件通道（和运行时 app/painter.go 里那条路一样）。
 // 返回控件有没有 Consume。
-func (f *dragFixture) event(kind ui.PointerEventKind, target ui.ID, x float32) bool {
-	return f.canvas.DeliverPointer(ui.PointerEvent{
-		Kind: kind, Button: ui.PointerButtonPrimary, X: x, Y: 120, Target: target,
-	}, ui.Size{Width: f.bounds.Width, Height: f.bounds.Height}, func(c *ui.Canvas, size ui.Size) {
+func (f *dragFixture) event(kind gfx.PointerEventKind, target gfx.ID, x float32) bool {
+	return f.canvas.DeliverPointer(gfx.PointerEvent{
+		Kind: kind, Button: gfx.PointerButtonPrimary, X: x, Y: 120, Target: target,
+	}, ui.Size{Width: f.bounds.Width, Height: f.bounds.Height}, func(c *gfx.Canvas, size ui.Size) {
 		// DeliverPointer 已经 Reset/BeginFrame，这里不再自己开帧。
 		var view flex.View
 		view.Draw(c, dscore.VivaTheme(f.theme), f.bounds, func(fr *flex.Frame) {
@@ -207,13 +208,13 @@ func (f *dragFixture) event(kind ui.PointerEventKind, target ui.ID, x float32) b
 }
 
 // hit 在最近一帧的命中区里找 id 对应的那一块。
-func (f *dragFixture) hit(id ui.ID) (ui.Hit, bool) {
+func (f *dragFixture) hit(id gfx.ID) (gfx.Hit, bool) {
 	for _, h := range f.canvas.Hits() {
 		if h.ID == id {
 			return h, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // TestDragSidebarHandle 走真事件通道拖侧栏：命中带位置、指针形状、
@@ -230,10 +231,10 @@ func TestDragSidebarHandle(t *testing.T) {
 	// 命中带骑在分隔线上：左缘 = 280 - 4，宽 8，高 = 主体行高（视口减底部整行）。
 	wantRect := ui.Rect{X: 280 - handleWidth/2, Y: 0, Width: handleWidth, Height: 1032 - 24}
 	assertRect(t, "侧栏把手命中带", h.Bounds, wantRect)
-	if h.Cursor != ui.PointerCursorResizeHorizontal {
+	if h.Cursor != gfx.PointerCursorResizeHorizontal {
 		t.Fatalf("把手光标应为 SizeWE（PointerCursorResizeHorizontal），得到 %v", h.Cursor)
 	}
-	if h.Role != ui.RoleSlider {
+	if h.Role != gfx.RoleSlider {
 		t.Fatalf("把手角色应为 slider，得到 %v", h.Role)
 	}
 
@@ -244,14 +245,14 @@ func TestDragSidebarHandle(t *testing.T) {
 		}
 	}
 
-	if !f.event(ui.PointerDown, id, 280) {
+	if !f.event(gfx.PointerDown, id, 280) {
 		t.Fatal("按下把手必须有控件 Consume（否则会被当成点击，也不会立刻重绘）")
 	}
 	if !f.plugin.dragging.active || f.plugin.dragging.kind != handleSidebar {
 		t.Fatalf("按下后应进入侧栏拖拽：%+v", f.plugin.dragging)
 	}
 	// 往右拖 64px：实时改宽，三列重新分配。
-	if !f.event(ui.PointerMove, id, 344) {
+	if !f.event(gfx.PointerMove, id, 344) {
 		t.Fatal("拖动必须 Consume（否则鼠标和边线脱节）")
 	}
 	if f.plugin.UserSidebarWidth != 344 {
@@ -263,7 +264,7 @@ func TestDragSidebarHandle(t *testing.T) {
 	if f.env.Geometry.SidebarWidth != 344 {
 		t.Fatalf("拖动后 Geometry.SidebarWidth 应校正成 344，得到 %v", f.env.Geometry.SidebarWidth)
 	}
-	if !f.event(ui.PointerUp, id, 344) {
+	if !f.event(gfx.PointerUp, id, 344) {
 		t.Fatal("松手必须 Consume")
 	}
 	if f.plugin.dragging.active {
@@ -276,19 +277,19 @@ func TestDragSidebarHandle(t *testing.T) {
 	}
 
 	// 下限 180：往左狠拖也不会低于 180。
-	f.event(ui.PointerDown, id, 344)
-	f.event(ui.PointerMove, id, -5000)
+	f.event(gfx.PointerDown, id, 344)
+	f.event(gfx.PointerMove, id, -5000)
 	if got := f.plugin.UserSidebarWidth; got != userSidebarMin {
 		t.Fatalf("侧栏下限应为 %v，得到 %v", userSidebarMin, got)
 	}
-	f.event(ui.PointerUp, id, -5000)
+	f.event(gfx.PointerUp, id, -5000)
 	// 上限 400：往右狠拖也不会超过 400（不是官方的 420）。
-	f.event(ui.PointerDown, id, 180)
-	f.event(ui.PointerMove, id, 5000)
+	f.event(gfx.PointerDown, id, 180)
+	f.event(gfx.PointerMove, id, 5000)
 	if got := f.plugin.UserSidebarWidth; got != userSidebarMax {
 		t.Fatalf("侧栏上限应为 %v，得到 %v", userSidebarMax, got)
 	}
-	f.event(ui.PointerUp, id, 5000)
+	f.event(gfx.PointerUp, id, 5000)
 }
 
 // TestDragRightbarHandle 拖右栏：往左变宽、往右变窄，上限 40%（起手比 40% 宽时不塌）。
@@ -304,12 +305,12 @@ func TestDragRightbarHandle(t *testing.T) {
 	// 右栏左缘 = 1920 - 864 = 1056；命中带骑在上面。
 	assertRect(t, "右栏把手命中带", h.Bounds,
 		ui.Rect{X: 1056 - handleWidth/2, Y: 0, Width: handleWidth, Height: 1032 - 24})
-	if h.Cursor != ui.PointerCursorResizeHorizontal {
+	if h.Cursor != gfx.PointerCursorResizeHorizontal {
 		t.Fatalf("右栏把手光标应为 SizeWE，得到 %v", h.Cursor)
 	}
 
-	f.event(ui.PointerDown, id, 1056)
-	f.event(ui.PointerMove, id, 1121) // 往右 65px → 右栏窄 65
+	f.event(gfx.PointerDown, id, 1056)
+	f.event(gfx.PointerMove, id, 1121) // 往右 65px → 右栏窄 65
 	if got := f.plugin.UserRightbarWidth; got != 799 {
 		t.Fatalf("往右拖 65px 后右栏应为 799，得到 %v", got)
 	}
@@ -317,29 +318,29 @@ func TestDragRightbarHandle(t *testing.T) {
 		t.Fatalf("右栏拖动后几何不对：%+v", f.env.Geometry)
 	}
 	// 继续往左推过 40% 上限：从 864 起手，上限就是 864（不塌回 768）。
-	f.event(ui.PointerMove, id, -4000)
+	f.event(gfx.PointerMove, id, -4000)
 	if got := f.plugin.UserRightbarWidth; got != 864 {
 		t.Fatalf("起手 864 时上限应为 864（官方首次打开 45%%），得到 %v", got)
 	}
-	f.event(ui.PointerUp, id, -4000)
+	f.event(gfx.PointerUp, id, -4000)
 
 	// 从 300 起手往左推：上限是视口 40% = 768。
 	f.plugin.UserRightbarWidth = 300
-	f.event(ui.PointerDown, id, 1620)
-	f.event(ui.PointerMove, id, -4000)
+	f.event(gfx.PointerDown, id, 1620)
+	f.event(gfx.PointerMove, id, -4000)
 	if got := f.plugin.UserRightbarWidth; got != 768 {
 		t.Fatalf("从 300 起手上限应为视口 40%% = 768，得到 %v", got)
 	}
-	f.event(ui.PointerUp, id, -4000)
+	f.event(gfx.PointerUp, id, -4000)
 
 	// 下限 300：往右狠拖也不会更窄。
 	f.plugin.UserRightbarWidth = 500
-	f.event(ui.PointerDown, id, 1420)
-	f.event(ui.PointerMove, id, 5000)
+	f.event(gfx.PointerDown, id, 1420)
+	f.event(gfx.PointerMove, id, 5000)
 	if got := f.plugin.UserRightbarWidth; got != userRightbarMin {
 		t.Fatalf("右栏下限应为 %v，得到 %v", userRightbarMin, got)
 	}
-	f.event(ui.PointerUp, id, 5000)
+	f.event(gfx.PointerUp, id, 5000)
 }
 
 // TestDragIgnoresOtherHandleAndRightBar 拖动侧栏时右栏把手的事件不应改右栏，
@@ -351,7 +352,7 @@ func TestDragIgnoresOtherHandleAndRightBar(t *testing.T) {
 	f.paint()
 
 	// 右键按在侧栏把手上：不开始拖。
-	if f.event2(ui.PointerDown, ui.PointerButtonSecondary, sideID, 280) {
+	if f.event2(gfx.PointerDown, gfx.PointerButtonSecondary, sideID, 280) {
 		t.Fatal("右键不该被当成拖拽起点")
 	}
 	if f.plugin.dragging.active {
@@ -360,29 +361,29 @@ func TestDragIgnoresOtherHandleAndRightBar(t *testing.T) {
 
 	// 左键在侧栏把手上按下：随后「指针跑到右栏把手上」的移动事件（target 仍是侧栏把手，
 	// 因为按下时指针被捕获）只能改侧栏。
-	f.event(ui.PointerDown, sideID, 280)
-	f.event(ui.PointerMove, sideID, 320)
+	f.event(gfx.PointerDown, sideID, 280)
+	f.event(gfx.PointerMove, sideID, 320)
 	if f.plugin.UserRightbarWidth != 0 {
 		t.Fatalf("拖侧栏不该改右栏，得到 %v", f.plugin.UserRightbarWidth)
 	}
-	f.event(ui.PointerUp, sideID, 320)
+	f.event(gfx.PointerUp, sideID, 320)
 
 	// 右栏把手的按下事件在侧栏拖拽未结束时被忽略。
-	f.event(ui.PointerDown, sideID, 320)
-	if f.event(ui.PointerDown, rightID, 1040) {
+	f.event(gfx.PointerDown, sideID, 320)
+	if f.event(gfx.PointerDown, rightID, 1040) {
 		t.Fatal("侧栏拖拽进行中，右栏把手的按下不该被 Consume")
 	}
 	if f.plugin.dragging.kind != handleSidebar {
 		t.Fatalf("拖拽身份被抢走了：%+v", f.plugin.dragging)
 	}
-	f.event(ui.PointerUp, sideID, 320)
+	f.event(gfx.PointerUp, sideID, 320)
 }
 
 // event2 是带按键的 event（只用来验「非主键不开始拖」）。
-func (f *dragFixture) event2(kind ui.PointerEventKind, button ui.PointerButton, target ui.ID, x float32) bool {
-	return f.canvas.DeliverPointer(ui.PointerEvent{
+func (f *dragFixture) event2(kind gfx.PointerEventKind, button gfx.PointerButton, target gfx.ID, x float32) bool {
+	return f.canvas.DeliverPointer(gfx.PointerEvent{
 		Kind: kind, Button: button, X: x, Y: 120, Target: target,
-	}, ui.Size{Width: f.bounds.Width, Height: f.bounds.Height}, func(c *ui.Canvas, size ui.Size) {
+	}, ui.Size{Width: f.bounds.Width, Height: f.bounds.Height}, func(c *gfx.Canvas, size ui.Size) {
 		var view flex.View
 		view.Draw(c, dscore.VivaTheme(f.theme), f.bounds, func(fr *flex.Frame) {
 			f.plugin.children(fr, f.env, func(slot pluginapi.Slot) {
@@ -501,20 +502,20 @@ func TestDragPersistsOnlyWhenMoved(t *testing.T) {
 	f.paint()
 
 	// 按下即松手：宽度没变，不该写配置。
-	f.event(ui.PointerDown, id, 280)
-	f.event(ui.PointerUp, id, 280)
+	f.event(gfx.PointerDown, id, 280)
+	f.event(gfx.PointerUp, id, 280)
 	if f.host.sets != 0 {
 		t.Fatalf("没拖动不该写配置，写了 %d 次：%v", f.host.sets, f.host.snapshot())
 	}
 
 	// 拖一次（含多次 move）：只在松手时写一次，写的是最终宽度。
-	f.event(ui.PointerDown, id, 280)
-	f.event(ui.PointerMove, id, 300)
-	f.event(ui.PointerMove, id, 330)
+	f.event(gfx.PointerDown, id, 280)
+	f.event(gfx.PointerMove, id, 300)
+	f.event(gfx.PointerMove, id, 330)
 	if f.host.sets != 0 {
 		t.Fatalf("拖动过程中不该写配置，写了 %d 次", f.host.sets)
 	}
-	f.event(ui.PointerUp, id, 330)
+	f.event(gfx.PointerUp, id, 330)
 	if f.host.sets != 1 {
 		t.Fatalf("松手应写一次，实际 %d 次", f.host.sets)
 	}

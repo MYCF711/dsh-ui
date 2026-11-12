@@ -8,13 +8,14 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // newHeroTestCanvas 用真实 flex 布局跑 draw，但把字宽测量换成确定性的测试测量器。
 // 这样不需要窗口，也能让旧实现的空态缺口在 CGO_ENABLED=0 下稳定复现。
-func newHeroTestCanvas(tree *ui.Tree) *ui.Canvas {
-	canvas := &ui.Canvas{}
+func newHeroTestCanvas(tree *gfx.Tree) *gfx.Canvas {
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
@@ -22,11 +23,11 @@ func newHeroTestCanvas(tree *ui.Tree) *ui.Canvas {
 	return canvas
 }
 
-func drawHeroTest(t *testing.T, data pluginapi.Snapshot, mainWidth float32) (*ui.Canvas, *Plugin) {
+func drawHeroTest(t *testing.T, data pluginapi.Snapshot, mainWidth float32) (*gfx.Canvas, *Plugin) {
 	t.Helper()
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	canvas := newHeroTestCanvas(tree)
 	var view flex.View
 	f := view.Begin(canvas, dscore.VivaTheme(theme), ui.Rect{Width: mainWidth, Height: 700})
@@ -41,7 +42,7 @@ func drawHeroTest(t *testing.T, data pluginapi.Snapshot, mainWidth float32) (*ui
 	return canvas, p
 }
 
-func heroTestText(t *testing.T, canvas *ui.Canvas, value string) ui.Text {
+func heroTestText(t *testing.T, canvas *gfx.Canvas, value string) gfx.Text {
 	t.Helper()
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
@@ -49,19 +50,19 @@ func heroTestText(t *testing.T, canvas *ui.Canvas, value string) ui.Text {
 		}
 	}
 	t.Fatalf("画面缺少文本 %q；实际文本：%+v", value, canvas.Texts())
-	return ui.Text{}
+	return gfx.Text{}
 }
 
 func TestEmptyStateUsesOfficialHero(t *testing.T) {
 	canvas, p := drawHeroTest(t, pluginapi.Snapshot{}, 900)
 
 	headline := heroTestText(t, canvas, "探索未至之境")
-	if headline.Style.Size != 26 || headline.Bounds.Height != 32 || headline.Style.Weight != ui.WeightMedium {
+	if headline.Style.Size != 26 || headline.Bounds.Height != 32 || headline.Style.Weight != gfx.WeightMedium {
 		t.Errorf("官方 headline 应为 26/32/500，实际 size=%v line=%v weight=%v",
 			headline.Style.Size, headline.Bounds.Height, headline.Style.Weight)
 	}
 	preview := heroTestText(t, canvas, "预览版")
-	if preview.Style.Size != 12 || preview.Style.Weight != ui.WeightMedium {
+	if preview.Style.Size != 12 || preview.Style.Weight != gfx.WeightMedium {
 		t.Errorf("官方预览胶囊应为 12/500，实际 size=%v weight=%v", preview.Style.Size, preview.Style.Weight)
 	}
 	if !preview.Style.Mono {
@@ -87,7 +88,7 @@ func TestHeroWorkspaceUsesOnlyCurrentSessionCWD(t *testing.T) {
 	sessions := []apiclient.Session{{ID: "s1", Title: "blank", Cwd: `D:\\work\\dsh-ui`}}
 	canvas, _ := drawHeroTest(t, pluginapi.Snapshot{Cur: "s1", Sessions: sessions}, 900)
 	workspace := heroTestText(t, canvas, "dsh-ui")
-	if workspace.Style.Size != 13 || workspace.Bounds.Height != 20 || workspace.Style.Weight != ui.WeightMedium {
+	if workspace.Style.Size != 13 || workspace.Bounds.Height != 20 || workspace.Style.Weight != gfx.WeightMedium {
 		t.Errorf("工作区应为 13/20/500，实际 size=%v line=%v weight=%v",
 			workspace.Style.Size, workspace.Bounds.Height, workspace.Style.Weight)
 	}

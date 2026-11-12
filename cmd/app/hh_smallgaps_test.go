@@ -30,6 +30,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -37,14 +38,14 @@ import (
 type hhProduct struct {
 	kernel *uikernel.Kernel
 	theme  *pluginapi.Theme
-	tree   *ui.Tree
-	feat   ui.Scope
+	tree   *gfx.Tree
+	feat   gfx.Scope
 	opts   uikernel.ShellOptions
 	// measure 收骨架报上来的几何（行/列盒子），断言"同一行"就靠它。
 	//
 	// 存的是**盒子**不是矩形：`flex.Box.Rect()` 要等这一帧布局跑完才有效
 	// （在 measure 回调里取会拿到全 0），所以绘制结束后统一解一次。
-	measure map[string]flex.Box
+	measure map[string]ui.Box
 	// settings 是设置插件实例（触发按钮在它身上）。
 	settings *dssettings.Plugin
 	// statusbar 是状态栏插件实例（连接指示 + Activity 弹窗在它身上）。
@@ -62,8 +63,8 @@ func newHHProduct(t *testing.T, launcherHeight float32) *hhProduct {
 	tier.Set(true)
 	p := &hhProduct{
 		kernel:    uikernel.New("hh-smallgaps"),
-		tree:      &ui.Tree{},
-		measure:   map[string]flex.Box{},
+		tree:      &gfx.Tree{},
+		measure:   map[string]ui.Box{},
 		settings:  &dssettings.Plugin{},
 		statusbar: &dsstatusbar.Plugin{},
 	}
@@ -109,9 +110,9 @@ func (p *hhLauncherProbe) Panels() []pluginapi.Painter {
 }
 
 // paint 画一帧产品路径（官方骨架 + 真 flex + 真 canvas）。
-func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.Actions, click string) *ui.Canvas {
+func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.Actions, click string) *gfx.Canvas {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(p.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -132,7 +133,7 @@ func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.A
 	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
 		uikernel.FirstScreenWithMeasure(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.kernel.DrawSlot(f, slot, env)
-		}, func(name string, box flex.Box) {
+		}, func(name string, box ui.Box) {
 			p.measure[name] = box
 		})
 	})
@@ -145,7 +146,7 @@ func (p *hhProduct) paint(t *testing.T, snap pluginapi.Snapshot, act pluginapi.A
 }
 
 // hhTexts 收画布上的文字。
-func hhTexts(canvas *ui.Canvas) []string {
+func hhTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -154,7 +155,7 @@ func hhTexts(canvas *ui.Canvas) []string {
 }
 
 // hhFindText 找一条文字的矩形（找不到返回 ok=false）。
-func hhFindText(canvas *ui.Canvas, value string) (ui.Rect, bool) {
+func hhFindText(canvas *gfx.Canvas, value string) (ui.Rect, bool) {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return text.Bounds, true
@@ -164,7 +165,7 @@ func hhFindText(canvas *ui.Canvas, value string) (ui.Rect, bool) {
 }
 
 // hhHasText 看画布上有没有这条文字（含前缀匹配：省略号/后缀不影响）。
-func hhHasText(canvas *ui.Canvas, want string) bool {
+func hhHasText(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want || strings.HasPrefix(text.Value, want) {
 			return true
@@ -262,9 +263,9 @@ func TestHHTriggerRowRendersInLegacySidebarToo(t *testing.T) {
 		t.Fatalf("装配失败：%v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("hh-legacy-row")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -322,7 +323,7 @@ func TestHHEscClosesStatsDialogBeforeStoppingTurn(t *testing.T) {
 	}
 
 	// Esc：弹窗开着 → 关弹窗，turn 不许停。
-	if !p.kernel.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if !p.kernel.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("弹窗开着时 Esc 没有插件接（返回 false）")
 	}
 	if cancelled != 0 {
@@ -334,7 +335,7 @@ func TestHHEscClosesStatsDialogBeforeStoppingTurn(t *testing.T) {
 	}
 
 	// 再按一次 Esc：弹窗已关 → 落到 composer 的"停止当前 turn"。
-	if !p.kernel.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if !p.kernel.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("弹窗关着时 Esc 没有插件接（composer 的停止键丢了）")
 	}
 	if cancelled != 1 {
@@ -370,9 +371,9 @@ func TestHHComposerHasNoConnectionWording(t *testing.T) {
 				t.Fatalf("装配失败：%v", err)
 			}
 			theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-			tree := &ui.Tree{}
+			tree := &gfx.Tree{}
 			feat := tree.Feature("hh-composer")
-			canvas := &ui.Canvas{}
+			canvas := &gfx.Canvas{}
 			canvas.SetTree(tree)
 			canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 				return float32(len([]rune(value))) * size * 0.55

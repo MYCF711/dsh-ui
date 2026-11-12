@@ -13,6 +13,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -30,7 +31,7 @@ func TestStreamingMarkdownHeadlessFrames(t *testing.T) {
 
 	p := newStreamingMarkdownTestPlugin()
 	theme := p.theme
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("mdstream-headless")
 	var (
 		view        flex.View
@@ -41,7 +42,7 @@ func TestStreamingMarkdownHeadlessFrames(t *testing.T) {
 		Title: "mdstream-headless", Width: 900, Height: 700, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
@@ -88,7 +89,7 @@ func TestStreamingMarkdownHeadlessFrames(t *testing.T) {
 		for _, text := range snapshot.Texts {
 			switch text.Value {
 			case "流式标题":
-				heading = text.Style.Weight >= ui.WeightSemibold
+				heading = text.Style.Weight >= gfx.WeightSemibold
 			case "•":
 				marker = true
 			case "inline":

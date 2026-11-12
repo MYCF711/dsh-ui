@@ -24,6 +24,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // maxShown 最多列几个。
@@ -136,7 +137,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			// **可点**：viva 的点击模型是"先 Hit 给 id，再问 Clicked"。
 			// 点了就在右边的浮层里看内容——这是这块唯一有真实数据源的动作
 			// （`fs.read` 一直在，而"文件的 diff"要宿主提供历史，那是另一件事）。
-			row := f.Row().FillWidth().Items(flex.Center).Gap(6).PadSides(4, 4, 2, 2).
+			row := f.Row().FillWidth().Items(ui.Center).Gap(6).PadSides(4, 4, 2, 2).
 				Hit(env.Tree.ID(env.Feat, "deliv-"+itoa(i)), name)
 			if row.Clicked() {
 				p.preview = path
@@ -190,7 +191,7 @@ func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
 	f.Column().Absolute().Top(56).Left(280).Width(720).Children(func() {
 		f.Column().Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
 			PadSides(14, 14, 12, 14).Gap(4).Children(func() {
-			f.Row().FillWidth().Items(flex.Center).Gap(8).Children(func() {
+			f.Row().FillWidth().Items(ui.Center).Gap(8).Children(func() {
 				f.Text(filepath.Base(p.preview)).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Grow(1).Ellipsis()
 				// 关：**必须有个关的办法**，否则浮层一直挡着侧栏。
 				closeRow := f.Row().PadSides(4, 4, 2, 2).Hit(env.Tree.ID(env.Feat, "deliv-close"), "关闭预览")

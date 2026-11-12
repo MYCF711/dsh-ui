@@ -19,6 +19,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -33,8 +34,8 @@ type modelSlotHarness struct {
 	kernel   *uikernel.Kernel
 	plugin   *Plugin
 	store    *Store
-	tree     *ui.Tree
-	feat     ui.Scope
+	tree     *gfx.Tree
+	feat     gfx.Scope
 	rendered []pluginapi.Slot
 	// painter 是官方模型槽上的 painter（Panels() 返回的切片副本，这里只读）。
 	painter pluginapi.Painter
@@ -51,7 +52,7 @@ func newModelSlotHarness(t *testing.T) *modelSlotHarness {
 	if !ok {
 		t.Fatalf("ServiceKey 不是 *Store：%T", kernel.Get(ServiceKey))
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	var painter pluginapi.Painter
 	for _, candidate := range plugin.Panels() {
 		if candidate.ID == "agent-team.model-menu" {
@@ -70,10 +71,10 @@ func newModelSlotHarness(t *testing.T) *modelSlotHarness {
 // paint 画一帧：Draw → Children（真内核 DrawSlot）→ 全部 AfterDraw。
 //
 // click 非空时按该交互 id 造一次事件（等价于用户点了它）。
-func (h *modelSlotHarness) paint(t *testing.T, snap pluginapi.Snapshot, click string) *ui.Canvas {
+func (h *modelSlotHarness) paint(t *testing.T, snap pluginapi.Snapshot, click string) *gfx.Canvas {
 	t.Helper()
 	theme := dscore.Dark()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(h.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -124,7 +125,7 @@ func (h *modelSlotHarness) renderedSlot(slot pluginapi.Slot) int {
 }
 
 // textCount 数一个精确文本出现次数。
-func textCount(canvas *ui.Canvas, value string) int {
+func textCount(canvas *gfx.Canvas, value string) int {
 	n := 0
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
@@ -135,13 +136,13 @@ func textCount(canvas *ui.Canvas, value string) int {
 }
 
 // hitFor 取某个标签的命中区。
-func hitFor(canvas *ui.Canvas, label string) (ui.Hit, bool) {
+func hitFor(canvas *gfx.Canvas, label string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // TestModelSlotTriggerStates ①：trigger 的两态（可用 / 降级）。
@@ -189,7 +190,7 @@ func TestModelSlotTriggerStates(t *testing.T) {
 		if !hit.Expandable || hit.Expanded {
 			t.Fatalf("trigger 应是可展开且当前未展开：expandable=%v expanded=%v", hit.Expandable, hit.Expanded)
 		}
-		if hit.Role != ui.RoleButton {
+		if hit.Role != gfx.RoleButton {
 			t.Fatalf("trigger 的 role = %v，官方是 button", hit.Role)
 		}
 		if hit.Bounds.Height != modelChipHeight {

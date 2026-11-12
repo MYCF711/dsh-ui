@@ -50,6 +50,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -278,14 +279,14 @@ func TestRealChainGXModelSlot(t *testing.T) {
 func gxCapture(t *testing.T, p *gxProduct, snap pluginapi.Snapshot, path string) {
 	t.Helper()
 	theme := p.theme
-	shotTree := &ui.Tree{}
+	shotTree := &gfx.Tree{}
 	shotFeat := shotTree.Feature("gx-shot")
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "gx-model-slot", Width: 1182, Height: 832, Tree: shotTree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{

@@ -7,6 +7,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -68,7 +69,7 @@ func sameLoadedTurn(group loadedTurn, id string, number *int64) bool {
 	return false
 }
 
-func (p *Plugin) turnOffset(env *pluginapi.Env, scrollID ui.ID, group loadedTurn) (float32, bool) {
+func (p *Plugin) turnOffset(env *pluginapi.Env, scrollID gfx.ID, group loadedTurn) (float32, bool) {
 	if env.Scroll == nil {
 		return 0, false
 	}
@@ -89,7 +90,7 @@ func (p *Plugin) turnOffset(env *pluginapi.Env, scrollID ui.ID, group loadedTurn
 	return target, true
 }
 
-func (p *Plugin) drawTurnNavigation(f *flex.Frame, env *pluginapi.Env, scrollID ui.ID, turns []loadedTurn) {
+func (p *Plugin) drawTurnNavigation(f *flex.Frame, env *pluginapi.Env, scrollID gfx.ID, turns []loadedTurn) {
 	if len(turns) == 0 {
 		return
 	}
@@ -110,7 +111,7 @@ func (p *Plugin) drawTurnNavigation(f *flex.Frame, env *pluginapi.Env, scrollID 
 			}
 		}
 	}
-	f.Row().WidthPercent(100).Gap(8).Items(flex.Center).PadY(2).Children(func() {
+	f.Row().WidthPercent(100).Gap(8).Items(ui.Center).PadY(2).Children(func() {
 		f.Text("已加载 " + strconv.Itoa(len(turns)) + " 个 Turn").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		if current > 0 {
 			target := turns[current-1]
@@ -134,7 +135,7 @@ func (p *Plugin) drawTurnNavigation(f *flex.Frame, env *pluginapi.Env, scrollID 
 
 func (p *Plugin) drawTurnHeader(f *flex.Frame, env *pluginapi.Env, group loadedTurn) {
 	t := p.theme
-	box := f.Row().WidthPercent(100).MinHeight(26).Gap(8).Items(flex.Center).PadX(4).Children(func() {
+	box := f.Row().WidthPercent(100).MinHeight(26).Gap(8).Items(ui.Center).PadX(4).Children(func() {
 		f.Text(group.label).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
 	})
 	p.turnBoxes[group.key] = box
@@ -259,7 +260,7 @@ func (p *Plugin) drawTurnFooter(f *flex.Frame, env *pluginapi.Env, group loadedT
 	if status == "失败" {
 		color = t.Error
 	}
-	f.Row().WidthPercent(100).PadX(4).MinHeight(22).Items(flex.Center).Children(func() {
+	f.Row().WidthPercent(100).PadX(4).MinHeight(22).Items(ui.Center).Children(func() {
 		f.Text(strings.Join(parts, " · ")).FontSize(t.Fonts.Tiny).Color(color)
 	})
 }

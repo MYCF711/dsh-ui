@@ -6,11 +6,12 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 var (
-	tree = ui.Tree{}
+	tree = gfx.Tree{}
 	cm   = tree.Feature("charmap")
 	scr  = tree.ID(cm, "scr")
 )
@@ -30,7 +31,7 @@ func ascii() string {
 func newConfig(m *model) app.Config {
 	theme := ui.LightTheme()
 	cfg := app.Config{Tree: &tree, Title: "字形覆盖矩阵", Width: 1080, Height: 820}
-	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	cfg.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		b := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(b, theme.Background)
 		m.view.Draw(canvas, theme, b, func(f *flex.Frame) {
@@ -57,7 +58,7 @@ func newConfig(m *model) app.Config {
 }
 
 func main() {
-	var c ui.Canvas
+	var c gfx.Canvas
 	if err := app.RunCanvas(newConfig(&model{}), &c); err != nil {
 		log.Fatal(err)
 	}

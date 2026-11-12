@@ -36,6 +36,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -145,11 +146,11 @@ func (p *Plugin) drawDock(f *flex.Frame, env *pluginapi.Env, cardW float32, draw
 	t := p.theme
 	text := contextMeterText(env.Data)
 	f.Row().FillWidth().Height(composerDockPadTop+composerDockMinH).
-		PadSides(composerDockPadTop, 0, 0, 0).Justify(flex.Center).Gap(composerDockGap).Children(func() {
+		PadSides(composerDockPadTop, 0, 0, 0).Justify(ui.Center).Gap(composerDockGap).Children(func() {
 		dispatchComposerSlot(drawSlot, uikernel.OffInputDock)
 		f.Row().Height(composerPillLineH+2*composerPillPadY).MaxWidth(cardW).
 			Radius(t.Radii.SM).PadSides(composerPillPadY, composerPillPadX, composerPillPadY, composerPillPadX).
-			Items(flex.Center).Gap(composerPillGap).Children(func() {
+			Items(ui.Center).Gap(composerPillGap).Children(func() {
 			f.Text(contextLabel).FontSize(composerPillFont).LineHeight(composerPillLineH).
 				Color(t.LabelTertiary)
 			f.Text(text).FontSize(composerPillFont).LineHeight(composerPillLineH).
@@ -269,11 +270,11 @@ func (p *Plugin) drawAddEntry(f *flex.Frame, env *pluginapi.Env) bool {
 	}
 	t := p.theme
 	id := env.Tree.ID(env.Feat, "composer-add")
-	button := f.Row().Size(composerAddSize, composerAddSize).Radius(ui.RadiusFull).
-		Background(t.BgLayer3).Items(flex.Center).Justify(flex.Center).
-		Hover(flex.Look{}.Background(t.Hover))
-	clicked := button.HitWith(id, "添加文件引用", ui.HitOptions{
-		Role: ui.RoleButton,
+	button := f.Row().Size(composerAddSize, composerAddSize).Radius(gfx.RadiusFull).
+		Background(t.BgLayer3).Items(ui.Center).Justify(ui.Center).
+		Hover(ui.Look{}.Background(t.Hover))
+	clicked := button.HitWith(id, "添加文件引用", gfx.HitOptions{
+		Role: gfx.RoleButton,
 		// 官方 onMouseDown=keepFocus：加号不抢输入框/IME 焦点。
 		SkipFocus: true,
 	}).Children(func() {

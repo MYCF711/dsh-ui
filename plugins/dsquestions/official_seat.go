@@ -42,6 +42,7 @@ package dsquestions
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 const (
@@ -116,7 +117,7 @@ func (p *Plugin) drawOfficial(f *flex.Frame, env *pluginapi.Env) {
 				f.Column().FillWidth().
 					PadSides(questionHeaderPadTop, questionHeaderPadRight, 0, questionHeaderPadLeft).
 					Gap(questionHeaderGap).Children(func() {
-					f.Row().Items(flex.Center).Gap(6).Children(func() {
+					f.Row().Items(ui.Center).Gap(6).Children(func() {
 						p.prims.Dot(f, t.LabelTertiary, 5)
 						f.Text(questionEyebrowText).FontSize(questionEyebrowFont).
 							LineHeight(questionEyebrowLine).Color(t.LabelTertiary)
@@ -144,7 +145,7 @@ func (p *Plugin) drawOptionRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.T
 	} else if index == 1 {
 		key = "F8"
 	}
-	row := f.Row().FillWidth().Items(flex.Center).Gap(questionOptionGap).
+	row := f.Row().FillWidth().Items(ui.Center).Gap(questionOptionGap).
 		PadSides(questionOptionPadTop, questionOptionPadX, questionOptionPadTop, questionOptionPadX).
 		Radius(t.Radii.MD).Background(t.BgLayer2).
 		Hit(env.Tree.ID(env.Feat, "opt-"+itoa(index)), opt.Label)

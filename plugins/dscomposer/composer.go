@@ -36,6 +36,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -86,8 +87,8 @@ const (
 	busyDotSize = 8
 
 	// _9r0rkG_trigger{font-weight:400} / _86kJGG_trigger{font-weight:500}
-	modelChipWeight      = ui.WeightRegular
-	permissionChipWeight = ui.WeightMedium
+	modelChipWeight      = gfx.WeightRegular
+	permissionChipWeight = gfx.WeightMedium
 
 	// --dsh-chat-content-width: clamp(680px, column * .64, 920px)
 	// --dsh-composer-card-max-width: calc(content + 32px)
@@ -109,9 +110,9 @@ const (
 
 // Plugin 实现 pluginapi.Plugin / Panels / Fields / KeyHandler。
 type composerControlBoxes struct {
-	Permission flex.Box
-	Model      flex.Box
-	Primary    flex.Box
+	Permission ui.Box
+	Model      ui.Box
+	Primary    ui.Box
 }
 
 type Plugin struct {
@@ -119,7 +120,7 @@ type Plugin struct {
 	// field 是值类型：用 &p.field 取地址。写成 *flex.Field 又忘了 new，
 	// Fields() 就会返回一个 nil 元素，flex.Fields(...) 里直接 panic（踩过）。
 	prims    pluginapi.Primitives
-	field    flex.Field
+	field    ui.Field
 	controls composerControlBoxes // 本帧真实布局矩形，供几何验收；零值矩形 = 控件未画
 
 	// lastData / lastAct 是绘制期快照，按键时要用。
@@ -131,7 +132,7 @@ type Plugin struct {
 	// fieldBox 是本帧输入区的盒子。Draw 阶段量不到矩形（viva 的 Box.Rect 要等
 	// End 之后才有效），所以把 Box 存下来，到 AfterDraw 再读——那一段跑在
 	// End 之后、下一帧 Begin 之前，正是它有效的窗口（与 ds-conversation 同一做法）。
-	fieldBox flex.Box
+	fieldBox ui.Box
 	// fieldBoxOn 表示这一帧真的画过输入区（没有会话/没装插件时不要拿旧矩形乱盖）。
 	fieldBoxOn bool
 	// fieldTheme 是 Draw 时 Viva 实际使用的控件主题；AfterDraw 用它重绘同一 Field，
@@ -171,7 +172,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 }
 
 // Fields 实现 pluginapi.Fields：壳靠它把输入框登记给 viva。
-func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.field} }
+func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.field} }
 
 // Panels 实现 pluginapi.Panels。
 //
@@ -273,9 +274,9 @@ func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, column float32, dra
 	// 卡片底距窗口底就从 8px 变成 12px（正好顶在 ≤8px 这条线的外面）。
 	// 卡片自身 border:0，柔和的 elevation 由 Shadow 表达，不能塞一圈占布局的 Border
 	//（否则宽、高和圆角各偏 1–2px）。
-	f.Row().FillWidth().Justify(flex.Center).Children(func() {
+	f.Row().FillWidth().Justify(ui.Center).Children(func() {
 		f.Column().Width(w).Radius(t.Radii.Panel).Background(t.InputMajor).
-			Shadow(ui.ShadowXS).
+			Shadow(gfx.ShadowXS).
 			PadSides(cardPadTop, 0, 0, 0).Gap(cardGap).Children(func() {
 			// `.input` 区：附件 rail 在真 Field 上方；覆盖层绝对定位盖在整块输入区上。
 			// 这一列没有 gap：空 rail 不产生节点，卡片高仍是 8+36+12+42。
@@ -308,7 +309,7 @@ func (p *Plugin) drawInput(f *flex.Frame, env *pluginapi.Env, cardW float32) {
 		inputH = heroInputMinHeight
 	}
 	f.Row().FillWidth().Height(inputH).PadSides(0, 0, 0, left).
-		Items(flex.Start).Children(func() {
+		Items(ui.Start).Children(func() {
 		field := f.Field(&p.field, env.Tree.ID(env.Feat, "composer"), "输入", placeholderText).
 			Width(fieldW).Height(fieldHeight).FontSize(t.Fonts.Body)
 		p.fieldBox, p.fieldBoxOn = field, true
@@ -332,7 +333,7 @@ const placeholderText = "说点什么…（Enter 发送）"
 // 更暗的一块内框。这里保留原控件主题中的文字/光标/选区参数，只把背景、边框和
 // 焦点边框统一成 InputMajor，再调用同一个 components.PaintInput。交互仍由 Draw 阶段
 // 登记的 flex.Field 负责，因此输入、Enter、IME 和点击行为都没有第二条实现。
-func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
+func (p *Plugin) afterDraw(canvas *gfx.Canvas, env *pluginapi.Env) {
 	if !p.fieldBoxOn {
 		return
 	}
@@ -384,14 +385,14 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32, 
 	// 上内边距挪到下内边距，发送键就整体上移 2px，底距卡片底 = 6+2 = 8（官方值）。
 	f.Row().FillWidth().Height(rowPadTop+sendSize+rowPadBottom).
 		PadSides(rowPadTop-sendLift, rowPadSide, rowPadBottom+sendLift, rowPadSide).
-		Items(flex.Center).Justify(flex.Between).Gap(cardGap).Children(func() {
+		Items(ui.Center).Justify(ui.Between).Gap(cardGap).Children(func() {
 		// 官方 `.tools`：命令/附件入口在**最左**（`.add` 28×28 圆钮），
 		// 然后是 modes（permission/plan）。这一枚只在真有内容可加时出现
 		// （见 official_seat.go 的 drawAddEntry：没有 FSList/CWD 就不画）。
 		p.drawAddEntry(f, env)
 		// 官方 DOM 的左 modes 只有 permission/plan；model 属于右 standardControls。
 		// 三个槽都是"有占用方就派发、否则走本插件的回退/什么都不画"。
-		f.Row().Items(flex.Center).Gap(cardGap).Children(func() {
+		f.Row().Items(ui.Center).Gap(cardGap).Children(func() {
 			if composerDispatchTo(drawSlot, env, uikernel.OffInputPermission) {
 				dispatchComposerSlot(drawSlot, uikernel.OffInputPermission)
 			} else if permission != "" {
@@ -403,7 +404,7 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32, 
 		})
 		// 即使左边为空，Spacer 也把右侧 trailing 固定到卡片右缘。
 		f.Spacer()
-		f.Row().Items(flex.Center).Gap(cardGap).Children(func() {
+		f.Row().Items(ui.Center).Gap(cardGap).Children(func() {
 			dispatchComposerSlot(drawSlot, uikernel.OffInputRight)
 			if composerDispatchTo(drawSlot, env, composerInputSlotModel) {
 				// 官方 `conversation.input.model`（single）：官方模型菜单（dsagentteam）
@@ -415,7 +416,7 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32, 
 			if composerDispatchTo(drawSlot, env, uikernel.OffInputActivity) {
 				dispatchComposerSlot(drawSlot, uikernel.OffInputActivity)
 			} else if status != "" {
-				p.hostChip(f, status, modelChipWeight, permissionChipW, ui.Icon{}, false)
+				p.hostChip(f, status, modelChipWeight, permissionChipW, gfx.Icon{}, false)
 			}
 			if running {
 				p.busyDot(f)
@@ -432,12 +433,12 @@ func (p *Plugin) drawControls(f *flex.Frame, env *pluginapi.Env, cardW float32, 
 // 画（官方模型菜单的 trigger / 降级 chip）。几何与官方 ModelSelect trigger 同档：
 // 高 28、radius sm、padding 左 8 右 8（不画 chevron，所以右边不留 4）、13/20/400、
 // max-width min(360, 45cqw)。
-func (p *Plugin) drawModelChip(f *flex.Frame, env *pluginapi.Env, cardW float32, model string) flex.Box {
+func (p *Plugin) drawModelChip(f *flex.Frame, env *pluginapi.Env, cardW float32, model string) ui.Box {
 	maxW := cardW * modelCardRatio
 	if maxW > modelChipMaxW {
 		maxW = modelChipMaxW
 	}
-	return p.hostChip(f, model, modelChipWeight, maxW, ui.Icon{}, false)
+	return p.hostChip(f, model, modelChipWeight, maxW, gfx.Icon{}, false)
 }
 
 // activityLabel 是 activity 槽的文本。优先原样显示壳/宿主给的 Status；只有 turn
@@ -467,7 +468,7 @@ func activityLabel(s pluginapi.Snapshot) string {
 // 列表也没有切换动作，画成能点的样子就是骗人（更别说那个下拉箭头）。只有官方
 // ModelSelect 的 catalog + selection mutation 都存在时，才可另实现按钮与 chevron；
 // 当前 pluginapi 没有这两条契约，所以这里始终是只读真值。
-func (p *Plugin) hostChip(f *flex.Frame, label string, weight, maxW float32, icon ui.Icon, hasIcon bool) flex.Box {
+func (p *Plugin) hostChip(f *flex.Frame, label string, weight, maxW float32, icon gfx.Icon, hasIcon bool) ui.Box {
 	t := p.theme
 	textMax := maxW - chipPadLeft - chipPadRight
 	if hasIcon {
@@ -477,7 +478,7 @@ func (p *Plugin) hostChip(f *flex.Frame, label string, weight, maxW float32, ico
 		textMax = 0
 	}
 	return f.Row().Height(chipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
-		PadSides(0, chipPadRight, 0, chipPadLeft).Items(flex.Center).Gap(chipGap).Children(func() {
+		PadSides(0, chipPadRight, 0, chipPadLeft).Items(ui.Center).Gap(chipGap).Children(func() {
 		if hasIcon {
 			f.Icon(icon).Size(permissionIconWH, permissionIconWH).Color(t.LabelSecondary)
 		}
@@ -494,7 +495,7 @@ func (p *Plugin) hostChip(f *flex.Frame, label string, weight, maxW float32, ico
 // （还有一条 1s 明暗动画）。这里不抖：无头截图拍不到动画，反复重绘只会让整窗脏区
 // 变大；"在跑"这件事已经由发送键变■说清楚了。
 func (p *Plugin) busyDot(f *flex.Frame) {
-	f.Row().Size(busyDotSize, busyDotSize).Radius(ui.RadiusFull).
+	f.Row().Size(busyDotSize, busyDotSize).Radius(gfx.RadiusFull).
 		Background(p.theme.Info).Children(func() {})
 }
 
@@ -520,14 +521,14 @@ func (p *Plugin) sendButton(f *flex.Frame, env *pluginapi.Env, running bool) {
 		fill.Alpha *= 0.4
 		foreground.Alpha *= 0.4
 	}
-	button := f.Row().Size(sendSize, sendSize).Radius(ui.RadiusFull).Background(fill).
-		Items(flex.Center).Justify(flex.Center).MarginY(-sendLift)
+	button := f.Row().Size(sendSize, sendSize).Radius(gfx.RadiusFull).Background(fill).
+		Items(ui.Center).Justify(ui.Center).MarginY(-sendLift)
 	if !disabled {
-		button = button.Hover(flex.Look{}.Background(t.Info))
+		button = button.Hover(ui.Look{}.Background(t.Info))
 	}
 	p.controls.Primary = button
-	clicked := button.HitWith(id, label, ui.HitOptions{
-		Role: ui.RoleButton, Disabled: disabled,
+	clicked := button.HitWith(id, label, gfx.HitOptions{
+		Role: gfx.RoleButton, Disabled: disabled,
 		// 官方 onMouseDown=keepDraftFocus；鼠标动作不抢编辑器/IME 焦点。
 		// 键盘仍走输入框 Enter 发送、Esc 停止，审批按钮保持自己的焦点语义。
 		SkipFocus: true,
@@ -659,11 +660,11 @@ func onInfo(t *pluginapi.Theme) ui.Color {
 //
 // 所以这里无条件吃掉 Shift+Enter（不调 Send、不清草稿）。真正的换行编辑是
 // Viva 上游缺口（flex 没有 Textarea），最小复现与后续见报告 §未实现项。
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	if ev.Release {
 		return false
 	}
-	if ev.Key == ui.KeyEnter && ev.Modifiers&ui.ModifierShift != 0 {
+	if ev.Key == gfx.KeyEnter && ev.Modifiers&gfx.ModifierShift != 0 {
 		return true
 	}
 	if ev.Modifiers != 0 {
@@ -675,13 +676,13 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		// 门禁卡死在"这一帧确实有候选"上：没有候选就原样让回去。
 		// 让回去的代价是零；吃掉的代价是**这条消息再也发不出去**，
 		// 而且用户看到的是"我按了 Enter 什么都没发生"——没有任何提示。
-		if ev.Key == ui.KeyEnter && p.acceptMention() {
+		if ev.Key == gfx.KeyEnter && p.acceptMention() {
 			return true
 		}
 		// 没有审批时 Esc 退而求其次 = **停止当前 turn**（官方也是这个直觉）。
 		// 不做这一条的话，无头环境里根本没法触发停止键——它是个按钮，
 		// 注入不了鼠标事件；而"能停"是产品级链路的必选项（宿主 §0.6）。
-		if ev.Key == ui.KeyEscape && p.lastAct.Cancel != nil {
+		if ev.Key == gfx.KeyEscape && p.lastAct.Cancel != nil {
 			// 不判 Stream/Busy：这两个字段在"只有思考流"或快照延迟时都不可靠
 			// （实测 turn 明明在跑，Busy 却还是 false）。宿主对没有 turn 在跑的
 			// cancel 是幂等的（回 cancelled=true），多按一次不会出错。
@@ -692,13 +693,13 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 	}
 	plan := planApproval(p.lastData, p.lastAct.Approve != nil)
 	switch ev.Key {
-	case ui.KeyEnter:
+	case gfx.KeyEnter:
 		if !plan.Allow.Usable {
 			return false
 		}
 		p.decideKey(true)
 		return true
-	case ui.KeyEscape:
+	case gfx.KeyEscape:
 		if !plan.Deny.Usable {
 			return false
 		}

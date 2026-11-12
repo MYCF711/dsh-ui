@@ -35,6 +35,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -121,7 +122,7 @@ func DrawCommandRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, node 
 	rowID := env.Tree.ID(env.Feat, "team-command-row")
 	f.Column().FillWidth().Children(func() {
 		// DisclosureRow：icon + title + separator + summary；整行可点（expandOnRowClick）。
-		row := f.Row().FillWidth().Items(flex.Center).Hit(rowID, zhCommandTitle)
+		row := f.Row().FillWidth().Items(ui.Center).Hit(rowID, zhCommandTitle)
 		if expandable && row.Clicked() && onToggle != nil {
 			onToggle()
 		}
@@ -165,4 +166,4 @@ func (p *Plugin) drawCommand(f *flex.Frame, env *pluginapi.Env) {
 }
 
 // 编译期确认我们用到的令牌字段存在（改主题结构时这里先红）。
-var _ = ui.ShadowMD
+var _ = gfx.ShadowMD

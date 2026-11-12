@@ -34,9 +34,8 @@
 package dssettings
 
 import (
+	"github.com/vivaui/viva/gfx"
 	"sync"
-
-	"github.com/vivaui/viva/ui"
 )
 
 // 模态层的渲染落点（createPortal 的等价物）。
@@ -251,7 +250,7 @@ func (m *ModalLayer) Semantics() DialogSemantics {
 //
 // 只吃这三个键；其它键返回 false（面板自己的行导航、行激活才消费）。
 // 官方语义：Escape 挂在 document 上、Tab 循环由 useModalLayer 负责。
-func (m *ModalLayer) HandleKey(ev ui.KeyEvent) bool {
+func (m *ModalLayer) HandleKey(ev gfx.KeyEvent) bool {
 	if ev.Release {
 		return false
 	}
@@ -261,12 +260,12 @@ func (m *ModalLayer) HandleKey(ev ui.KeyEvent) bool {
 		return false
 	}
 	switch ev.Key {
-	case ui.KeyEscape:
+	case gfx.KeyEscape:
 		m.mu.Unlock()
 		// Escape 走关闭路径（会触发回调并恢复焦点）。
 		_, _ = m.Close()
 		return true
-	case ui.KeyTab:
+	case gfx.KeyTab:
 		n := len(m.focusables)
 		if n == 0 {
 			m.mu.Unlock()
@@ -275,12 +274,12 @@ func (m *ModalLayer) HandleKey(ev ui.KeyEvent) bool {
 		idx := indexOf(m.focusables, m.focus)
 		if idx < 0 {
 			idx = 0
-			if ev.Modifiers&ui.ModifierShift != 0 {
+			if ev.Modifiers&gfx.ModifierShift != 0 {
 				idx = n
 			}
 		}
 		delta := 1
-		if ev.Modifiers&ui.ModifierShift != 0 {
+		if ev.Modifiers&gfx.ModifierShift != 0 {
 			delta = -1
 		}
 		m.focus = m.focusables[((idx+delta)%n+n)%n]

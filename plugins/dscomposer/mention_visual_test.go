@@ -12,6 +12,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -62,7 +63,7 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 			act.Send = func(string) {}
 			act.Cancel = func() {}
 		}
-		tree := &ui.Tree{}
+		tree := &gfx.Tree{}
 		feat := tree.Feature("composer-mention-" + name)
 		var view flex.View
 		var invalidator app.Invalidator
@@ -70,7 +71,7 @@ func TestMentionMenuHeadlessCapture(t *testing.T) {
 			Title: "composer-mention-" + name, Width: 1182, Height: 832, Tree: tree,
 			WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 		}
-		config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+		config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 			bounds := ui.Rect{Width: size.Width, Height: size.Height}
 			canvas.Fill(bounds, theme.BgBase)
 			env := &pluginapi.Env{

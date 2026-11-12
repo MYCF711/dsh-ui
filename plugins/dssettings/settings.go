@@ -33,6 +33,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -244,7 +245,7 @@ func (p *Plugin) activate() {
 // 返回 true 是有代价的（后面的插件再也看不到这个键），所以：
 //   - 普通 F2、关着时的所有键、带修饰键的键 —— 一律 false
 //   - 只有 "Shift+F2"、"浮层开着时的 Esc/↑/↓/Enter" 这几种才吃
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	if ev.Release {
 		return false
 	}
@@ -259,8 +260,8 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 
 	// 入口：Shift+F2。**精确匹配**修饰键：dscommands 的 F2 不看 modifiers，
 	// 这里只要判定稍宽一点，两边就有一方永远收不到。
-	if ev.Key == ui.KeyF2 {
-		if ev.Modifiers != ui.ModifierShift {
+	if ev.Key == gfx.KeyF2 {
+		if ev.Modifiers != gfx.ModifierShift {
 			return false
 		}
 		if shown {
@@ -277,7 +278,7 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 	if !shown {
 		return false
 	}
-	if ev.Key == ui.KeyEscape {
+	if ev.Key == gfx.KeyEscape {
 		p.hide("设置已关闭")
 		return true
 	}
@@ -286,13 +287,13 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		return false
 	}
 	switch ev.Key {
-	case ui.KeyDown:
+	case gfx.KeyDown:
 		p.move(1)
 		return true
-	case ui.KeyUp:
+	case gfx.KeyUp:
 		p.move(-1)
 		return true
-	case ui.KeyEnter:
+	case gfx.KeyEnter:
 		p.activate()
 		return true
 	}
@@ -370,10 +371,10 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	f.Row().Absolute().Left(left).Top(cardTop).Width(w).Children(func() {
 		f.Column().FillWidth().Radius(t.Radii.Panel).
 			Background(t.InputMajor).Border(1, t.BorderL2).
-			Shadow(ui.ShadowXS).
+			Shadow(gfx.ShadowXS).
 			PadSides(20, 20, 16, 20).Gap(6).Children(func() {
 			// 标题行：标题 + 关闭按钮（28px 圆钮交给 prims，不自己拼尺寸和颜色）。
-			f.Row().FillWidth().Items(flex.Center).Gap(8).Children(func() {
+			f.Row().FillWidth().Items(ui.Center).Gap(8).Children(func() {
 				f.Text("设置").FontSize(t.Fonts.Title).Color(t.LabelPrimary).Grow(1)
 				if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "settings-close"), "×", false) {
 					p.hide("设置已关闭")
@@ -401,7 +402,7 @@ func (p *Plugin) drawSection(f *flex.Frame, env *pluginapi.Env, t *pluginapi.The
 		row := row
 		if row.Run == nil {
 			// 只读行：不挂命中区、不参与光标——它就不该看起来像按钮。
-			f.Row().FillWidth().Height(rowHeight).Items(flex.Center).Gap(10).Children(func() {
+			f.Row().FillWidth().Height(rowHeight).Items(ui.Center).Gap(10).Children(func() {
 				f.Text(row.Label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Width(labelWidth)
 				f.Text(row.Hint).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Grow(1).Ellipsis()
 			})

@@ -10,6 +10,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 func messageRenderKey(env *pluginapi.Env, msg apiclient.Message, index int) string {
@@ -59,7 +60,7 @@ func (p *Plugin) drawMessageMeta(f *flex.Frame, env *pluginapi.Env, msg apiclien
 		return
 	}
 	t := p.theme
-	f.Row().WidthPercent(100).Gap(8).Items(flex.Center).Children(func() {
+	f.Row().WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
 		if clock != "" {
 			f.Text(clock).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		}
@@ -77,7 +78,7 @@ func (p *Plugin) drawTurnEvents(f *flex.Frame, env *pluginapi.Env) {
 		switch event.Kind {
 		case "error":
 			f.Column().WidthPercent(100).Pad(8).Gap(4).Radius(t.Radii.SM).Background(t.BgLayer1).Children(func() {
-				f.Row().Gap(8).Items(flex.Center).Children(func() {
+				f.Row().Gap(8).Items(ui.Center).Children(func() {
 					// 标题是**给人看的**，不是协议词。旁边那个"已停止"卡一直是这么写的，
 					// 只有这张卡漏了，把 `turn/error` 直接端到用户面前——他看不懂，
 					// 而且这四个字看起来像界面坏了。协议词要留就留在日志里。
@@ -99,7 +100,7 @@ func (p *Plugin) drawTurnEvents(f *flex.Frame, env *pluginapi.Env) {
 				}
 			})
 		case "stopped":
-			f.Row().WidthPercent(100).Gap(8).Items(flex.Center).Children(func() {
+			f.Row().WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
 				f.Text("已停止").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 				if event.TurnID != "" {
 					f.Text(event.TurnID).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
@@ -118,7 +119,7 @@ func (p *Plugin) drawOutgoing(f *flex.Frame, env *pluginapi.Env) {
 		outgoing := outgoing
 		f.Column().WidthPercent(100).Pad(8).Gap(4).Radius(t.Radii.MD).Background(t.BgLayer1).Children(func() {
 			f.Wrap(outgoing.Text).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
-			f.Row().Gap(8).Items(flex.Center).Children(func() {
+			f.Row().Gap(8).Items(ui.Center).Children(func() {
 				label := "发送中"
 				color := t.LabelCaption
 				switch outgoing.State {

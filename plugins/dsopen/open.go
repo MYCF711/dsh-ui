@@ -32,6 +32,7 @@ package dsopen
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // 按钮落在会话头部的哪一格：这几个数与 `plugins/dstopbar` 的 header 几何同源
@@ -104,7 +105,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		Top(columnPad+headerPadTop+(titleRowHeight-buttonHeight)/2).
 		Right(utilitiesRight(env)).
 		Width(buttonWidth).Height(buttonHeight).
-		Items(flex.Center).Gap(6).PadSides(8, 8, 4, 4).
+		Items(ui.Center).Gap(6).PadSides(8, 8, 4, 4).
 		Radius(t.Radii.MD).Background(t.InputMajor).
 		Hit(env.Tree.ID(env.Feat, "open-in-app"), "在工作目录里打开")
 	if box.Clicked() {

@@ -19,6 +19,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -91,7 +92,7 @@ type Plugin struct {
 }
 
 type headerBoxes struct {
-	Root, Body, TitleRow, Tabs, ChatTab, TrajectoryTab, Corner, Divider flex.Box
+	Root, Body, TitleRow, Tabs, ChatTab, TrajectoryTab, Corner, Divider ui.Box
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -184,7 +185,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 				PadSides(headerPadTop, headerPadRight, 0, headerPadLeft).
 				Children(func() {
 					p.headerBoxes.TitleRow = f.Row().WidthPercent(100).MinHeight(titleRowHeight).
-						Items(flex.Center).Children(func() {
+						Items(ui.Center).Children(func() {
 						f.Spacer()
 						p.drawCorner(f, env)
 					})
@@ -196,7 +197,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			PadSides(headerPadTop, headerPadRight, 0, headerPadLeft).
 			Children(func() {
 				p.headerBoxes.TitleRow = f.Row().WidthPercent(100).MinHeight(titleRowHeight).
-					Items(flex.Center).Gap(0).Children(func() {
+					Items(ui.Center).Gap(0).Children(func() {
 					p.drawTitleCluster(f, title, cwd)
 					p.drawCorner(f, env)
 				})
@@ -211,8 +212,8 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 // drawTitleCluster 画 nav.crumbs：`工作区 / 会话标题`。
 func (p *Plugin) drawTitleCluster(f *flex.Frame, title, cwd string) {
 	t := p.theme
-	f.Row().Grow(1).Items(flex.Center).Gap(titleClusterGap).MinWidth(0).Children(func() {
-		f.Row().Items(flex.Center).Gap(crumbsGap).MinWidth(0).Children(func() {
+	f.Row().Grow(1).Items(ui.Center).Gap(titleClusterGap).MinWidth(0).Children(func() {
+		f.Row().Items(ui.Center).Gap(crumbsGap).MinWidth(0).Children(func() {
 			// 祖先：工作区（官方祖先 crumb 是按钮，我们无对应 Action → 纯文本）
 			if ws := workspaceOf(cwd); ws != "" {
 				p.crumb(f, ws, false)
@@ -235,16 +236,16 @@ func (p *Plugin) drawTabs(f *flex.Frame, env *pluginapi.Env) {
 	})
 }
 
-func (p *Plugin) drawTab(f *flex.Frame, env *pluginapi.Env, view, label string) flex.Box {
+func (p *Plugin) drawTab(f *flex.Frame, env *pluginapi.Env, view, label string) ui.Box {
 	t := p.theme
 	active := p.Active(env.Data.Cur) == view
 	box := f.Column().Height(tabsHeight).
 		Hit(env.Tree.ID(env.Feat, "view-"+view), label).Children(func() {
-		f.Row().Grow(1).Items(flex.Center).Children(func() {
+		f.Row().Grow(1).Items(ui.Center).Children(func() {
 			text := f.Text(label).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
 				MaxLines(1).Ellipsis()
 			if active {
-				text.Color(t.LabelPrimary).Weight(ui.WeightMedium)
+				text.Color(t.LabelPrimary).Weight(gfx.WeightMedium)
 			} else {
 				text.Color(t.LabelTertiary)
 			}
@@ -263,7 +264,7 @@ func (p *Plugin) drawTab(f *flex.Frame, env *pluginapi.Env, view, label string) 
 // drawCorner 画官方 headerCorner：最右角的那一个控件（右栏开合）。
 func (p *Plugin) drawCorner(f *flex.Frame, env *pluginapi.Env) {
 	t := p.theme
-	f.Row().Items(flex.Center).MarginSides(0, cornerMarginRX, 0, cornerMarginLX).
+	f.Row().Items(ui.Center).MarginSides(0, cornerMarginRX, 0, cornerMarginLX).
 		Children(func() {
 			// slot 不存在时开关没有可见效果，必须整颗隐藏；blank Session 也只在
 			// action 与 slot 都真实存在时保留官方 corner 入口。
@@ -274,7 +275,7 @@ func (p *Plugin) drawCorner(f *flex.Frame, env *pluginapi.Env) {
 			}
 			// 官方 ExpandButton 只在收起时出现；展开态由 ds-rightbar 的 PanelChrome 收起。
 			p.headerBoxes.Corner = f.Row().Width(28).Height(28).Radius(t.Radii.SM).
-				Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(t.Hover)).
+				Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "toggle-rightbar"), "打开右侧边栏").Children(func() {
 				f.Icon(rightbarPanelIcon).Width(15).Height(15).Color(t.LabelSecondary)
 			})
@@ -286,13 +287,13 @@ func (p *Plugin) drawCorner(f *flex.Frame, env *pluginapi.Env) {
 
 // rightbarPanelIcon 与官方 ExpandButton 的镜像 PanelLeft 同属 panel-right 形状：
 // 24 viewBox、2px stroke、圆角外框 + 右侧栏分隔线。
-var rightbarPanelIcon = ui.Icon{
-	ViewBox: 24, Stroke: 2, Cap: ui.CapRound, Join: ui.JoinRound,
-	Commands: []ui.PathCommand{
-		ui.MoveTo(5, 3), ui.LineTo(19, 3), ui.QuadTo(21, 3, 21, 5),
-		ui.LineTo(21, 19), ui.QuadTo(21, 21, 19, 21), ui.LineTo(5, 21),
-		ui.QuadTo(3, 21, 3, 19), ui.LineTo(3, 5), ui.QuadTo(3, 3, 5, 3), ui.ClosePath(),
-		ui.MoveTo(15, 3), ui.LineTo(15, 21),
+var rightbarPanelIcon = gfx.Icon{
+	ViewBox: 24, Stroke: 2, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(5, 3), gfx.LineTo(19, 3), gfx.QuadTo(21, 3, 21, 5),
+		gfx.LineTo(21, 19), gfx.QuadTo(21, 21, 19, 21), gfx.LineTo(5, 21),
+		gfx.QuadTo(3, 21, 3, 19), gfx.LineTo(3, 5), gfx.QuadTo(3, 3, 5, 3), gfx.ClosePath(),
+		gfx.MoveTo(15, 3), gfx.LineTo(15, 21),
 	},
 }
 
@@ -309,7 +310,7 @@ func (p *Plugin) crumb(f *flex.Frame, text string, current bool) {
 		PadSides(crumbPadY, crumbPadX, crumbPadY, crumbPadX).
 		Radius(t.Radii.MD)
 	if current {
-		b.Color(t.LabelPrimary).Weight(ui.WeightMedium)
+		b.Color(t.LabelPrimary).Weight(gfx.WeightMedium)
 		return
 	}
 	// 祖先 crumb 没有可用的跳转 Action：保持官方底色/字号，但不给悬停反馈。

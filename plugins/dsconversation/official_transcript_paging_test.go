@@ -30,6 +30,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -133,7 +134,7 @@ func TestHistoryLoadStateNames(t *testing.T) {
 }
 
 // pagingTexts 把画布上的文本原样列出来（失败时的诊断信息）。
-func pagingTexts(canvas *ui.Canvas) []string {
+func pagingTexts(canvas *gfx.Canvas) []string {
 	values := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)
@@ -144,7 +145,7 @@ func pagingTexts(canvas *ui.Canvas) []string {
 // ── ② 真画布：五态各自渲染成什么 ──────────────────────────────────────
 
 // pagingView 用真 flex + 确定性字宽测量器画一帧，返回视图与画布。
-func pagingView(t *testing.T, entries []TranscriptEntry, history pluginapi.HistoryPaging, onLoadOlder func()) (*OfficialTranscriptView, *ui.Canvas) {
+func pagingView(t *testing.T, entries []TranscriptEntry, history pluginapi.HistoryPaging, onLoadOlder func()) (*OfficialTranscriptView, *gfx.Canvas) {
 	t.Helper()
 	theme := dscore.Dark()
 	view := NewOfficialTranscriptView(theme, &dscore.Primitives{Theme: theme})
@@ -272,7 +273,7 @@ func TestPagingRowDisabledStates(t *testing.T) {
 func TestPagingButtonRealClick(t *testing.T) {
 	theme := dscore.Dark()
 	view := NewOfficialTranscriptView(theme, &dscore.Primitives{Theme: theme})
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("paging-headless")
 	var (
 		invalidator app.Invalidator
@@ -287,7 +288,7 @@ func TestPagingButtonRealClick(t *testing.T) {
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	var fv flex.View
-	config.Paint = func(canvas *ui.Canvas, current ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
@@ -299,7 +300,7 @@ func TestPagingButtonRealClick(t *testing.T) {
 			view.Draw(f, env, TranscriptViewport{HostScroll: true, HostID: tree.ID(feat, "host"), SelfID: tree.ID(feat, "self")}, pagingEntries())
 		})
 	}
-	config.OnScroll = func(event ui.ScrollEvent) ui.EventResult { return fv.Wheel(event) }
+	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult { return fv.Wheel(event) }
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {
 		t.Fatalf("headless 打不开：%v", err)
@@ -313,7 +314,7 @@ func TestPagingButtonRealClick(t *testing.T) {
 	}
 
 	id := tree.ID(feat, "history-older")
-	var hit ui.Hit
+	var hit gfx.Hit
 	found := false
 	for _, candidate := range session.Snapshot().Hits {
 		if candidate.ID == id {

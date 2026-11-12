@@ -17,6 +17,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -43,7 +44,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("fg5-headless")
 	data := pluginapi.Snapshot{
 		Cur: "fg5-real-layout", Status: "已连接",
@@ -58,13 +59,13 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 	var (
 		view        flex.View
 		invalidator app.Invalidator
-		dockBox     flex.Box
+		dockBox     ui.Box
 	)
 	config := app.Config{
 		Title: "fg5-headless", Width: 1920, Height: 1032, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
@@ -76,7 +77,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 			},
 			Has: kernel.Has,
 		}
-		dockBox = flex.Box{}
+		dockBox = ui.Box{}
 		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
 			f.Column().FillWidth().FillHeight().Children(func() {
 				f.Row().Grow(1)
@@ -277,7 +278,7 @@ func TestFG5HeadlessDockAndConnection(t *testing.T) {
 	if session.HasText("总量 12.3k") || session.HasText("上下文 2.0k") {
 		t.Fatalf("空会话显示了残留 usage；texts=%q", session.Texts())
 	}
-	if dockBox != (flex.Box{}) {
+	if dockBox != (ui.Box{}) {
 		t.Fatal("空会话仍创建了 dock 盒子")
 	}
 	t.Log("FG5_SESSION_ISOLATION A->B->empty passed; empty dock box absent")

@@ -30,6 +30,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -144,15 +145,15 @@ func pending(msgs []apiclient.Message) []Question {
 //
 // 键盘选择是**真的能按**的：F7/F8 在别处没被占用（F1 快捷键 / F2 命令 /
 // F5 终端 / F6 终端发送 / F12 demo）。等 flex 有了点击，再补鼠标那条路。
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	if len(p.cur.Options) == 0 || p.act.Send == nil {
 		return false
 	}
 	idx := -1
 	switch ev.Key {
-	case ui.KeyF7:
+	case gfx.KeyF7:
 		idx = 0
-	case ui.KeyF8:
+	case gfx.KeyF8:
 		idx = 1
 	default:
 		return false
@@ -179,7 +180,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	p.act = env.Act
 
 	f.Column().FillWidth().PadSides(16, 16, 8, 4).Gap(6).Children(func() {
-		f.Row().Items(flex.Center).Gap(6).Children(func() {
+		f.Row().Items(ui.Center).Gap(6).Children(func() {
 			p.prims.Dot(f, t.LabelPrimary, 5)
 			if q.Header != "" {
 				f.Text(q.Header).FontSize(t.Fonts.Caption).Color(t.LabelPrimary)
@@ -200,7 +201,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			// "先给元素一个 id，再问它这一帧有没有被点"。我第一版用 `.OnClick(...)`
 			// 搜不到就以为 flex 没有点击 API，**那是搜错了名字**：
 			// 真正的入口是 `Hit`/`Clicked`，`dscore.ListRow` 也是这么用的。
-			row := f.Row().FillWidth().Items(flex.Center).Gap(8).PadSides(8, 8, 7, 7).
+			row := f.Row().FillWidth().Items(ui.Center).Gap(8).PadSides(8, 8, 7, 7).
 				Radius(t.Radii.MD).Background(t.InputMajor).
 				Hit(env.Tree.ID(env.Feat, "opt-"+strconv.Itoa(i)), opt.Label)
 			if row.Clicked() {

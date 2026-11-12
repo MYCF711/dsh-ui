@@ -18,6 +18,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -41,7 +42,7 @@ func drawSeat(f *flex.Frame, k *uikernel.Kernel, env *pluginapi.Env, slot plugin
 //
 // tierOfficial 是壳档位；drawOfficial 是这一帧要 dispatch 哪个座位
 // （两个参数分开，才能验「官方档位下 legacy 座位一声不响」）。
-func questionFrame(t *testing.T, tierOfficial, drawOfficial bool, msgs []apiclient.Message) (*ui.Canvas, []string, map[pluginapi.Slot]int) {
+func questionFrame(t *testing.T, tierOfficial, drawOfficial bool, msgs []apiclient.Message) (*gfx.Canvas, []string, map[pluginapi.Slot]int) {
 	t.Helper()
 	tier := uikernel.NewShellTier()
 	tier.Set(tierOfficial)
@@ -51,8 +52,8 @@ func questionFrame(t *testing.T, tierOfficial, drawOfficial bool, msgs []apiclie
 		t.Fatalf("装配失败：%v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 { return float32(len([]rune(value))) * size * 0.55 })
 	env := &pluginapi.Env{

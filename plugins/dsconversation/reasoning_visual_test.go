@@ -20,6 +20,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -57,8 +58,8 @@ type reasoningHarness struct {
 	t           *testing.T
 	p           *Plugin
 	data        pluginapi.Snapshot
-	tree        *ui.Tree
-	feat        ui.Scope
+	tree        *gfx.Tree
+	feat        gfx.Scope
 	session     *headless.Session
 	invalidator *app.Invalidator
 }
@@ -67,7 +68,7 @@ func openReasoningHarness(t *testing.T, width, height int, data pluginapi.Snapsh
 	t.Helper()
 	p := newStreamingMarkdownTestPlugin()
 	theme := p.theme
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("reasoning-headless")
 	var view flex.View
 	var invalidator app.Invalidator
@@ -75,7 +76,7 @@ func openReasoningHarness(t *testing.T, width, height int, data pluginapi.Snapsh
 		Title: "reasoning-headless", Width: width, Height: height, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, current ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
@@ -87,7 +88,7 @@ func openReasoningHarness(t *testing.T, width, height int, data pluginapi.Snapsh
 		})
 		p.afterDraw(canvas, env)
 	}
-	config.OnScroll = func(event ui.ScrollEvent) ui.EventResult { return view.Wheel(event) }
+	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult { return view.Wheel(event) }
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -109,13 +110,13 @@ func (h *reasoningHarness) pump() {
 func (h *reasoningHarness) close() { h.session.Close() }
 
 // reasoningHit 找某条思考行的真实命中区（Paint 之后由 HitTest 登记）。
-func reasoningHit(snapshot app.Snapshot, id ui.ID) (ui.Hit, bool) {
+func reasoningHit(snapshot app.Snapshot, id gfx.ID) (gfx.Hit, bool) {
 	for _, hit := range snapshot.Hits {
 		if hit.ID == id {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 func (h *reasoningHarness) screenshot(dir, name string, width, height int) {

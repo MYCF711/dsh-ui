@@ -38,6 +38,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -49,7 +50,7 @@ type measuredText struct {
 }
 
 // searchFixture 在 v2Fixture 之上换一个记录型 measurer。
-func searchFixture(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *ui.Tree, *ui.Canvas, *[]measuredText) {
+func searchFixture(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *gfx.Tree, *gfx.Canvas, *[]measuredText) {
 	t.Helper()
 	p, rec, env, tree, canvas := v2Fixture()
 	texts := &[]measuredText{}
@@ -71,7 +72,7 @@ func mockdSessions() []apiclient.Session {
 }
 
 // drawSearchList 真实走一遍 `搜索框 → drawList`，返回实际绘制的行与文字。
-func drawSearchList(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *ui.Tree, *ui.Canvas, *[]measuredText) {
+func drawSearchList(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *gfx.Tree, *gfx.Canvas, *[]measuredText) {
 	t.Helper()
 	p, rec, env, tree, canvas, texts := searchFixture(t)
 	env.Data.Sessions = mockdSessions()

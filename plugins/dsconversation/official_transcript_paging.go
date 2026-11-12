@@ -40,6 +40,7 @@ package dsconversation
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -160,9 +161,9 @@ func historyLoadClickable(state HistoryLoadState) bool {
 //
 // 按会话起名而不是自增：同一个会话在两次渲染里必须给**同一个** id，
 // 否则 viva 会把按钮当成新节点重挂（焦点/悬停状态每一帧都丢）。
-func (v *OfficialTranscriptView) historyButtonID(env *pluginapi.Env) ui.ID {
+func (v *OfficialTranscriptView) historyButtonID(env *pluginapi.Env) gfx.ID {
 	if env == nil || env.Tree == nil {
-		return ui.ID{}
+		return gfx.ID{}
 	}
 	return env.Tree.ID(env.Feat, "history-older")
 }
@@ -170,10 +171,10 @@ func (v *OfficialTranscriptView) historyButtonID(env *pluginapi.Env) ui.ID {
 // drawHistoryRow 画「加载更早」那一行，返回这一行的盒子与五态。
 //
 // 返回零值盒子 = 这一帧不画（`HistoryHidden`）。
-func (v *OfficialTranscriptView) drawHistoryRow(f *flex.Frame, env *pluginapi.Env, p pluginapi.HistoryPaging) (flex.Box, HistoryLoadState) {
+func (v *OfficialTranscriptView) drawHistoryRow(f *flex.Frame, env *pluginapi.Env, p pluginapi.HistoryPaging) (ui.Box, HistoryLoadState) {
 	state := historyLoadState(p)
 	if state == HistoryHidden {
-		return flex.Box{}, state
+		return ui.Box{}, state
 	}
 	t := v.Theme
 	if state == HistoryFirst {
@@ -188,7 +189,7 @@ func (v *OfficialTranscriptView) drawHistoryRow(f *flex.Frame, env *pluginapi.En
 		return box, state
 	}
 	// 官方 `.older`：整行居中 + 一个按钮。
-	box := f.Row().FillWidth().Justify(flex.Center)
+	box := f.Row().FillWidth().Justify(ui.Center)
 	clickable := historyLoadClickable(state)
 	var clicked bool
 	box.Children(func() {

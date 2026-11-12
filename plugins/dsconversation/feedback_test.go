@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // 这些测试只管一件事：**记录记成哪个键、撤回是不是真的清掉、别人给的键有没有被碰**。
@@ -180,7 +180,7 @@ func TestThumbIconMirrorsAndFills(t *testing.T) {
 	// 镜像：同一个点，y 关于 8 对称。
 	var upPoint bool
 	for i := range up.Commands {
-		if up.Commands[i].Kind != ui.PathCommandMove {
+		if up.Commands[i].Kind != gfx.PathCommandMove {
 			continue
 		}
 		upPoint = true

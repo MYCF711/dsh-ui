@@ -8,11 +8,12 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 var (
-	tree  = ui.Tree{}
+	tree  = gfx.Tree{}
 	e2    = tree.Feature("e2")
 	draft = tree.ID(e2, "draft")
 	outer = tree.ID(e2, "outer")
@@ -21,7 +22,7 @@ var (
 )
 
 type model struct {
-	draft  flex.Field
+	draft  ui.Field
 	view   flex.View
 	codeOv mdlite.Overflow // 代码块的横向滚动状态
 }
@@ -75,13 +76,13 @@ func monoCells(s string) int {
 func newConfig(m *model) app.Config {
 	theme := ui.LightTheme()
 	config := app.Config{Tree: &tree, Title: "E2 渲染矩阵", Width: 1100, Height: 860}
-	config.TextInput = flex.Fields(&m.draft)
+	config.TextInput = ui.Fields(&m.draft)
 	lines := codeLines()
 
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.Background)
-		var codeSlot flex.Box
+		var codeSlot ui.Box
 		m.view.Draw(canvas, theme, bounds, func(f *flex.Frame) {
 			f.Column().Fill().Pad(16).Gap(8).Children(func() {
 				f.Text("E2 · 渲染矩阵（1 中文 · 2 代码 · 3 卡片 · 4 emoji · 5 IME · 6 长列表 · 7 缩放）").FontSize(16).Bold()
@@ -129,7 +130,7 @@ func newConfig(m *model) app.Config {
 
 		// Draw 之后布局已定，Slot 的 Rect 才是最终位置
 		if r := codeSlot.Rect(); r.Width > 1 && r.Height > 1 {
-			cell, lineH := canvas.MonoCellSize(12, ui.MonoSystem)
+			cell, lineH := canvas.MonoCellSize(12, gfx.MonoSystem)
 			if cell <= 0 {
 				cell = 7.2
 			}
@@ -154,7 +155,7 @@ func newConfig(m *model) app.Config {
 						continue
 					}
 					canvas.Label(ln, ui.Rect{X: c.X + 10, Y: y, Width: contentW, Height: lineH},
-						ui.TextStyle{Size: 12, Mono: true, Color: theme.Foreground})
+						gfx.TextStyle{Size: 12, Mono: true, Color: theme.Foreground})
 				}
 			})
 		}
@@ -165,7 +166,7 @@ func newConfig(m *model) app.Config {
 }
 
 func main() {
-	var canvas ui.Canvas
+	var canvas gfx.Canvas
 	// 演示用：起始就横向偏 220px，一眼能看出内容确实被平移了
 	if err := app.RunCanvas(newConfig(&model{codeOv: mdlite.Overflow{OffsetX: 0}}), &canvas); err != nil {
 		log.Fatal(err)

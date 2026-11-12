@@ -1,7 +1,6 @@
 package dstool
 
 import (
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -34,7 +33,7 @@ func bashRenderer() Renderer {
 			code, rest := splitExit(b.Card.Summary)
 			switch {
 			case code != "":
-				b.Frame.Row().WidthPercent(100).Gap(8).Items(flex.Center).Children(func() {
+				b.Frame.Row().WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
 					color := t.Success
 					if badExit(code) {
 						color = t.Error

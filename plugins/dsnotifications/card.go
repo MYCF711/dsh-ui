@@ -28,6 +28,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -84,12 +85,12 @@ func (p *Plugin) drawStack(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme
 	f.Column().FillWidth().MaxWidth(StackMaxWidth).Children(func() {
 		for depth := len(notices) - 1; depth >= 1; depth-- {
 			// 官方非前景卡 `pointer-events:none`：这里根本不给命中区，天然不可点。
-			f.Row().FillWidth().Height(DepthOffset).Justify(flex.Center).Children(func() {
+			f.Row().FillWidth().Height(DepthOffset).Justify(ui.Center).Children(func() {
 				f.Row().Height(DepthOffset).
 					WidthPercent(float32(depthScale(depth)) * 100).
 					Radius(DepthOffset / 2).
 					Background(t.InputMajor).
-					Shadow(ui.ShadowXS)
+					Shadow(gfx.ShadowXS)
 			})
 		}
 		p.drawCard(f, env, t, notices[0])
@@ -98,15 +99,15 @@ func (p *Plugin) drawStack(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme
 
 // drawCard 画前景卡（唯一可交互的一张）。
 func (p *Plugin) drawCard(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, n apiclient.Notification) {
-	id := func(name string) ui.ID {
+	id := func(name string) gfx.ID {
 		return env.Tree.ID(env.Feat, "account-notice-"+n.ID+"-"+name)
 	}
-	f.Column().FillWidth().Radius(CardRadius).Background(t.InputMajor).Shadow(ui.ShadowXS).
+	f.Column().FillWidth().Radius(CardRadius).Background(t.InputMajor).Shadow(gfx.ShadowXS).
 		Pad(CardPadding).Gap(CopyGap).Children(func() {
 		// .copy：标题行 + 正文。`role="status"` 是官方可访问性标注；
 		// viva 的 Text 没有 role，写进 aria 只能靠标签语义，此处从简（不影响结构）。
 		if n.Title != "" || n.Body != "" {
-			f.Row().FillWidth().Items(flex.Start).Gap(CopyGap).Children(func() {
+			f.Row().FillWidth().Items(ui.Start).Gap(CopyGap).Children(func() {
 				// .title 的 span.icon 只在有标题时画（官方标题行同时承载 icon 与 title）。
 				if n.Title != "" {
 					f.Icon(noticeBellIcon(t.BrandPrimary)).Size(IconSize, IconSize).

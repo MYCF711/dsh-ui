@@ -14,7 +14,7 @@ package dsbrand
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // ServiceKey 是品牌能力的注入键。
@@ -23,7 +23,7 @@ const ServiceKey = "ui.brand"
 // Brand 是一个品牌面：一个图标 + 它的标准显示尺寸。
 type Brand struct {
 	// Icon 是 logo 矢量（含 viewBox）。
-	Icon ui.Icon
+	Icon gfx.Icon
 	// Width 是官方指定的显示宽度（HeroFish 原文：`width: 34`）。
 	Width float32
 }

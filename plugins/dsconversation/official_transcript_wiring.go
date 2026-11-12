@@ -41,7 +41,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // transcriptScrollSelf / transcriptScrollHost 是两个滚动口的交互 id 前缀。
@@ -115,7 +115,7 @@ func (p *Plugin) drawLegacyTranscriptSeat(f *flex.Frame, env *pluginapi.Env) {
 // 「先声明整棵树、再一次性 End() 解算」，Draw 回调里 `Box.Rect()` 还是零值，
 // 而 `mdlite.CodeBlock` 要的正是真实矩形（`pluginapi.Painter.AfterDraw` 的
 // 注释写的就是这件事）。
-func (p *Plugin) afterDrawOfficialTranscriptSeat(canvas *ui.Canvas, env *pluginapi.Env) {
+func (p *Plugin) afterDrawOfficialTranscriptSeat(canvas *gfx.Canvas, env *pluginapi.Env) {
 	p.paintOfficialTranscriptCodeBlocks(canvas, env)
 }
 
@@ -124,7 +124,7 @@ func (p *Plugin) afterDrawOfficialTranscriptSeat(canvas *ui.Canvas, env *plugina
 // 两个座位共用：`conversation.view`（rc.2 终态）与 `main.body`（三栏/兼容桥）
 // 都可能承载官方 transcript（判据是"这一帧有没有原始帧"）。渲染器**自己按
 // 帧号去重**（`OfficialTranscriptView.PaintCodeBlocks`），所以两边都调不会双画。
-func (p *Plugin) paintOfficialTranscriptCodeBlocks(canvas *ui.Canvas, env *pluginapi.Env) {
+func (p *Plugin) paintOfficialTranscriptCodeBlocks(canvas *gfx.Canvas, env *pluginapi.Env) {
 	if p.officialTranscript == nil {
 		return
 	}
@@ -198,5 +198,5 @@ func (p *Plugin) transcriptRowKinds() []ChatNodeKind {
 var (
 	_ func(*flex.Frame, *pluginapi.Env) = (*Plugin)(nil).drawOfficialTranscriptSeat
 	_ func(*flex.Frame, *pluginapi.Env) = (*Plugin)(nil).drawLegacyTranscriptSeat
-	_                                   = ui.ID{}
+	_                                   = gfx.ID{}
 )

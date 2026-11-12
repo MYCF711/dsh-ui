@@ -23,6 +23,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -614,9 +615,9 @@ func TestCaptionDeductedOnce(t *testing.T) {
 
 // ── 绘制：flex 真画出来的矩形必须等于布局算的 ───────────────────────
 
-func newSkeletonEnv(width, height float32, has func(pluginapi.Slot) bool) (*pluginapi.Env, *ui.Canvas) {
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+func newSkeletonEnv(width, height float32, has func(pluginapi.Slot) bool) (*pluginapi.Env, *gfx.Canvas) {
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size / 2
@@ -637,11 +638,11 @@ func TestFirstScreenDrawMatchesLayout(t *testing.T) {
 	env, canvas := newSkeletonEnv(1920, 1032, func(pluginapi.Slot) bool { return false })
 	opts := ShellOptions{Windows: true, Tabs: true, SidebarPreferred: 280, RightbarOn: true, PanellistRows: 3}
 
-	boxes := map[string]flex.Box{}
+	boxes := map[string]ui.Box{}
 	var layout ShellLayout
 	var view flex.View
 	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
-		layout = FirstScreenWithMeasure(f, env, opts, func(pluginapi.Slot) {}, func(name string, box flex.Box) {
+		layout = FirstScreenWithMeasure(f, env, opts, func(pluginapi.Slot) {}, func(name string, box ui.Box) {
 			boxes[name] = box
 		})
 	})

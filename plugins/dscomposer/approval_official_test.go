@@ -24,6 +24,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -46,12 +47,12 @@ func officialApproval() pluginapi.Approval {
 }
 
 // drawSeat 在真 flex 画布上画一次官方座位，返回画布与回传记录。
-func drawSeat(t *testing.T, approval *pluginapi.Approval) (*ui.Canvas, *[]string) {
+func drawSeat(t *testing.T, approval *pluginapi.Approval) (*gfx.Canvas, *[]string) {
 	t.Helper()
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme}
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
@@ -75,7 +76,7 @@ func drawSeat(t *testing.T, approval *pluginapi.Approval) (*ui.Canvas, *[]string
 	return canvas, &approved
 }
 
-func seatTexts(canvas *ui.Canvas) []string {
+func seatTexts(canvas *gfx.Canvas) []string {
 	values := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)
@@ -83,7 +84,7 @@ func seatTexts(canvas *ui.Canvas) []string {
 	return values
 }
 
-func seatHas(canvas *ui.Canvas, want string) bool {
+func seatHas(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want || (len(text.Value) > len(want) && text.Value[:len(want)] == want) {
 			return true
@@ -193,7 +194,7 @@ func TestUnknownFieldsShowUnknown(t *testing.T) {
 func TestOfficialSeatRealClick(t *testing.T) {
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("approval-official-click")
 	ap := officialApproval()
 	var (
@@ -206,7 +207,7 @@ func TestOfficialSeatRealClick(t *testing.T) {
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
 	var fv flex.View
-	config.Paint = func(canvas *ui.Canvas, current ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := ui.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
@@ -219,7 +220,7 @@ func TestOfficialSeatRealClick(t *testing.T) {
 			p.drawOfficialComposer(f, env)
 		})
 	}
-	config.OnScroll = func(event ui.ScrollEvent) ui.EventResult { return fv.Wheel(event) }
+	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult { return fv.Wheel(event) }
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {
 		t.Fatalf("headless 打不开：%v", err)
@@ -233,7 +234,7 @@ func TestOfficialSeatRealClick(t *testing.T) {
 	}
 
 	id := tree.ID(feat, "approval-deny")
-	var hit ui.Hit
+	var hit gfx.Hit
 	found := false
 	for _, candidate := range session.Snapshot().Hits {
 		if candidate.ID == id {
@@ -271,8 +272,8 @@ func TestBothSeatsSameCard(t *testing.T) {
 	// 只在画布上取**审批卡那几行**做对比。
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme}
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size

@@ -53,6 +53,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -79,8 +80,8 @@ func gyUsage(u apiclient.Usage) pluginapi.Usage {
 type gyRealProduct struct {
 	kernel     *uikernel.Kernel
 	theme      *pluginapi.Theme
-	tree       *ui.Tree
-	feat       ui.Scope
+	tree       *gfx.Tree
+	feat       gfx.Scope
 	opts       uikernel.ShellOptions
 	dispatched map[pluginapi.Slot]int
 }
@@ -92,7 +93,7 @@ func newGYRealProduct(t *testing.T) *gyRealProduct {
 	tier.Set(true)
 	p := &gyRealProduct{
 		kernel:     uikernel.New("gy-real-chain"),
-		tree:       &ui.Tree{},
+		tree:       &gfx.Tree{},
 		dispatched: map[pluginapi.Slot]int{},
 	}
 	p.kernel.Root().Provide(uikernel.KeyShellTier, tier)
@@ -120,9 +121,9 @@ func newGYRealProduct(t *testing.T) *gyRealProduct {
 //
 // goal 走 `Actions.Goal` 闭包（不是快照字段）：官方 GoalBar 读的是会话投影，
 // 本仓壳把它包成每帧调用的闭包（`cmd/app/main.go` 的 `Act.Goal`）。
-func (p *gyRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, goal string) (*ui.Canvas, []string, map[pluginapi.Slot]int) {
+func (p *gyRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, goal string) (*gfx.Canvas, []string, map[pluginapi.Slot]int) {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(p.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
@@ -298,14 +299,14 @@ func TestRealChainGYGoalQuestionsStatusbar(t *testing.T) {
 	shot := filepath.Join(dir, fmt.Sprintf("gy-official-web-%d.png", time.Now().Unix()))
 
 	product := newGYRealProduct(t)
-	shotTree := &ui.Tree{}
+	shotTree := &gfx.Tree{}
 	shotFeat := shotTree.Feature("gy-shot")
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "gy-official", Width: 1182, Height: 832, Tree: shotTree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(c *ui.Canvas, size ui.Size) {
+	config.Paint = func(c *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		c.Fill(bounds, product.theme.BgBase)
 		shotEnv := &pluginapi.Env{

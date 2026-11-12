@@ -49,6 +49,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -92,7 +93,7 @@ const (
 // chip 是 Draw 阶段量到的 trigger 盒子；Rect 要等 End 之后才有效，所以 AfterDraw
 // 才读（同 dscomposer 的 fieldBox/afterDraw 做法）。rect 只用于下一帧的菜单锚点。
 type modelSlotState struct {
-	chip  flex.Box
+	chip  ui.Box
 	drawn bool
 	rect  ui.Rect
 }
@@ -144,11 +145,11 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 	if !available {
 		// 降级：只读 chip（宿主真值 / 「未知」）——不画 chevron、不给命中区。
 		f.Row().Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
-			Items(flex.Center).Gap(modelChipGap).Children(func() {
+			Items(ui.Center).Gap(modelChipGap).Children(func() {
 			f.Row().Width(inset(modelChipPadLeft))
 			f.Row().MaxWidth(maxW - modelChipPadLeft - modelChipPadRightBare).Children(func() {
 				f.Text(label).FontSize(modelChipFont).LineHeight(modelChipLine).
-					Weight(ui.WeightRegular).Color(t.LabelSecondary).Ellipsis()
+					Weight(gfx.WeightRegular).Color(t.LabelSecondary).Ellipsis()
 			})
 			f.Row().Width(inset(modelChipPadRightBare))
 		})
@@ -161,25 +162,25 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 		textMax = 0
 	}
 	chip := f.Row().Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
-		Items(flex.Center).Gap(modelChipGap)
+		Items(ui.Center).Gap(modelChipGap)
 	if open {
 		// `.trigger[aria-expanded=true]{background:interactive-bg-hover}`（:34-38）。
 		chip = chip.Background(t.Hover)
 	} else {
-		chip = chip.Hover(flex.Look{}.Background(t.Hover))
+		chip = chip.Hover(ui.Look{}.Background(t.Hover))
 	}
 	chip = chip.Children(func() {
 		f.Row().Width(inset(modelChipPadLeft))
 		f.Row().MaxWidth(textMax).Children(func() {
 			f.Text(label).FontSize(modelChipFont).LineHeight(modelChipLine).
-				Weight(ui.WeightRegular).Color(t.LabelSecondary).Ellipsis()
+				Weight(gfx.WeightRegular).Color(t.LabelSecondary).Ellipsis()
 		})
 		f.Icon(chevronDownIcon()).Size(modelChevronSize, modelChevronSize).Color(t.LabelSecondary)
 		f.Row().Width(inset(modelChipPadRight))
 	})
 	// 官方 trigger 是 button（`aria-haspopup` + 展开态）；点它开/关菜单。
 	chip = chip.HitWith(env.Tree.ID(env.Feat, "model-menu-trigger"), zhModelMenuAria,
-		ui.HitOptions{Role: ui.RoleButton, Expandable: true, Expanded: open})
+		gfx.HitOptions{Role: gfx.RoleButton, Expandable: true, Expanded: open})
 	p.model.chip, p.model.drawn = chip, true
 	if chip.Clicked() {
 		p.team.ToggleModelMenu()
@@ -187,7 +188,7 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 }
 
 // afterModelSlot 把本帧 trigger 的**真实矩形**留给下一帧的菜单锚点。
-func (p *Plugin) afterModelSlot(canvas *ui.Canvas, env *pluginapi.Env) {
+func (p *Plugin) afterModelSlot(canvas *gfx.Canvas, env *pluginapi.Env) {
 	if !p.model.drawn {
 		return
 	}

@@ -94,6 +94,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -231,9 +232,9 @@ type connectionView struct {
 	phase  connPhase
 	tone   connectionTone
 	label  string
-	icon   func() ui.Icon // nil = 这一档没有官方 glyph
-	button bool           // 官方 warning 态是 `<button onClick={onReconnect}>`
-	aria   string         // 官方 aria-label（`connection.reconnect` / `connection.restart`）
+	icon   func() gfx.Icon // nil = 这一档没有官方 glyph
+	button bool            // 官方 warning 态是 `<button onClick={onReconnect}>`
+	aria   string          // 官方 aria-label（`connection.reconnect` / `connection.restart`）
 }
 
 // connectionViewOf 把态翻成要画的东西。
@@ -355,15 +356,15 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 
 	pill := f.Row().Height(connIndicatorHeight).Radius(t.Radii.SM).
 		Background(fill).Border(connIndicatorBorder, border).
-		Items(flex.Center).Gap(connIndicatorGap).Opacity(opacity)
+		Items(ui.Center).Gap(connIndicatorGap).Opacity(opacity)
 
 	// 官方 warning 态是**可点按钮**（`<button onClick={onReconnect}>`）：
 	// 命中区 + hover/active 底色都只在真的接了重连动作时才画。
 	interactive := view.button && env.Act.Reconnect != nil
 	if interactive {
 		pill = pill.Hit(env.Tree.ID(env.Feat, "connection-reconnect"), view.aria).
-			Hover(flex.Look{}.Background(mixColor(fill, t.Warn, connWarningHoverTint))).
-			Pressed(flex.Look{}.Background(mixColor(fill, t.Warn, connWarningActiveTint)))
+			Hover(ui.Look{}.Background(mixColor(fill, t.Warn, connWarningHoverTint))).
+			Pressed(ui.Look{}.Background(mixColor(fill, t.Warn, connWarningActiveTint)))
 	}
 
 	pill.Children(func() {
@@ -378,7 +379,7 @@ func (p *Plugin) drawConnectionIndicator(f *flex.Frame, env *pluginapi.Env) {
 		// 官方 `font-weight:500`；viva 的 Weight 是**相对常规字重的增量**，
 		// `ui.WeightMedium` 就是这一档（别处也都用它，别写 500）。
 		f.Text(view.label).FontSize(connIndicatorFont).LineHeight(connIndicatorLine).
-			Weight(ui.WeightMedium).Color(text).Ellipsis()
+			Weight(gfx.WeightMedium).Color(text).Ellipsis()
 		f.Row().Width(connIndicatorPadX).Height(connIndicatorHeight)
 	})
 

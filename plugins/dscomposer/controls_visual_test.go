@@ -12,6 +12,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -53,7 +54,7 @@ func TestControlsHeadlessGeometryAndCapture(t *testing.T) {
 				p.field.SetText("继续")
 			}
 			act := pluginapi.Actions{Send: func(string) {}, Cancel: func() {}}
-			tree := &ui.Tree{}
+			tree := &gfx.Tree{}
 			feat := tree.Feature("composer-headless-" + tc.name)
 			var view flex.View
 			var invalidator app.Invalidator
@@ -61,7 +62,7 @@ func TestControlsHeadlessGeometryAndCapture(t *testing.T) {
 				Title: "composer-" + tc.name, Width: tc.width, Height: tc.height, Tree: tree,
 				WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 			}
-			config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+			config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 				bounds := ui.Rect{Width: size.Width, Height: size.Height}
 				canvas.Fill(bounds, theme.BgBase)
 				env := &pluginapi.Env{

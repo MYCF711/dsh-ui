@@ -31,6 +31,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -83,8 +84,8 @@ func gyFrame(t *testing.T, official bool) ([]string, map[pluginapi.Slot]int) {
 		Goal: func() string { return "把三个部件迁到官方槽位" },
 		Send: func(string) {}, Cancel: func() {},
 	}
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55

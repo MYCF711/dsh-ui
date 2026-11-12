@@ -37,6 +37,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
@@ -53,8 +54,8 @@ type TranscriptViewport struct {
 	//
 	// **必须分开**：viva 的 ScrollState 按 id 存，共用一个 id 会让两层拿到
 	// 同一个 Offset（滚动位置互相打架）。
-	HostID ui.ID
-	SelfID ui.ID
+	HostID gfx.ID
+	SelfID gfx.ID
 }
 
 // RowBox 是渲染出来的**一行**（对应官方一个 `.flowItem`）。
@@ -64,7 +65,7 @@ type RowBox struct {
 	// Kind 是官方 kind（官方 `data-chat-flow-kind`）。
 	Kind ChatNodeKind
 	// Box 是这一行的盒子（`min-width:0` 的 flowItem）。
-	Box flex.Box
+	Box ui.Box
 }
 
 // TranscriptBoxes 是上一帧的容器几何（AfterDraw / 测试用）。
@@ -73,20 +74,20 @@ type RowBox struct {
 // 的东西要等布局定下来；而测试要断言"双层滚动口真的存在"也只能读几何。
 type TranscriptBoxes struct {
 	// ScrollBody 是宿主滚动口（`HostScroll` 为 false 时为零值）。
-	ScrollBody flex.Box
+	ScrollBody ui.Box
 	// Frame / Root / Scroll / Column / Flow 是 ChatView 的五层容器。
-	Frame  flex.Box
-	Root   flex.Box
-	Scroll flex.Box
-	Column flex.Box
-	Flow   flex.Box
+	Frame  ui.Box
+	Root   ui.Box
+	Scroll ui.Box
+	Column ui.Box
+	Flow   ui.Box
 	// Rows 是逐条消息行（顺序 = 节点顺序）。
 	Rows []RowBox
 	// Older 是「加载更早」那一行（官方 `.older` / `.hint`）。
 	//
 	// **它不在 Rows 里**：官方它画在 flow 槽**之前**、`.column` 的直接子级，
 	// 不是一个消息节点（`ChatView.tsx:265-279`）。零值 = 这一帧不画。
-	Older flex.Box
+	Older ui.Box
 	// HistoryState 是这一帧「加载更早」的五态（诊断/测试用；HistoryHidden = 没画）。
 	HistoryState HistoryLoadState
 	// HostScroll 记录这一帧外层有没有宿主滚动口。
@@ -142,7 +143,7 @@ type OfficialTranscriptView struct {
 	// 折行开关与复制反馈——每帧重建等于"滚一下弹回原位"。
 	prevCodeBlocks []pendingCodeBlock
 	// codeClipBox 是代码块的裁剪视口（自滚动口；布局之后才有矩形）。
-	codeClipBox flex.Box
+	codeClipBox ui.Box
 	// codeClipOK 报告这一帧有没有可用的裁剪视口（Draw 没跑 / 零值 Box 时不能取矩形）。
 	codeClipOK bool
 	// frameSeq / paintedSeq 是"一帧只覆画一次"的帧号。
@@ -161,7 +162,7 @@ type pendingCodeBlock struct {
 	// block 是代码块视图（跨帧复用，自带横滚/折行/复制反馈状态）。
 	block mdlite.CodeBlock
 	// box 是布局阶段占的位（覆画阶段从这里取真实矩形）。
-	box flex.Box
+	box ui.Box
 	// geometry 是上一次覆画的真实几何（banner / 视口 / 横滚上限），
 	// 测试与 Turn 导航读它——**不跨帧外推**（每帧覆画时覆盖写）。
 	geometry mdlite.CodeBlockGeometry
@@ -312,8 +313,8 @@ func (v *OfficialTranscriptView) drawRow(f *flex.Frame, env *pluginapi.Env, e Tr
 // drawUser 画 §5.1 用户消息：右对齐行 + 内容栈 + 气泡 + 附件行 + 引用摘要。
 func (v *OfficialTranscriptView) drawUser(f *flex.Frame, env *pluginapi.Env, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Justify(flex.End).Gap(UserRowGap).Children(func() {
-		stack := f.Column().Items(flex.End).Gap(UserStackGap).MinWidth(0).
+	f.Row().FillWidth().Justify(ui.End).Gap(UserRowGap).Children(func() {
+		stack := f.Column().Items(ui.End).Gap(UserStackGap).MinWidth(0).
 			MaxWidthPercent(UserStackWidthCap * 100)
 		stack.Children(func() {
 			if e.Data.Text != "" {
@@ -327,7 +328,7 @@ func (v *OfficialTranscriptView) drawUser(f *flex.Frame, env *pluginapi.Env, e T
 			}
 			// 附件行（.attachmentRow：右对齐、wrap、gap 8）
 			if len(e.Data.Attachments) > 0 {
-				f.Row().Justify(flex.End).Gap(AttachmentRowGap).Children(func() {
+				f.Row().Justify(ui.End).Gap(AttachmentRowGap).Children(func() {
 					for _, attachment := range e.Data.Attachments {
 						v.drawAttachment(f, attachment)
 					}
@@ -355,7 +356,7 @@ func (v *OfficialTranscriptView) drawAttachment(f *flex.Frame, attachment Transc
 				name = UnknownText
 			}
 			f.Text(name).FontSize(FileNameFontSize).LineHeight(FileNameLineHeight).
-				Weight(ui.WeightMedium).Color(t.LabelPrimary).Ellipsis()
+				Weight(gfx.WeightMedium).Color(t.LabelPrimary).Ellipsis()
 			if attachment.Meta != "" {
 				f.Text(attachment.Meta).FontSize(FileMetaFontSize).LineHeight(FileMetaLineHeight).
 					Color(t.LabelTertiary).Ellipsis()
@@ -370,9 +371,9 @@ func (v *OfficialTranscriptView) drawAttachment(f *flex.Frame, attachment Transc
 // 且行上带 `data-pending-steering`（Host 权威待入）。
 func (v *OfficialTranscriptView) drawSteering(f *flex.Frame, env *pluginapi.Env, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Justify(flex.End).Gap(UserRowGap).
+	f.Row().FillWidth().Justify(ui.End).Gap(UserRowGap).
 		MarginSides(ChatFlowGapSteeringBatch-ChatFlowGapDefault, 0, 0, 0).Children(func() {
-		f.Column().Items(flex.End).Gap(UserStackGap).MinWidth(0).Children(func() {
+		f.Column().Items(ui.End).Gap(UserStackGap).MinWidth(0).Children(func() {
 			f.Text(e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelSecondary)
 		})
 	})
@@ -385,7 +386,7 @@ func (v *OfficialTranscriptView) drawSteering(f *flex.Frame, env *pluginapi.Env,
 // 二手证据摆位，**不得反推像素**。
 func (v *OfficialTranscriptView) drawDisclosureRow(f *flex.Frame, e TranscriptEntry, title, subtitle string) {
 	t := v.Theme
-	row := f.Row().FillWidth().Items(flex.Center).Gap(CompactionLeadingGap).PadY(2)
+	row := f.Row().FillWidth().Items(ui.Center).Gap(CompactionLeadingGap).PadY(2)
 	row.Children(func() {
 		f.Slot().Size(CompactionLeading, CompactionLeading)
 		f.Text(title).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
@@ -404,7 +405,7 @@ func (v *OfficialTranscriptView) drawTurnTrigger(f *flex.Frame, e TranscriptEntr
 	t := v.Theme
 	card := f.Column().FillWidth().Border(0.5, t.BorderL1).Radius(t.Radii.XL)
 	card.Children(func() {
-		header := f.Row().FillWidth().Items(flex.Center).Gap(TurnTriggerHeaderGap).
+		header := f.Row().FillWidth().Items(ui.Center).Gap(TurnTriggerHeaderGap).
 			PadSides(TurnTriggerHeaderPadY, TurnTriggerHeaderPadX, TurnTriggerHeaderPadY, TurnTriggerHeaderPadX)
 		header.Children(func() {
 			f.Text(triggerTitle(e)).FontSize(t.Fonts.Body).Color(t.LabelPrimary)
@@ -430,7 +431,7 @@ func triggerTitle(e TranscriptEntry) string {
 // drawCommandInput 画 §5.5 `/goal` 命令输入（goal 包节点）。
 func (v *OfficialTranscriptView) drawCommandInput(f *flex.Frame, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(flex.Center).Gap(6).Children(func() {
+	f.Row().FillWidth().Items(ui.Center).Gap(6).Children(func() {
 		f.Text(e.Data.Text).FontSize(t.Fonts.Body).Mono().Color(t.LabelSecondary)
 	})
 }
@@ -443,7 +444,7 @@ func (v *OfficialTranscriptView) drawAssistant(f *flex.Frame, env *pluginapi.Env
 		if e.Data.Reasoning != "" {
 			// reasoning 分区块间距 4px（AssistantMarkdown.module.css:24-29）
 			f.Column().FillWidth().Gap(AssistantReasoningBlockGap).Children(func() {
-				f.Row().FillWidth().Items(flex.Center).Gap(CompactionLeadingGap).Children(func() {
+				f.Row().FillWidth().Items(ui.Center).Gap(CompactionLeadingGap).Children(func() {
 					f.Slot().Size(TurnProcessChevron, TurnProcessChevron)
 					f.Text("思考").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 				})
@@ -455,7 +456,7 @@ func (v *OfficialTranscriptView) drawAssistant(f *flex.Frame, env *pluginapi.Env
 		}
 		if e.Data.Status == "stopped" {
 			// 中断标记 .stopped：11px/18px，左对齐
-			f.Row().Justify(flex.Start).Children(func() {
+			f.Row().Justify(ui.Start).Children(func() {
 				f.Text("已停止").FontSize(StoppedFontSize).LineHeight(StoppedLineHeight).
 					PadX(StoppedPadX).Radius(t.Radii.SM).Color(t.LabelTertiary)
 			})
@@ -544,7 +545,7 @@ func (v *OfficialTranscriptView) drawHeading(f *flex.Frame, doc *markdown.Docume
 	heading := MarkdownHeadingFor(block.Level)
 	v.drawQuoted(f, block.Quote, func() {
 		f.Wrap(body).FontSize(heading.Size).LineHeight(heading.Line).
-			Weight(ui.WeightSemibold).Color(v.Theme.LabelPrimary)
+			Weight(gfx.WeightSemibold).Color(v.Theme.LabelPrimary)
 	})
 }
 
@@ -639,11 +640,11 @@ func (v *OfficialTranscriptView) placeCodeBlock(f *flex.Frame, env *pluginapi.En
 //
 // `mdlite` 的 `MonoCellSize` 对零值画布是安全的（拿不到字形宽度时按
 // `fontSize × 0.6` 兜底），所以这里不需要伪造 measurer。
-func (v *OfficialTranscriptView) measureCanvas(env *pluginapi.Env) *ui.Canvas {
+func (v *OfficialTranscriptView) measureCanvas(env *pluginapi.Env) *gfx.Canvas {
 	if env != nil && env.Canvas != nil {
 		return env.Canvas
 	}
-	return &ui.Canvas{}
+	return &gfx.Canvas{}
 }
 
 // PaintCodeBlocks 是**覆画阶段**：布局定下来之后，把 Draw 阶段占位的代码块
@@ -652,7 +653,7 @@ func (v *OfficialTranscriptView) measureCanvas(env *pluginapi.Env) *ui.Canvas {
 // 一帧只画一次：两个座位（`conversation.view` 与 `main.body`）的 painter 都挂了
 // AfterDraw，壳会把**所有** painter 的 AfterDraw 跑一遍（不管这个座位这一帧
 // 有没有被 dispatch），所以用帧号去重——否则同一块画两遍，表现为叠字 + 双命中区。
-func (v *OfficialTranscriptView) PaintCodeBlocks(canvas *ui.Canvas, env *pluginapi.Env) {
+func (v *OfficialTranscriptView) PaintCodeBlocks(canvas *gfx.Canvas, env *pluginapi.Env) {
 	if v == nil || canvas == nil || len(v.codeBlocks) == 0 {
 		return
 	}
@@ -722,16 +723,16 @@ func (v *OfficialTranscriptView) CodeBlocks() []CodeBlockBox {
 //
 // 判据在 mdlite：只认**本代码块视口**上的横向手势（或 Shift+纵向滚轮），
 // 绝不抢外层消息流的纵向滚动——抢了就会表现为"列表滚不动"。
-func (v *OfficialTranscriptView) HandleScroll(event ui.ScrollEvent) ui.EventResult {
+func (v *OfficialTranscriptView) HandleScroll(event gfx.ScrollEvent) gfx.EventResult {
 	if v == nil {
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
 	for i := range v.codeBlocks {
 		if result := v.codeBlocks[i].block.HandleScroll(event); result.Handled {
 			return result
 		}
 	}
-	return ui.EventResult{}
+	return gfx.EventResult{}
 }
 
 // codeStyle 之外的绘制令牌：主题 + 代码块几何（全部 derived）。
@@ -832,7 +833,7 @@ func (v *OfficialTranscriptView) drawToolCall(f *flex.Frame, e TranscriptEntry) 
 	t := v.Theme
 	call := f.Column().FillWidth().Radius(t.Radii.SM)
 	call.Children(func() {
-		row := f.Row().FillWidth().Items(flex.Center).Gap(ContextSepMargin)
+		row := f.Row().FillWidth().Items(ui.Center).Gap(ContextSepMargin)
 		row.Children(func() {
 			f.Slot().Size(CompactionLeading, CompactionLeading)
 			title := e.Data.Tool
@@ -909,7 +910,7 @@ func toolSummaryColor(t *pluginapi.Theme, e TranscriptEntry) ui.Color {
 // drawCommand 画 §5.8 斜杠命令生命周期。
 func (v *OfficialTranscriptView) drawCommand(f *flex.Frame, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(flex.Center).Gap(ContextSepMargin).Radius(t.Radii.SM).Children(func() {
+	f.Row().FillWidth().Items(ui.Center).Gap(ContextSepMargin).Radius(t.Radii.SM).Children(func() {
 		f.Slot().Size(CompactionLeading, CompactionLeading)
 		name := e.Data.CommandName
 		if name == "" {
@@ -928,7 +929,7 @@ func (v *OfficialTranscriptView) drawCommand(f *flex.Frame, e TranscriptEntry) {
 // drawManualCompaction 画 §5.9 `/compact` 与其压缩事务合一。
 func (v *OfficialTranscriptView) drawManualCompaction(f *flex.Frame, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(flex.Center).Gap(ContextSepMargin).Children(func() {
+	f.Row().FillWidth().Items(ui.Center).Gap(ContextSepMargin).Children(func() {
 		name := e.Data.CommandName
 		if name == "" {
 			name = "compact"
@@ -943,7 +944,7 @@ func (v *OfficialTranscriptView) drawManualCompaction(f *flex.Frame, e Transcrip
 // drawCompaction 画 §5.10 自动压缩检查点（24px 行 + 前导 + 分隔 + 摘要）。
 func (v *OfficialTranscriptView) drawCompaction(f *flex.Frame, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(flex.Center).Height(CompactionRowHeight).PadY(CompactionRowPadY).
+	f.Row().FillWidth().Items(ui.Center).Height(CompactionRowHeight).PadY(CompactionRowPadY).
 		Children(func() {
 			f.Slot().Size(CompactionLeading, CompactionLeading).MarginSides(0, CompactionLeadingGap, 0, 0)
 			f.Text("压缩").FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
@@ -960,7 +961,7 @@ func (v *OfficialTranscriptView) drawCompaction(f *flex.Frame, e TranscriptEntry
 func (v *OfficialTranscriptView) drawModelRetry(f *flex.Frame, e TranscriptEntry) {
 	t := v.Theme
 	f.Column().FillWidth().Children(func() {
-		f.Row().FillWidth().Items(flex.Center).Gap(RetrySummaryGap).PadY(RetrySummaryPadY).Children(func() {
+		f.Row().FillWidth().Items(ui.Center).Gap(RetrySummaryGap).PadY(RetrySummaryPadY).Children(func() {
 			f.Text(e.Data.RetryText()).FontSize(RetryRowFontSize).LineHeight(RetryRowLineHeight).Color(t.LabelTertiary)
 		})
 		if e.Data.RetryDelayMs != nil && *e.Data.RetryDelayMs > 0 {
@@ -984,11 +985,11 @@ func (v *OfficialTranscriptView) drawTurnError(f *flex.Frame, e TranscriptEntry,
 	} else if e.Data.ErrorCode == "ACCOUNT_SIGNED_OUT" || e.Data.ErrorCode == "INTERRUPTED" {
 		title = "任务已停止"
 	}
-	f.Row().FillWidth().Items(flex.Start).Gap(TurnErrorGap).PadY(TurnErrorPadY).Children(func() {
+	f.Row().FillWidth().Items(ui.Start).Gap(TurnErrorGap).PadY(TurnErrorPadY).Children(func() {
 		f.Slot().Size(TurnErrorDotColumn, TurnErrorDotColumn)
 		f.Column().FillWidth().MinWidth(0).Children(func() {
 			f.Row().Children(func() {
-				f.Text(title).FontSize(t.Fonts.Secondary).Weight(ui.WeightSemibold).Color(color).
+				f.Text(title).FontSize(t.Fonts.Secondary).Weight(gfx.WeightSemibold).Color(color).
 					MarginSides(0, TurnErrorTitleMarginRight, 0, 0)
 				if e.Data.ErrorMessage != "" {
 					f.Text(e.Data.ErrorMessage).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
@@ -1011,7 +1012,7 @@ func (v *OfficialTranscriptView) drawTurnError(f *flex.Frame, e TranscriptEntry,
 // Turn 产出这一条，所以这里直接画。
 func (v *OfficialTranscriptView) drawTurnProcess(f *flex.Frame, e TranscriptEntry) {
 	t := v.Theme
-	f.Row().FillWidth().Items(flex.Center).Height(TurnProcessHeight).
+	f.Row().FillWidth().Items(ui.Center).Height(TurnProcessHeight).
 		PadSides(0, 0, TurnProcessPadBottom, 0).Children(func() {
 		label := "已工作"
 		if e.Data.DurationMs != nil {
@@ -1026,7 +1027,7 @@ func (v *OfficialTranscriptView) drawTurnProcess(f *flex.Frame, e TranscriptEntr
 func (v *OfficialTranscriptView) drawTurnTail(f *flex.Frame, e TranscriptEntry) {
 	t := v.Theme
 	f.Column().FillWidth().Gap(TurnTailGap).Children(func() {
-		actions := f.Row().FillWidth().Items(flex.Center).Gap(ActionsRowGap).Height(ActionsRowHeight).
+		actions := f.Row().FillWidth().Items(ui.Center).Gap(ActionsRowGap).Height(ActionsRowHeight).
 			MarginSides(TurnTailActionsMarginTop, 0, 0, AssistantActionsMarginLeft)
 		actions.Children(func() {
 			if e.TimeKnown() {
@@ -1055,7 +1056,7 @@ func (v *OfficialTranscriptView) drawWorkflowRun(f *flex.Frame, e TranscriptEntr
 	t := v.Theme
 	card := f.Column().FillWidth().Border(0.5, t.BorderL1).Radius(t.Radii.LG)
 	card.Children(func() {
-		f.Row().FillWidth().Items(flex.Center).Gap(6).PadSides(8, 12, 8, 12).Children(func() {
+		f.Row().FillWidth().Items(ui.Center).Gap(6).PadSides(8, 12, 8, 12).Children(func() {
 			name := e.Data.RunName
 			if name == "" {
 				name = "工作流"
@@ -1112,11 +1113,11 @@ func allMono(spans []markdown.Span) bool {
 // ApprovalBoxes 是审批卡的上一帧几何（测试与 AfterDraw 用）。
 type ApprovalBoxes struct {
 	// Card 是卡片根（`radius-xl` + `max-width: chat-content-width`）。
-	Card flex.Box
+	Card ui.Box
 	// Header 是头部（`padding:10px 16px`）。
-	Header flex.Box
+	Header ui.Box
 	// Body 是体（`padding:12px 16px 0;gap:6px`）。
-	Body flex.Box
+	Body ui.Box
 	// Options 是选项按钮（**顺序 = 宿主给的顺序**，不重排、不造 id）。
 	Options []ApprovalOptionBox
 	// Rendered 报告这一帧是否真的画了（零值 Approval 不画）。
@@ -1126,7 +1127,7 @@ type ApprovalBoxes struct {
 // ApprovalOptionBox 是一个选项按钮的渲染结果。
 type ApprovalOptionBox struct {
 	// Box 是按钮盒子。
-	Box flex.Box
+	Box ui.Box
 	// Label 是按钮文案（宿主没给 name 时用 kind，两者都空用「未知」）。
 	Label string
 	// Disabled 表示这一项当前不可用（缺 requestId / optionId）。
@@ -1151,7 +1152,7 @@ func (v *OfficialTranscriptView) DrawApprovalCard(f *flex.Frame, env *pluginapi.
 	boxes.Card = card
 	boxes.Rendered = true
 	card.Children(func() {
-		header := f.Row().FillWidth().Items(flex.Center).Gap(ApprovalBodyGap).
+		header := f.Row().FillWidth().Items(ui.Center).Gap(ApprovalBodyGap).
 			PadSides(ApprovalHeaderPadY, ApprovalHeaderPadX, ApprovalHeaderPadY, ApprovalHeaderPadX)
 		boxes.Header = header
 		header.Children(func() {
@@ -1206,9 +1207,9 @@ func (v *OfficialTranscriptView) DrawApprovalCard(f *flex.Frame, env *pluginapi.
 //
 // 同一 label 在两次渲染里必须给**同一个** id，否则 viva 会把按钮当成新节点
 // 重挂（焦点/悬停状态丢失）。所以按 label 起名，不用指针/自增。
-func (v *OfficialTranscriptView) optionID(env *pluginapi.Env, label string) ui.ID {
+func (v *OfficialTranscriptView) optionID(env *pluginapi.Env, label string) gfx.ID {
 	if env == nil || env.Tree == nil {
-		return ui.ID{}
+		return gfx.ID{}
 	}
 	return env.Tree.ID(env.Feat, "approval-option-"+label)
 }

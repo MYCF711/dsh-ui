@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -207,13 +208,13 @@ func TestStatsDialogDetailsAlignLikeOfficialGrid(t *testing.T) {
 	}
 	contentLeft := panel.Bounds.X + StatsDialogPad
 	contentRight := panel.Bounds.X + panel.Bounds.Width - StatsDialogPad
-	find := func(want string) (ui.Text, bool) {
+	find := func(want string) (gfx.Text, bool) {
 		for _, text := range open.Texts() {
 			if text.Value == want {
 				return text, true
 			}
 		}
-		return ui.Text{}, false
+		return gfx.Text{}, false
 	}
 	// dt：四条标签都从内容左沿起（官方 grid 的 dt 列）。
 	for _, label := range []string{zhStatsDialogLLMTime, zhStatsDialogToolTime, zhStatsDialogTTFT, zhStatsDialogSpeed} {

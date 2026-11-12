@@ -1,10 +1,9 @@
 package dsbrand
 
 import (
+	"github.com/vivaui/viva/gfx"
 	"strings"
 	"testing"
-
-	"github.com/vivaui/viva/ui"
 )
 
 // 品牌面是**每个截图里都有**的东西：侧栏顶上的鲸鱼、首屏的 `探索未至之境`。
@@ -16,8 +15,8 @@ import (
 // 是"logo 还在不在"。
 
 // countKinds 数一遍路径里各类命令的条数。
-func countKinds(cmds []ui.PathCommand) map[ui.PathCommandKind]int {
-	out := map[ui.PathCommandKind]int{}
+func countKinds(cmds []gfx.PathCommand) map[gfx.PathCommandKind]int {
+	out := map[gfx.PathCommandKind]int{}
 	for _, c := range cmds {
 		out[c.Kind]++
 	}
@@ -41,19 +40,19 @@ func TestOfficialLogoPathStillParses(t *testing.T) {
 		t.Fatal("解析成功但一条命令都没有")
 	}
 	got := countKinds(cmds)
-	want := map[ui.PathCommandKind]int{
-		ui.PathCommandMove:  4,
-		ui.PathCommandCubic: 71,
-		ui.PathCommandLine:  1,
-		ui.PathCommandClose: 4,
+	want := map[gfx.PathCommandKind]int{
+		gfx.PathCommandMove:  4,
+		gfx.PathCommandCubic: 71,
+		gfx.PathCommandLine:  1,
+		gfx.PathCommandClose: 4,
 	}
 	for kind, n := range want {
 		if got[kind] != n {
 			t.Errorf("%v 命令 %d 条，want %d（官方路径的形状变了？改之前先确认来源）", kind, got[kind], n)
 		}
 	}
-	if got[ui.PathCommandQuad] != 0 {
-		t.Errorf("出现 %d 条二次曲线命令——官方路径里没有，解析器不该凭空产出", got[ui.PathCommandQuad])
+	if got[gfx.PathCommandQuad] != 0 {
+		t.Errorf("出现 %d 条二次曲线命令——官方路径里没有，解析器不该凭空产出", got[gfx.PathCommandQuad])
 	}
 }
 
@@ -108,8 +107,8 @@ func TestParserAcceptsTheSubset(t *testing.T) {
 		t.Fatal("合法的 M/L/C/Z 被拒了")
 	}
 	got := countKinds(cmds)
-	if got[ui.PathCommandMove] != 1 || got[ui.PathCommandLine] != 1 ||
-		got[ui.PathCommandCubic] != 1 || got[ui.PathCommandClose] != 1 {
+	if got[gfx.PathCommandMove] != 1 || got[gfx.PathCommandLine] != 1 ||
+		got[gfx.PathCommandCubic] != 1 || got[gfx.PathCommandClose] != 1 {
 		t.Fatalf("命令数不对：%v", got)
 	}
 	// 小数、负数、科学计数法都是官方路径里真出现过的写法（`-0.0263635`、`1e-3`）。

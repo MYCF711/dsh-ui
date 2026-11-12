@@ -43,6 +43,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // 父级槽位名（官方逐字）。
@@ -197,11 +198,11 @@ func (p *Plugin) drawLauncherTrigger(f *flex.Frame, env *pluginapi.Env, t *plugi
 
 	// 官方三档几何只在**这一处**决定：宽态 6px 内边距 + 8px 间距；收起轨
 	// 36×36 居中、无内边距无间距（`[data-collapsed='true']`）。
-	pad, gap, justify := LauncherRowPad, LauncherGap, flex.Start
+	pad, gap, justify := LauncherRowPad, LauncherGap, ui.Start
 	if !st.Wide {
-		pad, gap, justify = 0, 0, flex.Center
+		pad, gap, justify = 0, 0, ui.Center
 	}
-	row := f.Row().FillWidth().Height(h).Items(flex.Center).Justify(justify).
+	row := f.Row().FillWidth().Height(h).Items(ui.Center).Justify(justify).
 		Gap(gap).PadSides(pad, pad, pad, pad).
 		Radius(t.Radii.MD).Hit(id, zhAccountMenu)
 
@@ -216,8 +217,8 @@ func (p *Plugin) drawLauncherTrigger(f *flex.Frame, env *pluginapi.Env, t *plugi
 				Background(t.BgLayer2)
 		} else {
 			// 登出态官方用 `IconEllipsisOutlineMedium size=14`：一个居中的省略号。
-			f.Row().Size(LauncherAvatar, LauncherAvatar).Items(flex.Center).
-				Justify(flex.Center).Children(func() {
+			f.Row().Size(LauncherAvatar, LauncherAvatar).Items(ui.Center).
+				Justify(ui.Center).Children(func() {
 				f.Text("⋯").FontSize(LauncherFontSize).LineHeight(LauncherFontSize).
 					Color(t.LabelTertiary)
 			})

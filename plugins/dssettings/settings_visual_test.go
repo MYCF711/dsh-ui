@@ -30,6 +30,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -46,8 +47,8 @@ type settingsHarness struct {
 	kernel      *uikernel.Kernel
 	theme       *pluginapi.Theme
 	data        pluginapi.Snapshot
-	tree        *ui.Tree
-	feat        ui.Scope
+	tree        *gfx.Tree
+	feat        gfx.Scope
 	session     *headless.Session
 	invalidator *app.Invalidator
 
@@ -116,14 +117,14 @@ func openSettingsHarness(t *testing.T, width, height int) *settingsHarness {
 	h.theme = h.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	h.act = h.buildActions()
 
-	h.tree = &ui.Tree{}
+	h.tree = &gfx.Tree{}
 	h.feat = h.tree.Feature("settings-visual")
 	var view flex.View
 	config := app.Config{
 		Title: "settings-visual", Width: width, Height: height, Tree: h.tree,
 		WindowMode: app.WindowFrameless,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		sidebar := float32(280)
 		env := &pluginapi.Env{
@@ -142,13 +143,13 @@ func openSettingsHarness(t *testing.T, width, height int) *settingsHarness {
 			h.kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}
-	config.OnKey = func(ev ui.KeyEvent) ui.EventResult {
+	config.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
 		if h.kernel.HandleKey(ev) {
 			// 和壳一样：**必须**显式 Invalidate（见 cmd/app 的 OnKey 注释）。
 			h.invalidator.Invalidate()
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
 	h.invalidator = &app.Invalidator{}
 	config.Invalidator = h.invalidator
@@ -174,7 +175,7 @@ func (h *settingsHarness) pump() {
 func (h *settingsHarness) close() { h.session.Close() }
 
 // hitFor 找一个真实命中区（Paint 之后由 HitTest 登记）。找不到直接红。
-func (h *settingsHarness) hitFor(key string) ui.Hit {
+func (h *settingsHarness) hitFor(key string) gfx.Hit {
 	h.t.Helper()
 	id := h.tree.ID(h.feat, "settings-"+key)
 	for _, hit := range h.session.Snapshot().Hits {
@@ -183,7 +184,7 @@ func (h *settingsHarness) hitFor(key string) ui.Hit {
 		}
 	}
 	h.t.Fatalf("没有命中区 id=%v（key=%s）；hits=%+v", id, key, h.session.Snapshot().Hits)
-	return ui.Hit{}
+	return gfx.Hit{}
 }
 
 // clickRow 走真实 HitTest + Click：先用点问"这里是哪个 id"，再点它。
@@ -296,7 +297,7 @@ func runSettingsEvidence(t *testing.T, width, height int, dir string) {
 	}
 
 	// —— Shift+F2 打开（真实按键，走 config.OnKey → kernel.HandleKey）。
-	if err := h.session.Driver().Key(ui.KeyF2, ui.ModifierShift); err != nil {
+	if err := h.session.Driver().Key(gfx.KeyF2, gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	h.pump()
@@ -360,7 +361,7 @@ func runSettingsEvidence(t *testing.T, width, height int, dir string) {
 	}
 
 	// —— Esc 关闭（真实按键）：浮层收起，设置行不再有命中区。
-	if err := h.session.Driver().Key(ui.KeyEscape, 0); err != nil {
+	if err := h.session.Driver().Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	h.pump()
@@ -378,24 +379,24 @@ func runSettingsEvidence(t *testing.T, width, height int, dir string) {
 // 没有设置动作时 Shift+F2 放行；开着时普通 F2/Enter/带修饰键的键都不吃。
 func TestSettingsOverlayDoesNotFightComposerKeys(t *testing.T) {
 	p := &Plugin{}
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyF2, Modifiers: ui.ModifierShift}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF2, Modifiers: gfx.ModifierShift}) {
 		t.Fatal("没有设置动作时 Shift+F2 应放行")
 	}
 	p.act = pluginapi.Actions{SetTheme: func(string) {}}
 	p.rows = []Row{{Key: "only", Run: func() {}}}
 	p.shown = true
-	for _, ev := range []ui.KeyEvent{
-		{Key: ui.KeyF2}, // 命令面板
-		{Key: ui.KeyF2, Modifiers: ui.ModifierControl},    // 别的组合
-		{Key: ui.KeyEnter, Modifiers: ui.ModifierControl}, // 输入框的 Ctrl+Enter
-		{Key: ui.KeyDown, Modifiers: ui.ModifierShift},    // 选择类组合
+	for _, ev := range []gfx.KeyEvent{
+		{Key: gfx.KeyF2}, // 命令面板
+		{Key: gfx.KeyF2, Modifiers: gfx.ModifierControl},    // 别的组合
+		{Key: gfx.KeyEnter, Modifiers: gfx.ModifierControl}, // 输入框的 Ctrl+Enter
+		{Key: gfx.KeyDown, Modifiers: gfx.ModifierShift},    // 选择类组合
 	} {
 		if p.HandleKey(ev) {
 			t.Fatalf("%+v 不该被设置浮层吃掉", ev)
 		}
 	}
 	// 而浮层开着时，Esc / ↑↓ / Enter 是它自己的——必须吃。
-	for _, ev := range []ui.KeyEvent{{Key: ui.KeyEscape}, {Key: ui.KeyDown}, {Key: ui.KeyUp}, {Key: ui.KeyEnter}} {
+	for _, ev := range []gfx.KeyEvent{{Key: gfx.KeyEscape}, {Key: gfx.KeyDown}, {Key: gfx.KeyUp}, {Key: gfx.KeyEnter}} {
 		if !p.HandleKey(ev) {
 			t.Fatalf("浮层开着时 %v 应被吃掉", ev.Key)
 		}

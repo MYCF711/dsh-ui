@@ -42,6 +42,7 @@ package dsstatusbar
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -78,11 +79,11 @@ func (p *Plugin) drawOfficialDock(f *flex.Frame, env *pluginapi.Env) {
 	}
 	t := p.themeOf(env)
 	specs := officialPillSpecs(env.Data)
-	var pill flex.Box
+	var pill ui.Box
 	var pillDrawn bool
 	f.Row().FillWidth().Height(dockPaddingTop+pillHeight).
 		PadSides(dockPaddingTop, 0, 0, 0).
-		Items(flex.Center).Justify(flex.Center).Gap(dockGap).Children(func() {
+		Items(ui.Center).Justify(ui.Center).Gap(dockGap).Children(func() {
 		for _, spec := range specs {
 			box, drawn := p.officialPill(f, t, env, spec)
 			if spec.interactive {
@@ -109,12 +110,12 @@ func (p *Plugin) drawOfficialDock(f *flex.Frame, env *pluginapi.Env) {
 // 的「为什么内边距用定宽占位盒而不是 PadSides」。
 // 返回的 Box 是本帧胶囊（AfterDraw 从它读锚点矩形）；bool 表示这一帧真的画了
 // 一颗**可点**的胶囊（官方 DialogPill）。
-func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.Env, spec officialPillSpec) (flex.Box, bool) {
+func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.Env, spec officialPillSpec) (ui.Box, bool) {
 	if !spec.interactive {
 		// 官方 PlainPill：静态 span。没有命中区、没有 hover——画一个点不开的
 		// 按钮比不画更糟（用户会以为它坏了）。
 		box := f.Row().Height(pillHeight).Radius(t.Radii.SM).
-			Items(flex.Center).Gap(0).Children(func() {
+			Items(ui.Center).Gap(0).Children(func() {
 			f.Row().Width(pillPadX).Height(pillHeight)
 			f.Text(spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
 				Color(t.LabelTertiary).Ellipsis()
@@ -138,12 +139,12 @@ func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.
 	if lit {
 		textColor = t.LabelSecondary
 	}
-	box := f.Row().Height(pillHeight).Radius(t.Radii.SM).Hover(flex.Look{}.Background(t.Hover))
+	box := f.Row().Height(pillHeight).Radius(t.Radii.SM).Hover(ui.Look{}.Background(t.Hover))
 	if open {
 		// `button.pill[aria-expanded=true]{background: interactive-bg-hover}`
 		box = box.Background(t.Hover)
 	}
-	box = box.Items(flex.Center).Gap(0).Children(func() {
+	box = box.Items(ui.Center).Gap(0).Children(func() {
 		f.Row().Width(pillPadX).Height(pillHeight)
 		f.Text(spec.text).FontSize(t.Fonts.Caption).LineHeight(pillLineHeight).
 			Color(textColor).Ellipsis()
@@ -151,8 +152,8 @@ func (p *Plugin) officialPill(f *flex.Frame, t *pluginapi.Theme, env *pluginapi.
 	})
 	if !id.IsZero() {
 		// 官方 trigger 是 button：`aria-haspopup="dialog"` + `aria-expanded={open}`。
-		box = box.HitWith(id, spec.text, ui.HitOptions{
-			Role: ui.RoleButton, Expandable: true, Expanded: open,
+		box = box.HitWith(id, spec.text, gfx.HitOptions{
+			Role: gfx.RoleButton, Expandable: true, Expanded: open,
 		})
 	}
 	return box, true

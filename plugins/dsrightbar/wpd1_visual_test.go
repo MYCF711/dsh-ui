@@ -18,6 +18,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -46,14 +47,14 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 		MessageMeta: map[string]pubapi.MessageMetadata{},
 	}
 	data.MessageMeta[pubapi.MessageKey(wpd1SessionID, msgs[1], 1)] = pubapi.MessageMetadata{Time: 1762222445123}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("wpd1-two-size")
 	var view flex.View
 	config := app.Config{
 		Title: "wpd1-two-size", Width: 1182, Height: 832, Tree: tree, WindowMode: app.WindowFrameless,
-		TextInput: flex.Fields(rightbar.Fields()...),
+		TextInput: ui.Fields(rightbar.Fields()...),
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := ui.Rect{Width: size.Width, Height: size.Height}
 		rightPref := size.Width * 0.45
 		env := &pluginapi.Env{

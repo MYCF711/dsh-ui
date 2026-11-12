@@ -9,6 +9,7 @@ package dsschedule
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // maxShown 最多列几条。侧栏底部那块地方有限，超出的写「还有 N 条」。
@@ -65,7 +66,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		f.Text("定时任务").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		for _, it := range shown {
 			title := title(it)
-			f.Row().FillWidth().Items(flex.Center).Gap(6).Children(func() {
+			f.Row().FillWidth().Items(ui.Center).Gap(6).Children(func() {
 				f.Text(title).FontSize(12).Color(t.LabelSecondary).Grow(1).Ellipsis()
 				// 下次时间用最暗的色：它是参考信息，不该抢任务名的注意力。
 				f.Text(shortTime(it.NextAt)).FontSize(11).Color(t.LabelTertiary)

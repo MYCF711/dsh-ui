@@ -27,6 +27,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -203,7 +204,7 @@ func (p *Plugin) drawPreview(f *flex.Frame, env *pluginapi.Env) {
 			//
 			// 三个前置条件缺一不画：**读成功了**（读不出来还去开，开的是同一个坏路径）、
 			// **壳接了 OpenFile**（老壳没有这个动作）、**有选中文件**。
-			f.Row().FillWidth().Items(flex.Center).Gap(8).Children(func() {
+			f.Row().FillWidth().Items(ui.Center).Gap(8).Children(func() {
 				f.Text(p.sel).FontSize(14).Color(t.LabelPrimary).Grow(1)
 				if env.Act.OpenFile != nil && p.err == "" {
 					if f.Button(env.Tree.ID(env.Feat, "files-open-external"), "用默认程序打开").
@@ -259,4 +260,4 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
-var _ = ui.KeyEscape // 保留 import（后续加"Esc 关预览"时直接用）
+var _ = gfx.KeyEscape // 保留 import（后续加"Esc 关预览"时直接用）

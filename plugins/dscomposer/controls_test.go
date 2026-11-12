@@ -5,28 +5,29 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
-func composerText(canvas *ui.Canvas, value string) (ui.Text, bool) {
+func composerText(canvas *gfx.Canvas, value string) (gfx.Text, bool) {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return text, true
 		}
 	}
-	return ui.Text{}, false
+	return gfx.Text{}, false
 }
 
-func composerHit(canvas *ui.Canvas, label string) (ui.Hit, bool) {
+func composerHit(canvas *gfx.Canvas, label string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
-func trianglesInside(canvas *ui.Canvas, bounds ui.Rect, color ui.Color) int {
+func trianglesInside(canvas *gfx.Canvas, bounds ui.Rect, color ui.Color) int {
 	count := 0
 	for _, triangle := range canvas.Triangles() {
 		if triangle.Color != color {
@@ -132,7 +133,7 @@ func TestModelTriggerUsesOfficialWiderMaxWidth(t *testing.T) {
 		if text.Bounds.Width <= 220 {
 			t.Errorf("模型仍被权限的 220px 上限压住：文本宽 %.2f，官方模型 trigger 应取 360px 档", text.Bounds.Width)
 		}
-		if text.Bounds.Height != 20 || text.Style.Size != 13 || text.Style.Weight != ui.WeightRegular {
+		if text.Bounds.Height != 20 || text.Style.Size != 13 || text.Style.Weight != gfx.WeightRegular {
 			t.Errorf("模型 trigger 文本应为 13/20/400，实际 %+v %+v", text.Bounds, text.Style)
 		}
 	}

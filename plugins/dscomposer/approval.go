@@ -386,13 +386,13 @@ func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 		return
 	}
 	f.Column().FillWidth().PadSides(8, 0, 12, 0).Children(func() {
-		f.Row().FillWidth().Justify(flex.Center).Children(func() {
+		f.Row().FillWidth().Justify(ui.Center).Children(func() {
 			f.Column().Width(contentWidth(composerColumn(env))).Radius(t.Radii.XL).
 				Background(t.InputMajor).Border(1, t.Warn).Clip().Children(func() {
 				stripFill := t.Warn
 				stripFill.Alpha = 0.12 // theme 没有 warn-tertiary；由 Warn 派生，不写新色号
 				f.Row().FillWidth().Background(stripFill).PadSides(10, 16, 10, 16).
-					Gap(8).Items(flex.Center).Children(func() {
+					Gap(8).Items(ui.Center).Children(func() {
 					f.Text("需要审批").FontSize(t.Fonts.Secondary).LineHeight(18).Color(t.Warn)
 					if plan.Tool != "" {
 						f.Text(plan.Tool).FontSize(t.Fonts.Secondary).LineHeight(18).Color(t.Warn)
@@ -415,7 +415,7 @@ func (p *Plugin) drawApproval(f *flex.Frame, env *pluginapi.Env) {
 						oneLineText(f, plan.Note, textW, t.Fonts.Tiny, 16, t.LabelCaption)
 					}
 				})
-				f.Row().Gap(8).Items(flex.Center).Justify(flex.End).
+				f.Row().Gap(8).Items(ui.Center).Justify(ui.End).
 					PadSides(14, 16, 14, 16).Children(func() {
 					// 顺序 = 官方 `.actionRow`（`ApprovalCard.tsx:87-97`）：
 					// 拒绝（outline）→ 允许一次（宿主只给一个允许项时是 primary）

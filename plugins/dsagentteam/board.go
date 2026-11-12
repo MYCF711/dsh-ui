@@ -99,7 +99,7 @@ func (p *Plugin) drawBoard(f *flex.Frame, env *pluginapi.Env) {
 	}
 	board.Children(func() {
 		if len(tasks) > 0 {
-			f.Row().FillWidth().Items(flex.Center).Gap(headerGap).
+			f.Row().FillWidth().Items(ui.Center).Gap(headerGap).
 				MarginSides(0, 0, headerBottom, 0).Children(func() {
 				f.Icon(checklistIcon()).Size(14, 14).Color(t.LabelTertiary)
 				f.Text(zhTasks).FontSize(titleSize).LineHeight(titleLine).Weight(500).
@@ -110,7 +110,7 @@ func (p *Plugin) drawBoard(f *flex.Frame, env *pluginapi.Env) {
 		}
 		if failure != "" {
 			// `.error[role=alert]`：StateDot(error) + 文案。
-			f.Row().FillWidth().Items(flex.Start).Gap(errGap).
+			f.Row().FillWidth().Items(ui.Start).Gap(errGap).
 				PadSides(errPadV, 0, errPadV, 0).Children(func() {
 				p.drawDot(f, t, t.Error)
 				f.Text(formatMessage(zhFailure, failure)).FontSize(detailsSize).
@@ -133,7 +133,7 @@ func (p *Plugin) drawTaskRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.The
 	rowID := env.Tree.ID(env.Feat, "team-task-"+task.ID)
 
 	f.Column().FillWidth().Children(func() {
-		row := f.Row().Items(flex.Center).Gap(rowGap).
+		row := f.Row().Items(ui.Center).Gap(rowGap).
 			FillWidth().MarginSides(0, -rowBleed, 0, -rowBleed).
 			PadSides(rowPadV, rowPadH, rowPadV, rowPadH).
 			Radius(t.Radii.MD)
@@ -169,7 +169,7 @@ func (p *Plugin) drawTaskRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.The
 					f.Text(task.Description).FillWidth().FontSize(detailsSize).
 						LineHeight(detailsLine).Color(t.LabelSecondary)
 				}
-				owner := f.Row().FillWidth().Items(flex.Start).Gap(ownerGap)
+				owner := f.Row().FillWidth().Items(ui.Start).Gap(ownerGap)
 				if task.Description != "" {
 					owner = owner.MarginSides(descOwnerGap, 0, 0, 0)
 				}

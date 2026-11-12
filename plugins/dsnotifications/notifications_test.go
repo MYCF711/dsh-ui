@@ -22,6 +22,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -127,12 +128,12 @@ func newTestPlugin(remote Remote) *Plugin {
 }
 
 // render 画一帧，返回画布（判据取 Rectangles/Texts/Hits）。
-func render(t *testing.T, p *Plugin) *ui.Canvas {
+func render(t *testing.T, p *Plugin) *gfx.Canvas {
 	t.Helper()
 	theme := dscore.Dark()
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("notice-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -374,7 +375,7 @@ func TestFetchErrorIsNotFatal(t *testing.T) {
 	}
 }
 
-func containsText(canvas *ui.Canvas, value string) bool {
+func containsText(canvas *gfx.Canvas, value string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return true
@@ -383,7 +384,7 @@ func containsText(canvas *ui.Canvas, value string) bool {
 	return false
 }
 
-func textValues(canvas *ui.Canvas) []string {
+func textValues(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)

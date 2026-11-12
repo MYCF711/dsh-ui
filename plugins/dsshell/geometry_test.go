@@ -6,6 +6,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -26,9 +27,9 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			theme := dscore.Dark()
 			p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280}
-			tree := &ui.Tree{}
+			tree := &gfx.Tree{}
 			feat := tree.Feature("shell-geometry-test")
-			canvas := &ui.Canvas{}
+			canvas := &gfx.Canvas{}
 			canvas.SetTree(tree)
 			canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 				return float32(len([]rune(value))) * size / 2
@@ -47,7 +48,7 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 				Has:       func(slot pluginapi.Slot) bool { return slot != pluginapi.SlotShellOverlay },
 			}
 
-			boxes := map[pluginapi.Slot]flex.Box{}
+			boxes := map[pluginapi.Slot]ui.Box{}
 			var view flex.View
 			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
 				p.draw(f, env)
@@ -100,8 +101,8 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280}
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 { return float32(len(value)) * size / 2 })
 	bounds := ui.Rect{Width: 960, Height: 832}
@@ -113,7 +114,7 @@ func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 		Has:       func(slot pluginapi.Slot) bool { return slot != pluginapi.SlotShellOverlay },
 	}
 	rightDrawn := false
-	var main flex.Box
+	var main ui.Box
 	var view flex.View
 	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
 		p.children(f, env, func(slot pluginapi.Slot) {

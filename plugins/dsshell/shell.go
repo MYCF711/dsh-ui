@@ -49,6 +49,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -270,7 +271,7 @@ type dragState struct {
 // handle 是一根拖拽把手在**这一帧**的位置。
 type handle struct {
 	kind string
-	id   ui.ID
+	id   gfx.ID
 	// x 是命中带左缘的绝对坐标（三列都从 x=0 起算，所以就是列边界减半个带宽）。
 	x float32
 	// width 是它调的那一列当前宽；0 = 这一列不在，把手不出现。
@@ -449,9 +450,9 @@ func (p *Plugin) dragHandles(env *pluginapi.Env, cols columns) bool {
 			continue
 		}
 		switch ev.Kind {
-		case ui.PointerDown:
+		case gfx.PointerDown:
 			// 只认主键。右键/中键落在分隔线上不应该开始拖。
-			if ev.Button != ui.PointerButtonPrimary && ev.Button != ui.PointerButtonNone {
+			if ev.Button != gfx.PointerButtonPrimary && ev.Button != gfx.PointerButtonNone {
 				continue
 			}
 			// 已经在拖另一根：不抢。真机上「按住左键再按右键」会送来第二个
@@ -461,7 +462,7 @@ func (p *Plugin) dragHandles(env *pluginapi.Env, cols columns) bool {
 			}
 			p.dragging = dragState{active: true, kind: h.kind, startX: ev.X, startW: h.width}
 			c.Consume()
-		case ui.PointerMove:
+		case gfx.PointerMove:
 			if !p.dragging.active || p.dragging.kind != h.kind {
 				continue
 			}
@@ -469,7 +470,7 @@ func (p *Plugin) dragHandles(env *pluginapi.Env, cols columns) bool {
 				changed = true
 			}
 			c.Consume()
-		case ui.PointerUp:
+		case gfx.PointerUp:
 			if !p.dragging.active || p.dragging.kind != h.kind {
 				continue
 			}
@@ -639,10 +640,10 @@ func (p *Plugin) drawHandles(f *flex.Frame, env *pluginapi.Env, cols columns) {
 			line, color = handleLineHover, p.theme.BorderL4
 		}
 		f.Column().Absolute().Left(h.x).Top(0).Width(handleWidth).FillHeight().
-			Items(flex.Center).
-			HitWith(h.id, handleLabel(h.kind), ui.HitOptions{
-				Role:   ui.RoleSlider,
-				Cursor: ui.PointerCursorResizeHorizontal,
+			Items(ui.Center).
+			HitWith(h.id, handleLabel(h.kind), gfx.HitOptions{
+				Role:   gfx.RoleSlider,
+				Cursor: gfx.PointerCursorResizeHorizontal,
 			}).
 			Children(func() {
 				if line <= 0 {
@@ -757,7 +758,7 @@ func (p *Plugin) drawSidebar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pl
 			row := f.Row().FillWidth().
 				MarginSides(uikernel.SettingsTriggerRowMarginY, -uikernel.SettingsTriggerRowInset,
 					uikernel.SettingsTriggerRowMarginY, -uikernel.SettingsTriggerRowInset).
-				Items(flex.Center).Gap(uikernel.SettingsTriggerRowGap)
+				Items(ui.Center).Gap(uikernel.SettingsTriggerRowGap)
 			row.Children(func() { drawSlot(uikernel.OffSidebarSettings) })
 		}
 	})

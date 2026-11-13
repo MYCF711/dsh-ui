@@ -228,6 +228,25 @@ func buildGeneralSection(panel *PanelSection, describe *apiclient.SettingsDescri
 				Known: facts.ClientVersion != "",
 				Field: it.HostField,
 			})
+		case "language":
+			// 官方 `locale.preference` 是**可选**字段：缺省 = 交给浏览器
+			// （`locale-settings.ts:12` "absence delegates to the browser"）。
+			// 官方 `LanguageRow` 显示的是**生效** locale 的 label，不是「未知」：
+			// `options.find(o => o.id === active)?.label ?? active`（LanguageRow.tsx:36-37）。
+			// 本仓界面只有中文一套文案，生效 locale 就是 `zh` —— 显示「简体中文」是**事实**，
+			// 不是编造（真机 2026-11-13：宿主已按官方发 `locale.preference` 但值为空，
+			// 界面却显示「未知」，与官方行为不符）。
+			row := generalRow(it.ID, it.Title, it.HostField, it.HostField,
+				it.Choices, it.Default, it.Kind, describe, facts, m)
+			if !row.Known && !row.Disabled && len(row.Path) > 0 {
+				for _, c := range row.Choices {
+					if c.Value == "zh" {
+						row.Value, row.Selected, row.Known = c.Label, c.Value, true
+						break
+					}
+				}
+			}
+			rows = append(rows, row)
 		default:
 			rows = append(rows, generalRow(it.ID, it.Title, it.HostField, it.HostField,
 				it.Choices, it.Default, it.Kind, describe, facts, m))

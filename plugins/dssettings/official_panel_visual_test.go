@@ -439,3 +439,35 @@ func TestOfficialPanelUnknownRendersAsUnknown(t *testing.T) {
 		}
 	}
 }
+
+// TestOpenRoutesToOfficialPanel 守住"打开设置真的会画东西"。
+//
+// 2026-11-13 真机复现的缺陷：`Open()` 只置旧的 `p.shown`，而
+//   - 旧浮层的 `draw` 在 `OfficialEnabled()` 为真时**直接 return**；
+//   - 官方面板的 `drawOfficialPanel` 又要求 `o.open`（只有 `OpenOfficial()` 会置）。
+//
+// 于是两边都不画 —— 日志打「设置浮层已打开」，截图是**整页空白**。
+// 产品路径（Shift+F2 / 侧栏设置按钮 / `ui.settings.open` 服务）全走 `Open()`，所以这是产品缺陷，
+// 不是调试开关的问题。
+func TestOpenRoutesToOfficialPanel(t *testing.T) {
+	h := openOfficialHarness(t, 1180, 800)
+	if !h.p.OfficialEnabled() {
+		t.Fatal("夹具前提：官方四区面板应已接管（有 describe 数据面）")
+	}
+	if !h.p.Open() {
+		t.Fatal("官方接管时 Open() 要返回 true")
+	}
+	if !h.p.OfficialShown() {
+		t.Fatal("Open() 必须打开**官方**面板（OfficialShown）；只置旧 p.shown 就是那个整页空白缺陷")
+	}
+	h.pump()
+
+	// 关的时候两个状态都要回去，否则下次开还是空白。
+	h.p.Close()
+	if h.p.OfficialShown() {
+		t.Fatal("Close() 之后官方面板必须是关的")
+	}
+	if h.p.Shown() {
+		t.Fatal("Close() 之后旧浮层也必须是关的（避免残留态）")
+	}
+}

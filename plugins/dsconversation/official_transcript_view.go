@@ -152,6 +152,15 @@ type OfficialTranscriptView struct {
 	// 座位这一帧有没有被 dispatch。不去重就会同一块画两遍（叠字 + 双 hit 区）。
 	frameSeq   uint64
 	paintedSeq uint64
+
+	// workflowDisclosures 是 §5.20 工作流面板的**跨帧开合态**。
+	//
+	// 为什么在视图上而不是投影里：开合是用户意图（点开/收起），不是 journal 事实。
+	// 放进投影会让"重放同一批帧"得到不同的开合态，而这正是投影层最忌讳的。
+	workflowDisclosures *WorkflowRunDisclosures
+	// OpenSession 是工作流成员行的导航回调（官方注入的 `openSession`）。
+	// nil = 这条渲染路径没有导航能力（官方 `renderButton === false` 分支）。
+	OpenSession func(childID string)
 }
 
 // pendingCodeBlock 是一条「布局阶段占位、覆画阶段真画」的代码块。
@@ -298,7 +307,7 @@ func (v *OfficialTranscriptView) drawRow(f ui.C, env *pluginapi.Env, e Transcrip
 		case ChatNodeQuestionReply:
 			v.drawQuestionReply(f, e)
 		case ChatNodeWorkflowRun:
-			v.drawWorkflowRun(f, e)
+			v.drawWorkflowRun(f, env, e)
 		default:
 			// 表外 kind：原样 JSON 兜底（**不编摘要**）。
 			v.drawUnknown(f, e)
@@ -1050,22 +1059,66 @@ func (v *OfficialTranscriptView) drawQuestionReply(f ui.C, e TranscriptEntry) {
 	})
 }
 
-// drawWorkflowRun 画 §5.20 工作流运行（外部包节点：只摆位，不定尺寸）。
-func (v *OfficialTranscriptView) drawWorkflowRun(f ui.C, e TranscriptEntry) {
-	t := v.Theme
-	card := ui.Column(f).FillWidth().Border(0.5, t.BorderL1).Radius(t.Radii.LG)
-	card.Children(func() {
-		ui.Row(f).FillWidth().Items(ui.Center).Gap(6).PadSides(8, 12, 8, 12).Children(func() {
-			name := e.Data.RunName
-			if name == "" {
-				name = "工作流"
-			}
-			ui.Text(f, name).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
-			if e.Data.StopReason != "" {
-				ui.Text(f, e.Data.StopReason).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-			}
-		})
-	})
+// drawWorkflowRun 画 §5.20 工作流运行（官方 `WorkflowRunPanel` 全量几何）。
+//
+// 三段嵌套披露：run → phase → member，逐层可展开/折叠。实现与状态机在
+// `official_workflow_run.go`，这里只做**分派 + 跨帧状态归属**：
+//
+//	① 披露态存在视图上（跨帧），不是投影里——开合是用户意图，不是 journal 事实；
+//	② 窄窗断点按 `env.Bounds.Width` 取（官方 `@media (max-width:560px)`）。
+//
+// 载荷缺失（`e.Data.Workflow == nil`）时**不画**：投影没解出 run 数据就说
+// 明这条节点是旧路径产物，编一个空面板只会让用户看到"有个工作流但什么都没有"。
+func (v *OfficialTranscriptView) drawWorkflowRun(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
+	if e.Data.Workflow == nil {
+		return
+	}
+	theme := v.Theme
+	if theme == nil && env != nil {
+		theme = env.Theme
+	}
+	if v.workflowDisclosures == nil {
+		v.workflowDisclosures = NewWorkflowRunDisclosures()
+	}
+	panel := &WorkflowRunPanel{
+		Data:        *e.Data.Workflow,
+		EntryKey:    e.Key,
+		Disclosures: v.workflowDisclosures,
+		Theme:       theme,
+	}
+	if env != nil && env.Tree != nil {
+		tree, feat := env.Tree, env.Feat
+		panel.ID = func(name string) gfx.ID { return tree.ID(feat, name) }
+	}
+	if v.OpenSession != nil {
+		panel.OpenSession = v.OpenSession
+	}
+	// 官方断点是**视口**宽度；Viva 拿不到视口，用窗口矩形（env.Bounds）近似。
+	// 两者在单窗口应用里是同量纲的（窗口 == 视口）。
+	if env != nil {
+		panel.Narrow = env.Bounds.Width > 0 && env.Bounds.Width <= WorkflowRunNarrowMaxWidth
+	}
+	panel.Draw(f)
+}
+
+// WorkflowRunState 返回某个 workflow-run 节点这一帧的披露态（测试/诊断用）。
+//
+// ok=false 表示这一帧还没画过这个节点。
+func (v *OfficialTranscriptView) WorkflowRunState(entryKey string) (WorkflowDisclosureState, bool) {
+	if v.workflowDisclosures == nil {
+		return WorkflowDisclosureState{}, false
+	}
+	state, ok := v.workflowDisclosures.runs[entryKey]
+	return state, ok
+}
+
+// WorkflowPhaseState 返回某个 (run, phase) 这一帧的披露态（测试/诊断用）。
+func (v *OfficialTranscriptView) WorkflowPhaseState(entryKey, phaseKey string) (WorkflowDisclosureState, bool) {
+	if v.workflowDisclosures == nil {
+		return WorkflowDisclosureState{}, false
+	}
+	state, ok := v.workflowDisclosures.phases[phaseStoreKey(entryKey, phaseKey)]
+	return state, ok
 }
 
 // drawUnknown 画 §5.17 未知 surface 兜底：原样 JSON，**不编摘要**。

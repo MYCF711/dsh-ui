@@ -173,6 +173,16 @@ type TranscriptData struct {
 	RunName string
 	// StopReason ← `tool-workflow/run-end` 的 `data.stopReason`。空 = 未知。
 	StopReason string
+	// Workflow 是 `workflow-run` 节点的**完整**载荷（官方 `WorkflowRunChatData`）。
+	//
+	// 为什么另开一个指针字段而不是把 name/status/phases 摊平进本结构：
+	// 官方这个节点是**三层嵌套**（run → phase → member），摊平会逼着渲染器
+	// 按 kind 去猜"哪些字段属于我"，而 RunID/RunName/StopReason 三个扁平字段
+	// 已经是既有对外形状（`TestProjectWorkflowRun` 钉着），不能动。
+	//
+	// nil = 这一帧不是 workflow-run，或 run 还没 run-start（官方 `buildViewNode`
+	// 在 `context.start === undefined` 时返回 null）。
+	Workflow *WorkflowRunChatData
 
 	// Options 是审批可选项（**原样**，不自己造 optionId）。
 	Options []TranscriptOption
@@ -196,11 +206,57 @@ type Transcript struct {
 	seqOf map[string]int
 	// rebuilt 记录上一次操作是否重建过基线（诊断/测试用）。
 	rebuilt bool
+	// workflows 是 `tool-workflow/*` 四类帧的**折叠状态**（官方 `WorkflowState`）。
+	//
+	// 为什么要状态而不是一帧一节点：官方 `workflow-definition.ts` 的
+	// `start/update` 把 run-start → agent-start×N → agent-end×N → run-end
+	// 折成**一条**节点。一帧一节点的话，界面上一次工作流会变成十几行。
+	workflows map[string]*workflowRunFold
+	// runsByTurn 是 `startTurn → []runId` 反查表：Turn 终结成
+	// interrupted / forked 时，要把这一轮里开出去的 run 全部重投影成"中断"
+	// （官方 `turnAbandoned` 的判据依赖 `location.turn.end.reason.kind`）。
+	runsByTurn map[int64][]string
+	// abandonedTurns 记录已终结为 interrupted / forked 的 Turn。
+	abandonedTurns map[int64]bool
+	// currentTurn 是**当前所在 Turn**（由 turn/start 设置、turn/end 清掉）。
+	//
+	// 为什么需要它：官方 `workflow-definition.ts` 的 `start` 是 `role: 'start'`，
+	// 它的 `location.turn` 由**事件在流里的位置**决定，而不是 payload 字段——
+	// `ToolWorkflowRunStartData` 只有 `{runId, name}` 两个字段，一个 turn 都
+	// 没有。我们的投影是逐帧增量，所以必须自己跟住 turn/start 的位置。
+	currentTurn int64
+}
+
+// workflowRunFold 是**一次** run 的折叠状态（官方 `WorkflowState`）。
+type workflowRunFold struct {
+	// name 是 `run-start` 的 `data.name`。
+	name string
+	// startTurn 是 `run-start` 所在 Turn（`-1` = 宿主没给）。
+	startTurn int64
+	// stopReason 是 `run-end` 的 `data.stopReason`；空 = 还没 settle。
+	stopReason string
+	// members 是已 `agent-start` 的成员（顺序 = 到达顺序）。
+	members []workflowMemberFold
+}
+
+// workflowMemberFold 是单个成员的折叠状态（官方 `WorkflowMemberState`）。
+type workflowMemberFold struct {
+	seq int
+	// label 是 `agent-start` 的 `data.label`。空串是**合法身份**。
+	label string
+	// hasPhase 区分 `phase` 字段缺省与空串（官方 `string | null`）。
+	hasPhase bool
+	phase    string
+	childID  string
+	// outcome 是 `agent-end` 的 `data.outcome`；空 = 还没 settle。
+	outcome string
 }
 
 // NewTranscript 造一个空投影。
 func NewTranscript() *Transcript {
-	return &Transcript{seqOf: map[string]int{}}
+	t := &Transcript{seqOf: map[string]int{}}
+	t.resetWorkflows()
+	return t
 }
 
 // Epoch 是当前 journal 世代（0 = 还没有基线）。
@@ -226,6 +282,15 @@ func (t *Transcript) Reset() {
 	t.seqOf = map[string]int{}
 	t.lastSeq = 0
 	t.epoch = 0
+	t.resetWorkflows()
+}
+
+// resetWorkflows 丢弃全部工作流折叠状态（与 Reset 同生命周期）。
+func (t *Transcript) resetWorkflows() {
+	t.workflows = map[string]*workflowRunFold{}
+	t.runsByTurn = map[int64][]string{}
+	t.abandonedTurns = map[int64]bool{}
+	t.currentTurn = -1
 }
 
 // SetBaselineEpoch 记录 journal 世代（`session.load` 的 `journalEpoch`）。
@@ -257,6 +322,7 @@ func (t *Transcript) ApplyHistory(res *apiclient.HistoryResult) (applied int, re
 		t.entries = t.entries[:0]
 		t.seqOf = map[string]int{}
 		t.lastSeq = 0
+		t.resetWorkflows()
 		t.rebuilt = true
 		rebuilt = true
 	}
@@ -390,6 +456,19 @@ type transcriptFrame struct {
 
 	RunID      string `json:"runId"`
 	StopReason string `json:"stopReason"`
+
+	// 以下四个只出现在 `tool-workflow/*` 载荷里（官方 `dsh-tool-workflow/src/types.ts`）。
+	//
+	// `Seq` 用指针：`agent-start` 的 `seq` 是 **1 基序号**，0 不是合法值，
+	// 所以 `nil`（字段缺省）必须能与 0 区分——否则一条缺字段的帧会被
+	// 静默当成第 0 个成员，与已有成员撞键。
+	Seq *int `json:"seq"`
+	// Label 是成员显示标签（`agent-start`）。
+	Label string `json:"label"`
+	// Phase 是阶段名；**nil 与空串是两个身份**（官方 `string | null`）。
+	Phase *string `json:"phase"`
+	// ChildID 是子会话 id。
+	ChildID string `json:"childId"`
 
 	// References 是这条消息引用的标签（引用摘要行）。
 	References []string `json:"references"`
@@ -702,6 +781,8 @@ func (t *Transcript) project(frame apiclient.Frame) (TranscriptEntry, bool) {
 	case "turn/start":
 		// turn-process.ts:252-256 → turn-process（Turn 级过程披露）
 		entry.Kind = ChatNodeTurnProcess
+		// 跟住位置：workflow-run 的 startTurn 取这里（官方 location 的等价物）。
+		t.currentTurn = data.turnOf()
 	case "turn/end":
 		// 终态四选一（官方 turn-error.ts / turn-max-tokens.ts / turn-tail.ts）：
 		//   reason.kind=error       → turn-error
@@ -738,10 +819,10 @@ func (t *Transcript) project(frame apiclient.Frame) (TranscriptEntry, bool) {
 	case "tool-workflow/run-start", "tool-workflow/agent-start",
 		"tool-workflow/agent-end", "tool-workflow/run-end":
 		// workflow-definition.ts:157-182 → workflow-run
-		entry.Kind = ChatNodeWorkflowRun
-		entry.Data.RunID = data.RunID
-		entry.Data.RunName = data.Name
-		entry.Data.StopReason = data.StopReason
+		//
+		// 四类帧折成**一条**节点（键 = `workflow-run-<runId>`）：run-start 定位置，
+		// 后续 agent-start / agent-end / run-end 只更新内容。见 `projectWorkflowFrame`。
+		return t.projectWorkflowFrame(frame, data), true
 	default:
 		// fallback.ts:19-27：任何 **append surface 事件**都可以落 unknown 兜底。
 		// **不编摘要**：原样 JSON 交给 JsonBlock。
@@ -755,11 +836,221 @@ func (t *Transcript) project(frame apiclient.Frame) (TranscriptEntry, bool) {
 		}
 		return t.unknownEntry(frame), true
 	}
+	// Turn 终结成 interrupted / forked 时，这一轮里开出去的 run 若**没有**
+	// run-end，就再也没有帧会来更新它了（`turnAbandoned` 的官方判据）。
+	// 所以在这里主动重投影一次——否则界面上那条 run 会永远停在"运行中"。
+	//
+	// 为什么必须在 turn/end 这一帧做：官方是 React 响应式重算，每次投影都
+	// 重新跑 `buildViewNode`；我们的投影是增量的，不主动刷就漏。
+	if kindName == "turn/end" {
+		if data.Reason != nil &&
+			(data.Reason.Kind == "interrupted" || data.Reason.Kind == "forked") {
+			t.markTurnAbandoned(entry.Turn)
+		}
+		t.currentTurn = -1
+	}
+
 	entry.Visibility = visibilityOf(entry.Kind)
 	if entry.Key == "" {
 		entry.Key = string(entry.Kind) + "-" + itoa(entry.Seq)
 	}
 	return entry, true
+}
+
+// ── 工作流 run 的折叠（官方 `workflow-definition.ts` 的 start/update）────
+
+// workflowRunEntryKey 是 run 的稳定节点键（官方 `context.id = String(runId)`）。
+func workflowRunEntryKey(runID string) string { return "workflow-run-" + runID }
+
+// projectWorkflowFrame 把一条 `tool-workflow/*` 帧并进对应 run 的折叠状态，
+// 并产出**折叠后**的节点（官方 `buildViewNode`）。
+//
+// 四条分支（对齐官方 `update`，:172-183）：
+//
+//	run-start   → 新建 run（name；members 清空）
+//	agent-start → 追加成员（seq / label / phase? / childId）
+//	agent-end   → 按 seq 给成员写 outcome
+//	run-end     → 写 stopReason
+//
+// 未知 runId 的 update（agent-* / run-end 先于 run-start 到达）**静默丢弃**
+// 吗？不——官方的 `match` 只在 run-start 时 `role: 'start'`，但 update 分支
+// 照样会拿到一个不存在的 state 而崩。这里取**保守**做法：没有 run-start 就
+// 建一个占位 run（name 空），**不丢帧**——丢一条 agent-end 会让一个真的
+// 失败成员显示成"运行中"。
+func (t *Transcript) projectWorkflowFrame(frame apiclient.Frame, data transcriptFrame) TranscriptEntry {
+	key := workflowRunEntryKey(data.RunID)
+	fold, ok := t.workflows[key]
+	if !ok {
+		// startTurn 取**当前所在 Turn**（turn/start 设置），不是 payload 字段：
+		// 官方 payload 根本没有 turn（见 currentTurn 的注释）。带 turn 的
+		// 载荷（宿主若扩了字段）优先用自己的。
+		startTurn := t.currentTurn
+		if data.Turn != nil {
+			startTurn = *data.Turn
+		}
+		fold = &workflowRunFold{startTurn: startTurn}
+		t.workflows[key] = fold
+		if fold.startTurn >= 0 {
+			t.runsByTurn[fold.startTurn] = append(t.runsByTurn[fold.startTurn], data.RunID)
+		}
+	}
+	switch frame.Type {
+	case "tool-workflow/run-start":
+		fold.name = data.Name
+		fold.members = nil
+		fold.stopReason = ""
+	case "tool-workflow/agent-start":
+		seq := 0
+		if data.Seq != nil {
+			seq = *data.Seq
+		}
+		member := workflowMemberFold{
+			seq:     seq,
+			label:   data.Label,
+			childID: data.ChildID,
+		}
+		if data.Phase != nil {
+			member.hasPhase = true
+			member.phase = *data.Phase
+		}
+		fold.members = append(fold.members, member)
+	case "tool-workflow/agent-end":
+		seq := 0
+		if data.Seq != nil {
+			seq = *data.Seq
+		}
+		for i := range fold.members {
+			if fold.members[i].seq == seq {
+				fold.members[i].outcome = data.Outcome
+			}
+		}
+	case "tool-workflow/run-end":
+		fold.stopReason = data.StopReason
+	}
+	entry := TranscriptEntry{
+		Key:  key,
+		Kind: ChatNodeWorkflowRun,
+		Seq:  frame.Seq,
+		Time: frame.Time,
+		Turn: fold.startTurn,
+		Data: TranscriptData{
+			RunID:      data.RunID,
+			RunName:    fold.name,
+			StopReason: fold.stopReason,
+			Workflow:   t.buildWorkflowData(fold),
+		},
+	}
+	entry.Visibility = visibilityOf(entry.Kind)
+	return entry
+}
+
+// buildWorkflowData 把折叠状态投影成渲染载荷（官方 `projectWorkflow`，:95-132）。
+//
+// 两组判据（都是官方的显式分支，不是巧合）：
+//
+//	run 级   stopReason 缺省 && turnAbandoned → interrupted
+//	         stopReason 缺省               → running
+//	         其余                          → statusFromStopReason
+//	member   outcome 缺省 && interrupted → interrupted
+//	         outcome 缺省               → running
+//	         其余                       → statusFromOutcome
+func (t *Transcript) buildWorkflowData(fold *workflowRunFold) *WorkflowRunChatData {
+	interrupted := fold.stopReason == "" && t.abandonedTurns[fold.startTurn]
+	order := make([]string, 0, 4)
+	groups := map[string]*WorkflowRunPhaseData{}
+	for _, member := range fold.members {
+		var phase *string
+		if member.hasPhase {
+			value := member.phase
+			phase = &value
+		}
+		phaseKey := WorkflowPhaseKey(phase)
+		group, ok := groups[phaseKey]
+		if !ok {
+			group = &WorkflowRunPhaseData{Key: phaseKey, Phase: phase}
+			groups[phaseKey] = group
+			order = append(order, phaseKey)
+		}
+		status := WorkflowStatusRunning
+		switch {
+		case member.outcome != "":
+			status = workflowStatusFromOutcome(member.outcome)
+		case interrupted:
+			status = WorkflowStatusInterrupted
+		}
+		group.Members = append(group.Members, WorkflowRunMemberData{
+			Seq:     member.seq,
+			Label:   member.label,
+			ChildID: member.childID,
+			Status:  status,
+		})
+	}
+	runStatus := WorkflowStatusRunning
+	switch {
+	case fold.stopReason != "":
+		runStatus = workflowStatusFromStopReason(fold.stopReason)
+	case interrupted:
+		runStatus = WorkflowStatusInterrupted
+	}
+	phases := make([]WorkflowRunPhaseData, 0, len(order))
+	for _, phaseKey := range order {
+		phases = append(phases, *groups[phaseKey])
+	}
+	return &WorkflowRunChatData{Name: fold.name, Status: runStatus, Phases: phases}
+}
+
+// markTurnAbandoned 记一个 Turn 已终结为 abandoned，并重投影它开出去的 run。
+//
+// 只重投影**还没有 run-end** 的 run：已经有 stopReason 的 run 用 run-end 的
+// 事实，Turn 的中断不能覆盖它（否则一个正常完成的 run 会被改成 interrupted）。
+func (t *Transcript) markTurnAbandoned(turn int64) {
+	if turn < 0 {
+		return
+	}
+	if t.abandonedTurns == nil {
+		t.abandonedTurns = map[int64]bool{}
+	}
+	t.abandonedTurns[turn] = true
+	for _, runID := range t.runsByTurn[turn] {
+		key := workflowRunEntryKey(runID)
+		fold, ok := t.workflows[key]
+		if !ok || fold.stopReason != "" {
+			continue
+		}
+		at, ok := t.seqOf[key]
+		if !ok || at >= len(t.entries) {
+			continue
+		}
+		t.entries[at].Data.Workflow = t.buildWorkflowData(fold)
+	}
+}
+
+// workflowStatusFromStopReason 是 run 级状态映射（官方 `statusFromStopReason`）。
+func workflowStatusFromStopReason(stopReason string) WorkflowRunStatus {
+	switch stopReason {
+	case "completed":
+		return WorkflowStatusCompleted
+	case "cancelled":
+		return WorkflowStatusCancelled
+	case "error":
+		return WorkflowStatusFailed
+	}
+	// 官方闭合联合里只有三个值；宿主给了第四个值就是**契约漂移**，
+	// 这里按 failed 兜底（把"不知道"报成成功是最坏的形状）。
+	return WorkflowStatusFailed
+}
+
+// workflowStatusFromOutcome 是成员级状态映射（官方 `statusFromOutcome`）。
+func workflowStatusFromOutcome(outcome string) WorkflowRunStatus {
+	switch outcome {
+	case "completed":
+		return WorkflowStatusCompleted
+	case "cancelled":
+		return WorkflowStatusCancelled
+	case "failed":
+		return WorkflowStatusFailed
+	}
+	return WorkflowStatusFailed
 }
 
 // skipTranscriptFrame 报告一条 journal 帧**不产生消息行**。

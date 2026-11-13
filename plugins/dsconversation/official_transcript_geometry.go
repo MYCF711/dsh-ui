@@ -514,6 +514,162 @@ func OfficialScrollPorts() []TranscriptScrollPort {
 	return append([]TranscriptScrollPort(nil), officialScrollPorts...)
 }
 
+// ── 工作流运行面板（结构树 §5.20，官方 `WorkflowRunPanel.module.css`）──
+//
+// 两个来源，全部实读、带行号：
+//
+//	① `dsh-client-ui-workflow-run/src/client/WorkflowRunPanel.module.css`
+//	   sha256 `fa04126bf3cd35ed9ba3bc24d8255dc9e602dbd586647ce53753d0542ef67316`
+//	② primitives 的 CSS（`DisclosureRow` / `StateDot`）——
+//	   `dsh-web-frontend/dist/assets/index-CSAdOBx6.css` L1（单行压缩）
+//	   sha256 `d487cca8d8a97f1e0cc5eca02343528c873e544eb7ec3a5b323a0f035553551d`
+//
+// 为什么 primitives 的几何是 **aligned** 而不是 derived：本仓既有注释
+// （`official_transcript_view.go:383`）写的是"`ui-primitives` 没有 rc.2 src"，
+// 那是对的——**包目录确实不存在**；但预构建 Web bundle 里有完整的
+// CSS-module 产物。既然能实读，就不该继续标 derived。
+//
+// 合并规则（重要）：面板把自己的类名当 `rowClassName` / `leadingClassName` /
+// `titleClassName` 传进 `DisclosureRow`，两层类名**同时命中**。下面每一行的
+// 取值都是**合并后的生效值**，注释里写清哪一层覆盖哪一层。
+const (
+	// WorkflowRunRootMinWidth 是 `.root { min-width:0 }`（WorkflowRunPanel.module.css:1-4）。
+	WorkflowRunRootMinWidth float32 = 0
+
+	// WorkflowRunHeaderGap 是 `.runHeader { gap:6px }` / `.phaseHeader { gap:6px }`
+	// （:6-17 / :72-80）。**覆盖** primitives `.row` 的默认间距——DisclosureRow
+	// 自己不给 gap，靠 leading 的 margin-right 6 撑；面板改成行 gap 6 并把
+	// leading 的 margin-right 归零（见下）。
+	WorkflowRunHeaderGap float32 = 6
+	// WorkflowRunHeaderHeight 是 `.runHeader` / `.phaseHeader` 的 `height:32px`
+	// （:6-17 / :72-80）。**覆盖** primitives `.row` 的 24px。
+	WorkflowRunHeaderHeight float32 = 32
+	// WorkflowRunHeaderPadX 是 `.runHeader { padding:0 8px }`（:6-17）。
+	WorkflowRunHeaderPadX float32 = 8
+	// WorkflowRunFocusOutlineOffset 是 `:focus-visible { outline-offset:-2px }`
+	// （:19-22 / :82-86）。负偏移 = 描边画在盒内，行高不变。
+	WorkflowRunFocusOutlineOffset float32 = -2
+
+	// WorkflowRunLeadingSize 是 `.runLeading` / `.phaseLeading` 的 16×16
+	// （`calc(16px + var(--dsh-content-font-delta, 0px))`，:24-33 / :88-97）。
+	WorkflowRunLeadingSize float32 = 16
+	// WorkflowRunLeadingMarginRight 是 `.runLeading { margin-right:0 }`
+	// （:24-33）。**覆盖** primitives `.leading` 的 6px——间距改由行 gap 给。
+	WorkflowRunLeadingMarginRight float32 = 0
+	// WorkflowRunChevronSize 是 primitives `.leading svg:not([data-state])` 的
+	// 14×14（`calc(14px + delta)`，index-CSAdOBx6.css L1:6996）。**不是** viewBox 16。
+	WorkflowRunChevronSize float32 = 14
+
+	// WorkflowRunTitleMaxWidth 是 `.runTitle` / `.phaseTitle` 的 `max-width:42%`
+	// （:35-45 / :99-109）。
+	WorkflowRunTitleMaxWidth float32 = 42
+	// WorkflowRunTitleWeight 是 `.runTitle` 的 `font-weight:510`（:35-45）。
+	// 510 是可变字重的中间档（不是 500/600），Viva 按 float 透传。
+	WorkflowRunTitleWeight float32 = 510
+	// WorkflowRunRowLineHeight 是 `.runTitle` / `.phaseTitle` 的行高
+	// `calc(24px + var(--dsh-content-font-delta, 0px))` = 24（delta 默认 0）。
+	WorkflowRunRowLineHeight float32 = 24
+	// WorkflowRunRowMinHeight 是 primitives `.row` 的
+	// `height:calc(24px + var(--dsh-content-font-delta, 0px))` = 24
+	// （index-CSAdOBx6.css L1:6355）。被面板的 32 覆盖，只对**非面板**行生效。
+	WorkflowRunRowMinHeight float32 = 24
+
+	// WorkflowRunSummaryLineHeight 是 `.runSummary` 的行高
+	// `calc(18px + var(--dsh-content-font-delta-secondary, 0px))` = 18（:47-56）。
+	WorkflowRunSummaryLineHeight float32 = 18
+
+	// WorkflowRunStatusTailHeight 是 `.statusTail { height:20px }`（:58-70）。
+	WorkflowRunStatusTailHeight float32 = 20
+	// WorkflowRunStatusTailFontSize 是 `.statusTail { font-size:11px }`（:58-70）。
+	WorkflowRunStatusTailFontSize float32 = 11
+	// WorkflowRunStatusTailLineHeight 是 `.statusTail { line-height:16px }`（:58-70）。
+	WorkflowRunStatusTailLineHeight float32 = 16
+	// WorkflowRunStatusTailGap 是 `.statusTail { gap:4px }`（:58-70）。
+	WorkflowRunStatusTailGap float32 = 4
+
+	// WorkflowRunSeparatorSize 是 `.separator` 的 2×2（:136-143）。
+	WorkflowRunSeparatorSize float32 = 2
+
+	// WorkflowRunPhaseCountLineHeight 是 `.phaseCount` / `.phaseStatus` 的行高
+	// `calc(20px + var(--dsh-content-font-delta-secondary, 0px))` = 20（:111-134）。
+	WorkflowRunPhaseCountLineHeight float32 = 20
+	// WorkflowRunPhaseStatusWidth 是 `.phaseStatus { width:calc(132px + delta*10) }`
+	// = 132（delta 默认 0）（:122-134）。
+	WorkflowRunPhaseStatusWidth float32 = 132
+
+	// WorkflowRunPhaseListGap 是 `.phaseList { gap:4px }`（:145-151）。
+	WorkflowRunPhaseListGap float32 = 4
+	// WorkflowRunPhaseListPadTop 是 `.phaseList { padding:4px 0 0 16px }` 的上边。
+	WorkflowRunPhaseListPadTop float32 = 4
+	// WorkflowRunPhaseListPadLeft 是 `.phaseList` 的左内边距 16。
+	WorkflowRunPhaseListPadLeft float32 = 16
+	// WorkflowRunPhaseListPadLeftNarrow 是 `@media (max-width:560px)` 下的左内边距
+	// （:267-272）。Viva 没有媒体查询 → 见 deviation 行。
+	WorkflowRunPhaseListPadLeftNarrow float32 = 12
+	// WorkflowRunNarrowMaxWidth 是上面那条媒体查询的断点 560px。
+	WorkflowRunNarrowMaxWidth float32 = 560
+
+	// WorkflowRunMembersGap 是 `.members { gap:2px }`（:157-163）。
+	WorkflowRunMembersGap float32 = 2
+	// WorkflowRunMembersPadLeft 是 `.members { padding:0 0 0 16px }`（:157-163）。
+	WorkflowRunMembersPadLeft float32 = 16
+
+	// WorkflowRunMemberGap 是 `.memberRow, .memberButton { gap:12px }`（:165-180）。
+	WorkflowRunMemberGap float32 = 12
+	// WorkflowRunMemberMinHeight 是 `.memberRow { min-height:calc(24px + delta) }` = 24
+	// （:165-180）。
+	WorkflowRunMemberMinHeight float32 = 24
+	// WorkflowRunMemberLabelWeight 是 `.memberButton .memberLabel { font-weight:500 }`
+	// （:186-190）。**只有可导航行**加粗。
+	WorkflowRunMemberLabelWeight float32 = 500
+	// WorkflowRunMemberUnderlineOffset 是 `.memberButton:hover .memberLabel` 的
+	// `text-underline-offset:3px`（:192-202）。
+	WorkflowRunMemberUnderlineOffset float32 = 3
+
+	// WorkflowRunDotSlotWidth 是 `.dotSlot { width:16px }`（:204-212）。
+	WorkflowRunDotSlotWidth float32 = 16
+	// WorkflowRunDotSlotHeight 是 `.dotSlot { height:calc(24px + delta) }` = 24（:204-212）。
+	WorkflowRunDotSlotHeight float32 = 24
+
+	// WorkflowRunMemberLabelWrapHeight 是 `.memberLabelWrap { height:calc(24px + delta) }`
+	// = 24（:223-232）。
+	WorkflowRunMemberLabelWrapHeight float32 = 24
+	// WorkflowRunMemberLabelWrapPadX 是 `.memberLabelWrap { padding:0 2px }`（:223-232）。
+	WorkflowRunMemberLabelWrapPadX float32 = 2
+	// WorkflowRunMemberLabelFontSize 是 `.memberLabel { font-size:14px }`
+	// （`var(--dsh-content-font-size, 14px)`，:234-246）——**正文档，不是 secondary**。
+	WorkflowRunMemberLabelFontSize float32 = 14
+	// WorkflowRunMemberStatusWidth 是 `.memberStatus { width:64px }`（:248-258）。
+	WorkflowRunMemberStatusWidth float32 = 64
+
+	// WorkflowRunEmptyLineHeight 是 `.empty { line-height:calc(20px + delta-secondary) }` = 20
+	// （:260-265）。
+	WorkflowRunEmptyLineHeight float32 = 20
+
+	// WorkflowRunHeaderContentGap 是 `.headerContentLayout { gap:6px }`（:278-280）。
+	WorkflowRunHeaderContentGap float32 = 6
+
+	// WorkflowRunDotSize 是 `StateDot` 非 ongoing 分支的边长 10
+	// （`index-ghOpC9uV.js` L129:82467 的 `t ?? (e === "ongoing" ? 14 : 10)`）。
+	WorkflowRunDotSize float32 = 10
+	// WorkflowRunDotSizeOngoing 是 ongoing 分支的边长 14（同上）。
+	WorkflowRunDotSizeOngoing float32 = 14
+	// WorkflowRunDotCoreSize 是实心点直径：10 × (1 − 2×20%) = 6
+	// （`._dot_:after { inset:20%; border-radius:50% }`，index-CSAdOBx6.css L1:2851）。
+	WorkflowRunDotCoreSize float32 = 6
+	// WorkflowRunDotInsetPercent 是上面那条 `inset:20%`（百分比量纲）。
+	WorkflowRunDotInsetPercent float32 = 20
+	// WorkflowRunSpinnerViewBox 是 ongoing spinner 的 viewBox 边长 24（L129:82598）。
+	WorkflowRunSpinnerViewBox float32 = 24
+	// WorkflowRunSpinnerRadius 是 spinner 两圆的 r=9.5（L129:82598）。
+	WorkflowRunSpinnerRadius float32 = 9.5
+	// WorkflowRunSpinnerStroke 是 spinner 的 `stroke-width:2`（L1:3446）。
+	WorkflowRunSpinnerStroke float32 = 2
+	// WorkflowRunSpinnerDurationMs 是 `animation: … 1.5s linear infinite` 的 1500ms
+	// （L1:3338）。**Viva 画布静态 → 见 deviation 行**。
+	WorkflowRunSpinnerDurationMs float32 = 1500
+)
+
 // ── 官方值 ↔ 实现值总表 ─────────────────────────────────────────────
 //
 // 每行四件事：官方节点 / 属性 / 官方值 / 实现值；再加状态、锚点、公式（derived）、
@@ -700,6 +856,84 @@ var officialTranscriptGeometry = []uikernel.GeoRow{
 	{Node: "ChatView.toBottomSlot", Prop: "z-index", Official: ZChatToBottom, Impl: ZChatToBottom, Unit: uikernel.UnitZIndex, Status: uikernel.GeoAligned, Anchor: "ChatView.module.css:359-405"},
 	{Node: "ConversationRoot.composerSeat", Prop: "z-index", Official: ZChatComposerSeat, Impl: ZChatComposerSeat, Unit: uikernel.UnitZIndex, Status: uikernel.GeoAligned, Anchor: "ConversationRoot.module.css:522-527"},
 	{Node: "ChatView.zIndexLayers", Prop: "stacking", Official: 0, Impl: 0, Unit: uikernel.UnitPx, Status: uikernel.GeoDeviation, Anchor: "ConversationRoot.module.css:522-527", Reason: "Viva 没有 CSS z-index；四档层叠顺序由画布绘制顺序（PopupLayer）表达，顺序本身由 officialZIndexLadder 断言守住"},
+
+	// ── 工作流运行面板（§5.20）─────────────────────────────────────
+	//
+	// 锚点两族：
+	//
+	//	`WorkflowRunPanel.module.css`  → 官方包 src（sha256 fa04126b…）
+	//	`index-CSAdOBx6.css`           → primitives 预构建 CSS（sha256 d487cca8…）
+	//
+	// 面板的类名与 primitives 的类名**同时命中**（前者当 rowClassName 等传入），
+	// 所以每一行都是合并后的生效值；注释写清谁覆盖谁。
+	{Node: "WorkflowRunPanel.root", Prop: "min-width", Official: 0, Impl: WorkflowRunRootMinWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:1-4"},
+	{Node: "WorkflowRunPanel.runHeader", Prop: "gap", Official: 6, Impl: WorkflowRunHeaderGap, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:6-17"},
+	{Node: "WorkflowRunPanel.runHeader", Prop: "height", Official: 32, Impl: WorkflowRunHeaderHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:6-17"},
+	{Node: "WorkflowRunPanel.runHeader", Prop: "padding-inline", Official: 8, Impl: WorkflowRunHeaderPadX, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:6-17"},
+	{Node: "WorkflowRunPanel.runHeader", Prop: "border-radius", Official: 12, Impl: 12, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:6-17 → var(--dsw-radius-md)"},
+	{Node: "WorkflowRunPanel.runHeader:focus-visible", Prop: "outline-offset", Official: -2, Impl: WorkflowRunFocusOutlineOffset, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:19-22"},
+	{Node: "WorkflowRunPanel.runLeading", Prop: "width", Official: 16, Impl: WorkflowRunLeadingSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:24-33 → calc(16px + delta)"},
+	{Node: "WorkflowRunPanel.runLeading", Prop: "height", Official: 16, Impl: WorkflowRunLeadingSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:24-33 → calc(16px + delta)"},
+	{Node: "WorkflowRunPanel.runLeading", Prop: "margin-right", Official: 0, Impl: WorkflowRunLeadingMarginRight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:24-33（覆盖 primitives .leading 的 6px）"},
+	{Node: "DisclosureRow.leading>svg", Prop: "size", Official: 14, Impl: WorkflowRunChevronSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "index-CSAdOBx6.css:1 → ._leading_l4nv8_52 svg:not([data-state]) calc(14px + delta)"},
+	{Node: "WorkflowRunPanel.runTitle", Prop: "max-width", Official: 42, Impl: WorkflowRunTitleMaxWidth, Unit: uikernel.UnitPct, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:35-45"},
+	{Node: "WorkflowRunPanel.runTitle", Prop: "font-weight", Official: 510, Impl: WorkflowRunTitleWeight, Unit: uikernel.UnitRatio, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:35-45"},
+	{Node: "WorkflowRunPanel.runTitle", Prop: "line-height", Official: 24, Impl: WorkflowRunRowLineHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:35-45 → calc(24px + delta)"},
+	{Node: "WorkflowRunPanel.runSummary", Prop: "line-height", Official: 18, Impl: WorkflowRunSummaryLineHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:47-56 → calc(18px + delta-secondary)"},
+	{Node: "WorkflowRunPanel.statusTail", Prop: "height", Official: 20, Impl: WorkflowRunStatusTailHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:58-70"},
+	{Node: "WorkflowRunPanel.statusTail", Prop: "font-size", Official: 11, Impl: WorkflowRunStatusTailFontSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:58-70"},
+	{Node: "WorkflowRunPanel.statusTail", Prop: "line-height", Official: 16, Impl: WorkflowRunStatusTailLineHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:58-70"},
+	{Node: "WorkflowRunPanel.statusTail", Prop: "gap", Official: 4, Impl: WorkflowRunStatusTailGap, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:58-70"},
+	{Node: "WorkflowRunPanel.separator", Prop: "width", Official: 2, Impl: WorkflowRunSeparatorSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:136-143"},
+	{Node: "WorkflowRunPanel.separator", Prop: "height", Official: 2, Impl: WorkflowRunSeparatorSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:136-143"},
+	{Node: "WorkflowRunPanel.phaseHeader", Prop: "gap", Official: 6, Impl: WorkflowRunHeaderGap, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:72-80"},
+	{Node: "WorkflowRunPanel.phaseHeader", Prop: "height", Official: 32, Impl: WorkflowRunHeaderHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:72-80"},
+	{Node: "WorkflowRunPanel.phaseHeader", Prop: "border-radius", Official: 12, Impl: 12, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:82-86 → var(--dsw-radius-md)"},
+	{Node: "WorkflowRunPanel.phaseLeading", Prop: "width", Official: 16, Impl: WorkflowRunLeadingSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:88-97 → calc(16px + delta)"},
+	{Node: "WorkflowRunPanel.phaseLeading", Prop: "margin-right", Official: 0, Impl: WorkflowRunLeadingMarginRight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:88-97"},
+	{Node: "WorkflowRunPanel.phaseTitle", Prop: "max-width", Official: 42, Impl: WorkflowRunTitleMaxWidth, Unit: uikernel.UnitPct, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:99-109"},
+	{Node: "WorkflowRunPanel.phaseTitle", Prop: "line-height", Official: 24, Impl: WorkflowRunRowLineHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:99-109 → calc(24px + delta)"},
+	{Node: "WorkflowRunPanel.phaseCount", Prop: "line-height", Official: 20, Impl: WorkflowRunPhaseCountLineHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:111-120 → calc(20px + delta-secondary)"},
+	{Node: "WorkflowRunPanel.phaseStatus", Prop: "width", Official: 132, Impl: WorkflowRunPhaseStatusWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:122-134 → calc(132px + delta-secondary*10)"},
+	{Node: "WorkflowRunPanel.phaseStatus", Prop: "line-height", Official: 20, Impl: WorkflowRunPhaseCountLineHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:122-134 → calc(20px + delta-secondary)"},
+	{Node: "WorkflowRunPanel.phaseList", Prop: "gap", Official: 4, Impl: WorkflowRunPhaseListGap, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:145-151"},
+	{Node: "WorkflowRunPanel.phaseList", Prop: "padding-top", Official: 4, Impl: WorkflowRunPhaseListPadTop, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:145-151 → padding:4px 0 0 16px"},
+	{Node: "WorkflowRunPanel.phaseList", Prop: "padding-left", Official: 16, Impl: WorkflowRunPhaseListPadLeft, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:145-151"},
+	{Node: "WorkflowRunPanel.phaseList", Prop: "padding-left@max-width:560px", Official: 12, Impl: WorkflowRunPhaseListPadLeftNarrow, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:267-272"},
+	{Node: "WorkflowRunPanel.phaseList", Prop: "media-max-width", Official: 560, Impl: WorkflowRunNarrowMaxWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:267-272"},
+	{Node: "WorkflowRunPanel.members", Prop: "gap", Official: 2, Impl: WorkflowRunMembersGap, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:157-163"},
+	{Node: "WorkflowRunPanel.members", Prop: "padding-left", Official: 16, Impl: WorkflowRunMembersPadLeft, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:157-163 → padding:0 0 0 16px"},
+	{Node: "WorkflowRunPanel.members", Prop: "padding-left@max-width:560px", Official: 12, Impl: WorkflowRunPhaseListPadLeftNarrow, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:267-272"},
+	{Node: "WorkflowRunPanel.memberRow", Prop: "gap", Official: 12, Impl: WorkflowRunMemberGap, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:165-180"},
+	{Node: "WorkflowRunPanel.memberRow", Prop: "min-height", Official: 24, Impl: WorkflowRunMemberMinHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:165-180 → calc(24px + delta)"},
+	{Node: "WorkflowRunPanel.memberRow", Prop: "border-width", Official: 0, Impl: 0, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:165-180 → border:0"},
+	{Node: "WorkflowRunPanel.memberRow", Prop: "border-radius", Official: 8, Impl: 8, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:165-180 → var(--dsw-radius-sm)"},
+	{Node: "WorkflowRunPanel.memberButton", Prop: "font-weight", Official: 500, Impl: WorkflowRunMemberLabelWeight, Unit: uikernel.UnitRatio, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:186-190 → .memberButton .memberLabel"},
+	{Node: "WorkflowRunPanel.memberButton", Prop: "text-underline-offset", Official: 3, Impl: WorkflowRunMemberUnderlineOffset, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:192-202"},
+	{Node: "WorkflowRunPanel.dotSlot", Prop: "width", Official: 16, Impl: WorkflowRunDotSlotWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:204-212"},
+	{Node: "WorkflowRunPanel.dotSlot", Prop: "height", Official: 24, Impl: WorkflowRunDotSlotHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:204-212 → calc(24px + delta)"},
+	{Node: "WorkflowRunPanel.memberLabelWrap", Prop: "height", Official: 24, Impl: WorkflowRunMemberLabelWrapHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:223-232 → calc(24px + delta)"},
+	{Node: "WorkflowRunPanel.memberLabelWrap", Prop: "padding-inline", Official: 2, Impl: WorkflowRunMemberLabelWrapPadX, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:223-232 → padding:0 2px"},
+	{Node: "WorkflowRunPanel.memberLabel", Prop: "font-size", Official: 14, Impl: WorkflowRunMemberLabelFontSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:234-246 → var(--dsh-content-font-size, 14px)"},
+	{Node: "WorkflowRunPanel.memberLabel", Prop: "line-height", Official: 24, Impl: WorkflowRunMemberLabelWrapHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:234-246 → calc(24px + delta)"},
+	{Node: "WorkflowRunPanel.memberStatus", Prop: "width", Official: 64, Impl: WorkflowRunMemberStatusWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:248-258"},
+	{Node: "WorkflowRunPanel.memberStatus", Prop: "line-height", Official: 20, Impl: WorkflowRunPhaseCountLineHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:248-258 → calc(20px + delta-secondary)"},
+	{Node: "WorkflowRunPanel.empty", Prop: "line-height", Official: 20, Impl: WorkflowRunEmptyLineHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:260-265 → calc(20px + delta-secondary)"},
+	{Node: "WorkflowRunPanel.headerContentLayout", Prop: "gap", Official: 6, Impl: WorkflowRunHeaderContentGap, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "WorkflowRunPanel.module.css:278-280"},
+
+	// StateDot（primitives 预构建产物；三档尺寸 + 两个几何事实）。
+	{Node: "StateDot.dot", Prop: "size", Official: 10, Impl: WorkflowRunDotSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "index-ghOpC9uV.js:129:82467 → t ?? (e === 'ongoing' ? 14 : 10)"},
+	{Node: "StateDot.spinner", Prop: "size", Official: 14, Impl: WorkflowRunDotSizeOngoing, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "index-ghOpC9uV.js:129:82467"},
+	{Node: "StateDot.dot::after", Prop: "inset", Official: 20, Impl: WorkflowRunDotInsetPercent, Unit: uikernel.UnitPct, Status: uikernel.GeoAligned, Anchor: "index-CSAdOBx6.css:1 → ._dot_1i3xo_2:after { inset:20% }"},
+	{Node: "StateDot.dot::after", Prop: "width", Official: 6, Impl: WorkflowRunDotCoreSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "index-CSAdOBx6.css:1 → 10 × (1 − 2×20%) = 6"},
+	{Node: "StateDot.spinner", Prop: "viewBox", Official: 24, Impl: WorkflowRunSpinnerViewBox, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "index-ghOpC9uV.js:129:82598 → viewBox='0 0 24 24'"},
+	{Node: "StateDot.spinner", Prop: "r", Official: 9.5, Impl: WorkflowRunSpinnerRadius, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "index-ghOpC9uV.js:129:82598 → <circle cx=12 cy=12 r=9.5>"},
+	{Node: "StateDot.spinner", Prop: "stroke-width", Official: 2, Impl: WorkflowRunSpinnerStroke, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "index-CSAdOBx6.css:1 → ._spinnerTrack_1i3xo_47,_spinnerArc_1i3xo_48 { stroke-width:2 }"},
+
+	// 动画：Viva 画布是静态的，旋转不表达。这不是几何差，是**时间轴**差——
+	// 登记在这里是为了让"官方有动画、我们没有"这件事可检索（见报告 §缺口）。
+	{Node: "StateDot.spinnerMotion", Prop: "animation-duration", Official: 1500, Impl: 0, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: "index-CSAdOBx6.css:1 → _dsh-state-dot-spin 1.5s linear infinite", Formula: "animation:_dsh-state-dot-spin 1.5s linear infinite；Viva 静态画布无时间轴，实现只画 spinner 的静态帧（track+arc），旋转不表达"},
+	{Node: "DisclosureRow.row", Prop: "transition-duration", Official: 0.1, Impl: 0, Unit: uikernel.UnitRatio, Status: uikernel.GeoDerived, Anchor: "index-CSAdOBx6.css:1 → ._row_l4nv8_26 { transition:color .1s ease }", Formula: "transition:color .1s ease；Viva 静态画布无过渡，颜色直接取目标值（终态一致）"},
 }
 
 // OfficialTranscriptGeometry 返回官方几何总表的只读副本。

@@ -288,12 +288,18 @@ func fromAPIHostFacts(f pluginapi.SettingsHostFacts) HostFacts {
 	return HostFacts{
 		DesktopProtocolVersion: f.DesktopProtocolVersion,
 		UpdatesChannels:        f.UpdatesChannels,
-		SidebarRightTabs:       f.SidebarRightTabs,
-		SessionLogServed:       f.SessionLogServed,
-		ClientVersion:          f.ClientVersion,
-		PermissionCatalog:      f.PermissionCatalog,
-		TranscriptView:         f.TranscriptView,
-		CredentialStored:       f.CredentialStored,
+		// 壳更新渠道（2026-11-13 补）。**这三行不能漏**：漏了的话探针照样成功、
+		// 事实位照样为真，但转换时被丢掉 -> 面板永远看不到 -> 「更新渠道」行
+		// 永远不出现。截图看不出来（那一行在面板很下面），只有端到端测试能钉住。
+		ShellChannelServed:  f.ShellChannelServed,
+		ShellChannel:        f.ShellChannel,
+		ShellChannelFailure: f.ShellChannelFailure,
+		SidebarRightTabs:    f.SidebarRightTabs,
+		SessionLogServed:    f.SessionLogServed,
+		ClientVersion:       f.ClientVersion,
+		PermissionCatalog:   f.PermissionCatalog,
+		TranscriptView:      f.TranscriptView,
+		CredentialStored:    f.CredentialStored,
 	}
 }
 

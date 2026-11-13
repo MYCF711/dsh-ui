@@ -48,6 +48,19 @@ var bindings = []Binding{
 	{"Tab / Shift+Tab", "设置面板打开时在面板内循环焦点（模态层陷阱）", "plugins/dssettings/official_modal.go"},
 }
 
+// Bindings 返回这份键位表的**只读拷贝**（设置面板「快捷键」行要显示条目数，
+// 不能让它拿到内部切片去改）。
+//
+// 为什么设置行要用这张表而不是问宿主：官方 `shortcuts` 是**窗口本地**服务
+// （`dsh-client-shortcuts/src/client/index.ts:31` 的 `ctx.shortcuts.catalog`），
+// 键位来自 `DesktopShortcutsApi` 适配器，**不是 Host 设置**。本仓这张表就是
+// 同等的真值来源，而且有 `shortcuts_guard_test.go` 卡着它覆盖所有 HandleKey。
+func Bindings() []Binding {
+	out := make([]Binding, len(bindings))
+	copy(out, bindings)
+	return out
+}
+
 // Plugin 只有「显示 / 收起」一个状态。
 type Plugin struct {
 	theme *pluginapi.Theme

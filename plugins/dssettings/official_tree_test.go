@@ -17,6 +17,8 @@ func fullDesktopFacts() HostFacts {
 		ClientVersion:     "0.2.2-rc.2",
 		PermissionCatalog: true,
 		TranscriptView:    "standard",
+		// 本窗口键位表装了（真机上是 13 条）；设置面板「快捷键」行的真值来源。
+		ShortcutCount: 13,
 	}
 }
 

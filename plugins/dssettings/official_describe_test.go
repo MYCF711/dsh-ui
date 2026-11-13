@@ -174,6 +174,14 @@ func TestBuildPanelNilDescribeStillRendersStructure(t *testing.T) {
 			}
 			continue
 		}
+		// shortcuts **同样**是事实驱动的：官方 `shortcuts` 是窗口本地服务
+		// （不是 Host 设置），真值来自本窗口的键位表，与 describe 无关。
+		if row.ID == "shortcuts" {
+			if !row.Known || row.Value != "13 条键位" {
+				t.Fatalf("shortcuts 应来自本窗口键位表，实得 known=%v value=%q", row.Known, row.Value)
+			}
+			continue
+		}
 		if row.Known {
 			t.Fatalf("%s 在无 describe 时不该有真值", row.ID)
 		}

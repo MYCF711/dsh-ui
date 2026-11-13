@@ -228,6 +228,22 @@ func buildGeneralSection(panel *PanelSection, describe *apiclient.SettingsDescri
 				Known: facts.ClientVersion != "",
 				Field: it.HostField,
 			})
+		case "shortcuts":
+			// 官方 `shortcuts` 是**窗口本地**服务（`dsh-client-shortcuts/src/client/index.ts:31`
+			// 的 `ctx.shortcuts.catalog`），键位来自 `DesktopShortcutsApi` 适配器 ——
+			// **不是 Host 设置**。所以不能走 generalRow 去查 `shortcuts.catalog`
+			// 命名空间：宿主的 settings.describe 里根本没有它，查了只会得到
+			// 「宿主未提供 shortcuts 命名空间」这句**假**结论。
+			//
+			// 真值来源就是本窗口自己的键位表（`plugins/dsshortcuts`，
+			// 那张表有 shortcuts_guard_test.go 卡着覆盖所有 HandleKey）。
+			row := PanelRow{ID: it.ID, Title: it.Title, Kind: it.Kind, Field: it.HostField}
+			// 0 条 = 键位表没装（或壳没接上）-> 保持「未知」，**不**谎报"0 条键位"。
+			if facts.ShortcutCount > 0 {
+				row.Value = strconv.Itoa(facts.ShortcutCount) + " 条键位"
+				row.Known = true
+			}
+			rows = append(rows, row)
 		case "desktop-update-channel":
 			// 这一行**不是** Host 设置（官方 types.ts:60：「shell configuration,
 			// independently of Host settings」），所以不能走 generalRow 去查

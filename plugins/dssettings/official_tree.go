@@ -273,7 +273,9 @@ var officialGeneralItems = []OfficialGeneralItem{
 	},
 	{
 		ID: "shortcuts", Order: 16, Title: "快捷键",
-		Desc: "",
+		// 官方 zh 字典（ui-shortcuts/src/client/locales.ts:30）：
+		// settings='快捷键' / view='编辑快捷键' / description='查看和编辑当前可用的快捷键和输入操作'。
+		Desc: "查看和编辑当前可用的快捷键和输入操作",
 		Kind: ItemButton, HostField: "shortcuts.catalog", Rows: 1,
 		Condition: ItemAlways,
 		Anchor:    "ui-shortcuts/src/client/index.ts:42-45",
@@ -423,6 +425,13 @@ type HostFacts struct {
 	ShellChannel *string
 	// ShellChannelFailure 是宿主报的壳级故障（read/format/channel/cleanup），空 = 正常。
 	ShellChannelFailure string
+	// ShortcutCount 是**本窗口**真实生效的键位数（GUI 自己的键位表条目数）。
+	//
+	// 官方 `shortcuts` 是**窗口本地**服务（`dsh-client-shortcuts/src/client/index.ts:31`
+	// 的 `ctx.shortcuts.catalog`），键位来自 `DesktopShortcutsApi` 适配器，
+	// **不是 Host 设置**——所以它没有对应的 settings 命名空间，也不该去问宿主。
+	// 这一行的真值来源就是 GUI 自己的键位表（那张表有守卫卡着覆盖所有 HandleKey）。
+	ShortcutCount int
 	// SidebarRightTabs 表示 `sidebarRightTabs` 服务存在（link-opening 的前置）。
 	SidebarRightTabs bool
 	// SessionLogServed 表示 `session-log-deepseek` namespace 被服务。

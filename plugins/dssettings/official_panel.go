@@ -294,6 +294,7 @@ func fromAPIHostFacts(f pluginapi.SettingsHostFacts) HostFacts {
 		ShellChannelServed:  f.ShellChannelServed,
 		ShellChannel:        f.ShellChannel,
 		ShellChannelFailure: f.ShellChannelFailure,
+		ShortcutCount:       f.ShortcutCount,
 		SidebarRightTabs:    f.SidebarRightTabs,
 		SessionLogServed:    f.SessionLogServed,
 		ClientVersion:       f.ClientVersion,

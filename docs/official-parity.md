@@ -81,7 +81,86 @@
 - ✅ `layout`（`dsshell`：侧栏/中栏/右栏/底栏，可直接拖分隔线）
 - ✅ `sidebar-right`（`dsshell` 的 `SlotRightbar` + `ToggleRightbar` + `ui.rightbarWidth`；收起后 corner 可重开）
 
-## 合计：官方 55 个部件 —— ✅ 22 · 🟡 9 · ⬜ 3（不该有） · ❌ 21
+## 官方包逐条对账（**机器校验**，`scripts/parity-count.py --check` 守）
+
+本节是**权威清单**：官方 rc.2 的 66 个 `dsh-client-ui-*` 包逐条给状态与落点。
+来源 `docs/evidence/official-ui-plugins-0.2.2-rc.2.txt`（66 行，sha256 `9e910e4e97ef8f18`）。
+
+> 2026-11-14 之前，本账本记的是 rc.1 时代的 **55** 个部件，而门禁只校验
+> 「合计行 == 本文条目数」——**陈旧分母照样拿到绿**。现在分母**动态读官方清单**，
+> 且逐 id 断言集合相等（漏一个、多一个都红）。
+
+| # | 官方包 | 状态 | 本仓落点 |
+|---|---|---|---|
+| 1 | `dsh-client-ui-account-notifications` | ✅ IMPLEMENTED | `plugins/dsnotifications` |
+| 2 | `dsh-client-ui-action-cards` | ❌ MISSING | 无 |
+| 3 | `dsh-client-ui-agent-preset` | 🟡 PARTIAL | `dssettings` 的 `agent-presets` section |
+| 4 | `dsh-client-ui-agent-team` | ✅ IMPLEMENTED | `plugins/dsagentteam` |
+| 5 | `dsh-client-ui-approval` | ✅ IMPLEMENTED | `dscomposer` + 壳 |
+| 6 | `dsh-client-ui-attachment` | 🟡 PARTIAL | uikernel 槽 + `dscomposer` + `dsconversation` |
+| 7 | `dsh-client-ui-brand-official` | ✅ IMPLEMENTED | `plugins/dsbrand` |
+| 8 | `dsh-client-ui-chat` | ✅ IMPLEMENTED | `plugins/dsconversation`（18 文件 / 8054 行） |
+| 9 | `dsh-client-ui-commands` | ✅ IMPLEMENTED | `plugins/dscommands`（2 文件 / 423 行） |
+| 10 | `dsh-client-ui-context-menu` | ❌ MISSING | 无 |
+| 11 | `dsh-client-ui-conversation` | ✅ IMPLEMENTED | `plugins/dsconversation` + `internal/uikernel` |
+| 12 | `dsh-client-ui-cordis` | ❌ MISSING | 无 |
+| 13 | `dsh-client-ui-creation-recommendations` | ❌ MISSING | 无 |
+| 14 | `dsh-client-ui-deliverables` | 🟡 PARTIAL | `plugins/dsdeliverables` + `dsconversation/file_refs.go` |
+| 15 | `dsh-client-ui-directory-picker-browse` | ❌ MISSING | 无 |
+| 16 | `dsh-client-ui-directory-picker-native` | ❌ MISSING | 无 |
+| 17 | `dsh-client-ui-entry-customization` | ❌ MISSING | 无 |
+| 18 | `dsh-client-ui-file-actions` | ❌ MISSING | 无 |
+| 19 | `dsh-client-ui-file-drag` | ❌ MISSING | 无 |
+| 20 | `dsh-client-ui-goal` | ✅ IMPLEMENTED | `plugins/dsgoal`（4 文件 / 364 行） |
+| 21 | `dsh-client-ui-input-trigger` | 🟡 PARTIAL | `plugins/dscomposer/mention.go` |
+| 22 | `dsh-client-ui-jobs` | 🟡 PARTIAL | `plugins/dsjobs`（2 文件 / 132 行） |
+| 23 | `dsh-client-ui-layout` | ✅ IMPLEMENTED | `internal/uikernel` 骨架 + `plugins/dsshell` |
+| 24 | `dsh-client-ui-message-feedback` | 🟡 PARTIAL | `plugins/dsconversation/feedback.go`（240 行） |
+| 25 | `dsh-client-ui-model-selection` | ✅ IMPLEMENTED | `internal/uikernel/official_model_menu.go` + `dscomposer` |
+| 26 | `dsh-client-ui-open-in-app` | ✅ IMPLEMENTED | `plugins/dsopen`（3 文件 / 163 行） |
+| 27 | `dsh-client-ui-permission-presets` | ✅ IMPLEMENTED | `dscomposer` + `dssettings` |
+| 28 | `dsh-client-ui-plan` | ❌ MISSING | 无 |
+| 29 | `dsh-client-ui-plugin-manager` | 🟡 PARTIAL | `dssettings` 的 `plugins` section |
+| 30 | `dsh-client-ui-plugin-market` | ❌ MISSING | 无 |
+| 31 | `dsh-client-ui-plugin-recommendations` | ❌ MISSING | 无 |
+| 32 | `dsh-client-ui-reference` | 🟡 PARTIAL | `plugins/dscomposer/mention.go` |
+| 33 | `dsh-client-ui-renderer` | ✅ IMPLEMENTED | `internal/uikernel`（槽 dispatch） |
+| 34 | `dsh-client-ui-schedule` | 🟡 PARTIAL | `plugins/dsschedule`（2 文件 / 125 行） |
+| 35 | `dsh-client-ui-secret-mask` | 🟡 PARTIAL | `internal/secretmask` + `dsconversation/mask.go` |
+| 36 | `dsh-client-ui-session` | ✅ IMPLEMENTED | `internal/apiclient` + `cmd/app` |
+| 37 | `dsh-client-ui-settings` | ✅ IMPLEMENTED | `plugins/dssettings`（14 文件 / 5470 行） |
+| 38 | `dsh-client-ui-settings-account` | 🟡 PARTIAL | `dssettings` 的 `account` section |
+| 39 | `dsh-client-ui-settings-agent-loop` | ❌ MISSING | 无 |
+| 40 | `dsh-client-ui-settings-general` | ✅ IMPLEMENTED | `dssettings` 的 general 页 |
+| 41 | `dsh-client-ui-settings-models` | 🟡 PARTIAL | `dssettings` 的 models 页 |
+| 42 | `dsh-client-ui-settings-plugin-inventory` | 🟡 PARTIAL | 同 `plugins` section |
+| 43 | `dsh-client-ui-settings-plugins` | 🟡 PARTIAL | 同 `plugins` section |
+| 44 | `dsh-client-ui-settings-session-log` | 🟡 PARTIAL | `dssettings` 的 general item `session-log-upload-toast` |
+| 45 | `dsh-client-ui-settings-shell` | ❌ MISSING | 无 |
+| 46 | `dsh-client-ui-settings-subagent` | ❌ MISSING | 无 |
+| 47 | `dsh-client-ui-settings-web-search` | ❌ MISSING | 无 |
+| 48 | `dsh-client-ui-shortcuts` | ✅ IMPLEMENTED | `plugins/dsshortcuts`（2 文件 / 213 行） |
+| 49 | `dsh-client-ui-sidebar` | ✅ IMPLEMENTED | `plugins/dssidebar`（5 文件 / 1418 行） |
+| 50 | `dsh-client-ui-sidebar-browser` | 🟡 PARTIAL | `dssidebar` 搜索框 + 结果卡 |
+| 51 | `dsh-client-ui-sidebar-documentpreview` | ✅ IMPLEMENTED | `plugins/dsfiles` 预览浮层 |
+| 52 | `dsh-client-ui-sidebar-files` | ✅ IMPLEMENTED | `plugins/dsfiles` |
+| 53 | `dsh-client-ui-sidebar-right` | ✅ IMPLEMENTED | `dsrightbar` + `dsshell` + uikernel |
+| 54 | `dsh-client-ui-sidebar-terminal` | 🟡 PARTIAL | `plugins/dsterminal` + `internal/ansi` |
+| 55 | `dsh-client-ui-skill` | ✅ IMPLEMENTED | `plugins/dsskill`（7 文件 / 2238 行） |
+| 56 | `dsh-client-ui-subagent` | 🟡 PARTIAL | `plugins/dsagentteam/catalog.go`（父容器 B） |
+| 57 | `dsh-client-ui-theme` | ✅ IMPLEMENTED | `dscore` + `cmd/app/theme.go` |
+| 58 | `dsh-client-ui-tool` | ✅ IMPLEMENTED | `plugins/dstool`（7 文件 / 930 行） |
+| 59 | `dsh-client-ui-trajectory` | 🟡 PARTIAL | `plugins/dsrightbar` |
+| 60 | `dsh-client-ui-user-questions` | ✅ IMPLEMENTED | `plugins/dsquestions`（3 文件 / 423 行） |
+| 61 | `dsh-client-ui-workflow-run` | ✅ IMPLEMENTED | `dsconversation` 的 workflow-run 节点 |
+| 62 | `dsh-client-ui-workspace` | 🟡 PARTIAL | `internal/apiclient/fs.go` + `dssidebar` |
+| 63 | `dsh-experimental-client-ui-cot-translation` | ❌ MISSING | 无 |
+| 64 | `dsh-experimental-client-ui-forge` | ❌ MISSING | 无 |
+| 65 | `dsh-experimental-client-ui-stats` | 🟡 PARTIAL | `plugins/dsstatusbar/metrics.go` + `wave3_wiring.go` |
+| 66 | `dsh-experimental-client-ui-voice-input` | ❌ MISSING | 无 |
+
+## 合计：官方 66 个部件 —— ✅ 26 · 🟡 21 · ⬜ 0（不该有） · ❌ 19
+
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），
 > 不是手填的。上一次手填的是"我们有 10 个 · 缺 53 个"——**已经错了很久**，

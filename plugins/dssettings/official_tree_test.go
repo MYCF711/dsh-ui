@@ -1,6 +1,7 @@
 package dssettings
 
 import (
+	"strconv"
 	"testing"
 )
 
@@ -273,4 +274,50 @@ func itemIDs(items []OfficialGeneralItem) []string {
 		out = append(out, it.ID)
 	}
 	return out
+}
+
+// TestGeneralRowsQueryTheirOwnHostFields 守住"每一行查的是**自己**那个字段"。
+//
+// 2026-11-13 真机暴露：宿主补上 4 个 UI 命名空间后，界面仍有几行显示未知。原因不在宿主，
+// 在**取字段这一侧**：
+//   - 「语言」行写的是 `locale.active`，官方字段是 `locale.preference`
+//     （`locale-settings.ts:9` LOCALE_PREFERENCE_FIELD）；
+//   - transcript-view 的三行把 `it.HostField`（恒为 `ui-chat.transcriptView`）
+//     当成 hostField 传给了 `generalRow`，于是第 2/3 行都去读同一个字段，
+//     宿主明明发了 `ui-chat.collapseTiming` / `ui-chat.foldedReplies` 也读不到。
+//
+// **必须走 `BuildPanel` 真链路**，不能直接调 `generalRow`：缺陷在**调用点**，
+// 直接调 helper 会把调用点绕过去，测不出问题（第一版就是这么写的，变异验证没红）。
+func TestGeneralRowsQueryTheirOwnHostFields(t *testing.T) {
+	// ① 语言行：官方字段名是 locale.preference。
+	if lang := mustItem(t, "language"); lang.HostField != "locale.preference" {
+		t.Fatalf("语言行的 HostField = %q，官方是 locale.preference", lang.HostField)
+	}
+
+	// ② 走真链路造 general 页，看三行各自查的是哪个字段。
+	facts := HostFacts{TranscriptView: "standard"}
+	model := BuildPanel(describeFixture(), facts)
+	panel, ok := model.Section("general")
+	if !ok {
+		t.Fatal("BuildPanel 没有 general 页")
+	}
+	want := []string{"ui-chat.transcriptView", "ui-chat.collapseTiming", "ui-chat.foldedReplies"}
+	var got []string
+	for i := 0; i < len(want); i++ {
+		row, ok := panel.Row("transcript-view-" + strconv.Itoa(i))
+		if !ok {
+			t.Fatalf("general 页缺 transcript-view-%d 这一行", i)
+		}
+		got = append(got, row.Field)
+	}
+	seen := map[string]bool{}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("第 %d 行查的字段 = %q，官方是 %q", i, got[i], want[i])
+		}
+		if seen[got[i]] {
+			t.Fatalf("第 %d 行与前面的行查了同一个字段 %q——宿主发了也读不到", i, got[i])
+		}
+		seen[got[i]] = true
+	}
 }

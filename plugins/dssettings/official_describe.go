@@ -205,9 +205,16 @@ func buildGeneralSection(panel *PanelSection, describe *apiclient.SettingsDescri
 		switch it.ID {
 		case "transcript-view":
 			// 一个 slot 三行（官方 TranscriptViewRow.tsx:57-93）。
+			//
+			// **第三个参数必须是 `transcriptViewRowFields[i]`，不是 `it.HostField`。**
+			// `generalRow(id, title, hostField, field, …)` 只用 `hostField` 去查宿主；
+			// 传 `it.HostField`（三行恒为 `ui-chat.transcriptView`）会让第 2/3 行
+			// 都读同一个字段——宿主明明发了 `ui-chat.collapseTiming` /
+			// `ui-chat.foldedReplies`，界面却仍显示未知。
+			// （2026-11-13 host-ns 复核官方字段时发现，报告 §9。）
 			for i := 0; i < facts.ItemRows(it); i++ {
 				rows = append(rows, generalRow(it.ID+"-"+strconv.Itoa(i), transcriptViewRowTitles[i],
-					it.HostField, transcriptViewRowFields[i], transcriptViewRowChoices[i],
+					transcriptViewRowFields[i], transcriptViewRowFields[i], transcriptViewRowChoices[i],
 					transcriptViewRowDefaults[i], ItemSelector, describe, facts, m))
 			}
 		case "current-version":

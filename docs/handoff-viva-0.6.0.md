@@ -244,3 +244,35 @@ func (p *Page) Draw(canvas *gfx.Canvas, bounds Rect, view func(C))
 2. **上游文档缺口未提**：`docs/upgrading.md` 漏了 `flex`→`ui` 合并与 `ui`→`gfx` 拆分（§1 注）。按本仓规矩可提 issue/文档 PR，但**对外动作需用户当次明确授权**；本轮只记录，未发。
 3. **issue #239 仍开**：上游 v0.5.1/v0.6.0 都未修（§5），我们继续兜底；不需要重提。
 4. 本 worktree **未 commit**（按任务约定由 Lead 统一提交）。
+
+---
+
+## 15. 上游收口（2026-11-13 复核：**我们提的 5 个 issue + 3 个 PR 全部有结论**）
+
+| 编号 | 标题 | 状态 | 上游处置 |
+|---|---|---|---|
+| [#184](https://github.com/vivaui/viva/issues/184) | Windows 文本整形缓存超过 512 行塌陷 | **FIXED** | `0f7a424`，随 **v0.6.1** |
+| [#185](https://github.com/vivaui/viva/issues/185) | `gfx` 文字画在同层所有矩形之上 | CLOSED | 已修 |
+| [#180](https://github.com/vivaui/viva/issues/180) | v0.5.1 release notes 说没删公开 API，但 `flex.Box.HoverBa…` | CLOSED | 文档已修 |
+| [#239](https://github.com/vivaui/viva/issues/239) | `text.(*Editor).String()` 并发写缓存 | CLOSED · **not planned** | 窗口线程所有权是契约；**我们的 `pendingDraft` 兜底就是官方认可的正确用法** |
+| [#240](https://github.com/vivaui/viva/issues/240) | `upgrading.md` 漏写 v0.6.0 包重组 | **FIXED** | `bfcc26b`，随 v0.6.1 |
+| [PR #181](https://github.com/vivaui/viva/pull/181) | 跨版本升级指南 | MERGED | — |
+| [PR #182](https://github.com/vivaui/viva/pull/182) | 文档化 `TextEvent.MarkedSelection` 是 range | MERGED | — |
+| [PR #183](https://github.com/vivaui/viva/pull/183) | 导出 `ScrollState.Pinned`（布局前虚拟化） | MERGED | — |
+
+### #184 的修法（上游原文摘要）
+> 容量触发的**整代淘汰**会反复丢弃**仍装得下**的稳定工作集。修法把整代淘汰换成
+> **有界近期窗口 + 基于频次的准入**；容量不变（Windows/Linux/Web 每样式 1,024 行、
+> macOS 2,048），**只在超出常驻预算后才启用准入记账**。这是共享文本引擎行为、**不是 Windows 专属**；
+> 原生资源仍由引擎独占拥有，淘汰/替换/失效各释放一次。**不需要消费者侧 workaround**，无公开 API 变更。
+
+**上游还确认了我 v0.6.0 复跑时提的那条**：
+> Thanks for the v0.6.0 follow-up and for flagging the **Pump-only measurement issue**.
+
+即我指出"`Pump()` 只重绘一次、测不到 rotate 热路径"是对的——他们提交的 headless benchmark
+现在**每次 `Driver.Pump()` 前显式调 `Invalidator.Invalidate()`**，走 `Canvas.TextWidth` 量所有不同行。
+
+### 对我们的影响
+- **#239 的兜底保留**（上游 not planned，删除条件未满足）。
+- **#184 / #240 等 v0.6.1 发布后**：升到 v0.6.1 即可拿到修复；届时复跑长对话帧性能（5000 条消息曾 468 ms/帧）。
+- 本仓**不需要**为这两个 issue 做任何 workaround。

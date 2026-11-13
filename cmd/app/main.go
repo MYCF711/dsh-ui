@@ -452,6 +452,10 @@ func (m *model) openSession(id string) {
 	m.mu.Unlock()
 	m.inv.Invalidate()
 
+	// skill 目录是**按会话**的（随该会话 cwd / agent preset 变），所以切会话时
+	// 重新取一次；失败只降级成"没有目录"，不阻塞下面的加载。
+	go m.refreshSkillCatalog(id)
+
 	if hit {
 		// 温切直接使用 canonical 缓存与仍在归约的订阅：不 load、不 refresh、
 		// 不取消重订，正在生成的正文和阅读位置都留在原会话状态里。

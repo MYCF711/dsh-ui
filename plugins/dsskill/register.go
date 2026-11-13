@@ -128,6 +128,13 @@ func (p *Plugin) SetLang(lang string) {
 // 传 nil = 撤掉（按钮随之消失）——官方 `inspect !== undefined` 就是这条语义。
 func (p *Plugin) SetInspect(inspect func(name string)) { p.inspect = inspect }
 
+// InspectForTest 报告当前有没有注入 resolver。
+//
+// 为什么要有它：接缝的**失败语义**才是关键——拉不到 skill 目录时必须撤掉
+// （官方 `inspect !== undefined` 才画按钮，留一个空转函数就是"点了没反应"）。
+// 壳侧的回归测试要能断言"撤掉了"，而 inspect 是未导出字段，跨包看不见。
+func (p *Plugin) InspectForTest() func(name string) { return p.inspect }
+
 // draw 是登记进 ds-tool 的那个 `Renderer.Draw`：**整行接管**。
 //
 // 官方 keyed toolview 的语义就是"这个工具的整行由这个组件负责"，

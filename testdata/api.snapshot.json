@@ -632,6 +632,24 @@
       },
       "resp": "SettingsSectionView",
       "req_note": "path 省略 = 清整个 namespace；**显式 null 会被宿主拒绝**（invalid_path），所以客户端在 nil 时必须真的不写这个键。"
+    },
+    "skills.list": {
+      "batch": 3,
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": {
+        "skills": [
+          {
+            "path": "string?",
+            "name": "string",
+            "description": "string",
+            "whenToUse": "string?",
+            "modelInvocable": true
+          }
+        ]
+      },
+      "req_note": "2026-11-13（官方 dsh-api-session-controller 的 SessionSkillCatalog，namespace skills）。**按会话寻址**：目录随该会话的 cwd / agent preset 变，不能全局问一次。只列 `user-invocable` 为真的（frontmatter 缺省即 true，只有显式 false 才隐藏）；**不加载 SKILL.md 正文**（官方注释 without loading skill bodies）。`path` / `whenToUse` 可选。会话查不到 -> 404 not_found + details.sessionId；**空目录 = skills:[]，不是错误**。"
     }
   },
   "counts": {

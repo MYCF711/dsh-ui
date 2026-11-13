@@ -325,6 +325,12 @@ const (
 	// UpdateIndicatorSpinPeriodMS 是 `.spinner{animation:spin 1s linear infinite}`
 	// 的周期（毫秒；与连接指示的 spinner 1.5s 不是同一条，别混用）。
 	UpdateIndicatorSpinPeriodMS float32 = 1000
+	// UpdateErrorDotSize 是 `.errorDot{width:6px;height:6px;border-radius:50%}`。
+	//
+	// 它是官方 error 相里那枚 glyph：长在 14×14 的 `.icon`（grid + place-items:center）
+	// 里，颜色是 `background:currentColor`（= `.indicator` 的 brand 色）。
+	// **不是叉、不是感叹号**——照官方原样画一个实心圆点。
+	UpdateErrorDotSize float32 = 6
 )
 
 // ── 窄窗口（官方 <768px 全屏 + 横向 rail）───────────────────────────
@@ -478,6 +484,7 @@ var OfficialSettingsGeometry = []GeoRow{
 	{Node: "DesktopUpdateIndicator.indicator", Prop: "font-size", Official: 12, Impl: UpdateIndicatorFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:15"},
 	{Node: "DesktopUpdateIndicator.indicator", Prop: "line-height", Official: 18, Impl: UpdateIndicatorLineHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:17"},
 	{Node: "DesktopUpdateIndicator.spinner", Prop: "cycle-ms", Official: 1000, Impl: UpdateIndicatorSpinPeriodMS, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:48"},
+	{Node: "DesktopUpdateIndicator.errorDot", Prop: "size", Official: 6, Impl: UpdateErrorDotSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:47"},
 }
 
 // GeoCount 返回表里 aligned / derived / deviation 三种状态的行数。

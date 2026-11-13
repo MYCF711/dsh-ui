@@ -678,13 +678,41 @@
         "reason": "save|format|permission|apply|uncertain"
       },
       "req_note": "**失败走 result.kind 三态，不翻成 4xx**：官方把它放进 result（那是「用户选择被拒」，不是「请求写错了」）。`reason` 只在 kind=failed 时出现。"
+    },
+    "desktopUpdate.status": {
+      "batch": 3,
+      "req": {},
+      "resp": {
+        "phase": "idle|checking|available|error",
+        "version": "string?",
+        "percent": 0,
+        "failure": "configuration|check|check-network",
+        "configurationError": "read|format|channel|cleanup"
+      },
+      "req_note": "2026-11-14（官方 dsh-client-ui-settings-general/src/types.ts:21-27 的 `DesktopUpdatePresentation`，宿主 `desktopUpdate.status`）。**不阻塞**：冷缓存时回 `checking` 并在后台起一次检查，要**再问一次**才拿到结论。宿主只产 `idle/checking/available/error` 四态——没有下载器，`downloading/verifying/installing/ready` **永不出现**，`percent` 永远是 nil。`configurationError` **盖过其余一切**（官方渲染层 `DesktopUpdateIndicator.tsx:15` 先判它）。宿主没这条能力 -> 501（= 官方根本没有 updates 桥，界面整枚不渲染）。"
+    },
+    "desktopUpdate.open": {
+      "batch": 3,
+      "req": {},
+      "resp": {
+        "url": "string",
+        "channel": "stable|nightly",
+        "presentation": {
+          "phase": "idle|checking|available|error",
+          "version": "string?",
+          "percent": 0,
+          "failure": "configuration|check|check-network",
+          "configurationError": "read|format|channel|cleanup"
+        }
+      },
+      "req_note": "2026-11-14（官方 `DesktopUpdateBridge.open()`，宿主 `desktopUpdate.open`）。官方 `open(): Promise<void>` 自己弹原生更新面板；本仓没有下载器/安装器也**不在宿主侧开浏览器**，所以把更新入口**交出来**：`url` **一定非空**（有更新=那条 release 页，否则=releases 列表页），由界面唤起系统默认浏览器。这一次**绕过 TTL 真查一遍**（用户主动点的语义），并发点击仍走宿主单飞。"
     }
   },
   "counts": {
-    "total": 38,
+    "total": 43,
     "batch1": 15,
     "batch2": 10,
-    "batch3": 4,
+    "batch3": 9,
     "batch4": 2,
     "batch5": 1,
     "batch6": 6

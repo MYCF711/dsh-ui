@@ -71,9 +71,17 @@ const (
 type DesktopUpdateFailureKind string
 
 const (
-	DesktopUpdateFailureCheck          DesktopUpdateFailureKind = "check"
-	DesktopUpdateFailureCheckNetwork   DesktopUpdateFailureKind = "check-network"
-	DesktopUpdateFailureDownload       DesktopUpdateFailureKind = "download"
+	// DesktopUpdateFailureConfiguration 是壳级配置坏掉（官方 `'configuration'`）。
+	DesktopUpdateFailureConfiguration DesktopUpdateFailureKind = "configuration"
+	DesktopUpdateFailureCheck         DesktopUpdateFailureKind = "check"
+	DesktopUpdateFailureCheckNetwork  DesktopUpdateFailureKind = "check-network"
+	DesktopUpdateFailureDownload      DesktopUpdateFailureKind = "download"
+	// DesktopUpdateFailureDownloadSpace 是磁盘满（官方 `'download-space'`）。
+	DesktopUpdateFailureDownloadSpace DesktopUpdateFailureKind = "download-space"
+	// DesktopUpdateFailureDownloadPermission 是写不进更新目录（官方 `'download-permission'`）。
+	DesktopUpdateFailureDownloadPermission DesktopUpdateFailureKind = "download-permission"
+	// DesktopUpdateFailureDownloadBusy 是更新文件被占用（官方 `'download-busy'`）。
+	DesktopUpdateFailureDownloadBusy   DesktopUpdateFailureKind = "download-busy"
 	DesktopUpdateFailureDownloadNet    DesktopUpdateFailureKind = "download-network"
 	DesktopUpdateFailureInstall        DesktopUpdateFailureKind = "install"
 	DesktopUpdateFailureInstallNetwork DesktopUpdateFailureKind = "install-network"
@@ -95,6 +103,14 @@ type DesktopUpdatePresentation struct {
 	Percent int
 	// Failure 是错误阶段的具体错因（官方 `state.failure`）。
 	Failure DesktopUpdateFailureKind
+	// ConfigurationError 是壳渠道的故障码（官方 `state.configurationError`：
+	// read / format / channel / cleanup）。
+	//
+	// 官方渲染层**先判它**（`DesktopUpdateIndicator.tsx:15`）：一旦非空，
+	// phase / version / percent / failure 全部被忽略，label 固定成
+	// `desktop.channel.unavailable`（zh「配置不可用」）。所以它不是"另一个错因"，
+	// 而是盖过其余一切的那一条。
+	ConfigurationError string
 	// Failed 是官方 `view.failed`：桥接/更新器本身失败，界面转成「重试更新」。
 	Failed bool
 	// Opening 是官方 `view.opening`：用户点了更新入口、更新面板正在打开（busy）。

@@ -13,8 +13,8 @@
 //	   │     │  └─ renderSlot('settings.launcher.notifications',
 //	   │     │       {active: signedIn && !onboarding, openAccount})   ← 本插件的槽
 //	   │     └─ Menu 触发器（avatar 24 + label）  AccountMenu.tsx:62-72
-//	   ├─ ConnectionIndicator            （未实现，登记为差距）
-//	   └─ DesktopUpdateIndicator         （未实现，登记为差距）
+//	   ├─ ConnectionIndicator            dsstatusbar（`sidebar.settings` 的第二格）
+//	   └─ DesktopUpdateIndicator         dssettings/official_update.go（第三格，已实现）
 //
 // 官方把"何时可见"交给父级：`active` 由账号菜单给，`wide` 决定整段 `hidden`。
 // 本文件就是那两级父容器的 Go 复刻——**第三层（通知卡片）仍是本插件已有的
@@ -148,8 +148,9 @@ func launcherRowHeight(st AccountState) float32 {
 //
 // 它只做一件事：把 `settings.launcher` 槽真的 dispatch 出来（`renderSlot`）。
 // 官方这一行里还有 ConnectionIndicator / DesktopUpdateIndicator：连接指示由
-// dsstatusbar 画在同一行（`sidebar.settings` 槽的第二个子项），更新指示本仓没有
-// （登记为差距），所以这里不画它，也不留占位空白。
+// dsstatusbar 画在同一行（`sidebar.settings` 槽的第二个子项），更新指示由
+// dssettings 画在第三个子项（`plugins/dssettings/official_update.go`，Order 62）——
+// 两者都是 `sidebar.settings` 槽上的画家，不由本容器画，也不留占位空白。
 //
 // **不再按档位让位**：壳现在在**所有**绘制路径下都画「设置行」那一行
 // （uikernel 官方骨架 / uikernel 兼容桥 / dsshell 旧三栏），本容器是那一行的

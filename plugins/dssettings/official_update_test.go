@@ -1,14 +1,19 @@
 package dssettings
 
-// official_update_test.go —— 官方 `DesktopUpdateIndicator`（设置行第 3 格）的断言。
+// official_update_test.go —— 官方 `DesktopUpdateIndicator`（设置行第 3 格）的行为断言。
 //
-// 五条判据（全部对官方 rc.2 源码）：
+// 八组判据（全部对官方 rc.2 源码）：
 //
-//	① 可见性：`!wide || hidden || (state undefined || phase idle)` → 整枚不画；
-//	② 几何：28 高 / 左右 8 / 图标 14 + gap4 / 12-18 字 / brand 描边 20% + 底 8%；
-//	③ 文案：官方 zh 的 desktop.update.* 逐字（含进度百分比）；
-//	④ 真画：有呈现时画到画布上（文字 + 14px glyph），没有时画布上什么都没有；
-//	⑤ busy spinner：官方 `.spinner{animation:spin 1s linear infinite}`——不同时刻角度不同。
+//	① 可见性：`!wide || hidden || (!failed && (state undefined || (idle && 无 configurationError)))`
+//	   → 整枚不画；
+//	② 几何：28 高 / 左右 8 / 图标 14 + gap4 / 12-18 字 / brand 描边 20% + 底 8% / 错因点 6；
+//	③ 文案：官方 zh 的 desktop.update.* 逐字（含 tooltip 的版本号与 14 档错因）；
+//	④ 真画：available 相画官方 label + 14px glyph，且 tooltip 带上版本号；
+//	⑤ error 相画的是**错因点**（6px 实心圆），不是下载图标；
+//	⑥ configurationError 盖过一切（连 idle 都要画，label 是「配置不可用」）；
+//	⑦ 点击：真按钮（命中区 + aria-label）+ 真动作（Actions.DesktopUpdateOpen）；
+//	   busy / opening 期间 `aria-disabled`，点了不触发；
+//	⑧ busy spinner：官方 `.spinner{animation:spin 1s linear infinite}`。
 
 import (
 	"math"
@@ -22,35 +27,59 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
-// updateFrame 装配 dssettings 并画一帧 `sidebar.settings` 槽（官方设置行）。
-func updateFrame(t *testing.T, data pluginapi.Snapshot) *gfx.Canvas {
+// updateHarness 是这一格的最小画布：设置行容器 + 只画「更新指示」那一个画家。
+type updateHarness struct {
+	kernel *uikernel.Kernel
+	tree   *gfx.Tree
+	feat   gfx.Scope
+	theme  *pluginapi.Theme
+	// act 是本帧注入的壳动作（nil 动作 = 老壳，插件不该画命中区）。
+	act pluginapi.Actions
+	// hit 非空时，这一帧是那个命中区的**点击事件帧**。
+	hit string
+}
+
+func newUpdateHarness(t *testing.T) *updateHarness {
 	t.Helper()
 	kernel := uikernel.New("settings-update")
 	if err := kernel.Load(&dscore.Plugin{Dark: true}, &Plugin{}); err != nil {
 		t.Fatalf("装配失败：%v", err)
 	}
-	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	tree := &gfx.Tree{}
-	feat := tree.Feature("settings-update")
+	return &updateHarness{
+		kernel: kernel,
+		tree:   tree,
+		feat:   tree.Feature("settings-update"),
+		theme:  kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme),
+	}
+}
+
+// frame 画一帧，返回这一帧的画布。
+func (h *updateHarness) frame(t *testing.T, data pluginapi.Snapshot) *gfx.Canvas {
+	t.Helper()
 	canvas := &gfx.Canvas{}
-	canvas.SetTree(tree)
+	canvas.SetTree(h.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
 	})
 	bounds := gfx.Rect{Width: 320, Height: 60}
 	env := &pluginapi.Env{
-		Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
+		Theme: h.theme, Data: data, Act: h.act, Tree: h.tree, Feat: h.feat, Canvas: canvas,
 		Bounds: bounds, MainWidth: bounds.Width,
 		Geometry: pluginapi.Geometry{Width: bounds.Width, Height: bounds.Height, MainWidth: bounds.Width},
-		Has:      kernel.Has,
+		Has:      h.kernel.Has,
+	}
+	if h.hit != "" {
+		canvas.BeginEventPass(h.tree.ID(h.feat, h.hit), gfx.ClickInfo{})
+		defer canvas.EndEventPass()
 	}
 	var view ui.Page
 	view.Draw(canvas, bounds, func(f ui.C) {
-		// 设置行是一个 Row（壳画容器，插件画格子）；这里直接按行画三个画家。
+		// 设置行是一个 Row（壳画容器，插件画格子）；这里直接按行画。
 		ui.Row(f).Items(ui.Center).Gap(SettingsTriggerRowGapForTest).Children(func() {
 			// 只画本单负责的那一格（设置触发器由 dsnotifications 的启动器或
 			// fallback 负责，画进来会污染"有没有文字"的断言）。
-			for _, painter := range kernel.Painters(uikernel.OffSidebarSettings) {
+			for _, painter := range h.kernel.Painters(uikernel.OffSidebarSettings) {
 				if painter.ID == "settings-desktop-update" && painter.Draw != nil {
 					painter.Draw(f, env)
 				}
@@ -60,10 +89,37 @@ func updateFrame(t *testing.T, data pluginapi.Snapshot) *gfx.Canvas {
 	return canvas
 }
 
+// click 模拟"用户点了一下这枚指示器"：先画一帧让命中区就位（viva 的事件 pass
+// 需要上一帧的命中区），再画这一帧事件 pass。
+func (h *updateHarness) click(t *testing.T, data pluginapi.Snapshot) *gfx.Canvas {
+	t.Helper()
+	h.hit = ""
+	h.frame(t, data)
+	h.hit = "settings-desktop-update"
+	return h.frame(t, data)
+}
+
+// updatePillHit 取这一帧的指示器命中区（没有就返回 false）。
+func updatePillHit(canvas *gfx.Canvas, tree *gfx.Tree, feat gfx.Scope) (gfx.Hit, bool) {
+	id := tree.ID(feat, "settings-desktop-update")
+	for _, hit := range canvas.Hits() {
+		if hit.ID == id {
+			return hit, true
+		}
+	}
+	return gfx.Hit{}, false
+}
+
+// updateFrame 装配 dssettings 并画一帧（旧入口，保持既有断言可读）。
+func updateFrame(t *testing.T, data pluginapi.Snapshot) *gfx.Canvas {
+	t.Helper()
+	return newUpdateHarness(t).frame(t, data)
+}
+
 // SettingsTriggerRowGapForTest 只为测试里的行容器服务（官方 8）。
 const SettingsTriggerRowGapForTest float32 = 8
 
-// ① 可见性：官方 `DesktopUpdateIndicator.tsx:66` 的三条判据。
+// ① 可见性：官方 `DesktopUpdateIndicator.tsx:70` 的那四条判据。
 func TestDesktopUpdateVisibilityFollowsOfficialRule(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -119,6 +175,21 @@ func TestDesktopUpdateVisibilityFollowsOfficialRule(t *testing.T) {
 			want: true,
 			why:  "官方此时 connectionIndicator 已回到 undefined（2s 确认窗走完）",
 		},
+		{
+			name: "壳说桥坏了（failed）也要画",
+			data: pluginapi.Snapshot{Link: pluginapi.LinkConnected,
+				DesktopUpdate: &pluginapi.DesktopUpdatePresentation{Failed: true}},
+			want: true,
+			why:  "官方 `!failed && …` —— failed 时整条 copy 换成「重试更新」，不能因为 state undefined 就不画",
+		},
+		{
+			name: "配置坏掉的 idle 相要画",
+			data: pluginapi.Snapshot{Link: pluginapi.LinkConnected,
+				DesktopUpdate: &pluginapi.DesktopUpdatePresentation{
+					Phase: pluginapi.DesktopUpdateIdle, ConfigurationError: "channel"}},
+			want: true,
+			why:  "官方 :70 的 `&& state.configurationError === undefined`：配置坏了正是最该看见提示的时候",
+		},
 	} {
 		if got := desktopUpdateVisible(tc.data); got != tc.want {
 			t.Errorf("%s：visible = %v，want %v（%s）", tc.name, got, tc.want, tc.why)
@@ -144,13 +215,14 @@ func TestDesktopUpdateGeometryMatchesOfficial(t *testing.T) {
 		{"font-size", UpdateIndicatorFontSize, 12, ".indicator{font-size:12px}"},
 		{"line-height", UpdateIndicatorLineHeight, 18, ".indicator{line-height:18px}"},
 		{"spin", UpdateIndicatorSpinPeriodMS, 1000, ".spinner{animation:spin 1s linear infinite}"},
+		{"error-dot", UpdateErrorDotSize, 6, ".errorDot{width:6px;height:6px}"},
 	}
 	for _, check := range checks {
 		if check.got != check.want {
 			t.Errorf("%s = %v，官方 %v（%s）", check.name, check.got, check.want, check.why)
 		}
 	}
-	// 几何表里 9 行必须都在册且 aligned（与官方 CSS 一一对应）。
+	// 几何表里这些行必须都在册且 aligned（与官方 CSS 一一对应）。
 	wantRows := []string{
 		"height", "padding-inline", "column-gap", "border-width", "border-tint",
 		"background-tint", "font-size", "line-height",
@@ -173,11 +245,22 @@ func TestDesktopUpdateGeometryMatchesOfficial(t *testing.T) {
 			t.Errorf("几何表缺 DesktopUpdateIndicator.indicator/%s", prop)
 		}
 	}
-	if row, ok := findGeoRow("DesktopUpdateIndicator.icon", "size"); !ok || row.Impl != 14 {
-		t.Errorf("几何表缺 DesktopUpdateIndicator.icon/size=14")
-	}
-	if row, ok := findGeoRow("DesktopUpdateIndicator.spinner", "cycle-ms"); !ok || row.Impl != 1000 {
-		t.Errorf("几何表缺 DesktopUpdateIndicator.spinner/cycle-ms=1000")
+	for _, tc := range []struct {
+		node, prop string
+		want       float32
+	}{
+		{"DesktopUpdateIndicator.icon", "size", 14},
+		{"DesktopUpdateIndicator.spinner", "cycle-ms", 1000},
+		{"DesktopUpdateIndicator.errorDot", "size", 6},
+	} {
+		row, ok := findGeoRow(tc.node, tc.prop)
+		if !ok {
+			t.Errorf("几何表缺 %s/%s", tc.node, tc.prop)
+			continue
+		}
+		if row.Status != GeoAligned || row.Impl != tc.want {
+			t.Errorf("%s/%s = %v（%v），want aligned %v", tc.node, tc.prop, row.Impl, row.Status, tc.want)
+		}
 	}
 }
 
@@ -209,14 +292,18 @@ func TestDesktopUpdateLabelsMatchOfficialCopy(t *testing.T) {
 			t.Errorf("label(%v) = %q，官方 zh 文案 %q", tc.state.Phase, got, tc.want)
 		}
 	}
-	// 错因文案也是逐字（locales.ts:16-25）。
+	// 错因文案也是逐字（locales.ts:36-48 全 14 档）。
 	for _, tc := range []struct {
 		kind pluginapi.DesktopUpdateFailureKind
 		want string
 	}{
+		{pluginapi.DesktopUpdateFailureConfiguration, "未能应用更新配置。请点击桌面更新入口查看原因。"},
 		{pluginapi.DesktopUpdateFailureCheck, "检查更新失败，请稍后重试。"},
 		{pluginapi.DesktopUpdateFailureCheckNetwork, "检查更新失败，请检查网络连接后重试。"},
 		{pluginapi.DesktopUpdateFailureDownload, "下载更新失败，请重试。"},
+		{pluginapi.DesktopUpdateFailureDownloadSpace, "磁盘空间不足，无法下载更新。请释放空间后重试。"},
+		{pluginapi.DesktopUpdateFailureDownloadPermission, "无法写入更新文件，请检查目录权限后重试。"},
+		{pluginapi.DesktopUpdateFailureDownloadBusy, "更新文件正被占用，请关闭占用它的程序后重试。"},
 		{pluginapi.DesktopUpdateFailureDownloadNet, "下载更新失败，请检查网络连接后重试。"},
 		{pluginapi.DesktopUpdateFailureInstall, "安装更新失败，请稍后重试。"},
 		{pluginapi.DesktopUpdateFailureInstallNetwork, "安装更新失败，请检查网络连接后重试。"},
@@ -229,20 +316,128 @@ func TestDesktopUpdateLabelsMatchOfficialCopy(t *testing.T) {
 			t.Errorf("failure(%v) = %q，官方 zh %q", tc.kind, got, tc.want)
 		}
 	}
+	// `?? 'install'` 的兜底只覆盖"没给 failure"；给了但不在词表里时官方是
+	// `undefined`（tooltip 什么都不显示），我们回到空串。
+	if got := zhUpdateFailure(""); got != "安装更新失败，请稍后重试。" {
+		t.Errorf("failure 为空应兜底 install 文案，实得 %q", got)
+	}
+	if got := zhUpdateFailure("no-such-kind"); got != "" {
+		t.Errorf("词表外的 failure 应回到空串（官方 undefined），实得 %q", got)
+	}
+	// 配置错四句（locales.ts:21-24）。未知码同样是空串。
+	for _, tc := range []struct {
+		code, want string
+	}{
+		{"read", "更新已暂停：无法读取配置文件"},
+		{"format", "更新已暂停：配置文件格式有误"},
+		{"channel", "更新已暂停：channel 只能是 nightly 或 stable"},
+		{"cleanup", "更新已暂停：无法清理旧更新，请重启应用"},
+		{"no-such-code", ""},
+	} {
+		if got := zhUpdateConfiguration(tc.code); got != tc.want {
+			t.Errorf("configuration(%q) = %q，want %q", tc.code, got, tc.want)
+		}
+	}
 }
 
-// ④ 真画：有呈现 → 文字 + 14px glyph；无呈现 → 画布空白。
+// ③b `updateCopy()` 整条分派：label/detail 一对，逐条对官方 `DesktopUpdateIndicator.tsx:14-55`。
+func TestDesktopUpdateCopyMatchesOfficialDispatch(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		state  *pluginapi.DesktopUpdatePresentation
+		label  string
+		detail string
+	}{
+		{
+			name:   "available 带版本：版本号在 detail（官方 versionDetail 全角冒号）",
+			state:  &pluginapi.DesktopUpdatePresentation{Phase: pluginapi.DesktopUpdateAvailable, Version: "0.2.2-go.3"},
+			label:  "新版本",
+			detail: "新版本：0.2.2-go.3",
+		},
+		{
+			name:   "available 没版本：detail 退回 label",
+			state:  &pluginapi.DesktopUpdatePresentation{Phase: pluginapi.DesktopUpdateAvailable},
+			label:  "新版本",
+			detail: "新版本",
+		},
+		{
+			name:   "checking 的 detail 是 version ?? label",
+			state:  &pluginapi.DesktopUpdatePresentation{Phase: pluginapi.DesktopUpdateChecking},
+			label:  "正在检查更新…",
+			detail: "正在检查更新…",
+		},
+		{
+			name:   "checking 带 version 时 detail 就是 version",
+			state:  &pluginapi.DesktopUpdatePresentation{Phase: pluginapi.DesktopUpdateChecking, Version: "0.2.2-go.3"},
+			label:  "正在检查更新…",
+			detail: "0.2.2-go.3",
+		},
+		{
+			name:   "error：label 是重试，detail 是错因分类文案",
+			state:  &pluginapi.DesktopUpdatePresentation{Phase: pluginapi.DesktopUpdateError, Failure: pluginapi.DesktopUpdateFailureCheckNetwork},
+			label:  "重试更新",
+			detail: "检查更新失败，请检查网络连接后重试。",
+		},
+		{
+			name:   "error 没给 failure：按 install 兜底",
+			state:  &pluginapi.DesktopUpdatePresentation{Phase: pluginapi.DesktopUpdateError},
+			label:  "重试更新",
+			detail: "安装更新失败，请稍后重试。",
+		},
+		{
+			name: "configurationError 盖过 phase 与 failure",
+			state: &pluginapi.DesktopUpdatePresentation{
+				Phase: pluginapi.DesktopUpdateError, Failure: pluginapi.DesktopUpdateFailureCheck,
+				ConfigurationError: "format"},
+			label:  "配置不可用",
+			detail: "更新已暂停：配置文件格式有误",
+		},
+		{
+			name: "configurationError 在 idle 上也生效",
+			state: &pluginapi.DesktopUpdatePresentation{
+				Phase: pluginapi.DesktopUpdateIdle, ConfigurationError: "read"},
+			label:  "配置不可用",
+			detail: "更新已暂停：无法读取配置文件",
+		},
+		{
+			name: "downloading 的 detail 是 downloadDetail（两行，percent 在前）",
+			state: &pluginapi.DesktopUpdatePresentation{
+				Phase: pluginapi.DesktopUpdateDownloading, Percent: 42, Version: "0.2.2-go.3"},
+			label:  "42%",
+			detail: "正在下载更新：42%\n目标版本：0.2.2-go.3",
+		},
+		{
+			name:   "nil（桥失败）：label 与 detail 都是重试更新",
+			state:  nil,
+			label:  "重试更新",
+			detail: "重试更新",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := updateCopy(tc.state)
+			if got.Label != tc.label || got.Detail != tc.detail {
+				t.Fatalf("updateCopy = {%q, %q}，官方 = {%q, %q}",
+					got.Label, got.Detail, tc.label, tc.detail)
+			}
+		})
+	}
+}
+
+// ④ 真画：available 相画官方 label，tooltip（= 命中区 Hint）带上版本号；
+// 无呈现时画布空白。
 func TestDesktopUpdatePaintsOnlyWithRealPresentation(t *testing.T) {
 	canvas := updateFrame(t, pluginapi.Snapshot{Link: pluginapi.LinkConnected})
 	if texts := canvas.Texts(); len(texts) != 0 {
 		t.Fatalf("没有呈现时不该画任何文字，实得 %v", texts)
 	}
 
+	h := newUpdateHarness(t)
+	h.act = pluginapi.Actions{DesktopUpdateOpen: func() {}}
 	data := pluginapi.Snapshot{Link: pluginapi.LinkConnected,
 		DesktopUpdate: &pluginapi.DesktopUpdatePresentation{
-			Phase: pluginapi.DesktopUpdateAvailable, Version: "0.2.2-go.9",
+			Phase: pluginapi.DesktopUpdateAvailable, Version: "0.2.2-go.3",
 		}}
-	canvas = updateFrame(t, data)
+	canvas = h.frame(t, data)
 	var label gfx.Text
 	found := false
 	for _, text := range canvas.Texts() {
@@ -252,6 +447,17 @@ func TestDesktopUpdatePaintsOnlyWithRealPresentation(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("新版本相没画官方文案 %q，实得 %v", zhUpdateAvailable, textValues(canvas))
+	}
+	// 版本号在 tooltip 里（官方 `desktop.update.versionDetail` = "{label}：{version}"）。
+	hit, ok := updatePillHit(canvas, h.tree, h.feat)
+	if !ok {
+		t.Fatal("available 相没有命中区（官方是 <button>）")
+	}
+	if want := "新版本：0.2.2-go.3"; hit.Hint != want {
+		t.Fatalf("tooltip = %q，官方 versionDetail 文案 %q", hit.Hint, want)
+	}
+	if hit.Label != zhUpdateAvailable {
+		t.Fatalf("aria-label = %q，官方 `aria-label={label}` = %q", hit.Label, zhUpdateAvailable)
 	}
 	// 图标在文字左侧 4px（官方 column-gap:4px）+ 14px。
 	iconX := label.Bounds.X - UpdateIndicatorGap - UpdateIndicatorIconSize
@@ -272,7 +478,146 @@ func TestDesktopUpdatePaintsOnlyWithRealPresentation(t *testing.T) {
 	}
 }
 
-// ⑤ busy spinner：官方 `.spinner{animation:spin 1s linear infinite}`。
+// ⑤ error 相画的是**错因点**：官方 `.errorDot{width:6px;height:6px;border-radius:50%}`，
+// 长在 14×14 的 `.icon` 里；此时**不画**下载图标。
+func TestDesktopUpdateErrorPaintsErrorDotNotIcon(t *testing.T) {
+	h := newUpdateHarness(t)
+	h.act = pluginapi.Actions{DesktopUpdateOpen: func() {}}
+	data := pluginapi.Snapshot{Link: pluginapi.LinkConnected,
+		DesktopUpdate: &pluginapi.DesktopUpdatePresentation{
+			Phase: pluginapi.DesktopUpdateError, Failure: pluginapi.DesktopUpdateFailureCheck,
+		}}
+	canvas := h.frame(t, data)
+
+	var label gfx.Text
+	for _, text := range canvas.Texts() {
+		if text.Value == zhUpdateRetry {
+			label = text
+		}
+	}
+	if label.Value == "" {
+		t.Fatalf("error 相的 label 应是官方 %q，实得 %v", zhUpdateRetry, textValues(canvas))
+	}
+	// 错因点在图标格里：找到一枚 6×6 的矩形。
+	iconX := label.Bounds.X - UpdateIndicatorGap - UpdateIndicatorIconSize
+	dotOK := false
+	for _, rect := range canvas.Rectangles() {
+		if math.Abs(float64(rect.Bounds.Width-UpdateErrorDotSize)) <= 0.5 &&
+			math.Abs(float64(rect.Bounds.Height-UpdateErrorDotSize)) <= 0.5 &&
+			rect.Bounds.X >= iconX-0.5 && rect.Bounds.X <= label.Bounds.X {
+			dotOK = true
+		}
+	}
+	if !dotOK {
+		t.Fatalf("error 相没画 %vpx 的错因点（官方 .errorDot）；rects=%+v",
+			UpdateErrorDotSize, canvas.Rectangles())
+	}
+	// 官方的三选一里 error 排最前：这时**不该**有下载 glyph（三角形）。
+	if n := opaqueTrianglesIn(canvas, gfx.Rect{X: iconX, Y: 0, Width: UpdateIndicatorIconSize, Height: 60}); n != 0 {
+		t.Fatalf("error 相还画了 %d 个 glyph 三角形——官方是 error → busy → download 三选一", n)
+	}
+	// 错因文案进 tooltip。
+	hit, ok := updatePillHit(canvas, h.tree, h.feat)
+	if !ok {
+		t.Fatal("error 相没有命中区")
+	}
+	if want := "检查更新失败，请稍后重试。"; hit.Hint != want {
+		t.Fatalf("tooltip = %q，官方 checkFailed 文案 %q", hit.Hint, want)
+	}
+}
+
+// ⑥ 壳报 failed（桥存在但调用失败）：官方整条 copy 换成「重试更新」。
+func TestDesktopUpdateFailedBridgeShowsRetryCopy(t *testing.T) {
+	h := newUpdateHarness(t)
+	h.act = pluginapi.Actions{DesktopUpdateOpen: func() {}}
+	canvas := h.frame(t, pluginapi.Snapshot{Link: pluginapi.LinkConnected,
+		DesktopUpdate: &pluginapi.DesktopUpdatePresentation{Failed: true}})
+	if got := textValues(canvas); len(got) == 0 || got[0] != zhUpdateRetry {
+		t.Fatalf("failed 相文案 = %v，官方 %q", got, zhUpdateRetry)
+	}
+	hit, ok := updatePillHit(canvas, h.tree, h.feat)
+	if !ok {
+		t.Fatal("failed 相没有命中区")
+	}
+	if hit.Hint != zhUpdateRetry {
+		t.Fatalf("failed 相 tooltip = %q，官方用 retryLabel 顶替 detail", hit.Hint)
+	}
+}
+
+// ⑦ 点击：真按钮 + 真动作（官方 `<button onClick={onOpen}>`）。
+//
+// 只断言"画出来了"不够——`Clicked()` 没接动作时界面完全正常、点了没反应，
+// 那正是任务书要拆掉的"假动作"。
+func TestDesktopUpdateClickInvokesOpen(t *testing.T) {
+	h := newUpdateHarness(t)
+	opens := 0
+	h.act = pluginapi.Actions{DesktopUpdateOpen: func() { opens++ }}
+	data := pluginapi.Snapshot{Link: pluginapi.LinkConnected,
+		DesktopUpdate: &pluginapi.DesktopUpdatePresentation{
+			Phase: pluginapi.DesktopUpdateAvailable, Version: "0.2.2-go.3"}}
+	canvas := h.click(t, data)
+	if opens != 1 {
+		t.Fatalf("点一下指示器应发起 1 次真实 open，实际 %d 次", opens)
+	}
+	hit, ok := updatePillHit(canvas, h.tree, h.feat)
+	if !ok {
+		t.Fatal("available 相没有命中区")
+	}
+	if hit.Disabled {
+		t.Fatal("available 相不该是 disabled（官方只在 opening / busy 时禁用）")
+	}
+	if hit.Cursor != gfx.PointerCursorHand {
+		t.Fatalf("cursor = %v，官方 `.indicator{cursor:pointer}` 是 Hand", hit.Cursor)
+	}
+}
+
+// ⑦b busy / opening 期间 `aria-disabled`：官方点了不触发。
+func TestDesktopUpdateBusyAndOpeningAreDisabled(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		state *pluginapi.DesktopUpdatePresentation
+	}{
+		{"checking（BUSY_PHASES）", &pluginapi.DesktopUpdatePresentation{Phase: pluginapi.DesktopUpdateChecking}},
+		{"opening（动作在飞）", &pluginapi.DesktopUpdatePresentation{Phase: pluginapi.DesktopUpdateAvailable, Opening: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newUpdateHarness(t)
+			opens := 0
+			h.act = pluginapi.Actions{DesktopUpdateOpen: func() { opens++ }}
+			canvas := h.click(t, pluginapi.Snapshot{Link: pluginapi.LinkConnected, DesktopUpdate: tc.state})
+			if opens != 0 {
+				t.Fatalf("disabled 期间点了应无动作，实际 %d 次", opens)
+			}
+			hit, ok := updatePillHit(canvas, h.tree, h.feat)
+			if !ok {
+				t.Fatal("这一相仍要画命中区（官方画的是 aria-disabled 的按钮，不是不画）")
+			}
+			if !hit.Disabled {
+				t.Fatal("官方 disabled 时应带 aria-disabled=true")
+			}
+			// 官方 `.indicator[aria-disabled='true']{cursor:default}`。
+			if hit.Cursor != gfx.PointerCursorDefault {
+				t.Fatalf("disabled 的 cursor = %v，官方是 default", hit.Cursor)
+			}
+		})
+	}
+}
+
+// ⑦c 壳没接 open：像素照画，但**不画命中区**（不留假按钮）。
+func TestDesktopUpdateWithoutActionDrawsNoHit(t *testing.T) {
+	h := newUpdateHarness(t)
+	canvas := h.frame(t, pluginapi.Snapshot{Link: pluginapi.LinkConnected,
+		DesktopUpdate: &pluginapi.DesktopUpdatePresentation{
+			Phase: pluginapi.DesktopUpdateAvailable, Version: "0.2.2-go.3"}})
+	if got := textValues(canvas); len(got) == 0 || got[0] != zhUpdateAvailable {
+		t.Fatalf("壳没接动作时仍应画官方像素，实得 %v", got)
+	}
+	if _, ok := updatePillHit(canvas, h.tree, h.feat); ok {
+		t.Fatal("壳没接 DesktopUpdateOpen 却画了命中区——点了没反应比不画更坏")
+	}
+}
+
+// ⑧ busy spinner：官方 `.spinner{animation:spin 1s linear infinite}`。
 func TestDesktopUpdateBusySpinnerRotates(t *testing.T) {
 	t0 := time.Unix(0, 0)
 	a := updateSpinRadians(t0)
@@ -305,6 +650,15 @@ func TestDesktopUpdateBusySpinnerRotates(t *testing.T) {
 		if state.Busy() {
 			t.Errorf("%v 不该是 busy", phase)
 		}
+	}
+	// 官方 `busy` 里 `configurationError === undefined` 是并列条件：配置坏了不禁用。
+	configured := &pluginapi.DesktopUpdatePresentation{
+		Phase: pluginapi.DesktopUpdateChecking, ConfigurationError: "read"}
+	if desktopUpdateBusy(configured) {
+		t.Error("configurationError 非空时官方不按 busy 处理（要点它可以去看配置错在哪）")
+	}
+	if desktopUpdateDisabled(configured) {
+		t.Error("configurationError 非空时官方不禁用按钮")
 	}
 }
 

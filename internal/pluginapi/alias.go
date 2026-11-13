@@ -61,24 +61,28 @@ const (
 
 	// 桌面更新的阶段与错因（官方 `DesktopUpdatePresentation['phase']` /
 	// `DesktopUpdateFailureKind` 逐值）：纯转发公开包的常量。
-	DesktopUpdateIdle                  = pub.DesktopUpdateIdle
-	DesktopUpdateChecking              = pub.DesktopUpdateChecking
-	DesktopUpdateAvailable             = pub.DesktopUpdateAvailable
-	DesktopUpdateDownloading           = pub.DesktopUpdateDownloading
-	DesktopUpdateVerifying             = pub.DesktopUpdateVerifying
-	DesktopUpdateInstalling            = pub.DesktopUpdateInstalling
-	DesktopUpdateReady                 = pub.DesktopUpdateReady
-	DesktopUpdateError                 = pub.DesktopUpdateError
-	DesktopUpdateFailureCheck          = pub.DesktopUpdateFailureCheck
-	DesktopUpdateFailureCheckNetwork   = pub.DesktopUpdateFailureCheckNetwork
-	DesktopUpdateFailureDownload       = pub.DesktopUpdateFailureDownload
-	DesktopUpdateFailureDownloadNet    = pub.DesktopUpdateFailureDownloadNet
-	DesktopUpdateFailureInstall        = pub.DesktopUpdateFailureInstall
-	DesktopUpdateFailureInstallNetwork = pub.DesktopUpdateFailureInstallNetwork
-	DesktopUpdateFailureStopFailed     = pub.DesktopUpdateFailureStopFailed
-	DesktopUpdateFailureTasksChanged   = pub.DesktopUpdateFailureTasksChanged
-	DesktopUpdateFailureTasksUnavail   = pub.DesktopUpdateFailureTasksUnavail
-	DesktopUpdateFailureFullscreen     = pub.DesktopUpdateFailureFullscreen
+	DesktopUpdateIdle                      = pub.DesktopUpdateIdle
+	DesktopUpdateChecking                  = pub.DesktopUpdateChecking
+	DesktopUpdateAvailable                 = pub.DesktopUpdateAvailable
+	DesktopUpdateDownloading               = pub.DesktopUpdateDownloading
+	DesktopUpdateVerifying                 = pub.DesktopUpdateVerifying
+	DesktopUpdateInstalling                = pub.DesktopUpdateInstalling
+	DesktopUpdateReady                     = pub.DesktopUpdateReady
+	DesktopUpdateError                     = pub.DesktopUpdateError
+	DesktopUpdateFailureConfiguration      = pub.DesktopUpdateFailureConfiguration
+	DesktopUpdateFailureCheck              = pub.DesktopUpdateFailureCheck
+	DesktopUpdateFailureCheckNetwork       = pub.DesktopUpdateFailureCheckNetwork
+	DesktopUpdateFailureDownload           = pub.DesktopUpdateFailureDownload
+	DesktopUpdateFailureDownloadSpace      = pub.DesktopUpdateFailureDownloadSpace
+	DesktopUpdateFailureDownloadPermission = pub.DesktopUpdateFailureDownloadPermission
+	DesktopUpdateFailureDownloadBusy       = pub.DesktopUpdateFailureDownloadBusy
+	DesktopUpdateFailureDownloadNet        = pub.DesktopUpdateFailureDownloadNet
+	DesktopUpdateFailureInstall            = pub.DesktopUpdateFailureInstall
+	DesktopUpdateFailureInstallNetwork     = pub.DesktopUpdateFailureInstallNetwork
+	DesktopUpdateFailureStopFailed         = pub.DesktopUpdateFailureStopFailed
+	DesktopUpdateFailureTasksChanged       = pub.DesktopUpdateFailureTasksChanged
+	DesktopUpdateFailureTasksUnavail       = pub.DesktopUpdateFailureTasksUnavail
+	DesktopUpdateFailureFullscreen         = pub.DesktopUpdateFailureFullscreen
 
 	SlotShellRoot     = pub.SlotShellRoot
 	SlotShellLeading  = pub.SlotShellLeading

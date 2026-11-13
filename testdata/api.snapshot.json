@@ -2,7 +2,7 @@
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,
   "input_style": "flat",
-  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method>。入参一律**平铺**：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构。v2（2026-11-04）按真宿主当前实现重写：stream 段原来的 {t:ev,kind,topic} + gap 帧是**错的**，真形状是 {seq,type,data,time} 且服务端不发 gap；方法表 25 个；rc.2 追加 4 个（account 通知三件套 + agentTeams.setEnabled），共 29 个。",
+  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method>。入参一律**平铺**：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构。v2（2026-11-04）按真宿主当前实现重写：stream 段原来的 {t:ev,kind,topic} + gap 帧是**错的**，真形状是 {seq,type,data,time} 且服务端不发 gap；方法表随实现增补（2026-11-14 实测 43 个，以 counts.total 为准；本段不再复述数字，免得又漂）。",
   "envelope": {
     "request": {
       "style": "flat",

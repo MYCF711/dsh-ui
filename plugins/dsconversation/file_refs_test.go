@@ -10,7 +10,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func fileRefsToolMessage(tool, key, path string) apiclient.Message {
@@ -114,8 +114,8 @@ func TestFileRefsMissingCwdDoesNotGuessRelativePath(t *testing.T) {
 
 func TestFileRefsMarkdownCacheReusesFramesAndTracksCWD(t *testing.T) {
 	p := newStreamingMarkdownTestPlugin()
-	canvas := &ui.Canvas{}
-	canvas.SetTree(&ui.Tree{})
+	canvas := &gfx.Canvas{}
+	canvas.SetTree(&gfx.Tree{})
 	measurements := 0
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		measurements++

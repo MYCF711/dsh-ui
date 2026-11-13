@@ -22,7 +22,7 @@ package dsagentteam
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -39,7 +39,7 @@ const (
 // drawConfirm 画停用确认。slot ③（shell.overlay）的 painter。
 //
 // 守卫只有一条：`request === null → null`（官方 TeamDisableConfirmation.tsx:33）。
-func (p *Plugin) drawConfirm(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawConfirm(f ui.C, env *pluginapi.Env) {
 	req := p.team.DisableRequest()
 	if req == nil {
 		return
@@ -65,33 +65,33 @@ func (p *Plugin) drawConfirm(f *flex.Frame, env *pluginapi.Env) {
 	mask := t.BgBase
 	mask.Alpha = 0.55
 	backdropID := env.Tree.ID(env.Feat, "team-disable-backdrop")
-	backdrop := f.Row().Absolute().Inset(0).Background(mask).Hit(backdropID, zhDisableClose)
+	backdrop := ui.Row(f).Absolute().Inset(0).Background(mask).Hit(backdropID, zhDisableClose)
 
-	f.Column().Absolute().Left(left).Top(top).Width(width).
+	ui.Column(f).Absolute().Left(left).Top(top).Width(width).
 		// 对话本体也吃掉点击：官方点框内不关闭，只有遮罩/ESC 才关。
 		Hit(env.Tree.ID(env.Feat, "team-disable-dialog"), zhDisableTitle).
 		Radius(t.Radii.XL).Background(t.InputMajor).Border(1, t.BorderL2).
-		Shadow(ui.ShadowMD).Pad(dialogPad).Gap(dialogGap).Children(func() {
+		Shadow(gfx.ShadowMD).Pad(dialogPad).Gap(dialogGap).Children(func() {
 		// 标题（Modal 的 title；tone=warning 由黄色圆点表达）。
-		f.Row().FillWidth().Items(flex.Center).Gap(errGap).Children(func() {
-			f.Row().Width(dotSize).Height(dotSize).Radius(dotSize / 2).Background(t.Warn)
-			f.Text(zhDisableTitle).FontSize(modalTitleZ).LineHeight(24).Weight(500).
+		ui.Row(f).FillWidth().Items(ui.Center).Gap(errGap).Children(func() {
+			ui.Row(f).Width(dotSize).Height(dotSize).Radius(dotSize / 2).Background(t.Warn)
+			ui.Text(f, zhDisableTitle).FontSize(modalTitleZ).LineHeight(24).Weight(500).
 				Color(t.LabelPrimary).Grow(1)
 		})
 		// .copy：两段说明（14/22，label-secondary）。
-		f.Column().FillWidth().Gap(dialogGap).Children(func() {
-			f.Text(zhDisableDesc).FillWidth().FontSize(copySize).LineHeight(copyLine).
+		ui.Column(f).FillWidth().Gap(dialogGap).Children(func() {
+			ui.Text(f, zhDisableDesc).FillWidth().FontSize(copySize).LineHeight(copyLine).
 				Color(t.LabelSecondary)
-			f.Text(zhDisableWarning).FillWidth().FontSize(copySize).LineHeight(copyLine).
+			ui.Text(f, zhDisableWarning).FillWidth().FontSize(copySize).LineHeight(copyLine).
 				Color(t.LabelSecondary)
 		})
 		// 失败：停在 failed，错误**一直可见**到重试或取消。
 		if state.Kind == ConfirmFailed {
-			f.Text(state.Message).FillWidth().FontSize(t.Fonts.Caption).Color(t.Error)
+			ui.Text(f, state.Message).FillWidth().FontSize(t.Fonts.Caption).Color(t.Error)
 		}
 		// footer：取消（outline）+ 确认停用（primary），saving 期间两个都禁用。
-		f.Row().FillWidth().Items(flex.Center).Justify(flex.End).Gap(8).Children(func() {
-			cancel := f.Button(env.Tree.ID(env.Feat, "team-disable-cancel"), zhDisableCancel).
+		ui.Row(f).FillWidth().Items(ui.Center).Justify(ui.End).Gap(8).Children(func() {
+			cancel := ui.Button(f, zhDisableCancel).
 				Outline().Small()
 			if saving {
 				cancel = cancel.Disabled(true)
@@ -99,7 +99,7 @@ func (p *Plugin) drawConfirm(f *flex.Frame, env *pluginapi.Env) {
 			if cancel.Clicked() {
 				p.team.CancelDisable(req.SessionID)
 			}
-			confirm := f.Button(env.Tree.ID(env.Feat, "team-disable-confirm"), zhDisableConfirm).Small()
+			confirm := ui.Button(f, zhDisableConfirm).Small()
 			if saving {
 				confirm = confirm.Disabled(true)
 			}

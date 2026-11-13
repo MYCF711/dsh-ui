@@ -34,7 +34,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -98,7 +98,7 @@ func commandExpandable(node *CommandNode) bool {
 
 // DrawCommandRow 画一行命令回执。**导出**给父级（将来的 chat 命令节点渲染器）直接调用：
 // 它需要的只是一个 node 与一个展开态回调，与所在容器无关。
-func DrawCommandRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, node *CommandNode, expanded bool, onToggle func()) {
+func DrawCommandRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, node *CommandNode, expanded bool, onToggle func()) {
 	if node == nil {
 		return
 	}
@@ -119,21 +119,21 @@ func DrawCommandRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, node 
 	}
 
 	rowID := env.Tree.ID(env.Feat, "team-command-row")
-	f.Column().FillWidth().Children(func() {
+	ui.Column(f).FillWidth().Children(func() {
 		// DisclosureRow：icon + title + separator + summary；整行可点（expandOnRowClick）。
-		row := f.Row().FillWidth().Items(flex.Center).Hit(rowID, zhCommandTitle)
+		row := ui.Row(f).FillWidth().Items(ui.Center).Hit(rowID, zhCommandTitle)
 		if expandable && row.Clicked() && onToggle != nil {
 			onToggle()
 		}
 		row.Children(func() {
-			f.Icon(usersIcon()).Size(commandIconSize, commandIconSize).Color(t.LabelTertiary)
+			ui.Icon(f, usersIcon()).Size(commandIconSize, commandIconSize).Color(t.LabelTertiary)
 			// .title{font-weight:400}——默认就是 400，这里显式写出来防上游改默认。
-			f.Text(zhCommandTitle).FontSize(summarySize).LineHeight(summaryLine).
+			ui.Text(f, zhCommandTitle).FontSize(summarySize).LineHeight(summaryLine).
 				Weight(400).Color(t.LabelPrimary)
 			// .separator：2×2 圆点，margin 0 8px。
-			f.Row().Width(separatorSize).Height(separatorSize).Radius(separatorSize/2).
+			ui.Row(f).Width(separatorSize).Height(separatorSize).Radius(separatorSize/2).
 				Background(t.LabelCaption).MarginSides(0, separatorMargin, 0, separatorMargin)
-			text := f.Text(summary).FontSize(summarySize).LineHeight(summaryLine).
+			text := ui.Text(f, summary).FontSize(summarySize).LineHeight(summaryLine).
 				Color(summaryColor).Grow(1)
 			if !open {
 				text.Ellipsis()
@@ -142,12 +142,12 @@ func DrawCommandRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, node 
 		if open {
 			// `<pre>`：官方 max-height 260、margin 4 0 4 4、padding 12 16、radius lg、
 			// 0.5px 描边、代码块底色、等宽、pre-wrap。
-			f.Column().FillWidth().MaxHeight(bodyMaxHeight).
+			ui.Column(f).FillWidth().MaxHeight(bodyMaxHeight).
 				MarginSides(bodyMarginTop, 0, bodyMarginTop, bodyMarginLeft).
 				PadSides(bodyPadV, bodyPadH, bodyPadV, bodyPadH).
 				Radius(t.Radii.LG).Background(t.CodeBlock).Border(0.5, t.BorderL1).
 				Children(func() {
-					f.Text(node.Outcome.Text).FillWidth().FontSize(t.Fonts.Code).
+					ui.Text(f, node.Outcome.Text).FillWidth().FontSize(t.Fonts.Code).
 						LineHeight(t.Fonts.CodeLine).Mono().Color(t.LabelSecondary)
 				})
 		}
@@ -155,7 +155,7 @@ func DrawCommandRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, node 
 }
 
 // drawCommand 是 slot ④ 的 painter：从 Store 取当前节点，其余交给 DrawCommandRow。
-func (p *Plugin) drawCommand(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawCommand(f ui.C, env *pluginapi.Env) {
 	node := p.team.Command()
 	if node == nil || node.Command != CommandKey {
 		return
@@ -165,4 +165,4 @@ func (p *Plugin) drawCommand(f *flex.Frame, env *pluginapi.Env) {
 }
 
 // 编译期确认我们用到的令牌字段存在（改主题结构时这里先红）。
-var _ = ui.ShadowMD
+var _ = gfx.ShadowMD

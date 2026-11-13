@@ -40,7 +40,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -56,7 +56,7 @@ const hfRealGoal = "HF-GOAL-OK 目标条用官方 sprite glyph"
 // 忘了写桥标记，两个座位都会以为自己不该画——真机上就是"界面空白且不报错"。
 // 壳在 `cmd/app/main.go` 的绘制前就是这么写的（`m.wave3.tier.SetLegacyBridge`），
 // 测试替身必须同源，否则替身验的就不是产品行为。
-func hfPaint(t *testing.T, product *gyRealProduct, snap pluginapi.Snapshot, goal string) (*ui.Canvas, []string, map[pluginapi.Slot]int) {
+func hfPaint(t *testing.T, product *gyRealProduct, snap pluginapi.Snapshot, goal string) (*gfx.Canvas, []string, map[pluginapi.Slot]int) {
 	t.Helper()
 	if tier, ok := product.kernel.MustGet(uikernel.KeyShellTier).(*uikernel.ShellTier); ok {
 		tier.SetLegacyBridge(product.opts.BridgeLegacy)
@@ -66,7 +66,7 @@ func hfPaint(t *testing.T, product *gyRealProduct, snap pluginapi.Snapshot, goal
 
 // hfDrawSlot 与 `uikernel.Kernel.DrawSlot` 同义，额外记录每槽派发次数
 // （本测试要断言"官方座位那一帧真的被派发"以及"桥与官方座位同帧只活一个"）。
-func hfDrawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
+func hfDrawSlot(f ui.C, k *uikernel.Kernel, slot pluginapi.Slot, env *pluginapi.Env, counts map[pluginapi.Slot]int) {
 	counts[slot]++
 	for _, painter := range k.Painters(slot) {
 		if painter.Draw != nil {
@@ -85,7 +85,7 @@ func hfDrawSlot(f *flex.Frame, k *uikernel.Kernel, slot pluginapi.Slot, env *plu
 // 这一帧存在的意义：产品形状里 `sidebar.settings` 永远被兼容桥顶掉，
 // 只有把旧部件摘掉才看得到官方座位本身。它证明连接指示**注册在
 // `sidebar.settings` 上并且真的会被画**，而不是"登记了但永远画不到"。
-func hfOfficialSidebarFrame(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, map[pluginapi.Slot]int) {
+func hfOfficialSidebarFrame(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas, map[pluginapi.Slot]int) {
 	t.Helper()
 	tier := uikernel.NewShellTier()
 	tier.Set(true)
@@ -96,15 +96,15 @@ func hfOfficialSidebarFrame(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, 
 		t.Fatalf("装配失败：%v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
 	})
 	env := &pluginapi.Env{
 		Theme: theme, Data: snap, Tree: tree, Feat: tree.Feature("hf-official-sidebar"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 		Geometry: pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
@@ -115,8 +115,9 @@ func hfOfficialSidebarFrame(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, 
 	// 与 main.go 同源：这一帧没走兼容桥，官方子槽活着。
 	tier.SetLegacyBridge(opts.BridgeLegacy)
 	counts := map[pluginapi.Slot]int{}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, opts, func(slot pluginapi.Slot) {
 			hfDrawSlot(f, kernel, slot, env, counts)
 		})
@@ -130,7 +131,7 @@ func hfOfficialSidebarFrame(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, 
 }
 
 // hfCanvasTexts 收画布文字。
-func hfCanvasTexts(canvas *ui.Canvas) []string {
+func hfCanvasTexts(canvas *gfx.Canvas) []string {
 	values := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)
@@ -139,7 +140,7 @@ func hfCanvasTexts(canvas *ui.Canvas) []string {
 }
 
 // hfCanvasHas 前缀匹配（长文本会被省略号截断）。
-func hfCanvasHas(canvas *ui.Canvas, want string) bool {
+func hfCanvasHas(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want || strings.HasPrefix(text.Value, want) {
 			return true
@@ -330,15 +331,15 @@ func hfCapture(t *testing.T, product *gyRealProduct, snap pluginapi.Snapshot, go
 	if tier, ok := product.kernel.MustGet(uikernel.KeyShellTier).(*uikernel.ShellTier); ok {
 		tier.SetLegacyBridge(product.opts.BridgeLegacy)
 	}
-	shotTree := &ui.Tree{}
+	shotTree := &gfx.Tree{}
 	shotFeat := shotTree.Feature("hf-shot")
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "hf-official", Width: 1182, Height: 832, Tree: shotTree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(c *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(c *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		c.Fill(bounds, product.theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: product.theme, Data: snap, Tree: shotTree, Feat: shotFeat, Canvas: c,
@@ -347,8 +348,9 @@ func hfCapture(t *testing.T, product *gyRealProduct, snap pluginapi.Snapshot, go
 			Has:      product.kernel.Has,
 			Act:      pluginapi.Actions{Goal: func() string { return goal }},
 		}
-		var view flex.View
-		view.Draw(c, dscore.VivaTheme(product.theme), bounds, func(f *flex.Frame) {
+		pageTheme2 := dscore.VivaTheme(product.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(c, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, env, product.opts, func(slot pluginapi.Slot) {
 				product.kernel.DrawSlot(f, slot, env)
 			})

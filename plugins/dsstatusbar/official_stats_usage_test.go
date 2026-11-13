@@ -24,7 +24,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // usageFull 是四桶都有值的那一份（缓存写入非 0 → 5 行全画）。
@@ -280,7 +280,7 @@ func TestUsageDialogRendersEachBucket(t *testing.T) {
 func TestUsageDialogHiddenWithoutProjection(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := usageSnapshot(nil)
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "") // 先画一帧，缓存胶囊矩形
 	canvas := h.frame(t, bounds, data, usagePillHitName, "")
 	if _, ok := statsDialogHitByName(t, h, canvas, usagePillHitName); ok {
@@ -309,7 +309,7 @@ func TestUsageDialogHiddenWithoutProjection(t *testing.T) {
 func TestUsageZeroBucketsHaveNoDialog(t *testing.T) {
 	h := newStatsDialogHarness(t)
 	data := usageSnapshot(&apiclient.TokenUsage{})
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	closed := h.frame(t, bounds, data, "", "")
 	if !statsDialogHasText(closed, "0 tok") {
 		t.Fatalf("全 0 读数 = %v，want「0 tok」", statsDialogTexts(closed))
@@ -346,7 +346,7 @@ func TestUsageDialogOpensFromPill(t *testing.T) {
 	if !ok {
 		t.Fatalf("用量胶囊没有命中区；hits=%v", hitLabels(canvas))
 	}
-	if hit.Role != ui.RoleButton || !hit.Expandable || !hit.Expanded {
+	if hit.Role != gfx.RoleButton || !hit.Expandable || !hit.Expanded {
 		t.Fatalf("用量胶囊 a11y = role=%v expandable=%v expanded=%v，want button/true/true",
 			hit.Role, hit.Expandable, hit.Expanded)
 	}
@@ -373,7 +373,7 @@ func TestUsageDialogTogglesOnSecondClick(t *testing.T) {
 	if !statsDialogHasText(open, zhUsageDialogTitle) {
 		t.Fatalf("第一下没打开：%v", statsDialogTexts(open))
 	}
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	closed := h.frame(t, bounds, usageSnapshot(usageFull()), usagePillHitName, "")
 	if statsDialogHasText(closed, zhUsageDialogTitle) {
 		t.Fatalf("第二下没有关闭：%v", statsDialogTexts(closed))
@@ -399,28 +399,28 @@ func TestUsageOutputMatchesSessionStatsDecodeTokens(t *testing.T) {
 }
 
 // openUsageDialog 画两帧把用量弹窗点开（第一帧让 AfterDraw 缓存胶囊矩形）。
-func openUsageDialog(t *testing.T, data pluginapi.Snapshot) *ui.Canvas {
+func openUsageDialog(t *testing.T, data pluginapi.Snapshot) *gfx.Canvas {
 	t.Helper()
 	_, canvas := openUsageDialogWithHarness(t, data)
 	return canvas
 }
 
 // openUsageDialogWithHarness 同上，返回 harness 以便按交互名查命中区。
-func openUsageDialogWithHarness(t *testing.T, data pluginapi.Snapshot) (*statsDialogHarness, *ui.Canvas) {
+func openUsageDialogWithHarness(t *testing.T, data pluginapi.Snapshot) (*statsDialogHarness, *gfx.Canvas) {
 	t.Helper()
 	h := newStatsDialogHarness(t)
-	bounds := ui.Rect{Width: 1182, Height: 832}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
 	h.frame(t, bounds, data, "", "")
 	return h, h.frame(t, bounds, data, usagePillHitName, "")
 }
 
 // usageDialogHasRow 报告画布上有没有一对（dt, dd）逐字相等的明细行。
-func usageDialogHasRow(canvas *ui.Canvas, row statsRow) bool {
+func usageDialogHasRow(canvas *gfx.Canvas, row statsRow) bool {
 	return statsDialogHasText(canvas, row.Label) && statsDialogHasText(canvas, row.Value)
 }
 
 // hitLabels 列命中区的 aria 名（失败信息用）。
-func hitLabels(canvas *ui.Canvas) []string {
+func hitLabels(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Hits()))
 	for _, hit := range canvas.Hits() {
 		out = append(out, hit.Label)

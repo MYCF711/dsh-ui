@@ -1,0 +1,601 @@
+{
+  "schema_version": 1,
+  "comment": [
+    "V-06-5 视觉判据的区域契约：11 个产品形态 × 显式矩形。",
+    "所有矩形都取自 uikernel.ComputeShellLayout 的真实布局（1182x832 / 720x600 / 1920x1032 三档），",
+    "不是 OCR 或模型从截图上猜的；cmd/app/visual_regions_contract_test.go 会核对这份 JSON",
+    "与骨架算出来的矩形是同一份——几何改了而这里没改，测试就红。",
+    "阈值语义见 scripts/visual-regions.py 文件头。阈值只准收紧，不准为变绿调大。"
+  ],
+  "window": {
+    "width": 1182,
+    "height": 832,
+    "size": "1182x832"
+  },
+  "thresholds": {
+    "structural_percent": 2.0,
+    "content_percent": 5.0,
+    "full_percent": 1.0
+  },
+  "region_sets": {
+    "default": [
+      {
+        "name": "full",
+        "rect": [
+          0,
+          0,
+          1182,
+          832
+        ],
+        "kind": "full",
+        "note": "整窗兜底"
+      },
+      {
+        "name": "sidebar",
+        "rect": [
+          0,
+          0,
+          280,
+          832
+        ],
+        "kind": "structural",
+        "note": "左栏整列（SidebarCol）"
+      },
+      {
+        "name": "header",
+        "rect": [
+          280,
+          0,
+          902,
+          50
+        ],
+        "kind": "structural",
+        "note": "会话头部标题行（Header = CenterCol 顶部 50）"
+      },
+      {
+        "name": "transcript",
+        "rect": [
+          280,
+          50,
+          902,
+          654
+        ],
+        "kind": "content",
+        "note": "消息流 / Hero（ScrollBody）"
+      },
+      {
+        "name": "composer",
+        "rect": [
+          280,
+          704,
+          902,
+          128
+        ],
+        "kind": "structural",
+        "note": "composer 座位 + 底部 dock（ComposerSeat）"
+      }
+    ],
+    "rightbar": [
+      {
+        "name": "full",
+        "rect": [
+          0,
+          0,
+          1182,
+          832
+        ],
+        "kind": "full",
+        "note": "整窗兜底"
+      },
+      {
+        "name": "sidebar",
+        "rect": [
+          0,
+          0,
+          280,
+          832
+        ],
+        "kind": "structural",
+        "note": "左栏整列（右栏打开时左栏宽度不变）"
+      },
+      {
+        "name": "header",
+        "rect": [
+          280,
+          0,
+          400,
+          50
+        ],
+        "kind": "structural",
+        "note": "中列收窄到 400（RightbarDefaultRatio=0.45 解出来的 Center）"
+      },
+      {
+        "name": "transcript",
+        "rect": [
+          280,
+          50,
+          400,
+          654
+        ],
+        "kind": "content",
+        "note": "中列正文（收窄）"
+      },
+      {
+        "name": "composer",
+        "rect": [
+          280,
+          704,
+          400,
+          128
+        ],
+        "kind": "structural",
+        "note": "中列 composer（收窄）"
+      },
+      {
+        "name": "rightbar",
+        "rect": [
+          680,
+          0,
+          502,
+          832
+        ],
+        "kind": "structural",
+        "note": "右栏整列（RightbarCol）"
+      }
+    ],
+    "narrow": [
+      {
+        "name": "full",
+        "rect": [
+          0,
+          0,
+          720,
+          600
+        ],
+        "kind": "full",
+        "note": "整窗兜底"
+      },
+      {
+        "name": "sidebar",
+        "rect": [
+          0,
+          0,
+          280,
+          600
+        ],
+        "kind": "structural",
+        "note": "左栏整列（窄窗仍 280）"
+      },
+      {
+        "name": "header",
+        "rect": [
+          280,
+          0,
+          440,
+          50
+        ],
+        "kind": "structural",
+        "note": "会话头部标题行"
+      },
+      {
+        "name": "transcript",
+        "rect": [
+          280,
+          50,
+          440,
+          422
+        ],
+        "kind": "content",
+        "note": "消息流（ScrollBody）"
+      },
+      {
+        "name": "composer",
+        "rect": [
+          280,
+          472,
+          440,
+          128
+        ],
+        "kind": "structural",
+        "note": "composer 座位（贴底 128）"
+      }
+    ],
+    "hero": [
+      {
+        "name": "full",
+        "rect": [
+          0,
+          0,
+          1182,
+          832
+        ],
+        "kind": "full",
+        "note": "整窗兜底"
+      },
+      {
+        "name": "sidebar",
+        "rect": [
+          0,
+          0,
+          280,
+          832
+        ],
+        "kind": "structural",
+        "note": "左栏整列（无会话时仍 280）"
+      },
+      {
+        "name": "header",
+        "rect": [
+          280,
+          0,
+          902,
+          40
+        ],
+        "kind": "structural",
+        "note": "无会话 header 是 40px 行（Blank=true，官方 .an3WzG_header blank 40）"
+      },
+      {
+        "name": "transcript",
+        "rect": [
+          280,
+          40,
+          902,
+          664
+        ],
+        "kind": "content",
+        "note": "Hero 首屏（ScrollBody 从 40 起）"
+      },
+      {
+        "name": "composer",
+        "rect": [
+          280,
+          704,
+          902,
+          128
+        ],
+        "kind": "structural",
+        "note": "composer 座位（hero 与 active 同高）"
+      }
+    ]
+  },
+  "states": [
+    {
+      "name": "hero-empty",
+      "regions": "hero",
+      "no_session": true,
+      "args": [
+        "-shell",
+        "official",
+        "-theme",
+        "dark"
+      ],
+      "note": "无会话首屏：官方 Hero（鱼标/探索未至之境/预览版）+ 空侧栏 + 连接指示",
+      "host": "empty"
+    },
+    {
+      "name": "active-messages",
+      "regions": "default",
+      "args": [
+        "-shell",
+        "official",
+        "-theme",
+        "dark"
+      ],
+      "note": "有会话有消息：三栏骨架 + 正文 + composer + 状态栏"
+    },
+    {
+      "name": "active-rightbar",
+      "regions": "rightbar",
+      "args": [
+        "-shell",
+        "official",
+        "-rightbar",
+        "-theme",
+        "dark"
+      ],
+      "note": "右栏展开：中列收窄 + 右栏整列"
+    },
+    {
+      "name": "settings-overlay",
+      "regions": "default",
+      "args": [
+        "-shell",
+        "official",
+        "-open-settings",
+        "-theme",
+        "dark"
+      ],
+      "note": "设置浮层（官方四区面板）"
+    },
+    {
+      "name": "approval-card",
+      "regions": "default",
+      "args": [
+        "-shell",
+        "official",
+        "-demo-approval",
+        "-theme",
+        "dark"
+      ],
+      "note": "审批卡（-demo-approval 的假审批，走同一条产品渲染路径）"
+    },
+    {
+      "name": "search",
+      "regions": "default",
+      "args": [
+        "-shell",
+        "official",
+        "-search",
+        "报告",
+        "-theme",
+        "dark"
+      ],
+      "note": "会话内搜索态"
+    },
+    {
+      "name": "demo-tool",
+      "regions": "default",
+      "args": [
+        "-shell",
+        "official",
+        "-demo",
+        "-theme",
+        "dark"
+      ],
+      "note": "工具卡（假工具调用，验 ds-tool 卡片几何）"
+    },
+    {
+      "name": "narrow-720x600",
+      "regions": "narrow",
+      "size": "720x600",
+      "args": [
+        "-shell",
+        "official",
+        "-theme",
+        "dark"
+      ],
+      "note": "窄窗 720x600：三栏几何在最小尺寸下成立",
+      "wait": 10
+    },
+    {
+      "name": "light-theme",
+      "regions": "default",
+      "args": [
+        "-shell",
+        "official",
+        "-theme",
+        "light"
+      ],
+      "note": "浅色令牌（与深色同一套结构，验令牌替换没有漏画）"
+    }
+  ],
+  "accepted": {
+    "hero-empty|full": {
+      "max_percent": 1.0,
+      "measured_percent": 0.4403,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "hero-empty|transcript": {
+      "max_percent": 1.0,
+      "measured_percent": 0.723,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "active-messages|full": {
+      "max_percent": 1.5,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "active-messages|transcript": {
+      "max_percent": 2.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "active-rightbar|full": {
+      "max_percent": 1.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "active-rightbar|transcript": {
+      "max_percent": 1.5,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "settings-overlay|full": {
+      "max_percent": 1.5,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "settings-overlay|transcript": {
+      "max_percent": 2.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "approval-card|full": {
+      "max_percent": 1.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "approval-card|transcript": {
+      "max_percent": 1.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "search|full": {
+      "max_percent": 1.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "search|transcript": {
+      "max_percent": 2.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "demo-tool|full": {
+      "max_percent": 2.0,
+      "measured_percent": 1.8197,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "demo-tool|transcript": {
+      "max_percent": 4.0,
+      "measured_percent": 3.0335,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "narrow-720x600|full": {
+      "max_percent": 1.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "narrow-720x600|transcript": {
+      "max_percent": 1.5,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "narrow-720x600|composer": {
+      "max_percent": 1.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "light-theme|full": {
+      "max_percent": 1.5,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "light-theme|transcript": {
+      "max_percent": 2.0,
+      "measured_percent": 0.0,
+      "attribution": "upstream-mono-cell",
+      "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    }
+  },
+  "seed": {
+    "schema_version": 1,
+    "comment": [
+      "视觉门禁的种子会话：**种子与基线图同源**。",
+      "脚本把 turns 展开成 v4 journal 帧（turn/start → step/start → user/message →",
+      "assistant/message → tool/call → tool/result → step/end → turn/end），写进临时 dshd home。",
+      "时间戳全部由 created_at 推出：状态栏 tok/s、消息时间戳、侧栏相对时间都从帧时间算，",
+      "所以任何一处拿实时钟都会让两次跑出不同像素。",
+      "改这里 = 改基线（必须同时 --update 重刷 baseline/*.png）。"
+    ],
+    "session_id": "0f06e5d0-0000-4000-8000-00000000c0de",
+    "created_at": "2026-08-01T00:00:00+08:00",
+    "workspace": "visual-workspace",
+    "title": "视觉门禁种子会话：区域截图基线",
+    "agent_preset": "standard",
+    "model": {
+      "provider": "magpie",
+      "id": "group/deepseek-v4.1-flash-1017",
+      "context_window": 1000000,
+      "reasoning_effort": "max"
+    },
+    "step_duration_ms": 2000,
+    "user_gap_ms": 80,
+    "step_gap_ms": 120,
+    "tool_duration_ms": 200,
+    "step_tail_ms": 120,
+    "turn_gap_ms": 1000,
+    "turn_tail_ms": 200,
+    "files": {
+      "README.md": "# visual-workspace\n\n视觉门禁（`scripts/visual-regions.py`）的种子工作区。\n\n这个目录里的文件是**固定内容**：区域截图基线必须每次渲染出同一份画面，\n所以文件树、文件内容、修改时间都不能随机器或时间漂移。\n\n- `src/main.go`：一个最小程序\n- `docs/notes.md`：种子说明\n- `docs/summary.md`：第三轮写出来的摘要\n",
+      "src/main.go": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"visual-regions seed\")\n}\n",
+      "docs/notes.md": "# 种子说明\n\n视觉门禁只验渲染，不验模型行为。\n\n- 会话内容来自 `regions.json` 的 `seed` 块\n- 帧时间戳固定，所以 `tok/s`、消息时间戳、侧栏相对时间都不漂\n",
+      "docs/summary.md": "# 工作区摘要\n\n1. 用途：视觉门禁的种子工作区。\n2. 结构：README.md / src/main.go / docs/notes.md。\n3. 约束：文件内容固定，改动会让基线失效。\n"
+    },
+    "turns": [
+      {
+        "user": "先看一下工作目录里有什么，读一下 README.md，把摘要写进 docs/summary.md。",
+        "steps": [
+          {
+            "reasoning": "先列目录，再读 README，最后把摘要落盘。三个调用互不依赖，可以并行。",
+            "usage": {
+              "input_tokens": 12000,
+              "output_tokens": 372,
+              "cache_read_tokens": 208628,
+              "total_tokens": 221000
+            },
+            "tools": [
+              {
+                "name": "bash",
+                "arguments": {
+                  "command": "ls -la",
+                  "description": "列出工作目录"
+                },
+                "result": "total 16\ndrwxr-xr-x 1 user 197121    0 Aug  1 00:00 .\ndrwxr-xr-x 1 user 197121    0 Aug  1 00:00 ..\n-rw-r--r-- 1 user 197121  421 Aug  1 00:00 README.md\ndrwxr-xr-x 1 user 197121    0 Aug  1 00:00 docs\ndrwxr-xr-x 1 user 197121    0 Aug  1 00:00 src\n"
+              },
+              {
+                "name": "read",
+                "arguments": {
+                  "path": "README.md"
+                },
+                "result": "# visual-workspace\n\n视觉门禁（`scripts/visual-regions.py`）的种子工作区。\n\n这个目录里的文件是**固定内容**：区域截图基线必须每次渲染出同一份画面，\n所以文件树、文件内容、修改时间都不能随机器或时间漂移。\n\n- `src/main.go`：一个最小程序\n- `docs/notes.md`：种子说明\n- `docs/summary.md`：第三轮写出来的摘要\n"
+              },
+              {
+                "name": "write",
+                "arguments": {
+                  "path": "docs/summary.md",
+                  "content": "# 工作区摘要\n\n1. 用途：视觉门禁的种子工作区。\n2. 结构：README.md / src/main.go / docs/notes.md。\n3. 约束：文件内容固定，改动会让基线失效。\n"
+                },
+                "result": "已写入 docs/summary.md（3 行，96 字节）"
+              }
+            ]
+          },
+          {
+            "text": "## 工作区摘要\n\n1. **用途**：`visual-workspace` 是视觉门禁的种子工作区，只服务像素基线。\n2. **结构**：`README.md`（说明）、`src/main.go`（最小 Go 程序）、`docs/notes.md`（种子说明）。\n3. **约束**：文件内容固定，任何改动都会让区域截图基线失效。\n\n> 结论：这是一份**可复现**的最小工作区，不参与产品构建。\n",
+            "usage": {
+              "input_tokens": 12000,
+              "output_tokens": 372,
+              "cache_read_tokens": 208628,
+              "total_tokens": 221000
+            }
+          }
+        ]
+      },
+      {
+        "user": "说明这个工作区为什么必须可复现，并列出三种漂移来源。",
+        "steps": [
+          {
+            "text": "区域截图比的是同一份 journal 帧在两个 viva 版本下的渲染结果，所以输入必须逐字节固定：文件树、文件内容、消息文本、帧时间戳、会话标题，任何一项随机器或时间漂移，像素差都会从迁移缺陷变成内容不同，这条判据就失去了判红的能力。\n\n| 漂移来源 | 后果 |\n|---|---|\n| 会话内容不同 | 33 个区域假红 |\n| 文件树不同 | 侧栏逐行位移 |\n| 时间戳不同 | 相对时间与 tok/s 漂移 |\n\n反过来，只要输入固定，差异就只剩渲染本身：骨架几何、行高、断行、抗锯齿。\n所以种子会话带固定的 session id、固定的创建时间与固定的文件 mtime，同一份种子跑两次得到同一份内容，像素差才有资格要求为 0。\n",
+            "usage": {
+              "input_tokens": 12000,
+              "output_tokens": 372,
+              "cache_read_tokens": 208628,
+              "total_tokens": 221000
+            }
+          }
+        ]
+      },
+      {
+        "user": "把 main() 的写法说明一下。",
+        "steps": [
+          {
+            "text": "main 只有两行：先 package main，再 func main 花括号。行内代码与正文共用同一套行高，所以断行不会把行高顶开。\n",
+            "usage": {
+              "input_tokens": 12000,
+              "output_tokens": 372,
+              "cache_read_tokens": 208628,
+              "total_tokens": 221000
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

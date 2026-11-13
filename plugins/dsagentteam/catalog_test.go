@@ -21,7 +21,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -40,12 +40,12 @@ func (p *footerProbe) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
 		ID:   "probe-footer",
 		Slot: SlotSubagentFooter,
-		Draw: func(f *flex.Frame, env *pluginapi.Env) {
+		Draw: func(f ui.C, env *pluginapi.Env) {
 			p.mu.Lock()
 			p.drawn++
 			p.mu.Unlock()
 			// 真画一块（模拟 TeamBoard 的 section）：有像素、有命中区。
-			f.Column().FillWidth().Height(20).Hit(
+			ui.Column(f).FillWidth().Height(20).Hit(
 				env.Tree.ID(env.Feat, "probe-footer-body"), "共享任务")
 		},
 	}}
@@ -74,24 +74,25 @@ func catalogChain(t *testing.T, p *Plugin, extra ...pluginapi.Plugin) (*uikernel
 }
 
 // renderFromSlot 从某个槽位 dispatch 一帧。
-func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *ui.Canvas {
+func renderFromSlot(t *testing.T, k *uikernel.Kernel, slot pluginapi.Slot) *gfx.Canvas {
 	t.Helper()
 	theme := dscore.Dark()
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("catalog-chain")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
 	})
-	bounds := ui.Rect{Width: 1180, Height: 800}
+	bounds := gfx.Rect{Width: 1180, Height: 800}
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds, MainWidth: 900,
 		Has:      k.Has,
 		Geometry: pluginapi.Geometry{Width: bounds.Width, Height: bounds.Height, SidebarWidth: 280},
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, bounds, func(f ui.C) {
 		k.DrawSlot(f, slot, env)
 	})
 	return canvas
@@ -191,7 +192,7 @@ func TestCatalogChainDispatchesFooterSlot(t *testing.T) {
 
 // hasPanelRect 判断面板框画了没有：官方 `.menu` 的圆角是 radius md（12），
 // 触发器是 radius sm（8），所以"半径 12 且宽 ≈360"的矩形只可能是面板。
-func hasPanelRect(canvas *ui.Canvas) bool {
+func hasPanelRect(canvas *gfx.Canvas) bool {
 	for _, r := range canvas.Rectangles() {
 		if r.Radius == catalogMenuRadius && r.Bounds.Width > catalogMenuWidth/2 {
 			return true
@@ -201,13 +202,13 @@ func hasPanelRect(canvas *ui.Canvas) bool {
 }
 
 // hitByLabelPrefix 按文案找命中区（计数文案带数字，用子串匹配）。
-func hitByLabelPrefix(canvas *ui.Canvas, prefix string) (ui.Hit, bool) {
+func hitByLabelPrefix(canvas *gfx.Canvas, prefix string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if strings.HasPrefix(hit.Label, prefix) || strings.Contains(hit.Label, prefix) {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // TestCatalogFourStates 四态：未授权 / 未启用 / 数据缺失 / 正常。
@@ -279,7 +280,7 @@ func TestCatalogFourStates(t *testing.T) {
 
 			if tc.wantText != "" {
 				found := false
-				for _, text := range append(append([]ui.Text{}, triggerCanvas.Texts()...), panelCanvas.Texts()...) {
+				for _, text := range append(append([]gfx.Text{}, triggerCanvas.Texts()...), panelCanvas.Texts()...) {
 					if strings.Contains(text.Value, tc.wantText) {
 						found = true
 						break

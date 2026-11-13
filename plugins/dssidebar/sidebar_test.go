@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func sess(id, title, cwd, at string) apiclient.Session {
@@ -154,16 +154,16 @@ func TestHandleKeyNavigation(t *testing.T) {
 	p.lastOrder = []string{"a", "b", "c"}
 	p.lastCur = "b"
 
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyDown}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyDown}) {
 		t.Fatal("↓ 应该被接管")
 	}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyUp}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyUp}) {
 		t.Fatal("↑ 应该被接管")
 	}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyHome}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyHome}) {
 		t.Fatal("Home 应该被接管")
 	}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyEnd}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEnd}) {
 		t.Fatal("End 应该被接管")
 	}
 	want := []string{"c", "a", "a", "c"}
@@ -178,18 +178,18 @@ func TestHandleKeyNavigation(t *testing.T) {
 
 	// 当前会话不在可见列表里（比如被过滤掉了）：不猜，直接不管
 	p.lastCur = "zzz"
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyDown}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyDown}) {
 		t.Fatal("找不到当前会话时不该假装切了")
 	}
 
 	// 带修饰键：留给别的插件
 	p.lastCur = "a"
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyDown, Modifiers: ui.ModifierControl}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyDown, Modifiers: gfx.ModifierControl}) {
 		t.Fatal("带修饰键不该被侧栏吃掉")
 	}
 
 	// Esc 之类不归侧栏
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("Esc 不该被侧栏吃掉")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
@@ -32,10 +33,10 @@ type CodeBlockState struct {
 // CodeBlockIDs 给三个真实交互目标提供稳定身份。Scroll 是横滚视口，Scrollbar
 // 可留空；Copy/Wrap 留空时仍画预览按钮，但不声明死命中区。
 type CodeBlockIDs struct {
-	Copy      ui.ID
-	Wrap      ui.ID
-	Scroll    ui.ID
-	Scrollbar ui.ID
+	Copy      gfx.ID
+	Wrap      gfx.ID
+	Scroll    gfx.ID
+	Scrollbar gfx.ID
 }
 
 // CodeBlockStyle 只含绘制令牌，不含宿主行为。
@@ -50,7 +51,7 @@ type CodeBlockStyle struct {
 	BannerHeight float32
 	PadX         float32
 	PadY         float32
-	MonoFace     ui.MonoFace
+	MonoFace     gfx.MonoFace
 }
 
 // DefaultCodeBlockStyle 从 Viva 主题派生代码块样式，并补齐 Highlight 的颜色。
@@ -96,7 +97,7 @@ type codeBlockLayout struct {
 	code, language              string
 	width, fontSize             float32
 	padX, padY, bannerHeight    float32
-	monoFace                    ui.MonoFace
+	monoFace                    gfx.MonoFace
 	wrap                        bool
 	rows                        []codeBlockRow
 	cell, lineHeight            float32
@@ -116,9 +117,9 @@ type CodeBlock struct {
 	wrap       bool
 	feedback   CopyStatus
 	layout     codeBlockLayout
-	scrollID   ui.ID
+	scrollID   gfx.ID
 	maxOffsetX float32
-	runs       []ui.TextRun
+	runs       []gfx.TextRun
 }
 
 // NewCodeBlock 从 Viva 的 fenced block 取原文和 info。block.Text 是什么就复制什么。
@@ -190,33 +191,33 @@ func (b *CodeBlock) Restore(state CodeBlockState) {
 func (b *CodeBlock) CopyStatus() CopyStatus { return b.feedback }
 
 // Height 测量指定宽度下的完整高度（banner、全部代码行和必要横滚条）。
-func (b *CodeBlock) Height(canvas *ui.Canvas, width float32, style CodeBlockStyle) float32 {
+func (b *CodeBlock) Height(canvas *gfx.Canvas, width float32, style CodeBlockStyle) float32 {
 	layout := b.layoutFor(canvas, width, style)
 	return layout.bannerHeight + layout.bodyHeight
 }
 
 // HandleScroll 处理宿主转发的真实滚轮/触控板事件。只响应本代码块视口上的
 // 横向手势（或 Shift+纵向滚轮），绝不抢普通纵向消息滚动。
-func (b *CodeBlock) HandleScroll(event ui.ScrollEvent) ui.EventResult {
+func (b *CodeBlock) HandleScroll(event gfx.ScrollEvent) gfx.EventResult {
 	if b.wrap || b.scrollID.IsZero() || event.Target != b.scrollID {
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
 	delta := event.StepX(32)
-	if delta == 0 && event.Modifiers&ui.ModifierShift != 0 {
+	if delta == 0 && event.Modifiers&gfx.ModifierShift != 0 {
 		delta = event.StepY(32)
 	}
 	if delta == 0 {
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
 	b.overflow.Wheel(delta)
 	if b.overflow.OffsetX > b.maxOffsetX {
 		b.overflow.OffsetX = b.maxOffsetX
 	}
-	return ui.EventResult{Handled: true, Repaint: true}
+	return gfx.EventResult{Handled: true, Repaint: true}
 }
 
 // Draw 实画 banner、复制/wrap 按钮、代码及横滚视口，并声明真实 hit region。
-func (b *CodeBlock) Draw(canvas *ui.Canvas, bounds ui.Rect, ids CodeBlockIDs, style CodeBlockStyle) CodeBlockGeometry {
+func (b *CodeBlock) Draw(canvas *gfx.Canvas, bounds ui.Rect, ids CodeBlockIDs, style CodeBlockStyle) CodeBlockGeometry {
 	style = normalizeCodeBlockStyle(style)
 	layout := b.layoutFor(canvas, bounds.Width, style)
 	if bounds.Height <= 0 {
@@ -255,14 +256,14 @@ func (b *CodeBlock) Draw(canvas *ui.Canvas, bounds ui.Rect, ids CodeBlockIDs, st
 				Width: float32(codeMonoCells(row.text)) * layout.cell, Height: layout.lineHeight,
 			}
 			b.runs = appendCodeBlockTextRuns(b.runs[:0], row, style)
-			canvas.LabelRuns(row.text, rect, ui.TextStyle{
+			canvas.LabelRuns(row.text, rect, gfx.TextStyle{
 				Size: layout.fontSize, Color: style.Look.Text, Mono: true, MonoFace: layout.monoFace,
 			}, layout.cell, b.runs)
 		}
 	}
 
 	if b.wrap {
-		b.scrollID = ui.ID{}
+		b.scrollID = gfx.ID{}
 		b.maxOffsetX = 0
 		geometry.Content = body
 		geometry.ContentWidth = body.Width
@@ -284,7 +285,7 @@ func (b *CodeBlock) Draw(canvas *ui.Canvas, bounds ui.Rect, ids CodeBlockIDs, st
 	return geometry
 }
 
-func (b *CodeBlock) drawBanner(canvas *ui.Canvas, banner ui.Rect, ids CodeBlockIDs, style CodeBlockStyle) (copyRect, wrapRect ui.Rect) {
+func (b *CodeBlock) drawBanner(canvas *gfx.Canvas, banner ui.Rect, ids CodeBlockIDs, style CodeBlockStyle) (copyRect, wrapRect ui.Rect) {
 	fontSize := style.Theme.Metrics.FontSizeS
 	if fontSize <= 0 {
 		fontSize = 11
@@ -314,11 +315,11 @@ func (b *CodeBlock) drawBanner(canvas *ui.Canvas, banner ui.Rect, ids CodeBlockI
 	languageWidth := canvas.TextWidth(language, fontSize)
 	if languageWidth > 0 && banner.X+8 < textRight {
 		rect := ui.Rect{X: banner.X + 8, Y: banner.Y, Width: minFloat(languageWidth, maxFloat(0, textRight-banner.X-8)), Height: banner.Height}
-		canvas.Label(language, rect, ui.TextStyle{Size: fontSize, Color: style.Look.Muted, Weight: ui.WeightMedium})
+		canvas.Label(language, rect, gfx.TextStyle{Size: fontSize, Color: style.Look.Muted, Weight: gfx.WeightMedium})
 		if b.Title != "" && rect.Width >= languageWidth {
 			x := rect.X + languageWidth + 8
-			canvas.Label("·", ui.Rect{X: x, Y: banner.Y, Width: 10, Height: banner.Height}, ui.TextStyle{Size: fontSize, Color: style.Look.Muted})
-			canvas.Label(b.Title, ui.Rect{X: x + 12, Y: banner.Y, Width: maxFloat(0, textRight-x-12), Height: banner.Height}, ui.TextStyle{Size: fontSize, Color: style.Look.Text})
+			canvas.Label("·", ui.Rect{X: x, Y: banner.Y, Width: 10, Height: banner.Height}, gfx.TextStyle{Size: fontSize, Color: style.Look.Muted})
+			canvas.Label(b.Title, ui.Rect{X: x + 12, Y: banner.Y, Width: maxFloat(0, textRight-x-12), Height: banner.Height}, gfx.TextStyle{Size: fontSize, Color: style.Look.Text})
 		}
 	}
 
@@ -348,7 +349,7 @@ func (b *CodeBlock) drawBanner(canvas *ui.Canvas, banner ui.Rect, ids CodeBlockI
 	return copyRect, wrapRect
 }
 
-func drawCodeBlockButton(canvas *ui.Canvas, bounds ui.Rect, id ui.ID, accessibility, visual, label string, fontSize float32, textColor ui.Color, style CodeBlockStyle, disabled bool) {
+func drawCodeBlockButton(canvas *gfx.Canvas, bounds ui.Rect, id gfx.ID, accessibility, visual, label string, fontSize float32, textColor ui.Color, style CodeBlockStyle, disabled bool) {
 	if bounds.Width <= 0 || bounds.Height <= 0 {
 		return
 	}
@@ -357,10 +358,10 @@ func drawCodeBlockButton(canvas *ui.Canvas, bounds ui.Rect, id ui.ID, accessibil
 		fill = style.Theme.Hover
 	}
 	canvas.Rounded(bounds, minFloat(style.Look.Radius, bounds.Height/2), fill)
-	canvas.LabelCenter(visual, bounds, ui.TextStyle{Size: fontSize, Color: textColor})
+	canvas.LabelCenter(visual, bounds, gfx.TextStyle{Size: fontSize, Color: textColor})
 	if !id.IsZero() {
-		canvas.HitWithOptions(id, bounds, accessibility, ui.HitOptions{
-			Role: ui.RoleButton, Cursor: ui.PointerCursorHand, Hint: label, Disabled: disabled,
+		canvas.HitWithOptions(id, bounds, accessibility, gfx.HitOptions{
+			Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand, Hint: label, Disabled: disabled,
 		})
 	}
 }
@@ -385,7 +386,7 @@ func normalizeCodeBlockStyle(style CodeBlockStyle) CodeBlockStyle {
 	return style
 }
 
-func (b *CodeBlock) layoutFor(canvas *ui.Canvas, width float32, style CodeBlockStyle) *codeBlockLayout {
+func (b *CodeBlock) layoutFor(canvas *gfx.Canvas, width float32, style CodeBlockStyle) *codeBlockLayout {
 	style = normalizeCodeBlockStyle(style)
 	width = maxFloat(width, 1)
 	if b.layout.valid && b.layout.code == b.Code && b.layout.language == b.Language &&
@@ -523,7 +524,7 @@ func codeMonoRuneCells(r rune) int {
 	return 1
 }
 
-func appendCodeBlockTextRuns(dst []ui.TextRun, row codeBlockRow, style CodeBlockStyle) []ui.TextRun {
+func appendCodeBlockTextRuns(dst []gfx.TextRun, row codeBlockRow, style CodeBlockStyle) []gfx.TextRun {
 	at, column := 0, 0
 	emit := func(start, end int, class components.MarkdownCodeClass) {
 		color := style.Look.Text
@@ -540,14 +541,14 @@ func appendCodeBlockTextRuns(dst []ui.TextRun, row codeBlockRow, style CodeBlock
 			}
 			if stop > start {
 				cells := stop - start
-				dst = append(dst, ui.TextRun{Column: int32(column), Bytes: int32(cells), Cells: int32(cells), Color: color})
+				dst = append(dst, gfx.TextRun{Column: int32(column), Bytes: int32(cells), Cells: int32(cells), Color: color})
 				column += cells
 				start = stop
 				continue
 			}
 			r, size := utf8.DecodeRuneInString(row.text[start:end])
 			cells := codeMonoRuneCells(r)
-			dst = append(dst, ui.TextRun{Column: int32(column), Bytes: int32(size), Cells: int32(cells), Color: color})
+			dst = append(dst, gfx.TextRun{Column: int32(column), Bytes: int32(size), Cells: int32(cells), Color: color})
 			column += cells
 			start += size
 		}

@@ -13,7 +13,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -32,18 +32,19 @@ func openHeaderSession(t *testing.T, data *pluginapi.Snapshot, act pluginapi.Act
 		t.Fatal(err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("open-header")
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        flex.View
 		invalidator app.Invalidator
 	)
 	config := app.Config{
 		Title: "open-in-app-header", Width: width, Height: height, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: *data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
@@ -54,7 +55,7 @@ func openHeaderSession(t *testing.T, data *pluginapi.Snapshot, act pluginapi.Act
 			},
 			Has: func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}
@@ -189,7 +190,7 @@ func TestButtonDoesNotCoverTheRightbarCorner(t *testing.T) {
 	}
 }
 
-func overlaps(a, b ui.Rect) bool {
+func overlaps(a, b gfx.Rect) bool {
 	return a.X < b.X+b.Width && b.X < a.X+a.Width &&
 		a.Y < b.Y+b.Height && b.Y < a.Y+a.Height
 }

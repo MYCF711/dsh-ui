@@ -19,17 +19,21 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // switchHit 取开关本体的命中区（viva 的 Switch 命中标签固定是 "switch"）。
-func switchHit(canvas *ui.Canvas) (ui.Hit, bool) {
+// switchHit 找开关的命中区。
+//
+// v0.6.0 的 ui.Switch(c, *bool, label) 不带显式交互 ID，可访问名由 .Label() 覆盖成
+// 用户看到的文案，所以按 **role** 认（RoleSwitch），不再按 Label=="switch"。
+func switchHit(canvas *gfx.Canvas) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
-		if hit.Label == "switch" {
+		if hit.Role == gfx.RoleSwitch {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 func TestTeamToggleTwoStates(t *testing.T) {

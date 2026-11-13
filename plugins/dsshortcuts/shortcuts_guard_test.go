@@ -107,8 +107,10 @@ func discoveredKeys(t *testing.T) map[string][]string {
 			if !ok {
 				return true
 			}
+			// v0.6.0：键盘常量从 ui 搬到了 gfx（V-06-1 的 ui→gfx 拆分），
+			// 两个包名都算数——不然这条守卫会把全部键报成"没人处理"。
 			pkg, ok := sel.X.(*ast.Ident)
-			if !ok || pkg.Name != "ui" {
+			if !ok || (pkg.Name != "ui" && pkg.Name != "gfx") {
 				return true
 			}
 			key := sel.Sel.Name

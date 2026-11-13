@@ -48,7 +48,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -270,7 +270,7 @@ type dragState struct {
 // handle 是一根拖拽把手在**这一帧**的位置。
 type handle struct {
 	kind string
-	id   ui.ID
+	id   gfx.ID
 	// x 是命中带左缘的绝对坐标（三列都从 x=0 起算，所以就是列边界减半个带宽）。
 	x float32
 	// width 是它调的那一列当前宽；0 = 这一列不在，把手不出现。
@@ -449,9 +449,9 @@ func (p *Plugin) dragHandles(env *pluginapi.Env, cols columns) bool {
 			continue
 		}
 		switch ev.Kind {
-		case ui.PointerDown:
+		case gfx.PointerDown:
 			// 只认主键。右键/中键落在分隔线上不应该开始拖。
-			if ev.Button != ui.PointerButtonPrimary && ev.Button != ui.PointerButtonNone {
+			if ev.Button != gfx.PointerButtonPrimary && ev.Button != gfx.PointerButtonNone {
 				continue
 			}
 			// 已经在拖另一根：不抢。真机上「按住左键再按右键」会送来第二个
@@ -461,7 +461,7 @@ func (p *Plugin) dragHandles(env *pluginapi.Env, cols columns) bool {
 			}
 			p.dragging = dragState{active: true, kind: h.kind, startX: ev.X, startW: h.width}
 			c.Consume()
-		case ui.PointerMove:
+		case gfx.PointerMove:
 			if !p.dragging.active || p.dragging.kind != h.kind {
 				continue
 			}
@@ -469,7 +469,7 @@ func (p *Plugin) dragHandles(env *pluginapi.Env, cols columns) bool {
 				changed = true
 			}
 			c.Consume()
-		case ui.PointerUp:
+		case gfx.PointerUp:
 			if !p.dragging.active || p.dragging.kind != h.kind {
 				continue
 			}
@@ -624,7 +624,7 @@ func clampUser(px, lo, hi float32) float32 {
 // 平时**不画线**：官方侧栏与主区之间本来就没有分隔线（只靠底色差），
 // 平白加一条 1px 会让首屏和官方基线截图对不上。悬停才出现 2px 线，
 // 拖动时 3px 且换成品牌色——加上 SizeWE 指针，这就是"这里能拖"的全部提示。
-func (p *Plugin) drawHandles(f *flex.Frame, env *pluginapi.Env, cols columns) {
+func (p *Plugin) drawHandles(f ui.C, env *pluginapi.Env, cols columns) {
 	c := env.Canvas
 	for _, h := range p.handles(env, cols) {
 		if h.width <= 0 {
@@ -638,11 +638,11 @@ func (p *Plugin) drawHandles(f *flex.Frame, env *pluginapi.Env, cols columns) {
 		case c != nil && (c.Hovered() == h.id || c.Pressed() == h.id):
 			line, color = handleLineHover, p.theme.BorderL4
 		}
-		f.Column().Absolute().Left(h.x).Top(0).Width(handleWidth).FillHeight().
-			Items(flex.Center).
-			HitWith(h.id, handleLabel(h.kind), ui.HitOptions{
-				Role:   ui.RoleSlider,
-				Cursor: ui.PointerCursorResizeHorizontal,
+		ui.Column(f).Absolute().Left(h.x).Top(0).Width(handleWidth).FillHeight().
+			Items(ui.Center).
+			HitWith(h.id, handleLabel(h.kind), gfx.HitOptions{
+				Role:   gfx.RoleSlider,
+				Cursor: gfx.PointerCursorResizeHorizontal,
 			}).
 			Children(func() {
 				if line <= 0 {
@@ -650,7 +650,7 @@ func (p *Plugin) drawHandles(f *flex.Frame, env *pluginapi.Env, cols columns) {
 				}
 				// 线宽显式给，不用 FillWidth：绝对盒子自身的 pref 是 0，
 				// 子节点写 FillWidth 会量出 0 宽（见 shortcuts.go 的同一条注释）。
-				f.Column().Width(line).FillHeight().Background(color)
+				ui.Column(f).Width(line).FillHeight().Background(color)
 			})
 	}
 }
@@ -668,7 +668,7 @@ func handleLabel(kind string) string {
 // 底色的画法照官方 AppFrame：`.mP3x-q_frame{background:var(--dsw-alias-bg-base)}`
 // 铺满整框。这里直接落在画布上而不是开一个 Box——开 Box 会在 root 列里
 // 多占一个孩子，把后面的行挤出视口（踩过：底部整行跑到窗口外面）。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	env.Canvas.Fill(env.Bounds, p.theme.BgBase)
 }
 
@@ -683,7 +683,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 // 这里用等价的 Column(主体 Grow(1) + 底部定高) 表达，
 // 而不是把底部条绝对定位——绝对定位的元素不参与父级布局，
 // 先前那一版状态栏因此既没从 x=0 开始，也没把三列压矮。
-func (p *Plugin) children(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) children(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	// 先补配置：壳可能是第一帧之后才把 ui-config.json 拿回来的，
 	// 而这一帧的三列宽度马上就要用到它（必须在 layout 之前）。
 	p.readConfig(env)
@@ -697,8 +697,8 @@ func (p *Plugin) children(f *flex.Frame, env *pluginapi.Env, drawSlot func(plugi
 		cols = p.layout(env)
 	}
 	syncGeometry(env, cols)
-	f.Column().FillWidth().FillHeight().Children(func() {
-		f.Row().FillWidth().Grow(1).Children(func() {
+	ui.Column(f).FillWidth().FillHeight().Children(func() {
+		ui.Row(f).FillWidth().Grow(1).Children(func() {
 			p.drawSidebar(f, env, drawSlot, cols)
 			p.drawMain(f, env, drawSlot, cols)
 			p.drawRightbar(f, env, drawSlot, cols)
@@ -714,7 +714,7 @@ func (p *Plugin) children(f *flex.Frame, env *pluginapi.Env, drawSlot func(plugi
 		// 官方对应 `.mP3x-q_overlayLayer{position:absolute;inset:0;pointer-events:none}`：
 		// 覆盖整个框架的绝对定位层。这里同样从 (0,0) 铺满整窗，而不是铺满某一列。
 		if env.Has(pluginapi.SlotShellOverlay) {
-			f.Row().Absolute().Left(0).Top(0).
+			ui.Row(f).Absolute().Left(0).Top(0).
 				Width(env.Bounds.Width).Height(env.Bounds.Height).
 				Children(func() {
 					drawSlot(pluginapi.SlotShellOverlay)
@@ -724,7 +724,7 @@ func (p *Plugin) children(f *flex.Frame, env *pluginapi.Env, drawSlot func(plugi
 }
 
 // drawSidebar 左栏：只有挂了 sidebar.* 的插件才出现。
-func (p *Plugin) drawSidebar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot), cols columns) {
+func (p *Plugin) drawSidebar(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot), cols columns) {
 	if cols.sidebar <= 0 {
 		return
 	}
@@ -736,11 +736,11 @@ func (p *Plugin) drawSidebar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pl
 	// 而侧栏内部的滚动区是按 280 算的（280-24=256），于是每一行都往中栏里
 	// 探出 41px——悬停/选中底色会横穿到会话正文上（这次截图里量出来的：
 	// 行背景 x=20…276，而侧栏列只到 x=247）。
-	f.Column().Width(cols.sidebar).Shrink(0).FillHeight().PadX(12).PadY(6).Gap(8).
+	ui.Column(f).Width(cols.sidebar).Shrink(0).FillHeight().PadX(12).PadY(6).Gap(8).
 		Background(p.theme.SidebarFill).Children(func() {
 		drawSlot(pluginapi.SlotSidebarHeader)
 		p.prims.Divider(f)
-		f.Column().Grow(1).MinHeight(120).Children(func() {
+		ui.Column(f).Grow(1).MinHeight(120).Children(func() {
 			drawSlot(pluginapi.SlotSidebarList)
 		})
 		if env.Has(pluginapi.SlotSidebarFooter) {
@@ -754,10 +754,10 @@ func (p *Plugin) drawSidebar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pl
 		// `flex:none`）要并排画在同一行。各自画一行就是"连接指示在设置按钮
 		// 下面"那个错位（HF 报告 §剩余差距 1 / HH 单第 1 件）。
 		if env.Has(uikernel.OffSidebarSettings) {
-			row := f.Row().FillWidth().
+			row := ui.Row(f).FillWidth().
 				MarginSides(uikernel.SettingsTriggerRowMarginY, -uikernel.SettingsTriggerRowInset,
 					uikernel.SettingsTriggerRowMarginY, -uikernel.SettingsTriggerRowInset).
-				Items(flex.Center).Gap(uikernel.SettingsTriggerRowGap)
+				Items(ui.Center).Gap(uikernel.SettingsTriggerRowGap)
 			row.Children(func() { drawSlot(uikernel.OffSidebarSettings) })
 		}
 	})
@@ -768,18 +768,18 @@ func (p *Plugin) drawSidebar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pl
 // 宽度用 solveColumns 的 center，而不是「窗体减一遍侧栏右栏」——
 // 官方只在没有右栏时才允许中栏低于 400，这条规则只写在求解器里。
 // Grow(1) 留着当安全网：三列之和按构造等于视口，正常情况下它不起作用。
-func (p *Plugin) drawMain(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot), cols columns) {
+func (p *Plugin) drawMain(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot), cols columns) {
 	w := cols.center
 	if w <= 0 {
 		w = env.MainWidth // 视口未知时的兜底（壳算好的主区宽）
 	}
-	f.Column().Width(w).Grow(1).FillHeight().Pad(columnPad).Gap(8).Children(func() {
+	ui.Column(f).Width(w).Grow(1).FillHeight().Pad(columnPad).Gap(8).Children(func() {
 		if env.Has(pluginapi.SlotMainHeader) {
 			drawSlot(pluginapi.SlotMainHeader)
 		}
 		// body 是可伸展轨道：composer 的位置由主区几何决定，
 		// 不能依赖空态/消息流占用方自己记得 Grow。
-		f.Column().FillWidth().Grow(1).MinHeight(0).Children(func() {
+		ui.Column(f).FillWidth().Grow(1).MinHeight(0).Children(func() {
 			drawSlot(pluginapi.SlotMainBody)
 		})
 		drawSlot(pluginapi.SlotMainComposer)
@@ -797,11 +797,11 @@ func (p *Plugin) drawMain(f *flex.Frame, env *pluginapi.Env, drawSlot func(plugi
 // 我们的右栏占用方（plugins/dsrightbar）没有自己的面板框，直接画在列里，
 // 所以这层底色只能由列来给——否则右栏和主区同色、边界消失。
 // 真正的面板底色（pane 的 CSS）没在打包产物里找到，等 V4B 定右栏面板形态时一起收。
-func (p *Plugin) drawRightbar(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot), cols columns) {
+func (p *Plugin) drawRightbar(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot), cols columns) {
 	if cols.rightbar <= 0 {
 		return
 	}
-	f.Column().Width(cols.rightbar).FillHeight().Pad(columnPad).Gap(8).
+	ui.Column(f).Width(cols.rightbar).FillHeight().Pad(columnPad).Gap(8).
 		Background(p.theme.SidebarFill).Children(func() {
 		drawSlot(pluginapi.SlotRightbar)
 	})
@@ -816,7 +816,7 @@ func (p *Plugin) drawRightbar(f *flex.Frame, env *pluginapi.Env, drawSlot func(p
 //
 // 用 Column 不是 Row：底部槽里通常是「一条分隔线 + 一行内容」，
 // 竖着排。用 Row 会让分隔线和内容并排，背景只剩右半截。
-func (p *Plugin) drawBottom(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) drawBottom(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	if !env.Has(pluginapi.SlotShellBottom) {
 		return
 	}
@@ -824,7 +824,7 @@ func (p *Plugin) drawBottom(f *flex.Frame, env *pluginapi.Env, drawSlot func(plu
 	if h <= 0 {
 		h = 24
 	}
-	f.Column().FillWidth().Height(h).Background(p.theme.BgBase).Children(func() {
+	ui.Column(f).FillWidth().Height(h).Background(p.theme.BgBase).Children(func() {
 		drawSlot(pluginapi.SlotShellBottom)
 	})
 }

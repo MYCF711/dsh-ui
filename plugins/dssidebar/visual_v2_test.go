@@ -7,45 +7,45 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // v2RecordedRow 记录真实 drawSession 传给图元的选中态、行高和最终布局矩形。
 type v2RecordedRow struct {
-	id     ui.ID
+	id     gfx.ID
 	active bool
 	height float32
-	box    flex.Box
+	box    ui.Box
 }
 
 // v2RecordingPrimitives 只记录、不改写 dscore 的真实布局与命中行为。
 type v2RecordingPrimitives struct {
 	*dscore.Primitives
 	rows    []v2RecordedRow
-	headers []flex.Box
+	headers []ui.Box
 	dots    int
 }
 
-func (r *v2RecordingPrimitives) ListRow(f *flex.Frame, id ui.ID, active bool, height float32, body func()) flex.Box {
+func (r *v2RecordingPrimitives) ListRow(f ui.C, id gfx.ID, active bool, height float32, body func()) ui.Box {
 	box := r.Primitives.ListRow(f, id, active, height, body)
 	r.rows = append(r.rows, v2RecordedRow{id: id, active: active, height: height, box: box})
 	return box
 }
 
-func (r *v2RecordingPrimitives) SectionHeader(f *flex.Frame, id ui.ID, title string, count int, open bool) flex.Box {
+func (r *v2RecordingPrimitives) SectionHeader(f ui.C, id gfx.ID, title string, count int, open bool) ui.Box {
 	box := r.Primitives.SectionHeader(f, id, title, count, open)
 	r.headers = append(r.headers, box)
 	return box
 }
 
-func (r *v2RecordingPrimitives) Dot(f *flex.Frame, color ui.Color, size float32) flex.Box {
+func (r *v2RecordingPrimitives) Dot(f ui.C, color gfx.Color, size float32) ui.Box {
 	r.dots++
 	return r.Primitives.Dot(f, color, size)
 }
 
-func v2Canvas(tree *ui.Tree) *ui.Canvas {
-	canvas := &ui.Canvas{}
+func v2Canvas(tree *gfx.Tree) *gfx.Canvas {
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size / 2
@@ -53,10 +53,10 @@ func v2Canvas(tree *ui.Tree) *ui.Canvas {
 	return canvas
 }
 
-func v2Fixture() (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *ui.Tree, *ui.Canvas) {
+func v2Fixture() (*Plugin, *v2RecordingPrimitives, *pluginapi.Env, *gfx.Tree, *gfx.Canvas) {
 	theme := dscore.Dark()
 	recorder := &v2RecordingPrimitives{Primitives: &dscore.Primitives{Theme: theme}}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feature := tree.Feature("visual-v2-test")
 	plugin := &Plugin{theme: theme, prims: recorder, width: 280, collapsed: map[string]bool{}}
 	env := &pluginapi.Env{Theme: theme, Tree: tree, Feat: feature}
@@ -79,8 +79,9 @@ func TestV2ActivityDotOnlyForCurrentSessionWithTruth(t *testing.T) {
 		env.Data = pluginapi.Snapshot{Cur: cur, Busy: busy, Stream: stream}
 		env.Act.OpenSession = func(string) {}
 		row := sess("current", "真实标题", `D:\work`, "2026-11-03T20:00:00+08:00")
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 40}, func(f *flex.Frame) {
+		pageTheme := dscore.VivaTheme(p.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 40}, func(f ui.C) {
 			p.drawSession(f, env, row)
 		})
 		return recorder.dots
@@ -130,8 +131,9 @@ func TestV2SearchUsesFieldAndNarrowsRealRows(t *testing.T) {
 	}
 	env.Data.Cur = "b"
 	p.search.SetText("  ALPHA  ")
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 300}, func(f *flex.Frame) {
+	pageTheme2 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, gfx.Rect{Width: 268, Height: 300}, func(f ui.C) {
 		p.drawList(f, env)
 	})
 	if len(p.lastOrder) != 1 || p.lastOrder[0] != "a" {
@@ -151,10 +153,11 @@ func TestV2SelectionAndClickUseRealSessionID(t *testing.T) {
 	env.Act.OpenSession = func(id string) { opened = id }
 	a := sess("a", "Alpha", `D:\work`, "2026-11-03T10:00:00Z")
 	b := sess("b", "Beta", `D:\work`, "2026-11-03T11:00:00Z")
-	var view flex.View
+	pageTheme3 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme3})
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 80}, func(f *flex.Frame) {
-			f.Column().Children(func() {
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 80}, func(f ui.C) {
+			ui.Column(f).Children(func() {
 				p.drawSession(f, env, a)
 				p.drawSession(f, env, b)
 			})
@@ -170,7 +173,7 @@ func TestV2SelectionAndClickUseRealSessionID(t *testing.T) {
 		}
 	}
 	canvas.Reset()
-	canvas.BeginEventPass(tree.ID(env.Feat, "s-a"))
+	canvas.BeginEventPass(tree.ID(env.Feat, "s-a"), gfx.ClickInfo{})
 	draw()
 	canvas.EndEventPass()
 	if opened != "a" {
@@ -181,17 +184,18 @@ func TestV2SelectionAndClickUseRealSessionID(t *testing.T) {
 // TestV2GroupGeometryAndScroll 直接量 flex 布局：组头 34、会话 32、
 // 组头到首行 2、上一组末行到下一组头 4；wheel 必须移动这个列表自己的滚动区。
 func TestV2GroupGeometryAndScroll(t *testing.T) {
-	p, recorder, env, tree, canvas := v2Fixture()
+	p, recorder, env, _, canvas := v2Fixture()
 	for i := 0; i < 12; i++ {
 		env.Data.Sessions = append(env.Data.Sessions,
 			sess(itoa(i), "Alpha", `D:\work\a`, "2026-11-03T10:00:00Z"))
 	}
 	env.Data.Sessions = append(env.Data.Sessions,
 		sess("b", "Beta", `D:\work\b`, "2026-11-03T11:00:00Z"))
-	var view flex.View
+	pageTheme4 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme4})
 	draw := func() {
-		view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 268, Height: 180}, func(f *flex.Frame) {
-			f.Column().FillHeight().Children(func() { p.drawList(f, env) })
+		view.Draw(canvas, gfx.Rect{Width: 268, Height: 180}, func(f ui.C) {
+			ui.Column(f).FillHeight().Children(func() { p.drawList(f, env) })
 		})
 	}
 	draw()
@@ -219,8 +223,8 @@ func TestV2GroupGeometryAndScroll(t *testing.T) {
 	if got := second.Y - (secondHeader.Y + secondHeader.Height); got != 2 {
 		t.Fatalf("第二组头到首行间距 = %v，want 2", got)
 	}
-	scrollID := tree.ID(env.Feat, "sidebar-scroll")
-	state := view.ScrollState(scrollID)
+	// v0.6.0：没有 ID→ScrollState 查表，滚动状态从声明期的 Box 取。
+	state := p.scrollBox.ScrollState()
 	if state.Content <= state.Viewport || state.Max() <= 0 {
 		t.Fatalf("长列表没有形成可滚动内容：content=%v viewport=%v", state.Content, state.Viewport)
 	}
@@ -228,7 +232,7 @@ func TestV2GroupGeometryAndScroll(t *testing.T) {
 	if got := state.Content - (last.Y + last.Height); got != 16 {
 		t.Fatalf("滚动内容底部留白 = %v，want 16（官方 .GAkraW_list padding-bottom）", got)
 	}
-	result := view.Wheel(ui.ScrollEvent{X: 20, Y: 50, DeltaY: 24, Precise: true})
+	result := view.Wheel(gfx.ScrollEvent{X: 20, Y: 50, DeltaY: 24, Precise: true})
 	if !result.Handled || state.Offset != 24 {
 		t.Fatalf("wheel 未滚动侧栏：handled=%v offset=%v，want true/24", result.Handled, state.Offset)
 	}

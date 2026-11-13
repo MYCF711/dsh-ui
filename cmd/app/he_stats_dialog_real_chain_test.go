@@ -48,7 +48,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -76,8 +76,8 @@ const (
 type heRealProduct struct {
 	kernel *uikernel.Kernel
 	theme  *pluginapi.Theme
-	tree   *ui.Tree
-	feat   ui.Scope
+	tree   *gfx.Tree
+	feat   gfx.Scope
 	opts   uikernel.ShellOptions
 }
 
@@ -85,7 +85,7 @@ func newHERealProduct(t *testing.T) *heRealProduct {
 	t.Helper()
 	tier := uikernel.NewShellTier()
 	tier.Set(true)
-	p := &heRealProduct{kernel: uikernel.New("he-stats-dialog"), tree: &ui.Tree{}}
+	p := &heRealProduct{kernel: uikernel.New("he-stats-dialog"), tree: &gfx.Tree{}}
 	p.kernel.Root().Provide(uikernel.KeyShellTier, tier)
 	if err := p.kernel.Load(
 		&dscore.Plugin{Dark: true}, &dsshell.Plugin{},
@@ -104,26 +104,27 @@ func newHERealProduct(t *testing.T) *heRealProduct {
 }
 
 // paint 画一帧产品路径（真 flex + 真 canvas），click 非空时按该交互名造一次点击。
-func (p *heRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, click string) *ui.Canvas {
+func (p *heRealProduct) paint(t *testing.T, snap pluginapi.Snapshot, click string) *gfx.Canvas {
 	t.Helper()
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(p.tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size * 0.55
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: p.tree, Feat: p.feat, Canvas: canvas,
-		Bounds:    ui.Rect{Width: 1182, Height: 832},
+		Bounds:    gfx.Rect{Width: 1182, Height: 832},
 		MainWidth: 902,
 		Geometry:  pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 		Has:       func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
 		Act:       pluginapi.Actions{Send: func(string) {}, Cancel: func() {}},
 	}
 	if click != "" {
-		canvas.BeginEventPass(p.tree.ID(p.feat, click))
+		canvas.BeginEventPass(p.tree.ID(p.feat, click), gfx.ClickInfo{})
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 			p.kernel.DrawSlot(f, slot, env)
 		})
@@ -360,7 +361,7 @@ func TestRealChainHESessionStatsDialog(t *testing.T) {
 }
 
 // heTexts 列画布文本。
-func heTexts(canvas *ui.Canvas) []string {
+func heTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -369,7 +370,7 @@ func heTexts(canvas *ui.Canvas) []string {
 }
 
 // heHasText 报告画布上有没有**逐字相等**的文本。
-func heHasText(canvas *ui.Canvas, want string) bool {
+func heHasText(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want {
 			return true
@@ -389,7 +390,7 @@ func heHasActivityReading(texts []string) bool {
 }
 
 // heHitByName 按交互名找命中区。
-func heHitByName(t *testing.T, p *heRealProduct, canvas *ui.Canvas, name string) (ui.Hit, bool) {
+func heHitByName(t *testing.T, p *heRealProduct, canvas *gfx.Canvas, name string) (gfx.Hit, bool) {
 	t.Helper()
 	id := p.tree.ID(p.feat, name)
 	for _, hit := range canvas.Hits() {
@@ -397,16 +398,16 @@ func heHitByName(t *testing.T, p *heRealProduct, canvas *ui.Canvas, name string)
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 type heLabeledHit struct {
-	hit ui.Hit
+	hit gfx.Hit
 	ok  bool
 }
 
 // heHitByLabel 按 aria 名找命中区。
-func heHitByLabel(canvas *ui.Canvas, label string) heLabeledHit {
+func heHitByLabel(canvas *gfx.Canvas, label string) heLabeledHit {
 	for _, hit := range canvas.Hits() {
 		if hit.Label == label {
 			return heLabeledHit{hit: hit, ok: true}
@@ -418,15 +419,15 @@ func heHitByLabel(canvas *ui.Canvas, label string) heLabeledHit {
 // heCapture 用真 headless 窗口过程（真文本测量）把**当前插件状态**落成 PNG。
 func heCapture(t *testing.T, p *heRealProduct, snap pluginapi.Snapshot, path string) {
 	t.Helper()
-	shotTree := &ui.Tree{}
+	shotTree := &gfx.Tree{}
 	shotFeat := shotTree.Feature("he-shot")
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "he-stats-dialog", Width: 1182, Height: 832, Tree: shotTree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, p.theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: p.theme, Data: snap, Tree: shotTree, Feat: shotFeat, Canvas: canvas,
@@ -434,8 +435,9 @@ func heCapture(t *testing.T, p *heRealProduct, snap pluginapi.Snapshot, path str
 			Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 			Has:      func(slot pluginapi.Slot) bool { return p.kernel.Has(slot) },
 		}
-		var view flex.View
-		view.Draw(canvas, dscore.VivaTheme(p.theme), bounds, func(f *flex.Frame) {
+		pageTheme2 := dscore.VivaTheme(p.theme)
+		view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+		view.Draw(canvas, bounds, func(f ui.C) {
 			uikernel.FirstScreen(f, env, p.opts, func(slot pluginapi.Slot) {
 				p.kernel.DrawSlot(f, slot, env)
 			})

@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // click presses the middle of the control with the given identity, as a user would.
-func click(t *testing.T, driver *app.Driver, id ui.ID) {
+func click(t *testing.T, driver *app.Driver, id gfx.ID) {
 	t.Helper()
 	for _, hit := range driver.Snapshot().Hits {
 		if hit.ID == id {
@@ -35,7 +35,7 @@ func shows(driver *app.Driver, want string) bool {
 
 func TestButtonsChangeTheCount(t *testing.T) {
 	m := &model{}
-	var canvas ui.Canvas
+	var canvas gfx.Canvas
 	driver, err := app.NewDriver(newConfig(m), &canvas)
 	if err != nil {
 		t.Fatal(err)

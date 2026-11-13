@@ -10,7 +10,7 @@ import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -34,23 +34,24 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 	data := pluginapi.Snapshot{Cur: "s-001", CWD: `D:\ws`}
 	act := pluginapi.Actions{OpenFile: func(string) error { return nil }}
 
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("files-preview-headless")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "files-preview", Width: 1182, Height: 832, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: 902,
 			Geometry: pluginapi.Geometry{Width: size.Width, Height: size.Height, SidebarWidth: 280, MainWidth: 902},
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			p.drawPreview(f, env)
 		})
 	}
@@ -66,7 +67,7 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 
 	// 判据：预览卡片（InputMajor + 圆角 Panel）真的画出来了，而且它上面有文字。
 	// 只写 PNG 不断言的话，"画在一块看不见的地方"照样能出一张图。
-	var card ui.Rect
+	var card gfx.Rect
 	found := false
 	for _, primitive := range session.Snapshot().Primitives {
 		if primitive.Color != theme.InputMajor {

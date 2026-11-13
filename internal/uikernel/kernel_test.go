@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // fake 是最小插件：id / 提供 / 依赖 / 注册时做什么，都能配。
@@ -240,7 +240,7 @@ func TestProvideAfterDisposeIsIgnored(t *testing.T) {
 // = 贴在上面）。这两条错了不会崩，只会"画出来的东西盖住别人"或者"少画一块"，
 // 排查时很难想到是排序问题。
 func TestPaintersFilterBySlotAndSortByOrder(t *testing.T) {
-	noop := func(*flex.Frame, *pluginapi.Env) {}
+	noop := func(ui.C, *pluginapi.Env) {}
 	mk := func(id string, painters ...pluginapi.Painter) *fake {
 		return &fake{id: id, hasPanel: true, panels: painters}
 	}

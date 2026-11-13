@@ -42,7 +42,7 @@ package dsnotifications
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // 父级槽位名（官方逐字）。
@@ -155,8 +155,8 @@ func launcherRowHeight(st AccountState) float32 {
 // （uikernel 官方骨架 / uikernel 兼容桥 / dsshell 旧三栏），本容器是那一行的
 // 第一个子项——`flex:1` 把它撑开、把连接指示推到行右缘（官方
 // `[设置按钮(flex:1)] [连接指示]` 的排法）。
-func (p *Plugin) drawSettingsLauncherRow(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
-	f.Column().FillWidth().Children(func() {
+func (p *Plugin) drawSettingsLauncherRow(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+	ui.Column(f).FillWidth().Children(func() {
 		drawSlot(SlotSettingsLauncher)
 	})
 }
@@ -172,7 +172,7 @@ func (p *Plugin) drawSettingsLauncherRow(f *flex.Frame, env *pluginapi.Env, draw
 //     "只在表里登记过"。
 //  2. 启动器触发行：avatar 24 + label；`data-collapsed` 36×36；登出 32px。
 //     点击 = 官方 `openSettings('account')`（本仓打开设置浮层，见差距登记）。
-func (p *Plugin) drawLauncher(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawLauncher(f ui.C, env *pluginapi.Env) {
 	st := p.ctrl.AccountStateSnapshot()
 	t := p.theme
 	if env != nil && env.Theme != nil {
@@ -180,7 +180,7 @@ func (p *Plugin) drawLauncher(f *flex.Frame, env *pluginapi.Env) {
 	}
 	h := launcherRowHeight(st)
 
-	root := f.Column().FillWidth().Height(h)
+	root := ui.Column(f).FillWidth().Height(h)
 	if st.SignedIn && st.Wide {
 		// `.root[data-inset='true']{margin-inline:2px}`（官方只在已登录 + 宽态时加）
 		root = root.MarginSides(0, LauncherInset, 0, LauncherInset)
@@ -191,34 +191,34 @@ func (p *Plugin) drawLauncher(f *flex.Frame, env *pluginapi.Env) {
 }
 
 // drawLauncherTrigger 画触发行本体（`.trigger`）。
-func (p *Plugin) drawLauncherTrigger(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme,
+func (p *Plugin) drawLauncherTrigger(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 	st AccountState, h float32) {
 	id := env.Tree.ID(env.Feat, "account-launcher")
 
 	// 官方三档几何只在**这一处**决定：宽态 6px 内边距 + 8px 间距；收起轨
 	// 36×36 居中、无内边距无间距（`[data-collapsed='true']`）。
-	pad, gap, justify := LauncherRowPad, LauncherGap, flex.Start
+	pad, gap, justify := LauncherRowPad, LauncherGap, ui.Start
 	if !st.Wide {
-		pad, gap, justify = 0, 0, flex.Center
+		pad, gap, justify = 0, 0, ui.Center
 	}
-	row := f.Row().FillWidth().Height(h).Items(flex.Center).Justify(justify).
+	row := ui.Row(f).FillWidth().Height(h).Items(ui.Center).Justify(justify).
 		Gap(gap).PadSides(pad, pad, pad, pad).
 		Radius(t.Radii.MD).Hit(id, zhAccountMenu)
 
-	// 子盒子必须**挂在 row 里**（`row.Children`）：直接 `f.Row()` 会变成 row 的
+	// 子盒子必须**挂在 row 里**（`row.Children`）：直接 `ui.Row(f)` 会变成 row 的
 	// 兄弟，命中区就空了、文字会掉到行下面一行（真机截图踩过：行是空的、
 	// 文案跑到状态栏外）。
 	row.Children(func() {
 		if st.SignedIn {
 			// `.avatar` 24×24 圆形；官方 AccountAvatar 在 profile 未就绪时也是一枚
 			// 骨架色圆（不编造姓名/头像 URL）。
-			f.Row().Size(LauncherAvatar, LauncherAvatar).Radius(LauncherAvatar / 2).
+			ui.Row(f).Size(LauncherAvatar, LauncherAvatar).Radius(LauncherAvatar / 2).
 				Background(t.BgLayer2)
 		} else {
 			// 登出态官方用 `IconEllipsisOutlineMedium size=14`：一个居中的省略号。
-			f.Row().Size(LauncherAvatar, LauncherAvatar).Items(flex.Center).
-				Justify(flex.Center).Children(func() {
-				f.Text("⋯").FontSize(LauncherFontSize).LineHeight(LauncherFontSize).
+			ui.Row(f).Size(LauncherAvatar, LauncherAvatar).Items(ui.Center).
+				Justify(ui.Center).Children(func() {
+				ui.Text(f, "⋯").FontSize(LauncherFontSize).LineHeight(LauncherFontSize).
 					Color(t.LabelTertiary)
 			})
 		}
@@ -233,7 +233,7 @@ func (p *Plugin) drawLauncherTrigger(f *flex.Frame, env *pluginapi.Env, t *plugi
 			label = zhAccountSignedIn
 			line = LauncherFontSize + 4 // 已登录行 14px 字 → 18px 行高
 		}
-		f.Text(label).FontSize(LauncherFontSize).LineHeight(line).
+		ui.Text(f, label).FontSize(LauncherFontSize).LineHeight(line).
 			Color(t.LabelPrimary).Ellipsis().Grow(1)
 	})
 
@@ -246,14 +246,14 @@ func (p *Plugin) drawLauncherTrigger(f *flex.Frame, env *pluginapi.Env, t *plugi
 //
 // 官方 `z-index:1` 的语义是"盖在同一行的其它元素之上"，在 viva 里由
 // "absolute 子节点在本容器 in-flow 之后绘制"天然满足。
-func (p *Plugin) drawLauncherSeat(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) drawLauncherSeat(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	st := p.ctrl.AccountStateSnapshot()
 	if !st.Wide {
 		// 官方 `hidden={!wide}`：侧栏收起成轨时整段不渲染（不是"画了看不见"）。
 		return
 	}
 	h := launcherRowHeight(st)
-	f.Column().Absolute().Left(0).Right(0).Bottom(h + SeatGap).Children(func() {
+	ui.Column(f).Absolute().Left(0).Right(0).Bottom(h + SeatGap).Children(func() {
 		drawSlot(SlotSettingsLauncherNotifications)
 	})
 }
@@ -299,7 +299,7 @@ func registerLauncherSlots() error {
 //	"没有槽位或没有 Draw 的画" → fail-loud
 //
 // 校验通过。真正的活儿在同一个 painter 的 `Children` 里（dispatch 子槽）。
-func containerNoop(*flex.Frame, *pluginapi.Env) {}
+func containerNoop(ui.C, *pluginapi.Env) {}
 
 // LauncherWide 是壳侧折算"侧栏宽态"的唯一出处（与 launcherWide 同源）。
 //

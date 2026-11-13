@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // mention.go 是 `@` 文件引用：在输入框里敲 `@` 之后的路径，弹一串候选，选中就把
@@ -187,7 +187,7 @@ func (p *Plugin) computeMention(env *pluginapi.Env) (mentionState, bool) {
 //
 // 位置在输入卡片**上方**（和 GoalBar / 问题条同一条约定：越靠近输入框的东西越紧急）。
 // 每行都能点。
-func (p *Plugin) drawMention(f *flex.Frame, env *pluginapi.Env, column float32) {
+func (p *Plugin) drawMention(f ui.C, env *pluginapi.Env, column float32) {
 	st, ok := p.computeMention(env)
 	if !ok {
 		p.mentionRows, p.mentionRef = nil, atRef{}
@@ -196,8 +196,8 @@ func (p *Plugin) drawMention(f *flex.Frame, env *pluginapi.Env, column float32) 
 	p.mentionRows, p.mentionRef = st.Rows, st.Ref
 	t := p.theme
 	w := cardWidth(column)
-	f.Row().FillWidth().Justify(flex.Center).Children(func() {
-		f.Column().Width(w).Radius(t.Radii.SM).Background(t.BgLayer1).
+	ui.Row(f).FillWidth().Justify(ui.Center).Children(func() {
+		ui.Column(f).Width(w).Radius(t.Radii.SM).Background(t.BgLayer1).
 			PadY(4).Children(func() {
 			for i, e := range st.Rows {
 				p.drawMentionRow(f, env, e, i == 0)
@@ -210,7 +210,7 @@ func (p *Plugin) drawMention(f *flex.Frame, env *pluginapi.Env, column float32) 
 //
 // 第一行高亮并带 Enter 提示——因为 Enter 补的就是它。不把这件事说出来，
 // 用户只会觉得"我按了 Enter 怎么变成这样了"。
-func (p *Plugin) drawMentionRow(f *flex.Frame, env *pluginapi.Env, e pluginapi.FSEntry, first bool) {
+func (p *Plugin) drawMentionRow(f ui.C, env *pluginapi.Env, e pluginapi.FSEntry, first bool) {
 	t := p.theme
 	icon, kind := "·", "文件"
 	if e.IsDir {
@@ -223,13 +223,13 @@ func (p *Plugin) drawMentionRow(f *flex.Frame, env *pluginapi.Env, e pluginapi.F
 		hint = "Enter"
 	}
 	// 行是**值类型盒子**，`.Clicked()` 直接问它这一帧有没有被点。
-	row := f.Row().FillWidth().MinHeight(24).PadX(8).Items(flex.Center).Gap(8).
+	row := ui.Row(f).FillWidth().MinHeight(24).PadX(8).Items(ui.Center).Gap(8).
 		Background(bg).Hit(env.Tree.ID(env.Feat, "mention-"+e.Name), "").
 		Children(func() {
-			f.Text(icon).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			f.Text(e.Name).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary).Ellipsis()
-			f.Text(kind).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			f.Text(hint).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			ui.Text(f, icon).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			ui.Text(f, e.Name).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary).Ellipsis()
+			ui.Text(f, kind).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			ui.Text(f, hint).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		})
 	if row.Clicked() {
 		p.field.SetText(completeAt(p.field.Text(), p.mentionRef, e.Name, e.IsDir))

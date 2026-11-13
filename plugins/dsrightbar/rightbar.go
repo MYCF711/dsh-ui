@@ -15,7 +15,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -37,8 +37,12 @@ type Plugin struct {
 	fullscreen map[string]bool
 	// viewData 在 main.body 的 chat 前后两个 painter 之间保存一帧原始快照。
 	// 这是公共 Actions 尚无 SelectConversationView 时的最小本地适配。
-	viewData   *pluginapi.Snapshot
-	viewScroll func(ui.ID) *flex.ScrollState
+	viewData *pluginapi.Snapshot
+	// viewOffset 保存被覆盖前的 env.ViewportOffset（通常 nil），Order=30 恢复。
+	// v0.6.0 没有 ID→ScrollState 查表，所以"把正文推到视口外"改成给一个偏移覆盖，
+	// 由 dsconversation 自己在虚拟化时采用（见 pluginapi.Env.ViewportOffset）。
+	viewOffset       *float32
+	trajectoryOffset float32
 	// turnOpen 记「哪一组 turn 被用户手动收/开过」。
 	//
 	// 只在本机内存里、按会话隔开：切回同一会话还是原样，进程重启就回到默认。
@@ -48,8 +52,8 @@ type Plugin struct {
 
 	// WP-D1：主区与右栏各有真实输入框，避免同屏时共享 Field.id 抢焦点。
 	// 查询、展开与选择都只作用于当前已加载 Snapshot，不触发任何历史请求。
-	searchField     flex.Field
-	mainSearchField flex.Field
+	searchField     ui.Field
+	mainSearchField ui.Field
 	stepOpen        map[string]bool
 	selectedTurn    map[string]string
 	selectedStep    map[string]string
@@ -91,10 +95,10 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 }
 
 // draw 画整条右栏：PanelChrome + 分隔线 + 时间线（可滚）。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	full := p.fullscreen[env.Data.Cur]
-	root := f.Column().WidthPercent(100).FillHeight()
+	root := ui.Column(f).WidthPercent(100).FillHeight()
 	if full {
 		h := env.Bounds.Height - env.Geometry.BottomHeight
 		if h <= 0 {
@@ -102,7 +106,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		}
 		// 官方 fullscreen 是 100vw、锚定右缘。相对本槽内容轨道回退壳的 12px inset，
 		// 不读取或修改 cmd/app，也不猜全局窗口坐标。
-		root = f.Column().Absolute().Top(-shellColumnInset).Right(-shellColumnInset).
+		root = ui.Column(f).Absolute().Top(-shellColumnInset).Right(-shellColumnInset).
 			Width(env.Bounds.Width).Height(h).Background(t.BgBase).Clip().Pad(shellColumnInset).
 			Hit(env.Tree.ID(env.Feat, "rightbar-fullscreen"), "右栏全屏面板")
 	}
@@ -112,7 +116,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 }
 
 // drawTimeline 同时服务右栏与主区 trajectory；两种容器共享同一组真实工具消息。
-func (p *Plugin) drawTimeline(f *flex.Frame, env *pluginapi.Env, data pluginapi.Snapshot, scrollKey string, chrome bool) {
+func (p *Plugin) drawTimeline(f ui.C, env *pluginapi.Env, data pluginapi.Snapshot, scrollKey string, chrome bool) {
 	t := p.theme
 	groups := groupTurns(data.Msgs)
 	total := 0
@@ -120,11 +124,11 @@ func (p *Plugin) drawTimeline(f *flex.Frame, env *pluginapi.Env, data pluginapi.
 		total += len(groups[i].calls)
 	}
 
-	f.Row().WidthPercent(100).MinHeight(28).Items(flex.Center).Gap(6).Children(func() {
-		f.Text("轨迹").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
-		f.Spacer()
+	ui.Row(f).WidthPercent(100).MinHeight(28).Items(ui.Center).Gap(6).Children(func() {
+		ui.Text(f, "轨迹").FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).Color(t.LabelTertiary)
+		ui.Spacer(f)
 		if total > 0 {
-			f.Text(itoa(total) + " 次").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Text(f, itoa(total)+" 次").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
 		if chrome {
 			p.drawFullscreenButton(f, env)
@@ -144,13 +148,13 @@ func (p *Plugin) drawTimeline(f *flex.Frame, env *pluginapi.Env, data pluginapi.
 //
 // 折叠只影响**这一帧画不画条目**，不改 Snapshot、不改消息：收起时数据仍在，
 // 只是没铺开。组头永远带条数，所以收起也不会让人以为"这次只有下面这些"。
-func (p *Plugin) drawTurnGroup(f *flex.Frame, env *pluginapi.Env, session, scope string, g turnGroup, last bool) {
+func (p *Plugin) drawTurnGroup(f ui.C, env *pluginapi.Env, session, scope string, g turnGroup, last bool) {
 	t := p.theme
 	open := p.groupOpen(session, g.key, last)
 	title := "第 " + itoa(g.turn) + " 轮 · " + itoa(len(g.calls)) + " 次工具"
 
-	header := f.Row().WidthPercent(100).MinHeight(24).Radius(t.Radii.SM).PadX(2).
-		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).
+	header := ui.Row(f).WidthPercent(100).MinHeight(24).Radius(t.Radii.SM).PadX(2).
+		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).
 		// 标签就是看得见的那行字：读屏和 -keys/无头点击都按它找，
 		// 不另起一个用户看不见的名字。
 		Hit(env.Tree.ID(env.Feat, scope+"turn-"+g.key), title).Children(func() {
@@ -158,8 +162,8 @@ func (p *Plugin) drawTurnGroup(f *flex.Frame, env *pluginapi.Env, session, scope
 		if open {
 			arrow = "▾"
 		}
-		f.Text(arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
-		f.Text(title).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis().Grow(1)
+		ui.Text(f, arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
+		ui.Text(f, title).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis().Grow(1)
 	})
 	if header.Clicked() {
 		p.toggleGroup(session, g.key, last)
@@ -168,7 +172,7 @@ func (p *Plugin) drawTurnGroup(f *flex.Frame, env *pluginapi.Env, session, scope
 		return
 	}
 	if g.skip > 0 {
-		f.Text("… 前 " + itoa(g.skip) + " 次未显示").FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
+		ui.Text(f, "… 前 "+itoa(g.skip)+" 次未显示").FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadY(2)
 	}
 	for i := g.skip; i < len(g.calls); i++ {
 		p.drawEntry(f, g.calls[i], i == len(g.calls)-1)
@@ -306,7 +310,7 @@ func clipGroups(groups []turnGroup, max int) ([]turnGroup, int) {
 	return kept, total - shown
 }
 
-func (p *Plugin) drawFullscreenButton(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawFullscreenButton(f ui.C, env *pluginapi.Env) {
 	full := p.fullscreen[env.Data.Cur]
 	label, icon := "右栏全屏", rightbarFullscreenIcon
 	if full {
@@ -321,12 +325,12 @@ func (p *Plugin) drawFullscreenButton(f *flex.Frame, env *pluginapi.Env) {
 	}
 }
 
-func (p *Plugin) chromeButton(f *flex.Frame, env *pluginapi.Env, name, label string, icon ui.Icon) flex.Box {
+func (p *Plugin) chromeButton(f ui.C, env *pluginapi.Env, name, label string, icon gfx.Icon) ui.Box {
 	t := p.theme
-	return f.Row().Width(28).Height(28).Radius(t.Radii.SM).
-		Items(flex.Center).Justify(flex.Center).Hover(flex.Look{}.Background(t.Hover)).
+	return ui.Row(f).Width(28).Height(28).Radius(t.Radii.SM).
+		Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, name), label).Children(func() {
-		f.Icon(icon).Width(16).Height(16).Color(t.LabelSecondary)
+		ui.Icon(f, icon).Width(16).Height(16).Color(t.LabelSecondary)
 	})
 }
 
@@ -334,70 +338,71 @@ func (p *Plugin) chromeButton(f *flex.Frame, env *pluginapi.Env, name, label str
 // view 字段，因此只在 chat painter 执行期间把原始消息投到视口外，Order=30 立即恢复。
 // 这样 dsconversation 不生成 chat 文本/Markdown 槽位，也不会画空投影的“没有匹配”。
 // composer、rightbar、statusbar 和下一帧仍读原始快照；原消息切片从不被改写。
-func (p *Plugin) beginTrajectoryView(_ *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) beginTrajectoryView(_ ui.C, env *pluginapi.Env) {
 	p.viewData = nil
-	p.viewScroll = nil
+	p.viewOffset = nil
 	if p.views == nil || p.views.Active(env.Data.Cur) != viewapi.Trajectory {
 		return
 	}
 	data := env.Data
 	p.viewData = &data
-	p.viewScroll = env.Scroll
+	p.viewOffset = env.ViewportOffset
 	if len(env.Data.Msgs) == 0 {
 		// 零值只用于通过 chat 的正常列表分支；下面的视口投影保证它不会被读取或实画。
 		env.Data.Msgs = []apiclient.Message{{}}
 	}
 	env.Data.Stream = ""
 	env.Data.Busy = true
-	env.Scroll = func(ui.ID) *flex.ScrollState {
-		return &flex.ScrollState{Offset: 1e9}
-	}
+	// 偏移给一个远大于任何内容高度的值：dsconversation 的视口虚拟化于是把每条
+	// 消息都当成"在视口外"，只留 Slot，不生成文本/Markdown 槽位。
+	p.trajectoryOffset = 1e9
+	env.ViewportOffset = &p.trajectoryOffset
 }
 
 // drawTrajectoryView 是 main.body 的 Order=30 真实轨迹 painter。
-func (p *Plugin) drawTrajectoryView(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawTrajectoryView(f ui.C, env *pluginapi.Env) {
 	if p.viewData == nil {
 		return
 	}
 	data := *p.viewData
 	p.viewData = nil
 	env.Data = data
-	env.Scroll = p.viewScroll
-	p.viewScroll = nil
-	f.Column().Absolute().Left(0).Top(0).WidthPercent(100).HeightPercent(100).
+	env.ViewportOffset = p.viewOffset
+	p.viewOffset = nil
+	ui.Column(f).Absolute().Left(0).Top(0).WidthPercent(100).HeightPercent(100).
 		Background(p.theme.BgBase).Clip().
 		Hit(env.Tree.ID(env.Feat, "main-trajectory"), "主区轨迹").Children(func() {
 		p.drawTimeline(f, env, data, "main-trajectory-scroll-", false)
 	})
 }
 
-var rightbarCollapseIcon = ui.Icon{
-	ViewBox: 24, Stroke: 2, Cap: ui.CapRound, Join: ui.JoinRound,
-	Commands: []ui.PathCommand{
-		ui.MoveTo(5, 3), ui.LineTo(19, 3), ui.QuadTo(21, 3, 21, 5),
-		ui.LineTo(21, 19), ui.QuadTo(21, 21, 19, 21), ui.LineTo(5, 21),
-		ui.QuadTo(3, 21, 3, 19), ui.LineTo(3, 5), ui.QuadTo(3, 3, 5, 3), ui.ClosePath(),
-		ui.MoveTo(15, 3), ui.LineTo(15, 21),
+var rightbarCollapseIcon = gfx.Icon{
+	ViewBox: 24, Stroke: 2, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(5, 3), gfx.LineTo(19, 3), gfx.QuadTo(21, 3, 21, 5),
+		gfx.LineTo(21, 19), gfx.QuadTo(21, 21, 19, 21), gfx.LineTo(5, 21),
+		gfx.QuadTo(3, 21, 3, 19), gfx.LineTo(3, 5), gfx.QuadTo(3, 3, 5, 3), gfx.ClosePath(),
+		gfx.MoveTo(15, 3), gfx.LineTo(15, 21),
 	},
 }
 
-var rightbarFullscreenIcon = ui.Icon{
-	ViewBox: 16, Stroke: 1, Cap: ui.CapRound, Join: ui.JoinRound,
-	Commands: []ui.PathCommand{
-		ui.MoveTo(6, 2), ui.LineTo(2, 2), ui.LineTo(2, 6),
-		ui.MoveTo(10, 2), ui.LineTo(14, 2), ui.LineTo(14, 6),
-		ui.MoveTo(6, 14), ui.LineTo(2, 14), ui.LineTo(2, 10),
-		ui.MoveTo(10, 14), ui.LineTo(14, 14), ui.LineTo(14, 10),
+var rightbarFullscreenIcon = gfx.Icon{
+	ViewBox: 16, Stroke: 1, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(6, 2), gfx.LineTo(2, 2), gfx.LineTo(2, 6),
+		gfx.MoveTo(10, 2), gfx.LineTo(14, 2), gfx.LineTo(14, 6),
+		gfx.MoveTo(6, 14), gfx.LineTo(2, 14), gfx.LineTo(2, 10),
+		gfx.MoveTo(10, 14), gfx.LineTo(14, 14), gfx.LineTo(14, 10),
 	},
 }
 
-var rightbarRestoreIcon = ui.Icon{
-	ViewBox: 16, Stroke: 1, Cap: ui.CapRound, Join: ui.JoinRound,
-	Commands: []ui.PathCommand{
-		ui.MoveTo(2, 6), ui.LineTo(6, 6), ui.LineTo(6, 2),
-		ui.MoveTo(14, 6), ui.LineTo(10, 6), ui.LineTo(10, 2),
-		ui.MoveTo(2, 10), ui.LineTo(6, 10), ui.LineTo(6, 14),
-		ui.MoveTo(14, 10), ui.LineTo(10, 10), ui.LineTo(10, 14),
+var rightbarRestoreIcon = gfx.Icon{
+	ViewBox: 16, Stroke: 1, Cap: gfx.CapRound, Join: gfx.JoinRound,
+	Commands: []gfx.PathCommand{
+		gfx.MoveTo(2, 6), gfx.LineTo(6, 6), gfx.LineTo(6, 2),
+		gfx.MoveTo(14, 6), gfx.LineTo(10, 6), gfx.LineTo(10, 2),
+		gfx.MoveTo(2, 10), gfx.LineTo(6, 10), gfx.LineTo(6, 14),
+		gfx.MoveTo(14, 10), gfx.LineTo(10, 10), gfx.LineTo(10, 14),
 	},
 }
 
@@ -406,30 +411,30 @@ var rightbarRestoreIcon = ui.Icon{
 // 竖线的画法：gutter 是一个竖着的 Column，里面先放一个点，再放一个
 // `Width(2) + Grow(1)` 的方块——Grow(1) 在 Column 里就是「吃掉剩下的高度」，
 // 于是它正好从点下面连到下一条的入口。最后一条不画线（线不能凭空延长）。
-func (p *Plugin) drawEntry(f *flex.Frame, msg apiclient.Message, last bool) {
+func (p *Plugin) drawEntry(f ui.C, msg apiclient.Message, last bool) {
 	t := p.theme
 	name, detail, failed := describe(msg)
 
 	// 行高用 MinHeight + PadY 撑，不要写 Height(...).Shrink(0)：
 	// 那组合会让整行塌成 0 高、一根线都不画（踩过，见 docs/plugin-api.md §7）。
-	f.Row().WidthPercent(100).Gap(8).PadY(4).Children(func() {
-		f.Column().Width(14).Items(flex.Center).Children(func() {
+	ui.Row(f).WidthPercent(100).Gap(8).PadY(4).Children(func() {
+		ui.Column(f).Width(14).Items(ui.Center).Children(func() {
 			p.prims.Dot(f, dotColor(t, failed, msg.View), 6)
 			if !last {
-				f.Column().Width(2).Grow(1).Background(t.BorderL2)
+				ui.Column(f).Width(2).Grow(1).Background(t.BorderL2)
 			}
 		})
 
-		f.Column().Grow(1).Gap(2).Children(func() {
-			f.Row().WidthPercent(100).Gap(6).Items(flex.Center).Children(func() {
-				f.Text(name).Mono().FontSize(t.Fonts.Caption).
+		ui.Column(f).Grow(1).Gap(2).Children(func() {
+			ui.Row(f).WidthPercent(100).Gap(6).Items(ui.Center).Children(func() {
+				ui.Text(f, name).Mono().FontSize(t.Fonts.Caption).
 					Color(t.LabelSecondary).Ellipsis().Grow(1)
 				if failed {
 					p.prims.Badge(f, "error", t.Error)
 				}
 			})
 			if s := oneLine(detail, 72); s != "" {
-				f.Text(s).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Ellipsis()
+				ui.Text(f, s).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Ellipsis()
 			}
 		})
 	})

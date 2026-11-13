@@ -30,7 +30,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -92,8 +92,8 @@ type officialHarness struct {
 	p           *Plugin
 	kernel      *uikernel.Kernel
 	theme       *pluginapi.Theme
-	tree        *ui.Tree
-	feat        ui.Scope
+	tree        *gfx.Tree
+	feat        gfx.Scope
 	session     *headless.Session
 	invalidator *app.Invalidator
 	writer      *raceSafeWriter
@@ -153,33 +153,33 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 		},
 	}
 
-	h.tree = &ui.Tree{}
+	h.tree = &gfx.Tree{}
 	h.feat = h.tree.Feature("official-settings")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(h.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "official-settings", Width: width, Height: height, Tree: h.tree,
 		WindowMode: app.WindowFrameless,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: h.theme, Tree: h.tree, Feat: h.feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: size.Width,
-			Scroll: view.ScrollState,
-			Act:    act,
-			Has:    h.kernel.Has,
+			Act: act,
+			Has: h.kernel.Has,
 		}
 		canvas.Fill(bounds, h.theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(h.theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			h.kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}
-	config.OnKey = func(ev ui.KeyEvent) ui.EventResult {
+	config.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
 		if h.kernel.HandleKey(ev) {
 			h.invalidator.Invalidate()
-			return ui.EventResult{Handled: true, Repaint: true}
+			return gfx.EventResult{Handled: true, Repaint: true}
 		}
-		return ui.EventResult{}
+		return gfx.EventResult{}
 	}
 	h.invalidator = &app.Invalidator{}
 	config.Invalidator = h.invalidator
@@ -204,7 +204,7 @@ func (h *officialHarness) pump() {
 
 func (h *officialHarness) close() { h.session.Close() }
 
-func (h *officialHarness) hitFor(name string) ui.Hit {
+func (h *officialHarness) hitFor(name string) gfx.Hit {
 	h.t.Helper()
 	id := h.tree.ID(h.feat, name)
 	for _, hit := range h.session.Snapshot().Hits {
@@ -217,7 +217,7 @@ func (h *officialHarness) hitFor(name string) ui.Hit {
 		ids = append(ids, fmt.Sprint(hit.ID))
 	}
 	h.t.Fatalf("没有命中区 %q；hits=%v", name, ids)
-	return ui.Hit{}
+	return gfx.Hit{}
 }
 
 func (h *officialHarness) click(name string) {
@@ -254,7 +254,7 @@ func TestOfficialPanelRendersFiveSections(t *testing.T) {
 		t.Fatal("装配完不该自己打开")
 	}
 	// Shift+F2 打开（真实按键 → kernel.HandleKey → 官方面板接管）。
-	if err := h.session.Driver().Key(ui.KeyF2, ui.ModifierShift); err != nil {
+	if err := h.session.Driver().Key(gfx.KeyF2, gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	h.pump()
@@ -332,7 +332,7 @@ func TestOfficialPanelRendersFiveSections(t *testing.T) {
 	}
 
 	// —— Escape 关闭（模态层真的接管）。
-	if err := h.session.Driver().Key(ui.KeyEscape, 0); err != nil {
+	if err := h.session.Driver().Key(gfx.KeyEscape, 0); err != nil {
 		t.Fatal(err)
 	}
 	h.pump()
@@ -349,7 +349,7 @@ func TestOfficialPanelRetryRowsRenderAndWrite(t *testing.T) {
 	h := openOfficialHarness(t, 1182, 832)
 	defer h.close()
 
-	if err := h.session.Driver().Key(ui.KeyF2, ui.ModifierShift); err != nil {
+	if err := h.session.Driver().Key(gfx.KeyF2, gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	h.pump()
@@ -419,7 +419,7 @@ func TestOfficialPanelUnknownRendersAsUnknown(t *testing.T) {
 		}
 	}
 
-	if err := h.session.Driver().Key(ui.KeyF2, ui.ModifierShift); err != nil {
+	if err := h.session.Driver().Key(gfx.KeyF2, gfx.ModifierShift); err != nil {
 		t.Fatal(err)
 	}
 	h.pump()
@@ -437,5 +437,37 @@ func TestOfficialPanelUnknownRendersAsUnknown(t *testing.T) {
 		if row.Known {
 			t.Fatalf("%s 在宿主没给数据时不该有真值", row.ID)
 		}
+	}
+}
+
+// TestOpenRoutesToOfficialPanel 守住"打开设置真的会画东西"。
+//
+// 2026-11-13 真机复现的缺陷：`Open()` 只置旧的 `p.shown`，而
+//   - 旧浮层的 `draw` 在 `OfficialEnabled()` 为真时**直接 return**；
+//   - 官方面板的 `drawOfficialPanel` 又要求 `o.open`（只有 `OpenOfficial()` 会置）。
+//
+// 于是两边都不画 —— 日志打「设置浮层已打开」，截图是**整页空白**。
+// 产品路径（Shift+F2 / 侧栏设置按钮 / `ui.settings.open` 服务）全走 `Open()`，所以这是产品缺陷，
+// 不是调试开关的问题。
+func TestOpenRoutesToOfficialPanel(t *testing.T) {
+	h := openOfficialHarness(t, 1180, 800)
+	if !h.p.OfficialEnabled() {
+		t.Fatal("夹具前提：官方四区面板应已接管（有 describe 数据面）")
+	}
+	if !h.p.Open() {
+		t.Fatal("官方接管时 Open() 要返回 true")
+	}
+	if !h.p.OfficialShown() {
+		t.Fatal("Open() 必须打开**官方**面板（OfficialShown）；只置旧 p.shown 就是那个整页空白缺陷")
+	}
+	h.pump()
+
+	// 关的时候两个状态都要回去，否则下次开还是空白。
+	h.p.Close()
+	if h.p.OfficialShown() {
+		t.Fatal("Close() 之后官方面板必须是关的")
+	}
+	if h.p.Shown() {
+		t.Fatal("Close() 之后旧浮层也必须是关的（避免残留态）")
 	}
 }

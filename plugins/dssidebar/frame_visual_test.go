@@ -13,7 +13,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -35,12 +35,13 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 	}
 	defer kernel.Dispose()
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("fg2-headless")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "fg2-sidebar", Width: 1920, Height: 1032, Tree: tree, WindowMode: app.WindowFrameless}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		mainWidth := size.Width - 280
 		env := &pluginapi.Env{
 			Theme: theme,
@@ -55,7 +56,7 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 			Has: kernel.Has,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}
@@ -86,7 +87,7 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 		}
 
 		boxes := sidebar.frameBoxes
-		assertRect := func(name string, got ui.Rect, want ui.Rect) {
+		assertRect := func(name string, got gfx.Rect, want gfx.Rect) {
 			t.Helper()
 			values := [][4]float32{{got.X, want.X, 0, 0}, {got.Y, want.Y, 0, 0}, {got.Width, want.Width, 0, 0}, {got.Height, want.Height, 0, 0}}
 			for _, v := range values {
@@ -96,17 +97,17 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 				}
 			}
 		}
-		assertRect("logoRow", boxes.Brand.Rect(), ui.Rect{X: 12, Y: 6, Width: 256, Height: 40})
-		assertRect("newSession", boxes.NewSession.Rect(), ui.Rect{X: 14, Y: 54, Width: 252, Height: 38})
+		assertRect("logoRow", boxes.Brand.Rect(), gfx.Rect{X: 12, Y: 6, Width: 256, Height: 40})
+		assertRect("newSession", boxes.NewSession.Rect(), gfx.Rect{X: 14, Y: 54, Width: 252, Height: 38})
 		if len(boxes.PanelRows) != 2 {
 			t.Fatalf("导航行=%d，want 2", len(boxes.PanelRows))
 		} else {
-			assertRect("plugins panelRow", boxes.PanelRows[0].Rect(), ui.Rect{X: 14, Y: 104, Width: 252, Height: 36})
-			assertRect("schedules panelRow", boxes.PanelRows[1].Rect(), ui.Rect{X: 14, Y: 142, Width: 252, Height: 36})
+			assertRect("plugins panelRow", boxes.PanelRows[0].Rect(), gfx.Rect{X: 14, Y: 104, Width: 252, Height: 36})
+			assertRect("schedules panelRow", boxes.PanelRows[1].Rect(), gfx.Rect{X: 14, Y: 142, Width: 252, Height: 36})
 		}
-		assertRect("workspace sectionHeader", boxes.WorkspaceHeader.Rect(), ui.Rect{X: 16, Y: 188, Width: 260, Height: 36})
+		assertRect("workspace sectionHeader", boxes.WorkspaceHeader.Rect(), gfx.Rect{X: 16, Y: 188, Width: 260, Height: 36})
 		searchButton := boxes.SearchButton.Rect()
-		assertRect("workspace search button", searchButton, ui.Rect{X: searchButton.X, Y: searchButton.Y, Width: 28, Height: 28})
+		assertRect("workspace search button", searchButton, gfx.Rect{X: searchButton.X, Y: searchButton.Y, Width: 28, Height: 28})
 
 		path := filepath.Join(dir, name)
 		if err := session.Screenshot(path); err != nil {
@@ -125,7 +126,7 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 		}
 		t.Logf("FG2_CAPTURE path=%s size=%dx%d bytes=%d brand=%+v new=%+v panels=%+v workspace=%+v",
 			path, width, height, info.Size(), boxes.Brand.Rect(), boxes.NewSession.Rect(),
-			[]ui.Rect{boxes.PanelRows[0].Rect(), boxes.PanelRows[1].Rect()}, boxes.WorkspaceHeader.Rect())
+			[]gfx.Rect{boxes.PanelRows[0].Rect(), boxes.PanelRows[1].Rect()}, boxes.WorkspaceHeader.Rect())
 	}
 
 	capture(1920, 1032, "frame-1920x1032.png")

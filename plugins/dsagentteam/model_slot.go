@@ -48,7 +48,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -91,10 +91,17 @@ const (
 //
 // chip 是 Draw 阶段量到的 trigger 盒子；Rect 要等 End 之后才有效，所以 AfterDraw
 // 才读（同 dscomposer 的 fieldBox/afterDraw 做法）。rect 只用于下一帧的菜单锚点。
+//
+// panel/panelDrawn 是**菜单面**的同一套：v0.6.0 的 Absolute 子元素高度由内容
+// 决定，声明期拿不到，而"放不下翻到下方"的判定要用它（见
+// `internal/uikernel/official_popup_place.go`）。
 type modelSlotState struct {
-	chip  flex.Box
-	drawn bool
-	rect  ui.Rect
+	chip       ui.Box
+	drawn      bool
+	rect       ui.Rect
+	panel      ui.Box
+	panelDrawn bool
+	panelRect  ui.Rect
 }
 
 // modelSlotAvailable 报告官方模型菜单这一帧能不能用（provider 目录 known 且非空）。
@@ -123,7 +130,7 @@ func (p *Plugin) modelSlotAvailable() (known bool, failure string, list []ModelP
 //	左内边距 = 容器 gap + 左占位（8 = 4 + 4）
 //	右内边距：可用态 4 = 4 + 0（chevron 已经吃掉 padding 右侧的 4）；
 //	          降级态 8 = 4 + 4（没有 chevron，补回官方的视觉留白）
-func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawModelSlot(f ui.C, env *pluginapi.Env) {
 	if f == nil || env == nil {
 		return
 	}
@@ -143,14 +150,14 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 
 	if !available {
 		// 降级：只读 chip（宿主真值 / 「未知」）——不画 chevron、不给命中区。
-		f.Row().Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
-			Items(flex.Center).Gap(modelChipGap).Children(func() {
-			f.Row().Width(inset(modelChipPadLeft))
-			f.Row().MaxWidth(maxW - modelChipPadLeft - modelChipPadRightBare).Children(func() {
-				f.Text(label).FontSize(modelChipFont).LineHeight(modelChipLine).
-					Weight(ui.WeightRegular).Color(t.LabelSecondary).Ellipsis()
+		ui.Row(f).Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
+			Items(ui.Center).Gap(modelChipGap).Children(func() {
+			ui.Row(f).Width(inset(modelChipPadLeft))
+			ui.Row(f).MaxWidth(maxW - modelChipPadLeft - modelChipPadRightBare).Children(func() {
+				ui.Text(f, label).FontSize(modelChipFont).LineHeight(modelChipLine).
+					Weight(gfx.WeightRegular).Color(t.LabelSecondary).Ellipsis()
 			})
-			f.Row().Width(inset(modelChipPadRightBare))
+			ui.Row(f).Width(inset(modelChipPadRightBare))
 		})
 		return
 	}
@@ -160,26 +167,26 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 	if textMax < 0 {
 		textMax = 0
 	}
-	chip := f.Row().Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
-		Items(flex.Center).Gap(modelChipGap)
+	chip := ui.Row(f).Height(modelChipHeight).MaxWidth(maxW).Radius(t.Radii.SM).
+		Items(ui.Center).Gap(modelChipGap)
 	if open {
 		// `.trigger[aria-expanded=true]{background:interactive-bg-hover}`（:34-38）。
 		chip = chip.Background(t.Hover)
 	} else {
-		chip = chip.Hover(flex.Look{}.Background(t.Hover))
+		chip = chip.Hover(ui.Look{}.Background(t.Hover))
 	}
 	chip = chip.Children(func() {
-		f.Row().Width(inset(modelChipPadLeft))
-		f.Row().MaxWidth(textMax).Children(func() {
-			f.Text(label).FontSize(modelChipFont).LineHeight(modelChipLine).
-				Weight(ui.WeightRegular).Color(t.LabelSecondary).Ellipsis()
+		ui.Row(f).Width(inset(modelChipPadLeft))
+		ui.Row(f).MaxWidth(textMax).Children(func() {
+			ui.Text(f, label).FontSize(modelChipFont).LineHeight(modelChipLine).
+				Weight(gfx.WeightRegular).Color(t.LabelSecondary).Ellipsis()
 		})
-		f.Icon(chevronDownIcon()).Size(modelChevronSize, modelChevronSize).Color(t.LabelSecondary)
-		f.Row().Width(inset(modelChipPadRight))
+		ui.Icon(f, chevronDownIcon()).Size(modelChevronSize, modelChevronSize).Color(t.LabelSecondary)
+		ui.Row(f).Width(inset(modelChipPadRight))
 	})
 	// 官方 trigger 是 button（`aria-haspopup` + 展开态）；点它开/关菜单。
 	chip = chip.HitWith(env.Tree.ID(env.Feat, "model-menu-trigger"), zhModelMenuAria,
-		ui.HitOptions{Role: ui.RoleButton, Expandable: true, Expanded: open})
+		gfx.HitOptions{Role: gfx.RoleButton, Expandable: true, Expanded: open})
 	p.model.chip, p.model.drawn = chip, true
 	if chip.Clicked() {
 		p.team.ToggleModelMenu()
@@ -187,13 +194,23 @@ func (p *Plugin) drawModelSlot(f *flex.Frame, env *pluginapi.Env) {
 }
 
 // afterModelSlot 把本帧 trigger 的**真实矩形**留给下一帧的菜单锚点。
-func (p *Plugin) afterModelSlot(canvas *ui.Canvas, env *pluginapi.Env) {
-	if !p.model.drawn {
-		return
+func (p *Plugin) afterModelSlot(canvas *gfx.Canvas, env *pluginapi.Env) {
+	if p.model.drawn {
+		p.model.drawn = false
+		if rect := p.model.chip.Rect(); rect.Width > 0 && rect.Height > 0 {
+			p.model.rect = rect
+		}
 	}
-	p.model.drawn = false
-	if rect := p.model.chip.Rect(); rect.Width > 0 && rect.Height > 0 {
-		p.model.rect = rect
+	// 菜单面的高度同理：这一帧量到，下一帧给 DrawModelMenu 做翻面判定。
+	if p.model.panelDrawn {
+		p.model.panelDrawn = false
+		if rect := p.model.panel.Rect(); rect.Width > 0 && rect.Height > 0 {
+			p.model.panelRect = rect
+		} else {
+			// 菜单这一帧没画出来（关掉了/目录未知）：高度清零，下次打开按
+			// "还没量过"处理，不要拿着上一次的高度去翻面。
+			p.model.panelRect = ui.Rect{}
+		}
 	}
 }
 

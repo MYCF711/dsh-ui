@@ -12,7 +12,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dstool"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -56,23 +56,24 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 	// 这里直接用同一个渲染器，和内核给的是同一份代码。
 	p.tools = dstool.New(prims)
 
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("tool-card")
 	data := toolCardData()
 
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "tool-card", Width: 900, Height: 700, Tree: tree,
 		WindowMode: app.WindowFrameless,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: size.Width,
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)
@@ -130,15 +131,15 @@ func captureToolCards(t *testing.T, dir, name string, expand []int) string {
 // findToolHit 按交互 id 找命中区。
 //
 // 为什么不按标签找：工具标题行的标签是空串（`Hit(id, "")`），它没有可见文字，
-// 唯一的身份就是那个 id。ui.Tree 的名字是内部化（intern）的，所以在这里
+// 唯一的身份就是那个 id。gfx.Tree 的名字是内部化（intern）的，所以在这里
 // 用同样的 (scope, word) 算出来的 ID 与绘制期那个**逐位相同**。
-func findToolHit(snapshot app.Snapshot, id ui.ID) (ui.Hit, bool) {
+func findToolHit(snapshot app.Snapshot, id gfx.ID) (gfx.Hit, bool) {
 	for _, hit := range snapshot.Hits {
 		if hit.ID == id {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // TestToolCardCapture 留 before/after 像素证据。

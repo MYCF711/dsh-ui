@@ -18,7 +18,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -26,21 +26,22 @@ import (
 //
 // 用 flex.View.Draw 而不是手搓 Frame：popup/absolute 这些位置规则只有在真正的
 // 布局+绘制里才成立，手搓的 Frame 量不到"菜单贴在 trigger 上方 8px"。
-func renderContainer(t *testing.T, width, height float32, env *pluginapi.Env, body func(f *flex.Frame)) *ui.Canvas {
+func renderContainer(t *testing.T, width, height float32, env *pluginapi.Env, body func(f ui.C)) *gfx.Canvas {
 	t.Helper()
 	if env == nil {
 		env = containerEnv(width, height)
 	}
 	canvas := env.Canvas
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(dscore.Dark()), env.Bounds, body)
+	pageTheme := dscore.VivaTheme(dscore.Dark())
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, body)
 	return canvas
 }
 
 // containerEnv 造一个够用的 Env（真实 Canvas + 测量函数）。
 func containerEnv(width, height float32) *pluginapi.Env {
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size / 2
@@ -49,7 +50,7 @@ func containerEnv(width, height float32) *pluginapi.Env {
 		Tree:   tree,
 		Feat:   tree.Feature("official-containers-test"),
 		Canvas: canvas,
-		Bounds: ui.Rect{Width: width, Height: height},
+		Bounds: gfx.Rect{Width: width, Height: height},
 		Has:    func(pluginapi.Slot) bool { return false },
 	}
 }
@@ -58,19 +59,19 @@ func containerEnv(width, height float32) *pluginapi.Env {
 func menuTheme() *pluginapi.Theme { return dscore.Dark() }
 
 // mirrorRect 把容器算出来的 trigger 矩形镜像成"菜单应该出现的矩形"（上方 8px、右缘对齐）。
-func menuRectFor(anchor ui.Rect, bounds ui.Rect) ui.Rect {
+func menuRectFor(anchor gfx.Rect, bounds gfx.Rect) gfx.Rect {
 	width := ModelMenuWidth(bounds.Width)
 	height := ModelMenuMaxHeightFor(bounds.Height)
 	// 菜单紧贴 anchor 上方 8px，右缘对齐（官方 bottom:calc(anchor(top)+8px); right:anchor(right)）。
-	return ui.Rect{X: anchor.X + anchor.Width - width, Y: anchor.Y - ModelMenuAnchorGap - height, Width: width, Height: height}
+	return gfx.Rect{X: anchor.X + anchor.Width - width, Y: anchor.Y - ModelMenuAnchorGap - height, Width: width, Height: height}
 }
 
 // ── 容器 C：模型菜单 ────────────────────────────────────────────────
 
 // TestModelMenuFourStates 是容器 C 的四态表。
 func TestModelMenuFourStates(t *testing.T) {
-	bounds := ui.Rect{Width: 1182, Height: 832}
-	anchor := ui.Rect{X: 600, Y: 700, Width: 200, Height: ModelTriggerHeight}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
+	anchor := gfx.Rect{X: 600, Y: 700, Width: 200, Height: ModelTriggerHeight}
 
 	cases := []struct {
 		name     string
@@ -137,7 +138,7 @@ func TestModelMenuFourStates(t *testing.T) {
 			}
 
 			env := containerEnv(bounds.Width, bounds.Height)
-			canvas := renderContainer(t, bounds.Width, bounds.Height, env, func(f *flex.Frame) {
+			canvas := renderContainer(t, bounds.Width, bounds.Height, env, func(f ui.C) {
 				DrawModelMenu(f, env, opts)
 			})
 
@@ -233,15 +234,15 @@ func TestModelMenuGeometryMatchesOfficial(t *testing.T) {
 //
 // 判据：菜单所有矩形的底边 <= trigger 顶边（允许 0px：菜单紧贴）。
 func TestModelMenuIsDrawnAboveAnchor(t *testing.T) {
-	bounds := ui.Rect{Width: 1182, Height: 832}
-	anchor := ui.Rect{X: 560, Y: 640, Width: 240, Height: ModelTriggerHeight}
+	bounds := gfx.Rect{Width: 1182, Height: 832}
+	anchor := gfx.Rect{X: 560, Y: 640, Width: 240, Height: ModelTriggerHeight}
 	env := containerEnv(bounds.Width, bounds.Height)
 	opts := ModelMenuOptions{
 		Theme: menuTheme(), Anchor: anchor, Bounds: bounds, Open: true, Known: true,
 		Providers: []ModelProviderOption{{Provider: "deepseek", DisplayName: "DeepSeek"}},
 		Dispatch:  func(pluginapi.Slot) {},
 	}
-	canvas := renderContainer(t, bounds.Width, bounds.Height, env, func(f *flex.Frame) {
+	canvas := renderContainer(t, bounds.Width, bounds.Height, env, func(f ui.C) {
 		DrawModelMenu(f, env, opts)
 	})
 	rects := canvas.Rectangles()
@@ -319,7 +320,7 @@ func TestCommandNodeFourStates(t *testing.T) {
 				},
 			}
 			drawn := 0
-			canvas := renderContainer(t, 1182, 832, env, func(f *flex.Frame) {
+			canvas := renderContainer(t, 1182, 832, env, func(f ui.C) {
 				drawn = DrawCommandNodes(f, env, opts)
 			})
 			if drawn != tc.wantDraw {
@@ -371,7 +372,7 @@ func TestGenericCommandCardSummaryRules(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := containerEnv(800, 600)
-			canvas := renderContainer(t, 800, 600, env, func(f *flex.Frame) {
+			canvas := renderContainer(t, 800, 600, env, func(f ui.C) {
 				DrawCommandNodes(f, env, CommandNodeOptions{
 					Theme: menuTheme(), Width: 700, Bounds: env.Bounds,
 					Nodes:    []CommandNode{tc.node},
@@ -405,7 +406,7 @@ func TestGenericCommandCardExpandableOnlyWithMultilineBody(t *testing.T) {
 				Expanded: true,
 			}
 			env := containerEnv(800, 600)
-			canvas := renderContainer(t, 800, 600, env, func(f *flex.Frame) {
+			canvas := renderContainer(t, 800, 600, env, func(f ui.C) {
 				DrawCommandNodes(f, env, CommandNodeOptions{
 					Theme: menuTheme(), Width: 700, Bounds: env.Bounds,
 					Nodes:    []CommandNode{node},
@@ -444,7 +445,7 @@ func TestCommandNodeSeparatorMatchesOfficial(t *testing.T) {
 
 // ── 小工具 ─────────────────────────────────────────────────────────
 
-func containerTexts(canvas *ui.Canvas) []string {
+func containerTexts(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -452,7 +453,7 @@ func containerTexts(canvas *ui.Canvas) []string {
 	return out
 }
 
-func containerHasText(canvas *ui.Canvas, want string) bool {
+func containerHasText(canvas *gfx.Canvas, want string) bool {
 	for _, text := range containerTexts(canvas) {
 		if text == want || contains(text, want) {
 			return true

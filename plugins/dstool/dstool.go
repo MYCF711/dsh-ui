@@ -22,7 +22,6 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -59,7 +58,7 @@ type Card struct {
 // 想知道 bash 长什么样，去问 renderers，不要问 ds-conversation。
 type Service interface {
 	// Render 画一条工具卡（标题行 + 展开体），并处理这一行的展开/收起点击。
-	Render(f *flex.Frame, env *pluginapi.Env, card Card)
+	Render(f ui.C, env *pluginapi.Env, card Card)
 	// Open 报告这条工具卡当前是否展开。
 	Open(seq int) bool
 	// Height 估算这条工具卡本帧占多高（消息流的视口虚拟化要用）。
@@ -89,7 +88,7 @@ type Renderer struct {
 // 只给这些：画框、只读环境、这张卡，以及一个画徽标的出口。
 // **不给** Service 本体——渲染器不该顺手改别的卡的展开状态。
 type BodyCtx struct {
-	Frame *flex.Frame
+	Frame ui.C
 	Env   *pluginapi.Env
 	Card  Card
 	// Badge 画一个小徽标（走 ds-core 的 Primitives）。prims 没装时它不画，
@@ -140,7 +139,7 @@ func (s *Cards) Register(r Renderer) {
 }
 
 // Render 实现 Service。
-func (s *Cards) Render(f *flex.Frame, env *pluginapi.Env, c Card) {
+func (s *Cards) Render(f ui.C, env *pluginapi.Env, c Card) {
 	t := env.Theme
 	open := s.open[c.Seq]
 	r, known := s.renderers[c.Tool]
@@ -156,25 +155,25 @@ func (s *Cards) Render(f *flex.Frame, env *pluginapi.Env, c Card) {
 	}
 
 	// 标题行：点它展开。结构逐字沿用抽取前的那一段（像素对比见 tmp/tool-*.png）。
-	head := f.Row().WidthPercent(100).PadX(4).PadY(2).Radius(t.Radii.SM).
-		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).
+	head := ui.Row(f).WidthPercent(100).PadX(4).PadY(2).Radius(t.Radii.SM).
+		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, "tool-"+strconv.Itoa(c.Seq)), "").Children(func() {
 		// leading：16px 方框里的展开箭头（官方也是这个位置放 chevron）
-		f.Row().Width(16).Items(flex.Center).Children(func() {
+		ui.Row(f).Width(16).Items(ui.Center).Children(func() {
 			arrow := "▸"
 			if open {
 				arrow = "▾"
 			}
-			f.Text(arrow).FontSize(t.Fonts.Tiny).Color(t.LabelSecondary)
+			ui.Text(f, arrow).FontSize(t.Fonts.Tiny).Color(t.LabelSecondary)
 		})
-		f.Text(title).Mono().FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
+		ui.Text(f, title).Mono().FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
 		if summary != "" {
-			f.Text("·").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			f.Text(summarize(summary, 120)).FontSize(t.Fonts.Secondary).
+			ui.Text(f, "·").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			ui.Text(f, summarize(summary, 120)).FontSize(t.Fonts.Secondary).
 				Color(t.LabelTertiary).MaxWidth(summaryWidth).Ellipsis()
 		}
 		if status != "" {
-			f.Spacer()
+			ui.Spacer(f)
 			s.badge(f, status, statusColor(t, c.Status))
 		}
 	})
@@ -187,7 +186,7 @@ func (s *Cards) Render(f *flex.Frame, env *pluginapi.Env, c Card) {
 	}
 	// 展开体：官方同样是 callRow 的一部分（radius sm、无边框），
 	// 底色用最浅一层 BgLayer1 把正文托起来，不描边。
-	f.Column().WidthPercent(100).PadX(22).PadY(4).Gap(4).Radius(t.Radii.SM).
+	ui.Column(f).WidthPercent(100).PadX(22).PadY(4).Gap(4).Radius(t.Radii.SM).
 		Background(t.BgLayer1).Children(func() {
 		// 宿主声明的结构化结果优先：它比我们从参数里猜的准。
 		if c.View != nil {
@@ -202,10 +201,10 @@ func (s *Cards) Render(f *flex.Frame, env *pluginapi.Env, c Card) {
 		}
 		// 默认画法 = 抽取前的那一种：参数原文 + 摘要。
 		if c.Args != "" {
-			f.Text(c.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
+			ui.Text(f, c.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
 		}
 		if c.Summary != "" {
-			f.Text(c.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
+			ui.Text(f, c.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
 		}
 	})
 }
@@ -284,7 +283,7 @@ func contentWidth(env *pluginapi.Env) float32 {
 }
 
 // badge 画徽标；prims 没装时安静地不画（兜底路径）。
-func (s *Cards) badge(f *flex.Frame, text string, color ui.Color) {
+func (s *Cards) badge(f ui.C, text string, color ui.Color) {
 	if s.prims == nil || text == "" {
 		return
 	}

@@ -53,7 +53,7 @@ package dssettings
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // slotSettingsLauncher 是官方 `settings.launcher`（`ui-settings-general/index.ts:237`
@@ -71,7 +71,7 @@ const zhSettingsTrigger = "设置"
 // 行容器由壳提供（`uikernel.drawSidebarSkeleton` 的 `SettingsRoot.triggerRow`
 // 那个 Row），本函数只画行里的这一格：`flex:1` 让它吃掉左侧剩余空间，
 // 把连接指示推到行右缘（官方 `[设置按钮(flex:1)] [连接指示]` 的排法）。
-func (p *Plugin) drawSettingsTrigger(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawSettingsTrigger(f ui.C, env *pluginapi.Env) {
 	// 官方 `settings.launcher` 有占用方（账号启动器）时，设置入口在它身上；
 	// 这里再画一枚就是同一个窗口里两个"设置"入口。
 	if env.Has != nil && env.Has(slotSettingsLauncher) {
@@ -82,17 +82,17 @@ func (p *Plugin) drawSettingsTrigger(f *flex.Frame, env *pluginapi.Env) {
 		t = env.Theme
 	}
 	id := env.Tree.ID(env.Feat, "settings-trigger")
-	row := f.Row().Height(TriggerHeight).Grow(1).
+	row := ui.Row(f).Height(TriggerHeight).Grow(1).
 		PadSides(0, TriggerPadRight, 0, TriggerPadLeft).
-		Radius(t.Radii.MD).Items(flex.Center).Gap(TriggerGap).
+		Radius(t.Radii.MD).Items(ui.Center).Gap(TriggerGap).
 		Hit(id, zhSettingsTrigger).
 		// `.trigger:hover{background:var(--dsw-alias-interactive-bg-hover)}`。
-		Hover(flex.Look{}.Background(t.Hover))
+		Hover(ui.Look{}.Background(t.Hover))
 	row.Children(func() {
 		// 宽态图标 16（`chrome.tsx:22-29` 的 `wide ? 16 : 18`）。
-		f.Icon(settingsTriggerIcon()).Size(TriggerIconSize, TriggerIconSize).Color(t.LabelPrimary)
+		ui.Icon(f, settingsTriggerIcon()).Size(TriggerIconSize, TriggerIconSize).Color(t.LabelPrimary)
 		// `.triggerLabel{white-space:nowrap;overflow:hidden}`：单行省略。
-		f.Text(zhSettingsTrigger).FontSize(TriggerFontSize).LineHeight(TriggerLineHeight).
+		ui.Text(f, zhSettingsTrigger).FontSize(TriggerFontSize).LineHeight(TriggerLineHeight).
 			Color(t.LabelPrimary).Ellipsis()
 	})
 	if row.Clicked() {

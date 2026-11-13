@@ -78,7 +78,7 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -188,7 +188,7 @@ func desktopUpdateVisible(d pluginapi.Snapshot) bool {
 
 // drawDesktopUpdateIndicator 画官方 `DesktopUpdateIndicator`（28 高、brand 描边/底、
 // 12/18 500、14px glyph + gap4）。
-func (p *Plugin) drawDesktopUpdateIndicator(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawDesktopUpdateIndicator(f ui.C, env *pluginapi.Env) {
 	if !desktopUpdateVisible(env.Data) {
 		return
 	}
@@ -204,20 +204,20 @@ func (p *Plugin) drawDesktopUpdateIndicator(f *flex.Frame, env *pluginapi.Env) {
 		_ = zhUpdateFailure(state.Failure)
 	}
 	brand := t.BrandPrimary
-	pill := f.Row().Height(UpdateIndicatorHeight).Radius(t.Radii.SM).
+	pill := ui.Row(f).Height(UpdateIndicatorHeight).Radius(t.Radii.SM).
 		Background(withAlphaTint(brand, UpdateIndicatorBgTint)).
 		Border(UpdateIndicatorBorder, withAlphaTint(brand, UpdateIndicatorBorderTint)).
-		Items(flex.Center).Gap(0).
+		Items(ui.Center).Gap(0).
 		// 官方 `.indicator[aria-disabled=true]{cursor:default}`：busy 时不可点。
 		// 本仓只读（无更新面板），所以整格不接命中区。
 		Children(func() {
 			// `padding:0 8px` 用定宽占位盒（与 capsule 同一理由：避免 pref 往返截字）。
-			f.Row().Width(UpdateIndicatorPadX).Height(UpdateIndicatorHeight)
+			ui.Row(f).Width(UpdateIndicatorPadX).Height(UpdateIndicatorHeight)
 			p.drawUpdateGlyph(f, env, state, brand)
-			f.Row().Width(UpdateIndicatorGap).Height(UpdateIndicatorHeight)
-			f.Text(label).FontSize(UpdateIndicatorFontSize).LineHeight(UpdateIndicatorLineHeight).
-				Weight(ui.WeightMedium).Color(brand).Ellipsis()
-			f.Row().Width(UpdateIndicatorPadX).Height(UpdateIndicatorHeight)
+			ui.Row(f).Width(UpdateIndicatorGap).Height(UpdateIndicatorHeight)
+			ui.Text(f, label).FontSize(UpdateIndicatorFontSize).LineHeight(UpdateIndicatorLineHeight).
+				Weight(gfx.WeightMedium).Color(brand).Ellipsis()
+			ui.Row(f).Width(UpdateIndicatorPadX).Height(UpdateIndicatorHeight)
 		})
 	// 官方 busy 分支的 spinner 是 1s 线性旋转：自己排下一帧（本仓没有渲染循环）。
 	if state.Busy() && !reducedMotion(env) {
@@ -228,18 +228,18 @@ func (p *Plugin) drawDesktopUpdateIndicator(f *flex.Frame, env *pluginapi.Env) {
 
 // drawUpdateGlyph 画官方那两枚 14px glyph（busy = loading-outline 旋转 1s，否则
 // download-outline）。颜色随 `.indicator{color:brand}`。
-func (p *Plugin) drawUpdateGlyph(f *flex.Frame, env *pluginapi.Env, state *pluginapi.DesktopUpdatePresentation, tint ui.Color) {
+func (p *Plugin) drawUpdateGlyph(f ui.C, env *pluginapi.Env, state *pluginapi.DesktopUpdatePresentation, tint gfx.Color) {
 	if state.Busy() {
 		rotate := float32(0)
 		if !reducedMotion(env) {
 			// 官方 `.spinner{animation:spin 1s linear infinite}`。
 			rotate = updateSpinRadians(time.Now())
 		}
-		f.Icon(loadingOutlineIcon()).Size(UpdateIndicatorIconSize, UpdateIndicatorIconSize).
-			Color(tint).IconTransform(ui.IconTransform{Rotate: rotate})
+		ui.Icon(f, loadingOutlineIcon()).Size(UpdateIndicatorIconSize, UpdateIndicatorIconSize).
+			Color(tint).IconTransform(gfx.IconTransform{Rotate: rotate})
 		return
 	}
-	f.Icon(downloadOutlineIcon()).Size(UpdateIndicatorIconSize, UpdateIndicatorIconSize).Color(tint)
+	ui.Icon(f, downloadOutlineIcon()).Size(UpdateIndicatorIconSize, UpdateIndicatorIconSize).Color(tint)
 }
 
 // updateSpinRadians 是官方 `@keyframes spin{to{transform:rotate(360deg)}}` + 1s 周期。
@@ -279,7 +279,7 @@ func (p *Plugin) scheduleUpdateFrame(invalidate func()) {
 }
 
 // withAlphaTint 是官方 `color-mix(in srgb, C t, transparent)` 的等价写法。
-func withAlphaTint(c ui.Color, tint float32) ui.Color {
+func withAlphaTint(c gfx.Color, tint float32) gfx.Color {
 	c.Alpha *= tint
 	return c
 }
@@ -294,20 +294,20 @@ func withAlphaTint(c ui.Color, tint float32) ui.Color {
 //	         1.88134 5.45783 2.59557 4.38898C3.30981 3.32013 4.32494 2.48707 5.51261
 //	         1.99513C6.70028 1.50319 8.00716 1.37447 9.26798 1.62524C10.5288 1.87602
 //	         11.687 2.49502 12.596 3.40398" stroke="currentColor"/>
-func loadingOutlineIcon() ui.Icon {
-	return ui.Icon{
+func loadingOutlineIcon() gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 16,
 		Stroke:  1,
-		Commands: []ui.PathCommand{
-			ui.MoveTo(12.596, 12.596),
-			ui.CubicTo(11.687, 13.5049, 10.5288, 14.1239, 9.26798, 14.3747),
-			ui.CubicTo(8.00716, 14.6255, 6.70028, 14.4968, 5.51261, 14.0048),
-			ui.CubicTo(4.32494, 13.5129, 3.30981, 12.6798, 2.59557, 11.611),
-			ui.CubicTo(1.88134, 10.5421, 1.50008, 9.2855, 1.5, 7.99998),
-			ui.CubicTo(1.50008, 6.71446, 1.88134, 5.45783, 2.59557, 4.38898),
-			ui.CubicTo(3.30981, 3.32013, 4.32494, 2.48707, 5.51261, 1.99513),
-			ui.CubicTo(6.70028, 1.50319, 8.00716, 1.37447, 9.26798, 1.62524),
-			ui.CubicTo(10.5288, 1.87602, 11.687, 2.49502, 12.596, 3.40398),
+		Commands: []gfx.PathCommand{
+			gfx.MoveTo(12.596, 12.596),
+			gfx.CubicTo(11.687, 13.5049, 10.5288, 14.1239, 9.26798, 14.3747),
+			gfx.CubicTo(8.00716, 14.6255, 6.70028, 14.4968, 5.51261, 14.0048),
+			gfx.CubicTo(4.32494, 13.5129, 3.30981, 12.6798, 2.59557, 11.611),
+			gfx.CubicTo(1.88134, 10.5421, 1.50008, 9.2855, 1.5, 7.99998),
+			gfx.CubicTo(1.50008, 6.71446, 1.88134, 5.45783, 2.59557, 4.38898),
+			gfx.CubicTo(3.30981, 3.32013, 4.32494, 2.48707, 5.51261, 1.99513),
+			gfx.CubicTo(6.70028, 1.50319, 8.00716, 1.37447, 9.26798, 1.62524),
+			gfx.CubicTo(10.5288, 1.87602, 11.687, 2.49502, 12.596, 3.40398),
 		},
 	}
 }
@@ -322,24 +322,24 @@ func loadingOutlineIcon() ui.Icon {
 //	         13.9532 2.23478 14.0469 2.5 14.0469H13.5C13.7652 14.0469 14.0196 13.9532
 //	         14.2071 13.7865C14.3946 13.6198 14.5 13.3937 14.5 13.158V10.0469"
 //	     stroke="currentColor"/>
-func downloadOutlineIcon() ui.Icon {
-	return ui.Icon{
+func downloadOutlineIcon() gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 16,
 		Stroke:  1,
-		Commands: []ui.PathCommand{
-			ui.MoveTo(8, 1.95317),
-			ui.LineTo(8, 10.0469),
-			ui.MoveTo(4.25, 6.29688),
-			ui.LineTo(8, 10.0469),
-			ui.LineTo(11.75, 6.29688),
-			ui.MoveTo(1.5, 10.0469),
-			ui.LineTo(1.5, 13.158),
-			ui.CubicTo(1.5, 13.3937, 1.60536, 13.6198, 1.79289, 13.7865),
-			ui.CubicTo(1.98043, 13.9532, 2.23478, 14.0469, 2.5, 14.0469),
-			ui.LineTo(13.5, 14.0469),
-			ui.CubicTo(13.7652, 14.0469, 14.0196, 13.9532, 14.2071, 13.7865),
-			ui.CubicTo(14.3946, 13.6198, 14.5, 13.3937, 14.5, 13.158),
-			ui.LineTo(14.5, 10.0469),
+		Commands: []gfx.PathCommand{
+			gfx.MoveTo(8, 1.95317),
+			gfx.LineTo(8, 10.0469),
+			gfx.MoveTo(4.25, 6.29688),
+			gfx.LineTo(8, 10.0469),
+			gfx.LineTo(11.75, 6.29688),
+			gfx.MoveTo(1.5, 10.0469),
+			gfx.LineTo(1.5, 13.158),
+			gfx.CubicTo(1.5, 13.3937, 1.60536, 13.6198, 1.79289, 13.7865),
+			gfx.CubicTo(1.98043, 13.9532, 2.23478, 14.0469, 2.5, 14.0469),
+			gfx.LineTo(13.5, 14.0469),
+			gfx.CubicTo(13.7652, 14.0469, 14.0196, 13.9532, 14.2071, 13.7865),
+			gfx.CubicTo(14.3946, 13.6198, 14.5, 13.3937, 14.5, 13.158),
+			gfx.LineTo(14.5, 10.0469),
 		},
 	}
 }

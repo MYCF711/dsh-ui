@@ -51,7 +51,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -272,7 +272,7 @@ func catalogTriggerAria(f catalogFacts) string {
 }
 
 // drawCatalogTrigger 画官方动作行（触发器）——官方骨架的 header 带。
-func (p *Plugin) drawCatalogTrigger(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawCatalogTrigger(f ui.C, env *pluginapi.Env) {
 	if !p.catalog.officialSlotsLive() {
 		return // 这一帧不 dispatch header.actions；让位给 drawCatalogTriggerLegacy
 	}
@@ -285,7 +285,7 @@ func (p *Plugin) drawCatalogTrigger(f *flex.Frame, env *pluginapi.Env) {
 // 旧壳的对应位置就是 `main.header` 顶栏。几何取旧顶栏已知常量
 // （dstopbar：padding 28 + corner 28 + 8 间距），**不是**官方几何——
 // 这一档本来就登记为过渡债（GA 报告 §3.1 同口径）。
-func (p *Plugin) drawCatalogTriggerLegacy(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawCatalogTriggerLegacy(f ui.C, env *pluginapi.Env) {
 	if p.catalog.officialSlotsLive() {
 		return
 	}
@@ -293,7 +293,7 @@ func (p *Plugin) drawCatalogTriggerLegacy(f *flex.Frame, env *pluginapi.Env) {
 	if !facts.visible {
 		return
 	}
-	f.Row().Absolute().Right(legacyTriggerRight).Top(legacyTriggerTop).Children(func() {
+	ui.Row(f).Absolute().Right(legacyTriggerRight).Top(legacyTriggerTop).Children(func() {
 		p.drawCatalogTriggerBody(f, env)
 	})
 }
@@ -304,7 +304,7 @@ func (p *Plugin) drawCatalogTriggerLegacy(f *flex.Frame, env *pluginapi.Env) {
 // **全窗透明命中区**：它盖在所有内容之上，所以菜单外任何一次点击都先落到它，
 // 于是"点外面 = 关菜单"与官方一致。透明点击区也是真实产出的像素对象
 // （有命中矩形、有 aria label），不是空函数。
-func (p *Plugin) drawCatalogBackdrop(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawCatalogBackdrop(f ui.C, env *pluginapi.Env) {
 	if !p.catalog.isOpen() {
 		return
 	}
@@ -313,7 +313,7 @@ func (p *Plugin) drawCatalogBackdrop(f *flex.Frame, env *pluginapi.Env) {
 		return
 	}
 	id := env.Tree.ID(env.Feat, "subagent-catalog-backdrop")
-	if f.Row().Absolute().Inset(0).Hit(id, zhCatalogTreeAria).Clicked() {
+	if ui.Row(f).Absolute().Inset(0).Hit(id, zhCatalogTreeAria).Clicked() {
 		p.catalog.close()
 	}
 }
@@ -326,7 +326,7 @@ const (
 )
 
 // drawCatalogTriggerBody 是触发器本体（官方 `.trigger`）。
-func (p *Plugin) drawCatalogTriggerBody(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawCatalogTriggerBody(f ui.C, env *pluginapi.Env) {
 	facts := p.catalogFactsFor(env)
 	if !facts.visible {
 		return
@@ -335,7 +335,7 @@ func (p *Plugin) drawCatalogTriggerBody(f *flex.Frame, env *pluginapi.Env) {
 	id := env.Tree.ID(env.Feat, "subagent-catalog")
 	count := len(facts.entries)
 
-	row := f.Row().MinHeight(catalogTriggerMinHeight).Items(flex.Center).
+	row := ui.Row(f).MinHeight(catalogTriggerMinHeight).Items(ui.Center).
 		Gap(catalogTriggerGap).
 		PadSides(catalogTriggerPadV, catalogTriggerPadH, catalogTriggerPadV, catalogTriggerPadH).
 		Radius(t.Radii.SM).
@@ -343,9 +343,9 @@ func (p *Plugin) drawCatalogTriggerBody(f *flex.Frame, env *pluginapi.Env) {
 		// 那句计数文案（不是另编一个"目录"）；目录未知时退回树的可访问名。
 		Hit(id, catalogTriggerAria(facts)).Children(func() {
 		// `.activitySlot{width:14px;height:14px}`：users 图标（官方 IconUsersOutlineRegular 14）。
-		f.Row().Size(catalogActivitySize, catalogActivitySize).Items(flex.Center).
-			Justify(flex.Center).Children(func() {
-			f.Icon(usersIcon()).Size(catalogActivitySize-2, catalogActivitySize-2).
+		ui.Row(f).Size(catalogActivitySize, catalogActivitySize).Items(ui.Center).
+			Justify(ui.Center).Children(func() {
+			ui.Icon(f, usersIcon()).Size(catalogActivitySize-2, catalogActivitySize-2).
 				Color(t.LabelTertiary)
 		})
 		// `.count`：官方 `{count} 个子智能体`（窄容器 ≤460px 时整段被 CSS 隐藏；
@@ -354,7 +354,7 @@ func (p *Plugin) drawCatalogTriggerBody(f *flex.Frame, env *pluginapi.Env) {
 		// **目录未知时不画计数**：那时 count 只是零值，画成"0 个子智能体"就是
 		// 把"不知道"说成"没有"（官方 error 态也没有可信计数）。
 		if facts.known {
-			f.Text(catalogCountLabel(count)).FontSize(catalogTriggerFont).
+			ui.Text(f, catalogCountLabel(count)).FontSize(catalogTriggerFont).
 				LineHeight(catalogTriggerLine).Color(t.LabelTertiary)
 		}
 	})
@@ -367,7 +367,7 @@ func (p *Plugin) drawCatalogTriggerBody(f *flex.Frame, env *pluginapi.Env) {
 //
 // **footer 槽在这里被真的 dispatch**（官方 `renderFooter()` 的位置：
 // menuBody 的最后一行，SubagentHeaderLineage.tsx:868）。
-func (p *Plugin) drawCatalogPanel(f *flex.Frame, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
+func (p *Plugin) drawCatalogPanel(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	if !p.catalog.isOpen() {
 		return
 	}
@@ -393,20 +393,20 @@ func (p *Plugin) drawCatalogPanel(f *flex.Frame, env *pluginapi.Env, drawSlot fu
 	top := catalogMenuTopFromHeader()
 	right := float32(catalogMenuWindowInset)
 
-	panel := f.Column().Absolute().Top(top).Right(right).Width(width).
+	panel := ui.Column(f).Absolute().Top(top).Right(right).Width(width).
 		MaxHeight(catalogMenuMaxHeight).Radius(catalogMenuRadius).
-		Background(t.BgLayer1).Border(1, t.BorderL2).Shadow(ui.ShadowMD).
+		Background(t.BgLayer1).Border(1, t.BorderL2).Shadow(gfx.ShadowMD).
 		Pad(catalogMenuPad)
 	// 面板本体吃掉点击：官方点菜单里面不会关（只有菜单外的 pointerdown 才关）。
 	panel.Hit(env.Tree.ID(env.Feat, "subagent-catalog-menu"), zhCatalogTreeAria)
 	panel.Children(func() {
 		// `.menuBody{display:flex;flex-direction:column;overflow:auto}`：内容一列。
-		f.Column().FillWidth().Gap(0).Children(func() {
+		ui.Column(f).FillWidth().Gap(0).Children(func() {
 			if facts.hasSharedTasks {
 				p.drawCatalogSectionHeader(f, t)
 			}
 			if facts.hasSharedTasks && len(facts.entries) == 0 && facts.err == "" {
-				f.Text(zhCatalogSectionEmpty).FillWidth().FontSize(catalogSectionEmptyFont).
+				ui.Text(f, zhCatalogSectionEmpty).FillWidth().FontSize(catalogSectionEmptyFont).
 					LineHeight(catalogRowLine).Color(t.LabelTertiary).
 					PadSides(0, catalogSectionEmptyRight, catalogSectionPadBottom, catalogSectionEmptyLeft)
 			}
@@ -420,7 +420,7 @@ func (p *Plugin) drawCatalogPanel(f *flex.Frame, env *pluginapi.Env, drawSlot fu
 			// ── footer：官方 SubagentHeaderLineage.tsx:868 `props.renderFooter?.()` ──
 			// 无论有没有注册者都调一次（与官方 `renderSlot` 一致），
 			// 这样"槽写错了"表现为空而不是"父级忘了画"。
-			f.Column().FillWidth().Children(func() {
+			ui.Column(f).FillWidth().Children(func() {
 				drawSlot(SlotSubagentFooter)
 			})
 		})
@@ -437,19 +437,19 @@ const catalogMenuTopBase float32 = 10 + 30/2 + 28/2 // 39
 func catalogMenuTopFromHeader() float32 { return catalogMenuTopBase + catalogMenuTopOffset }
 
 // drawCatalogSectionHeader 画 `.sectionHeader`（图标 + "子智能体" + 进度）。
-func (p *Plugin) drawCatalogSectionHeader(f *flex.Frame, t *pluginapi.Theme) {
-	f.Row().FillWidth().Items(flex.Start).Gap(catalogSectionGap).
+func (p *Plugin) drawCatalogSectionHeader(f ui.C, t *pluginapi.Theme) {
+	ui.Row(f).FillWidth().Items(ui.Start).Gap(catalogSectionGap).
 		PadSides(catalogSectionPadTop, catalogSectionPadH, catalogSectionPadBottom, catalogSectionPadH).
 		Children(func() {
-			f.Row().Size(catalogSectionIconW, catalogSectionIconH).Items(flex.Center).
-				Justify(flex.Center).Children(func() {
-				f.Icon(usersIcon()).Size(catalogSectionIconW-2, catalogSectionIconW-2).
+			ui.Row(f).Size(catalogSectionIconW, catalogSectionIconH).Items(ui.Center).
+				Justify(ui.Center).Children(func() {
+				ui.Icon(f, usersIcon()).Size(catalogSectionIconW-2, catalogSectionIconW-2).
 					Color(t.LabelTertiary)
 			})
-			f.Text(zhCatalogSectionTitle).FontSize(catalogSectionTitleSize).
+			ui.Text(f, zhCatalogSectionTitle).FontSize(catalogSectionTitleSize).
 				LineHeight(catalogSectionTitleLine).Weight(500).Color(t.LabelPrimary)
 			if progress := p.catalogProgressLabel(); progress != "" {
-				f.Text(progress).FontSize(catalogSectionTitleSize).
+				ui.Text(f, progress).FontSize(catalogSectionTitleSize).
 					LineHeight(catalogSectionProgLine).Color(t.LabelTertiary).
 					MarginSides(catalogSectionProgTop, 0, 0, catalogSectionProgLead).
 					Grow(1)
@@ -465,14 +465,14 @@ func (p *Plugin) drawCatalogSectionHeader(f *flex.Frame, t *pluginapi.Theme) {
 func (p *Plugin) catalogProgressLabel() string { return "" }
 
 // drawCatalogError 画官方错误态（`.error` + 重试按钮）。
-func (p *Plugin) drawCatalogError(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, reason string) {
-	f.Row().FillWidth().Items(flex.Start).Gap(catalogSectionGap).
+func (p *Plugin) drawCatalogError(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, reason string) {
+	ui.Row(f).FillWidth().Items(ui.Start).Gap(catalogSectionGap).
 		PadSides(catalogSectionPadTop, catalogSectionPadH, catalogSectionPadBottom, catalogSectionPadH).
 		Children(func() {
-			f.Text(zhCatalogLoadError + "：" + reason).FillWidth().Grow(1).
+			ui.Text(f, zhCatalogLoadError+"："+reason).FillWidth().Grow(1).
 				FontSize(catalogSectionEmptyFont).LineHeight(catalogRowLine).
 				Color(t.Error)
-			if f.Button(env.Tree.ID(env.Feat, "subagent-catalog-retry"), zhCatalogRetry).
+			if ui.Button(f, zhCatalogRetry).
 				Outline().Small().Clicked() {
 				// 重试 = 让壳重新拉一次投影（壳自己排程；插件不直接发请求）。
 				if env.Act.Notify != nil {
@@ -487,15 +487,15 @@ func (p *Plugin) drawCatalogError(f *flex.Frame, env *pluginapi.Env, t *pluginap
 // 本仓宿主只给 id/createdAt/mode/label：activity 槽保留**结构宽度**但**不画状态点**
 // —— 没有运行态数据就画一个中性点等于编数据（官方在这个位置有 running/completed/
 // inactive 三态）。点行 = 打开那个子会话（官方 openChild）。
-func (p *Plugin) drawCatalogRow(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, entry CatalogEntry) {
+func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, entry CatalogEntry) {
 	id := env.Tree.ID(env.Feat, "subagent-catalog-row-"+entry.ID)
-	row := f.Row().FillWidth().MinHeight(catalogRowMinHeight).Items(flex.Start).
+	row := ui.Row(f).FillWidth().MinHeight(catalogRowMinHeight).Items(ui.Start).
 		Gap(catalogRowGap).
 		PadSides(catalogRowPadV, catalogRowPadRight, catalogRowPadV, catalogRowPadLeft).
 		Radius(t.Radii.MD).Hit(id, entry.catalogLabel()).Children(func() {
 		// `.rowActivitySlot{14×17}`：保留槽宽，不画状态（见函数注释）。
-		f.Row().Size(catalogRowActW, catalogRowActH)
-		f.Text(entry.catalogLabel()).Grow(1).FontSize(catalogRowFont).
+		ui.Row(f).Size(catalogRowActW, catalogRowActH)
+		ui.Text(f, entry.catalogLabel()).Grow(1).FontSize(catalogRowFont).
 			LineHeight(catalogRowLine).Color(t.LabelPrimary).Ellipsis()
 	})
 	if row.Clicked() {

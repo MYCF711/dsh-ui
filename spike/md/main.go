@@ -5,7 +5,7 @@ import (
 
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
@@ -35,7 +35,7 @@ func main() {
 `
 
 type model struct {
-	view flex.View
+	view ui.Page
 	doc  markdown.Document
 	md   components.MarkdownView
 }
@@ -43,17 +43,17 @@ type model struct {
 var theme = ui.DarkTheme()
 
 func newConfig(m *model) app.Config {
-	cfg := app.Config{Tree: &ui.Tree{}, Title: "MarkdownView 验证", Width: 900, Height: 760}
+	cfg := app.Config{Tree: &gfx.Tree{}, Title: "MarkdownView 验证", Width: 900, Height: 760}
 	m.doc.Parse(sample)
-	cfg.Paint = func(canvas *ui.Canvas, size ui.Size) {
+	cfg.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		b := ui.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(b, theme.Background)
-		var slot flex.Box
-		m.view.Draw(canvas, theme, b, func(f *flex.Frame) {
-			f.Column().Fill().Pad(20).Children(func() {
+		var slot ui.Box
+		m.view.Draw(canvas, theme, b, func(f ui.C) {
+			ui.Column(f).Fill().Pad(20).Children(func() {
 				w := f.Bounds().Width - 40
 				h := m.md.Layout(canvas, components.MarkdownStyle{Size: 14}, &m.doc, w)
-				slot = f.Slot().Height(h)
+				slot = ui.Slot(f).Height(h)
 			})
 		})
 		r := slot.Rect()
@@ -66,7 +66,7 @@ func newConfig(m *model) app.Config {
 }
 
 func main() {
-	var c ui.Canvas
+	var c gfx.Canvas
 	if err := app.RunCanvas(newConfig(&model{}), &c); err != nil {
 		log.Fatal(err)
 	}

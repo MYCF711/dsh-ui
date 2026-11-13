@@ -21,7 +21,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -85,7 +85,7 @@ func newTestPlugin(remote Remote) *Plugin {
 }
 
 // renderSlot 只画某个槽位上的那一块（一个插件可以有四块画）。
-func renderSlot(t *testing.T, p *Plugin, slot pluginapi.Slot) *ui.Canvas {
+func renderSlot(t *testing.T, p *Plugin, slot pluginapi.Slot) *gfx.Canvas {
 	t.Helper()
 	var target *pluginapi.Painter
 	for i, painter := range p.Panels() {
@@ -101,22 +101,23 @@ func renderSlot(t *testing.T, p *Plugin, slot pluginapi.Slot) *ui.Canvas {
 }
 
 // renderWith 用给定的 Draw 画一帧。
-func renderWith(t *testing.T, p *Plugin, draw func(f *flex.Frame, env *pluginapi.Env)) *ui.Canvas {
+func renderWith(t *testing.T, p *Plugin, draw func(f ui.C, env *pluginapi.Env)) *gfx.Canvas {
 	t.Helper()
 	theme := dscore.Dark()
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("agent-team-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
 	})
 	env := &pluginapi.Env{
 		Theme: theme, Tree: tree, Feat: feat, Canvas: canvas,
-		Bounds: ui.Rect{Width: 1180, Height: 800}, MainWidth: 900,
+		Bounds: gfx.Rect{Width: 1180, Height: 800}, MainWidth: 900,
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		draw(f, env)
 	})
 	return canvas
@@ -139,7 +140,7 @@ func teamView() View {
 	}
 }
 
-func hasText(canvas *ui.Canvas, want string) bool {
+func hasText(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == want {
 			return true
@@ -148,7 +149,7 @@ func hasText(canvas *ui.Canvas, want string) bool {
 	return false
 }
 
-func anyTextContains(canvas *ui.Canvas, want string) bool {
+func anyTextContains(canvas *gfx.Canvas, want string) bool {
 	for _, text := range canvas.Texts() {
 		if strings.Contains(text.Value, want) {
 			return true
@@ -438,7 +439,7 @@ func TestStopGraceful(t *testing.T) {
 
 // ── 小工具 ──
 
-func textValues(canvas *ui.Canvas) []string {
+func textValues(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -446,7 +447,7 @@ func textValues(canvas *ui.Canvas) []string {
 	return out
 }
 
-func hitLabels(canvas *ui.Canvas) []string {
+func hitLabels(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Hits()))
 	for _, hit := range canvas.Hits() {
 		out = append(out, hit.Label)
@@ -454,22 +455,24 @@ func hitLabels(canvas *ui.Canvas) []string {
 	return out
 }
 
-func hitContains(canvas *ui.Canvas, fragment string) (ui.Hit, bool) {
+func hitContains(canvas *gfx.Canvas, fragment string) (gfx.Hit, bool) {
 	for _, hit := range canvas.Hits() {
 		if strings.Contains(hit.Value, fragment) {
 			return hit, true
 		}
 	}
-	return ui.Hit{}, false
+	return gfx.Hit{}, false
 }
 
 // hasSwitchHit 判断画面里有没有 Switch。
 //
 // 注：viva 的 `Switch` 不给 label（只给 id），命中区的 Label 是框架默认的 "switch"，
 // 所以判据是"存在一个 switch 命中区"，而不是按文案找。
-func hasSwitchHit(canvas *ui.Canvas) bool {
+// hasSwitchHit 找开关的命中区：v0.6.0 的 ui.Switch 不带显式交互 ID，
+// 可访问名被 .Label() 覆盖成用户看到的文案，所以按 **role** 认。
+func hasSwitchHit(canvas *gfx.Canvas) bool {
 	for _, hit := range canvas.Hits() {
-		if hit.Label == "switch" {
+		if hit.Role == gfx.RoleSwitch {
 			return true
 		}
 	}

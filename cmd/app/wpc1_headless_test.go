@@ -22,7 +22,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -101,10 +101,11 @@ func runWPC1Headless(t *testing.T, width, height int) {
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	painter := conversation.Panels()[0]
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("wpc1-headless")
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        flex.View
 		invalidator app.Invalidator
 	)
 	// 快照每帧重建并在锁内拷贝：插件拿到的必须是**这一帧的副本**。
@@ -130,20 +131,23 @@ func runWPC1Headless(t *testing.T, width, height int) {
 		Title: "wpc1-headless", Width: width, Height: height, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, current ui.Size) {
-		bounds := ui.Rect{Width: current.Width, Height: current.Height}
+	// v0.6.0 没有 ID→ScrollState 查表：消息流滚动区由插件交给壳（env.ScrollBox）。
+	// 区域每帧都声明，所以拿到的是同一个 ScrollState 对象，可以跨帧读。
+	var bodyState *ui.ScrollState
+	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
+		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: snapshot(), Act: m.actions, Tree: tree, Feat: feat, Canvas: canvas,
 			Bounds: bounds, MainWidth: current.Width,
-			Scroll: view.ScrollState,
+			ScrollBox: func(box ui.Box) { bodyState = box.ScrollState() },
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			painter.Draw(f, env)
 		})
 		painter.AfterDraw(canvas, env)
 	}
-	config.OnScroll = func(event ui.ScrollEvent) ui.EventResult {
+	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult {
 		if result := conversation.HandleScroll(event); result.Handled {
 			return result
 		}
@@ -205,16 +209,14 @@ func runWPC1Headless(t *testing.T, width, height int) {
 	}
 
 	m.mu.Lock()
-	cur := m.cur
 	m.mu.Unlock()
-	mainID := tree.ID(feat, "msgs-"+cur)
-	mainState := view.ScrollState(mainID)
+	mainState := bodyState
 	if mainState == nil || mainState.Max() <= 0 {
 		t.Fatalf("测试需要可纵向滚动的消息区：%+v", mainState)
 	}
 	codeText := findWPC1CodeText(t, session.Snapshot().Texts)
 	mainBefore := mainState.Offset
-	if err := session.Scroll(ui.ScrollEvent{X: codeText.Bounds.X + 4, Y: codeText.Bounds.Y + 4, DeltaX: 96, Precise: true}); err != nil {
+	if err := session.Scroll(gfx.ScrollEvent{X: codeText.Bounds.X + 4, Y: codeText.Bounds.Y + 4, DeltaX: 96, Precise: true}); err != nil {
 		t.Fatal(err)
 	}
 	if mainState.Offset != mainBefore {
@@ -224,7 +226,7 @@ func runWPC1Headless(t *testing.T, width, height int) {
 	if movedCode.Bounds.X >= codeText.Bounds.X {
 		t.Fatalf("代码横向滚动未移动正文：before=%+v after=%+v", codeText.Bounds, movedCode.Bounds)
 	}
-	if err := session.Scroll(ui.ScrollEvent{X: float32(width) / 2, Y: codeText.Bounds.Y + 4, DeltaY: -120, Precise: true}); err != nil {
+	if err := session.Scroll(gfx.ScrollEvent{X: float32(width) / 2, Y: codeText.Bounds.Y + 4, DeltaY: -120, Precise: true}); err != nil {
 		t.Fatal(err)
 	}
 	if mainState.Offset >= mainBefore {
@@ -266,7 +268,7 @@ func runWPC1Headless(t *testing.T, width, height int) {
 	}
 }
 
-func findWPC1CodeText(t *testing.T, texts []ui.Text) ui.Text {
+func findWPC1CodeText(t *testing.T, texts []gfx.Text) gfx.Text {
 	t.Helper()
 	for _, text := range texts {
 		if text.Style.Mono && strings.Contains(text.Value, "println") {
@@ -274,7 +276,7 @@ func findWPC1CodeText(t *testing.T, texts []ui.Text) ui.Text {
 		}
 	}
 	t.Fatal("找不到实画代码行")
-	return ui.Text{}
+	return gfx.Text{}
 }
 
 func captureWPC1(t *testing.T, session *headless.Session, width, height int) {

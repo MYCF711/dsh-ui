@@ -31,49 +31,49 @@ import (
 	"math"
 	"time"
 
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // connectionIconSize 是官方 ._icon_16cyo_71{width:14px;height:14px}。
 const connectionIconSize float32 = 14
 
 // checkOutlineIcon 是官方 sprite `check-outline`（成功态：已连接 / 已恢复）。
-func checkOutlineIcon() ui.Icon {
-	return ui.Icon{
+func checkOutlineIcon() gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 16,
 		Stroke:  1,
-		Commands: []ui.PathCommand{
+		Commands: []gfx.PathCommand{
 			// 第 1 段（官方 path #1）
-			ui.MoveTo(2.25, 8.5),
-			ui.LineTo(5.49732, 11.7473),
-			ui.CubicTo(5.90519, 12.1552, 6.57263, 12.1344, 6.95426, 11.7018),
-			ui.LineTo(13.75, 4),
+			gfx.MoveTo(2.25, 8.5),
+			gfx.LineTo(5.49732, 11.7473),
+			gfx.CubicTo(5.90519, 12.1552, 6.57263, 12.1344, 6.95426, 11.7018),
+			gfx.LineTo(13.75, 4),
 		},
 	}
 }
 
 // refreshOutlineIcon 是官方 sprite `refresh-outline`（异常态：断开 / 正在重试）。
-func refreshOutlineIcon() ui.Icon {
-	return ui.Icon{
+func refreshOutlineIcon() gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 16,
 		Stroke:  1,
-		Commands: []ui.PathCommand{
+		Commands: []gfx.PathCommand{
 			// 第 1 段（官方 path #1）
-			ui.MoveTo(14.5001, 8),
-			ui.CubicTo(14.5, 9.28552, 14.1188, 10.5422, 13.4045, 11.611),
-			ui.CubicTo(12.6903, 12.6799, 11.6752, 13.5129, 10.4875, 14.0049),
-			ui.CubicTo(9.29982, 14.4968, 7.99295, 14.6255, 6.73212, 14.3747),
-			ui.CubicTo(5.4713, 14.124, 4.31314, 13.505, 3.4041, 12.596),
-			ui.CubicTo(2.49514, 11.687, 1.87614, 10.5288, 1.62537, 9.26798),
-			ui.CubicTo(1.37459, 8.00716, 1.50331, 6.70028, 1.99525, 5.51261),
-			ui.CubicTo(2.48719, 4.32494, 3.32025, 3.30981, 4.3891, 2.59557),
-			ui.CubicTo(5.45795, 1.88134, 6.71458, 1.50008, 8.0001, 1.5),
-			ui.CubicTo(9.9001, 1.5, 11.7001, 2.3, 13.0001, 3.6),
-			ui.LineTo(14.5001, 5.1),
+			gfx.MoveTo(14.5001, 8),
+			gfx.CubicTo(14.5, 9.28552, 14.1188, 10.5422, 13.4045, 11.611),
+			gfx.CubicTo(12.6903, 12.6799, 11.6752, 13.5129, 10.4875, 14.0049),
+			gfx.CubicTo(9.29982, 14.4968, 7.99295, 14.6255, 6.73212, 14.3747),
+			gfx.CubicTo(5.4713, 14.124, 4.31314, 13.505, 3.4041, 12.596),
+			gfx.CubicTo(2.49514, 11.687, 1.87614, 10.5288, 1.62537, 9.26798),
+			gfx.CubicTo(1.37459, 8.00716, 1.50331, 6.70028, 1.99525, 5.51261),
+			gfx.CubicTo(2.48719, 4.32494, 3.32025, 3.30981, 4.3891, 2.59557),
+			gfx.CubicTo(5.45795, 1.88134, 6.71458, 1.50008, 8.0001, 1.5),
+			gfx.CubicTo(9.9001, 1.5, 11.7001, 2.3, 13.0001, 3.6),
+			gfx.LineTo(14.5001, 5.1),
 			// 第 2 段（官方 path #2）
-			ui.MoveTo(14.4999, 1.5),
-			ui.LineTo(14.4999, 5.1),
-			ui.LineTo(10.8999, 5.1),
+			gfx.MoveTo(14.4999, 1.5),
+			gfx.LineTo(14.4999, 5.1),
+			gfx.LineTo(10.8999, 5.1),
 		},
 	}
 }
@@ -91,37 +91,37 @@ func refreshOutlineIcon() ui.Icon {
 //	</svg>
 //
 // 与库内 assets/icons/dock/gauge.jsx 的路径数据逐字节相同（两条 stroke + 一条 fill）。
-// 第三条是**实心圆点**（`fill:currentColor`），`ui.Icon` 的 stroke 命令画不了 fill，
+// 第三条是**实心圆点**（`fill:currentColor`），`gfx.Icon` 的 stroke 命令画不了 fill，
 // 所以按 viva 的 `IconLayer{Fill: tint}` 表达——颜色等于同一枚 tint，语义与
 // `currentColor` 一致（层色的 alpha 会再乘 tint 的 alpha，见 viva `paintIconShapes`）。
-func gaugeOutlineIcon(tint ui.Color) ui.Icon {
-	return ui.Icon{
+func gaugeOutlineIcon(tint gfx.Color) gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 16,
 		Stroke:  1,
-		Commands: []ui.PathCommand{
+		Commands: []gfx.PathCommand{
 			// 官方 path #1（表盘外弧）
-			ui.MoveTo(3.4041, 13.096),
-			ui.CubicTo(2.49514, 12.187, 1.87614, 11.0288, 1.62537, 9.76798),
-			ui.CubicTo(1.37459, 8.50716, 1.50331, 7.20028, 1.99525, 6.01261),
-			ui.CubicTo(2.48719, 4.82494, 3.32025, 3.80981, 4.3891, 3.09557),
-			ui.CubicTo(5.45795, 2.38134, 6.71458, 2.00008, 8.0001, 2),
-			ui.CubicTo(9.28563, 2.00008, 10.5423, 2.38134, 11.6111, 3.09557),
-			ui.CubicTo(12.68, 3.80981, 13.513, 4.82494, 14.005, 6.01261),
-			ui.CubicTo(14.4969, 7.20028, 14.6256, 8.50716, 14.3748, 9.76798),
-			ui.CubicTo(14.1241, 11.0288, 13.5051, 12.187, 12.5961, 13.096),
+			gfx.MoveTo(3.4041, 13.096),
+			gfx.CubicTo(2.49514, 12.187, 1.87614, 11.0288, 1.62537, 9.76798),
+			gfx.CubicTo(1.37459, 8.50716, 1.50331, 7.20028, 1.99525, 6.01261),
+			gfx.CubicTo(2.48719, 4.82494, 3.32025, 3.80981, 4.3891, 3.09557),
+			gfx.CubicTo(5.45795, 2.38134, 6.71458, 2.00008, 8.0001, 2),
+			gfx.CubicTo(9.28563, 2.00008, 10.5423, 2.38134, 11.6111, 3.09557),
+			gfx.CubicTo(12.68, 3.80981, 13.513, 4.82494, 14.005, 6.01261),
+			gfx.CubicTo(14.4969, 7.20028, 14.6256, 8.50716, 14.3748, 9.76798),
+			gfx.CubicTo(14.1241, 11.0288, 13.5051, 12.187, 12.5961, 13.096),
 			// 官方 path #2（指针）
-			ui.MoveTo(8, 8.49994),
-			ui.LineTo(11.6114, 4.88855),
+			gfx.MoveTo(8, 8.49994),
+			gfx.LineTo(11.6114, 4.88855),
 		},
-		Layers: []ui.IconLayer{{
+		Layers: []gfx.IconLayer{{
 			Fill: tint, // 官方第三条 path 是 fill="currentColor" 的圆点
-			Commands: []ui.PathCommand{
-				ui.MoveTo(8, 9.75),
-				ui.CubicTo(8.69036, 9.75, 9.25, 9.19036, 9.25, 8.5),
-				ui.CubicTo(9.25, 7.80964, 8.69036, 7.25, 8, 7.25),
-				ui.CubicTo(7.30964, 7.25, 6.75, 7.80964, 6.75, 8.5),
-				ui.CubicTo(6.75, 9.19036, 7.30964, 9.75, 8, 9.75),
-				ui.ClosePath(),
+			Commands: []gfx.PathCommand{
+				gfx.MoveTo(8, 9.75),
+				gfx.CubicTo(8.69036, 9.75, 9.25, 9.19036, 9.25, 8.5),
+				gfx.CubicTo(9.25, 7.80964, 8.69036, 7.25, 8, 7.25),
+				gfx.CubicTo(7.30964, 7.25, 6.75, 7.80964, 6.75, 8.5),
+				gfx.CubicTo(6.75, 9.19036, 7.30964, 9.75, 8, 9.75),
+				gfx.ClosePath(),
 			},
 		}},
 	}
@@ -134,43 +134,43 @@ func gaugeOutlineIcon(tint ui.Color) ui.Icon {
 // 五条 `stroke="currentColor"` 的 path（顶盖椭圆 + 左右两条母线 + 两条层线），
 // viewBox `0 0 16 16`、`stroke-width=1`。与库内 assets/icons/dock/database.jsx
 // 的路径数据逐字节相同。没有 fill 命令，所以只要普通 stroke 图标。
-func databaseOutlineIcon() ui.Icon {
-	return ui.Icon{
+func databaseOutlineIcon() gfx.Icon {
+	return gfx.Icon{
 		ViewBox: 16,
 		Stroke:  1,
-		Commands: []ui.PathCommand{
+		Commands: []gfx.PathCommand{
 			// 官方 path #1（顶盖椭圆）
-			ui.MoveTo(13.1967, 5.1869),
-			ui.CubicTo(13.7232, 4.77378, 14.0003, 4.30517, 14.0001, 3.82819),
-			ui.CubicTo(14.0003, 3.3512, 13.7232, 2.88259, 13.1967, 2.46947),
-			ui.CubicTo(12.6702, 2.05635, 11.9128, 1.71328, 11.0006, 1.47475),
-			ui.CubicTo(10.0885, 1.23621, 9.05371, 1.11062, 8.00039, 1.1106),
-			ui.CubicTo(6.94707, 1.11057, 5.9123, 1.23612, 5.00009, 1.47461),
-			ui.CubicTo(4.08742, 1.71301, 3.32948, 2.05604, 2.80249, 2.46919),
-			ui.CubicTo(2.2755, 2.88235, 1.99805, 3.35106, 1.99805, 3.82819),
-			ui.CubicTo(1.99805, 4.30531, 2.2755, 4.77402, 2.80249, 5.18718),
-			ui.CubicTo(3.32948, 5.60033, 4.08742, 5.94336, 5.00009, 6.18176),
-			ui.CubicTo(5.9123, 6.42025, 6.94707, 6.5458, 8.00039, 6.54578),
-			ui.CubicTo(9.05371, 6.54575, 10.0885, 6.42016, 11.0006, 6.18163),
-			ui.CubicTo(11.9128, 5.94309, 12.6702, 5.60002, 13.1967, 5.1869),
-			ui.ClosePath(),
+			gfx.MoveTo(13.1967, 5.1869),
+			gfx.CubicTo(13.7232, 4.77378, 14.0003, 4.30517, 14.0001, 3.82819),
+			gfx.CubicTo(14.0003, 3.3512, 13.7232, 2.88259, 13.1967, 2.46947),
+			gfx.CubicTo(12.6702, 2.05635, 11.9128, 1.71328, 11.0006, 1.47475),
+			gfx.CubicTo(10.0885, 1.23621, 9.05371, 1.11062, 8.00039, 1.1106),
+			gfx.CubicTo(6.94707, 1.11057, 5.9123, 1.23612, 5.00009, 1.47461),
+			gfx.CubicTo(4.08742, 1.71301, 3.32948, 2.05604, 2.80249, 2.46919),
+			gfx.CubicTo(2.2755, 2.88235, 1.99805, 3.35106, 1.99805, 3.82819),
+			gfx.CubicTo(1.99805, 4.30531, 2.2755, 4.77402, 2.80249, 5.18718),
+			gfx.CubicTo(3.32948, 5.60033, 4.08742, 5.94336, 5.00009, 6.18176),
+			gfx.CubicTo(5.9123, 6.42025, 6.94707, 6.5458, 8.00039, 6.54578),
+			gfx.CubicTo(9.05371, 6.54575, 10.0885, 6.42016, 11.0006, 6.18163),
+			gfx.CubicTo(11.9128, 5.94309, 12.6702, 5.60002, 13.1967, 5.1869),
+			gfx.ClosePath(),
 			// 官方 path #2/#3（左右母线）
-			ui.MoveTo(2, 3.80371),
-			ui.LineTo(2, 11.7848),
-			ui.MoveTo(14, 3.80371),
-			ui.LineTo(14, 11.7848),
+			gfx.MoveTo(2, 3.80371),
+			gfx.LineTo(2, 11.7848),
+			gfx.MoveTo(14, 3.80371),
+			gfx.LineTo(14, 11.7848),
 			// 官方 path #4（第二层）
-			ui.MoveTo(2, 7.81396),
-			ui.CubicTo(2, 8.60524, 2.63214, 9.36411, 3.75736, 9.92363),
-			ui.CubicTo(4.88258, 10.4832, 6.4087, 10.7975, 8, 10.7975),
-			ui.CubicTo(9.5913, 10.7975, 11.1174, 10.4832, 12.2426, 9.92363),
-			ui.CubicTo(13.3679, 9.36411, 14, 8.60524, 14, 7.81396),
+			gfx.MoveTo(2, 7.81396),
+			gfx.CubicTo(2, 8.60524, 2.63214, 9.36411, 3.75736, 9.92363),
+			gfx.CubicTo(4.88258, 10.4832, 6.4087, 10.7975, 8, 10.7975),
+			gfx.CubicTo(9.5913, 10.7975, 11.1174, 10.4832, 12.2426, 9.92363),
+			gfx.CubicTo(13.3679, 9.36411, 14, 8.60524, 14, 7.81396),
 			// 官方 path #5（第三层 / 底盖）
-			ui.MoveTo(2, 11.7847),
-			ui.CubicTo(2, 12.6081, 2.63214, 13.3977, 3.75736, 13.98),
-			ui.CubicTo(4.88258, 14.5622, 6.4087, 14.8893, 8, 14.8893),
-			ui.CubicTo(9.5913, 14.8893, 11.1174, 14.5622, 12.2426, 13.98),
-			ui.CubicTo(13.3679, 13.3977, 14, 12.6081, 14, 11.7847),
+			gfx.MoveTo(2, 11.7847),
+			gfx.CubicTo(2, 12.6081, 2.63214, 13.3977, 3.75736, 13.98),
+			gfx.CubicTo(4.88258, 14.5622, 6.4087, 14.8893, 8, 14.8893),
+			gfx.CubicTo(9.5913, 14.8893, 11.1174, 14.5622, 12.2426, 13.98),
+			gfx.CubicTo(13.3679, 13.3977, 14, 12.6081, 14, 11.7847),
 		},
 	}
 }
@@ -308,21 +308,21 @@ func spinnerPhase(now time.Time) float32 {
 	return float32(nanos) / float32(period)
 }
 
-// spinnerGlyph 把某一帧的 spinner 几何变成可画的 `ui.Icon`（弧 + 25% 圆环）。
+// spinnerGlyph 把某一帧的 spinner 几何变成可画的 `gfx.Icon`（弧 + 25% 圆环）。
 //
 // 颜色按官方 `.spinner{color:label-tertiary}`：调用方传 tint。
-func spinnerGlyph(frame spinnerFrame, tint ui.Color) ui.Icon {
-	return ui.Icon{
+func spinnerGlyph(frame spinnerFrame, tint gfx.Color) gfx.Icon {
+	return gfx.Icon{
 		ViewBox: spinnerViewBox,
 		Stroke:  spinnerStroke,
-		Cap:     ui.CapRound,
+		Cap:     gfx.CapRound,
 		Commands: arcCommands(spinnerCenter, spinnerCenter, spinnerRadius,
 			frame.startDeg(), frame.sweepDeg()),
-		Layers: []ui.IconLayer{{
+		Layers: []gfx.IconLayer{{
 			// 官方 `.spinnerTrack{fill:none;stroke:currentColor;stroke-width:2;opacity:.25}`
 			// → 同宽圆环（外 r+1 / 内 r-1）+ 25% alpha。
 			Fill:     withAlpha(tint, spinnerTrackAlpha),
-			FillRule: ui.PathFillEvenOdd,
+			FillRule: gfx.PathFillEvenOdd,
 			Commands: ringCommands(spinnerCenter, spinnerCenter,
 				spinnerRadius+spinnerStroke/2, spinnerRadius-spinnerStroke/2),
 		}},
@@ -333,16 +333,16 @@ func spinnerGlyph(frame spinnerFrame, tint ui.Color) ui.Icon {
 //
 // k = 4/3·tan(θ/4) 是圆弧到单段三次贝塞尔的标准系数；超过 90° 的弧拆成多段，
 // 否则系数失真。
-func arcCommands(cx, cy, r, startDeg, sweepDeg float32) []ui.PathCommand {
+func arcCommands(cx, cy, r, startDeg, sweepDeg float32) []gfx.PathCommand {
 	if sweepDeg <= 0 {
 		return nil
 	}
 	const maxSweep = 90
 	segments := int(math.Ceil(float64(sweepDeg) / maxSweep))
 	step := sweepDeg / float32(segments)
-	commands := make([]ui.PathCommand, 0, segments*4)
+	commands := make([]gfx.PathCommand, 0, segments*4)
 	angle := float64(startDeg) * math.Pi / 180
-	commands = append(commands, ui.MoveTo(
+	commands = append(commands, gfx.MoveTo(
 		cx+r*float32(math.Cos(angle)),
 		cy+r*float32(math.Sin(angle)),
 	))
@@ -354,7 +354,7 @@ func arcCommands(cx, cy, r, startDeg, sweepDeg float32) []ui.PathCommand {
 		p3x, p3y := float64(cx)+float64(r)*math.Cos(a1), float64(cy)+float64(r)*math.Sin(a1)
 		c1x, c1y := p0x-k*float64(r)*math.Sin(a0), p0y+k*float64(r)*math.Cos(a0)
 		c2x, c2y := p3x+k*float64(r)*math.Sin(a1), p3y-k*float64(r)*math.Cos(a1)
-		commands = append(commands, ui.CubicTo(
+		commands = append(commands, gfx.CubicTo(
 			float32(c1x), float32(c1y), float32(c2x), float32(c2y), float32(p3x), float32(p3y),
 		))
 		angle = a1
@@ -363,21 +363,21 @@ func arcCommands(cx, cy, r, startDeg, sweepDeg float32) []ui.PathCommand {
 }
 
 // ringCommands 是两个同心圆组成的闭合轮廓（配合 EvenOdd 填充规则 = 圆环）。
-func ringCommands(cx, cy, outer, inner float32) []ui.PathCommand {
+func ringCommands(cx, cy, outer, inner float32) []gfx.PathCommand {
 	commands := circleCommands(cx, cy, outer)
 	return append(commands, circleCommands(cx, cy, inner)...)
 }
 
 // circleCommands 用四段三次贝塞尔画一个整圆（标准 k = 0.5523·r）。
-func circleCommands(cx, cy, r float32) []ui.PathCommand {
+func circleCommands(cx, cy, r float32) []gfx.PathCommand {
 	k := 0.5522847498 * r
-	return []ui.PathCommand{
-		ui.MoveTo(cx+r, cy),
-		ui.CubicTo(cx+r, cy+k, cx+k, cy+r, cx, cy+r),
-		ui.CubicTo(cx-k, cy+r, cx-r, cy+k, cx-r, cy),
-		ui.CubicTo(cx-r, cy-k, cx-k, cy-r, cx, cy-r),
-		ui.CubicTo(cx+k, cy-r, cx+r, cy-k, cx+r, cy),
-		ui.ClosePath(),
+	return []gfx.PathCommand{
+		gfx.MoveTo(cx+r, cy),
+		gfx.CubicTo(cx+r, cy+k, cx+k, cy+r, cx, cy+r),
+		gfx.CubicTo(cx-k, cy+r, cx-r, cy+k, cx-r, cy),
+		gfx.CubicTo(cx-r, cy-k, cx-k, cy-r, cx, cy-r),
+		gfx.CubicTo(cx+k, cy-r, cx+r, cy-k, cx+r, cy),
+		gfx.ClosePath(),
 	}
 }
 

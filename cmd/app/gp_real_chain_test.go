@@ -40,7 +40,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -201,7 +201,7 @@ func waitApproval(t *testing.T, m *model, timeout time.Duration) *approvalReq {
 //
 // 判据：审批卡必须画在 **composer 区域**（Y 在消息流最后一行之下），
 // 而不是消息流里的一段——同屏两套「需要审批」是官方明确要避免的。
-func renderProductSeats(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, *dsconversation.Plugin, *dscomposer.Plugin) {
+func renderProductSeats(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas, *dsconversation.Plugin, *dscomposer.Plugin) {
 	t.Helper()
 	conversation := &dsconversation.Plugin{}
 	composer := &dscomposer.Plugin{}
@@ -210,20 +210,21 @@ func renderProductSeats(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, *dsc
 		t.Fatalf("装配失败: %v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	canvas := &ui.Canvas{}
-	tree := &ui.Tree{}
+	canvas := &gfx.Canvas{}
+	tree := &gfx.Tree{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
 	})
 	env := &pluginapi.Env{
 		Theme: theme, Data: snap, Tree: tree, Feat: tree.Feature("gp-real-chain"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 1180, Height: 832}, MainWidth: 840,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 1180, Height: 832}, MainWidth: 840,
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), ui.Rect{Width: 1180, Height: 832}, func(f *flex.Frame) {
-		f.Column().FillWidth().FillHeight().Children(func() {
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, gfx.Rect{Width: 1180, Height: 832}, func(f ui.C) {
+		ui.Column(f).FillWidth().FillHeight().Children(func() {
 			kernel.DrawSlot(f, pluginapi.SlotMainBody, env)
 			kernel.DrawSlot(f, pluginapi.SlotMainComposer, env)
 		})
@@ -232,13 +233,13 @@ func renderProductSeats(t *testing.T, snap pluginapi.Snapshot) (*ui.Canvas, *dsc
 }
 
 // canvasTextGP 找一段文本（返回整条 Text，含几何）。
-func canvasTextGP(canvas *ui.Canvas, value string) (ui.Text, bool) {
+func canvasTextGP(canvas *gfx.Canvas, value string) (gfx.Text, bool) {
 	for _, text := range canvas.Texts() {
 		if text.Value == value || strings.HasPrefix(text.Value, value) {
 			return text, true
 		}
 	}
-	return ui.Text{}, false
+	return gfx.Text{}, false
 }
 
 // TestRealChainGPLoadOlderPagesBack 真宿主上**向上翻页**取到旧帧并渲染。
@@ -514,7 +515,7 @@ func TestRealChainGPApprovalInComposer(t *testing.T) {
 }
 
 // canvasTextsGP 把画布文本列出来（失败诊断用）。
-func canvasTextsGP(canvas *ui.Canvas) []string {
+func canvasTextsGP(canvas *gfx.Canvas) []string {
 	values := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)

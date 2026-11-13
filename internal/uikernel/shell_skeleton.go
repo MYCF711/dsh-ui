@@ -30,7 +30,6 @@ package uikernel
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -592,16 +591,16 @@ func (t *SkeletonTree) RectForHost(host string) (ui.Rect, bool) {
 // dispatch 由壳提供（一般是 kernel.DrawSlot 的闭包）；骨架不直接认识内核。
 // 空槽也会 dispatch：正常实现里没有 painter 就什么都不画，这样「每个官方槽
 // 都有一个可挂节点」与「挂上去真的会出现」是同一套代码路径。
-func FirstScreen(f *flex.Frame, env *pluginapi.Env, opts ShellOptions, dispatch func(pluginapi.Slot)) ShellLayout {
+func FirstScreen(f ui.C, env *pluginapi.Env, opts ShellOptions, dispatch func(pluginapi.Slot)) ShellLayout {
 	return FirstScreenWithMeasure(f, env, opts, dispatch, nil)
 }
 
 // MeasureFunc 让调用方（测试 / 证据脚本）拿到**实际布出来**的容器矩形，
 // 用来核对「布局表算的」与「flex 真画的」是同一份几何。
-type MeasureFunc func(name string, box flex.Box)
+type MeasureFunc func(name string, box ui.Box)
 
 // FirstScreenWithMeasure 是 FirstScreen 的可测量版本（measure 为 nil 时等价）。
-func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions, dispatch func(pluginapi.Slot), measure MeasureFunc) ShellLayout {
+func FirstScreenWithMeasure(f ui.C, env *pluginapi.Env, opts ShellOptions, dispatch func(pluginapi.Slot), measure MeasureFunc) ShellLayout {
 	bounds := env.Bounds
 	if env.Geometry.Width > 0 {
 		bounds.Width = env.Geometry.Width
@@ -611,7 +610,7 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 	}
 	layout := ComputeShellLayout(bounds.Width, bounds.Height, opts)
 
-	note := func(name string, box flex.Box) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
@@ -627,7 +626,7 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 		bg, sidebarFill = env.Theme.BgBase, env.Theme.SidebarFill
 	}
 
-	root := f.Column().FillWidth().FillHeight().PadSides(layout.Caption, 0, 0, 0)
+	root := ui.Column(f).FillWidth().FillHeight().PadSides(layout.Caption, 0, 0, 0)
 	note("AppFrame.frame", root)
 	if env.Theme != nil {
 		root = root.Background(bg)
@@ -635,10 +634,10 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 	root.Children(func() {
 		dispatch(OffRoot)
 		// 三列所在行
-		f.Row().FillWidth().Grow(1).Children(func() {
+		ui.Row(f).FillWidth().Grow(1).Children(func() {
 			// 左栏
 			if layout.Columns.Sidebar > 0 {
-				col := f.Column().Width(layout.Columns.Sidebar).Shrink(0).FillHeight()
+				col := ui.Column(f).Width(layout.Columns.Sidebar).Shrink(0).FillHeight()
 				note("AppFrame.sidebarCol", col)
 				if env.Theme != nil {
 					col = col.Background(sidebarFill)
@@ -652,7 +651,7 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 				})
 			}
 			// 中栏
-			centerBox := f.Column().Width(layout.Columns.Center).Grow(1).FillHeight()
+			centerBox := ui.Column(f).Width(layout.Columns.Center).Grow(1).FillHeight()
 			note("AppFrame.centerCol", centerBox)
 			centerBox.Children(func() {
 				if has(OffMain) {
@@ -668,7 +667,7 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 			})
 			// 右栏
 			if layout.Columns.Rightbar > 0 {
-				rightBox := f.Column().Width(layout.Columns.Rightbar).FillHeight()
+				rightBox := ui.Column(f).Width(layout.Columns.Rightbar).FillHeight()
 				note("AppFrame.rightbarCol", rightBox)
 				rightBox.Children(func() {
 					dispatch(pluginapi.SlotRightbar)
@@ -681,11 +680,11 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 		})
 		// 底部整行：占用方自己声明高度，空内容不预留。
 		if layout.BottomRow.Height > 0 {
-			bottomBox := f.Column().FillWidth().Height(layout.BottomRow.Height)
+			bottomBox := ui.Column(f).FillWidth().Height(layout.BottomRow.Height)
 			note("AppFrame.bottomRow", bottomBox)
 			bottomBox.Children(func() {
 				if env.Theme != nil {
-					f.Row().FillWidth().FillHeight().Background(bg).Children(func() { dispatch(pluginapi.SlotShellBottom) })
+					ui.Row(f).FillWidth().FillHeight().Background(bg).Children(func() { dispatch(pluginapi.SlotShellBottom) })
 					return
 				}
 				dispatch(pluginapi.SlotShellBottom)
@@ -693,13 +692,13 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 		}
 		// 整框浮层：绝对定位，覆盖整个框架（官方 .overlayLayer）。
 		if has(pluginapi.SlotShellOverlay) {
-			overlay := f.Row().Absolute().Left(0).Top(0).Width(layout.Frame.Width).Height(layout.Frame.Height)
+			overlay := ui.Row(f).Absolute().Left(0).Top(0).Width(layout.Frame.Width).Height(layout.Frame.Height)
 			note("AppFrame.overlayLayer", overlay)
 			overlay.Children(func() { dispatch(pluginapi.SlotShellOverlay) })
 		}
 		// 窗口 chrome 左上座位（绝对定位，top 11 / left 88）。
 		if has(pluginapi.SlotShellLeading) {
-			f.Row().Absolute().Left(layout.LeadingSeat.X).Top(layout.LeadingSeat.Y).Children(func() {
+			ui.Row(f).Absolute().Left(layout.LeadingSeat.X).Top(layout.LeadingSeat.Y).Children(func() {
 				dispatch(pluginapi.SlotShellLeading)
 			})
 		}
@@ -708,8 +707,8 @@ func FirstScreenWithMeasure(f *flex.Frame, env *pluginapi.Env, opts ShellOptions
 }
 
 // drawSidebarSkeleton 画 SidebarRoot 的带结构（logoRow / newSession / scrollRegion / footArea）。
-func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	note := func(name string, box flex.Box) {
+func drawSidebarSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
@@ -719,24 +718,24 @@ func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, 
 		return
 	}
 	padX := SidebarRootPadX
-	f.Column().FillWidth().FillHeight().PadSides(SidebarRootPadY, padX, SidebarRootPadY, padX).Children(func() {
+	ui.Column(f).FillWidth().FillHeight().PadSides(SidebarRootPadY, padX, SidebarRootPadY, padX).Children(func() {
 		// logoRow：mark / name / toggle.badge 三个单座
-		f.Row().FillWidth().Height(layout.SidebarLogoRow.Height).Gap(SidebarLogoRowGap).Children(func() {
+		ui.Row(f).FillWidth().Height(layout.SidebarLogoRow.Height).Gap(SidebarLogoRowGap).Children(func() {
 			dispatch(OffSidebarBrandMark)
 			dispatch(OffSidebarBrandName)
 			dispatch(OffSidebarToggleBadge)
 		})
 		// newSession（官方 38px 圆角按钮；骨架只留结构框）
-		f.Row().FillWidth().Height(SidebarNewSessionHeight).MarginX(SidebarNewSessionMargin).Children(func() {})
+		ui.Row(f).FillWidth().Height(SidebarNewSessionHeight).MarginX(SidebarNewSessionMargin).Children(func() {})
 		// scrollRegion：panelList + regionArea
-		f.Column().FillWidth().Grow(1).Children(func() {
+		ui.Column(f).FillWidth().Grow(1).Children(func() {
 			if layout.PanelList.Height > 0 {
-				f.Column().FillWidth().Height(layout.PanelList.Height).Gap(SidebarPanelListGap).Children(func() {
+				ui.Column(f).FillWidth().Height(layout.PanelList.Height).Gap(SidebarPanelListGap).Children(func() {
 					dispatch(OffSidebarPanelList)
 					dispatch(OffSidebarPanelActions)
 				})
 			}
-			f.Column().FillWidth().Grow(1).Children(func() { dispatch(OffSidebarWorkspaces) })
+			ui.Column(f).FillWidth().Grow(1).Children(func() { dispatch(OffSidebarWorkspaces) })
 		})
 		// footArea：footer 动作（list）+ 设置行（single）
 		//
@@ -745,12 +744,12 @@ func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, 
 		// 否则同一槽上的几个占用方会各画一行（同一列里上下堆叠）——
 		// 「连接指示在设置按钮下面一行」就是这么来的（HF 报告 §剩余差距 1）。
 		// Row 的子项由各插件自己画，壳不认任何具体部件。
-		f.Column().FillWidth().Children(func() {
+		ui.Column(f).FillWidth().Children(func() {
 			dispatch(OffSidebarFooterActions)
-			settingsRow := f.Row().FillWidth().
+			settingsRow := ui.Row(f).FillWidth().
 				MarginSides(SettingsTriggerRowMarginY, -SettingsTriggerRowInset,
 					SettingsTriggerRowMarginY, -SettingsTriggerRowInset).
-				Items(flex.Center).Gap(SettingsTriggerRowGap)
+				Items(ui.Center).Gap(SettingsTriggerRowGap)
 			settingsRow.Children(func() { dispatch(OffSidebarSettings) })
 			// 必须在 Children 之后报：布局跑完才量得到行高（顺序反了报的是 0）。
 			note("SettingsRoot.triggerRow", settingsRow)
@@ -761,16 +760,16 @@ func drawSidebarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, 
 // drawLegacySidebar 是左栏的旧插件兼容路径：dssidebar 挂在
 // sidebar.header / sidebar.list / sidebar.footer 三个旧槽上，按 dsshell 时代的
 // 12px 内联 padding + gap 8 排版（official_geometry.go 的 deviation 行）。
-func drawLegacySidebar(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	note := func(name string, box flex.Box) {
+func drawLegacySidebar(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
 	}
-	f.Column().FillWidth().FillHeight().
+	ui.Column(f).FillWidth().FillHeight().
 		PadSides(SidebarRootPadY, LegacySidebarPadX, SidebarRootPadY, LegacySidebarPadX).Gap(8).Children(func() {
 		dispatch(pluginapi.SlotSidebarHeader)
-		f.Column().FillWidth().Grow(1).MinHeight(0).Children(func() { dispatch(pluginapi.SlotSidebarList) })
+		ui.Column(f).FillWidth().Grow(1).MinHeight(0).Children(func() { dispatch(pluginapi.SlotSidebarList) })
 		if env.Has != nil && env.Has(pluginapi.SlotSidebarFooter) {
 			dispatch(pluginapi.SlotSidebarFooter)
 		}
@@ -782,10 +781,10 @@ func drawLegacySidebar(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, di
 		//
 		// 这一行必须放在 footer 之后：官方 `.footArea{flex-direction:column}`
 		// 里 settingsArea 是最后一行。
-		settingsRow := f.Row().FillWidth().
+		settingsRow := ui.Row(f).FillWidth().
 			MarginSides(SettingsTriggerRowMarginY, -SettingsTriggerRowInset,
 				SettingsTriggerRowMarginY, -SettingsTriggerRowInset).
-			Items(flex.Center).Gap(SettingsTriggerRowGap)
+			Items(ui.Center).Gap(SettingsTriggerRowGap)
 		settingsRow.Children(func() { dispatch(OffSidebarSettings) })
 		// 必须在 Children 之后报：布局跑完才量得到行高（顺序反了报的是 0）。
 		note("SettingsRoot.triggerRow (legacy bridge)", settingsRow)
@@ -793,8 +792,8 @@ func drawLegacySidebar(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, di
 }
 
 // drawConversationSkeleton 画 ConversationRoot：header（titleRow + tabs）+ body（scrollBody + composerSeat）。
-func drawConversationSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	note := func(name string, box flex.Box) {
+func drawConversationSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
@@ -805,15 +804,15 @@ func drawConversationSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLay
 	}
 	// header
 	if !layout.Options.Blank && layout.Header.Height > 0 {
-		headerBox := f.Column().FillWidth().Height(layout.Header.Height).
+		headerBox := ui.Column(f).FillWidth().Height(layout.Header.Height).
 			PadSides(HeaderPadTop, HeaderPadRight, 0, HeaderPadLeft)
 		note("ConversationRoot.header", headerBox)
 		headerBox.Children(func() {
 			dispatch(OffConversationHeader)
 			// title row：leading(single) + title cluster（lineage/actions/utilities/corner）
-			f.Row().FillWidth().Height(TitleRowMinHeight).Children(func() {
+			ui.Row(f).FillWidth().Height(TitleRowMinHeight).Children(func() {
 				dispatch(OffHeaderLeading)
-				f.Row().FillWidth().Height(TitleRowMinHeight).Children(func() {
+				ui.Row(f).FillWidth().Height(TitleRowMinHeight).Children(func() {
 					dispatch(OffSessionHeader)
 					dispatch(OffSessionHeaderLineage)
 					dispatch(OffSessionHeaderActions)
@@ -823,7 +822,7 @@ func drawConversationSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLay
 			})
 			// tabs 行（只有 tabs.length>1 才出现）
 			if layout.Options.Tabs && layout.TabsRow.Height > 0 {
-				f.Row().FillWidth().Height(ViewTabsMinH).MarginSides(TabsMarginTop, 0, 0, TabsPaddingLeft).Children(func() {
+				ui.Row(f).FillWidth().Height(ViewTabsMinH).MarginSides(TabsMarginTop, 0, 0, TabsPaddingLeft).Children(func() {
 					dispatch(OffSessionHeaderViewAction)
 				})
 			}
@@ -838,15 +837,15 @@ func drawConversationSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLay
 	}
 	// body
 	dispatch(OffConvContent)
-	bodyBox := f.Column().FillWidth().Grow(1)
+	bodyBox := ui.Column(f).FillWidth().Grow(1)
 	note("ConversationRoot.body", bodyBox)
 	bodyBox.Children(func() {
 		// 滚动区（transcript 容器）
-		scrollBox := f.Row().FillWidth().Grow(1)
+		scrollBox := ui.Row(f).FillWidth().Grow(1)
 		note("ConversationRoot.scrollBody", scrollBox)
 		scrollBox.Children(func() {
-			f.Column().FillWidth().FillHeight().PadSides(ChatScrollPad, ChatScrollPad+ComposerSideClearance+BodyScrollMarginRight, ChatScrollPad, ChatScrollPad+ComposerSideClearance).Children(func() {
-				f.Column().Width(layout.Column.Width).FillHeight().Children(func() {
+			ui.Column(f).FillWidth().FillHeight().PadSides(ChatScrollPad, ChatScrollPad+ComposerSideClearance+BodyScrollMarginRight, ChatScrollPad, ChatScrollPad+ComposerSideClearance).Children(func() {
+				ui.Column(f).Width(layout.Column.Width).FillHeight().Children(func() {
 					dispatch(OffConversationSession)
 					dispatch(OffConvView)
 					dispatch(OffUserTextFactory)
@@ -864,36 +863,36 @@ func drawConversationSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLay
 // drawHeroSkeleton 画空白会话的 Hero：官方 HeroShell.root 居中，
 // stack 宽度上限 = composer 卡片宽，三块依次是标题（鱼标 + 标题 + 预览徽标）、
 // 工作区行、composer 卡片。
-func drawHeroSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	note := func(name string, box flex.Box) {
+func drawHeroSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
+	note := func(name string, box ui.Box) {
 		if measure != nil {
 			measure(name, box)
 		}
 	}
-	heroBox := f.Column().FillWidth().Grow(1).PadX(HeroPadX)
+	heroBox := ui.Column(f).FillWidth().Grow(1).PadX(HeroPadX)
 	note("Hero.frame", heroBox)
-	heroBox.Items(flex.Center).Children(func() {
-		stack := f.Column().Width(layout.HeroStack.Width).Gap(HeroStackGap)
+	heroBox.Items(ui.Center).Children(func() {
+		stack := ui.Column(f).Width(layout.HeroStack.Width).Gap(HeroStackGap)
 		note("Hero.stack", stack)
 		stack.Children(func() {
 			dispatch(OffHeroFrame)
 			// 标题行：鱼标（brand mark）+ 标题 + 预览徽标
-			f.Row().FillWidth().Height(HeroHeadlineLineH).Items(flex.Center).Gap(HeroHeadlineGapCol).Children(func() {
+			ui.Row(f).FillWidth().Height(HeroHeadlineLineH).Items(ui.Center).Gap(HeroHeadlineGapCol).Children(func() {
 				dispatch(OffHeroBrandMark)
 			})
 			// 工作区行：workspace / agentPreset / options
-			f.Row().FillWidth().Height(HeroWorkspaceMinH).Gap(HeroWorkspaceGap).Children(func() {
+			ui.Row(f).FillWidth().Height(HeroWorkspaceMinH).Gap(HeroWorkspaceGap).Children(func() {
 				dispatch(OffHeroWorkspace)
 				dispatch(OffHeroAgentPreset)
 				dispatch(OffHeroOptions)
 			})
 			// Hero 内嵌 composer：同一个 InputBar 卡片
-			f.Row().FillWidth().Height(layout.HeroCard.Height).Children(func() {
-				f.Column().FillWidth().FillHeight().PadSides(ComposerCardPadTop, 0, 0, 0).Gap(ComposerCardGap).Children(func() {
+			ui.Row(f).FillWidth().Height(layout.HeroCard.Height).Children(func() {
+				ui.Column(f).FillWidth().FillHeight().PadSides(ComposerCardPadTop, 0, 0, 0).Gap(ComposerCardGap).Children(func() {
 					dispatch(OffConvComposerBar)
 					dispatch(OffInputAttachments)
-					f.Column().FillWidth().Height(ComposerInputHeroH).Children(func() { dispatch(OffInputOverlay) })
-					f.Row().FillWidth().Height(ComposerRowHeight).PadSides(ComposerRowPadTop, ComposerRowPadX, ComposerRowPadBot, ComposerRowPadX).Children(func() {
+					ui.Column(f).FillWidth().Height(ComposerInputHeroH).Children(func() { dispatch(OffInputOverlay) })
+					ui.Row(f).FillWidth().Height(ComposerRowHeight).PadSides(ComposerRowPadTop, ComposerRowPadX, ComposerRowPadBot, ComposerRowPadX).Children(func() {
 						dispatch(OffInputLeft)
 						dispatch(OffInputPlan)
 						dispatch(OffInputPermission)
@@ -910,26 +909,26 @@ func drawHeroSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dis
 }
 
 // drawComposerSkeleton 画 InputBar：附件 rail / 卡片（输入区 + 控件行）/ dock。
-func drawComposerSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	f.Row().FillWidth().Height(layout.ComposerRoot.Height).
+func drawComposerSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
+	ui.Row(f).FillWidth().Height(layout.ComposerRoot.Height).
 		PadSides(0, ComposerSideClearance, ComposerPadBottom, ComposerSideClearance).Children(func() {
-		f.Column().FillWidth().FillHeight().Children(func() {
+		ui.Column(f).FillWidth().FillHeight().Children(func() {
 			dispatch(OffConvComposerBar)
 			// dock：卡片上方的整行条目（官方 conversation.input.dock）
 			dispatch(OffInputDock)
 			// 卡片
-			cardRow := f.Row().FillWidth().Height(layout.ComposerCard.Height).Justify(flex.Center)
+			cardRow := ui.Row(f).FillWidth().Height(layout.ComposerCard.Height).Justify(ui.Center)
 			cardRow.Children(func() {
-				cardBox := f.Column().Width(layout.ComposerCard.Width).FillHeight().PadSides(ComposerCardPadTop, 0, 0, 0).Gap(ComposerCardGap)
+				cardBox := ui.Column(f).Width(layout.ComposerCard.Width).FillHeight().PadSides(ComposerCardPadTop, 0, 0, 0).Gap(ComposerCardGap)
 				if measure != nil {
 					measure("InputBar.card", cardBox)
 				}
 				cardBox.Children(func() {
 					dispatch(OffInputAttachments)
 					// 输入区
-					f.Column().FillWidth().Height(ComposerInputMinH).Children(func() { dispatch(OffInputOverlay) })
+					ui.Column(f).FillWidth().Height(ComposerInputMinH).Children(func() { dispatch(OffInputOverlay) })
 					// 控件行：左组 / 右组
-					f.Row().FillWidth().Height(ComposerRowHeight).PadSides(ComposerRowPadTop, ComposerRowPadX, ComposerRowPadBot, ComposerRowPadX).Children(func() {
+					ui.Row(f).FillWidth().Height(ComposerRowHeight).PadSides(ComposerRowPadTop, ComposerRowPadX, ComposerRowPadBot, ComposerRowPadX).Children(func() {
 						dispatch(OffInputLeft)
 						dispatch(OffInputPlan)
 						dispatch(OffInputPermission)
@@ -953,14 +952,14 @@ func drawComposerSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout,
 // 里对应行是 deviation；等 dstopbar / dsconversation 迁到 conversation.* 官方槽位后
 // 整段删除。composer 先迁走（它是第一个有官方座位占用方的部件），所以座位画在
 // 12px 内边距**外面**：官方 composer 的侧边距是 16（相对正文列），不是 12+16。
-func drawLegacyConversation(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	f.Column().FillWidth().FillHeight().Children(func() {
+func drawLegacyConversation(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
+	ui.Column(f).FillWidth().FillHeight().Children(func() {
 		// header + 正文：旧三栏的 12px 栏内边距（遗留桥）。
-		f.Column().FillWidth().Grow(1).MinHeight(0).Pad(LegacyColumnInset).Gap(8).Children(func() {
+		ui.Column(f).FillWidth().Grow(1).MinHeight(0).Pad(LegacyColumnInset).Gap(8).Children(func() {
 			if env.Has != nil && env.Has(pluginapi.SlotMainHeader) {
 				dispatch(pluginapi.SlotMainHeader)
 			}
-			f.Column().FillWidth().Grow(1).MinHeight(0).Children(func() { dispatch(pluginapi.SlotMainBody) })
+			ui.Column(f).FillWidth().Grow(1).MinHeight(0).Children(func() { dispatch(pluginapi.SlotMainBody) })
 		})
 		// composer：官方座位。它画在 12px 内边距**外面**（上面那个 Grow 列才有 padding），
 		// 所以侧边距直接给官方的 16——官方 `InputBar.root` 的 clearance 是相对正文列的，
@@ -984,7 +983,7 @@ func drawLegacyConversation(f *flex.Frame, env *pluginapi.Env, layout ShellLayou
 // 高度：没有占用方时用几何表的静止高度（`ComposerSeatHeight` = 卡片 98 + dock 26
 // + 底边距 4 = 128）；有占用方时**不钉死**——InputBar.root 的高度由卡片 + dock 的
 // 内容决定，钉死等于把同一份算术写两遍，字号/行高一变就漂。
-func drawComposerSeat(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc, sidePad float32) {
+func drawComposerSeat(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc, sidePad float32) {
 	// 纯旧插件集：官方座位没人、旧槽有人 → 走兼容桥（与官方座位二选一）。
 	if layout.Options.BridgeLegacyComposer {
 		dispatch(pluginapi.SlotMainComposer)
@@ -1000,7 +999,7 @@ func drawComposerSeat(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dis
 		if layout.ComposerSeat.Height <= 0 {
 			return
 		}
-		seat := f.Column().FillWidth().Height(layout.ComposerSeat.Height)
+		seat := ui.Column(f).FillWidth().Height(layout.ComposerSeat.Height)
 		if measure != nil {
 			measure("ConversationRoot.composerSeat", seat)
 		}
@@ -1012,7 +1011,7 @@ func drawComposerSeat(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dis
 	}
 	// 有占用方：高度内容驱动；侧边距由座位给（官方 InputBar.root 的左右
 	// clearance），底边距 4 归 InputBar.root 自己（`padding:0 16 4`）。
-	seat := f.Column().FillWidth().PadX(sidePad)
+	seat := ui.Column(f).FillWidth().PadX(sidePad)
 	if measure != nil {
 		measure("ConversationRoot.composerSeat", seat)
 	}
@@ -1020,16 +1019,16 @@ func drawComposerSeat(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dis
 }
 
 // drawRightbarSkeleton 画右栏默认组合：面板 → tab strip / guide / tab menu。
-func drawRightbarSkeleton(f *flex.Frame, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
-	f.Column().FillWidth().FillHeight().Children(func() {
+func drawRightbarSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
+	ui.Column(f).FillWidth().FillHeight().Children(func() {
 		dispatch(OffRightbarSession)
-		f.Row().FillWidth().Children(func() { dispatch(OffRightPaneTab) })
-		f.Row().FillWidth().Children(func() { dispatch(OffRightPaneTabTitle) })
-		f.Row().FillWidth().Grow(1).Children(func() {
+		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightPaneTab) })
+		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightPaneTabTitle) })
+		ui.Row(f).FillWidth().Grow(1).Children(func() {
 			dispatch(OffRightGuide)
 			dispatch(OffRightGuideActions)
 			dispatch(OffRightGuideEntry)
 		})
-		f.Row().FillWidth().Children(func() { dispatch(OffRightTabMenuItem) })
+		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightTabMenuItem) })
 	})
 }

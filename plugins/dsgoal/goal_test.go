@@ -5,7 +5,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -14,14 +14,14 @@ import (
 // "本来就该有东西"——所以两条路都得断言，否则这个插件等于没被测。
 
 // renderGoal 画一帧目标条，返回这一帧的画布（矩形/三角形/文字都在上面）。
-func renderGoal(t *testing.T, p *Plugin, act pluginapi.Actions) *ui.Canvas {
+func renderGoal(t *testing.T, p *Plugin, act pluginapi.Actions) *gfx.Canvas {
 	t.Helper()
 	if p.theme == nil {
 		p.theme = dscore.Dark()
 	}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("goal-test")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
@@ -29,10 +29,11 @@ func renderGoal(t *testing.T, p *Plugin, act pluginapi.Actions) *ui.Canvas {
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: pluginapi.Snapshot{Cur: "s"}, Act: act,
 		Tree: tree, Feat: feat, Canvas: canvas,
-		Bounds: ui.Rect{Width: 1182, Height: 832}, MainWidth: 902,
+		Bounds: gfx.Rect{Width: 1182, Height: 832}, MainWidth: 902,
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), env.Bounds, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		p.draw(f, env)
 	})
 	return canvas

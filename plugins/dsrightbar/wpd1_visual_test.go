@@ -17,7 +17,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -46,15 +46,16 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 		MessageMeta: map[string]pubapi.MessageMetadata{},
 	}
 	data.MessageMeta[pubapi.MessageKey(wpd1SessionID, msgs[1], 1)] = pubapi.MessageMetadata{Time: 1762222445123}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("wpd1-two-size")
-	var view flex.View
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{
 		Title: "wpd1-two-size", Width: 1182, Height: 832, Tree: tree, WindowMode: app.WindowFrameless,
-		TextInput: flex.Fields(rightbar.Fields()...),
+		TextInput: ui.Fields(rightbar.Fields()...),
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		rightPref := size.Width * 0.45
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
@@ -63,8 +64,7 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 				Width: size.Width, Height: size.Height, SidebarWidth: 280,
 				RightWidth: rightPref, MainWidth: size.Width - 280 - rightPref, BottomHeight: 24,
 			},
-			Scroll: view.ScrollState,
-			Act:    pluginapi.Actions{ToggleRightbar: func() { data.ShowRightbar = !data.ShowRightbar }},
+			Act: pluginapi.Actions{ToggleRightbar: func() { data.ShowRightbar = !data.ShowRightbar }},
 			Has: func(slot pluginapi.Slot) bool {
 				if slot == pluginapi.SlotShellOverlay {
 					return false
@@ -73,7 +73,7 @@ func TestWPD1TwoSizeRealSearchInspectSelectionAnd1000Evidence(t *testing.T) {
 			},
 		}
 		canvas.Fill(bounds, theme.BgBase)
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
 	}

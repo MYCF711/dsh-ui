@@ -33,7 +33,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -160,6 +160,16 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // 谁调它：`cmd/app -open-settings`（无头截图用，和 `-open-file` 同一个思路：
 // 截图路径注入不了鼠标，只能调插件的公开入口）。产品路径是 Shift+F2。
 func (p *Plugin) Open() bool {
+	// **官方四区面板接管时，必须走它自己的打开路径。**
+	//
+	// 为什么：两个画家各自以 `OfficialEnabled()` 判据互斥——旧浮层的 `draw` 在
+	// 官方接管时直接 return，而 `drawOfficialPanel` 又要求 `o.open`。若这里只置
+	// 旧的 `p.shown`，`o.open` 永远是 false，于是**两边都不画**，用户看到整页空白。
+	// 2026-11-13 真机复现：`-open-settings` 日志打"设置浮层已打开"，截图什么都没有；
+	// 产品路径（Shift+F2 / 侧栏设置按钮，都走 `ui.settings.open`）同一个坑。
+	if p.OfficialEnabled() {
+		return p.OpenOfficial()
+	}
 	p.mu.Lock()
 	ok := HasSettingsActions(p.act)
 	if ok {
@@ -176,6 +186,10 @@ func (p *Plugin) Open() bool {
 
 // Close 收起浮层（幂等）。
 func (p *Plugin) Close() {
+	if p.OfficialEnabled() {
+		p.CloseOfficial()
+		return
+	}
 	p.mu.Lock()
 	was := p.shown
 	p.shown = false
@@ -188,6 +202,9 @@ func (p *Plugin) Close() {
 
 // Shown 报告浮层当前是不是开着（壳的测试与调试用）。
 func (p *Plugin) Shown() bool {
+	if p.OfficialEnabled() {
+		return p.OfficialShown()
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.shown
@@ -259,7 +276,7 @@ func (p *Plugin) activate() {
 // 返回 true 是有代价的（后面的插件再也看不到这个键），所以：
 //   - 普通 F2、关着时的所有键、带修饰键的键 —— 一律 false
 //   - 只有 "Shift+F2"、"浮层开着时的 Esc/↑/↓/Enter" 这几种才吃
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	if ev.Release {
 		return false
 	}
@@ -274,8 +291,8 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 
 	// 入口：Shift+F2。**精确匹配**修饰键：dscommands 的 F2 不看 modifiers，
 	// 这里只要判定稍宽一点，两边就有一方永远收不到。
-	if ev.Key == ui.KeyF2 {
-		if ev.Modifiers != ui.ModifierShift {
+	if ev.Key == gfx.KeyF2 {
+		if ev.Modifiers != gfx.ModifierShift {
 			return false
 		}
 		if shown {
@@ -292,7 +309,7 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 	if !shown {
 		return false
 	}
-	if ev.Key == ui.KeyEscape {
+	if ev.Key == gfx.KeyEscape {
 		p.hide("设置已关闭")
 		return true
 	}
@@ -301,13 +318,13 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		return false
 	}
 	switch ev.Key {
-	case ui.KeyDown:
+	case gfx.KeyDown:
 		p.move(1)
 		return true
-	case ui.KeyUp:
+	case gfx.KeyUp:
 		p.move(-1)
 		return true
-	case ui.KeyEnter:
+	case gfx.KeyEnter:
 		p.activate()
 		return true
 	}
@@ -327,7 +344,7 @@ func cardWidth(window float32) float32 {
 }
 
 // draw 画浮层。没开 / 没有任何设置动作时什么都不画。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// 兼容桥：壳接上 settings.describe 后，官方四区面板接管，旧浮层不画。
 	if p.OfficialEnabled() {
 		return
@@ -382,19 +399,19 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		left = 0
 	}
 	idx := 0
-	f.Row().Absolute().Left(left).Top(cardTop).Width(w).Children(func() {
-		f.Column().FillWidth().Radius(t.Radii.Panel).
+	ui.Row(f).Absolute().Left(left).Top(cardTop).Width(w).Children(func() {
+		ui.Column(f).FillWidth().Radius(t.Radii.Panel).
 			Background(t.InputMajor).Border(1, t.BorderL2).
-			Shadow(ui.ShadowXS).
+			Shadow(gfx.ShadowXS).
 			PadSides(20, 20, 16, 20).Gap(6).Children(func() {
 			// 标题行：标题 + 关闭按钮（28px 圆钮交给 prims，不自己拼尺寸和颜色）。
-			f.Row().FillWidth().Items(flex.Center).Gap(8).Children(func() {
-				f.Text("设置").FontSize(t.Fonts.Title).Color(t.LabelPrimary).Grow(1)
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {
+				ui.Text(f, "设置").FontSize(t.Fonts.Title).Color(t.LabelPrimary).Grow(1)
 				if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "settings-close"), "×", false) {
 					p.hide("设置已关闭")
 				}
 			})
-			f.Text("Shift+F2 或 Esc 关闭 · 只列壳真接上的项").
+			ui.Text(f, "Shift+F2 或 Esc 关闭 · 只列壳真接上的项").
 				FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 
 			for _, sec := range secs {
@@ -407,18 +424,18 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 // drawSection 画一块分区，返回下一个可点行的序号。
 //
 // idx/cursor 是**可点行**的序号（只读行不占号），和 HandleKey 的 move 对齐。
-func (p *Plugin) drawSection(f *flex.Frame, env *pluginapi.Env, t *pluginapi.Theme, sec Section, idx, cursor int) int {
-	f.Text(sec.Title).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
+func (p *Plugin) drawSection(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, sec Section, idx, cursor int) int {
+	ui.Text(f, sec.Title).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
 	if sec.Note != "" {
-		f.Text(sec.Note).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
+		ui.Text(f, sec.Note).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
 	}
 	for _, row := range sec.Rows {
 		row := row
 		if row.Run == nil {
 			// 只读行：不挂命中区、不参与光标——它就不该看起来像按钮。
-			f.Row().FillWidth().Height(rowHeight).Items(flex.Center).Gap(10).Children(func() {
-				f.Text(row.Label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Width(labelWidth)
-				f.Text(row.Hint).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Grow(1).Ellipsis()
+			ui.Row(f).FillWidth().Height(rowHeight).Items(ui.Center).Gap(10).Children(func() {
+				ui.Text(f, row.Label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Width(labelWidth)
+				ui.Text(f, row.Hint).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Grow(1).Ellipsis()
 			})
 			continue
 		}
@@ -428,10 +445,10 @@ func (p *Plugin) drawSection(f *flex.Frame, env *pluginapi.Env, t *pluginapi.The
 		}
 		active := row.Selected || idx == cursor
 		body := func() {
-			f.Text(mark).FontSize(t.Fonts.Caption).Color(t.Info).Width(markWidth)
-			f.Text(row.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Grow(1).Ellipsis()
+			ui.Text(f, mark).FontSize(t.Fonts.Caption).Color(t.Info).Width(markWidth)
+			ui.Text(f, row.Label).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Grow(1).Ellipsis()
 			if row.Hint != "" {
-				f.Text(row.Hint).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
+				ui.Text(f, row.Hint).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis()
 			}
 		}
 		id := env.Tree.ID(env.Feat, "settings-"+row.Key)

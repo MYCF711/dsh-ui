@@ -16,7 +16,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -51,7 +51,7 @@ func TestParseWinSize(t *testing.T) {
 
 func TestParseKeys(t *testing.T) {
 	keys := parseKeys("down,up,home,end,esc,enter")
-	want := []ui.Key{ui.KeyDown, ui.KeyUp, ui.KeyHome, ui.KeyEnd, ui.KeyEscape, ui.KeyEnter}
+	want := []gfx.Key{gfx.KeyDown, gfx.KeyUp, gfx.KeyHome, gfx.KeyEnd, gfx.KeyEscape, gfx.KeyEnter}
 	if len(keys) != len(want) {
 		t.Fatalf("解析出 %d 个键，期望 %d", len(keys), len(want))
 	}
@@ -61,11 +61,11 @@ func TestParseKeys(t *testing.T) {
 		}
 	}
 	// 大小写与空白都要容忍（命令行手写时常见的）
-	if got := parseKeys(" DOWN , Esc "); len(got) != 2 || got[0].Key != ui.KeyDown || got[1].Key != ui.KeyEscape {
+	if got := parseKeys(" DOWN , Esc "); len(got) != 2 || got[0].Key != gfx.KeyDown || got[1].Key != gfx.KeyEscape {
 		t.Fatalf("大小写/空白容忍失败：%v", got)
 	}
 	// Shift+F2 是设置浮层的入口：**修饰键必须保留**，否则注入的按键只会打开命令面板。
-	if got := parseKeys("shift+f2"); len(got) != 1 || got[0].Key != ui.KeyF2 || got[0].Modifiers != ui.ModifierShift {
+	if got := parseKeys("shift+f2"); len(got) != 1 || got[0].Key != gfx.KeyF2 || got[0].Modifiers != gfx.ModifierShift {
 		t.Fatalf("shift+f2 应解析成带 Shift 的 F2，得到 %+v", got)
 	}
 	// 不认识的键静默跳过，不 panic
@@ -337,8 +337,13 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 		scrollPos:     map[string]float32{},
 	}
 
+	// v0.6.0：主题是构造期给的（Draw 不再收 theme）；滚动状态由声明方持有，
+	// 壳拿到的是插件交回来的 Box（这里由本支架自己声明并交回）。
+	pageTheme := ui.LightTheme()
+	m.view = ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+
 	// 首开先画的是空消息 Hero；此时还没有 ScrollArea 的内容高度。
-	if m.applyPendingScroll() {
+	if m.applyPendingScroll(ui.Box{}, false) {
 		t.Fatal("空消息 Hero 帧没有可虚拟化的消息，不应请求补帧")
 	}
 	if m.pendingScroll != id {
@@ -349,33 +354,35 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 	for i := range m.msgs {
 		m.msgs[i] = apiclient.Message{Seq: i + 1, Role: "assistant", Text: fmt.Sprintf("message-%02d", i+1)}
 	}
-	scrID := tree.ID(home, "msgs-"+id)
-	draw := func() (*ui.Canvas, bool) {
+	draw := func() (*gfx.Canvas, bool) {
 		t.Helper()
-		canvas := &ui.Canvas{}
+		canvas := &gfx.Canvas{}
 		canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 			return float32(len(value)) * size / 2
 		})
-		m.view.Draw(canvas, ui.LightTheme(), ui.Rect{Width: 100, Height: 100}, func(f *flex.Frame) {
-			f.Column().Fill().Children(func() {
-				f.ScrollArea(scrID).Grow(1).Follow(true).Children(func() {
+		var area ui.Box
+		m.view.Draw(canvas, gfx.Rect{Width: 100, Height: 100}, func(f ui.C) {
+			ui.Column(f).Fill().Children(func() {
+				area = ui.Scroll(f).Grow(1).Follow(true)
+				area.Children(func() {
 					// 与 dsconversation 相同的声明期虚拟化时序：Offset 是上一帧的值。
-					offset := m.view.ScrollState(scrID).Offset
+					offset := area.ScrollState().Offset
 					for i := range m.msgs {
 						y := float32(i * 30)
 						if y+30 < offset || y > offset+100 {
-							f.Slot().Height(30)
+							ui.Slot(f).Height(30)
 							continue
 						}
-						f.Text(m.msgs[i].Text).Height(30)
+						ui.Text(f, m.msgs[i].Text).Height(30)
 					}
 				})
 			})
 		})
-		repaint := m.applyPendingScroll()
+		// 产品路径里这一步是壳用插件交回的 Box 做的（env.ScrollBox）。
+		repaint := m.applyPendingScroll(area, true)
 		return canvas, repaint
 	}
-	hasLast := func(canvas *ui.Canvas) bool {
+	hasLast := func(canvas *gfx.Canvas) bool {
 		for _, text := range canvas.Texts() {
 			if text.Value == "message-20" {
 				return true
@@ -400,5 +407,61 @@ func TestFirstLoadedMessagesGetFollowUpFrame(t *testing.T) {
 	}
 	if !hasLast(second) {
 		t.Fatal("Follow 已移动到尾部后，补帧仍没有实画尾消息")
+	}
+}
+
+// TestPendingScrollRestoresOffset 钉住"切回会话恢复阅读位置"那条链的**后半段**：
+// m.scrollPos → Box.ScrollState().ScrollTo。
+//
+// 背景：v0.6.0 没有 `ScrollState(id)` 这种按身份查表的入口，滚动状态由声明方持有。
+// 壳的做法是——插件把本帧滚动区的 Box 交给壳（Env.ScrollBox），壳在 Draw 返回后
+// （布局已定）先恢复、再记偏移。**顺序不能反**：先记的话，切会话那一帧新滚动区
+// 是从 0 布局的，会把切走前的位置覆盖成 0。
+func TestPendingScrollRestoresOffset(t *testing.T) {
+	const id = "restore"
+	pageTheme := ui.LightTheme()
+	m := &model{
+		cur:           id,
+		view:          ui.NewPage(ui.PageConfig{Theme: &pageTheme}),
+		pendingScroll: id,
+		scrollPos:     map[string]float32{id: 120},
+	}
+	m.msgs = make([]apiclient.Message, 20)
+	for i := range m.msgs {
+		m.msgs[i] = apiclient.Message{Seq: i + 1, Role: "assistant", Text: fmt.Sprintf("message-%02d", i+1)}
+	}
+
+	canvas := &gfx.Canvas{}
+	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
+		return float32(len(value)) * size / 2
+	})
+	var area ui.Box
+	m.view.Draw(canvas, gfx.Rect{Width: 100, Height: 100}, func(f ui.C) {
+		ui.Column(f).Fill().Children(func() {
+			area = ui.Scroll(f).Grow(1).Follow(true)
+			area.Children(func() {
+				for i := range m.msgs {
+					ui.Text(f, m.msgs[i].Text).Height(30)
+				}
+			})
+		})
+	})
+
+	// 产品这一段就是 settleScroll：先恢复，再记偏移（顺序反了会把待恢复值覆盖成 0）。
+	if !m.settleScroll(area, true) {
+		t.Fatal("有待恢复的偏移时 settleScroll 必须请求补帧")
+	}
+	if got := area.ScrollState().Offset; got != 120 {
+		t.Fatalf("恢复后的偏移 = %v，want 120（切走前记下的值）", got)
+	}
+	if m.pendingScroll != "" {
+		t.Fatal("恢复之后 pendingScroll 必须清空，否则每帧都会重绘")
+	}
+	if got := m.scrollPos[id]; got != 120 {
+		t.Fatalf("settleScroll 记下的偏移 = %v，want 120（先记后恢复会把这里写成 0）", got)
+	}
+	// 再调一次：pendingScroll 已消费，不该再要求补帧。
+	if m.settleScroll(area, true) {
+		t.Fatal("pendingScroll 已消费，不应再要求补帧")
 	}
 }

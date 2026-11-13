@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // maxShown 最多列几条。
@@ -50,7 +50,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 }
 
 // draw 画「后台任务」区。**没有任务就整块不画**。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	if env.Act.JobsList == nil {
 		return
 	}
@@ -66,8 +66,8 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		shown = shown[:maxShown]
 	}
 
-	f.Column().FillWidth().Gap(2).PadY(4).Children(func() {
-		f.Text("后台任务").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+	ui.Column(f).FillWidth().Gap(2).PadY(4).Children(func() {
+		ui.Text(f, "后台任务").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		for _, j := range shown {
 			// 状态点：跑着是中性色，结束且非零是错误色。
 			// **不用绿点**：绿在状态栏已经表示"连着宿主"，再复用会混淆。
@@ -75,14 +75,14 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 			if j.Done && j.ExitCode != 0 {
 				dot = t.Error
 			}
-			f.Row().FillWidth().Items(flex.Center).Gap(6).Children(func() {
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(6).Children(func() {
 				p.prims.Dot(f, dot, 5)
-				f.Text(shortCmd(j.Command)).FontSize(12).Color(t.LabelSecondary).Grow(1).Ellipsis()
-				f.Text(sizeLabel(j.Bytes)).FontSize(11).Color(t.LabelTertiary)
+				ui.Text(f, shortCmd(j.Command)).FontSize(12).Color(t.LabelSecondary).Grow(1).Ellipsis()
+				ui.Text(f, sizeLabel(j.Bytes)).FontSize(11).Color(t.LabelTertiary)
 			})
 		}
 		if more > 0 {
-			f.Text("还有 " + itoa(more) + " 条").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Text(f, "还有 "+itoa(more)+" 条").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
 	})
 }

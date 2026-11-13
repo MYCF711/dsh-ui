@@ -39,7 +39,7 @@ import (
 	"sync"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // 官方槽位名（逐字）。①②④ 是 rc.2 新造的契约面；③ 是既有 `shell.overlay`，
@@ -91,6 +91,9 @@ type Plugin struct {
 	// model 是官方 `conversation.input.model` 座位（本包占用的模型 trigger）的
 	// 跨帧几何：上一帧 trigger 矩形，供菜单锚点（见 model_slot.go）。
 	model modelSlotState
+	// toggleValue 是 Team 开关这一帧的绑定值：v0.6.0 的 `ui.Switch` 绑 `*bool`，
+	// 点击由控件写回；真值仍然来自投影（非乐观更新，见 toggle.go 文件头），每帧先重置。
+	toggleValue bool
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -167,6 +170,6 @@ func (p *Plugin) themeFor(env *pluginapi.Env) *pluginapi.Theme {
 // drawAll 只是给测试/调试用的便捷入口：在同一个 frame 上按四个槽位各画一次。
 //
 // 生产路径永远由壳按槽位分派（`uikernel.DrawSlot`），这里不参与装配。
-func (p *Plugin) drawAll(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawAll(f ui.C, env *pluginapi.Env) {
 	p.drawBoard(f, env)
 }

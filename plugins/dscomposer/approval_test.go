@@ -16,7 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // hostFrame 造一份**照宿主 H13 帧形状**填出来的 Approval。
@@ -284,10 +284,10 @@ func TestHandleKeyTakesEnterOnlyWhenVisible(t *testing.T) {
 	entered := 0
 	p.lastAct = pluginapi.Actions{Approve: func(string, string) { entered++ }}
 	p.lastData = pluginapi.Snapshot{}
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyEnter}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEnter}) {
 		t.Fatal("没有审批时 Enter 必须交给输入框（不能抢）")
 	}
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("没有审批时 Esc 不该被吞")
 	}
 	if entered != 0 {
@@ -296,20 +296,20 @@ func TestHandleKeyTakesEnterOnlyWhenVisible(t *testing.T) {
 
 	ap := hostFrame()
 	p.lastData = pluginapi.Snapshot{Approval: &ap}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyEnter}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEnter}) {
 		t.Fatal("审批条可见时 Enter 应被接管（= 允许）")
 	}
 	if entered != 1 {
 		t.Fatalf("Enter 应回传一次，得到 %d 次", entered)
 	}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyEscape}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("审批条可见时 Esc 应被接管（= 拒绝）")
 	}
 	if entered != 2 {
 		t.Fatalf("Esc 应回传一次，共 2 次，得到 %d 次", entered)
 	}
 	// 带修饰键不抢：Ctrl+Enter 这类留给别的插件/输入框。
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyEnter, Modifiers: ui.ModifierControl}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEnter, Modifiers: gfx.ModifierControl}) {
 		t.Fatal("带修饰键的 Enter 不该被审批条吃掉")
 	}
 }

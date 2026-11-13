@@ -7,7 +7,7 @@
 //
 // 用法（和 components.MarkdownView 一样是「占位 + Draw 之后画」）：
 //
-//	slot := f.Slot().Height(150)          // flex 里占位
+//	slot := ui.Slot(f).Height(150)          // flex 里占位
 //	// Draw 返回之后，布局已定：
 //	o.Draw(canvas, theme, slot.Rect(), contentW, contentH, id, "", func(c ui.Rect) {
 //		// 从 c.X / c.Y 开始画内容；c 已经按 OffsetX 平移过
@@ -16,6 +16,7 @@ package mdlite
 
 import (
 	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -38,26 +39,26 @@ func (o *Overflow) Wheel(dx float32) {
 //
 // 返回完整几何，调用方可以用它做命中测试（例如拖 thumb）。
 func (o *Overflow) Draw(
-	canvas *ui.Canvas,
+	canvas *gfx.Canvas,
 	theme ui.Theme,
 	bounds ui.Rect,
 	contentWidth, contentHeight float32,
-	id ui.ID,
+	id gfx.ID,
 	label string,
 	draw func(content ui.Rect),
 ) components.ScrollAreaGeometry {
-	return o.DrawInteractive(canvas, theme, bounds, contentWidth, contentHeight, ui.ID{}, id, label, draw)
+	return o.DrawInteractive(canvas, theme, bounds, contentWidth, contentHeight, gfx.ID{}, id, label, draw)
 }
 
 // DrawInteractive 比 Draw 多一个可聚焦视口 ID。宿主把这个 ID 对应的
 // ui.ScrollEvent 转发给组件（例如 CodeBlock.HandleScroll），即可由真实
 // hit-test 路由横向手势；没有视口 ID 时行为与旧 Draw 完全一致。
 func (o *Overflow) DrawInteractive(
-	canvas *ui.Canvas,
+	canvas *gfx.Canvas,
 	theme ui.Theme,
 	bounds ui.Rect,
 	contentWidth, contentHeight float32,
-	viewportID, scrollbarID ui.ID,
+	viewportID, scrollbarID gfx.ID,
 	label string,
 	draw func(content ui.Rect),
 ) components.ScrollAreaGeometry {

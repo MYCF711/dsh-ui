@@ -12,7 +12,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/app"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -47,7 +47,7 @@ func feedbackShotData() pluginapi.Snapshot {
 }
 
 // brightest 返回一块矩形里最亮的像素（只取亮度，用来比较两处的前景色是否同一档）。
-func brightest(picture *image.RGBA, bounds ui.Rect) (luma int, x, y int) {
+func brightest(picture *image.RGBA, bounds gfx.Rect) (luma int, x, y int) {
 	luma = -1
 	for py := int(bounds.Y); py < int(bounds.Y+bounds.Height); py++ {
 		for px := int(bounds.X); px < int(bounds.X+bounds.Width); px++ {
@@ -92,19 +92,20 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("feedback-headless")
 	data := feedbackShotData()
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	var (
-		view        flex.View
 		invalidator app.Invalidator
 	)
 	config := app.Config{
 		Title: "feedback-headless", Width: 900, Height: 620, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		bounds := ui.Rect{Width: size.Width, Height: size.Height}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
@@ -113,7 +114,7 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 			// （没有 Actor 时按钮本来就不画，那样就证明不了"同一排"）。
 			Act: withRowActions(cfg.actions()),
 		}
-		view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+		view.Draw(canvas, bounds, func(f ui.C) {
 			p.draw(f, env)
 		})
 		p.afterDraw(canvas, env)
@@ -144,12 +145,12 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 	// 官方 .Hyy-Wa_action 是 28×28；本排的 Ghost/Small 按钮盒高也是 28
 	// （viva ControlHeight 32 - 4），所以两者底边和中心必须落在同一像素行上。
 	const wantHit = 28
-	for name, hit := range map[string]ui.Hit{"👍": upHit, "👎": downHit, "复制": copyHit} {
+	for name, hit := range map[string]gfx.Hit{"👍": upHit, "👎": downHit, "复制": copyHit} {
 		if hit.Bounds.Height != wantHit {
 			t.Errorf("%s 命中区高 = %v，期望 %d（官方 .Hyy-Wa_action / viva Small 按钮）", name, hit.Bounds.Height, wantHit)
 		}
 	}
-	center := func(r ui.Rect) float32 { return r.Y + r.Height/2 }
+	center := func(r gfx.Rect) float32 { return r.Y + r.Height/2 }
 	if delta := center(upHit.Bounds) - center(copyHit.Bounds); delta > 0.5 || delta < -0.5 {
 		t.Errorf("👍 与「复制」不在同一基线：中心差 %v px（👍 中心 %v，复制中心 %v）",
 			delta, center(upHit.Bounds), center(copyHit.Bounds))
@@ -239,11 +240,11 @@ func TestMessageFeedbackInActionRow(t *testing.T) {
 		t.Errorf("点击改了 %d 个像素，超出「只换图标」的范围（不应有布局跳动）", changed)
 	}
 	// 实心版比空心版更"重"：图标区域内的亮像素数必须增加。
-	inkCount := func(picture *image.RGBA, bounds ui.Rect) int {
+	inkCount := func(picture *image.RGBA, bounds gfx.Rect) int {
 		n := 0
 		for py := int(bounds.Y); py < int(bounds.Y+bounds.Height); py++ {
 			for px := int(bounds.X); px < int(bounds.X+bounds.Width); px++ {
-				if l, _, _ := brightest(picture, ui.Rect{X: float32(px), Y: float32(py), Width: 1, Height: 1}); l > 120 {
+				if l, _, _ := brightest(picture, gfx.Rect{X: float32(px), Y: float32(py), Width: 1, Height: 1}); l > 120 {
 					n++
 				}
 			}

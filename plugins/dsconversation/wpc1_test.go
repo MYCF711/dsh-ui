@@ -7,7 +7,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 func TestWPC1MessageAndTerminalTruthIsVisible(t *testing.T) {
@@ -87,7 +87,7 @@ func TestWPC1ExplicitFileLinkRewriteDoesNotGuessPlainTextOrCode(t *testing.T) {
 	}
 }
 
-func sessionTextValues(texts []ui.Text) string {
+func sessionTextValues(texts []gfx.Text) string {
 	var b strings.Builder
 	for _, text := range texts {
 		b.WriteString(text.Value)

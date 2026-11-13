@@ -1,9 +1,8 @@
 package dssidebar
 
 import (
+	"github.com/vivaui/viva/gfx"
 	"strconv"
-
-	"github.com/vivaui/viva/ui"
 )
 
 // parseSVGPath 只认官方这条路径真正用到的四个**绝对**命令（M / L / C / Z）。
@@ -11,9 +10,9 @@ import (
 // 官方路径数过：4 个 M、71 个 C、1 个 L、4 个 Z。相对命令、弧线、二次曲线
 // 这里一律不支持——遇到就把整条路径作废（返回 false），而不是"画一半"：
 // 半个 logo 比没有 logo 更像 bug。要扩展时先确认官方路径真的换了形状。
-func parseSVGPath(d string) ([]ui.PathCommand, bool) {
+func parseSVGPath(d string) ([]gfx.PathCommand, bool) {
 	var (
-		out   []ui.PathCommand
+		out   []gfx.PathCommand
 		nums  []float32
 		i     int
 		total = len(d)
@@ -73,22 +72,22 @@ func parseSVGPath(d string) ([]ui.PathCommand, bool) {
 			if !take(2) {
 				return nil, false
 			}
-			out = append(out, ui.MoveTo(nums[0], nums[1]))
+			out = append(out, gfx.MoveTo(nums[0], nums[1]))
 		case 'L':
 			i++
 			if !take(2) {
 				return nil, false
 			}
-			out = append(out, ui.LineTo(nums[0], nums[1]))
+			out = append(out, gfx.LineTo(nums[0], nums[1]))
 		case 'C':
 			i++
 			if !take(6) {
 				return nil, false
 			}
-			out = append(out, ui.CubicTo(nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]))
+			out = append(out, gfx.CubicTo(nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]))
 		case 'Z', 'z':
 			i++
-			out = append(out, ui.ClosePath())
+			out = append(out, gfx.ClosePath())
 		default:
 			// 未支持的命令（相对命令、弧线、二次曲线……）：整条作废。
 			return nil, false

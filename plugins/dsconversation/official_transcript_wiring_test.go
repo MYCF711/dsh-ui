@@ -23,7 +23,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -34,7 +34,7 @@ func productPlugin() *Plugin {
 }
 
 // renderSeat 用真实 viva 画布跑一次某个座位的 painter。
-func renderSeat(t *testing.T, p *Plugin, snap pluginapi.Snapshot, painterID string) *ui.Canvas {
+func renderSeat(t *testing.T, p *Plugin, snap pluginapi.Snapshot, painterID string) *gfx.Canvas {
 	t.Helper()
 	var painter *pluginapi.Painter
 	for _, candidate := range p.Panels() {
@@ -47,19 +47,20 @@ func renderSeat(t *testing.T, p *Plugin, snap pluginapi.Snapshot, painterID stri
 	if painter == nil {
 		t.Fatalf("没有 painter %q", painterID)
 	}
-	canvas := &ui.Canvas{}
-	tree := &ui.Tree{}
+	canvas := &gfx.Canvas{}
+	tree := &gfx.Tree{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Data: snap, Tree: tree, Feat: tree.Feature("transcript-wiring-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 	}
 	env.Has = func(pluginapi.Slot) bool { return false }
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 900, Height: 700}, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		painter.Draw(f, env)
 	})
 	// 旧渲染路径的 Markdown 是**布局后覆画**（viva 的绘制顺序不受调用方控制）：
@@ -91,7 +92,7 @@ func realFrames() []apiclient.Frame {
 	}
 }
 
-func hasCanvasText(canvas *ui.Canvas, value string) bool {
+func hasCanvasText(canvas *gfx.Canvas, value string) bool {
 	for _, text := range canvas.Texts() {
 		if text.Value == value {
 			return true
@@ -100,7 +101,7 @@ func hasCanvasText(canvas *ui.Canvas, value string) bool {
 	return false
 }
 
-func canvasValues(canvas *ui.Canvas) []string {
+func canvasValues(canvas *gfx.Canvas) []string {
 	values := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		values = append(values, text.Value)
@@ -155,20 +156,21 @@ func newKernelWith(t *testing.T, p *Plugin) *uikernel.Kernel {
 func TestOfficialSeatDispatchesThroughDrawSlot(t *testing.T) {
 	p := productPlugin()
 	kernel := newKernelWith(t, p)
-	canvas := &ui.Canvas{}
-	tree := &ui.Tree{}
+	canvas := &gfx.Canvas{}
+	tree := &gfx.Tree{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(utf8.RuneCountInString(value)) * size
 	})
 	env := &pluginapi.Env{
 		Theme: p.theme, Tree: tree, Feat: tree.Feature("transcript-drawslot-test"),
-		Canvas: canvas, Bounds: ui.Rect{Width: 900, Height: 700}, MainWidth: 900,
+		Canvas: canvas, Bounds: gfx.Rect{Width: 900, Height: 700}, MainWidth: 900,
 		Data: pluginapi.Snapshot{Cur: "s-1", Frames: realFrames(), JournalEpoch: 1},
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(p.theme), ui.Rect{Width: 900, Height: 700}, func(f *flex.Frame) {
+	pageTheme2 := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, gfx.Rect{Width: 900, Height: 700}, func(f ui.C) {
 		kernel.DrawSlot(f, pluginapi.Slot("conversation.view"), env)
 	})
 	if !hasCanvasText(canvas, "真实用户消息") {
@@ -203,7 +205,7 @@ func TestProductPathDrawsRealFrameText(t *testing.T) {
 	}
 }
 
-func hasCanvasTextPrefix(canvas *ui.Canvas, prefix string) bool {
+func hasCanvasTextPrefix(canvas *gfx.Canvas, prefix string) bool {
 	for _, text := range canvas.Texts() {
 		if strings.HasPrefix(text.Value, prefix) {
 			return true

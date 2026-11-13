@@ -24,7 +24,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
 	"github.com/MYCF711/dsh-ui/plugins/dstool"
 	"github.com/vivaui/viva/components"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
@@ -42,7 +42,7 @@ const markdownBudget = 30
 type mdSlot struct {
 	idx int
 	key string
-	box flex.Box
+	box ui.Box
 }
 
 // dbgOnce 只打一次布局诊断（临时）。
@@ -74,12 +74,20 @@ type Plugin struct {
 	// bodyBox 是消息流滚动区的盒子：AfterDraw 覆画 Markdown 时，
 	// 裁剪区必须用它（视口矩形），不能用 env.Bounds（那是整窗——
 	// 会把消息画到顶栏/输入区上面去）。
-	bodyBox   flex.Box
+	bodyBox   ui.Box
 	bodyRect  ui.Rect
 	bodyReady bool
+	// v0.6.0：滚动状态由声明方持有（没有 ID→ScrollState 查表，Box 只在同一帧有效）。
+	// scrollOffset / scrollAtEnd 是**上一帧布局后**的真值，只给"声明在滚动区之前"
+	// 的 Turn 导航用——导航本来就按上一帧锚点算，时序与旧 env.Scroll(id) 一致。
+	scrollOffset float32
+	scrollAtEnd  bool
+	// scrollJump 是延迟到滚动区声明时执行的跳转（Turn 导航的 ←/→ 按钮）。
+	scrollJump float32
+	jumpReady  bool
 	// turnBoxes 仅属于本帧；turnAnchors 是 AfterDraw 提取的上一帧矩形值，
 	// 不把失效的 flex.Box 带到下一帧。
-	turnBoxes   map[string]flex.Box
+	turnBoxes   map[string]ui.Box
 	turnAnchors map[string]ui.Rect
 	// collapsedOnce 记录调试开关下被用户手动收起过的，避免压不住点击。
 	collapsedOnce map[string]bool
@@ -110,7 +118,7 @@ type Plugin struct {
 
 	// 会话内搜索：Ctrl+F 打开，只显示命中的消息（最简单也最不容易出错的一种）。
 	searchOn    bool
-	searchField flex.Field
+	searchField ui.Field
 	// searchHits 是最近一帧的命中数，给搜索栏显示。
 	searchHits int
 
@@ -149,15 +157,15 @@ type Plugin struct {
 //
 // 不做"上下跳转"：过滤之后命中的消息全都在列表里，跳转是在没有过滤的视图里
 // 才有意义的东西。少一个状态，就少一处会和滚动位置打架的地方。
-func (p *Plugin) drawSearchBar(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawSearchBar(f ui.C, env *pluginapi.Env) {
 	t := p.theme
-	f.Row().WidthPercent(100).Gap(8).Items(flex.Center).PadY(2).Children(func() {
-		f.Text("搜索").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		f.Field(&p.searchField, env.Tree.ID(env.Feat, "search-msgs"), "搜索", "在当前会话里找…").
+	ui.Row(f).WidthPercent(100).Gap(8).Items(ui.Center).PadY(2).Children(func() {
+		ui.Text(f, "搜索").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		ui.TextFieldID(f, env.Tree.ID(env.Feat, "search-msgs"), &p.searchField, "搜索", "在当前会话里找…").
 			Grow(1).FontSize(t.Fonts.Caption)
 		hits := itoa(p.searchHits) + " 条"
-		f.Text(hits).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
-		if f.Button(env.Tree.ID(env.Feat, "search-close"), "关闭").Ghost().Small().Clicked() {
+		ui.Text(f, hits).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
+		if ui.Button(f, "关闭").Ghost().Small().Clicked() {
 			p.searchOn = false
 			p.searchField.SetText("")
 		}
@@ -199,7 +207,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 }
 
 // Fields 实现 pluginapi.Fields：搜索框要收键盘（壳会把它登记给 viva）。
-func (p *Plugin) Fields() []*flex.Field { return []*flex.Field{&p.searchField} }
+func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.searchField} }
 
 // Panels 实现 pluginapi.Panels：一块主体（消息流）+ 一块审批气泡。
 //
@@ -239,7 +247,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 }
 
 // draw 是布局阶段。
-func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// 每个渲染路径都要清掉上一帧的覆画槽，否则接管之后旧的 Markdown
 	// 槽还会被 AfterDraw 画到屏幕上（两套内容叠着）。
 	p.slots = p.slots[:0]
@@ -318,19 +326,16 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 		p.drawSearchBar(f, env)
 	}
 	if len(vis) == 0 && len(msgs) > 0 {
-		f.Row().FillWidth().Pad(16).Children(func() {
-			f.Text("没有匹配「" + p.searchField.Text() + "」的消息").
+		ui.Row(f).FillWidth().Pad(16).Children(func() {
+			ui.Text(f, "没有匹配「"+p.searchField.Text()+"」的消息").
 				FontSize(t.Fonts.Secondary).Color(t.LabelCaption)
 		})
 		return
 	}
 
-	// 每个会话一个滚动 id：否则切会话时滚动位置会串（viva flex/scroll.go:174）。
-	scrID := env.Tree.ID(env.Feat, "msgs-"+env.Data.Cur)
-	var scrollState *flex.ScrollState
-	if env.Scroll != nil {
-		scrollState = env.Scroll(scrID)
-	}
+	// 每个会话一个滚动区：否则切会话时滚动位置会串。
+	// v0.6.0 的滚动区身份来自声明名（Key），不再接受显式交互 ID。
+	bodyKey := "msgs-" + env.Data.Cur
 
 	// Turn 导航只从当前已加载且带真实身份的消息段生成；搜索态不把过滤后的
 	// 局部内容冒充完整 Turn。锚点来自上一帧真实布局，未加载历史没有入口。
@@ -338,8 +343,8 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	if q == "" {
 		turns = buildLoadedTurns(env.Data, vis)
 	}
-	p.drawTurnNavigation(f, env, scrID, turns)
-	p.turnBoxes = map[string]flex.Box{}
+	p.drawTurnNavigation(f, turns)
+	p.turnBoxes = map[string]ui.Box{}
 	starts := map[int]loadedTurn{}
 	ends := map[int]loadedTurn{}
 	for _, turn := range turns {
@@ -350,11 +355,27 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	// 内容列必须**显式给宽度**：ScrollArea 里用 FillWidth 时宽度算不出来，
 	// 元素会被推到父容器外面（踩过两次：一次是消息画到侧栏上，一次是现在这样）。
 	// 用百分比而不是像素：像素得先知道列宽，而槽位里拿不到。
-	p.bodyBox = f.ScrollArea(scrID).WidthPercent(100).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip().Children(func() {
-		f.Column().WidthPercent(100).Gap(6).Children(func() {
+	//
+	// v0.6.0：滚动状态由**声明方**持有（没有 ID→ScrollState 查表），所以先声明
+	// 滚动区、立刻取状态，再把子元素挂上去。取到的 Offset 是上一帧布局的值——
+	// 与旧 `env.Scroll(id)` 的时序完全一致，虚拟化不需要改判断。
+	p.bodyBox = ui.Scroll(f.Key(bodyKey)).WidthPercent(100).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip()
+	scrollState := p.bodyBox.ScrollState()
+	if p.jumpReady {
+		// Turn 导航的 ←/→ 是"声明期排队、滚动区一出就落位"：按钮在滚动区之前
+		// 声明，而 v0.6.0 的 ScrollTo 只能通过声明期的 Box 拿到状态。
+		scrollState.ScrollTo(p.scrollJump)
+		p.jumpReady = false
+	}
+	// 把盒子交给壳：壳在 Draw 返回后（布局已定）用它每帧记偏移、切会话时恢复。
+	if env.ScrollBox != nil {
+		env.ScrollBox(p.bodyBox)
+	}
+	p.bodyBox.Children(func() {
+		ui.Column(f).WidthPercent(100).Gap(6).Children(func() {
 			if env.Data.Truncated {
-				f.Row().WidthPercent(100).Pad(8).Children(func() {
-					f.Text("更早内容未加载 · loadOlder 未提供").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+				ui.Row(f).WidthPercent(100).Pad(8).Children(func() {
+					ui.Text(f, "更早内容未加载 · loadOlder 未提供").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 				})
 			}
 			p.drawStreaming(f, env)
@@ -371,11 +392,14 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 				acc += heights[k] + 6
 			}
 
-			var vpOffset, vpHeight float32
-			if scrollState != nil {
-				vpOffset = scrollState.Offset
+			// 视口偏移：声明期拿到的真值（上一帧布局的结果）。
+			vpOffset := scrollState.Offset
+			// 主区被别的视图接管时（dsrightbar 的轨迹视图），接管方用
+			// ViewportOffset 把正文推到视口外：消息全部退化成 Slot，不生成文本纹理。
+			if env.ViewportOffset != nil {
+				vpOffset = *env.ViewportOffset
 			}
-			vpHeight = f.Bounds().Height - 220
+			vpHeight := f.Bounds().Height - 220
 			if vpHeight < 240 {
 				vpHeight = 240
 			}
@@ -386,7 +410,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 					p.drawTurnHeader(f, env, turn)
 				}
 				if offs[k]+heights[k] < vpOffset-overscan || offs[k] > vpOffset+vpHeight+overscan {
-					f.Slot().Height(heights[k])
+					ui.Slot(f).Height(heights[k])
 				} else {
 					p.drawMessage(f, env, i, width)
 				}
@@ -403,9 +427,9 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 	// Follow(true) 只在用户明确位于底部时跟随；用户回看后新帧不会改写 Offset。
 	// 回底入口只在确有内容且当前非底部时出现，点击才显式恢复 Follow。
 	hasContent := len(msgs) > 0 || env.Data.Stream != "" || len(env.Data.Outgoing) > 0 || len(env.Data.TurnEvents) > 0
-	if hasContent && scrollState != nil && !scrollState.AtEnd() {
-		f.Row().WidthPercent(100).Justify(flex.End).PadY(2).Children(func() {
-			if f.Button(env.Tree.ID(env.Feat, "return-bottom-"+env.Data.Cur), "回到底部").Small().Clicked() {
+	if hasContent && !scrollState.AtEnd() {
+		ui.Row(f).WidthPercent(100).Justify(ui.End).PadY(2).Children(func() {
+			if ui.Button(f, "回到底部").Small().Clicked() {
 				scrollState.ScrollToEnd()
 			}
 		})
@@ -417,7 +441,7 @@ func (p *Plugin) draw(f *flex.Frame, env *pluginapi.Env) {
 // 与定稿共用 layoutMarkdown / MarkdownView，不再把增量当纯文本 Wrap。
 // 缓存下标故意取 len(Msgs)：done 后助手正文正好落在这个下标，同文本同宽度
 // 无需重排，未闭合围栏也不会在流式转定稿时换一种解析路径。
-func (p *Plugin) drawStreaming(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawStreaming(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	if env.Data.Stream == "" {
 		return
@@ -428,12 +452,12 @@ func (p *Plugin) drawStreaming(f *flex.Frame, env *pluginapi.Env) {
 	}
 	streamIndex := len(env.Data.Msgs)
 	h := p.layoutAssistantMarkdown(env.Canvas, streamIndex, env.Data.Stream, width-40, env.Data)
-	f.Column().FillWidth().Pad(8).Radius(t.Radii.MD).Children(func() {
-		f.Row().Gap(6).Items(flex.Center).Children(func() {
-			f.Text("助手").FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
-			f.Spinner()
+	ui.Column(f).FillWidth().Pad(8).Radius(t.Radii.MD).Children(func() {
+		ui.Row(f).Gap(6).Items(ui.Center).Children(func() {
+			ui.Text(f, "助手").FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
+			ui.Spinner(f)
 		})
-		p.slots = append(p.slots, mdSlot{idx: streamIndex, key: env.Data.Cur + "\x00stream", box: f.Slot().Height(h)})
+		p.slots = append(p.slots, mdSlot{idx: streamIndex, key: env.Data.Cur + "\x00stream", box: ui.Slot(f).Height(h)})
 	})
 }
 
@@ -471,7 +495,7 @@ func roleKind(role string) msgKind {
 // 视觉规矩照官方：**不要给每条消息套一个带边框的卡片**（官方是平铺的），
 // 只有用户消息有气泡（`--dsw-specific-bubble`，圆角 XL），工具调用是一行
 // 淡底色的小卡（圆角 SM）。
-func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width float32) {
+func (p *Plugin) drawMessage(f ui.C, env *pluginapi.Env, i int, width float32) {
 	t := p.theme
 	msg := env.Data.Msgs[i]
 	key := messageRenderKey(env, msg, i)
@@ -490,13 +514,13 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 		//   max-width = min(chat-content-width × .702, 82%)，flex-column + align-items:flex-end，gap 8
 		//   气泡本体 .bubble：radius xl、specific-bubble 底、正文 14/22）
 		// 外观交给 prims.Bubble；这里只负责"右对齐"和"宽度上限"两件事。
-		f.Row().WidthPercent(100).Justify(flex.End).Children(func() {
+		ui.Row(f).WidthPercent(100).Justify(ui.End).Children(func() {
 			// 官方的 82%/748px 是相对**会话内容列**算的，而槽位里拿不到列宽；
 			// viva 的文字会自然换行，气泡按内容宽度收缩，所以不需要像素上限（见验收说明）。
 			p.prims.Bubble(f, func() {
 				// 用户粘进来的凭据在这里遮掉（见 mask.go）；**只遮显示**，
 				// 复制与落盘的仍是原文。
-				f.Wrap(userDisplayText(msg)).FontSize(t.Fonts.Body)
+				ui.Wrap(f, userDisplayText(msg)).FontSize(t.Fonts.Body)
 			})
 		})
 		p.drawMessageMeta(f, env, msg, key)
@@ -504,15 +528,15 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 	default:
 		// 助手消息：平铺，老消息降级成纯文本（LOD）。
 		if i < len(env.Data.Msgs)-markdownBudget {
-			f.Column().WidthPercent(100).Children(func() {
-				f.Wrap(msg.Text).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
+			ui.Column(f).WidthPercent(100).Children(func() {
+				ui.Wrap(f, msg.Text).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
 			})
 			p.drawMessageMeta(f, env, msg, key)
 			return
 		}
 		w := width - 40
 		h := p.layoutAssistantMarkdown(env.Canvas, i, msg.Text, w, env.Data)
-		p.slots = append(p.slots, mdSlot{idx: i, key: key, box: f.Slot().Height(h)})
+		p.slots = append(p.slots, mdSlot{idx: i, key: key, box: ui.Slot(f).Height(h)})
 		p.drawActions(f, env, msg, i, i == len(env.Data.Msgs)-1, key)
 		p.drawMessageMeta(f, env, msg, key)
 	}
@@ -524,7 +548,7 @@ func (p *Plugin) drawMessage(f *flex.Frame, env *pluginapi.Env, i int, width flo
 // 只在"有正文的助手消息"下面画，而且是 Ghost 小按钮——它不该抢正文的注意力。
 //
 // index 是这条消息在当前消息列表里的下标：反馈记录按它归属（见 feedback.go）。
-func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, index int, last bool, key string) {
+func (p *Plugin) drawActions(f ui.C, env *pluginapi.Env, msg apiclient.Message, index int, last bool, key string) {
 	t := p.theme
 	if strings.TrimSpace(msg.Text) == "" {
 		return
@@ -536,15 +560,15 @@ func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Me
 	if msg.Role == "assistant" {
 		marginTop = 16
 	}
-	f.Row().WidthPercent(100).Items(flex.Center).MarginSides(marginTop, 0, 0, -6).Children(func() {
-		if env.Act.Copy != nil && f.Button(env.Tree.ID(env.Feat, "copy-"+key), "复制").
+	ui.Row(f).WidthPercent(100).Items(ui.Center).MarginSides(marginTop, 0, 0, -6).Children(func() {
+		if env.Act.Copy != nil && ui.Button(f, "复制").
 			Ghost().Small().Clicked() {
 			env.Act.Copy(text)
 		}
 		// 👍/👎 夹在「复制」和「重试」之间——官方图标动作行的次序就是
 		// copy → feedback → branch，这里照摆。
 		p.drawFeedback(f, env, index)
-		if last && env.Act.Retry != nil && f.Button(env.Tree.ID(env.Feat, "retry-"+key), "重试").
+		if last && env.Act.Retry != nil && ui.Button(f, "重试").
 			Ghost().Small().Clicked() {
 			env.Act.Retry()
 		}
@@ -556,7 +580,7 @@ func (p *Plugin) drawActions(f *flex.Frame, env *pluginapi.Env, msg apiclient.Me
 //
 // 官方也是这个交互（折叠的思考），但官方把它做得更轻：一行灰字 + 一个小箭头。
 // 这里保持同样的克制——收起时只占一行，不抢正文的注意力。
-func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, key string, index int) {
+func (p *Plugin) drawThinking(f ui.C, env *pluginapi.Env, msg apiclient.Message, key string, index int) {
 	t := p.theme
 	open := p.expanded[key] || (p.ExpandAllThinking && !p.collapsedOnce[key])
 
@@ -579,14 +603,14 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 
 	// 官方折叠行（如 .LOmM4q_compactionRow）：高 24、radius sm、左侧 16px 展开位、
 	// 标题 13px。高度用 MinHeight + PadY 撑，不用 Height(x).Shrink(0)——那会塌成 0 高。
-	if f.Row().WidthPercent(100).MinHeight(24).PadX(4).Radius(t.Radii.SM).
-		Items(flex.Center).Gap(6).Hover(flex.Look{}.Background(t.Hover)).
+	if ui.Row(f).WidthPercent(100).MinHeight(24).PadX(4).Radius(t.Radii.SM).
+		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, "think-"+key), "").Children(func() {
 		// 左侧 16px 展开位（和工具行同一个位置，视线不用跳）
-		f.Row().Width(16).Items(flex.Center).Children(func() {
-			f.Text(arrow).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+		ui.Row(f).Width(16).Items(ui.Center).Children(func() {
+			ui.Text(f, arrow).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
 		})
-		f.Text(label).FontSize(t.Fonts.Secondary).Color(t.LabelCaption).Ellipsis()
+		ui.Text(f, label).FontSize(t.Fonts.Secondary).Color(t.LabelCaption).Ellipsis()
 	}).Clicked() {
 		p.expanded[key] = !open
 		if p.ExpandAllThinking {
@@ -598,9 +622,9 @@ func (p *Plugin) drawThinking(f *flex.Frame, env *pluginapi.Env, msg apiclient.M
 		return
 	}
 	// 展开态：浅底盒子，不描边（官方 callRow / compactionBody 都没有边框色）。
-	f.Column().WidthPercent(100).Pad(8).Radius(t.Radii.SM).Background(t.BgLayer1).
+	ui.Column(f).WidthPercent(100).Pad(8).Radius(t.Radii.SM).Background(t.BgLayer1).
 		Children(func() {
-			f.Wrap(reasoningBodyText(msg)).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Wrap(f, reasoningBodyText(msg)).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		})
 }
 
@@ -644,7 +668,7 @@ func itoa(n int) string {
 //
 // 这个切分是这一轮的重点：改某一种工具的长相，不用碰消息流一行代码
 // （也不用再跑一遍消息流的截图）。
-func (p *Plugin) drawTool(f *flex.Frame, env *pluginapi.Env, msg apiclient.Message, key string) {
+func (p *Plugin) drawTool(f ui.C, env *pluginapi.Env, msg apiclient.Message, key string) {
 	p.toolCards().Render(f, env, dstool.Card{
 		// dstool 当前以 int 作为内部展开键；MessageKey 在本插件内映射成
 		// 唯一的会话局部 int，避免 Seq=0 或跨会话同 Seq 共用状态。
@@ -675,12 +699,12 @@ func (p *Plugin) toolCards() dstool.Service {
 }
 
 // layoutMarkdown 保留 MDSTREAM 的无附加文件上下文排版入口。
-func (p *Plugin) layoutMarkdown(canvas *ui.Canvas, i int, text string, width float32) float32 {
+func (p *Plugin) layoutMarkdown(canvas *gfx.Canvas, i int, text string, width float32) float32 {
 	return p.layoutMarkdownWithFiles(canvas, i, text, width, nil, "")
 }
 
 // layoutAssistantMarkdown 复用 dsdeliverables 的工具参数路径，不新增数据源。
-func (p *Plugin) layoutAssistantMarkdown(canvas *ui.Canvas, i int, text string, width float32, data pluginapi.Snapshot) float32 {
+func (p *Plugin) layoutAssistantMarkdown(canvas *gfx.Canvas, i int, text string, width float32, data pluginapi.Snapshot) float32 {
 	return p.layoutMarkdownWithFiles(canvas, i, text, width, dsdeliverables.WrittenPaths(data.Msgs), data.CWD)
 }
 
@@ -689,7 +713,7 @@ func (p *Plugin) layoutAssistantMarkdown(canvas *ui.Canvas, i int, text string, 
 // MarkdownView.Layout 很贵：正文、宽度、CWD 或已知路径导致的改写结果不变时，
 // 仍复用同一 Document/MarkdownView。rendered 把链接上下文纳入缓存键，避免切到
 // 同文本但不同工作区的会话后仍打开旧绝对路径。
-func (p *Plugin) layoutMarkdownWithFiles(canvas *ui.Canvas, i int, text string, width float32, writtenPaths []string, cwd string) float32 {
+func (p *Plugin) layoutMarkdownWithFiles(canvas *gfx.Canvas, i int, text string, width float32, writtenPaths []string, cwd string) float32 {
 	if p.codeBlocks == nil {
 		p.codeBlocks = map[int][]messageCode{}
 	}
@@ -724,7 +748,7 @@ func (p *Plugin) layoutMarkdownWithFiles(canvas *ui.Canvas, i int, text string, 
 }
 
 // afterDraw 是覆画阶段：把排好版的 Markdown 画到占位上。
-func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
+func (p *Plugin) afterDraw(canvas *gfx.Canvas, env *pluginapi.Env) {
 	// 官方 transcript 的代码块是「布局后覆画」：`main.body` 兼容桥这一帧
 	// 可能承载官方 transcript（判据是"有没有原始帧"），与 `conversation.view`
 	// 座位共用同一个覆画入口。渲染器自己按帧号去重，两个座位都调不会双画。
@@ -733,6 +757,11 @@ func (p *Plugin) afterDraw(canvas *ui.Canvas, env *pluginapi.Env) {
 	// 跨帧保存会在下一帧索引到错误节点。
 	if p.bodyReady {
 		p.bodyRect = p.bodyBox.Rect()
+		// 滚动偏移同理：只抄**值**。本帧的 Box 在这里（Draw 之后、同一帧内）
+		// 仍然有效，viva 也把"Draw 之后从 box.ScrollState() 读回settled 值"
+		// 写成了推荐用法；跨帧保存指针才是禁止的。
+		st := p.bodyBox.ScrollState()
+		p.scrollOffset, p.scrollAtEnd = st.Offset, st.AtEnd()
 	}
 	p.turnAnchors = make(map[string]ui.Rect, len(p.turnBoxes))
 	for key, box := range p.turnBoxes {
@@ -854,16 +883,16 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32, key strin
 //	Esc            拒绝当前审批（有审批时）
 //	Ctrl+Shift+C   复制最后一条助手回复
 //	Ctrl+R         重发上一条用户消息
-func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	switch {
-	case isKey(ev, "f") && ev.Modifiers == ui.ModifierControl:
+	case isKey(ev, "f") && ev.Modifiers == gfx.ModifierControl:
 		p.searchOn = !p.searchOn
 		if !p.searchOn {
 			p.searchField.SetText("")
 		}
 		return true
 
-	case ev.Key == ui.KeyEscape && ev.Modifiers == 0:
+	case ev.Key == gfx.KeyEscape && ev.Modifiers == 0:
 		if p.searchOn {
 			p.searchOn = false
 			p.searchField.SetText("")
@@ -875,14 +904,14 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 		p.lastAct.Deny()
 		return true
 
-	case isKey(ev, "r") && ev.Modifiers == ui.ModifierControl:
+	case isKey(ev, "r") && ev.Modifiers == gfx.ModifierControl:
 		if p.lastAct.Retry == nil {
 			return false
 		}
 		p.lastAct.Retry()
 		return true
 
-	case isKey(ev, "c") && ev.Modifiers == ui.ModifierControl|ui.ModifierShift:
+	case isKey(ev, "c") && ev.Modifiers == gfx.ModifierControl|gfx.ModifierShift:
 		if p.lastAct.Copy == nil {
 			return false
 		}
@@ -898,7 +927,7 @@ func (p *Plugin) HandleKey(ev ui.KeyEvent) bool {
 //
 // viva 里字母键没有 KeyXxx 常量：Key 只覆盖功能键，可打印键靠 ev.Text 识别
 // （Text 是"不受修饰键影响"的字符，所以 Ctrl+Shift+C 也拿得到 "c"）。
-func isKey(ev ui.KeyEvent, letter string) bool {
+func isKey(ev gfx.KeyEvent, letter string) bool {
 	return strings.EqualFold(ev.Text, letter) || strings.EqualFold(ev.Typed, letter)
 }
 

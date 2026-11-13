@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
-	"github.com/vivaui/viva/ui"
+	"github.com/vivaui/viva/gfx"
 )
 
 // TestF6SendsLine 验 F6 把输入框那一行发给终端，并**补上换行**。
@@ -21,7 +21,7 @@ func TestF6SendsLine(t *testing.T) {
 	}
 	p.field.SetText("echo hi")
 
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF6}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF6}) {
 		t.Fatal("F6 应当被消费（否则会冒泡成别的键）")
 	}
 	if len(got) != 1 {
@@ -50,7 +50,7 @@ func TestF6EmptyDoesNothing(t *testing.T) {
 		Notify:        func(string) {},
 	}
 	p.field.SetText("   ")
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF6}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF6}) {
 		t.Fatal("空输入也要消费掉按键")
 	}
 	if called {
@@ -62,7 +62,7 @@ func TestF6EmptyDoesNothing(t *testing.T) {
 func TestF6WhenClosedDoesNothing(t *testing.T) {
 	p := &Plugin{open: false}
 	p.act = pluginapi.Actions{}
-	if p.HandleKey(ui.KeyEvent{Key: ui.KeyF6}) {
+	if p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF6}) {
 		t.Fatal("关着的时候不该消费 F6")
 	}
 }
@@ -71,13 +71,13 @@ func TestF6WhenClosedDoesNothing(t *testing.T) {
 func TestF5Toggles(t *testing.T) {
 	p := &Plugin{}
 	p.act = pluginapi.Actions{Notify: func(string) {}}
-	if !p.HandleKey(ui.KeyEvent{Key: ui.KeyF5}) {
+	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF5}) {
 		t.Fatal("F5 应当被消费")
 	}
 	if !p.open {
 		t.Fatal("第一次 F5 应当打开")
 	}
-	p.HandleKey(ui.KeyEvent{Key: ui.KeyF5})
+	p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF5})
 	if p.open {
 		t.Fatal("第二次 F5 应当关闭")
 	}

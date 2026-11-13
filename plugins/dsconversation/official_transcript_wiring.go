@@ -40,7 +40,7 @@ package dsconversation
 import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -62,7 +62,7 @@ const (
 //	true  → 外层已经有宿主滚动口（官方骨架的 `ConversationRoot.scrollBody`），
 //	        自滚动口降级 `overflow-y:visible`（官方 ChatView.module.css:57-64）
 //	false → 自滚动口自己滚（旧三栏 / 兼容桥里的 `main.body`）
-func (p *Plugin) drawProductTranscript(f *flex.Frame, env *pluginapi.Env, hostScroll bool) bool {
+func (p *Plugin) drawProductTranscript(f ui.C, env *pluginapi.Env, hostScroll bool) bool {
 	if f == nil || env == nil {
 		return false
 	}
@@ -97,14 +97,14 @@ func (p *Plugin) drawProductTranscript(f *flex.Frame, env *pluginapi.Env, hostSc
 //
 // 这一帧外层已经有宿主滚动口（骨架的 `.scrollBody[data-conversation-scroll]`），
 // 所以自滚动口降级——两层都滚会让滚动位置打架。
-func (p *Plugin) drawOfficialTranscriptSeat(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawOfficialTranscriptSeat(f ui.C, env *pluginapi.Env) {
 	p.drawProductTranscript(f, env, true)
 }
 
 // drawLegacyTranscriptSeat 是旧三栏 / 兼容桥的 `main.body` 座位。
 //
 // 没有宿主滚动口，自滚动口自己滚（官方"独立挂载 Chat"的情形）。
-func (p *Plugin) drawLegacyTranscriptSeat(f *flex.Frame, env *pluginapi.Env) {
+func (p *Plugin) drawLegacyTranscriptSeat(f ui.C, env *pluginapi.Env) {
 	p.drawProductTranscript(f, env, false)
 }
 
@@ -115,7 +115,7 @@ func (p *Plugin) drawLegacyTranscriptSeat(f *flex.Frame, env *pluginapi.Env) {
 // 「先声明整棵树、再一次性 End() 解算」，Draw 回调里 `Box.Rect()` 还是零值，
 // 而 `mdlite.CodeBlock` 要的正是真实矩形（`pluginapi.Painter.AfterDraw` 的
 // 注释写的就是这件事）。
-func (p *Plugin) afterDrawOfficialTranscriptSeat(canvas *ui.Canvas, env *pluginapi.Env) {
+func (p *Plugin) afterDrawOfficialTranscriptSeat(canvas *gfx.Canvas, env *pluginapi.Env) {
 	p.paintOfficialTranscriptCodeBlocks(canvas, env)
 }
 
@@ -124,7 +124,7 @@ func (p *Plugin) afterDrawOfficialTranscriptSeat(canvas *ui.Canvas, env *plugina
 // 两个座位共用：`conversation.view`（rc.2 终态）与 `main.body`（三栏/兼容桥）
 // 都可能承载官方 transcript（判据是"这一帧有没有原始帧"）。渲染器**自己按
 // 帧号去重**（`OfficialTranscriptView.PaintCodeBlocks`），所以两边都调不会双画。
-func (p *Plugin) paintOfficialTranscriptCodeBlocks(canvas *ui.Canvas, env *pluginapi.Env) {
+func (p *Plugin) paintOfficialTranscriptCodeBlocks(canvas *gfx.Canvas, env *pluginapi.Env) {
 	if p.officialTranscript == nil {
 		return
 	}
@@ -196,7 +196,7 @@ func (p *Plugin) transcriptRowKinds() []ChatNodeKind {
 
 // 编译期断言：两个座位都是 `pluginapi.Painter.Draw` 的形状。
 var (
-	_ func(*flex.Frame, *pluginapi.Env) = (*Plugin)(nil).drawOfficialTranscriptSeat
-	_ func(*flex.Frame, *pluginapi.Env) = (*Plugin)(nil).drawLegacyTranscriptSeat
-	_                                   = ui.ID{}
+	_ func(ui.C, *pluginapi.Env) = (*Plugin)(nil).drawOfficialTranscriptSeat
+	_ func(ui.C, *pluginapi.Env) = (*Plugin)(nil).drawLegacyTranscriptSeat
+	_                            = gfx.ID{}
 )

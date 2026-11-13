@@ -12,6 +12,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -22,7 +23,7 @@ import (
 // 用它当期望值，而不是把截图里的像素写死（写死就等于按截图调测试）。
 //
 // 返回 (dx, dy, w, h)：墨迹左上角相对图标框左上角的偏移，以及墨迹宽高。
-func iconInk(icon ui.Icon, size float32) (float32, float32, float32, float32) {
+func iconInk(icon gfx.Icon, size float32) (float32, float32, float32, float32) {
 	minX, minY := float32(math.MaxFloat32), float32(math.MaxFloat32)
 	maxX, maxY := float32(-math.MaxFloat32), float32(-math.MaxFloat32)
 	visit := func(p ui.Point) {
@@ -41,14 +42,14 @@ func iconInk(icon ui.Icon, size float32) (float32, float32, float32, float32) {
 	}
 	for _, command := range icon.Commands {
 		// Close 命令没有坐标（Point 是零值）：把它当点算会把包围盒拉到原点。
-		if command.Kind == ui.PathCommandClose {
+		if command.Kind == gfx.PathCommandClose {
 			continue
 		}
 		visit(command.Point)
 		switch command.Kind {
-		case ui.PathCommandQuad:
+		case gfx.PathCommandQuad:
 			visit(command.Control1)
-		case ui.PathCommandCubic:
+		case gfx.PathCommandCubic:
 			visit(command.Control1)
 			visit(command.Control2)
 		}
@@ -73,20 +74,20 @@ func TestGoalGlyphIsOfficialSprite(t *testing.T) {
 		t.Fatalf("stroke = %v，want 1（官方 regular 权重）", icon.Stroke)
 	}
 	// Cap/Join 的零值就是 SVG 默认（butt / miter）：官方 svg 没写 linecap/linejoin。
-	if icon.Cap != ui.CapButt || icon.Join != ui.JoinMiter {
+	if icon.Cap != gfx.CapButt || icon.Join != gfx.JoinMiter {
 		t.Fatalf("Cap/Join = %v/%v，want butt/miter（官方 svg 未声明，即默认值）", icon.Cap, icon.Join)
 	}
 
 	var moves, lines, cubics, closes int
 	for _, command := range icon.Commands {
 		switch command.Kind {
-		case ui.PathCommandMove:
+		case gfx.PathCommandMove:
 			moves++
-		case ui.PathCommandLine:
+		case gfx.PathCommandLine:
 			lines++
-		case ui.PathCommandCubic:
+		case gfx.PathCommandCubic:
 			cubics++
-		case ui.PathCommandClose:
+		case gfx.PathCommandClose:
 			closes++
 		default:
 			t.Fatalf("出现官方 sprite 里没有的命令种类：%v", command.Kind)
@@ -109,7 +110,7 @@ func TestGoalGlyphIsOfficialSprite(t *testing.T) {
 
 	// 首点是官方 `d` 的第一个坐标：`M14.5001 8`。
 	first := icon.Commands[0]
-	if first.Kind != ui.PathCommandMove || first.Point.X != 14.5001 || first.Point.Y != 8 {
+	if first.Kind != gfx.PathCommandMove || first.Point.X != 14.5001 || first.Point.Y != 8 {
 		t.Fatalf("首命令 = %+v，want MoveTo(14.5001, 8)（官方 path #1 的起点）", first)
 	}
 

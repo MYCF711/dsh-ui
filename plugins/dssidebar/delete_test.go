@@ -5,7 +5,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -19,9 +19,9 @@ import (
 type deleteProbe struct {
 	plugin   *Plugin
 	env      *pluginapi.Env
-	canvas   *ui.Canvas
-	tree     *ui.Tree
-	feature  ui.Scope
+	canvas   *gfx.Canvas
+	tree     *gfx.Tree
+	feature  gfx.Scope
 	deleted  []string
 	opened   []string
 	notified []string
@@ -46,12 +46,13 @@ func (d *deleteProbe) draw(t *testing.T, click string) {
 	tree := d.tree
 	canvas := v2Canvas(tree)
 	if click != "" {
-		canvas.BeginEventPass(tree.ID(d.feature, click))
+		canvas.BeginEventPass(tree.ID(d.feature, click), gfx.ClickInfo{})
 		defer canvas.EndEventPass()
 	}
 	row := sess("s1", "一个会话", `D:\work`, "2026-11-03T20:00:00+08:00")
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(d.plugin.theme), ui.Rect{Width: 268, Height: 40}, func(f *flex.Frame) {
+	pageTheme := dscore.VivaTheme(d.plugin.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, gfx.Rect{Width: 268, Height: 40}, func(f ui.C) {
 		d.plugin.drawSession(f, d.env, row)
 	})
 }

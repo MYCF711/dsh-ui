@@ -26,7 +26,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/ui"
 )
 
 // shellMode 是壳的三种结构档位。
@@ -167,7 +167,7 @@ func officialGeometry(width, height float32, opts uikernel.ShellOptions) plugina
 }
 
 // drawOfficialFirstScreen 画官方骨架：容器由 uikernel 建，内容仍由插件画。
-func drawOfficialFirstScreen(f *flex.Frame, m *model, env *pluginapi.Env, opts uikernel.ShellOptions) {
+func drawOfficialFirstScreen(f ui.C, m *model, env *pluginapi.Env, opts uikernel.ShellOptions) {
 	uikernel.FirstScreen(f, env, opts, func(slot pluginapi.Slot) {
 		drawSlot(f, m.kernel, slot, env)
 	})

@@ -18,36 +18,36 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // updateFrame 装配 dssettings 并画一帧 `sidebar.settings` 槽（官方设置行）。
-func updateFrame(t *testing.T, data pluginapi.Snapshot) *ui.Canvas {
+func updateFrame(t *testing.T, data pluginapi.Snapshot) *gfx.Canvas {
 	t.Helper()
 	kernel := uikernel.New("settings-update")
 	if err := kernel.Load(&dscore.Plugin{Dark: true}, &Plugin{}); err != nil {
 		t.Fatalf("装配失败：%v", err)
 	}
 	theme := kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feat := tree.Feature("settings-update")
-	canvas := &ui.Canvas{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 		return float32(len([]rune(value))) * size * 0.55
 	})
-	bounds := ui.Rect{Width: 320, Height: 60}
+	bounds := gfx.Rect{Width: 320, Height: 60}
 	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas,
 		Bounds: bounds, MainWidth: bounds.Width,
 		Geometry: pluginapi.Geometry{Width: bounds.Width, Height: bounds.Height, MainWidth: bounds.Width},
 		Has:      kernel.Has,
 	}
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+	var view ui.Page
+	view.Draw(canvas, bounds, func(f ui.C) {
 		// 设置行是一个 Row（壳画容器，插件画格子）；这里直接按行画三个画家。
-		f.Row().Items(flex.Center).Gap(SettingsTriggerRowGapForTest).Children(func() {
+		ui.Row(f).Items(ui.Center).Gap(SettingsTriggerRowGapForTest).Children(func() {
 			// 只画本单负责的那一格（设置触发器由 dsnotifications 的启动器或
 			// fallback 负责，画进来会污染"有没有文字"的断言）。
 			for _, painter := range kernel.Painters(uikernel.OffSidebarSettings) {
@@ -243,7 +243,7 @@ func TestDesktopUpdatePaintsOnlyWithRealPresentation(t *testing.T) {
 			Phase: pluginapi.DesktopUpdateAvailable, Version: "0.2.2-go.9",
 		}}
 	canvas = updateFrame(t, data)
-	var label ui.Text
+	var label gfx.Text
 	found := false
 	for _, text := range canvas.Texts() {
 		if text.Value == zhUpdateAvailable {
@@ -255,7 +255,7 @@ func TestDesktopUpdatePaintsOnlyWithRealPresentation(t *testing.T) {
 	}
 	// 图标在文字左侧 4px（官方 column-gap:4px）+ 14px。
 	iconX := label.Bounds.X - UpdateIndicatorGap - UpdateIndicatorIconSize
-	if n := opaqueTrianglesIn(canvas, ui.Rect{X: iconX, Y: 0, Width: UpdateIndicatorIconSize, Height: 60}); n == 0 {
+	if n := opaqueTrianglesIn(canvas, gfx.Rect{X: iconX, Y: 0, Width: UpdateIndicatorIconSize, Height: 60}); n == 0 {
 		t.Fatal("更新指示的 14px glyph 没画（文字左侧 18px 内没有不透明图元）")
 	}
 	// 整枚高度 28：胶囊底色/描边是矩形图元（viva 的 Background/Border 走
@@ -309,7 +309,7 @@ func TestDesktopUpdateBusySpinnerRotates(t *testing.T) {
 }
 
 // textValues 取画布上的文字（失败信息用）。
-func textValues(canvas *ui.Canvas) []string {
+func textValues(canvas *gfx.Canvas) []string {
 	out := make([]string, 0, len(canvas.Texts()))
 	for _, text := range canvas.Texts() {
 		out = append(out, text.Value)
@@ -318,7 +318,7 @@ func textValues(canvas *ui.Canvas) []string {
 }
 
 // opaqueTrianglesIn 数落在一个矩形里的不透明三角形（glyph 是否画了的判据）。
-func opaqueTrianglesIn(canvas *ui.Canvas, rect ui.Rect) int {
+func opaqueTrianglesIn(canvas *gfx.Canvas, rect gfx.Rect) int {
 	const opaque = 0.5
 	n := 0
 	for _, triangle := range canvas.Triangles() {

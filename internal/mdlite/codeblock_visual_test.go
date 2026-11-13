@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/vivaui/viva/app"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
 	"github.com/vivaui/viva/ui"
 )
@@ -24,7 +25,7 @@ type codeBlockVisualFixture struct {
 }
 
 func TestCodeBlockHeadlessCopyFeedbackWrapScrollAndScreenshots(t *testing.T) {
-	tree := &ui.Tree{}
+	tree := &gfx.Tree{}
 	feature := tree.Feature("codeblock-actions")
 	fixture := &codeBlockVisualFixture{
 		ids: CodeBlockIDs{
@@ -40,13 +41,13 @@ func TestCodeBlockHeadlessCopyFeedbackWrapScrollAndScreenshots(t *testing.T) {
 	}
 
 	config := app.Config{Title: "codeblock-actions", Width: 760, Height: 560, Tree: tree, WindowMode: app.WindowFrameless}
-	config.Paint = func(canvas *ui.Canvas, size ui.Size) {
-		canvas.Fill(ui.Rect{Width: size.Width, Height: size.Height}, ui.DarkTheme().Background)
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		canvas.Fill(gfx.Rect{Width: size.Width, Height: size.Height}, ui.DarkTheme().Background)
 		height := fixture.block.Height(canvas, 560, fixture.style)
-		bounds := ui.Rect{X: 20, Y: 20, Width: 560, Height: height}
+		bounds := gfx.Rect{X: 20, Y: 20, Width: 560, Height: height}
 		fixture.geometry = fixture.block.Draw(canvas, bounds, fixture.ids, fixture.style)
 	}
-	config.OnScroll = func(event ui.ScrollEvent) ui.EventResult { return fixture.block.HandleScroll(event) }
+	config.OnScroll = func(event gfx.ScrollEvent) gfx.EventResult { return fixture.block.HandleScroll(event) }
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +85,7 @@ func TestCodeBlockHeadlessCopyFeedbackWrapScrollAndScreenshots(t *testing.T) {
 
 	firstLine := firstMonoText(t, session.Snapshot().Texts)
 	viewport := fixture.geometry.Content
-	if err := session.Scroll(ui.ScrollEvent{X: viewport.X + viewport.Width/2, Y: viewport.Y + viewport.Height/2, DeltaX: 96, Precise: true}); err != nil {
+	if err := session.Scroll(gfx.ScrollEvent{X: viewport.X + viewport.Width/2, Y: viewport.Y + viewport.Height/2, DeltaX: 96, Precise: true}); err != nil {
 		t.Fatal(err)
 	}
 	if fixture.block.State().OffsetX <= 0 {
@@ -120,7 +121,7 @@ func TestCodeBlockHeadlessCopyFeedbackWrapScrollAndScreenshots(t *testing.T) {
 	}
 }
 
-func firstMonoText(t *testing.T, texts []ui.Text) ui.Text {
+func firstMonoText(t *testing.T, texts []gfx.Text) gfx.Text {
 	t.Helper()
 	for _, text := range texts {
 		if text.Style.Mono && text.Value != "" {
@@ -128,7 +129,7 @@ func firstMonoText(t *testing.T, texts []ui.Text) ui.Text {
 		}
 	}
 	t.Fatal("no painted mono code text")
-	return ui.Text{}
+	return gfx.Text{}
 }
 
 func captureCodeBlock(t *testing.T, session *headless.Session, name string) {

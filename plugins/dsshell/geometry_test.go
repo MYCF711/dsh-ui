@@ -5,7 +5,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
-	"github.com/vivaui/viva/flex"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -26,14 +26,14 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			theme := dscore.Dark()
 			p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280}
-			tree := &ui.Tree{}
+			tree := &gfx.Tree{}
 			feat := tree.Feature("shell-geometry-test")
-			canvas := &ui.Canvas{}
+			canvas := &gfx.Canvas{}
 			canvas.SetTree(tree)
 			canvas.SetMeasurer(func(value string, size, weight float32) float32 {
 				return float32(len([]rune(value))) * size / 2
 			})
-			bounds := ui.Rect{Width: tc.width, Height: tc.height}
+			bounds := gfx.Rect{Width: tc.width, Height: tc.height}
 			rightPref := tc.width * rightbarOpenFrac
 			env := &pluginapi.Env{
 				Theme: theme,
@@ -47,37 +47,38 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 				Has:       func(slot pluginapi.Slot) bool { return slot != pluginapi.SlotShellOverlay },
 			}
 
-			boxes := map[pluginapi.Slot]flex.Box{}
-			var view flex.View
-			view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+			boxes := map[pluginapi.Slot]ui.Box{}
+			pageTheme := dscore.VivaTheme(theme)
+			view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+			view.Draw(canvas, bounds, func(f ui.C) {
 				p.draw(f, env)
 				p.children(f, env, func(slot pluginapi.Slot) {
 					switch slot {
 					case pluginapi.SlotMainHeader:
-						boxes[slot] = f.Slot().FillWidth().Height(40)
+						boxes[slot] = ui.Slot(f).FillWidth().Height(40)
 					case pluginapi.SlotMainBody:
 						// 故意用一个自身不 Grow 的占用方：壳必须给它可伸展的区域，
 						// 否则空态会把 composer 提到顶部。
-						boxes[slot] = f.Slot().FillWidth()
+						boxes[slot] = ui.Slot(f).FillWidth()
 					case pluginapi.SlotMainComposer:
-						boxes[slot] = f.Slot().FillWidth().Height(80)
+						boxes[slot] = ui.Slot(f).FillWidth().Height(80)
 					case pluginapi.SlotRightbar:
-						boxes[slot] = f.Slot().FillWidth().FillHeight()
+						boxes[slot] = ui.Slot(f).FillWidth().FillHeight()
 					case pluginapi.SlotShellBottom:
-						boxes[slot] = f.Slot().FillWidth().FillHeight()
+						boxes[slot] = ui.Slot(f).FillWidth().FillHeight()
 					default:
-						boxes[slot] = f.Slot().FillWidth()
+						boxes[slot] = ui.Slot(f).FillWidth()
 					}
 				})
 			})
 
-			assertRect(t, "main.header", boxes[pluginapi.SlotMainHeader].Rect(), ui.Rect{X: 280 + columnPad, Y: columnPad, Width: tc.mainWidth - 2*columnPad, Height: 40})
-			assertRect(t, "main.body", boxes[pluginapi.SlotMainBody].Rect(), ui.Rect{X: 280 + columnPad, Y: columnPad + 40 + 8, Width: tc.mainWidth - 2*columnPad})
-			assertRect(t, "rightbar", boxes[pluginapi.SlotRightbar].Rect(), ui.Rect{X: tc.rightX + columnPad, Y: columnPad, Width: tc.rightWidth - 2*columnPad, Height: tc.height - 24 - 2*columnPad})
-			assertRect(t, "main.composer", boxes[pluginapi.SlotMainComposer].Rect(), ui.Rect{X: 280 + columnPad, Y: tc.height - 24 - columnPad - 80, Width: tc.mainWidth - 2*columnPad, Height: 80})
-			assertRect(t, "shell.bottom", boxes[pluginapi.SlotShellBottom].Rect(), ui.Rect{Y: tc.height - 24, Width: tc.width, Height: 24})
+			assertRect(t, "main.header", boxes[pluginapi.SlotMainHeader].Rect(), gfx.Rect{X: 280 + columnPad, Y: columnPad, Width: tc.mainWidth - 2*columnPad, Height: 40})
+			assertRect(t, "main.body", boxes[pluginapi.SlotMainBody].Rect(), gfx.Rect{X: 280 + columnPad, Y: columnPad + 40 + 8, Width: tc.mainWidth - 2*columnPad})
+			assertRect(t, "rightbar", boxes[pluginapi.SlotRightbar].Rect(), gfx.Rect{X: tc.rightX + columnPad, Y: columnPad, Width: tc.rightWidth - 2*columnPad, Height: tc.height - 24 - 2*columnPad})
+			assertRect(t, "main.composer", boxes[pluginapi.SlotMainComposer].Rect(), gfx.Rect{X: 280 + columnPad, Y: tc.height - 24 - columnPad - 80, Width: tc.mainWidth - 2*columnPad, Height: 80})
+			assertRect(t, "shell.bottom", boxes[pluginapi.SlotShellBottom].Rect(), gfx.Rect{Y: tc.height - 24, Width: tc.width, Height: 24})
 
-			wantRight := ui.Rect{X: tc.rightX, Width: tc.rightWidth, Height: tc.height - 24}
+			wantRight := gfx.Rect{X: tc.rightX, Width: tc.rightWidth, Height: tc.height - 24}
 			found := false
 			for _, r := range canvas.Rectangles() {
 				if r.Bounds == wantRight && r.Color == theme.SidebarFill {
@@ -100,11 +101,11 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}, SidebarWidth: 280}
-	tree := &ui.Tree{}
-	canvas := &ui.Canvas{}
+	tree := &gfx.Tree{}
+	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
 	canvas.SetMeasurer(func(value string, size, weight float32) float32 { return float32(len(value)) * size / 2 })
-	bounds := ui.Rect{Width: 960, Height: 832}
+	bounds := gfx.Rect{Width: 960, Height: 832}
 	env := &pluginapi.Env{
 		Theme: theme, Data: pluginapi.Snapshot{ShowRightbar: true}, Tree: tree,
 		Feat: tree.Feature("shell-narrow-test"), Canvas: canvas, Bounds: bounds,
@@ -113,19 +114,20 @@ func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 		Has:       func(slot pluginapi.Slot) bool { return slot != pluginapi.SlotShellOverlay },
 	}
 	rightDrawn := false
-	var main flex.Box
-	var view flex.View
-	view.Draw(canvas, dscore.VivaTheme(theme), bounds, func(f *flex.Frame) {
+	var main ui.Box
+	pageTheme2 := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme2})
+	view.Draw(canvas, bounds, func(f ui.C) {
 		p.children(f, env, func(slot pluginapi.Slot) {
 			switch slot {
 			case pluginapi.SlotRightbar:
 				rightDrawn = true
 			case pluginapi.SlotMainBody:
-				main = f.Slot().FillWidth()
+				main = ui.Slot(f).FillWidth()
 			case pluginapi.SlotShellBottom:
-				f.Slot().FillWidth().FillHeight()
+				ui.Slot(f).FillWidth().FillHeight()
 			default:
-				f.Slot().FillWidth()
+				ui.Slot(f).FillWidth()
 			}
 		})
 	})
@@ -137,7 +139,7 @@ func TestShellDropsRightTrackWhenItCannotFit(t *testing.T) {
 	}
 }
 
-func assertRect(t *testing.T, name string, got, want ui.Rect) {
+func assertRect(t *testing.T, name string, got, want gfx.Rect) {
 	t.Helper()
 	const tolerance = 0.01
 	if abs32(got.X-want.X) > tolerance || abs32(got.Y-want.Y) > tolerance ||

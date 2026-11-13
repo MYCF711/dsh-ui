@@ -124,3 +124,47 @@ func TestFromAPIHostFactsCarriesShellChannel(t *testing.T) {
 		t.Fatalf("ShellChannelFailure 被转换函数丢掉了：%q", got.ShellChannelFailure)
 	}
 }
+
+// TestShortcutsRowUsesWindowCatalogNotHostNamespace 钉住「快捷键」行的真值来源。
+//
+// 官方 `shortcuts` 是**窗口本地**服务（`dsh-client-shortcuts/src/client/index.ts:31`
+// 的 `ctx.shortcuts.catalog`），键位来自 `DesktopShortcutsApi` 适配器 ——
+// **不是 Host 设置**。本仓原先把它的 HostField 写成 `shortcuts.catalog` 并走
+// settings 查询，真机上就一直显示橙色告警「宿主未提供 shortcuts 命名空间」——
+// 那是一句**假**结论（宿主本来就不该提供它）。
+func TestShortcutsRowUsesWindowCatalogNotHostNamespace(t *testing.T) {
+	facts := fullDesktopFacts()
+	model := BuildPanel(describeFixture(), facts)
+	panel, ok := model.Section("general")
+	if !ok {
+		t.Fatal("没有 general 页")
+	}
+	row, ok := panel.Row("shortcuts")
+	if !ok {
+		t.Fatal("缺 shortcuts 行")
+	}
+	if !row.Known || row.Value != "13 条键位" {
+		t.Fatalf("应显示本窗口键位数，实得 known=%v value=%q", row.Known, row.Value)
+	}
+	if strings.Contains(row.Reason, "命名空间") {
+		t.Fatalf("不该再说「宿主未提供 … 命名空间」——它不是 Host 设置：%q", row.Reason)
+	}
+	if row.Disabled {
+		t.Fatal("这一行不该被标成只读/禁用")
+	}
+}
+
+// 键位表没装（0 条）时保持未知，**不**谎报「0 条键位」。
+func TestShortcutsRowUnknownWhenCatalogEmpty(t *testing.T) {
+	facts := fullDesktopFacts()
+	facts.ShortcutCount = 0
+	model := BuildPanel(describeFixture(), facts)
+	panel, _ := model.Section("general")
+	row, ok := panel.Row("shortcuts")
+	if !ok {
+		t.Fatal("缺 shortcuts 行")
+	}
+	if row.Known {
+		t.Fatalf("键位表为空时不该有真值，实得 %q", row.Value)
+	}
+}

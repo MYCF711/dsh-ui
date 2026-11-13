@@ -20,6 +20,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
 )
 
 // settingsWriteTimeout 是一次设置写的上限（与 dssettings 的 panelWriteTimeout 对齐）。
@@ -107,6 +108,9 @@ func (m *model) settingsHostFacts() pluginapi.SettingsHostFacts {
 		ShellChannelServed:  shellServed,
 		ShellChannel:        shellChannel,
 		ShellChannelFailure: shellFailure,
+		// 键位数来自**本窗口**的键位表（官方 `shortcuts` 也是窗口本地服务，
+		// 不是 Host 设置）。表本身有 shortcuts_guard_test.go 卡着覆盖所有 HandleKey。
+		ShortcutCount: len(dsshortcuts.Bindings()),
 		// 右侧栏插件（ds-rightbar）存在：`sidebarRightTabs` 服务可用。
 		SidebarRightTabs: true,
 		// 宿主当前不服务 session-log-deepseek（没有上传通道）。

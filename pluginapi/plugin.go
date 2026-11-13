@@ -823,6 +823,11 @@ type SettingsHostFacts struct {
 	ShellChannel *string
 	// ShellChannelFailure 是宿主报的壳级故障。
 	ShellChannelFailure string
+	// ShortcutCount 是**本窗口**真实生效的键位数（GUI 自己的键位表条目数）。
+	//
+	// 官方 `shortcuts` 是窗口本地服务，不是 Host 设置；本仓也不例外。
+	// 0 = 键位表没装 -> 「快捷键」行显示未知。
+	ShortcutCount int
 	// SidebarRightTabs 表示 `sidebarRightTabs` 服务存在。
 	SidebarRightTabs bool
 	// SessionLogServed 表示 `session-log-deepseek` namespace 被宿主服务。

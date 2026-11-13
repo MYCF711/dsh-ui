@@ -205,7 +205,9 @@ var officialGeneralItems = []OfficialGeneralItem{
 	{
 		ID: "language", Order: 0, Title: "语言",
 		Desc: "界面语言",
-		Kind: ItemSelector, HostField: "locale.active", Rows: 1,
+		// 官方字段是 `locale.preference`（`locale-settings.ts:9` LOCALE_PREFERENCE_FIELD），
+		// 不是 `locale.active`——写错的话宿主发了也读不到，永远显示未知。
+		Kind: ItemSelector, HostField: "locale.preference", Rows: 1,
 		Condition: ItemAlways,
 		Anchor:    "dsh-client-locale/src/client/index.ts:622-629",
 		RowAnchor: "dsh-client-locale/src/client/LanguageRow.tsx:30-67",

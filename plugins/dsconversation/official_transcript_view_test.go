@@ -145,7 +145,18 @@ func allKindsEntries() []TranscriptEntry {
 		{Key: "k-plan", Kind: ChatNodeSubmittedPlan, Seq: 19, Turn: 1, Visibility: ChatVisibilityHidden,
 			Data: TranscriptData{Text: "计划内容（不得出现在 transcript）"}},
 		{Key: "k-workflow", Kind: ChatNodeWorkflowRun, Seq: 20, Turn: 1, Visibility: ChatVisibilityVisible,
-			Data: TranscriptData{RunName: "review", StopReason: "completed"}},
+			Data: TranscriptData{
+				RunID: "run-1", RunName: "review", StopReason: "completed",
+				Workflow: &WorkflowRunChatData{
+					Name: "review", Status: WorkflowStatusCompleted,
+					Phases: []WorkflowRunPhaseData{{
+						Key: WorkflowPhaseKey(nil), Phase: nil,
+						Members: []WorkflowRunMemberData{{
+							Seq: 1, Label: "审查", ChildID: "child-1", Status: WorkflowStatusCompleted,
+						}},
+					}},
+				},
+			}},
 	}
 	return entries
 }

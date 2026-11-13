@@ -367,6 +367,18 @@
         "light"
       ],
       "note": "浅色令牌（与深色同一套结构，验令牌替换没有漏画）"
+    },
+    {
+      "name": "workflow-panel",
+      "regions": "default",
+      "args": [
+        "-shell",
+        "official",
+        "-theme",
+        "dark",
+        "-demo-workflow"
+      ],
+      "note": "§5.20 工作流运行面板（run → phase → member 三级嵌套披露；-demo-workflow 注入假 tool-workflow/* 帧）"
     }
   ],
   "accepted": {

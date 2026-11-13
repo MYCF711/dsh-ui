@@ -539,6 +539,9 @@ func (m *model) refreshSession(id string, quiet bool) {
 			m.cache[id].total = len(m.cache[id].msgs)
 			m.publishSessionLocked(id)
 		}
+		// 调试胶水（1 行）：-demo-workflow 时往 journal 塞一组假的
+		// tool-workflow/* 帧；默认开关关着，正式路径不看它。
+		m.injectDemoWorkflowLocked(id)
 		m.syncRightbarLocked()
 		// **不写连接措辞**：连接状态的家是官方 `ConnectionIndicator`
 		// （`Snapshot.Link`），composer 那一行只放动作状态（HH 单：两处重复）。

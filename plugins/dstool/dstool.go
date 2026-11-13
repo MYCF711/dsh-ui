@@ -40,6 +40,13 @@ type Card struct {
 	Seq int
 	// Tool 是工具名（bash / read / glob …），分派就认它。
 	Tool string
+	// CallID 是宿主给这次调用的 id（`apiclient.Message.CallID`）。
+	//
+	// 为什么工具卡需要它：官方 `tool.call.toolview` 的 keyed 组件拿得到
+	// `block.callId`，官方 `SkillRow` 在**参数为空**时用它当标题兜底
+	// （`SkillRow.tsx:40` 的 `argsRaw === '' ? callId : firstLine(argsRaw)`）。
+	// 空串 = 消息流还没填（老壳），消费方必须自己兜底，**不许**编一个假 id。
+	CallID string
 	// Args 是宿主给的参数原文（一般是 JSON，也可能是一行命令）。
 	Args string
 	// Summary 是宿主给的一行摘要（bash 的 "exit 0 · …" 就在这）。
@@ -81,6 +88,26 @@ type Renderer struct {
 	Head func(c Card) (title, summary string)
 	// Body 画展开体。nil = 默认（参数原文 + 摘要）。
 	Body func(b *BodyCtx)
+	// Draw 完全接管这张卡的绘制（**整行替换**，不是"在通用行上补两段"）。
+	//
+	// 为什么需要它：官方 `tool.call.toolview` 是 **keyed 槽**
+	// （`dsh-client-ui-skill/src/client/index.ts:89-92` 的
+	// `{name:'tool.call.toolview', key:'skill'}`）——注册在某个工具的 key 上
+	// 就是那个工具**整行**由这个组件负责，不是"在 ToolRow 里插一段"。
+	// 本包默认的 Head/Body 是**通用行的两个定制点**，它外面那层
+	// `ui.Row(PadX(4).PadY(2).Radius(SM).Hover(…))` 和展开体的
+	// `ui.Column(PadX(22).PadY(4).Background(BgLayer1))` 是写死的；
+	// 官方 skill 行既没有那圈内边距也没有那层底色（它自己是 `.card` +
+	// `.row` + `.bodyWrap` 三件套，几何见 plugins/dsskill/official_skill.go），
+	// 套在通用行里**每个数值都会差**。
+	//
+	// 所以需要整行接管的渲染器（今天只有 skill）走这个字段：
+	// 非 nil 时 Head/Body 不参与，`Render` 直接把 frame 交给它。
+	//
+	// 返回值是**本帧占的高度**（逻辑像素）。消息流的视口虚拟化
+	// （`Service.Height`）要用它——整行接管的卡画出来的形状和默认行不同，
+	// 用默认估算会把展开的说明卡算矮，滚出去的内容再也画不回来。
+	Draw func(f ui.C, env *pluginapi.Env, c Card) float32
 }
 
 // BodyCtx 是画展开体时能碰到的东西。
@@ -101,6 +128,13 @@ type Cards struct {
 	prims     pluginapi.Primitives
 	renderers map[string]Renderer
 	open      map[int]bool
+	// heights 记「整行接管」（`Renderer.Draw`）的卡上一帧画出来多高。
+	//
+	// 为什么记而不是算：`Height` 在**排版之前**被调用（消息流的视口虚拟化
+	// 要先知道每条多高），而整行接管的卡高度由它自己的展开态与内容决定，
+	// 外面算不出来。上一帧的真值比一个猜的数准，而且只在同一条卡上生效
+	// （key 是 `Card.Seq`，跨会话同序号不会串——Seq 由消息流按消息身份分配）。
+	heights map[int]float32
 }
 
 // New 造一个工具卡渲染器。prims 是 ds-core 的基础组件画法；
@@ -110,6 +144,7 @@ func New(prims pluginapi.Primitives) *Cards {
 		prims:     prims,
 		renderers: map[string]Renderer{},
 		open:      map[int]bool{},
+		heights:   map[int]float32{},
 	}
 	s.registerDefaults()
 	return s
@@ -140,6 +175,13 @@ func (s *Cards) Register(r Renderer) {
 
 // Render 实现 Service。
 func (s *Cards) Render(f ui.C, env *pluginapi.Env, c Card) {
+	// 整行接管：官方 keyed toolview 的语义就是这个（见 Renderer.Draw 的注释）。
+	// 放在最前面，通用行的 Hit/展开状态一概不参与——两套展开状态同时存在
+	// 会让"点一下展开两次"这种错看起来像渲染抖动。
+	if r, ok := s.renderers[c.Tool]; ok && r.Draw != nil {
+		s.heights[c.Seq] = r.Draw(f, env, c)
+		return
+	}
 	t := env.Theme
 	open := s.open[c.Seq]
 	r, known := s.renderers[c.Tool]
@@ -218,6 +260,11 @@ func (s *Cards) Open(seq int) bool { return s.open[seq] }
 // 先知道每条多高），所以只能估。估小了会把还在视口里的消息判成"在视口外"
 // 直接不画，所以宁大勿小。
 func (s *Cards) Height(seq int, view *apiclient.ViewSpec) float32 {
+	// 整行接管的卡：上一帧画出来的真值优先。没有任何一帧画过时退回默认估算
+	// （见 Renderer.Draw 的注释：默认 28 是"收起时只有标题一行"，宁大勿小）。
+	if h, ok := s.heights[seq]; ok {
+		return h
+	}
 	if !s.open[seq] {
 		return 28 // 收起时只有标题一行（官方就是这么一行）
 	}

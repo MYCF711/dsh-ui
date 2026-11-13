@@ -56,7 +56,7 @@
 - ✅ `schedule`（`dsschedule`：侧栏「定时任务」，宿主 `schedule.list`）
 - ✅ `jobs`（`dsjobs`：侧栏「后台任务」，宿主 `jobs.list` + 5 秒轮询）
 - ❌ `subagent`
-- ❌ `skill`
+- ✅ `skill`（`dsskill`：**专用工具行** `SkillRow` 四态 + 两棵树 + 展开说明卡；**`/name` 用户文本规则**逐条实现；**胶囊** `SkillReference`。工具行**零宿主依赖**——官方 `skillRowModel` 只从 durable 的 call/result slice 推。**仍缺**：斜杠候选源（`inputTriggers` 注册表）与 `openSkill`（`skills/list`），见 B 类）
 - ✅ `user-questions`（`dsquestions`：F7/F8 或点击选选项）
 - ❌ `workflow-run`
 - 🟡 `message-feedback`（`dsconversation/feedback.go`：每条助手消息 👍/👎 + 落盘 `feedback.<会话>.<下标>`；**没有官方的反馈弹窗与文字原因**）
@@ -81,7 +81,7 @@
 - ✅ `layout`（`dsshell`：侧栏/中栏/右栏/底栏，可直接拖分隔线）
 - ✅ `sidebar-right`（`dsshell` 的 `SlotRightbar` + `ToggleRightbar` + `ui.rightbarWidth`；收起后 corner 可重开）
 
-## 合计：官方 55 个部件 —— ✅ 21 · 🟡 9 · ⬜ 3（不该有） · ❌ 22
+## 合计：官方 55 个部件 —— ✅ 22 · 🟡 9 · ⬜ 3（不该有） · ❌ 21
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），
 > 不是手填的。上一次手填的是"我们有 10 个 · 缺 53 个"——**已经错了很久**，
@@ -191,12 +191,13 @@
 | `deliverables` | `fs.write` | 需要"哪些是交付物"的约定 |
 | `jobs` | 后台任务概念已有 | 需要 `jobs.list`/`jobs.output` 的跨线方法 |
 | `schedule` | 无 | 需要定时任务的存储与方法 |
+| `skill` | **工具行不需要任何方法**（官方 `skillRowModel` 只读 durable 的 call/result slice） | 斜杠候选源要 `skills/list`（`SkillEntry{name, description, modelInvocable, path}`）；`openSkill` 还要 `path` 才能 `sidebarRight.openResource` |
 
-### C. 必须宿主先加跨线契约 —— 39 个（含 11 个设置类）
+### C. 必须宿主先加跨线契约 —— 38 个（含 11 个设置类）
 
 `settings*`(11) · `model-selection` · `permission-presets` · `attachment` · `plugin-manager` ·
 `plugin-market` · `settings-plugin-inventory` · `sidebar-terminal` · `sidebar-browser` ·
-`sidebar-right` · `subagent` · `skill` · `agent-preset` · `goal` · `plan` · `user-questions` ·
+`sidebar-right` · `subagent` · `agent-preset` · `goal` · `plan` · `user-questions` ·
 `workflow-run` · `secret-mask` · `open-in-app` · `entry-customization` · `directory-picker-*` ·
 `input-trigger` · `deepseek-model-label-1017` · `renderer` · `workspace` · `session` · `cordis` ·
 `approval`(我们已有简化版) · `chat`

@@ -3,6 +3,8 @@ package dssettings
 import (
 	"strings"
 	"testing"
+
+	"github.com/MYCF711/dsh-ui/pluginapi"
 )
 
 // 宿主提供壳渠道服务时，「更新渠道」行必须出现，且**选项顺序与文案照官方**。
@@ -92,5 +94,33 @@ func TestDesktopChannelRowReportsShellFailure(t *testing.T) {
 	}
 	if !strings.Contains(row.Reason, "format") {
 		t.Fatalf("行内要说出故障码，实得 %q", row.Reason)
+	}
+}
+
+// TestFromAPIHostFactsCarriesShellChannel 钉住**转换函数**不丢字段。
+//
+// 为什么单独钉这一条：`pluginapi.SettingsHostFacts` 与 `dssettings.HostFacts`
+// 是两个类型，中间靠 `fromAPIHostFacts` 搬。**漏搬一个字段的后果是静默的**：
+// 探针照样成功、事实位照样为真、`settingsHostFacts()` 返回的东西也对，
+// 但面板永远看不到 -> 「更新渠道」行永远不出现。
+//
+// 2026-11-13 真机上就是这么发生的：截图看不到那一行（order 95 在面板很下面），
+// 端到端测试才把它抓出来。
+func TestFromAPIHostFactsCarriesShellChannel(t *testing.T) {
+	channel := "nightly"
+	from := pluginapi.SettingsHostFacts{
+		ShellChannelServed:  true,
+		ShellChannel:        &channel,
+		ShellChannelFailure: "format",
+	}
+	got := fromAPIHostFacts(from)
+	if !got.ShellChannelServed {
+		t.Fatal("ShellChannelServed 被转换函数丢掉了")
+	}
+	if got.ShellChannel == nil || *got.ShellChannel != "nightly" {
+		t.Fatalf("ShellChannel 被转换函数丢掉了：%v", got.ShellChannel)
+	}
+	if got.ShellChannelFailure != "format" {
+		t.Fatalf("ShellChannelFailure 被转换函数丢掉了：%q", got.ShellChannelFailure)
 	}
 }

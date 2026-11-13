@@ -135,6 +135,22 @@ type model struct {
 	shellChannel *string
 	// shellChannelFailure 是宿主报的壳级故障（read/format/channel/cleanup）。
 	shellChannelFailure string
+	// desktopUpdate 是宿主 `desktopUpdate.status` 的缓存（设置行第 3 格
+	// 「桌面更新指示器」的唯一来源）。nil = 还不知道 / 宿主没这条能力。
+	desktopUpdate *apiclient.DesktopUpdatePresentation
+	// desktopUpdateFailed 是官方 `DesktopUpdateView.failed`：桥**存在**但调用失败。
+	//
+	// 与 nil 的区别是语义级的：nil = "没有这枚指示器"（官方没有 updates 桥），
+	// failed = "有桥，但它坏了"（官方画成「重试更新」）。把前者写成后者
+	// 就是编了一条不存在的事实。
+	desktopUpdateFailed bool
+	// desktopUpdateOpening 是官方 `DesktopUpdateView.opening`：用户点了更新入口、
+	// 动作还在飞。期间指示器禁止再次触发（官方 `DesktopUpdateSource.open()`）。
+	desktopUpdateOpening bool
+	// desktopUpdatePending 防重入：拉取在途时不再发第二次请求（每帧都可能问）。
+	desktopUpdatePending bool
+	// desktopUpdateAt 是上一次拉取的完成时刻（决定要不要再问一次）。
+	desktopUpdateAt time.Time
 	// jobsPending 防重入：刷新在途时不再发第二次请求（每帧都可能问）。
 	jobsPending bool
 	smokeFired  bool
@@ -1836,6 +1852,10 @@ func newConfig(m *model) app.Config {
 				Disconnected: link == pluginapi.LinkDown,
 				// 当前会话的工作目录：插件拼文件路径的前提，空串=不知道。
 				CWD: m.cwd,
+				// 桌面更新指示（官方设置行第 3 格 `DesktopUpdateIndicator`）的事实。
+				// nil = 官方没有 updates 桥（本仓宿主没接 `desktopUpdate.status`，
+				// 或还没问到）⇒ 按官方 idle 规则整枚不渲染。见 desktop_update_wiring.go。
+				DesktopUpdate: m.desktopUpdateSnapshot(),
 			},
 			Act:       m.actions,
 			Tree:      &tree,
@@ -2540,6 +2560,10 @@ func main() {
 		OpenExternal:   m.openExternal,
 		OpenFile:       m.openFile,
 		Notify:         m.setStatus,
+		// 桌面更新指示器的点击（官方 `DesktopUpdateBridge.open()`）：
+		// 走宿主拿更新入口 URL，再交给**系统默认浏览器**。
+		// 见 desktop_update_wiring.go。
+		DesktopUpdateOpen: m.desktopUpdateOpen,
 		// 立即重连：取消当前 sub + 马上重订（官方连接胶囊按钮的动作）。
 		Reconnect: m.reconnectNow,
 		// 只重绘、不写状态栏：给插件的时间动画（官方 150ms 离场淡出）用。

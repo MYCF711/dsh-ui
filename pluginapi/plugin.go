@@ -613,6 +613,27 @@ type Actions struct {
 	OpenExternal func(destination string) error
 	// OpenFile 只打开显式 file: 链接指向的文档；普通字符串不得在这里猜成路径。
 	OpenFile func(destination string) error
+	// DesktopUpdateOpen 是官方 `DesktopUpdateBridge.open()`：用户点了桌面更新指示器。
+	//
+	// 官方那一下弹的是原生更新面板（检查 / 下载 / 安装）；本仓没有下载器与安装器，
+	// 宿主 `desktopUpdate.open` 的诚实等价物是**把更新入口交出来**（一条 release
+	// 页或 releases 列表页的 URL），由壳唤起系统默认浏览器打开。
+	//
+	// 语义（壳的实现必须一致）：
+	//
+	//	① 置 `Snapshot.DesktopUpdate.Opening = true`（官方 `view.opening`，
+	//	   期间指示器 `aria-disabled`、不重复触发）；
+	//	② 调宿主 `desktopUpdate.open`，把结果里的 presentation 收进缓存；
+	//	③ 用返回的 URL 唤起系统默认浏览器；**打不开要如实提示**（状态栏），
+	//	   不许静默失败——用户点了一下什么都没发生，比报错更坏；
+	//	④ 失败按官方 `view.failed = true` 记：指示器转成「重试更新」。
+	//
+	// 幂等：`Opening` 期间重复调用直接返回（官方 `DesktopUpdateSource.open()`
+	// 的同一句：`if (state.opening || …) return`）。
+	//
+	// nil = 壳没接（老壳 / 测试）：插件这时**不把这枚指示器画成按钮**——
+	// 画一个点了没反应的东西比不画更坏。
+	DesktopUpdateOpen func()
 	// ToggleRightbar 收起/展开右栏（官方也能收）。
 	ToggleRightbar func()
 	// Retry 重发上一条用户消息。

@@ -483,6 +483,12 @@
       "measured_percent": 0.0,
       "attribution": "upstream-mono-cell",
       "reason": "viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。"
+    },
+    "active-rightbar|composer": {
+      "max_percent": 3.5,
+      "measured_percent": 3.234,
+      "attribution": "upstream-mono-cell",
+      "reason": "右栏打开时 composer 区域只有 51200 px（1182 宽时是 115456 px），同一份 1656 px 的等宽位移占比从 1.434% 升到 3.234%——**同一个上游位移**，不是新差异。viva v0.6.0 把等宽单元的**高度**改成按字体自身的格子度量（12/13/14px 各少 1px，宽度不变；实测见 tmp/GO8-RC2/_v065/repro/mono051 与 mono060）。行内代码与代码块的行高因此少 1~3px，消息流里含等宽片段的行整体位移；纯文本行、三栏骨架、header、composer 均 0 像素差。 已用 HEAD 构建复核：不含 skill 面时该区域同样是 1656/51200 px（tmp/visual-head/report.json）。上界 3.5% 只留给这一处。"
     }
   },
   "seed": {

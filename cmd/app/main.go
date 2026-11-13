@@ -45,6 +45,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsshortcuts"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsskill"
 	"github.com/MYCF711/dsh-ui/plugins/dsstatusbar"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsterminal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dstool"

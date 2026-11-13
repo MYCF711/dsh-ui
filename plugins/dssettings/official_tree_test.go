@@ -1,8 +1,11 @@
 package dssettings
 
 import (
+	"encoding/json"
 	"strconv"
 	"testing"
+
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 )
 
 // fullDesktopFacts 是「全量桌面 Host、各服务可用、字体项未展开、transcriptView!=verbose」
@@ -319,5 +322,68 @@ func TestGeneralRowsQueryTheirOwnHostFields(t *testing.T) {
 			t.Fatalf("第 %d 行与前面的行查了同一个字段 %q——宿主发了也读不到", i, got[i])
 		}
 		seen[got[i]] = true
+	}
+}
+
+// TestLanguageRowShowsEffectiveLocaleWhenPreferenceUnset 守住「未设值 ≠ 未知」。
+//
+// 官方 `locale.preference` 是**可选**字段：缺省 = 交给浏览器
+// （`locale-settings.ts:12` "absence delegates to the browser"）。
+// 官方 `LanguageRow` 显示的是**生效** locale 的 label，不是「未知」：
+// `options.find(o => o.id === active)?.label ?? active`（LanguageRow.tsx:36-37）。
+//
+// 真机 2026-11-13：宿主已按官方发 `locale.preference`（值 `{}` = 未设），
+// 界面却显示「未知」——与官方行为不符。本仓界面只有中文一套文案，生效 locale 是 `zh`。
+func TestLanguageRowShowsEffectiveLocaleWhenPreferenceUnset(t *testing.T) {
+	// 夹具：locale 命名空间在、`preference` 字段在，但 current 为空（官方缺省态）。
+	describe := &apiclient.SettingsDescribeResult{
+		Namespaces: []apiclient.SettingsNamespaceView{{
+			NS: "locale", Applies: "live", Value: json.RawMessage(`{}`),
+		}},
+		Sections: []apiclient.SettingsSectionView{{
+			NS: "locale", Title: "Language", Writable: true,
+			Fields: []apiclient.SettingsFieldView{{
+				Name: "preference", Path: []string{"preference"}, Type: "string", Writable: true,
+				// Current 故意留空：官方 axp 是「absence delegates to the browser」
+			}},
+		}},
+	}
+	model := BuildPanel(describe, HostFacts{TranscriptView: "standard"})
+	panel, ok := model.Section("general")
+	if !ok {
+		t.Fatal("BuildPanel 没有 general 页")
+	}
+	row, ok := panel.Row("language")
+	if !ok {
+		t.Fatal("general 页缺 language 行")
+	}
+	if row.Disabled {
+		t.Fatalf("字段在且可写，不该 disabled：reason=%q", row.Reason)
+	}
+	if !row.Known {
+		t.Fatal("未设值不等于未知：官方显示生效 locale 的 label，这里应已知（zh / 简体中文）")
+	}
+	if row.Value != "简体中文" {
+		t.Fatalf("生效 locale 是 zh，label 应为「简体中文」，拿到 %q", row.Value)
+	}
+}
+
+// 反向：字段**真的不存在**时仍然必须是未知（不能拿 zh 把真缺陷盖掉）。
+func TestLanguageRowStaysUnknownWhenFieldMissing(t *testing.T) {
+	describe := &apiclient.SettingsDescribeResult{
+		Namespaces: []apiclient.SettingsNamespaceView{{NS: "locale", Applies: "live"}},
+		Sections: []apiclient.SettingsSectionView{{
+			NS: "locale", Title: "Language", Writable: true,
+			Fields: []apiclient.SettingsFieldView{{Name: "somethingElse", Path: []string{"somethingElse"}, Type: "string", Writable: true}},
+		}},
+	}
+	model := BuildPanel(describe, HostFacts{TranscriptView: "standard"})
+	panel, _ := model.Section("general")
+	row, ok := panel.Row("language")
+	if !ok {
+		t.Fatal("general 页缺 language 行")
+	}
+	if row.Known {
+		t.Fatalf("字段真的不存在时必须未知，不能拿 zh 盖过去：value=%q", row.Value)
 	}
 }

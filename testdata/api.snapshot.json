@@ -650,6 +650,34 @@
         ]
       },
       "req_note": "2026-11-13（官方 dsh-api-session-controller 的 SessionSkillCatalog，namespace skills）。**按会话寻址**：目录随该会话的 cwd / agent preset 变，不能全局问一次。只列 `user-invocable` 为真的（frontmatter 缺省即 true，只有显式 false 才隐藏）；**不加载 SKILL.md 正文**（官方注释 without loading skill bodies）。`path` / `whenToUse` 可选。会话查不到 -> 404 not_found + details.sessionId；**空目录 = skills:[]，不是错误**。"
+    },
+    "desktopUpdate.channel.get": {
+      "batch": 3,
+      "req": {},
+      "resp": {
+        "channel": "string?",
+        "packagedChannel": "string",
+        "changing": true,
+        "error": "string?"
+      },
+      "req_note": "2026-11-13（官方 dsh-client-ui-settings-general/src/types.ts:29-74 的壳桥）。**不是 Host 设置**（types.ts:60「shell configuration, independently of Host settings」），所以字段不在 settings.describe 里。`channel` 为 **null = 用户还没选过**（界面显示 desktop.channel.unavailable「配置不可用」），不是错误、也不替成 packaged。宿主没这条能力 -> 501。"
+    },
+    "desktopUpdate.channel.set": {
+      "batch": 3,
+      "req": {
+        "channel": "stable|nightly"
+      },
+      "resp": {
+        "kind": "applied|unchanged|failed",
+        "state": {
+          "channel": "string?",
+          "packagedChannel": "string",
+          "changing": true,
+          "error": "string?"
+        },
+        "reason": "save|format|permission|apply|uncertain"
+      },
+      "req_note": "**失败走 result.kind 三态，不翻成 4xx**：官方把它放进 result（那是「用户选择被拒」，不是「请求写错了」）。`reason` 只在 kind=failed 时出现。"
     }
   },
   "counts": {

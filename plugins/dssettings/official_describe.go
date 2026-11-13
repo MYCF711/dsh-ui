@@ -228,6 +228,37 @@ func buildGeneralSection(panel *PanelSection, describe *apiclient.SettingsDescri
 				Known: facts.ClientVersion != "",
 				Field: it.HostField,
 			})
+		case "desktop-update-channel":
+			// 这一行**不是** Host 设置（官方 types.ts:60：「shell configuration,
+			// independently of Host settings」），所以不能走 generalRow 去查
+			// `dshDesktop.updates.channels` —— 那个字段在 settings.describe 里永远不存在，
+			// 查它只会得到「未知」。真值来自宿主壳服务（`desktopUpdate.channel.get`）。
+			row := PanelRow{
+				ID: it.ID, Title: it.Title, Kind: it.Kind,
+				Field: it.HostField,
+			}
+			for _, c := range it.Choices {
+				row.Choices = append(row.Choices, PanelChoice{Value: c.Value, Label: c.Label, Desc: c.Desc})
+			}
+			switch {
+			case !facts.ShellChannelServed:
+				// 宿主没这条能力：整行不出现（条件已经挡住；这里是兜底，
+				// 若真走到说明条件判断和事实位不一致）。
+				continue
+			case facts.ShellChannelFailure != "":
+				// 壳级故障：官方在行内出 role="alert"（DesktopChannelRow.tsx:30）。
+				row.Disabled = true
+				row.Reason = "宿主报壳级故障：" + facts.ShellChannelFailure
+			case facts.ShellChannel == nil:
+				// 官方 `channel === null` -> 界面显示 `desktop.channel.unavailable`
+				// （「配置不可用」）。**不**替成 packaged。
+				row.Value = "配置不可用"
+			default:
+				row.Value = *facts.ShellChannel
+				row.Known = true
+				row.Selected = *facts.ShellChannel
+			}
+			rows = append(rows, row)
 		case "language":
 			// 官方 `locale.preference` 是**可选**字段：缺省 = 交给浏览器
 			// （`locale-settings.ts:12` "absence delegates to the browser"）。

@@ -328,16 +328,26 @@ var officialGeneralItems = []OfficialGeneralItem{
 		RowAnchor: "ui-settings-session-log/src/client/UploadRow.tsx:26-38",
 	},
 	{
-		// rc.2 新增（D5）。Go GUI 没有 Electron 桌面桥 → 条件不满足 → 不出现。
-		ID: "desktop-update-channel", Order: 95, Title: "更新通道",
-		Desc: "nightly / stable",
+		// rc.2 新增（D5）。
+		//
+		// **两个官方细节原先是错的**（2026-11-13 对着 DesktopChannelRow.tsx 复核）：
+		//   1. 选项**顺序**：官方 `items={[{id:'stable'},{id:'nightly'}]}`（:34）——
+		//      正式版在前。本行原先是 nightly 在前。
+		//   2. 文案：官方 zh 字典是「正式版 / 开发版」（locales.ts:7-8），
+		//      不是 "Stable" / "Nightly"。
+		//
+		// 条件也不再写死"Go GUI 没有桌面桥"：宿主现在提供**同形**的壳服务
+		// （DSH-GO 的 `desktopUpdate.channel.*`），`ShellChannelServed` 为真时本行
+		// 应当出现。宿主没接线时它仍不出现（条件的另一半）。
+		ID: "desktop-update-channel", Order: 95, Title: "更新渠道",
+		Desc: "正式版适合日常使用；开发版可提前体验新功能，但可能不稳定。",
 		Kind: ItemSelector, HostField: "dshDesktop.updates.channels", Rows: 1,
 		Condition: ItemDesktopChannel,
 		Anchor:    "ui-settings-general/src/client/index.ts:109-122",
 		RowAnchor: "ui-settings-general/src/client/DesktopChannelRow.tsx:26-45",
 		Choices: []Choice{
-			{Value: "nightly", Label: "Nightly"},
-			{Value: "stable", Label: "Stable"},
+			{Value: "stable", Label: "正式版"},
+			{Value: "nightly", Label: "开发版"},
 		},
 	},
 	{
@@ -403,6 +413,16 @@ type HostFacts struct {
 	DesktopProtocolVersion int
 	// UpdatesChannels 是 `dshDesktop.updates.channels`；空 = 桥没给通道。
 	UpdatesChannels []string
+	// ShellChannelServed 报告**宿主**的壳更新渠道服务能不能应答
+	// （`desktopUpdate.channel.get` 返回 200）。
+	//
+	// 它与 DesktopProtocolVersion 是**两个来源**：前者是 Electron preload 桥，
+	// 后者是本仓宿主提供的同形服务。都不为真时本行不出现。
+	ShellChannelServed bool
+	// ShellChannel 是宿主报的当前渠道；nil = 用户还没选过（官方 `channel: null`）。
+	ShellChannel *string
+	// ShellChannelFailure 是宿主报的壳级故障（read/format/channel/cleanup），空 = 正常。
+	ShellChannelFailure string
 	// SidebarRightTabs 表示 `sidebarRightTabs` 服务存在（link-opening 的前置）。
 	SidebarRightTabs bool
 	// SessionLogServed 表示 `session-log-deepseek` namespace 被服务。
@@ -423,7 +443,16 @@ type HostFacts struct {
 // 官方两个条件**同时**成立才注册：`protocolVersion === 1` 且 `updates.channels`
 // 非空（`ui-settings-general/src/client/index.ts:109-122`）。
 func (f HostFacts) DesktopChannel() bool {
-	return f.DesktopProtocolVersion == 1 && len(f.UpdatesChannels) > 0
+	// 官方条件：Electron 桥在（`dshDesktop.protocolVersion === 1`）且桥给了通道。
+	if f.DesktopProtocolVersion == 1 && len(f.UpdatesChannels) > 0 {
+		return true
+	}
+	// 本仓等价物：宿主提供了**同形**的壳服务（`desktopUpdate.channel.get` 能应答）。
+	//
+	// 为什么不给 `DesktopProtocolVersion` 直接赋 1：那个字段名专指 Electron 的
+	// preload 协议号，本仓没有 Electron 主进程。塞 1 进去等于**冒名**。
+	// 所以另起一个语义明确的事实位，两个来源任一为真都能让本行出现。
+	return f.ShellChannelServed
 }
 
 // SectionVisible 报告某个 section 条件是否满足。

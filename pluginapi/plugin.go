@@ -817,6 +817,12 @@ type SettingsHostFacts struct {
 	DesktopProtocolVersion int
 	// UpdatesChannels 是 `dshDesktop.updates.channels`；空 = 桥没给通道。
 	UpdatesChannels []string
+	// ShellChannelServed 报告**宿主**的壳更新渠道服务能不能应答。
+	ShellChannelServed bool
+	// ShellChannel 是宿主报的当前渠道；nil = 用户还没选过。
+	ShellChannel *string
+	// ShellChannelFailure 是宿主报的壳级故障。
+	ShellChannelFailure string
 	// SidebarRightTabs 表示 `sidebarRightTabs` 服务存在。
 	SidebarRightTabs bool
 	// SessionLogServed 表示 `session-log-deepseek` namespace 被宿主服务。

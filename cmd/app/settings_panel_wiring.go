@@ -31,6 +31,33 @@ func (m *model) refreshSettingsDescribe() {
 	defer cancel()
 	describe, err := m.cli.SettingsDescribe(ctx)
 
+	// 壳更新渠道与 settings.describe **并行**探一次。
+	//
+	// 为什么单独探：官方这条不是 Host 设置（`types.ts:60`），字段不在 describe 里。
+	// 501 = 宿主没这条能力 -> ShellChannelServed 保持 false -> 「更新渠道」行不出现。
+	channelCtx, channelCancel := context.WithTimeout(context.Background(), settingsWriteTimeout)
+	channelState, channelErr := m.cli.DesktopUpdateChannelGet(channelCtx)
+	channelCancel()
+
+	m.mu.Lock()
+	if channelErr == nil {
+		m.shellChannelServed = true
+		if channelState.Channel != nil {
+			value := string(*channelState.Channel)
+			m.shellChannel = &value
+		} else {
+			// 官方 `channel: null` = 用户还没选过；**不**替成 packaged。
+			m.shellChannel = nil
+		}
+		m.shellChannelFailure = channelState.Error
+	} else {
+		// 探不通（含 501）= 这条能力不存在。**不**把失败当成"渠道为空"。
+		m.shellChannelServed = false
+		m.shellChannel = nil
+		m.shellChannelFailure = ""
+	}
+	m.mu.Unlock()
+
 	m.mu.Lock()
 	m.settingsDescribePending = false
 	if err != nil {
@@ -66,9 +93,20 @@ func (m *model) settingsDescribeSnapshot() *apiclient.SettingsDescribeResult {
 // 每一项都必须**来自真实来源**：宿主没提供的一律零值（= 不注册），
 // 不许为了"界面上多一行"编一个 true。
 func (m *model) settingsHostFacts() pluginapi.SettingsHostFacts {
+	m.mu.Lock()
+	shellServed := m.shellChannelServed
+	shellChannel := m.shellChannel
+	shellFailure := m.shellChannelFailure
+	m.mu.Unlock()
+
 	facts := pluginapi.SettingsHostFacts{
 		// Go GUI 没有官方 Electron 桌面桥（那是 dshDesktop 协议，协议版本 1）。
 		DesktopProtocolVersion: 0,
+		// 宿主提供**同形**壳服务的证据：`desktopUpdate.channel.get` 应答成功。
+		// 它与上面的 Electron 桥是两个来源，任一为真「更新渠道」行才出现。
+		ShellChannelServed:  shellServed,
+		ShellChannel:        shellChannel,
+		ShellChannelFailure: shellFailure,
 		// 右侧栏插件（ds-rightbar）存在：`sidebarRightTabs` 服务可用。
 		SidebarRightTabs: true,
 		// 宿主当前不服务 session-log-deepseek（没有上传通道）。

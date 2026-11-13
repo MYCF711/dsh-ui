@@ -128,6 +128,13 @@ type model struct {
 	settingsDescribePending bool
 	// settingsDescribeErr 是最近一次拉取失败的原因（只报状态栏，不清缓存）。
 	settingsDescribeErr error
+	// shellChannelServed 报告宿主的壳更新渠道服务能不能应答
+	// （`desktopUpdate.channel.get`）。false = 宿主没这条能力 -> 「更新渠道」行不出现。
+	shellChannelServed bool
+	// shellChannel 是宿主报的当前渠道；nil = 用户还没选过（官方 channel: null）。
+	shellChannel *string
+	// shellChannelFailure 是宿主报的壳级故障（read/format/channel/cleanup）。
+	shellChannelFailure string
 	// jobsPending 防重入：刷新在途时不再发第二次请求（每帧都可能问）。
 	jobsPending bool
 	smokeFired  bool

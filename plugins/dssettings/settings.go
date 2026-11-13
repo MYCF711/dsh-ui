@@ -160,6 +160,16 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // 谁调它：`cmd/app -open-settings`（无头截图用，和 `-open-file` 同一个思路：
 // 截图路径注入不了鼠标，只能调插件的公开入口）。产品路径是 Shift+F2。
 func (p *Plugin) Open() bool {
+	// **官方四区面板接管时，必须走它自己的打开路径。**
+	//
+	// 为什么：两个画家各自以 `OfficialEnabled()` 判据互斥——旧浮层的 `draw` 在
+	// 官方接管时直接 return，而 `drawOfficialPanel` 又要求 `o.open`。若这里只置
+	// 旧的 `p.shown`，`o.open` 永远是 false，于是**两边都不画**，用户看到整页空白。
+	// 2026-11-13 真机复现：`-open-settings` 日志打"设置浮层已打开"，截图什么都没有；
+	// 产品路径（Shift+F2 / 侧栏设置按钮，都走 `ui.settings.open`）同一个坑。
+	if p.OfficialEnabled() {
+		return p.OpenOfficial()
+	}
 	p.mu.Lock()
 	ok := HasSettingsActions(p.act)
 	if ok {
@@ -176,6 +186,10 @@ func (p *Plugin) Open() bool {
 
 // Close 收起浮层（幂等）。
 func (p *Plugin) Close() {
+	if p.OfficialEnabled() {
+		p.CloseOfficial()
+		return
+	}
 	p.mu.Lock()
 	was := p.shown
 	p.shown = false
@@ -188,6 +202,9 @@ func (p *Plugin) Close() {
 
 // Shown 报告浮层当前是不是开着（壳的测试与调试用）。
 func (p *Plugin) Shown() bool {
+	if p.OfficialEnabled() {
+		return p.OfficialShown()
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.shown

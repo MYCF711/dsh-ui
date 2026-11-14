@@ -1030,16 +1030,23 @@
           "everySeconds": "int?",
           "time": "string?",
           "timeZone": "string",
-          "weekdays": ["int?"],
+          "weekdays": [
+            "int?"
+          ],
           "expression": "string?",
           "rrule": "string?",
           "scheduledAt": "string",
           "target": {
             "kind": "session|new_once|new",
             "sessionId": "string?",
-            "create": {"cwd": "string?", "agentPreset": "string?"}
+            "create": {
+              "cwd": "string?",
+              "agentPreset": "string?"
+            }
           },
-          "involvedSessionIds": ["string"],
+          "involvedSessionIds": [
+            "string"
+          ],
           "status": "active|paused|ended",
           "createdAt": "string?",
           "updatedAt": "string?",
@@ -1076,14 +1083,20 @@
     },
     "schedule.run": {
       "batch": 11,
-      "req": {"id": "string"},
+      "req": {
+        "id": "string"
+      },
       "resp": "ScheduleCatalogEntry | {id,code}",
       "req_note": "立即执行一次；宿主没有 runner 时回 501（HOST:cmd/dshd/serve_schedule_api.go:827）。",
       "resp_note": "execution_pending 是正常 miss，不是错误。"
     },
     "schedule.history": {
       "batch": 11,
-      "req": {"id": "string", "limit": "int=20", "before": "string?"},
+      "req": {
+        "id": "string",
+        "limit": "int=20",
+        "before": "string?"
+      },
       "resp": {
         "id": "string",
         "records": [
@@ -1097,15 +1110,79 @@
         ],
         "earlierRecordsUnavailable": "bool",
         "earlierRecordsPruned": "bool",
-        "retention": {"days": "int", "records": "int"},
+        "retention": {
+          "days": "int",
+          "records": "int"
+        },
         "nextBefore": "string?"
       },
       "req_note": "limit 官方必填 1..100（:946-990）；before 是 messageId 排他游标。",
       "resp_note": "结果也是 union：可能回 {id,code}。nextBefore 只在'更旧还有'时出现。"
+    },
+    "workspace.registry": {
+      "batch": 12,
+      "req": {},
+      "resp": {
+        "version": "int",
+        "defaultWorkspaceId": "string?",
+        "order": [
+          "string"
+        ],
+        "workspaces": [
+          {
+            "workspaceId": "string",
+            "path": "string",
+            "title": "string",
+            "sessionIds": [
+              "string"
+            ],
+            "createdAt": "RFC3339",
+            "updatedAt": "RFC3339"
+          }
+        ],
+        "archivedSessionIds": [
+          "string"
+        ],
+        "pinnedSessionIds": [
+          "string"
+        ],
+        "registryPath": "string?"
+      },
+      "req_note": "宿主扩展（不在官方 223 方法表内）：列出 <home>/state/workspaces.json 的真实 registry。无参数；空集合是 []，不是 null。HOST:internal/transport/handlers_workspace_registry.go:77-103"
+    },
+    "workspace.rename": {
+      "batch": 12,
+      "req": {
+        "workspaceId": "string",
+        "title": "string"
+      },
+      "resp": {
+        "workspace": {
+          "workspaceId": "string",
+          "path": "string",
+          "title": "string",
+          "sessionIds": [
+            "string"
+          ],
+          "createdAt": "RFC3339",
+          "updatedAt": "RFC3339"
+        }
+      },
+      "req_note": "官方 workspace/rename（斜杠换点）。空标题/重名回四字段错误；成功返回 {workspace}。HOST:internal/transport/handlers_workspace_official.go:748、:110-125"
+    },
+    "workspace.delete": {
+      "batch": 12,
+      "req": {
+        "workspaceId": "string"
+      },
+      "resp": {
+        "deleted": true
+      },
+      "req_note": "官方 workspace/delete。deleted 是 literal true；只摘注册，不删文件夹/会话记录（官方 delete.desc）。HOST:internal/transport/handlers_workspace_official.go:773"
     }
   },
   "counts": {
-    "total": 61,
+    "total": 64,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1116,6 +1193,7 @@
     "batch8": 1,
     "batch9": 1,
     "batch10": 5,
-    "batch11": 4
+    "batch11": 4,
+    "batch12": 3
   }
 }

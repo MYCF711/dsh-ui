@@ -19,6 +19,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
@@ -154,6 +155,19 @@ type Plugin struct {
 	schedExpanded     map[string]bool
 	schedActionNotice string
 	schedNoticeUntil  time.Time
+
+	// ── #10 context menu 与 #62 工作区动作的本地状态（workspace_actions.go）──
+	//
+	// menus 是 ds-contextmenu 提供的服务（生产装配注入；服务键不在 Requires 里，
+	// 单测/最小装配可以没有）；nil = 没有服务——所有菜单入口都安静退化为旧路径。
+	menus pluginapi.ContextMenus
+	// wsMu 保护下面四个字段：改名/删除动作在 goroutine 里跑，绘制线程同时读。
+	wsMu     sync.Mutex
+	wsAction workspaceActionRequest
+	wsBusy   bool
+	wsErr    string
+	// wsRename 是重命名对话框的输入框（Fields() 必须登记，否则收不到键盘）。
+	wsRename ui.Field
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -164,6 +178,9 @@ func (*Plugin) Provides() []string { return nil }
 
 // Requires 实现 pluginapi.Plugin：没有根本依赖插件它什么都画不了。
 func (*Plugin) Requires() []string {
+	// context menu 服务是**可选**的：单测/最小装配里没有 ds-contextmenu 时，
+	// 侧栏必须还能画（菜单入口退化为旧路径），不能把整个装配卡住。
+	// 生产装配（Builtin 全量）里 ds-contextmenu 总会先就位，Register 时注入。
 	return []string{pluginapi.KeyTheme, pluginapi.KeyPrimitives}
 }
 
@@ -172,6 +189,11 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	p.collapsed = map[string]bool{}
+	// #10/#62：菜单服务与两份业务贡献（workspace 改名/删除、session 复制 id）。
+	// 贡献是数据面，渲染由服务统一做；这里只登记文案与动作。
+	if err := p.registerContextMenus(ctx); err != nil {
+		return err
+	}
 	if p.CollapseAll {
 		p.allCollapsed = true
 	}
@@ -190,7 +212,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 //
 // 任务管理页的搜索框同样要登记：它只在那个面板可见，但注册是静态的，
 // 焦点由壳按"点到的输入框"分配，多一个未挂载的 Field 不会抢焦点。
-func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.search, &p.schedSearch} }
+func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.search, &p.schedSearch, &p.wsRename} }
 
 // Width 返回侧栏占的宽度。
 func (p *Plugin) Width() float32 { return p.width }
@@ -202,6 +224,9 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		{ID: "list", Slot: pluginapi.SlotSidebarList, Order: 20, Draw: p.drawWorkspace},
 		{ID: "footer", Slot: pluginapi.SlotSidebarFooter, Order: 30, Draw: p.drawFooter},
 		{ID: "active-panel", Slot: pluginapi.SlotShellOverlay, Order: 50, Draw: p.drawActivePanel},
+		// #62 工作区改名/删除对话框：模态栈顶（103 已被 dsconversation 的
+		// feedback-overlay 占用；同槽同 Order 由 cmd/app 的守卫拦）。
+		{ID: "workspace-dialogs", Slot: pluginapi.SlotShellOverlay, Order: 104, Draw: p.drawWorkspaceDialogs},
 	}
 }
 
@@ -295,8 +320,37 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 				}
 				gid := env.Tree.ID(env.Feat, "g-"+key)
 				ui.Column(f).Width(inner).Gap(rowGap).Children(func() {
-					if p.prims.SectionHeader(f, gid, displayWorkspace(key), len(sessions), open).Clicked() {
-						p.toggleGroup(key)
+					// #62：真实 registry 里有这条工作区时，组头用 registry 的标题
+					// （用户改过的名字），并挂官方右键菜单 + 省略号按钮。
+					label := displayWorkspace(key)
+					target, hasTarget := workspaceMenuTarget(env.Data.Workspaces, key)
+					if hasTarget {
+						label = workspaceTargetLabel(target, label)
+						// 服务注册了贡献不等于壳接了写面：老壳上不画空菜单。
+						hasTarget = env.Act.WorkspaceRename != nil || env.Act.WorkspaceDelete != nil
+					}
+					if p.menus == nil {
+						// 单测/旧壳直接构造 Plugin：保留原路径，不造菜单入口。
+						if p.prims.SectionHeader(f, gid, label, len(sessions), open).Clicked() {
+							p.toggleGroup(key)
+						}
+					} else {
+						ui.Row(f).FillWidth().Height(groupRowHeight).Children(func() {
+							header := p.prims.SectionHeader(f, gid, label, len(sessions), open)
+							if header.Clicked() {
+								p.toggleGroup(key)
+							}
+							if !hasTarget {
+								return
+							}
+							// 官方 Rows.tsx:325 的 getTriggerProps：整行右键；
+							// Rows.tsx:330 的 contextMenu.button：行尾省略号。
+							p.menus.Attach(f, header, target)
+							ui.Row(f).Absolute().Top(7).Right(8).Children(func() {
+								p.menus.Button(f, env.Tree.ID(env.Feat, "ws-menu-"+target.ID), target,
+									"工作区“"+label+"”的操作")
+							})
+						})
 					}
 					if !open {
 						return
@@ -493,6 +547,13 @@ func (p *Plugin) drawSession(f ui.C, env *pluginapi.Env, s apiclient.Session) {
 		}
 		if canDelete {
 			p.drawDeleteBox(f, env, s, confirming)
+		}
+		// #10 contextMenu.button 的 session 消费方（官方 Rows.tsx:752 同一座位）：
+		// 只有 ds-contextmenu 登记了 session 贡献时才画（服务自己守空槽不占位）。
+		if p.menus != nil && env.Act.Copy != nil {
+			p.menus.Button(f, env.Tree.ID(env.Feat, "cm-"+s.ID), pluginapi.ContextMenuTarget{
+				Kind: "session", ID: s.ID, DisplayTitle: title,
+			}, "会话“"+title+"”的操作")
 		}
 	})
 	if row.Clicked() && env.Act.OpenSession != nil {

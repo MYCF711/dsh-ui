@@ -291,6 +291,21 @@ type JobOutput struct {
 	Err        string
 }
 
+// Workspace 是官方 `workspace.registry` 的一条工作区（WorkspaceView 的投影）。
+//
+// 官方字段见 `HOST:internal/transport/handlers_workspace_official.go`
+// 的 `OfficialWorkspace`：workspaceId / path / title / sessionIds / createdAt /
+// updatedAt。它是**真实 registry**（宿主 `<home>/state/workspaces.json`）的视图，
+// 不是按 cwd 猜出来的分组。
+type Workspace struct {
+	WorkspaceID string
+	Path        string
+	Title       string
+	SessionIDs  []string
+	CreatedAt   string
+	UpdatedAt   string
+}
+
 // ScheduleItem 是定时任务的一行。
 type ScheduleItem struct {
 	ID       string
@@ -314,10 +329,15 @@ type FSEntry struct {
 
 type Snapshot struct {
 	Sessions []apiclient.Session
-	Cur      string
-	Search   string
-	Status   string
-	Msgs     []apiclient.Message
+	// Workspaces 是官方 `workspace.registry` 的缓存投影（壳在启动/改名/删除后刷新）。
+	//
+	// 空 = 宿主没有 registry 或还没拉到：消费方必须退回"按 cwd 分组"的旧路径，
+	// 不能把空切片当成"用户没有任何工作区"而画空状态。
+	Workspaces []Workspace
+	Cur        string
+	Search     string
+	Status     string
+	Msgs       []apiclient.Message
 	// Frames 是当前会话 journal 的**原始 Transport 帧**（`session.history` 的
 	// `frames[]` 与 WS 推送**同一个形状**），按 seq 升序、已去重。
 	//
@@ -614,6 +634,20 @@ type Actions struct {
 	//
 	// nil = 壳没接。插件这时不该画入口。
 	CompactSession func()
+
+	// WorkspaceRename 改一个已注册工作区的显示名（宿主 `workspace.rename`）。
+	//
+	// **同步返回错误**：官方 WorkspaceDialogs 的"重命名"按钮需要把宿主的四字段
+	// 错误显示在对话框里（重名/空标题等），不能像后台写那样只写状态栏。
+	// 调用方必须在 goroutine 里调，别阻塞绘制线程。
+	// nil = 壳没接（老宿主）→ 侧栏不画"重命名"菜单项。
+	WorkspaceRename func(workspaceID, title string) error
+	// WorkspaceDelete 把一条工作区注册从 registry 移除（宿主 `workspace.delete`）。
+	//
+	// 语义与官方 `delete.desc` 一致：**只移除工作区列表，不删文件夹、不删会话记录**；
+	// 该工作区的会话会落到"未分组"。同步返回错误，调用方在 goroutine 里调。
+	// nil = 壳没接 → 不画"删除工作区"菜单项。
+	WorkspaceDelete func(workspaceID string) error
 
 	// DeleteSession 删掉一个会话（宿主 `session.delete`，**从磁盘上删**）。
 	//

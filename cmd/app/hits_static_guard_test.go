@@ -44,6 +44,7 @@ import (
 // 每一条都必须能指出**它在哪里 `.Hit`**——否则它就不是辅助函数，而是真缺陷。
 var hitsIdentityHelpers = map[string]string{
 	"ListRow":             "plugins/dscore/primitives.go 的 ListRow：`return row.Hit(id, \"\").Children(body)`",
+	"SectionHeader":       "plugins/dscore/primitives.go 的 SectionHeader：`.Hit(id, \"\")` 与 ListRow 同一类（身份由调用方 id 给）",
 	"chromeButton":        "plugins/dsrightbar/rightbar.go 的 chromeButton：`.Hit(env.Tree.ID(env.Feat, name), label)`",
 	"workspaceIconButton": "plugins/dssidebar/frame.go 的 workspaceIconButton：内部 `Hit(id, label)`",
 }

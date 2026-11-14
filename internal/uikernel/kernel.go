@@ -245,6 +245,51 @@ func (k *Kernel) AllPainters() []pluginapi.Painter {
 	return append([]pluginapi.Painter(nil), k.painters...)
 }
 
+// PaintersKeyed 返回某个 **keyed 槽**上 key 命中的画，顺序与 Painters 一致。
+//
+// 官方 keyed 槽的语义是「同一个槽按 key 取一份」（`SlotMap` 里 `kind:'keyed'`），
+// 所以这里**不回退**成「全画一遍」：key 空或没人命中就是空切片。回退会让两个
+// view / 两个 tab 同时画进同一块矩形，那是界面上一眼可见的错，但要查很久。
+func (k *Kernel) PaintersKeyed(slot pluginapi.Slot, key string) []pluginapi.Painter {
+	if key == "" {
+		return nil
+	}
+	var out []pluginapi.Painter
+	for _, p := range k.painters {
+		if p.Slot == slot && p.Key == key {
+			out = append(out, p)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Order < out[j].Order })
+	return out
+}
+
+// HasKey 判断某个 keyed 槽上 key 有没有占用方。
+func (k *Kernel) HasKey(slot pluginapi.Slot, key string) bool {
+	return len(k.PaintersKeyed(slot, key)) > 0
+}
+
+// DrawSlotKeyed 画一个 keyed 槽位里 key 命中的那一份（含它声明的子槽）。
+func (k *Kernel) DrawSlotKeyed(f ui.C, slot pluginapi.Slot, key string, env *pluginapi.Env) {
+	k.drawSlotKeyed(f, slot, key, env, 0)
+}
+
+func (k *Kernel) drawSlotKeyed(f ui.C, slot pluginapi.Slot, key string, env *pluginapi.Env, depth int) {
+	if depth > 8 {
+		return
+	}
+	for _, p := range k.PaintersKeyed(slot, key) {
+		if p.Draw != nil {
+			p.Draw(f, env)
+		}
+		if p.Children != nil {
+			p.Children(f, env, func(next pluginapi.Slot) {
+				k.drawSlot(f, next, env, depth+1)
+			})
+		}
+	}
+}
+
 // DrawSlot 画一个槽位，并递归它声明的子槽位。
 //
 // 深度上限是防御性的：插件写错成自引用（槽 A 的 Children 又画槽 A）会无限递归，

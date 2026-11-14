@@ -141,22 +141,22 @@
 | 47 | `dsh-client-ui-settings-web-search` | ❌ MISSING | 无 |
 | 48 | `dsh-client-ui-shortcuts` | ✅ IMPLEMENTED | `plugins/dsshortcuts`（2 文件 / 213 行） |
 | 49 | `dsh-client-ui-sidebar` | ✅ IMPLEMENTED | `plugins/dssidebar`（5 文件 / 1418 行） |
-| 50 | `dsh-client-ui-sidebar-browser` | ❌ MISSING | 无（HIDE：官方是右栏沙箱 HTTP(S) 浏览器 tab，需 `sidebarRightTabs` + iframe/Electron webview；本仓两者都没有；此前的 `dssidebar` 搜索框是误映射） |
+| 50 | `dsh-client-ui-sidebar-browser` | ❌ MISSING | 无（HIDE：官方是右栏沙箱 HTTP(S) 浏览器 tab。**tab 注册表已建**（2026-11-15，[official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md)），但本仓**没有 iframe/Electron webview 这一层**——Go 即时模式界面里嵌不了网页；此前的 `dssidebar` 搜索框是误映射） |
 | 51 | `dsh-client-ui-sidebar-documentpreview` | ✅ IMPLEMENTED | `plugins/dsfiles` 预览浮层 |
 | 52 | `dsh-client-ui-sidebar-files` | ✅ IMPLEMENTED | `plugins/dsfiles` |
-| 53 | `dsh-client-ui-sidebar-right` | ✅ IMPLEMENTED | `dsrightbar` + `dsshell` + uikernel |
-| 54 | `dsh-client-ui-sidebar-terminal` | 🟡 PARTIAL | `plugins/dsterminal` + `internal/ansi` |
+| 53 | `dsh-client-ui-sidebar-right` | ✅ IMPLEMENTED | `dsrightbar` + `dsshell` + uikernel；右栏现在是**两阶段注册 + tab 条**（2026-11-15）：类型/体分开注册、按名录派发选中项，见 [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md) §2.4 |
+| 54 | `dsh-client-ui-sidebar-terminal` | 🟡 PARTIAL | `plugins/dsterminal` + `internal/ansi`；**官方座位已接**（2026-11-15）：终端是右栏的 `terminal` tab 类型，右栏展开时用它、收起时退回 F5 浮层。剩余缺口是**终端本体**（VT 交互、多终端、agent 终端、沙箱徽标）——见 [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md) §5 |
 | 55 | `dsh-client-ui-skill` | ✅ IMPLEMENTED | `plugins/dsskill`（7 文件 / 2238 行） |
 | 56 | `dsh-client-ui-subagent` | ✅ IMPLEMENTED | 目录行本体：`plugins/dsagentteam/catalog.go`（disclosure/递归层级/token+时长指标/当前会话对勾/Esc）+ `catalog_metrics.go` + 壳侧逐子会话投影 `cmd/app/wave3_wiring.go`；footer（TeamBoard）仍是既有落点；证据 [official-subagent-evidence-rc2.md](official-subagent-evidence-rc2.md) |
 | 57 | `dsh-client-ui-theme` | ✅ IMPLEMENTED | `dscore` + `cmd/app/theme.go` |
 | 58 | `dsh-client-ui-tool` | ✅ IMPLEMENTED | `plugins/dstool`（7 文件 / 930 行） |
-| 59 | `dsh-client-ui-trajectory` | 🟡 PARTIAL | `plugins/dsrightbar` |
+| 59 | `dsh-client-ui-trajectory` | 🟡 PARTIAL | `plugins/dsrightbar`；已注册为 `conversation.view` 的 `trajectory` 条目（`order:10`，与官方一致），页签行由注册表驱动（2026-11-15）。剩余缺口是官方的分组/折叠层级——见 [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md) §5 |
 | 60 | `dsh-client-ui-user-questions` | ✅ IMPLEMENTED | `plugins/dsquestions`（3 文件 / 423 行） |
 | 61 | `dsh-client-ui-workflow-run` | ✅ IMPLEMENTED | `dsconversation` 的 workflow-run 节点 |
 | 62 | `dsh-client-ui-workspace` | 🟡 PARTIAL | `internal/apiclient/fs.go` + `dssidebar` + `plugins/dssidebar/workspace_actions.go`（**`workspace.registry`/`rename`/`delete`，#10 contextMenu 入口**）；剩余缺口见 [official-context-menu-workspace-evidence-rc2.md](official-context-menu-workspace-evidence-rc2.md) §2.3 |
 | 63 | `dsh-experimental-client-ui-cot-translation` | ❌ MISSING | 无 |
 | 64 | `dsh-experimental-client-ui-forge` | ❌ MISSING | 无 |
-| 65 | `dsh-experimental-client-ui-stats` | 🟡 PARTIAL | `plugins/dsstatusbar/metrics.go` + `wave3_wiring.go` |
+| 65 | `dsh-experimental-client-ui-stats` | 🟡 PARTIAL | `plugins/dsstatusbar/metrics.go` + `wave3_wiring.go`；**注册机制已就位**（2026-11-15）：它要的就是往 `conversation.view` 注册一个 `order:40` 的 `stats` 条目，壳已按名录派发；缺的是视图本体（逐 step/turn 列）搬成 view——见 [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md) §5 |
 | 66 | `dsh-experimental-client-ui-voice-input` | ❌ MISSING | 无 |
 
 > #29 / #42 / #43 三行的完整结构与几何证据（官方 `src/**` 锚点、逐字 locale、HIDE 台账）：[official-plugins-page-evidence-rc2.md](official-plugins-page-evidence-rc2.md)。其中 #43 的「内置/第三方分 tab」在 rc.2 **不存在**——`settings.plugins.tab` 全仓只有只读清单一个贡献方。
@@ -164,6 +164,12 @@
 > #22 的结构与几何证据、与官方的 9 条差异台账：[official-jobs-evidence-rc2.md](official-jobs-evidence-rc2.md)。
 >
 > #34 的结构与几何证据、与官方的差异台账：[official-schedule-evidence-rc2.md](official-schedule-evidence-rc2.md)。未做面：会话头提醒目录、`schedule_create` 转录卡、会话行时钟标记、手动创建表单、可编辑规则、⋯ 菜单（理由与缺口见该文件 §4）。
+
+> **多视图座位（会话 view / 右栏 tab）机制**（2026-11-15）：官方那两处「一个位置、多个视图轮流上」的座位，
+> 本仓现在有注册表 + 按名录派发 + 选择器绘制三件套，`conversation.view` 与 `sidebar.right.pane.tab` 都是真的
+> keyed/list 派发（此前骨架 `has→return`，这两族槽**永不 dispatch**）。逐条证据、落点、与官方的 6 条缺口：
+> [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md)。**机制本身不改变任何部件的状态**——
+> `#54`/`#59`/`#65` 仍是 🟡，它们从"卡在没机制"变成"只差页面本体"。
 
 ## 合计：官方 66 个部件 —— ✅ 39 · 🟡 10 · ⬜ 0（不该有） · ❌ 17
 

@@ -65,6 +65,15 @@ type Theme struct {
 	Bubble     ui.Color
 	InputMajor ui.Color
 
+	// MarkdownTag ← --dsw-alias-markdown-tag
+	//
+	// 名字来自 Markdown 的行内标记底色，但 dockkit 的**选中 tab 底**用的就是它
+	// （`_tabActive_123xe_344{color:label-primary;background:var(--dsw-alias-markdown-tag)}`
+	// ，见 dsh-web-frontend/dist/assets/index-CSAdOBx6.css 的 `_123xe_` 模块）。
+	// 取值来自 dsh-client-ui-theme/src/styles/design-platform.css:272（亮）
+	// 与 :424（暗）：分别是 --dsw-static-neutral-bluish-75 / -850。
+	MarkdownTag ui.Color
+
 	// ── 滚动条 ──
 	Scrollbar      ui.Color
 	ScrollbarHover ui.Color

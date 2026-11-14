@@ -14,6 +14,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -85,10 +86,29 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	return nil
 }
 
+// RightTabTimeline 是本包注册的右栏 tab **类型** id（官方 tab 类型的 `id`）。
+//
+// 它同时是 keyed 座位 `sidebar.right.pane.tab` 的 key 与名录上的身份。
+const RightTabTimeline = "timeline"
+
 // Panels 实现 pluginapi.Panels。
+//
+// 四块画，两个座位：
+//
+//	sidebar.right.pane.tab（keyed）  本栏 tab 类型的**体**（key = RightTabTimeline）
+//	rightbar（root single）          右栏面板本身：画 dockkit tab 条 + 派发选中那一个体
+//	conversation.view（keyed）       轨迹视图（key = 'trajectory'，与 dstopbar 的页签同一名录）
+//	main.body（旧槽 ×2）             三栏兼容桥：官方座位那帧不派发，桥那帧照旧工作
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
+		// 右栏 tab 类型 `timeline` 的体。壳投影名录时读它的 Key/Label/Order。
+		{ID: "timeline-body", Slot: pluginapi.SlotRightPaneTab, Key: RightTabTimeline,
+			Label: "轨迹", Order: 10, Draw: p.drawTimelineBody},
+		// 右栏面板：官方 `rightbar` 座位（ui-sidebar-right 的 RightbarRoot 对应物）。
 		{ID: "timeline", Slot: pluginapi.SlotRightbar, Order: 10, Draw: p.draw},
+		// 官方 `conversation.view` 的 trajectory 条目：名录上的"轨迹"页签就是这条。
+		{ID: "trajectory-seat", Slot: pluginapi.SlotConvView, Key: pluginapi.ViewTrajectory,
+			Label: "轨迹", Order: 10, Draw: p.drawTrajectorySeat},
 		{ID: "view-chat-gate", Slot: pluginapi.SlotMainBody, Order: 10, Draw: p.beginTrajectoryView},
 		{ID: "trajectory-view", Slot: pluginapi.SlotMainBody, Order: 30, Draw: p.drawTrajectoryView},
 	}
@@ -111,7 +131,68 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 			Hit(env.Tree.ID(env.Feat, "rightbar-fullscreen"), "右栏全屏面板")
 	}
 	root.Children(func() {
+		// 右栏是**选择器**：登记了 tab 类型就画官方 dockkit 的 `.tabStrip`，
+		// 面板体只派发选中那一个 key（`uikernel.RightTabs` 做的名录投影）。
+		//
+		// 名录为空、或壳这一帧没接 keyed 派发（`Env.DrawKeyed == nil`：最小装配与
+		// 单测环境）时退回 rc.2 之前的行为——直接画时间线。那是过渡桥，与
+		// `uikernel.ShellOptions.BridgeLegacy` 同一性质，不是终态。
+		if tabs, active := p.rightTabs(env); len(tabs) > 0 && env.DrawKeyed != nil {
+			selectTab := func(string) {}
+			if env.Act.SelectRightTab != nil {
+				selectTab = env.Act.SelectRightTab
+			}
+			uikernel.DrawRightTabs(f, env, tabs, active, selectTab)
+			ui.Row(f).FillWidth().Grow(1).Children(func() {
+				env.DrawKeyed(f, pluginapi.SlotRightPaneTab, active)
+			})
+			return
+		}
 		p.drawTimeline(f, env, env.Data, "rightbar-scroll-", true)
+	})
+}
+
+// rightTabs 取这一帧的右栏 tab 名录与激活项。
+//
+// 名录由壳投影（`uikernel.RightTabs`）后经 `Env.RightTabs` 交进来；本包**不查表**、
+// 不排序、不算激活，只把壳说的画出来。名录取不到时返回空——调用点据此走过渡桥。
+func (p *Plugin) rightTabs(env *pluginapi.Env) ([]pluginapi.Tab, string) {
+	if env == nil || len(env.RightTabs) == 0 {
+		return nil, ""
+	}
+	active := env.ActiveRightTab
+	if active == "" {
+		if tab, ok := uikernel.ResolveActiveRightTab(env.RightTabs, ""); ok {
+			active = tab.Key
+		}
+	}
+	return env.RightTabs, active
+}
+
+// drawTimelineBody 是 `sidebar.right.pane.tab` 上 key = timeline 的那块体。
+//
+// 与旧路径共用同一个 `drawTimeline`：右栏（chrome=true）与主区轨迹（chrome=false）
+// 共用同一组真实工具消息，这一层只决定挂在哪。
+func (p *Plugin) drawTimelineBody(f ui.C, env *pluginapi.Env) {
+	p.drawTimeline(f, env, env.Data, "rightbar-scroll-", true)
+}
+
+// drawTrajectorySeat 是官方 `conversation.view` 上 key = trajectory 的那块体。
+//
+// 与旧三栏的 `drawTrajectoryView` 是**同一份内容的两条挂法**，互斥：
+//
+//	官方档：壳按 key 只派发选中的那一个 view，本函数直接画，不需要"把 chat 推到视口外"
+//	旧三栏：主区正文由 dsconversation 画，只能靠 beginTrajectoryView 的视口偏移让位
+//
+// 两条都留着是因为档位由壳一帧一个值决定（cmd/app 的 resolve()）；哪一帧活哪一条，
+// 见 conversation.go 的座位注释。
+func (p *Plugin) drawTrajectorySeat(f ui.C, env *pluginapi.Env) {
+	if p.views == nil || p.views.Active(env.Data.Cur) != viewapi.Trajectory {
+		return
+	}
+	ui.Column(f).FillWidth().FillHeight().
+		Hit(env.Tree.ID(env.Feat, "main-trajectory"), "主区轨迹").Children(func() {
+		p.drawTimeline(f, env, env.Data, "main-trajectory-scroll-", false)
 	})
 }
 

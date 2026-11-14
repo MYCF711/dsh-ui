@@ -114,8 +114,11 @@ func (p *Plugin) containerPanels() []pluginapi.Painter {
 		// 容器 D：chat 命令节点渲染器。官方 chat 列 + 旧 transcript 座位。
 		//   Draw     = 官方兜底卡（没被认领的命令）
 		//   Children = 认领行的 `.callRow` + `conversation.chat.commandview` 的 drawSlot
-		{ID: "agent-team.command-node", Slot: uikernel.OffConvView, Order: 80,
-			Draw: p.drawCommandNodeCards, Children: p.commandNodeChildren},
+		// chat 视图的**第二块画**（本仓 chat 由 ds-conversation 与 ds-agent-team 各画一段）：
+		// 同 key 的名录项在 `uikernel.ViewTabs` 里合成一条，`Label` 留空表示
+		// "本块不提供芯片文案"，文案由 ds-conversation 那条给。
+		{ID: "agent-team.command-node", Slot: uikernel.OffConvView, Key: pluginapi.ViewChat,
+			Order: 80, Draw: p.drawCommandNodeCards, Children: p.commandNodeChildren},
 		{ID: "agent-team.command-node-legacy", Slot: pluginapi.SlotMainBody, Order: 80,
 			Draw: p.drawCommandNodeCards, Children: p.commandNodeChildren},
 	}

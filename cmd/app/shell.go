@@ -107,11 +107,18 @@ func linkStateOf(up, down, connecting bool) pluginapi.LinkState {
 // 这里只许读真值：会话、右栏开关、侧栏宽度偏好都来自 model；未知一律按
 // 官方默认（空 bottom、单 view、无 tabs），不编一个假值出来。
 func shellOptionsFor(m *model, kernel *uikernel.Kernel, width, height float32) uikernel.ShellOptions {
+	// 两个选择器座位的名录：壳从内核的 painter 表投影一次，骨架照着画。
+	// 与 `env.Views` / `env.RightTabs` 必须是**同一份**（同一个函数、同一个内核），
+	// 否则官方档与 legacy 档会画出两套页签。
+	views := uikernel.ViewTabs(kernel)
+	rightTabs := uikernel.RightTabs(kernel)
 	opts := uikernel.ShellOptions{
 		// caption 由 L0 的 frame_chrome 扣过一次，这里的 bounds 已是内容区。
 		Windows: false,
-		// 目前只有 Chat 一个 view（Trajectory 未接），所以 header 是「无 tabs」态。
-		Tabs:  false,
+		// view 页签行只在**多于一个** view 时出现（官方
+		// `showTabs = !hideChrome && tabs.length > 1`）。名录由内核投影得到，
+		// 数出来是几就是几——不再写死 false。
+		Tabs:  len(views) > 1,
 		Blank: m.cur == "",
 		Phase: uikernel.PhaseActive,
 		// Windows 下官方侧栏收起后整列消失（rail 0）；Web 保留 56px 图标轨。
@@ -120,6 +127,11 @@ func shellOptionsFor(m *model, kernel *uikernel.Kernel, width, height float32) u
 		// shell.bottom 当前没有占用方（旧 dsstatusbar 已由 shell.bottom 取代且未挂），
 		// 官方默认不预留高度。
 		BottomHeight: 0,
+
+		Views:          views,
+		ActiveView:     m.activeViewKey(),
+		RightTabs:      rightTabs,
+		ActiveRightTab: m.activeRightTabKey(rightTabs),
 	}
 	if runtime.GOOS == "windows" {
 		opts.CollapsedWidth = 0

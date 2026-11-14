@@ -329,8 +329,11 @@ type model struct {
 	// rightbarDefault 保留 -rightbar 的显式默认；普通启动为 false。
 	rightbarDefault  bool
 	rightbarSessions map[string]rightbarSessionState
-	status           string
-	loading          bool
+	// rightTabSel 是每会话选中的右栏 tab **类型 key**（官方也是 per-session 的
+	// dockkit 页签选择）。空/未命中由 uikernel.ResolveActiveRightTab 落名录第一条。
+	rightTabSel map[string]string
+	status      string
+	loading     bool
 
 	// WP-C1 的本地发送与原始终局均按会话隔离；不进入 apiclient.Message.Seq。
 	outgoing   map[string][]pubapi.OutgoingMessage
@@ -1963,6 +1966,14 @@ func newConfig(m *model) app.Config {
 			ScrollBox: func(box ui.Box) { scrollBox, hasScrollBox = box, true },
 		}
 		env.Has = func(slot pluginapi.Slot) bool { return m.kernel.Has(slot) }
+		// 两个选择器座位的**名录 + 当前激活项**：由壳从内核的 painter 表投影出来
+		// （uikernel.ViewTabs / RightTabs），插件只注册、不查表、不算激活。
+		// 会话 view 的选中项存在 dstopbar 提供的 viewapi.Store 里（那是插件间既有
+		// 的唯一出处，壳不另起一份），右栏 tab 的选中项存在壳自己的模型里。
+		env.Views = uikernel.ViewTabs(m.kernel)
+		env.RightTabs = uikernel.RightTabs(m.kernel)
+		env.ActiveView = m.activeViewKey()
+		env.ActiveRightTab = m.activeRightTabKey(env.RightTabs)
 		// 三栏几何由壳算：它知道侧栏要的宽度、右栏开不开、白名单里有没有底部整行。
 		// 框架插件照着摆，不再自己猜（猜错过：白名单里漏掉 shell，部件就上下堆叠）。
 		// 与上面 env.MainWidth 用的是**同一份**求解结果，不允许两处各算一遍。
@@ -1986,6 +1997,11 @@ func newConfig(m *model) app.Config {
 		}
 
 		m.view.Draw(canvas, contentBounds, func(f ui.C) {
+			// keyed 座位（conversation.view / sidebar.right.pane.tab）按 key 派发：
+			// 只有这一帧真的有一个 key 时才接上，插件据此判断"壳接了注册表没有"。
+			env.DrawKeyed = func(target ui.C, slot pluginapi.Slot, key string) {
+				m.kernel.DrawSlotKeyed(target, slot, key, env)
+			}
 			if shellTier == shellOfficial {
 				// 官方骨架：结构/槽名/几何来自 internal/uikernel，内容仍是插件。
 				drawOfficialFirstScreen(f, m, env, shellOpts)
@@ -2722,6 +2738,9 @@ func main() {
 		// 只重绘、不写状态栏：给插件的时间动画（官方 150ms 离场淡出）用。
 		Invalidate:     func() { m.inv.Invalidate() },
 		ToggleRightbar: m.toggleRightbar,
+		// 选择器动作：两个座位共用一套语义（只切"看哪一个"，不发请求、不 reload）。
+		SelectView:     m.selectViewKey,
+		SelectRightTab: m.selectRightTabKey,
 		// 审批：真调 session.approve，把宿主的 requestId 与它自己的 optionId 原样回传。
 		// **只有宿主 200 且 accepted 才收气泡**——本地收掉不等于批准了（宿主 §11.7）。
 		// 失败时气泡留着、状态栏报错，用户可以再点一次。

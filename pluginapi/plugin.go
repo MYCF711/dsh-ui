@@ -135,6 +135,46 @@ const (
 
 	SlotRightbar  Slot = "rightbar"
 	SlotStatusbar Slot = "statusbar"
+
+	// ── 官方 rc.2 的**选择器座位**（keyed / list）──────────────────────────
+	//
+	// 这四个是「一个槽装多个 view / tab」的官方座位，也是插件唯一的注册入口：
+	//
+	//	SlotRightbarSession    官方 rightbar 的每会话面板座（single/session）
+	//	SlotRightPaneTab       官方右栏 tab **体**（keyed/session，key = 类型 id）
+	//	SlotRightPaneTabTitle  官方右栏 tab **标题**（keyed/session，同一个 key）
+	//	SlotConvView           官方会话 view（list/session，一次只渲染一个）
+	//
+	// 形状与锚点：
+	//
+	//	OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:43（rightbar.session）
+	//	OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:59（pane tab）
+	//	OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:73（pane tab title）
+	//	OFF:dsh-client-ui-conversation/src/client/contract/slots.ts:285（conversation.view）
+	//
+	// 注意 `SlotConvView` 与 `SlotMainBody` 是**互斥**的两条路径（同一帧只有一个活）：
+	// 官方骨架走前者，dsshell 三栏的旧部件兼容桥走后者（见 cmd/app/shell.go 的
+	// BridgeLegacy 注释）。插件两边都挂、各自判「这一帧有没有活」，不自己猜壳是哪个档。
+	SlotRightbarSession   Slot = "rightbar.session"
+	SlotRightPaneTab      Slot = "sidebar.right.pane.tab"
+	SlotRightPaneTabTitle Slot = "sidebar.right.pane.tab.title"
+	SlotConvView          Slot = "conversation.view"
+)
+
+// 官方已注册的**会话视图 id**（各自包注册 `conversation.view` 时给的 `id`）。
+//
+// 它们是官方 package 的事实，不是我们编的名字；插件注册时用这些常量当
+// `Painter.Key`，壳据此投影名录、按 key 派发。
+const (
+	// ViewChat 是 ui-chat 的固定主视图。
+	// OFF:dsh-client-ui-chat/src/client/apply.ts:239（`id: 'chat'`、`order: 0`）
+	ViewChat = "chat"
+	// ViewTrajectory 是 ui-trajectory 的轨迹视图。
+	// OFF:dsh-client-ui-trajectory/src/client/index.ts:82（`id: 'trajectory'`、`order: 10`）
+	ViewTrajectory = "trajectory"
+	// ViewStats 是 ui-stats 的性能统计视图。
+	// OFF:dsh-experimental-client-ui-stats/src/client/index.ts:77（`id: 'stats'`、`order: 40`）
+	ViewStats = "stats"
 )
 
 // Painter 是一块可挂载的绘制单元。
@@ -144,7 +184,35 @@ type Painter struct {
 	// Slot 挂在哪。
 	Slot Slot
 	// Order 决定同一个槽里谁先画：小的先（= 贴在上面）。
+	//
+	// 对 **keyed 槽**（`sidebar.right.pane.tab` / `conversation.view`）它还是
+	// **注册表顺序**：官方 view tab 行的排法就是注册顺序（ui-conversation 的
+	// `ViewTab{id,label}` 由注册顺序投影出来，contract/views.ts:4-8），
+	// 右栏 tab 类型同理（tab-registry.ts 的 `order`）。
 	Order int
+	// Key 是 **keyed 槽的 key**，非 keyed 槽留空。
+	//
+	// 官方把槽分成 single / list / keyed / chain / hoc / factory 六种，
+	// 其中 keyed 是「同一个槽按 key 取一份」：
+	//
+	//	sidebar.right.pane.tab  key = tab **类型**的 id
+	//	  OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:59-64
+	//	  「dispatched with the `id` of the type in force for `tab.kind`」
+	//	conversation.view       key = view id（'chat' / 'trajectory' / 'stats'）
+	//	  OFF:dsh-client-ui-conversation/src/client/contract/slots.ts:285（list 槽）
+	//	  + contract/views.ts:8 的 `ViewTab{id,label}`，投影自注册选项
+	//
+	// 本仓的 keyed 槽**只画 key 命中的那一份**（`Kernel.DrawSlotKeyed`），
+	// 不再「把挂在这一槽上的全都画一遍」——后者是 rc.2 之前的行为，
+	// 会让两个 view 同时画进同一块矩形。
+	Key string
+	// Label 是 keyed 槽在选择器上显示的名字：会话 view tab 的芯片文案、
+	// 右栏 tab 的芯片文案。官方两者都是 `label` 取值（`ViewTab.label`），
+	// 右栏侧是 tab 类型的 `title`（tab-registry.ts 的 `title: () => string`）。
+	// 非选择器上的画留空。
+	Label string
+	// Icon 是芯片前的字形；官方 tab 类型可以带图标，没有就是纯文字。
+	Icon string
 	// Draw 画自己。frame 已经是这块槽的位置和尺寸，别自己算全局坐标。
 	Draw func(f ui.C, env *Env)
 	// AfterDraw 在整棵树布局完成之后调用，给那些「必须先知道位置才能画」的东西用：
@@ -187,6 +255,32 @@ type Primitives interface {
 	Bubble(f ui.C, body func()) ui.Box
 }
 
+// Tab 是一条注册出来的**选择器条目**：会话 view tab 或右栏 tab。
+//
+// 它对应官方两个地方的同一种东西，合成一个形状（两边字段一一对得上）：
+//
+//	conversation.view   `ViewTab{id, label}`（OFF:dsh-client-ui-conversation/src/client/contract/views.ts:8）
+//	                    —— 由 `conversation.view` 槽条目的注册选项投影出来
+//	                    注册例子：OFF:dsh-client-ui-chat/src/client/apply.ts:237-242（id 'chat'、order 0）
+//	                              OFF:dsh-client-ui-trajectory/src/client/index.ts:80-86（id 'trajectory'、order 10）
+//	sidebar.right.pane.tab  tab 类型的 `{id, kind, title}`
+//	                    （OFF:dsh-client-ui-sidebar-right/src/client/tab-registry.ts:106-…）
+//	                    注册例子：OFF:dsh-client-ui-sidebar-terminal/src/client/index.ts:72-75（kind 'terminal'）
+//
+// 壳把内核里的 keyed painter 投影成这张表（`uikernel.ViewTabs` / `RightTabs`），
+// 插件只负责注册，不查表、不排序、不算激活。
+type Tab struct {
+	// Key 是 keyed 槽的 key = 官方那条条目的 `id`。
+	Key string
+	// Label 是芯片上的文案；官方是 thunk（`label: () => t('view.chat')`），
+	// 本仓按当前语言在注册处取好。
+	Label string
+	// Icon 是可选的字形，没有就是纯文字。
+	Icon string
+	// Order 是注册顺序（官方 `order`；小的在前）。
+	Order int
+}
+
 // Env 是绘制期拿到的全部东西：只读快照 + 动作 + 主题。
 //
 // 明确**不给** model / 互斥锁 / 客户端：插件不该知道数据怎么来的，
@@ -217,6 +311,32 @@ type Env struct {
 	// Has 判断某个槽位有没有插件挂东西。框架插件靠它决定"这一列画不画"——
 	// 没有侧栏插件时不该留一条空栏。
 	Has func(Slot) bool
+	// Views 是本帧注册的**会话视图**名录（官方 `conversation.view` 的 list 槽投影）。
+	//
+	// 由壳从内核的 painter 表投影出来（`uikernel.ViewTabs`），已按 (Order, 装配顺序)
+	// 排好、同 key 去重。空 = 一个视图都没注册（那时不画 view tab 行）。
+	Views []Tab
+	// ActiveView 是本帧选中的会话视图 key；空 = 还没解析出来，主区不画 view。
+	//
+	// 官方两个判据都在这上面（OFF:dsh-client-ui-conversation/src/client/view-selection.ts:15-21）：
+	// 存着的偏好命中名录就用它，否则落 `chat`，再没有就是「没有可画的 view」。
+	ActiveView string
+	// RightTabs 是本帧注册的**右栏 tab 类型**名录（官方 `sidebar.right.pane.tab` 的 keyed 槽投影）。
+	RightTabs []Tab
+	// ActiveRightTab 是本帧选中的右栏 tab 类型 key；空 = 没有可画的 tab。
+	ActiveRightTab string
+	// DrawKeyed 把一个 **keyed 子槽**按 key 交回壳去画：只画 key 命中的那几份。
+	//
+	// 为什么要有它：`Painter.Children` 拿到的 `drawSlot` 只带槽名，按官方 keyed 语义
+	// 派发必须带 key；而改 `Children` 的签名等于改全仓每一块画。壳在装配 Env 时把它
+	// 接到 `Kernel.DrawSlotKeyed` 上，插件因此不需要认识 kernel。
+	//
+	// **f 必须传调用点上那个**：viva 的 `ui.C` 是布局游标的句柄，子槽要落在
+	// 调用点所在的容器里。传根 frame 会把子槽画成根的同级兄弟（画得出来，位置全错）。
+	// `Painter.Children` 拿到的 `drawSlot` 就是同一个道理——它是按当前 f 现造的闭包。
+	//
+	// key 传空串时按「这个槽上什么都没命中」处理（不画），不是「全画一遍」。
+	DrawKeyed func(f ui.C, slot Slot, key string)
 	// Geometry 是本帧三栏的几何（壳算好，框架插件照着摆）。
 	// 为什么壳算：它已经知道侧栏插件要的宽度、右栏开合、白名单里有没有这些部件。
 	// 框架插件拿到的是"结果"，不是"猜"。
@@ -698,6 +818,18 @@ type Actions struct {
 	DesktopUpdateOpen func()
 	// ToggleRightbar 收起/展开右栏（官方也能收）。
 	ToggleRightbar func()
+	// SelectView 把当前会话的主区视图切到名录里的某一条（官方
+	// `conversation.session.header.views.actions` 的 `onOpen` / `selectView`，
+	// 见 OFF:dsh-client-ui-conversation/src/client/contract/slots.ts:510）。
+	//
+	// 传一个名录里没有的 key 时**什么都不做**（官方 `resolveActiveView` 也只会
+	// 落到 chat，不会创造视图）。nil = 壳没接，调用方不要画可点的页签。
+	SelectView func(view string)
+	// SelectRightTab 把右栏面板切到名录里的某个 tab 类型。
+	//
+	// 官方对应 `sidebarRight.openTab(kind)`（OFF:dsh-client-ui-sidebar-right/src/client/index.ts:228）。
+	// nil = 壳没接，调用方不要画可点的芯片。
+	SelectRightTab func(key string)
 	// Retry 重发上一条用户消息。
 	Retry func()
 	// RetrySend 按本地发送 key 重试同一份失败草稿，不另取最后一条消息冒充。

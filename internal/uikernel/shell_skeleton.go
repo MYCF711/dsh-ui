@@ -138,6 +138,19 @@ type ShellOptions struct {
 	BottomHeight float32
 	// PanellistRows 是左栏导航行数（0 = 还没插件注册，整块不占高）。
 	PanellistRows int
+	// Views 是会话视图名录（官方 `conversation.view` 的 list 槽投影）。
+	//
+	// 与 PanellistRows 同一个做法：**骨架不查内核**，壳把已经投影好的名录交进来
+	// （`cmd/app` 的 `uikernel.ViewTabs`）。骨架因此只需要按名录画行、按 ActiveView
+	// 派发，一行也不用认识注册表。
+	Views []pluginapi.Tab
+	// ActiveView 是本帧选中的会话视图 key；空 = 主区不画 view（与官方
+	// `DefaultConversationViews` 的 `viewId === undefined` 同义）。
+	ActiveView string
+	// RightTabs 是右栏 tab 类型名录（官方 `sidebar.right.pane.tab` 的 keyed 槽投影）。
+	RightTabs []pluginapi.Tab
+	// ActiveRightTab 是本帧选中的右栏 tab 类型 key；空 = 右栏没有可画面板。
+	ActiveRightTab string
 	// BridgeLegacy 打开旧插件兼容桥（见文件头）。
 	BridgeLegacy bool
 	// BridgeLegacyComposer 是**中栏 composer 那一段**的兼容桥开关。
@@ -827,8 +840,17 @@ func drawConversationSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, di
 				})
 			})
 			// tabs 行（只有 tabs.length>1 才出现）
+			//
+			// 官方 `ConversationSession`：`showTabs = !hideChrome && tabs.length > 1`
+			// （OFF:dsh-client-ui-conversation/src/client/skeleton/ConversationSession.tsx:119），
+			// 行内是 `.viewTabs`（名录投影的页签）+ 可选 More 座位。
 			if layout.Options.Tabs && layout.TabsRow.Height > 0 {
 				ui.Row(f).FillWidth().Height(ViewTabsMinH).MarginSides(TabsMarginTop, 0, 0, TabsPaddingLeft).Children(func() {
+					selectView := func(string) {}
+					if env != nil && env.Act.SelectView != nil {
+						selectView = env.Act.SelectView
+					}
+					DrawViewTabs(f, env, layout.Options.Views, layout.Options.ActiveView, selectView)
 					dispatch(OffSessionHeaderViewAction)
 				})
 			}
@@ -853,7 +875,17 @@ func drawConversationSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, di
 			ui.Column(f).FillWidth().FillHeight().PadSides(ChatScrollPad, ChatScrollPad+ComposerSideClearance+BodyScrollMarginRight, ChatScrollPad, ChatScrollPad+ComposerSideClearance).Children(func() {
 				ui.Column(f).Width(layout.Column.Width).FillHeight().Children(func() {
 					dispatch(OffConversationSession)
-					dispatch(OffConvView)
+					// conversation.view 是**选择器**：这一帧只画选中的那一条。
+					//
+					// 名录/激活项都由壳给（opts.Views / ActiveView）。`env.DrawKeyed`
+					// 没接上时（最小装配 / 单测环境）退回旧行为"把挂在这一槽上的全画
+					// 一遍"——那是过渡桥，与 `BridgeLegacy` 同一性质，不是终态：
+					// 终态下这一槽只会有一个 key 命中。
+					if env != nil && env.DrawKeyed != nil && layout.Options.ActiveView != "" {
+						env.DrawKeyed(f, OffConvView, layout.Options.ActiveView)
+					} else {
+						dispatch(OffConvView)
+					}
 					dispatch(OffUserTextFactory)
 					dispatch(OffUserTextNode)
 					dispatch(OffImagesContentPlant)
@@ -1029,9 +1061,28 @@ func drawComposerSeat(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch f
 }
 
 // drawRightbarSkeleton 画右栏默认组合：面板 → tab strip / guide / tab menu。
+//
+// 两条路：
+//
+//	① 名录里有 tab 类型（`opts.RightTabs` 非空且壳接了 keyed 派发）
+//	   → 画官方 dockkit 的 `.tabStrip`，面板体只派发**选中那一个 key**
+//	② 名录为空（最小装配 / 没装右栏 tab 类型）
+//	   → 保留旧行为：把挂在这一槽上的全画一遍。这是过渡桥，不是终态。
 func drawRightbarSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispatch func(pluginapi.Slot), measure MeasureFunc) {
 	ui.Column(f).FillWidth().FillHeight().Children(func() {
 		dispatch(OffRightbarSession)
+		if env != nil && env.DrawKeyed != nil && len(layout.Options.RightTabs) > 0 {
+			selectTab := func(string) {}
+			if env.Act.SelectRightTab != nil {
+				selectTab = env.Act.SelectRightTab
+			}
+			DrawRightTabs(f, env, layout.Options.RightTabs, layout.Options.ActiveRightTab, selectTab)
+			ui.Row(f).FillWidth().Grow(1).Children(func() {
+				env.DrawKeyed(f, OffRightPaneTab, layout.Options.ActiveRightTab)
+			})
+			ui.Row(f).FillWidth().Children(func() { dispatch(OffRightTabMenuItem) })
+			return
+		}
 		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightPaneTab) })
 		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightPaneTabTitle) })
 		ui.Row(f).FillWidth().Grow(1).Children(func() {

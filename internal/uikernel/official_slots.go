@@ -108,11 +108,13 @@ const (
 	OffConversationHeader  pluginapi.Slot = "conversation.header"
 	OffHeaderLeading       pluginapi.Slot = "conversation.header.leading"
 	OffConversationSession pluginapi.Slot = "conversation.session"
-	OffConvView            pluginapi.Slot = "conversation.view"
-	OffConvContent         pluginapi.Slot = "conversation.content"
-	OffConvComposer        pluginapi.Slot = "conversation.composer"
-	OffConvComposerBar     pluginapi.Slot = "conversation.composer.bar"
-	OffConvComposerDock    pluginapi.Slot = "conversation.composer.dock"
+	// OffConvView 与 pluginapi.SlotConvView 是**同一个槽**：字符串只在
+	// pluginapi 里写一次，这里取别名，免得两处漂移（同一个槽两个名字是最难查的一类 bug）。
+	OffConvView         pluginapi.Slot = pluginapi.SlotConvView
+	OffConvContent      pluginapi.Slot = "conversation.content"
+	OffConvComposer     pluginapi.Slot = "conversation.composer"
+	OffConvComposerBar  pluginapi.Slot = "conversation.composer.bar"
+	OffConvComposerDock pluginapi.Slot = "conversation.composer.dock"
 )
 
 // Session header 的六个座位（conversation/src/client/contract/slots.ts:239-283）。
@@ -175,9 +177,10 @@ const (
 
 // 右栏 DockKit 座位（ui-sidebar-right/src/client/contract/slots.ts）。
 const (
-	OffRightbarSession   pluginapi.Slot = "rightbar.session"
-	OffRightPaneTab      pluginapi.Slot = "sidebar.right.pane.tab"
-	OffRightPaneTabTitle pluginapi.Slot = "sidebar.right.pane.tab.title"
+	// 这四个与 pluginapi 的同名常量是**同一个槽**（字符串只在 pluginapi 里写一次）。
+	OffRightbarSession   pluginapi.Slot = pluginapi.SlotRightbarSession
+	OffRightPaneTab      pluginapi.Slot = pluginapi.SlotRightPaneTab
+	OffRightPaneTabTitle pluginapi.Slot = pluginapi.SlotRightPaneTabTitle
 	OffRightGuide        pluginapi.Slot = "sidebar.right.tab.guide"
 	OffRightGuideActions pluginapi.Slot = "sidebar.right.tab.guide.actions"
 	OffRightGuideEntry   pluginapi.Slot = "sidebar.right.tab.guide.entry"

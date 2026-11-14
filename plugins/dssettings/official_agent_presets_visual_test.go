@@ -95,7 +95,17 @@ func TestAgentPresetsPageDrawsRosterAndWritesDefault(t *testing.T) {
 	}
 
 	// ④ 点可选卡的命中区：真的写 `agent-preset-registry.selectedDefault`。
+	//
+	// 断言前必须**等异步动作落地**：点击在产品里就是 `go applyAgentPresetDefault(…)`，
+	// 抽完立刻读 writer 是在赌 goroutine 的调度（本机 1/150、CI 更容易输）。
+	// 见 waitWriterCalls 的注释；这里等的是"写请求真的发出"，不是放宽判据。
+	before := h.writer.callCount()
+	beforeRefresh := h.agentPresetRefreshCount()
 	h.click("settings-agent-preset-read-only")
+	if !waitWriterCalls(h, before+1) {
+		t.Fatalf("点了卡片却没发出任何写请求（callCount=%d want=%d status=%q）",
+			h.writer.callCount(), before+1, h.statusText())
+	}
 	call, ok := h.writer.lastCall()
 	if !ok {
 		t.Fatal("点了卡片却没发出任何写请求")
@@ -113,11 +123,14 @@ func TestAgentPresetsPageDrawsRosterAndWritesDefault(t *testing.T) {
 		t.Fatalf("expectedRevision = %v，应为 describe 里的 7", call.expectedRev)
 	}
 	// ⑤ 写成功后壳的名册重读入口被调了一次（角标要搬到新那一条上）。
-	h.mu.Lock()
-	refreshed := h.agentPresetRefresh
-	h.mu.Unlock()
-	if refreshed != 1 {
-		t.Fatalf("写成功后应触发一次名册重读，实得 %d 次", refreshed)
+	//
+	// 与 ④ 同一个理由：`refresh()` 在 `applyAgentPresetDefault` 里紧跟在写之后，
+	// 也可能比断言晚一步。基线在点击前就取（见 ④）。
+	for i := 0; i < 400 && h.agentPresetRefreshCount() <= beforeRefresh; i++ {
+		h.pump()
+	}
+	if refreshed := h.agentPresetRefreshCount(); refreshed != beforeRefresh+1 {
+		t.Fatalf("写成功后应触发一次名册重读，实得 %d 次（基线 %d）", refreshed, beforeRefresh)
 	}
 
 	dir := os.Getenv("SETTINGS_CAPTURE_DIR")

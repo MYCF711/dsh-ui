@@ -529,6 +529,12 @@ func BuildFirstScreen(layout ShellLayout) *SkeletonTree {
 	add("ChatView.flow", "ChatView.column", OffUserTextFactory, layout.Column)
 	add("ChatView.flow.markdown", "ChatView.flow", OffUserTextNode, ui.Rect{X: layout.Column.X, Y: layout.Column.Y})
 	add("ChatView.flow.images", "ChatView.flow", OffImagesContentPlant, ui.Rect{X: layout.Column.X, Y: layout.Column.Y})
+	// transcript 节点级两个座位（动作卡 / 工具视图）：官方是 `conversation.chat.node`
+	// 的 children（ui-chat register-node-renderers.ts:93-95 / ui-tool apply.ts:41-42），
+	// 本骨架没有那个工厂节点，所以在正文列的工厂座位下各留一个节点。
+	// 它们只在有占用方时占面积；零矩形 = 声明存在、不占位（与其它空槽同义）。
+	add("ChatView.flow.turnTail", "ChatView.flow", OffChatTurnTail, ui.Rect{X: layout.Column.X, Y: layout.Column.Y})
+	add("ChatView.flow.toolview", "ChatView.flow", OffToolCallView, ui.Rect{X: layout.Column.X, Y: layout.Column.Y})
 
 	add("ConversationRoot.composerSeat", "ConversationRoot.body", OffConvComposer, layout.ComposerSeat)
 	add("ConversationRoot.composerStack", "ConversationRoot.composerSeat", "", layout.ComposerSeat)
@@ -851,6 +857,10 @@ func drawConversationSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, di
 					dispatch(OffUserTextFactory)
 					dispatch(OffUserTextNode)
 					dispatch(OffImagesContentPlant)
+					// transcript 节点级座位（官方动作卡的两个 children）：
+					// 空槽也 dispatch（没有占用方就什么都不画），与上面几个座位一致。
+					dispatch(OffChatTurnTail)
+					dispatch(OffToolCallView)
 				})
 			})
 		})

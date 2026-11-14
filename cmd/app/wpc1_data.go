@@ -48,6 +48,10 @@ func (m *model) loadSession(ctx context.Context, id string, tail int) (*apiclien
 			metadata[pubapi.MessageKey(id, msg, index)] = pubapi.MessageMetadata{Time: extra.Time, Stopped: extra.Stopped}
 		}
 	}
+	// 动作卡投影跟着会话一起刷（官方 `ui-action-cards` 的卡片是会话级投影，
+	// 宿主从 `session.projections` 的 `values.actionCards` 给）。异步：不许在
+	// 这条数据链上等第二个 HTTP；失败保留上一帧（插件自己的语义）。
+	m.refreshActionCards(id)
 	return &result, metadata, nil
 }
 

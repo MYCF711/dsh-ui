@@ -214,7 +214,25 @@ func (p *Plugin) drawWorkspaceHeaderMargin(f ui.C, env *pluginapi.Env, marginTop
 		if viewClicked {
 			p.toggleAll()
 		}
-		// 没有 OS 目录选择/workspace mutation，官方“添加工作区”整钮隐藏。
+		// 官方「添加工作区」（figure `Harness` 813-23126 那一族的工作区工具带）。
+		//
+		// 之前这里是「没有 OS 目录选择/workspace mutation，整钮隐藏」——那个前提
+		// **现在已经不成立**：宿主 `directoryPicker.list/createDirectory` 是真目录
+		// 浏览（`HOST:cmd/dshd/serve_workspace_api.go:611-612`，真实现 `:1668` 起走
+		// `os.ReadDir`）、`workspace.create` 是真工作区注册表（`:583`）。
+		//
+		// 仍然守住「不画死按钮」：**只有壳真的接了 `OpenDirectoryPicker` 才画**
+		// （`env.Act` 为 nil = 老壳 / 无头装配 → 这一枚不出现）。
+		//
+		// 字形用 `+` 而不是手画图标：官方这里是 sprite 里的 `IconPlusOutlineRegular`
+		// （`OFF:ui-sidebar` 的 sprite 表），本仓没有那张 sprite 的导出，
+		// 按仓规**不许手绘冒充官方图标**；`+` 与旁边 `⌕`/`▾` 同为文字字形，风格一致。
+		if env.Act.OpenDirectoryPicker != nil {
+			_, addClicked := p.workspaceIconButton(f, env, "workspace-add", "+", "添加工作区")
+			if addClicked {
+				env.Act.OpenDirectoryPicker()
+			}
+		}
 	})
 }
 

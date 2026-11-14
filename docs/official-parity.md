@@ -93,11 +93,11 @@
 | # | 官方包 | 状态 | 本仓落点 |
 |---|---|---|---|
 | 1 | `dsh-client-ui-account-notifications` | ✅ IMPLEMENTED | `plugins/dsnotifications` |
-| 2 | `dsh-client-ui-action-cards` | ❌ MISSING | 无 |
+| 2 | `dsh-client-ui-action-cards` | ✅ IMPLEMENTED | `plugins/dsactioncards` + `internal/apiclient/action_cards.go` |
 | 3 | `dsh-client-ui-agent-preset` | 🟡 PARTIAL | `dssettings` 的 `agent-presets` section |
 | 4 | `dsh-client-ui-agent-team` | ✅ IMPLEMENTED | `plugins/dsagentteam` |
 | 5 | `dsh-client-ui-approval` | ✅ IMPLEMENTED | `dscomposer` + 壳 |
-| 6 | `dsh-client-ui-attachment` | 🟡 PARTIAL | uikernel 槽 + `dscomposer` + `dsconversation` |
+| 6 | `dsh-client-ui-attachment` | 🟡 PARTIAL | uikernel 槽 + `dscomposer` + `dsconversation` + **`plugins/dsattachment`（rail 真占用方 + 拖入通道）** |
 | 7 | `dsh-client-ui-brand-official` | ✅ IMPLEMENTED | `plugins/dsbrand` |
 | 8 | `dsh-client-ui-chat` | ✅ IMPLEMENTED | `plugins/dsconversation`（18 文件 / 8054 行） |
 | 9 | `dsh-client-ui-commands` | ✅ IMPLEMENTED | `plugins/dscommands`（2 文件 / 423 行） |
@@ -106,7 +106,7 @@
 | 12 | `dsh-client-ui-cordis` | ❌ MISSING | 无 |
 | 13 | `dsh-client-ui-creation-recommendations` | ❌ MISSING | 无 |
 | 14 | `dsh-client-ui-deliverables` | 🟡 PARTIAL | `plugins/dsdeliverables` + `dsconversation/file_refs.go` |
-| 15 | `dsh-client-ui-directory-picker-browse` | ❌ MISSING | 无 |
+| 15 | `dsh-client-ui-directory-picker-browse` | ✅ IMPLEMENTED | `plugins/dsdirpicker` + `internal/apiclient/dirpicker.go` |
 | 16 | `dsh-client-ui-directory-picker-native` | ❌ MISSING | 无 |
 | 17 | `dsh-client-ui-entry-customization` | ❌ MISSING | 无 |
 | 18 | `dsh-client-ui-file-actions` | ❌ MISSING | 无 |
@@ -159,7 +159,7 @@
 | 65 | `dsh-experimental-client-ui-stats` | 🟡 PARTIAL | `plugins/dsstatusbar/metrics.go` + `wave3_wiring.go` |
 | 66 | `dsh-experimental-client-ui-voice-input` | ❌ MISSING | 无 |
 
-## 合计：官方 66 个部件 —— ✅ 26 · 🟡 21 · ⬜ 0（不该有） · ❌ 19
+## 合计：官方 66 个部件 —— ✅ 28 · 🟡 21 · ⬜ 0（不该有） · ❌ 17
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），

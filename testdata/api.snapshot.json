@@ -706,15 +706,134 @@
         }
       },
       "req_note": "2026-11-14（官方 `DesktopUpdateBridge.open()`，宿主 `desktopUpdate.open`）。官方 `open(): Promise<void>` 自己弹原生更新面板；本仓没有下载器/安装器也**不在宿主侧开浏览器**，所以把更新入口**交出来**：`url` **一定非空**（有更新=那条 release 页，否则=releases 列表页），由界面唤起系统默认浏览器。这一次**绕过 TTL 真查一遍**（用户主动点的语义），并发点击仍走宿主单飞。"
+    },
+    "directoryPicker.list": {
+      "batch": 7,
+      "req": {
+        "path": "string?"
+      },
+      "resp": {
+        "path": "string",
+        "home": "string",
+        "crumbs": [
+          "DirectoryItem"
+        ],
+        "entries": [
+          "DirectoryItem"
+        ],
+        "truncated": "bool"
+      },
+      "req_note": "平铺；path 省略 = 宿主的 home。宿主 handler: HOST:internal/transport/handlers_workspace_official.go:1282（请求结构体 :286-299）。`home`/`crumbs`/`truncated` 是面包屑与「文件夹过多」提示的唯一来源，**不许**拿本仓自定的 workspace.list 顶替。"
+    },
+    "directoryPicker.createDirectory": {
+      "batch": 7,
+      "req": {
+        "path": "string",
+        "name": "string"
+      },
+      "resp": "string",
+      "req_note": "平铺；path = 父目录绝对路径，name = 单个路径段。响应是裸 JSON 字符串（新目录绝对路径）。宿主 handler: HOST:internal/transport/handlers_workspace_official.go:1316"
+    },
+    "workspace.create": {
+      "batch": 7,
+      "req": {
+        "path": "string"
+      },
+      "resp": "object",
+      "req_note": "平铺也可（handler 走 officialPickObject，嵌套/平铺都收）。真实现 HOST:cmd/dshd/serve_workspace_api.go:583"
+    },
+    "attachment.put": {
+      "batch": 7,
+      "req": {
+        "path": "string"
+      },
+      "resp": {
+        "attachment": {
+          "id": "string",
+          "name": "string",
+          "byteSize": "int64",
+          "mime": "string",
+          "sha256": "string",
+          "width": "int?",
+          "height": "int?"
+        }
+      },
+      "req_note": "平铺；path 是**非空绝对路径**（宿主 handler HOST:internal/transport/server.go:844-862，请求结构 `struct{Path string}` 在 :849-851，空 path 回 400；响应 :861）。真实现 HOST:cmd/dshd/attachments.go:124：非绝对路径/目录/符号链接/0 字节/超过 8 MiB 一律 400，**中文原文要原样显示给用户**（0 字节与超限在 :129-134，上限 8<<20 在 :30）。resp.attachment 的类型是 HOST:internal/transport/api.go:338-346（byteSize/sha256 是宿主拼法，width/height 只对图片非零）。"
+    },
+    "attachment.get": {
+      "batch": 7,
+      "req": {
+        "id": "string",
+        "attachmentId": "string?"
+      },
+      "resp": {
+        "attachment": {
+          "id": "string",
+          "name": "string",
+          "byteSize": "int64",
+          "mime": "string",
+          "sha256": "string",
+          "width": "int?",
+          "height": "int?"
+        },
+        "dataBase64": "string"
+      },
+      "req_note": "平铺；id 与 attachmentId 都收（宿主 fillID）。handler HOST:internal/transport/server.go:864，字节的唯一出口就是 :890-893 的 dataBase64（宿主刻意不让字节进 Attachment 结构，见 api.go:347-354）；真实现 HOST:cmd/dshd/attachments.go:493。"
+    },
+    "session.attachment": {
+      "batch": 7,
+      "req": {
+        "sessionId": "string",
+        "attachment": {
+          "attachmentId": "string",
+          "mediaType": "string?",
+          "bytes": "int64=0",
+          "width": "int=0",
+          "height": "int=0",
+          "name": "string?",
+          "originalDimensions": {
+            "width": "int",
+            "height": "int"
+          }
+        }
+      },
+      "resp": {
+        "attachment": {
+          "attachmentId": "string",
+          "mediaType": "string",
+          "bytes": "int64",
+          "width": "int",
+          "height": "int",
+          "name": "string?"
+        },
+        "data": "string(base64)"
+      },
+      "req_note": "平铺；**只承载图片**（image/png|jpeg|webp|gif，其余 400）。handler HOST:internal/transport/handlers_session_official.go:1497（请求结构 :1509-1526，图片门 :1534-1540，结果类型 :296-299）。bytes/width/height 非零即**一致性断言**，与存储真值不符回 400（:1549-1563）——0 才表示不校验，所以不知道就别发。originalDimensions 宿主只解码不校验。sessionId 只是网关权限范围：宿主**不检查会话是否存在、也不检查这条会话引用过它**（:1492-1496）。"
+    },
+    "actionCards.act": {
+      "batch": 7,
+      "req": {
+        "sessionId": "string",
+        "callId": "string",
+        "verb": "string",
+        "payload": "object?"
+      },
+      "resp": {
+        "status": "accepted|settled|refused|unconfirmed",
+        "decision": "ActionCardDecision?",
+        "reason": "string?"
+      },
+      "req_note": "官方动作卡的用户动作（唯一方法；卡片**投影**不是方法，见下）。入参平铺：sessionId（宿主 sessionRef 也认官方 wire 名 agentId / id，HOST:internal/transport/handlers_agent_official.go:511-520）、callId、verb（`dismiss` 或 kind 自己的动词）、payload（可选对象，kind 自定义字段）。handler HOST:internal/transport/handlers_account_official.go:1447-1502（callId/verb 空串 400、payload 非对象 400、未挂运行时 501、非法 status/settled 缺 decision/refused 缺 reason 500）；真实现 HOST:internal/actioncards/service.go:238（四个 status 常量 :36-42，视图类型 :129-133）。产品启动路径已挂真实现：HOST:cmd/dshd/serve.go:926 与 :941、HOST:cmd/dshd/serve_action_cards.go:55-57。**`actionCards.view` 不是宿主方法**：卡片投影走 `session.projections` 的 `values.actionCards`（HOST:internal/transport/handlers_session_official.go:947，来源 HOST:internal/transport/handlers_action_cards_view.go:38-52），所以本快照不登记一条不存在的 view 方法（客户端 ActionCardsView 调的是已在本表的 session.projections）。"
     }
   },
   "counts": {
-    "total": 43,
+    "total": 50,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
     "batch4": 2,
     "batch5": 1,
-    "batch6": 6
+    "batch6": 6,
+    "batch7": 7
   }
 }

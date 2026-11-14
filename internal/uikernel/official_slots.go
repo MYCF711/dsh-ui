@@ -152,6 +152,27 @@ const (
 	OffImagesContentPlant pluginapi.Slot = "conversation.images.content"
 )
 
+// transcript 节点级座位：动作卡的两个官方槽（rc.2 的 ui-chat / ui-tool 子槽）。
+//
+// 官方出处（Kind / Scope / Parent 三个维度）：
+//
+//	conversation.chat.turnTail  list  / session —— ui-chat/src/client/contract/slots.ts:492
+//	tool.call.toolview          keyed / session —— ui-tool/src/client/contract/slots.ts:23-27
+//
+// 两者的官方**父级**都是 `conversation.chat.node`（ui-chat 的节点工厂）：
+// turnTail 是 `turn-tail` 节点的 child（ui-chat/src/client/chat/register-node-renderers.ts:93-97），
+// toolview 是 `tool-call` 节点的 child（ui-tool/src/client/apply.ts:37-42）。
+// 那个中间工厂槽不在首屏槽表里，所以按本表"挂最近的已登记祖先"的惯例
+// 挂在 `conversation.session`（transcript 宿主）下。
+//
+// 本仓的界面侧占用方：`plugins/dsactioncards`（卡片框 + propose_action 过程行）。
+const (
+	// OffChatTurnTail 是答案下面的动作卡座位（官方 list/session）。
+	OffChatTurnTail pluginapi.Slot = "conversation.chat.turnTail"
+	// OffToolCallView 是工具调用行座位（官方 keyed/session，key 是工具 wire 名）。
+	OffToolCallView pluginapi.Slot = "tool.call.toolview"
+)
+
 // 右栏 DockKit 座位（ui-sidebar-right/src/client/contract/slots.ts）。
 const (
 	OffRightbarSession   pluginapi.Slot = "rightbar.session"
@@ -397,6 +418,26 @@ var builtinOfficialSlots = []SlotSpec{
 	{
 		Name: OffImagesContentPlant, Kind: KindFactory, Scope: ScopeRoot, Parent: OffConversationSession, Host: "ChatView.flow.images",
 		Anchor: "ui-conversation/src/client/contract/slots.ts:211",
+	},
+
+	// ── transcript 节点级座位（动作卡 / 工具视图）───────────────────
+	{
+		Name: OffChatTurnTail, Kind: KindList, Scope: ScopeSession, Parent: OffConversationSession,
+		Host:   "ChatView.flow.turnTail",
+		Anchor: "ui-chat/src/client/contract/slots.ts:492",
+		Note: "list/session；官方声明原文 `'conversation.chat.turnTail': { kind: 'list'; scope: 'session'; owner: TurnTailOwnerProps }`。" +
+			"官方父级是 `conversation.chat.node` 的 `turn-tail` 节点（ui-chat/src/client/chat/register-node-renderers.ts:93-97 的 children 声明），" +
+			"该中间工厂槽不在首屏槽表，故挂最近的已登记祖先 conversation.session。" +
+			"空槽不占位：官方 entries 为空时整块返回 null（OFF:dsh-client-ui-action-cards/src/client/Card.tsx:87-92）",
+	},
+	{
+		Name: OffToolCallView, Kind: KindKeyed, Scope: ScopeSession, Parent: OffConversationSession,
+		Host:   "ChatView.flow.toolview",
+		Anchor: "ui-tool/src/client/contract/slots.ts:23",
+		Note: "keyed/session；官方声明原文 `'tool.call.toolview': { kind: 'keyed'; scope: 'session'; owner: ToolCallOwnerProps }`（ui-tool/src/client/contract/slots.ts:23-27）。" +
+			"key 是工具 wire 名（占用方用 `key: 'propose_action'`，OFF:dsh-client-ui-action-cards/src/client/mount.ts:60-62），" +
+			"未占用的 key 用通用行。官方父级是 `conversation.chat.node` 的 `tool-call` 节点（ui-tool/src/client/apply.ts:37-42 children 声明），" +
+			"该中间工厂槽不在首屏槽表，故挂 conversation.session",
 	},
 
 	// ── 右栏 DockKit ───────────────────────────────────────────────

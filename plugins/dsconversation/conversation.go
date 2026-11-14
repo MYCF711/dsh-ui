@@ -16,6 +16,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
@@ -125,11 +126,20 @@ type Plugin struct {
 	// heroBoxes 保存首屏关键容器的本帧几何，供布局回归测试与截图证据核对。
 	heroBoxes heroBoxes
 
-	// 消息反馈（👍/👎）的本机记录，见 feedback.go 顶部那段边界说明。
-	// feedback 是内存表，键 = feedback.<sessionID>.<msgIndex>；ConfigGet/ConfigSet
-	// 是它的来源与落点（壳接到宿主 ui-config.json）。
-	feedback       map[string]string
-	feedbackSeeded bool
+	// 消息反馈（👍/👎）的弹窗与 toast 状态，见 feedback.go。
+	// 评分本身**不在这里缓存**：每帧从 Actions.MessageFeedback 读壳的缓存，
+	// 写走宿主 messageFeedback.put/delete（乐观并发 + 冲突收敛在壳里）。
+	feedbackDialog     *feedbackDialogState
+	feedbackToast      string
+	feedbackToastUntil time.Time
+	// feedbackRetract 表示最近一次动作是撤回：成功时只清状态、不弹「感谢你的反馈」。
+	feedbackRetract bool
+	// revealed 是用户消息里凭据的"本帧已点开"状态，键 = 会话 + 消息身份 + 第几个 secret。
+	//
+	// 官方语义是**每个值独立**、每次挂载都恢复遮罩（`SecretText.tsx:44-52`：
+	// 记住的是被点开的那一份原文，换一条消息/换一个值就重新遮）。所以这里不写
+	// ConfigSet，进程内状态即可；切会话不会串（键里有会话）。
+	revealed map[string]bool
 
 	// officialTranscript 是 rc.2 官方主区 transcript 渲染器（official_transcript_*.go）。
 	// 惰性初始化：只在真正画官方骨架时才建（旧路径不付这份内存）。
@@ -229,6 +239,19 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			AfterDraw: p.afterDraw,
 		},
 		{
+			// 消息反馈弹窗：官方是 `conversation.input.overlay` 里 portal 到 body 的
+			// Modal；本仓等价的 portal 是 shell.overlay（输入区的 overlay 只有输入框
+			// 宽，装不下 488px 的模态）。见 feedback.go 文件头。
+			ID:   "feedback-overlay",
+			Slot: pluginapi.SlotShellOverlay,
+			// 103 = 模态栈顶：反馈弹窗从消息区打开，打开时应当压住终端/预览/
+			// 交付物这些面板（97/98/96）与命令面板（99）、设置（100/101）、
+			// 目录选择器（102）。同槽 Order 互不相同的守卫见
+			// cmd/app/panels_order_test.go。
+			Order: 103,
+			Draw:  p.drawFeedbackOverlay,
+		},
+		{
 			// 官方 `conversation.view` 槽（动态取名字面量，见 official_transcript_nodes.go
 			// 的 SlotConversationView：这三个名字是官方 slots.ts 的字面量，
 			// **不许改写成 main.body 之类的旧槽名**）。
@@ -248,6 +271,8 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 
 // draw 是布局阶段。
 func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
+	// 消息反馈：每帧开头消费壳的终态（成功关弹窗/toast，失败留弹窗）。
+	p.pollFeedback(env)
 	// 每个渲染路径都要清掉上一帧的覆画槽，否则接管之后旧的 Markdown
 	// 槽还会被 AfterDraw 画到屏幕上（两套内容叠着）。
 	p.slots = p.slots[:0]
@@ -518,8 +543,12 @@ func (p *Plugin) drawMessage(f ui.C, env *pluginapi.Env, i int, width float32) {
 			// 官方的 82%/748px 是相对**会话内容列**算的，而槽位里拿不到列宽；
 			// viva 的文字会自然换行，气泡按内容宽度收缩，所以不需要像素上限（见验收说明）。
 			p.prims.Bubble(f, func() {
-				// 用户粘进来的凭据在这里遮掉（见 mask.go）；**只遮显示**，
-				// 复制与落盘的仍是原文。
+				// 用户粘进来的凭据与 `@` 引用：没有这两类东西时走原来的整段 Wrap；
+				// 有它们才走行内布局（usertext.go），免得把普通消息的排版也换成近似实现。
+				if hasUserInline(msg.Text) {
+					p.drawUserInline(f, env, msg, width)
+					return
+				}
 				ui.Wrap(f, userDisplayText(msg)).FontSize(t.Fonts.Body)
 			})
 		})
@@ -567,7 +596,7 @@ func (p *Plugin) drawActions(f ui.C, env *pluginapi.Env, msg apiclient.Message, 
 		}
 		// 👍/👎 夹在「复制」和「重试」之间——官方图标动作行的次序就是
 		// copy → feedback → branch，这里照摆。
-		p.drawFeedback(f, env, index)
+		p.drawFeedback(f, env, msg)
 		if last && env.Act.Retry != nil && ui.Button(f, "重试").
 			Ghost().Small().Clicked() {
 			env.Act.Retry()
@@ -884,6 +913,11 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32, key strin
 //	Ctrl+Shift+C   复制最后一条助手回复
 //	Ctrl+R         重发上一条用户消息
 func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
+	// 反馈弹窗是模态：Esc 只关它，不落到搜索/拒绝审批那些下层动作。
+	if p.feedbackDialog != nil && ev.Key == gfx.KeyEscape && ev.Modifiers == 0 {
+		p.dismissFeedbackDialog()
+		return true
+	}
 	switch {
 	case isKey(ev, "f") && ev.Modifiers == gfx.ModifierControl:
 		p.searchOn = !p.searchOn

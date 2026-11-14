@@ -1,161 +1,147 @@
 package dsconversation
 
+// feedback_test.go —— 反馈的**数据决定**（不画）。
+//
+// 钉住三件事：
+//   - 消息身份怎么来（宿主 messageId → v4 seq；不许拿下标冒充）；
+//   - 评分读的是壳缓存里的 authoritative 项（不是内存里的点击态）；
+//   - 提交/撤回真的调到对应动作，且 note/category 原样传。
+
 import (
 	"testing"
 
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/gfx"
 )
 
-// 这些测试只管一件事：**记录记成哪个键、撤回是不是真的清掉、别人给的键有没有被碰**。
-// 它们不承诺任何上报——宿主没有 feedback API（见 feedback.go 顶部）。
-
-// fakeConfig 是一个最小的 ConfigGet/ConfigSet 替身：行为和壳一致——
-// ConfigSet 是**合并**语义（只覆盖给出的键，空串也照写）。
-type fakeConfig struct {
-	store map[string]string
-	sets  []map[string]string
+func msgWithSeq(role string, seq int, text string) apiclient.Message {
+	return apiclient.Message{Role: role, Seq: seq, Text: text}
 }
 
-func newFakeConfig(seed map[string]string) *fakeConfig {
-	store := map[string]string{}
-	for k, v := range seed {
-		store[k] = v
+func TestFeedbackMessageID(t *testing.T) {
+	v4 := int64(42)
+	cases := []struct {
+		name string
+		msg  apiclient.Message
+		want string
+	}{
+		{"宿主 messageId 优先", apiclient.Message{MessageID: "m-1", Seq: 3}, "m-1"},
+		{"v4Seq 适配", apiclient.Message{V4Seq: &v4, Seq: 3}, "v4:42"},
+		{"load seq 适配", msgWithSeq("assistant", 7, "x"), "v4:7"},
+		{"没有身份", apiclient.Message{Role: "assistant"}, ""},
 	}
-	return &fakeConfig{store: store}
+	for _, tc := range cases {
+		if got := feedbackMessageID(tc.msg); got != tc.want {
+			t.Errorf("%s：feedbackMessageID = %q，want %q", tc.name, got, tc.want)
+		}
+	}
 }
 
-func (f *fakeConfig) actions() pluginapi.Actions {
-	return pluginapi.Actions{
-		ConfigGet: func() map[string]string {
-			out := map[string]string{}
-			for k, v := range f.store {
-				out[k] = v
-			}
-			return out
-		},
-		ConfigSet: func(kv map[string]string) {
-			copied := map[string]string{}
-			for k, v := range kv {
-				f.store[k] = v
-				copied[k] = v
-			}
-			f.sets = append(f.sets, copied)
+func TestFeedbackRatingReadsHostCache(t *testing.T) {
+	items := map[string]pluginapi.FeedbackItem{"v4:9": {MessageID: "v4:9", Rating: apiclient.FeedbackRatingPositive}}
+	act := pluginapi.Actions{
+		MessageFeedback: func(session string) (map[string]pluginapi.FeedbackItem, bool) {
+			return items, true
 		},
 	}
+	msg := msgWithSeq("assistant", 9, "answer")
+	if got := feedbackRating(act, "s-1", msg); got != apiclient.FeedbackRatingPositive {
+		t.Fatalf("rating = %q，want positive", got)
+	}
+	// 另一条消息不能被误认成同一条。
+	if got := feedbackRating(act, "s-1", msgWithSeq("assistant", 10, "other")); got != "" {
+		t.Fatalf("不同消息读到了 %q", got)
+	}
+	// 壳没接动作 = 未知，不是"没评分"的另一种说法——调用方据此不画按钮。
+	if got := feedbackRating(pluginapi.Actions{}, "s-1", msg); got != "" {
+		t.Fatalf("没有动作时 rating = %q，want 空", got)
+	}
 }
 
-func TestFeedbackKeyIsSessionAndIndex(t *testing.T) {
-	if got, want := feedbackKey("sess-1", 7), "feedback.sess-1.7"; got != want {
-		t.Fatalf("键 = %q，期望 %q", got, want)
+func TestSubmitFeedbackPassesDraftAndMarksSubmitting(t *testing.T) {
+	var (
+		gotSession, gotID, gotRating, gotNote, gotCategory string
+	)
+	act := pluginapi.Actions{
+		MessageFeedbackPut: func(session, id, rating, note, category string) {
+			gotSession, gotID, gotRating, gotNote, gotCategory = session, id, rating, note, category
+		},
 	}
-	// 同一会话的不同下标是两条独立记录，不能被 overwrite 合并成一条。
-	if feedbackKey("s", 1) == feedbackKey("s", 2) {
-		t.Fatal("不同消息下标生成了同一个键")
+	p := &Plugin{feedbackDialog: &feedbackDialogState{
+		MessageID: "v4:5", Rating: apiclient.FeedbackRatingNegative, Category: apiclient.FeedbackCategoryOther,
+	}}
+	p.feedbackDialog.field.SetText("答非所问")
+	p.submitFeedback(act, "s-1")
+
+	if gotSession != "s-1" || gotID != "v4:5" || gotRating != apiclient.FeedbackRatingNegative ||
+		gotNote != "答非所问" || gotCategory != apiclient.FeedbackCategoryOther {
+		t.Fatalf("put 参数不对：%q %q %q %q %q", gotSession, gotID, gotRating, gotNote, gotCategory)
+	}
+	if !p.feedbackDialog.submitting {
+		t.Fatal("提交后应进入 submitting（官方提交期间禁用表单）")
 	}
 }
 
-func TestToggleFeedbackWritesThenRetracts(t *testing.T) {
-	cfg := newFakeConfig(nil)
-	act := cfg.actions()
+func TestRetractFeedbackCallsDelete(t *testing.T) {
+	var gotSession, gotID string
+	act := pluginapi.Actions{
+		MessageFeedbackDelete: func(session, id string) { gotSession, gotID = session, id },
+	}
 	p := &Plugin{}
-	key := feedbackKey("sess-a", 3)
-
-	p.toggleFeedback(act, "sess-a", 3, feedbackUp)
-	if got := p.feedbackRating("sess-a", 3); got != feedbackUp {
-		t.Fatalf("内存态 = %q，期望 up", got)
+	p.retractFeedback(act, "s-2", msgWithSeq("assistant", 11, "x"))
+	if gotSession != "s-2" || gotID != "v4:11" {
+		t.Fatalf("delete 参数 = %q/%q，want s-2/v4:11", gotSession, gotID)
 	}
-	if cfg.store[key] != "up" {
-		t.Fatalf("配置里 %s = %q，期望 up", key, cfg.store[key])
-	}
-
-	// 同值再点 = 撤回：内存里没了，配置里写墓碑空串（ConfigSet 没有删除动作，
-	// 但空串读回来等于"没记录"，不会让界面以为还有评分）。
-	p.toggleFeedback(act, "sess-a", 3, feedbackUp)
-	if got := p.feedbackRating("sess-a", 3); got != "" {
-		t.Fatalf("撤回后内存态 = %q，期望空", got)
-	}
-	if got := cfg.store[key]; got != "" {
-		t.Fatalf("撤回后配置里 %s = %q，期望空串墓碑", key, got)
-	}
-	if len(cfg.sets) != 2 {
-		t.Fatalf("ConfigSet 调用次数 = %d，期望 2", len(cfg.sets))
-	}
-	if cfg.sets[1][key] != "" {
-		t.Fatalf("撤回那一次 ConfigSet 写的是 %q，期望空串", cfg.sets[1][key])
-	}
-
-	// 另一侧评分直接替换，不产生第二条记录。
-	p.toggleFeedback(act, "sess-a", 3, feedbackDown)
-	if cfg.store[key] != "down" {
-		t.Fatalf("改判后 %s = %q，期望 down", key, cfg.store[key])
+	// 没有稳定身份的消息不许撤回（否则会写一个瞎编的 key）。
+	p.retractFeedback(act, "s-2", apiclient.Message{Role: "assistant"})
+	if gotID != "v4:11" {
+		t.Fatalf("没有身份的消息也发了 delete：%q", gotID)
 	}
 }
 
-func TestFeedbackSeedsFromConfigOnce(t *testing.T) {
-	cfg := newFakeConfig(map[string]string{
-		"feedback.sess-r.2": feedbackDown,
-	})
-	p := &Plugin{}
-	act := cfg.actions()
-	p.seedFeedback(act)
-	p.seedFeedback(act) // 第二次是空转
-
-	if got := p.feedbackRating("sess-r", 2); got != feedbackDown {
-		t.Fatalf("从配置读回的评分 = %q，期望 down", got)
+func TestFeedbackFailureText(t *testing.T) {
+	cases := map[string]string{
+		"version-conflict": zhFeedbackConflict,
+		"note-too-large":   zhFeedbackNoteLarge,
+		"load":             zhFeedbackLoad,
+		"whatever":         zhFeedbackGeneric,
 	}
-	// 壳缓存随后变了也不该覆盖内存（本进程的点击才是真相）。
-	cfg.store["feedback.sess-r.2"] = feedbackUp
-	p.seedFeedback(act)
-	if got := p.feedbackRating("sess-r", 2); got != feedbackDown {
-		t.Fatalf("第二次 seeding 覆盖了内存态: %q", got)
+	for code, want := range cases {
+		if got := feedbackFailureText(code); got != want {
+			t.Errorf("%q → %q，want %q", code, got, want)
+		}
 	}
 }
 
-func TestFeedbackIgnoresForeignAndInvalidEntries(t *testing.T) {
-	cfg := newFakeConfig(map[string]string{
-		"feedback.good.1": feedbackUp,
-		"feedback.bad.1":  "maybe",   // 不是我们写的两个合法值
-		"theme":           "light",   // 别的键
-		"feedback.tomb.1": "",        // 撤回墓碑
-		"feedback.":       "garbage", // 前缀对但内容不是记录
-	})
-	p := &Plugin{}
-	p.seedFeedback(cfg.actions())
+func TestPollFeedbackConsumesResult(t *testing.T) {
+	// 冲突：弹窗保持打开、进入失败态（官方 `state.failure`），不弹感谢 toast。
+	p := &Plugin{feedbackDialog: &feedbackDialogState{MessageID: "m-1", Rating: apiclient.FeedbackRatingPositive, submitting: true}}
+	env := &pluginapi.Env{
+		Data: pluginapi.Snapshot{Cur: "s-1"},
+		Act: pluginapi.Actions{FeedbackTakeResult: func(session string) (pluginapi.FeedbackResult, bool) {
+			return pluginapi.FeedbackResult{MessageID: "m-1", OK: false, Code: "version-conflict"}, true
+		}},
+	}
+	p.pollFeedback(env)
+	if p.feedbackDialog == nil {
+		t.Fatal("失败时弹窗应保持打开")
+	}
+	if p.feedbackDialog.submitting || p.feedbackDialog.failure != zhFeedbackConflict {
+		t.Fatalf("失败态不对：%+v", p.feedbackDialog)
+	}
+	if p.feedbackToast != "" {
+		t.Fatalf("失败时不该弹成功 toast：%q", p.feedbackToast)
+	}
 
-	if got := p.feedbackRating("good", 1); got != feedbackUp {
-		t.Fatalf("合法记录没读回来: %q", got)
+	// 成功：关弹窗 + 感谢 toast。
+	p = &Plugin{feedbackDialog: &feedbackDialogState{MessageID: "m-1", submitting: true}}
+	env.Act.FeedbackTakeResult = func(session string) (pluginapi.FeedbackResult, bool) {
+		return pluginapi.FeedbackResult{MessageID: "m-1", OK: true}, true
 	}
-	if got := p.feedbackRating("bad", 1); got != "" {
-		t.Fatalf("非法值 %q 被当成了评分", got)
-	}
-	if got := p.feedbackRating("tomb", 1); got != "" {
-		t.Fatalf("墓碑空串被当成了评分: %q", got)
-	}
-	if len(p.feedback) != 1 {
-		t.Fatalf("内存表里混进了非记录键: %v", p.feedback)
-	}
-}
-
-func TestFeedbackWithoutConfigActionsStaysInMemory(t *testing.T) {
-	// 壳没接配置通道：点击仍然生效，只是重启即失——而**不做任何写入**。
-	act := pluginapi.Actions{}
-	p := &Plugin{}
-	p.toggleFeedback(act, "sess-m", 5, feedbackUp)
-	if got := p.feedbackRating("sess-m", 5); got != feedbackUp {
-		t.Fatalf("没有配置通道时内存态 = %q，期望 up", got)
-	}
-}
-
-func TestFeedbackEmptySessionDoesNotRecord(t *testing.T) {
-	cfg := newFakeConfig(nil)
-	p := &Plugin{}
-	p.toggleFeedback(cfg.actions(), "", 0, feedbackUp)
-	if len(cfg.sets) != 0 {
-		t.Fatalf("没有会话 id 却写了配置: %v", cfg.sets)
-	}
-	if len(p.feedback) != 0 {
-		t.Fatalf("没有会话 id 却记了一条: %v", p.feedback)
+	p.pollFeedback(env)
+	if p.feedbackDialog != nil || p.feedbackToast != zhFeedbackRecorded {
+		t.Fatalf("成功态不对：dialog=%+v toast=%q", p.feedbackDialog, p.feedbackToast)
 	}
 }
 
@@ -177,7 +163,6 @@ func TestThumbIconMirrorsAndFills(t *testing.T) {
 	if len(down.Commands) != len(up.Commands) {
 		t.Fatalf("上/下拇指路径长度不同：%d vs %d", len(down.Commands), len(up.Commands))
 	}
-	// 镜像：同一个点，y 关于 8 对称。
 	var upPoint bool
 	for i := range up.Commands {
 		if up.Commands[i].Kind != gfx.PathCommandMove {

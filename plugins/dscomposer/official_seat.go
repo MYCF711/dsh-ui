@@ -264,7 +264,9 @@ func itoa(n int64) string {
 // 文件引用是当前唯一真实的"添加"来源，所以这里让它打开 `@` 候选。
 // 等命令注册表落地，这一枚改成"加号 → 菜单（命令 / 附件 / 文件引用）"。
 func (p *Plugin) drawAddEntry(f ui.C, env *pluginapi.Env) bool {
-	if env.Act.FSList == nil || strings.TrimSpace(env.Data.CWD) == "" {
+	canReference := (env.Act.FileReferences != nil && env.Data.Cur != "") ||
+		(env.Act.FSList != nil && strings.TrimSpace(env.Data.CWD) != "")
+	if !canReference {
 		return false
 	}
 	t := p.theme

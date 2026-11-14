@@ -35,7 +35,7 @@
 - ✅ `permission-presets`（F2 命令面板 5 条；宿主 `session.setPermission` + 白名单）
 - ❌ `attachment`
 - ✅ `commands`（F2 命令面板；A 类时做的）
-- 🟡 `input-trigger`（`dscomposer` 的 `@` 候选菜单；`/` 走 F2。**不是通用的候选弹层管道**，见末尾第 4 条）
+- ✅ `input-trigger`（`plugins/dscomposer/trigger.go`：`@` 文件/会话 + `/` 技能三源注册表、官方 detect（引号路径 + URL 斜杠 carve-out）、按 source 分组菜单、Enter/Tab/↑↓/Esc；数据面见 `internal/apiclient/references.go`）
 - ❌ `entry-customization`
 - ⬜ `deepseek-model-label-1017`（**N/A**：官方是 1017 那次发布的临时角标，不是产品能力）
 
@@ -59,11 +59,11 @@
 - ✅ `skill`（`dsskill`：**专用工具行** `SkillRow` 四态 + 两棵树 + 展开说明卡；**`/name` 用户文本规则**逐条实现；**胶囊** `SkillReference`。工具行**零宿主依赖**——官方 `skillRowModel` 只从 durable 的 call/result slice 推。**仍缺**：斜杠候选源（`inputTriggers` 注册表）与 `openSkill`（`skills/list`），见 B 类）
 - ✅ `user-questions`（`dsquestions`：F7/F8 或点击选选项）
 - ❌ `workflow-run`
-- 🟡 `message-feedback`（`dsconversation/feedback.go`：每条助手消息 👍/👎 + 落盘 `feedback.<会话>.<下标>`；**没有官方的反馈弹窗与文字原因**）
+- ✅ `message-feedback`（`plugins/dsconversation/feedback.go` + `internal/apiclient/message_feedback.go` + `cmd/app/reference_wiring.go`：官方七分类弹窗、`messageFeedback.list/put/delete` durable 写入、`ifVersion` 乐观并发 + `version-conflict` 用 `current` 就地收敛、成功/失败 toast。**本仓适配**：助手消息无宿主 messageId → 用持久 v4 seq 作 `v4:<seq>` 身份，见报告差异 1）
 
 ### 内容呈现（17）
 
-- 🟡 `reference`（`dscomposer` 的 `@` 补全：识别 + 候选 + 补全做了，**变成引用块没做**，见末尾第 4 条）
+- ✅ `reference`（`plugins/dsconversation/usertext.go`：`@path` / `@[label]` 加 `dsh-session:` 的 wire 引用 在用户消息里画成 file/folder/session chip，file chip 点击走 `Actions.PreviewFile`；`plugins/dscomposer/trigger.go` 的候选原样插入官方 wire mention；图标转写自 rc.2 dist，见 `docs/official-icon-sprite-register.md`）
 - ⬜ `renderer`（**N/A**：官方的 *"Browser UI renderer: React slot bindings"* 是 React 专用；我们是 Go+Viva，槽位绑定在 `internal/uikernel`）
 - 🟡 `deliverables`（`dsdeliverables` + `dsconversation`：**2/4**，见末尾「仍然缺」第 6 条）
 - ✅ `trajectory`（`dsrightbar`：按轮分组的轨迹栏）
@@ -74,7 +74,7 @@
 - ❌ `workspace`
 - ✅ `theme`（`dscore` 的 ds-dark / ds-light 两套 + **运行时切换**：F2 命令面板三条 深色/浅色/跟随系统，`-theme` 也收 `system`；官方的 "Appearance 设置行" 我们没有，入口在命令面板）
 - ✅ `shortcuts`（`dsshortcuts`：F1 键位表，**带守卫**——从 `plugins/` 的 AST 里扫出所有 `ui.KeyXxx`，表漏记一个就红；官方的"录制"和"本地改键"没做）
-- 🟡 `secret-mask`（`internal/secretmask` + `dsconversation/mask.go`：用户消息**显示**遮罩。只用户消息、只显示，复制仍是原文）
+- ✅ `secret-mask`（`internal/secretmask`：官方 `credential-formats.ts` 的私钥块/JWT/URL 口令/provider 前缀表 + 本仓高熵兜底；`plugins/dsconversation/usertext.go`：逐值遮罩 + 眼睛按钮原位显示/隐藏，长度不变（复制仍是原文））
 - ⬜ `session`（**N/A**：官方的 *"Session Controller adapter for React"* 是 React 适配层；我们的会话状态在壳里）
 - ❌ `cordis`
 - 🟡 `brand-official`（`dsbrand`：官方鲸鱼 logo 矢量 + `ui.brand` 可整体替换；**"sidebar slots occupants"那层没有**）
@@ -112,10 +112,10 @@
 | 18 | `dsh-client-ui-file-actions` | ❌ MISSING | 无 |
 | 19 | `dsh-client-ui-file-drag` | ❌ MISSING | 无 |
 | 20 | `dsh-client-ui-goal` | ✅ IMPLEMENTED | `plugins/dsgoal`（4 文件 / 364 行） |
-| 21 | `dsh-client-ui-input-trigger` | 🟡 PARTIAL | `plugins/dscomposer/mention.go` |
+| 21 | `dsh-client-ui-input-trigger` | ✅ IMPLEMENTED | `plugins/dscomposer/trigger.go` + `internal/apiclient/references.go`（`@` 文件/会话 + `/` 技能；detect/分组/Tab drill/pick 路由） |
 | 22 | `dsh-client-ui-jobs` | ✅ IMPLEMENTED | `plugins/dsjobs`（官方 `conversation.session.header.actions` order 20 触发器 + `shell.overlay` 弹层；旧三栏 `sidebar.footer` 清单）+ `internal/apiclient/jobs.go`（`jobs.output`/`jobs.stop`）+ `cmd/app/jobs_actions.go` |
 | 23 | `dsh-client-ui-layout` | ✅ IMPLEMENTED | `internal/uikernel` 骨架 + `plugins/dsshell` |
-| 24 | `dsh-client-ui-message-feedback` | 🟡 PARTIAL | `plugins/dsconversation/feedback.go`（240 行） |
+| 24 | `dsh-client-ui-message-feedback` | ✅ IMPLEMENTED | `plugins/dsconversation/feedback.go` + `internal/apiclient/message_feedback.go` + `cmd/app/reference_wiring.go`（durable + 弹窗 + 冲突收敛 + toast） |
 | 25 | `dsh-client-ui-model-selection` | ✅ IMPLEMENTED | `internal/uikernel/official_model_menu.go` + `dscomposer` |
 | 26 | `dsh-client-ui-open-in-app` | ✅ IMPLEMENTED | `plugins/dsopen`（3 文件 / 163 行） |
 | 27 | `dsh-client-ui-permission-presets` | ✅ IMPLEMENTED | `dscomposer` + `dssettings` |
@@ -123,10 +123,10 @@
 | 29 | `dsh-client-ui-plugin-manager` | 🟡 PARTIAL | `plugins/dssettings` 的 `plugins` section（只读清单页那半）+ **侧栏管理页未做** |
 | 30 | `dsh-client-ui-plugin-market` | ❌ MISSING | 无 |
 | 31 | `dsh-client-ui-plugin-recommendations` | ❌ MISSING | 无 |
-| 32 | `dsh-client-ui-reference` | 🟡 PARTIAL | `plugins/dscomposer/mention.go` |
+| 32 | `dsh-client-ui-reference` | ✅ IMPLEMENTED | `plugins/dsconversation/usertext.go`（file/folder/session chip + PreviewFile）+ `plugins/dscomposer/trigger.go` + `internal/reficon` |
 | 33 | `dsh-client-ui-renderer` | ✅ IMPLEMENTED | `internal/uikernel`（槽 dispatch） |
 | 34 | `dsh-client-ui-schedule` | 🟡 PARTIAL | `plugins/dsschedule`（2 文件 / 125 行） |
-| 35 | `dsh-client-ui-secret-mask` | 🟡 PARTIAL | `internal/secretmask` + `dsconversation/mask.go` |
+| 35 | `dsh-client-ui-secret-mask` | ✅ IMPLEMENTED | `internal/secretmask`（官方格式表）+ `plugins/dsconversation/usertext.go`（逐值显示/隐藏） |
 | 36 | `dsh-client-ui-session` | ✅ IMPLEMENTED | `internal/apiclient` + `cmd/app` |
 | 37 | `dsh-client-ui-settings` | ✅ IMPLEMENTED | `plugins/dssettings`（14 文件 / 5470 行） |
 | 38 | `dsh-client-ui-settings-account` | 🟡 PARTIAL | `dssettings` 的 `account` section |
@@ -163,7 +163,7 @@
 >
 > #22 的结构与几何证据、与官方的 9 条差异台账：[official-jobs-evidence-rc2.md](official-jobs-evidence-rc2.md)。
 
-## 合计：官方 66 个部件 —— ✅ 31 · 🟡 17 · ⬜ 0（不该有） · ❌ 18
+## 合计：官方 66 个部件 —— ✅ 35 · 🟡 13 · ⬜ 0（不该有） · ❌ 18
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），
@@ -187,24 +187,18 @@
 1. **`attachment`** —— 没有附件入口（画了就是死按钮，所以没画）
 2. **`settings*`（9 个）** —— 完全没有设置界面，改配置只能改 JSON
 3. **`sidebar-terminal`** —— 官方侧栏能开终端
-4. **`reference`（`@` 文件引用）** —— **做了一半**（`plugins/dscomposer/mention.go`）。
-   官方是两个包：`input-trigger`（"Input trigger pipeline: '/' and '@' detection,
-   candidate menu, pick routing to registered sources"）和 `reference`（"Unified Web
-   @file and @session reference source"）。
+4. **`reference` / `input-trigger`** —— **2026-11-14 已接**（原先是"补全不是引用"）。
+   现状与剩余差异：
 
    | 官方那一层 | 我们 |
    |---|---|
-   | `@` 识别 + 候选菜单 + 选中补全 | ✅ 敲 `@` 后按前缀列候选（目录在前、大小写不敏感），点一行或按 Enter 补进草稿 |
-   | 候选来自"注册的 source" | 🟡 只接了**文件**（`Actions.FSList`，和侧栏文件树同一个接口）。**没有会话引用**（官方 `@` 也能引会话/subagent） |
-   | 把 `@path` 变成**引用块** | ❌ 补全出来的是**纯文本**，跟着 prompt 一起发出去 |
+   | `@` 识别 + 候选菜单 + 选中 | ✅ `plugins/dscomposer/trigger.go`：`@` 文件（宿主 `fileReferences.list`）+ 会话（`sessionReferenceResolver.candidates`）+ `/` 技能（`skills.list`）三源；官方 detect 的引号路径与 URL 斜杠 carve-out；Enter/Tab/↑↓/Esc |
+   | 把 `@path` 变成**引用 chip** | ✅ `plugins/dsconversation/usertext.go`：用户文本里的 `@path` / `@[label]` 加 `dsh-session:` 的 wire 引用 画成 file/folder/session chip；file chip 点击走 `Actions.PreviewFile` |
+   | 结构化编辑器节点 | ❌ 本仓输入框是**纯文本**（viva `ui.Field` 没有 DecoratorNode），pick 的结果是官方 wire 文本形式，发送出去的仍是纯文本；官方 React editor 的 chip 节点无法在 Go 侧一比一复刻 |
 
-   **最后一行是这一项只能记 🟡 的原因**：补全不是引用。引用要有身份（附件 id、
-   会话 id），要进宿主的独立字段——而现在的 Transport 契约里没有"附件/引用"这个概念。
-   要真做，得先加跨仓契约（`session.prompt` 收 `references`，或 `attachment.*` 一族），
-   那是宿主线的活。
-
-   为什么仍然值得做：**它现在就有用**。模型看见 `@plugins/dsopen/open.go` 会自己去 read，
-   而用户少打一长串路径、也少打错。只是别把它说成"做到了 @ 引用"。
+   **最后一行是剩余差异**，但它不影响"引用可识别、可显示、可点击"这三件事；
+   发送层仍是纯文本（这与官方"plain-text-reference decision"一致：官方也把
+   `ref` 作为文本发出去）。
 5. **`jobs.output` 的界面消费** —— **2026-11-14 已做**（#22）：官方档 header 触发器 + 弹层、旧三栏档侧栏清单都能展开读输出（rune 游标分页、`truncated`/错误/加载更多/复制），跑着的行有两段式停止。之前不做的那条理由（"轮次结束就报错"）没有消失，但**报错是可显示的事实**（官方 `output.error` 也是一行错误），所以不再构成"不做"的理由
 6. **`deliverables`** —— **只做了 1/4**。官方包的 description 写得很清楚：
    > Changed-files card with per-file comparison tabs, delivery cards, and clickable final-response file references
@@ -257,7 +251,7 @@
 |---|---|
 | `shortcuts` | 纯 UI：一个键位说明面板，键位是界面自己定的 |
 | `theme` | `dscore` 已有 `Dark()`，加亮色/跟随系统就行 |
-| `message-feedback` | 消息下方的 👍/👎，本地记录即可（不承诺上报） |
+| `message-feedback` | ✅ 已升级为宿主 durable（`messageFeedback.*`）+ 官方弹窗与冲突收敛 |
 | `trajectory` | **我们已有**（`dsrightbar`），只差官方那种分组/折叠层级 |
 | `tool` | 工具卡的独立插件化（现在写在 `dsconversation` 里） |
 | `commands` | 命令面板，动作走现成的 `Actions` |
@@ -270,7 +264,7 @@
 |---|---|---|
 | `sidebar-files` | `fs.read` / `fs.write` / `workspace.list` | **目录列举**（`workspace.list` 只给顶层） |
 | `sidebar-documentpreview` | `fs.read` | 只需要渲染 |
-| `reference` | `workspace.list`（已用） | 补全够用；**变成引用块**要新增"附件/引用"契约 |
+| `reference` | ✅ `workspace.list` + `fileReferences.list` + `sessionReferenceResolver.candidates` | 已接（2026-11-14）：候选/插入/chip 全通；仅结构化编辑器节点不复刻 |
 | `deliverables` | `fs.write` | 需要"哪些是交付物"的约定 |
 | `jobs` | 后台任务概念已有；`jobs.list`/`jobs.output`/`jobs.stop` 现在都是真方法 | ✅ 已接（2026-11-14，#22）；仅剩宿主没有 `JobView.kind/status/startedAt` 等字段 → 不画 kind/时长/stopping/killed |
 | `schedule` | 无 | 需要定时任务的存储与方法 |

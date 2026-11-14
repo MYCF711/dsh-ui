@@ -104,6 +104,26 @@ type model struct {
 	fsDirs map[string][]pluginapi.FSEntry
 	// fsPending 记录哪些目录正在拉，避免同一目录每帧都发一次请求。
 	fsPending map[string]bool
+	// fileRefs/sessionRefs 是 `@` 候选的按查询缓存（键 = sessionID + NUL + query）。
+	// pending 防重入：插件每帧都可能问同一个 query。
+	fileRefs           map[string][]pluginapi.FileReferenceCandidate
+	fileRefsPending    map[string]bool
+	fileRefsFailed     map[string]bool
+	sessionRefs        map[string][]pluginapi.SessionReferenceCandidate
+	sessionRefsPending map[string]bool
+	sessionRefsFailed  map[string]bool
+	// skills 是 `/` 候选（宿主 skills.list，按会话）；与 dsskill 的 resolver 同源。
+	skills        map[string][]pluginapi.SkillCandidate
+	skillsPending map[string]bool
+	skillsFailed  map[string]bool
+	// feedback 是消息反馈缓存（键 = sessionID → messageID → item）。
+	// loaded=false 表示还没拉到（插件不画反馈按钮的"已记录"态）。
+	feedback        map[string]map[string]pluginapi.FeedbackItem
+	feedbackLoaded  map[string]bool
+	feedbackPending map[string]bool
+	feedbackFailed  map[string]bool
+	// feedbackResults 是最近一次 put/delete 的终态（插件取走后清空）。
+	feedbackResults map[string]pluginapi.FeedbackResult
 	// schedules 是定时任务的缓存（宿主 <home>/state/schedules/ 的投影）。
 	schedules []pluginapi.ScheduleItem
 	// jobs 是后台任务的缓存（宿主 loopRunner.jobs 的投影）。
@@ -458,6 +478,14 @@ func (m *model) openSession(id string) {
 	m.mu.Lock()
 	m.cur = id
 	m.pendingScroll = id
+	// 反馈是宿主 sidecar，可能在别处改过；每次打开会话重新拉一次，
+	// 顺带清掉上一次的失败抑制（否则一次网络抖动会让这条会话永远不再加载反馈）。
+	if m.feedbackLoaded != nil {
+		delete(m.feedbackLoaded, id)
+	}
+	if m.feedbackFailed != nil {
+		delete(m.feedbackFailed, id)
+	}
 	// 水位跟着会话走；后台事件已经持续归约，所以切回绝不取消订阅重放。
 	m.lastSeq = m.seqs[id]
 	// 审批同样按会话保存，恢复原 requestId/options，不在切换时丢请求。
@@ -2581,17 +2609,40 @@ func main() {
 			}
 			return c.Content, nil
 		},
-		OpenSession:    m.openSession,
-		DeleteSession:  m.deleteSession,
-		CompactSession: m.compactSession,
-		ForkSession:    m.forkSession,
-		NewSession:     m.newSession,
-		Send:           m.sendText,
-		Copy:           func(text string) { _ = m.copyText(text) },
-		CopyResult:     m.copyText,
-		OpenExternal:   m.openExternal,
-		OpenFile:       m.openFile,
-		Notify:         m.setStatus,
+		// 文件引用 chip 的点击：应用内预览（官方 `sidebarRight.openResource`）。
+		// 与 `OpenFile`（系统默认程序）是两条能力，不能互相顶替。
+		PreviewFile: func(path string) {
+			if m.kernel == nil {
+				return
+			}
+			for _, pl := range m.kernel.Plugins() {
+				if f, ok := pl.(*dsfiles.Plugin); ok {
+					f.Open(m.cwd, path)
+					m.inv.Invalidate()
+					return
+				}
+			}
+		},
+		// `@` / `/` 候选：同步读壳缓存，首次问触发后台拉取（见 reference_wiring.go）。
+		FileReferences:             m.fileReferences,
+		SessionReferenceCandidates: m.sessionReferenceCandidates,
+		Skills:                     m.skillCandidates,
+		// 消息反馈：durable sidecar（宿主 messageFeedback.*），异步写、结果留给插件取。
+		MessageFeedback:       m.messageFeedback,
+		MessageFeedbackPut:    m.messageFeedbackPut,
+		MessageFeedbackDelete: m.messageFeedbackDelete,
+		FeedbackTakeResult:    m.feedbackTakeResult,
+		OpenSession:           m.openSession,
+		DeleteSession:         m.deleteSession,
+		CompactSession:        m.compactSession,
+		ForkSession:           m.forkSession,
+		NewSession:            m.newSession,
+		Send:                  m.sendText,
+		Copy:                  func(text string) { _ = m.copyText(text) },
+		CopyResult:            m.copyText,
+		OpenExternal:          m.openExternal,
+		OpenFile:              m.openFile,
+		Notify:                m.setStatus,
 		// 桌面更新指示器的点击（官方 `DesktopUpdateBridge.open()`）：
 		// 走宿主拿更新入口 URL，再交给**系统默认浏览器**。
 		// 见 desktop_update_wiring.go。

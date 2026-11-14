@@ -5,18 +5,21 @@ import (
 	"strconv"
 )
 
-// parseSVGPath 只认官方这条路径真正用到的四个**绝对**命令（M / L / C / Z）。
+// ParseSVGPath 解析 M/L/C/H/V/Z 绝对命令子集。
 //
-// 官方路径数过：4 个 M、71 个 C、1 个 L、4 个 Z。相对命令、弧线、二次曲线
-// 这里一律不支持——遇到就把整条路径作废（返回 false），而不是"画一半"：
-// 半个 logo 比没有 logo 更像 bug。要扩展时先确认官方路径真的换了形状。
-// ParseSVGPath 解析 M/L/C/Z 绝对命令子集（官方 logo 只用到这四个）。
+// 官方鲸鱼 logo 只用到 M/L/C/Z；H/V 是给官方 `ReferenceIconRegular`
+// （文件/文件夹/会话三枚引号图标）补的——那三枚的 path 里确实有水平/垂直
+// 直线，语义唯一且不需要当前点之外的上下文。相对命令、弧线、二次曲线
+// 仍然一律不支持：遇到就把整条路径作废（返回 false），而不是"画一半"：
+// 半个图标比没有图标更像 bug。要扩展时先确认官方路径真的换了形状。
 func ParseSVGPath(d string) ([]gfx.PathCommand, bool) {
 	var (
 		out   []gfx.PathCommand
 		nums  []float32
 		i     int
 		total = len(d)
+		// cur 是当前点：H/V 只给一个坐标，另一个从当前点取（SVG 绝对命令语义）。
+		curX, curY float32
 	)
 	readNumber := func() (float32, bool) {
 		start := i
@@ -73,18 +76,35 @@ func ParseSVGPath(d string) ([]gfx.PathCommand, bool) {
 			if !take(2) {
 				return nil, false
 			}
-			out = append(out, gfx.MoveTo(nums[0], nums[1]))
+			curX, curY = nums[0], nums[1]
+			out = append(out, gfx.MoveTo(curX, curY))
 		case 'L':
 			i++
 			if !take(2) {
 				return nil, false
 			}
-			out = append(out, gfx.LineTo(nums[0], nums[1]))
+			curX, curY = nums[0], nums[1]
+			out = append(out, gfx.LineTo(curX, curY))
+		case 'H':
+			i++
+			if !take(1) {
+				return nil, false
+			}
+			curX = nums[0]
+			out = append(out, gfx.LineTo(curX, curY))
+		case 'V':
+			i++
+			if !take(1) {
+				return nil, false
+			}
+			curY = nums[0]
+			out = append(out, gfx.LineTo(curX, curY))
 		case 'C':
 			i++
 			if !take(6) {
 				return nil, false
 			}
+			curX, curY = nums[4], nums[5]
 			out = append(out, gfx.CubicTo(nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]))
 		case 'Z', 'z':
 			i++

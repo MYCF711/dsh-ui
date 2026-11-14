@@ -20,6 +20,7 @@ type (
 	FSEntry      = pub.FSEntry
 	ScheduleItem = pub.ScheduleItem
 	Job          = pub.Job
+	JobOutput    = pub.JobOutput
 	Model        = pub.Model
 	Painter      = pub.Painter
 	Primitives   = pub.Primitives

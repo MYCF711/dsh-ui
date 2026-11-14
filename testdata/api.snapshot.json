@@ -387,13 +387,26 @@
     "jobs.output": {
       "batch": 2,
       "req": {
+        "sessionId": "string",
         "id": "string",
-        "waitMs": "int=0"
+        "waitMs": "int=0",
+        "cursor": "int=0",
+        "limit": "int=0"
       },
       "resp": {
-        "…": "见 ../DSH-GO/internal/transport/handlers_jobs.go 的 JobOutput"
+        "id": "string",
+        "sessionId": "string?",
+        "output": "string",
+        "done": "bool",
+        "exit_code": "int",
+        "cwd": "string?",
+        "cursor": "int",
+        "nextCursor": "int",
+        "hasMore": "bool",
+        "total": "int",
+        "truncated": "bool?"
       },
-      "req_note": "只在轮次进行中可用（每轮一个子进程，跑完就退）"
+      "req_note": "后台任务输出的一页（HOST:internal/transport/handlers_jobs.go:87-160；返回类型 :41-66；runes 分页 :162-184）。**cursor 与 limit 的单位都是 Unicode code point（rune），不是字节**——按字节切会把中文/emoji 劈成半个字符（:38-40）。limit=0 用宿主默认 DefaultJobOutputLimit=16*1024、上限 MaxJobOutputLimit=64*1024（:67-69、:122-126）。生产路径带 scoped 回调时 **sessionId 必填**，空串回 400 bad_request「拒绝跨会话猜任务」（:106-112）；不传 sessionId 的旧 id/waitMs 形状只在未接 scoped 回调的宿主上可用。`truncated=true` 表示执行层 1 MiB 保留窗口之前已有输出被淘汰，`total` 仍是当前保留文本的 rune 数（:52-55），两者不能折叠。错误面：id 必填/cursor<0/limit<0 → 400；未接线 → 501；越界游标 → 400 bad_request（ErrBadJobCursor）；任务不存在 → 404 not_found；任务已结束 → 409 job_finished；跨会话 → 403 cross_session（:290-303）。"
     },
     "schedule.list": {
       "batch": 1,
@@ -860,10 +873,25 @@
         ]
       },
       "req_note": "零参数、direct 调用（官方 @deepseek-ai/dsh-host-plugin-inventory 0.2.2-rc.2 的 TypertRemote `pluginInventory.list`：src/index.ts:50-74 声明、src/index.ts:82-121 实现、src/types.ts:16-77 类型）。handler HOST:internal/transport/handlers_plugin_inventory_official.go:26-69（真实现挂在 OfficialPluginManagerAPI.PluginInventoryList 上，与 pluginManager.listPlugins 共用同一份 Manager/Loader）-> HOST:cmd/dshd/serve_plugins_official.go:54-74 适配，条目由 HOST:cmd/dshd/serve_plugins_official.go:188-225 生成（entryId=bundle name、moduleName=manifest entry、fiberPhase 只有 active/null 两种真值）。三处**缺席语义**必须分清：(1) `entryId`/`moduleName`/`enabled`/`fiberPhase` 必填，`fiberPhase: null` 是合法取值（没有活着的 root Fiber），不是缺字段；(2) `meta` 缺席 = 包没有本地显示元数据，官方回退到 moduleName（ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.tsx:94-100），本仓宿主**不产出** meta；(3) `agentPresets` 整键缺席 = 这个部署没有组合 agent-preset roster（**不是**空数组），本仓宿主明确不产出（handlers_plugin_inventory_official.go:20-23）。`meta.title`/`meta.description` 是官方 LocalizedText = string | {en:string,[locale]:string}（dsh-package-manifest/src/types.ts:44）。宿主没接线 -> 501 not_implemented 四字段，**不是**空 entries。"
+    },
+    "jobs.stop": {
+      "batch": 9,
+      "req": {
+        "sessionId": "string",
+        "id": "string"
+      },
+      "resp": {
+        "id": "string",
+        "sessionId": "string",
+        "stopped": "bool",
+        "done": "bool",
+        "exit_code": "int"
+      },
+      "req_note": "请求停止一个后台任务（HOST:internal/transport/handlers_jobs.go:258-292；方法常量 HOST:internal/transport/api.go:44-45、TaskActionMethods :118-122）。**只按调用方明确命名的 session+id 停**：不接受进程名/镜像名/全局 PID（:258 注释）；缺任一参数 → 400（:266-269）；未接线 → 501（:272-275）。`stopped=true` **只在所属进程确实停止后**才返回：handler 在 `!result.Stopped || !result.Done` 时直接 500 internal，不谎报已停（:283-288）。失败面同 jobs.output 的四字段码（:290-303，含 409 job_finished / 403 cross_session / 429 job_limit_reached / 501 job_background_disabled、job_controller_unavailable 等官方 JobError 七码投影 :305-335）。"
     }
   },
   "counts": {
-    "total": 51,
+    "total": 52,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -871,6 +899,7 @@
     "batch5": 1,
     "batch6": 6,
     "batch7": 7,
-    "batch8": 1
+    "batch8": 1,
+    "batch9": 1
   }
 }

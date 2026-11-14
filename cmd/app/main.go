@@ -163,7 +163,10 @@ type model struct {
 	desktopUpdateAt time.Time
 	// jobsPending 防重入：刷新在途时不再发第二次请求（每帧都可能问）。
 	jobsPending bool
-	smokeFired  bool
+	// jobOutputs 是后台任务输出的按需缓存（键 = sessionID + "\x00" + id）。
+	// 只在用户展开某个任务时才有条目；插件拿的是**累计视图**（见 jobs_actions.go）。
+	jobOutputs map[string]*jobOutputCache
+	smokeFired bool
 
 	// 待审批的请求（每会话一条）；前台指针只是 approvals[cur] 的发布副本。
 	approval  *approvalReq
@@ -692,12 +695,14 @@ func (m *model) refreshJobs() {
 	out := make([]pluginapi.Job, 0, len(list))
 	for _, j := range list {
 		out = append(out, pluginapi.Job{
-			ID: j.ID, Command: j.Command, Done: j.Done,
+			ID: j.ID, SessionID: j.SessionID, Command: j.Command, Done: j.Done,
 			ExitCode: j.ExitCode, Bytes: j.Bytes,
 		})
 	}
 	changed := !sameJobs(m.jobs, out)
 	m.jobs = out
+	// 任务离开清单后，输出缓存也一并丢掉（不然每次后台跑完都会留一份文本）。
+	m.pruneJobOutputs(out)
 	m.mu.Unlock()
 
 	if changed {
@@ -2449,6 +2454,10 @@ func main() {
 			}
 			return jobs
 		},
+		// 后台任务的两条真实动作（宿主 `jobs.output` / `jobs.stop`）。
+		// 读走缓存 + 后台拉；停止不乐观更新（见 jobs_actions.go 顶部三条约束）。
+		JobsOutput: m.jobOutput,
+		JobsStop:   m.jobStop,
 		// 模型清单（启动时拉一次，见 refreshList）；没拉到就返回 nil，
 		// 插件据此不画"选模型"命令（画了也选不出东西）。
 		ModelsList: func() []pluginapi.Model {

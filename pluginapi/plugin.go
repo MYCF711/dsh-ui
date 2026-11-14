@@ -252,15 +252,43 @@ type Model struct {
 // Job 是后台任务的一行。
 //
 // **它是一份快照，不是活句柄**：宿主那边的数据由子进程推上来，
-// 这里拿到的是"上一次推的时候"的样子。所以：
-//   - Done 为 false **不代表此刻还在跑**（可能刚结束，还没推）
-//   - 不提供 kill/输出——`jobs.output` 宿主那边还是 nil（需要请求-应答通道）
+// 这里拿到的是"上一次推的时候"的样子。所以 Done 为 false **不代表此刻还在跑**
+// （可能刚结束，还没推）。
+//
+// 输出与停止是**另外两条真实动作**：`JobsOutput`（读一页输出）与
+// `JobsStop`（请求停止）。它们都必须带 SessionID——宿主拒绝"跨会话猜任务"
+// （`HOST:internal/transport/handlers_jobs.go:109-112`），所以这一格不许自己编，
+// 空串就表示"不知道归属，别画能点开/能停的控件"。
 type Job struct {
-	ID       string
-	Command  string
-	Done     bool
-	ExitCode int
-	Bytes    int
+	ID        string
+	SessionID string
+	Command   string
+	Done      bool
+	ExitCode  int
+	Bytes     int
+}
+
+// JobOutput 是 `JobsOutput` 准备好的一页（或**累计**）输出。
+//
+// 字段语义与宿主 `transport.JobOutput` 一一对应：
+//   - Cursor/NextCursor 的单位是 **Unicode code point**，不是字节；
+//   - HasMore 表示还有下一页（继续按 NextCursor 要）；
+//   - Truncated 表示 1 MiB 保留窗口之前已有输出被淘汰——它与"没有输出"是
+//     两件事，界面必须分别说；
+//   - Err 非空表示这一页**没读到**（轮次结束、任务 owner 不在、跨会话被拒）：
+//     这时 Output 一律为空，不许拿"看起来没有输出"冒充成功。
+type JobOutput struct {
+	ID         string
+	SessionID  string
+	Output     string
+	Done       bool
+	ExitCode   int
+	Cursor     int
+	NextCursor int
+	HasMore    bool
+	Total      int
+	Truncated  bool
+	Err        string
 }
 
 // ScheduleItem 是定时任务的一行。
@@ -757,6 +785,26 @@ type Actions struct {
 	// 插件画的时候不该把"这一帧没有"理解成"没有后台任务"。
 	// nil = 壳没接（老宿主）。
 	JobsList func() []Job
+
+	// JobsOutput 取一个后台任务**已就绪的那部分**输出（宿主 `jobs.output`）。
+	//
+	// 同步返回壳缓存，**不会在绘制线程里发请求**：缓存没有这一页时返回
+	// ok=false，壳在后台拉、拉到后 Invalidate，插件下一帧再问一次。
+	// 所以调用方必须把 ok=false 画成"加载中/还没到"，不能画成"没有输出"。
+	//
+	// cursor=0 表示"从开头那一页开始"；继续翻页时传上一页的 NextCursor。
+	// 返回的是**累计视图**：Output 是从 0 到当前已加载游标的全部文本，
+	// HasMore/NextCursor 指向下一页，所以插件可以整段重绘。
+	// sessionID 空 = 不知道归属：壳直接返回 ok=false，不猜。
+	// nil = 壳没接（老宿主）→ 插件不画"展开输出"。
+	JobsOutput func(sessionID, id string, cursor int) (JobOutput, bool)
+
+	// JobsStop 请求停止一个后台任务（宿主 `jobs.stop`）。
+	//
+	// **异步、不返回结果**：成功时壳刷新清单并重绘，失败只写状态栏。
+	// 插件不能假设"点了就停了"——真正的停止以清单里 Done/ExitCode 变化为准。
+	// nil = 壳没接（老宿主）→ 插件不画停止按钮（死按钮比没有更坏）。
+	JobsStop func(sessionID, id string)
 
 	// ModelsList 列可选模型（壳缓存，启动后拉一次）。
 	// nil = 壳没接（老宿主）。

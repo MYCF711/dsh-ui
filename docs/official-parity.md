@@ -54,7 +54,7 @@
 - ✅ `goal`（`dsgoal`：GoalBar 停靠 composer 上方，数据来自宿主 `session.setGoal`）
 - ❌ `plan`
 - ✅ `schedule`（`dsschedule`：侧栏「定时任务」，宿主 `schedule.list`）
-- ✅ `jobs`（`dsjobs`：侧栏「后台任务」，宿主 `jobs.list` + 5 秒轮询）
+- ✅ `jobs`（`dsjobs`：官方档 header 触发器 + 500px 弹层 / 旧三栏档侧栏清单；`jobs.list` 5 秒轮询 + `jobs.output` rune 游标分页 + `jobs.stop` 两段式；证据见 [official-jobs-evidence-rc2.md](official-jobs-evidence-rc2.md)）
 - ❌ `subagent`
 - ✅ `skill`（`dsskill`：**专用工具行** `SkillRow` 四态 + 两棵树 + 展开说明卡；**`/name` 用户文本规则**逐条实现；**胶囊** `SkillReference`。工具行**零宿主依赖**——官方 `skillRowModel` 只从 durable 的 call/result slice 推。**仍缺**：斜杠候选源（`inputTriggers` 注册表）与 `openSkill`（`skills/list`），见 B 类）
 - ✅ `user-questions`（`dsquestions`：F7/F8 或点击选选项）
@@ -113,7 +113,7 @@
 | 19 | `dsh-client-ui-file-drag` | ❌ MISSING | 无 |
 | 20 | `dsh-client-ui-goal` | ✅ IMPLEMENTED | `plugins/dsgoal`（4 文件 / 364 行） |
 | 21 | `dsh-client-ui-input-trigger` | 🟡 PARTIAL | `plugins/dscomposer/mention.go` |
-| 22 | `dsh-client-ui-jobs` | 🟡 PARTIAL | `plugins/dsjobs`（2 文件 / 132 行） |
+| 22 | `dsh-client-ui-jobs` | ✅ IMPLEMENTED | `plugins/dsjobs`（官方 `conversation.session.header.actions` order 20 触发器 + `shell.overlay` 弹层；旧三栏 `sidebar.footer` 清单）+ `internal/apiclient/jobs.go`（`jobs.output`/`jobs.stop`）+ `cmd/app/jobs_actions.go` |
 | 23 | `dsh-client-ui-layout` | ✅ IMPLEMENTED | `internal/uikernel` 骨架 + `plugins/dsshell` |
 | 24 | `dsh-client-ui-message-feedback` | 🟡 PARTIAL | `plugins/dsconversation/feedback.go`（240 行） |
 | 25 | `dsh-client-ui-model-selection` | ✅ IMPLEMENTED | `internal/uikernel/official_model_menu.go` + `dscomposer` |
@@ -141,7 +141,7 @@
 | 47 | `dsh-client-ui-settings-web-search` | ❌ MISSING | 无 |
 | 48 | `dsh-client-ui-shortcuts` | ✅ IMPLEMENTED | `plugins/dsshortcuts`（2 文件 / 213 行） |
 | 49 | `dsh-client-ui-sidebar` | ✅ IMPLEMENTED | `plugins/dssidebar`（5 文件 / 1418 行） |
-| 50 | `dsh-client-ui-sidebar-browser` | 🟡 PARTIAL | `dssidebar` 搜索框 + 结果卡 |
+| 50 | `dsh-client-ui-sidebar-browser` | ❌ MISSING | 无（HIDE：官方是右栏沙箱 HTTP(S) 浏览器 tab，需 `sidebarRightTabs` + iframe/Electron webview；本仓两者都没有；此前的 `dssidebar` 搜索框是误映射） |
 | 51 | `dsh-client-ui-sidebar-documentpreview` | ✅ IMPLEMENTED | `plugins/dsfiles` 预览浮层 |
 | 52 | `dsh-client-ui-sidebar-files` | ✅ IMPLEMENTED | `plugins/dsfiles` |
 | 53 | `dsh-client-ui-sidebar-right` | ✅ IMPLEMENTED | `dsrightbar` + `dsshell` + uikernel |
@@ -160,8 +160,10 @@
 | 66 | `dsh-experimental-client-ui-voice-input` | ❌ MISSING | 无 |
 
 > #29 / #42 / #43 三行的完整结构与几何证据（官方 `src/**` 锚点、逐字 locale、HIDE 台账）：[official-plugins-page-evidence-rc2.md](official-plugins-page-evidence-rc2.md)。其中 #43 的「内置/第三方分 tab」在 rc.2 **不存在**——`settings.plugins.tab` 全仓只有只读清单一个贡献方。
+>
+> #22 的结构与几何证据、与官方的 9 条差异台账：[official-jobs-evidence-rc2.md](official-jobs-evidence-rc2.md)。
 
-## 合计：官方 66 个部件 —— ✅ 30 · 🟡 19 · ⬜ 0（不该有） · ❌ 17
+## 合计：官方 66 个部件 —— ✅ 31 · 🟡 17 · ⬜ 0（不该有） · ❌ 18
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），
@@ -203,7 +205,7 @@
 
    为什么仍然值得做：**它现在就有用**。模型看见 `@plugins/dsopen/open.go` 会自己去 read，
    而用户少打一长串路径、也少打错。只是别把它说成"做到了 @ 引用"。
-5. **`jobs.output` 的界面消费** —— 宿主侧通了，但**只在轮次进行中可用**（每轮一个子进程，跑完就退）；做成"点开看输出"会是**大多数时候点了报错**的按钮，所以没做
+5. **`jobs.output` 的界面消费** —— **2026-11-14 已做**（#22）：官方档 header 触发器 + 弹层、旧三栏档侧栏清单都能展开读输出（rune 游标分页、`truncated`/错误/加载更多/复制），跑着的行有两段式停止。之前不做的那条理由（"轮次结束就报错"）没有消失，但**报错是可显示的事实**（官方 `output.error` 也是一行错误），所以不再构成"不做"的理由
 6. **`deliverables`** —— **只做了 1/4**。官方包的 description 写得很清楚：
    > Changed-files card with per-file comparison tabs, delivery cards, and clickable final-response file references
 
@@ -270,7 +272,7 @@
 | `sidebar-documentpreview` | `fs.read` | 只需要渲染 |
 | `reference` | `workspace.list`（已用） | 补全够用；**变成引用块**要新增"附件/引用"契约 |
 | `deliverables` | `fs.write` | 需要"哪些是交付物"的约定 |
-| `jobs` | 后台任务概念已有 | 需要 `jobs.list`/`jobs.output` 的跨线方法 |
+| `jobs` | 后台任务概念已有；`jobs.list`/`jobs.output`/`jobs.stop` 现在都是真方法 | ✅ 已接（2026-11-14，#22）；仅剩宿主没有 `JobView.kind/status/startedAt` 等字段 → 不画 kind/时长/stopping/killed |
 | `schedule` | 无 | 需要定时任务的存储与方法 |
 | `skill` | **工具行不需要任何方法**（官方 `skillRowModel` 只读 durable 的 call/result slice） | 斜杠候选源要 `skills/list`（`SkillEntry{name, description, modelInvocable, path}`）；`openSkill` 还要 `path` 才能 `sidebarRight.openResource` |
 
@@ -350,7 +352,7 @@ fs.read 无法调用
 |---|---|
 | `deliverables` | 没有"哪些文件算交付物"的约定——`fs.write` 只知道写了什么，不知道哪个是交付品 |
 | `reference` | 补全已做（`workspace.list` 够用）；**引用块**缺的是"附件/引用"这一层契约——没有身份、没有独立字段，`@path` 只能是一段文本 |
-| `jobs` | 没有 `jobs.list` / `jobs.output` 这两个方法 |
+| `jobs` | ✅ 已解（2026-11-14）：`jobs.list` / `jobs.output` / `jobs.stop` 都已在生产接线并有调用者，见 #22 |
 | `schedule` | 完全没有定时任务的存储与方法 |
 | `sidebar-documentpreview` | 只差上面那个"工作区根"（有根就能读、能预览） |
 

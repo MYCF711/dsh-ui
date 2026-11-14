@@ -98,6 +98,31 @@ func TestParserRejectsWhatItDoesNotSupport(t *testing.T) {
 	}
 }
 
+// TestParserAcceptsHorizontalAndVerticalLines 钉住给官方引用图标补的 H/V 子集。
+//
+// 官方 ReferenceIcon 的 path 里有 `H11.0625` / `V13.2246` 这类绝对水平/垂直命令；
+// 它们只带一个坐标，另一个从**当前点**取。相对命令/弧线仍然整条作废。
+func TestParserAcceptsHorizontalAndVerticalLines(t *testing.T) {
+	cmds, ok := ParseSVGPath("M1 2 H5 V9 L7 8 Z")
+	if !ok {
+		t.Fatal("M/L/C/H/V/Z 子集被拒了")
+	}
+	if len(cmds) != 5 {
+		t.Fatalf("命令数 = %d，want 5（M/H/V/L/Z）", len(cmds))
+	}
+	// H 的 y 取自当前点（2）；V 的 x 取自 H 之后的当前点（5）。
+	if cmds[1].Kind != gfx.PathCommandLine || cmds[1].Point.X != 5 || cmds[1].Point.Y != 2 {
+		t.Fatalf("H 解析错：%+v", cmds[1])
+	}
+	if cmds[2].Kind != gfx.PathCommandLine || cmds[2].Point.X != 5 || cmds[2].Point.Y != 9 {
+		t.Fatalf("V 解析错：%+v", cmds[2])
+	}
+	// 相对 h/v 仍不支持。
+	if _, ok := ParseSVGPath("M0 0 h10 v10 Z"); ok {
+		t.Fatal("相对 h/v 不该被接受")
+	}
+}
+
 // TestParserAcceptsTheSubset 是上一条的**正向对照**。
 //
 // 没有它的话，把 ParseSVGPath 改成"永远返回 false"，上面那条照样全绿。

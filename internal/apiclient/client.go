@@ -346,6 +346,55 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 	return nil
 }
 
+// callRaw 发一个请求并把 2xx 的原始 body 交回调用方，**不解释顶层 `error`**。
+//
+// 为什么需要它：官方反馈类的业务失败是 **HTTP 200 + `{ok:false,error:{...}}`**
+// （union），而 `Call` 把任何顶层 `error` 都当成传输层四字段错误——用它解
+// messageFeedback.* 会把"版本冲突"错认成网络/协议失败，客户端就永远拿不到
+// authoritative `current`。这个方法只给 union 型方法用；普通方法继续走 `Call`。
+func (c *Client) callRaw(ctx context.Context, method string, params any) ([]byte, error) {
+	var body []byte
+	var err error
+	if params == nil {
+		body = []byte("{}")
+	} else if body, err = json.Marshal(params); err != nil {
+		return nil, fmt.Errorf("encode params: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/api/"+method, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	for _, ck := range c.cookies {
+		req.AddCookie(ck)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("连不上 %s：%w", c.Base, err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		var env envelope
+		if json.Unmarshal(raw, &env) == nil && len(env.Error) > 0 {
+			if apiErr := parseError(env.Error); apiErr != nil {
+				if len(env.Details) > 0 {
+					var details map[string]any
+					if err := json.Unmarshal(env.Details, &details); err == nil {
+						apiErr.Details = details
+					}
+				}
+				return nil, apiErr
+			}
+		}
+		return nil, fmt.Errorf("HTTP %d: %.200s", resp.StatusCode, raw)
+	}
+	return raw, nil
+}
+
 // List 是 session.list。
 func (c *Client) List(ctx context.Context) ([]Session, error) {
 	var r struct {

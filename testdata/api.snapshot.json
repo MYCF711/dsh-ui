@@ -888,10 +888,138 @@
         "exit_code": "int"
       },
       "req_note": "请求停止一个后台任务（HOST:internal/transport/handlers_jobs.go:258-292；方法常量 HOST:internal/transport/api.go:44-45、TaskActionMethods :118-122）。**只按调用方明确命名的 session+id 停**：不接受进程名/镜像名/全局 PID（:258 注释）；缺任一参数 → 400（:266-269）；未接线 → 501（:272-275）。`stopped=true` **只在所属进程确实停止后**才返回：handler 在 `!result.Stopped || !result.Done` 时直接 500 internal，不谎报已停（:283-288）。失败面同 jobs.output 的四字段码（:290-303，含 409 job_finished / 403 cross_session / 429 job_limit_reached / 501 job_background_disabled、job_controller_unavailable 等官方 JobError 七码投影 :305-335）。"
+    },
+    "fileReferences.list": {
+      "batch": 10,
+      "req": {
+        "agentId": "string",
+        "query": "string"
+      },
+      "resp": [
+        {
+          "path": "string",
+          "kind": "\"file\"|\"directory\""
+        }
+      ],
+      "req_note": "官方 `@` 文件候选（HOST:internal/transport/handlers_agent_official.go:1758-1785；实现 HOST:cmd/dshd/serve_agent_api.go:1299 起）。**query 必填，可为空串**（缺键 → 400，`:1767-1773`）；会话 id 走 `agentId`（兼容 sessionId/id，`:433-441`）；`kind` 只有 file/directory 两个值。未接线 → 501 not_implemented，**不是空数组**（`:1774-1776`）。路径相对会话 cwd，不返回绝对路径。",
+      "resp_note": "数组；空数组 = 这一层真的没有候选，与 501（宿主没能力）必须区分。"
+    },
+    "sessionReferenceResolver.candidates": {
+      "batch": 10,
+      "req": {
+        "agentId": "string",
+        "query": "string"
+      },
+      "resp": [
+        {
+          "mention": "string",
+          "sessionId": "string",
+          "label": "string",
+          "displayTitle": "string?",
+          "cwd": "string?",
+          "sameWorkspace": "bool",
+          "createdAt": "int"
+        }
+      ],
+      "req_note": "官方 `@` 会话候选（HOST:internal/transport/handlers_agent_official.go:2042-2070；实现 HOST:cmd/dshd/serve_agent_api.go:1734 起）。`query` 必填可为空串；结果里的 `mention` 是官方 wire 形式 `@[label](dsh-session:id)`，界面**原样**插入草稿，不自己拼（ui-reference/src/client/index.ts:143-150 的 insert.ref）。`sameWorkspace` 由宿主算，界面不猜。未接线 → 501。",
+      "resp_note": "数组；会话可被别的会话引用，所以不按当前会话过滤。"
+    },
+    "messageFeedback.list": {
+      "batch": 10,
+      "req": {
+        "agentId": "string"
+      },
+      "resp": {
+        "ok": "bool",
+        "value": {
+          "items": [
+            {
+              "messageId": "string",
+              "rating": "\"positive\"|\"negative\"",
+              "note": "string?",
+              "category": "string?",
+              "version": "string",
+              "createdAt": "int",
+              "updatedAt": "int"
+            }
+          ]
+        },
+        "error": {
+          "code": "string",
+          "sessionId": "string?",
+          "messageId": "string?",
+          "current": "object|null?",
+          "maxBytes": "int?",
+          "actualBytes": "int?"
+        }
+      },
+      "req_note": "消息反馈的列表（HOST:internal/transport/handlers_agent_official.go:1850-1885；实现 HOST:cmd/dshd/serve_agent_api.go:1478 起）。可用 `request:{sessionId}` 或平铺 `agentId`（两种都收，混用 400）。业务失败是 **HTTP 200 + ok:false**（union），不是四字段错误——客户端必须解 `error.code`。",
+      "resp_note": "`ok:true` 时 value.items 是全部记录；`ok:false` 时 error 至少有 code。"
+    },
+    "messageFeedback.put": {
+      "batch": 10,
+      "req": {
+        "request": {
+          "sessionId": "string",
+          "messageId": "string",
+          "rating": "\"positive\"|\"negative\"",
+          "note": "string?",
+          "category": "string?",
+          "ifVersion": "string|null"
+        }
+      },
+      "resp": {
+        "ok": "bool",
+        "value": {
+          "messageId": "string",
+          "rating": "string",
+          "note": "string?",
+          "category": "string?",
+          "version": "string",
+          "createdAt": "int",
+          "updatedAt": "int"
+        },
+        "error": {
+          "code": "string",
+          "sessionId": "string?",
+          "messageId": "string?",
+          "current": "object|null?",
+          "maxBytes": "int?",
+          "actualBytes": "int?"
+        }
+      },
+      "req_note": "写一条消息反馈（HOST:internal/transport/handlers_agent_official.go:1887-1955；实现 HOST:cmd/dshd/serve_agent_api.go:1590 起）。`rating` 只收 positive/negative；`category` 只收官方七值；`ifVersion` **必填**，`null` = 要求当前不存在，字符串 = 观察到的 version（`:1928-1948`）。乐观并发：version 不匹配回 200 + `{ok:false,error:{code:\"version-conflict\",current:item|null}}`，客户端用 current 就地收敛，不重拉会话。其它业务码：session-not-found / target-not-found / note-blank / note-too-large。",
+      "resp_note": "成功时 value 是 authoritative item（含新 version）；失败时 error.current **只在冲突时出现**，且可为显式 null。"
+    },
+    "messageFeedback.delete": {
+      "batch": 10,
+      "req": {
+        "request": {
+          "sessionId": "string",
+          "messageId": "string",
+          "ifVersion": "string"
+        }
+      },
+      "resp": {
+        "ok": "bool",
+        "value": {
+          "absent": "bool"
+        },
+        "error": {
+          "code": "string",
+          "sessionId": "string?",
+          "messageId": "string?",
+          "current": "object|null?",
+          "maxBytes": "int?",
+          "actualBytes": "int?"
+        }
+      },
+      "req_note": "撤回一条消息反馈（HOST:internal/transport/handlers_agent_official.go:1957-2005；实现 HOST:cmd/dshd/serve_agent_api.go:1626 起）。`ifVersion` 必填（字符串）；已经不存在时回 `ok:true, value:{absent:true}`（稳定的后置条件，不报冲突，`:1641-1647`）；version 不匹配回 version-conflict + current。",
+      "resp_note": "成功只有 absent:true；没有返回值不代表没成功。"
     }
   },
   "counts": {
-    "total": 52,
+    "total": 57,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -900,6 +1028,7 @@
     "batch6": 6,
     "batch7": 7,
     "batch8": 1,
-    "batch9": 1
+    "batch9": 1,
+    "batch10": 5
   }
 }

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	"github.com/MYCF711/dsh-ui/plugins/dsskill"
 )
@@ -66,6 +67,17 @@ func (m *model) refreshSkillCatalog(sessionID string) {
 
 	// 目录快照按值捕获：切会话后旧 resolver 不该再读到新会话的目录。
 	catalog := result.Skills
+	// 同一份目录也喂给 composer 的 `/` 候选，别为一个东西拉两遍。
+	candidates := make([]pluginapi.SkillCandidate, 0, len(catalog))
+	for _, item := range catalog {
+		candidates = append(candidates, pluginapi.SkillCandidate{Name: item.Name, Description: item.Description, ModelInvocable: item.ModelInvocable})
+	}
+	m.mu.Lock()
+	if m.skills == nil {
+		m.skills = map[string][]pluginapi.SkillCandidate{}
+	}
+	m.skills[sessionID] = candidates
+	m.mu.Unlock()
 	skill.SetInspect(func(ref string) {
 		path := apiclient.ResolveSkillPath(catalog, ref)
 		if path == "" {

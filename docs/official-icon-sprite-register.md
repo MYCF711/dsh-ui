@@ -39,6 +39,36 @@ function M(name, weight) {                          // 组件
 | `check-outline` | regular (1) | `0 0 16 16` | **14** | primitives `ConnectionIndicator` 的 success 态（`ui-settings-general/src/client/SettingsRoot.tsx` 的 `triggerRow` 渲染它）；`Cs = M("check-outline","regular")` | 第 129 行 第 10644 列 | `41e32b03bef4130a030a4f4827a13e2e474e9c0fe8f9fe42dc7ca9ba437fc291` | **有**：`assets/icons/composer/check.jsx`，sha256 `3b47a8c21d5bf626867f2d6b45a6ff8b2f7362123cfa76de5a395a2b2916bb8c`（`d` 逐字节相同） |
 | `refresh-outline` | regular (1) | `0 0 16 16` | **14** | 同上，disconnected 态（可点重连的按钮图标）；`Jw = M("refresh-outline","regular")` | 第 129 行 第 14896 列 | `06a5745f7fe0ceddf5ecfd9dfbd80f78e3927e395eacd9d9a20f0b66fb71eadb` | 否（库内暂无；按 sprite 原文转写，登记在此） |
 
+### 1.1 bundle 内联组件转写（不在 sprite 表里）
+
+`ReferenceIconRegular`（dist 符号 `_b`）不是 sprite 表生成的：它在
+`index-ghOpC9uV.js` 里直接定义了三个内联组件，由 `kind` 分派：
+
+```js
+function yb({kind,size=16,className,strokeWidth}) {
+  switch (kind) {
+    case "session": return jsx(eZ, …)
+    case "file":    return jsx(rZ, …)
+    case "folder":  return jsx(vb, …)
+  }
+}
+function _b(e){ return jsx(yb, {...e, strokeWidth: 1}) }
+```
+
+| 官方组件 | kind | viewBox | stroke | 显示尺寸 | 调用点 | path sha256（逐段） |
+|---|---|---|---|---|---|---|
+| `eZ` | `session` | `0 0 16 16` | 1 | **14** | `ui-conversation/src/client/input/editor/ReferenceChip.tsx:32`、`ui-input-trigger/src/client/MenuView.tsx:182` | 3 段：`d8d07b41…` / `da43b38e…` / `8017877f…` |
+| `rZ` | `file` | `0 0 16 16` | 1 | **14** | 同上 | 2 描边 `af2dd47d…`/`689eee81…` + 1 填充 `9dd7f8a6…`（`fill=currentColor`） |
+| `vb` | `folder` | `0 0 16 16` | 1 | **14** | 同上 | 2 段：`5ec3a9f2…` / `8cfa9012…` |
+
+go 侧：`internal/reficon/reficon.go`（`File/Folder/Session` 三个 Kind + `Icon()`）；
+调用点：`plugins/dsconversation/usertext.go`（消息里的引用 chip）、
+`plugins/dscomposer/trigger.go`（`@` 候选菜单）。
+
+**H/V 命令**：三枚组件的 path 用到 `H`（水平线）与 `V`（垂直线），
+所以 `plugins/dsbrand.ParseSVGPath` 从 M/L/C/Z 扩到 M/L/C/H/V/Z（绝对命令；
+相对命令/弧线/二次曲线仍整条作废）。
+
 ## 2. 落地位置
 
 | 符号 | Go 侧定义 | 调用点 |

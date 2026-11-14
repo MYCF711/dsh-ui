@@ -751,6 +751,43 @@ type Actions struct {
 	// 路径怎么来：`Snapshot.CWD` + "/" + `FSList` 的名字。宿主不做工作区内限制，
 	// **调用方自己判**——别拿用户输入直接拼。
 	FSRead func(path string) (string, error)
+	// PreviewFile 把文件交给侧栏预览（官方 `sidebarRight.openResource` 的等价物，
+	// 落点是 `plugins/dsfiles` 的浮层）。参数是**绝对路径**或相对当前会话 CWD 的路径。
+	//
+	// 为什么不是 `OpenFile`：那是"用系统默认程序打开"，官方文件引用 chip 的点击
+	// 是"在应用内预览"，两条能力不能互相顶替。
+	// nil = 壳没接 → 引用 chip **不画成可点**（死按钮比没有更坏）。
+	PreviewFile func(path string)
+
+	// FileReferences 列 `@` 之后的文件候选（宿主 `fileReferences.list`）。
+	//
+	// **同步返回壳缓存**：查询键是会话 + 原文 query；首次问会触发后台拉取，
+	// 拉到后 Invalidate，下一帧再给真值。nil = 壳没接（老宿主）→ `@` 菜单
+	// 只保留本仓已有的目录树 source（见 dscomposer 的 trigger.go）。
+	FileReferences func(sessionID, query string) []FileReferenceCandidate
+	// SessionReferenceCandidates 列 `@` 之后的会话候选
+	//（宿主 `sessionReferenceResolver.candidates`）。语义同 FileReferences。
+	SessionReferenceCandidates func(sessionID, query string) []SessionReferenceCandidate
+	// Skills 是某个会话可见的 `/` 技能候选（宿主 `skills.list`）。
+	//
+	// 与 `dsskill` 的 `SetInspect` 同源但不同消费者：那条要的是 `name -> path`
+	// 的 resolver（打开 SKILL.md），这里要的是候选清单（`/` 菜单）。
+	// 空切片 = 真没有技能；nil = 还没拉到（两者对菜单的效果都是"这一帧没有"）。
+	Skills func(sessionID string) []SkillCandidate
+
+	// MessageFeedback 读某会话已记录的消息反馈（壳缓存，启动/切换会话时后台拉）。
+	//
+	// 返回的 map 键是消息身份（宿主 messageId 或本仓 v4 seq 适配值，见
+	// dsconversation/feedback.go）；第二个返回值 false = 还没拉到。
+	MessageFeedback func(sessionID string) (map[string]FeedbackItem, bool)
+	// MessageFeedbackPut 写一条消息反馈。**异步**：终态由 FeedbackTakeResult
+	// 交给插件显示 toast，插件不等待、不重试。
+	MessageFeedbackPut func(sessionID, messageID, rating, note, category string)
+	// MessageFeedbackDelete 撤回一条消息反馈。**异步**，语义同上。
+	MessageFeedbackDelete func(sessionID, messageID string)
+	// FeedbackTakeResult 取走最近一次 put/delete 的终态（取走即清空）。
+	// ok=false = 没有待处理结果。插件在下一帧读它来显示 toast。
+	FeedbackTakeResult func(sessionID string) (FeedbackResult, bool)
 
 	// ScheduleList 列定时任务（宿主 `schedule.list`）。
 	//

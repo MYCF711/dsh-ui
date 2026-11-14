@@ -5,33 +5,23 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/ui"
 )
 
-// mention.go 是 `@` 文件引用：在输入框里敲 `@` 之后的路径，弹一串候选，选中就把
-// 路径补全进草稿。
+// mention.go 是统一触发管道（trigger.go）里**老壳文件源**的那一份兜底。
 //
-// # 官方对应物，以及我们**没有**做的那一半
+// # 它现在的位置
 //
-// 官方是两个包：`dsh-client-ui-input-trigger`（"Input trigger pipeline: '/' and '@'
-// detection, candidate menu, pick routing to registered sources"）和
-// `dsh-client-ui-reference`（"Unified Web @file and @session reference source"）。
+// `plugins/dscomposer/trigger.go` 是官方 `dsh-client-ui-input-trigger` 的骨架：
+// `@` / `/` detect、source 注册表、分组菜单、pick 路由。文件候选优先走宿主
+// `fileReferences.list`（官方 `ui-reference` 的 source）。
 //
-// 我们只做**前半**：识别 + 候选 + 补全。后半——把 `@path` 变成结构化的引用块
-// （带附件身份、会话引用、送进宿主的独立字段）——**没做**，因为那要宿主侧先有
-// "附件/引用"这个概念，而现在的 Transport 契约里没有。所以：
+// 但老壳（没有 `Actions.FileReferences`）只有 `Actions.FSList`——
+// 本文件保留那套"按目录列候选 + 前缀补全"的实现，由 trigger.go 的
+// `legacyFileRows` 调用。它**不是**第二套菜单：候选最终仍由 trigger.go 统一
+// 排序/绘制/pick，这里的函数只负责"从路径前缀算出候选"这一小步。
 //
-//   - 补全出来的 `@路径` 是**纯文本**，跟着 prompt 一起发出去；
-//   - 模型看得见它，能不能用上取决于它自己会不会去 read。
-//
-// 这一点必须写清楚，不能把它标成"做到了 @ 引用"——**补全不是引用**。
-// parity 里这一项记 🟡，不记 ✅。
-
-// maxMentionRows 是候选菜单最多画几行。
-//
-// 6 是"一眼扫完"的量：再多就得滚，而输入框上方弹一个要滚的列表，
-// 用户会先按 Esc 把它关掉——那这个功能就白做了。
-const maxMentionRows = 6
+// 官方 `@[label](dsh-session:id)` 会话引用与 `/name` 技能候选在新管道里；
+// 用户消息里这些文本再被 `plugins/dsconversation/usertext.go` 识别回 chip。
 
 // atRef 是草稿里"正在敲的那一个 @ 引用"。
 type atRef struct {
@@ -147,104 +137,4 @@ func dropExactFile(cands []pluginapi.FSEntry, prefix string) []pluginapi.FSEntry
 		return nil
 	}
 	return cands
-}
-
-// mentionState 是这一帧算出来的候选状态。
-type mentionState struct {
-	Ref  atRef
-	Rows []pluginapi.FSEntry
-}
-
-// computeMention 算出这一帧该不该弹菜单、弹哪几个。
-//
-// 数据来源是 `Actions.FSList`——**和侧栏文件树同一个接口**，没有新契约。
-// 它是壳的缓存：第一次问某个目录**必然返回空**，下一帧才有。
-// 所以"这一帧没有候选"不代表"这个目录是空的"。这里按"没有"处理（不画），
-// 不写"没有匹配"那种编出来的话。
-func (p *Plugin) computeMention(env *pluginapi.Env) (mentionState, bool) {
-	if env.Act.FSList == nil || env.Data.CWD == "" {
-		return mentionState{}, false
-	}
-	ref, ok := parseAt(p.field.Text())
-	if !ok {
-		return mentionState{}, false
-	}
-	dir := env.Data.CWD
-	if ref.Dir != "" {
-		dir = strings.TrimRight(dir, "/") + "/" + strings.TrimSuffix(ref.Dir, "/")
-	}
-	rows := dropExactFile(filterMentions(env.Act.FSList(dir), ref.Prefix), ref.Prefix)
-	if len(rows) == 0 {
-		return mentionState{}, false
-	}
-	if len(rows) > maxMentionRows {
-		rows = rows[:maxMentionRows]
-	}
-	return mentionState{Ref: ref, Rows: rows}, true
-}
-
-// drawMention 画候选菜单。
-//
-// 位置在输入卡片**上方**（和 GoalBar / 问题条同一条约定：越靠近输入框的东西越紧急）。
-// 每行都能点。
-func (p *Plugin) drawMention(f ui.C, env *pluginapi.Env, column float32) {
-	st, ok := p.computeMention(env)
-	if !ok {
-		p.mentionRows, p.mentionRef = nil, atRef{}
-		return
-	}
-	p.mentionRows, p.mentionRef = st.Rows, st.Ref
-	t := p.theme
-	w := cardWidth(column)
-	ui.Row(f).FillWidth().Justify(ui.Center).Children(func() {
-		ui.Column(f).Width(w).Radius(t.Radii.SM).Background(t.BgLayer1).
-			PadY(4).Children(func() {
-			for i, e := range st.Rows {
-				p.drawMentionRow(f, env, e, i == 0)
-			}
-		})
-	})
-}
-
-// drawMentionRow 画一行候选。
-//
-// 第一行高亮并带 Enter 提示——因为 Enter 补的就是它。不把这件事说出来，
-// 用户只会觉得"我按了 Enter 怎么变成这样了"。
-func (p *Plugin) drawMentionRow(f ui.C, env *pluginapi.Env, e pluginapi.FSEntry, first bool) {
-	t := p.theme
-	icon, kind := "·", "文件"
-	if e.IsDir {
-		icon, kind = "▸", "目录"
-	}
-	bg := t.BgLayer1
-	hint := ""
-	if first {
-		bg = t.Hover
-		hint = "Enter"
-	}
-	// 行是**值类型盒子**，`.Clicked()` 直接问它这一帧有没有被点。
-	row := ui.Row(f).FillWidth().MinHeight(24).PadX(8).Items(ui.Center).Gap(8).
-		Background(bg).Hit(env.Tree.ID(env.Feat, "mention-"+e.Name), "").
-		Children(func() {
-			ui.Text(f, icon).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			ui.Text(f, e.Name).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary).Ellipsis()
-			ui.Text(f, kind).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			ui.Text(f, hint).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-		})
-	if row.Clicked() {
-		p.field.SetText(completeAt(p.field.Text(), p.mentionRef, e.Name, e.IsDir))
-	}
-}
-
-// acceptMention 是键盘那条路：把第一候选补进草稿。
-//
-// 返回 false 表示"没有菜单可收"，调用方必须**把按键让回去**——
-// 吃掉一个没有对应操作的 Enter，用户就永远发不出消息。
-func (p *Plugin) acceptMention() bool {
-	if len(p.mentionRows) == 0 {
-		return false
-	}
-	e := p.mentionRows[0]
-	p.field.SetText(completeAt(p.field.Text(), p.mentionRef, e.Name, e.IsDir))
-	return true
 }

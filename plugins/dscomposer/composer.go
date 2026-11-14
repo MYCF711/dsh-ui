@@ -149,6 +149,15 @@ type Plugin struct {
 	// 空 = 没有菜单，Enter 必须原样让回去（不然消息发不出去）。
 	mentionRows []pluginapi.FSEntry
 	mentionRef  atRef
+	// triggerRows / triggerHit 是统一输入触发管道（`@` 文件/会话、`/` 技能）
+	// 上一帧算出来的扁平候选，见 trigger.go。按键路径同样只读上一帧。
+	triggerRows  []triggerCandidate
+	triggerHit   triggerHit
+	triggerIndex int
+	// suppressed 是"刚 pick 完的那份草稿"：同一份文本不再触发菜单，
+	// 否则补出来的 `@path` 会立刻被当成新 token 再弹一次（永远关不掉）。
+	// 用户一改文本就失效。
+	suppressed string
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -670,13 +679,39 @@ func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 		return false
 	}
 	if !approvalVisible(p.lastData) {
-		// `@` 候选菜单开着时，Enter 是**补全**，不是发送（见 mention.go）。
+		// 触发菜单开着时，按键归菜单（见 trigger.go / mention.go）：
+		//
+		//	Enter    选中当前行（文件/会话/技能）；目录行 = drill
+		//	Tab      目录 drill（官方 drill.key = Tab）
+		//	↑ / ↓    移动选中行（官方 move 事件）
+		//	Esc      关掉菜单（同一份草稿不再重开）
 		//
 		// 门禁卡死在"这一帧确实有候选"上：没有候选就原样让回去。
 		// 让回去的代价是零；吃掉的代价是**这条消息再也发不出去**，
 		// 而且用户看到的是"我按了 Enter 什么都没发生"——没有任何提示。
-		if ev.Key == gfx.KeyEnter && p.acceptMention() {
-			return true
+		if len(p.triggerRows) > 0 || len(p.mentionRows) > 0 {
+			switch ev.Key {
+			case gfx.KeyEnter:
+				if p.acceptMention() {
+					return true
+				}
+			case gfx.KeyTab:
+				if p.drillTrigger() {
+					return true
+				}
+			case gfx.KeyUp:
+				if p.moveTrigger(-1) {
+					return true
+				}
+			case gfx.KeyDown:
+				if p.moveTrigger(1) {
+					return true
+				}
+			case gfx.KeyEscape:
+				if p.dismissTrigger() {
+					return true
+				}
+			}
 		}
 		// 没有审批时 Esc 退而求其次 = **停止当前 turn**（官方也是这个直觉）。
 		// 不做这一条的话，无头环境里根本没法触发停止键——它是个按钮，

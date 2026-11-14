@@ -22,13 +22,19 @@ type (
 	Job          = pub.Job
 	JobOutput    = pub.JobOutput
 	Model        = pub.Model
-	Painter      = pub.Painter
-	Primitives   = pub.Primitives
-	Env          = pub.Env
-	Geometry     = pub.Geometry
-	Snapshot     = pub.Snapshot
-	Usage        = pub.Usage
-	Approval     = pub.Approval
+	// 引用 / 技能候选 / 消息反馈（pluginapi/references.go）。
+	FileReferenceCandidate    = pub.FileReferenceCandidate
+	SessionReferenceCandidate = pub.SessionReferenceCandidate
+	SkillCandidate            = pub.SkillCandidate
+	FeedbackItem              = pub.FeedbackItem
+	FeedbackResult            = pub.FeedbackResult
+	Painter                   = pub.Painter
+	Primitives                = pub.Primitives
+	Env                       = pub.Env
+	Geometry                  = pub.Geometry
+	Snapshot                  = pub.Snapshot
+	Usage                     = pub.Usage
+	Approval                  = pub.Approval
 	// HistoryPaging 是主区「加载更早」单按钮的五态输入（additive）。
 	HistoryPaging = pub.HistoryPaging
 	// LinkState 是壳与宿主流连接的三态事实（`Snapshot.Link`）。

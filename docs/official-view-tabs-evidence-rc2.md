@@ -123,10 +123,10 @@
 | `cmd/app/view_tabs_wiring_test.go` | 闸门：名录外的 key 不写；失效偏好解析回名录内 |
 | `plugins/dsrightbar/rightbar_tabs_test.go` | **产品路径**：两枚芯片、只派发选中项、点芯片走 `Actions.SelectRightTab` |
 
-## 5. 三条 PARTIAL 的现状（机制落地后）
+## 5. 三条视图的现状（#65 已落地，2026-11-15）
 
 | 条 | 现在的状态 | 还缺什么 |
 |---|---|---|
 | `#54 dsh-client-ui-sidebar-terminal` | 座位已接：终端是右栏的 `terminal` tab 类型（官方形状）；右栏展开时用它，收起时退回本包已有的 F5 浮层 | **终端本体**：官方是 VT 交互终端（每会话多终端、agent 打开的终端、沙箱徽标、重连、控制权移交）。本仓 `internal/ansi` 只剥转义序列、按纯文本画最后 N 行，也**没有** `webTerminals` 那一层 |
 | `#59 dsh-client-ui-trajectory` | 已注册为 `conversation.view` 的 `trajectory` 条目（`order:10`，与官方一致），名录/页签由注册表驱动 | 官方那种分组/折叠层级；旧三栏档仍靠视口偏移让位（G6） |
-| `#65 dsh-experimental-client-ui-stats` | **机制就位**：它要的就是「往 `conversation.view` 注册一个 `order:40` 的 `stats` 条目」 | 视图本体（逐 step/turn 的上下文、耗时、缓存、工具成本列）仍写在 `dsstatusbar/metrics.go` 的用量弹窗里，没有搬成 view |
+| `#65 dsh-experimental-client-ui-stats` | **✅ 本轮已落地**：`plugins/dsstatusbar/stats_view.go` 注册 `{stats, order:40}` 并画出逐 turn/step 的 11 列表格 + 总用时条 + 全量/窗口合计（证据 [official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)） | 剩余差异：compaction/非 step 事件行、三个工具栏开关、加载更早分页（同证据 §5） |

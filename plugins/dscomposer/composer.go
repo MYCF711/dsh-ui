@@ -560,12 +560,14 @@ func (p *Plugin) clickSend(env *pluginapi.Env, running bool) bool {
 	return p.submit(env)
 }
 
-// submit 把非空文本交给壳，然后清空自己。
+// submit 把草稿交给壳，然后清空自己。
 //
-// 空文本不提交；Send 没接时既不调动作也不清草稿，避免一次无效点击把输入弄丢。
+// 空文本也交给壳：官方允许附件-only 消息（OFF:service.ts:302），壳会在
+// 没有附件时把空文本挡回去（`sendLocal`）。Send 没接时既不调动作也不清草稿，
+// 避免一次无效点击把输入弄丢。
 func (p *Plugin) submit(env *pluginapi.Env) bool {
 	text := strings.TrimSpace(p.field.Text())
-	if text == "" || env.Act.Send == nil {
+	if env.Act.Send == nil {
 		return false
 	}
 	env.Act.Send(text)

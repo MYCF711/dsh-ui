@@ -20,6 +20,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/plugins/dsactioncards"
@@ -56,6 +57,23 @@ func (s attachSink) Put(ctx context.Context, path string) (*apiclient.Attachment
 
 func (s attachSink) Attach(ctx context.Context, sessionID string, a apiclient.Attachment) error {
 	return s.cli.SessionAttach(ctx, sessionID, a)
+}
+
+// Upload 是官方 rc.2 的附件主路径：把 rail 已暂存的受控附件换成 `fileUploads.upload`
+// 的会话作用域回执，随后由 `session.prompt` 的 `{type:'file', receiptId}` 引用。
+//
+// 为什么先 `AttachmentGet` 再 `fileUploads.upload`：rail 上的字节在拖入时已经由宿主
+// `attachment.put` 收下并核过（非 0 / ≤8MiB / 磁香值），这里复用那份真值，不再从
+// 用户路径重读——重读会绕过宿主校验，也会在"拖入后被改名/删掉"时产生两份不同字节。
+func (s attachSink) Upload(ctx context.Context, sessionID string, a apiclient.Attachment) (*apiclient.FileUploadReceipt, error) {
+	if a.ID == "" {
+		return nil, errors.New("附件缺少宿主 id，不能上传")
+	}
+	_, data, err := s.cli.AttachmentGet(ctx, a.ID)
+	if err != nil {
+		return nil, err
+	}
+	return s.cli.FileUploadsUpload(ctx, sessionID, data, a.Name)
 }
 
 // CurrentSession 返回当前会话 id；空串表示"还不知道"（插件据此不把附件挂上去，

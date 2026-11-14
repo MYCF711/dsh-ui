@@ -1292,10 +1292,27 @@
       }
       },
       "req_note": "官方 workspace/insertSessionBefore（dsh-api-workspace-controller/src/index.ts:149）：侧栏拖拽排手动顺序的唯一写路径。**移到组末尾必须整个省略 beforeSessionId**——给空串宿主回 400（HOST:internal/transport/handlers_workspace_official.go:840-842）。宿主也收 {request:{…}} 嵌套形状，但同一请求里两种形状不许混（officialPickObject 会 400）。工作区/会话不存在回四字段错误，不许翻成成功。HOST:internal/transport/handlers_workspace_official.go:817-845"
+    },
+    "fileUploads.upload": {
+      "batch": 15,
+      "req": {
+        "sessionId": "string",
+        "data": "base64(string)",
+        "name": "string?"
+      },
+      "resp": {
+        "receiptId": "string",
+        "file": {
+          "attachmentId": "string",
+          "name": "string",
+          "bytes": 0
+        }
+      },
+      "req_note": "官方 rc.2 fileUploads.upload（HOST:internal/transport/handlers_agent_official.go:1877-1930 接受平铺或 request 嵌套；实现 cmd/dshd/serve_agent_api.go:1417-1495）。data 是**完整文件字节的 base64**（标准编码；缺 padding 也收），空串回 400；解码后 1..8 MiB。name 只是显示名，宿主会洗成安全叶子名（agentUploadName）。回执 {receiptId, file:{attachmentId,name,bytes}} 是**会话作用域**的：只有接收它的会话才能用 session.prompt 的 {type:'file',receiptId} 引用（cmd/dshd/attachments_official_prompt.go 跨会话回 not_found）。"
     }
   },
   "counts": {
-    "total": 71,
+    "total": 72,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1309,6 +1326,7 @@
     "batch11": 4,
     "batch12": 3,
     "batch13": 4,
-    "batch14": 3
+    "batch14": 3,
+    "batch15": 1
   }
 }

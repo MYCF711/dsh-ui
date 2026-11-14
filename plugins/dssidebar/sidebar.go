@@ -156,6 +156,17 @@ type Plugin struct {
 	schedActionNotice string
 	schedNoticeUntil  time.Time
 
+	// ── 官方插件管理页的本地状态（plugins_page.go）──
+	//
+	// pluginSelected 是打开详情的 bundle 名；pluginRemoveArm 是"卸载已上膛"
+	// 的那个 bundle（本仓没有 Modal，用同一按钮再点一次确认）；
+	// pluginWant 是"开关已点、等宿主收敛"的期望值（见 pluginBusy）。
+	pluginSelected    string
+	pluginRemoveArm   string
+	pluginWant        map[string]bool
+	pluginNotice      string
+	pluginNoticeUntil time.Time
+
 	// ── #10 context menu 与 #62 工作区动作的本地状态（workspace_actions.go）──
 	//
 	// menus 是 ds-contextmenu 提供的服务（生产装配注入；服务键不在 Requires 里，
@@ -196,6 +207,10 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	}
 	if p.CollapseAll {
 		p.allCollapsed = true
+	}
+	// 官方插件管理页的开关"在飞"标记（plugins_page.go）。
+	if p.pluginWant == nil {
+		p.pluginWant = map[string]bool{}
 	}
 	// 调试入口：预填搜索词。放在 Register 而不是 drawList 里，是为了不每帧
 	// 覆盖用户正在敲的内容（否则搜索框永远只能显示这一个词）。

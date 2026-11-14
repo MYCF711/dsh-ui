@@ -63,6 +63,10 @@ const (
 	projectionsPollEvery = 10 * time.Second
 	// wave3FetchTimeout 是单次查询的超时（离屏/断链时不许把 goroutine 挂死）。
 	wave3FetchTimeout = 6 * time.Second
+	// childProjectionsPollEvery 是**子会话**投影的轮询间隔（官方 ui-subagent 在
+	// `prepareCatalog` 里对每个子项 `await refreshProjections(child)`，
+	// OFF:src/client/index.ts:65-77；本仓没有推送，用 30s 节流代替"每次展开都拉"）。
+	childProjectionsPollEvery = 30 * time.Second
 )
 
 // wave3Wiring 是第三波两个容器的壳侧状态：缓存 + 服务句柄 + 节流标志。
@@ -106,6 +110,15 @@ type wave3Wiring struct {
 	projModelLastUsed bool
 	projAt            time.Time
 	projPending       bool
+
+	// ── 子会话自己的投影（官方 `summaries[id].projectionValues`）──
+	//
+	// 官方目录行的 token/时长与"下一层目录"都来自子会话自己的 `session.projections`；
+	// 本仓壳按目录项逐个拉，缓存键 = 子会话 id。
+	// `projChildFetching` 防同一次轮询里重复起批。
+	projChildren      map[string]dsagentteam.ChildProjection
+	projChildAt       map[string]time.Time
+	projChildFetching bool
 }
 
 // newWave3Wiring 造一份接线状态（壳在装配前调用）。
@@ -187,6 +200,19 @@ func (w *wave3Wiring) projectionSnapshot(session string) (catalog []dsagentteam.
 	return w.projCatalog, w.projCatalogKnown, w.projCatalogErr, w.projTeamEnabled, w.projTeamKnown
 }
 
+// childrenSnapshot 取目录里各子会话自己的投影（键 = 子会话 id）。
+//
+// 只对**当前会话**返回：切到别的会话时旧的子投影不属于这一帧的目录，宁可返回
+// nil（界面不画 metrics）也不串会话。
+func (w *wave3Wiring) childrenSnapshot(session string) map[string]dsagentteam.ChildProjection {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if session == "" || session != w.projSession {
+		return nil
+	}
+	return w.projChildren
+}
+
 // sessionStatsSnapshot 取某会话的 whole-log `sessionStats` 投影。
 //
 // 返回 nil = **未知**（切到还没拉过的会话 / 查询失败 / 老宿主没有这个键）。
@@ -255,6 +281,7 @@ func (w *wave3Wiring) feed(sessionID string, sidebarWidth float32) {
 		modelKnown, modelLastUsed := w.modelSelectionSnapshot(sessionID)
 		w.team.SetView(dsagentteam.View{
 			SessionID: sessionID,
+			Children:  w.childrenSnapshot(sessionID),
 			// 官方投影叫 `agentTeam`（enabled + tasks + failure）；本仓宿主只有
 			// `teamMode.enabled`（tasks 面还没实现），所以只喂 enabled——
 			// tasks 空就是空，不编任务。
@@ -409,6 +436,114 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 
 	// 与壳里另外二十处一致：Invalidator 是值类型，没法判 nil（装配后才有 waker）。
 	m.inv.Invalidate()
+
+	// 目录项的**子会话**投影（官方 `prepareCatalog` 的等价物）：
+	// 行的 token/时长与下一层目录都在这份数据里。拉取失败保留上一轮真值。
+	if catalogKnown {
+		childIDs := make([]string, 0, len(entries))
+		for _, e := range entries {
+			if e.Mode == "external" {
+				continue // 官方 `canExpandCatalog` 第一条：external 不展开
+			}
+			childIDs = append(childIDs, e.ID)
+		}
+		// 即使这一层一个子项都没有也调：函数尾部的收尾要把"已经不在目录里"
+		// 的旧子投影清掉（否则换了一批目录会残留上一批的行）。
+		w.fetchChildProjections(m, sessionID, childIDs)
+	}
+}
+
+// fetchChildProjections 拉一批子会话的投影（后台 goroutine 内串行；按 30s 节流）。
+//
+// 为什么串行而不是并发 N 条：目录通常只有几条，串行把宿主压力摊平；每次 6s 超时，
+// 断链时最坏是"这一批慢慢失败"，不会留一堆挂死的连接。
+func (w *wave3Wiring) fetchChildProjections(m *model, parent string, ids []string) {
+	w.mu.Lock()
+	if w.projChildFetching {
+		w.mu.Unlock()
+		return
+	}
+	w.projChildFetching = true
+	if w.projChildren == nil {
+		w.projChildren = map[string]dsagentteam.ChildProjection{}
+	}
+	if w.projChildAt == nil {
+		w.projChildAt = map[string]time.Time{}
+	}
+	w.mu.Unlock()
+
+	// 收尾：清掉不再属于这一层目录的缓存（否则目录换了一批会越积越多）。
+	defer func() {
+		keep := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			keep[id] = true
+		}
+		w.mu.Lock()
+		for id := range w.projChildren {
+			if !keep[id] {
+				delete(w.projChildren, id)
+				delete(w.projChildAt, id)
+			}
+		}
+		w.projChildFetching = false
+		w.mu.Unlock()
+	}()
+
+	changed := false
+	for _, id := range ids {
+		w.mu.Lock()
+		// 父会话已经切走：这一批作废（不要把上一个父目录的子投影写进这一帧）。
+		stale := parent != w.projSession
+		at := w.projChildAt[id]
+		w.mu.Unlock()
+		if stale {
+			return
+		}
+		if time.Since(at) < childProjectionsPollEvery {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), wave3FetchTimeout)
+		proj, err := m.cli.SessionProjections(ctx, id)
+		cancel()
+		w.mu.Lock()
+		w.projChildAt[id] = time.Now()
+		if err == nil && proj != nil {
+			child := w.projChildren[id]
+			entries, known := proj.SubagentCatalog()
+			if known {
+				child.Catalog = make([]dsagentteam.CatalogEntry, 0, len(entries))
+				for _, e := range entries {
+					child.Catalog = append(child.Catalog, dsagentteam.CatalogEntry{
+						ID: e.ID, Label: e.Label, Mode: e.Mode, CreatedAt: e.CreatedAt,
+					})
+				}
+				child.CatalogKnown = true
+			}
+			if timing, ok := proj.SubagentTiming(); ok {
+				view := &dsagentteam.SubagentTiming{
+					SettledMs:         timing.SettledMs,
+					LastTurnCompleted: timing.LastTurnCompleted,
+				}
+				if timing.Active != nil {
+					view.Active = true
+					view.ActiveSince = timing.Active.Since
+					view.ActiveThrough = timing.Active.Through
+				}
+				child.Timing = view
+			}
+			if usage, ok := proj.TokenUsage(); ok {
+				total := usage.TotalTokens()
+				child.TokenTotal = &total
+			}
+			w.projChildren[id] = child
+			changed = true
+		}
+		// err != nil：保留上一轮真值（下个 30s 再试），**不把"取失败"写成"没有"**。
+		w.mu.Unlock()
+	}
+	if changed {
+		m.inv.Invalidate()
+	}
 }
 
 // isCapabilityMissing 判断错误是不是"这个宿主没有这个能力"。

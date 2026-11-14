@@ -293,18 +293,11 @@ func (p *Plugin) drawActivePanel(f ui.C, env *pluginapi.Env) {
 }
 
 func (p *Plugin) drawPluginsPanel(f ui.C, env *pluginapi.Env) {
-	t := p.theme
-	ui.Column(f).FillWidth().Gap(8).Children(func() {
-		ui.Text(f, "插件").FontSize(24).LineHeight(32).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
-		ui.Text(f, "当前二进制已登记的插件").FontSize(t.Fonts.Secondary).LineHeight(20).Color(t.LabelTertiary)
-		ui.Column(f).FillWidth().Gap(2).PadSides(12, 0, 0, 0).Children(func() {
-			for _, id := range pluginapi.Registered() {
-				ui.Text(f, id).FontSize(t.Fonts.Body).LineHeight(22).Color(t.LabelPrimary)
-			}
-		})
-		// Registered 是编译期注册真值，不冒充 kernel 的 enabled/装配状态；
-		// 没有管理 mutation，因此不画安装、启停或配置按钮。
-	})
+	// 官方 plugin-manager 的管理页在 plugins_page.go（数据面
+	// Actions.PluginBundles / PluginBundleDetail + 两条真实写动作）。
+	// 入口仍是本文件的 `plugins` 路由（官方 `sidebar.panellist` id=plugins、
+	// label=插件、order=0——三者逐字一致）。
+	p.drawPluginManagerPage(f, env)
 }
 
 func (p *Plugin) drawSchedulesPanel(f ui.C, env *pluginapi.Env) {

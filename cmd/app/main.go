@@ -149,6 +149,24 @@ type model struct {
 	// （"delete"/"update"/"run"）。插件取走后清空：用户动作的失败必须当场说一次。
 	// 宿主的原始错误文本由壳写状态栏，界面只画官方那一句本地化文案。
 	schedActionFail string
+	// pluginBundles 是官方 `pluginManager.listBundles` 的缓存（插件管理页的列表数据）。
+	// loaded=false 表示还没成功拉到过；unavailable=true 表示宿主没有这个能力
+	// （501 not_implemented）——官方文案是 `unavailable`，不是错误 + 重试。
+	pluginBundleList         []apiclient.PluginBundle
+	pluginBundlesLoaded      bool
+	pluginBundlesUnavailable bool
+	pluginBundlesErr         string
+	pluginBundlesPending     bool
+	// pluginDetail 是按 bundle 名的 README 文档缓存（官方 readBundleDetail）。
+	pluginDetail        map[string]*apiclient.PluginBundleDetail
+	pluginDetailLoaded  map[string]bool
+	pluginDetailErr     map[string]string
+	pluginDetailPending map[string]bool
+	// pluginActionFail 是最近一次 pluginManager 写动作的失败动作名
+	// （"enable"/"disable"/"uninstall"）与失败的 bundle 名。
+	// 插件取走后清空，同一套"当场说一次"的规矩。
+	pluginActionFail     string
+	pluginActionFailName string
 	// jobs 是后台任务的缓存（宿主 loopRunner.jobs 的投影）。
 	//
 	// **它靠轮询刷新**：宿主那边是子进程推上来的一份快照，不会主动通知界面。
@@ -2507,6 +2525,16 @@ func main() {
 		ScheduleRun:         m.scheduleRun,
 		ScheduleActionError: m.scheduleActionError,
 		ScheduleRefresh:     m.scheduleRefresh,
+		// 官方插件管理页（侧栏「插件」）的数据面与两条真实写动作。
+		// 与 dssettings 的只读清单（pluginInventory.list）并存：那个是设置页的
+		// 清单投影，这个是官方 pluginManager 的可管理面（见 plugin_manager.go）。
+		PluginBundles:             m.pluginBundles,
+		PluginBundlesRefresh:      m.pluginBundlesRefresh,
+		PluginBundleDetail:        m.pluginBundleDetail,
+		PluginBundleDetailRefresh: m.pluginBundleDetailRefresh,
+		PluginSetBundleEnabled:    m.pluginSetBundleEnabled,
+		PluginRemoveBundle:        m.pluginRemoveBundle,
+		PluginActionError:         m.pluginActionError,
 		// 后台任务：同步返回缓存。**首次问会触发一次后台拉取**——
 		// 否则插件第一帧永远拿不到东西，而它自己没法申请刷新。
 		JobsList: func() []pluginapi.Job {

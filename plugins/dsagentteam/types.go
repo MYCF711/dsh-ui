@@ -73,6 +73,15 @@ type View struct {
 	// Members 是 `subagentCatalog` 的条数（只用于 data-with-members 的 4px 上边距）。
 	Members int
 
+	// Children 是"每个子会话自己的投影"（键 = 子会话 id）。
+	//
+	// 官方 `CatalogRows` 逐层递归：行的 metrics 与本层的下一级目录都来自
+	// `summaries[id].projectionValues`（OFF:SubagentHeaderLineage.tsx:209-213 的
+	// `canExpandCatalog`、:305-322 的 metrics）。本仓没有 sessions store，
+	// 所以由壳按子会话逐个拉 `session.projections` 后喂进来。
+	// nil 或键缺失 = **未知**（不画 metrics、不画 disclosure）。
+	Children map[string]ChildProjection
+
 	// Locked 对应官方的 `locked`：宿主说这个会话当前不能改 Team 模式。
 	Locked bool
 	// SubagentChild 对应 `useSession(s => s.subagent !== null)`。
@@ -89,9 +98,9 @@ type View struct {
 // CatalogEntry 是官方 `subagentCatalog` 的一项（ui-subagent 目录里的一行）。
 //
 // 官方行里还有 activity（running/completed/inactive）、token、duration 等指标；
-// 本仓宿主这两类**没有**对应投影字段（`OfficialSubagentCatalogEntry` 只有
-// id/createdAt/mode/label），所以这里也**不建模**：没有数据就不画，
-// 不拿零值冒充"已完成 / 0 tok"。
+// 本仓宿主的 `subagentCatalog` 只有 id/createdAt/mode/label，那三类指标来自
+// **该子会话自己**的 `session.projections`（`tokenUsage` / `subagentTiming`），
+// 由 `View.Children` 逐个喂进来（见 ChildProjection）。
 type CatalogEntry struct {
 	// ID 是子会话 id（点击 = 打开该子会话）。
 	ID string
@@ -102,6 +111,65 @@ type CatalogEntry struct {
 	Mode string
 	// CreatedAt 是创建时刻（毫秒，官方 createdAt）。
 	CreatedAt int64
+}
+
+// SubagentTiming 是宿主 `subagentTiming` 投影的界面视图
+// （官方 `summaries[id].projectionValues.subagentTiming`）。
+//
+//	HOST:internal/transport/handlers_session_official.go:382-393
+//	  { settledMs, active?:{since,through}, lastTurnCompleted? }
+type SubagentTiming struct {
+	// SettledMs 是已闭合轮的墙钟总和。
+	SettledMs int64
+	// Active 为真表示当前有一个未闭合轮；Since/Through 是它的时间界。
+	Active        bool
+	ActiveSince   int64
+	ActiveThrough int64
+	// LastTurnCompleted 最近闭合轮是否成功收尾；nil = 未知（不判"完成"）。
+	LastTurnCompleted *bool
+}
+
+// DurationMs 是官方 `activityDuration`（OFF:SubagentHeaderLineage.tsx:89-104）：
+// 有未闭合轮时 = `SettledMs + max(0, (running ? now : active.through) − active.since)`，
+// 否则 = `SettledMs`；没有这个投影（nil）时返回 (0,false) = 这一格不画。
+func (t *SubagentTiming) DurationMs(now int64) (int64, bool) {
+	if t == nil {
+		return 0, false
+	}
+	ms := t.SettledMs
+	if t.Active {
+		// 官方这里还有一位 `running`（会话 status）：在跑用 now，不在跑用
+		// active.through。本仓宿主**没有** running 真值，所以优先用宿主给的
+		// through（它是真值，且不依赖客户端时钟）；只有宿主没给 through 时
+		// 才用当前时刻兜底。
+		through := t.ActiveThrough
+		if through <= 0 {
+			through = now
+		}
+		if through > t.ActiveSince {
+			ms += through - t.ActiveSince
+		}
+	}
+	if ms <= 0 {
+		return 0, false
+	}
+	return ms, true
+}
+
+// ChildProjection 是**子会话自己**的投影（官方 `summaries[id].projectionValues` 的等价物）。
+//
+// 为什么要逐个喂：官方 `subagentCatalog` 只给父→子的行身份；行上的 token 与
+// 时长来自该子会话的 `session.projections`（`tokenUsage` / `subagentTiming`），
+// 目录展开时用的下一层 catalog 也来自同一个方法。
+type ChildProjection struct {
+	// Catalog 是这一层的 `subagentCatalog`；CatalogKnown=false = 还没读到
+	// （**不是**"没有子代理"）。
+	Catalog      []CatalogEntry
+	CatalogKnown bool
+	// Timing 是 `subagentTiming`；nil = 未知（不画时长、不判完成）。
+	Timing *SubagentTiming
+	// TokenTotal 是 `tokenUsage` 四桶之和；nil = 未知（不画 token 指标）。
+	TokenTotal *int64
 }
 
 // catalogLabel 是这一行的显示文案：官方 `primaryLabel`（label 优先，没有就用 id）。

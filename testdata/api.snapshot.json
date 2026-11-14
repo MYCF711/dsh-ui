@@ -1179,10 +1179,73 @@
         "deleted": true
       },
       "req_note": "官方 workspace/delete。deleted 是 literal true；只摘注册，不删文件夹/会话记录（官方 delete.desc）。HOST:internal/transport/handlers_workspace_official.go:773"
+    },
+    "pluginManager.listBundles": {
+      "batch": 13,
+      "req": {},
+      "resp": [
+        {
+          "name": "string",
+          "official": false,
+          "availability": "profile|missing|installation",
+          "installTarget": {"spec": "string", "version": "string"} ,
+          "version": "string?",
+          "meta": {"title": "LocalizedText?", "description": "LocalizedText?", "icon": "string?", "error": "string?"},
+          "description": "string?",
+          "listedByDefault": "bool?",
+          "enabled": true,
+          "installed": true,
+          "source": "string?",
+          "optional": false,
+          "removable": true,
+          "update": "registry|git",
+          "readOnlyReason": "string?",
+          "error": {"code": "string", "diagnostic": "string?", "incompatible": []},
+          "rows": [],
+          "overrides": []
+        }
+      ],
+      "req_note": "零参数，发裸对象 {}。HOST:internal/transport/handlers_pluginmanager_official.go:655 的 OfficialBundle；生产装配 cmd/dshd/serve_plugins_official.go:148-176（本仓 official=false / availability=profile / installed=true / removable=true / updatable=false / rows=[] / overrides=[]）。",
+      "resp_note": "rows 与 overrides 在官方 zod 里**必填数组**：空也必须是 []，不是 null。update 缺省 = rc.2 三态的第三态（换不了），与 updatable:false 不同——界面据此不画更新入口。宿主没接线回四字段 501 not_implemented（不是空数组）。"
+    },
+    "pluginManager.readBundleDetail": {
+      "batch": 13,
+      "req": {
+        "name": "string",
+        "language": "string",
+        "npmFileSources": ["jsdelivr|unpkg|npmmirror"]
+      },
+      "resp": {
+        "status": "found|none",
+        "origin": "readme",
+        "path": "string",
+        "markdown": "string"
+      },
+      "req_note": "language 必填 BCP-47（宿主 pmLanguagePattern 校验，界面固定发 zh-CN）；npmFileSources 只有官方 CDN 白名单三值。HOST:internal/transport/handlers_pluginmanager_official.go:1175、internal/pluginmgr/official/adapter.go:607-625。",
+      "resp_note": "status=none 是官方回答「装上了但没有 README」，**不是错误**；没有这个 bundle 才是四字段 not_found。"
+    },
+    "pluginManager.setBundleEnabled": {
+      "batch": 13,
+      "req": {
+        "name": "string",
+        "enabled": true
+      },
+      "resp": "ChangeResult",
+      "resp_note": "ChangeResult={changed,application(applied|cancelled|failed),stage,target,enabled?,error?{code,diagnostic},warnings?,bundle?,version?}。application=failed 是**管理性失败**（HTTP 200），客户端必须解 error.code，不能只看 err。HOST:internal/transport/handlers_pluginmanager_official.go:536、cmd/dshd/serve_plugins_official.go:105-120。",
+      "req_note": "本仓一包一插件：setBundleEnabled 与 setPluginEnabled 写的是同一个持久化启用位。"
+    },
+    "pluginManager.removeBundle": {
+      "batch": 13,
+      "req": {
+        "name": "string"
+      },
+      "resp": "ChangeResult",
+      "req_note": "卸载成功后 Loader 里的实例已被回收，warnings 如实说明（cmd/dshd/serve_plugins_official.go:122-130）。",
+      "resp_note": "与 setBundleEnabled 同一个 ChangeResult 形状；application=failed 同样是 HTTP 200 的管理性失败。"
     }
   },
   "counts": {
-    "total": 64,
+    "total": 68,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1194,6 +1257,7 @@
     "batch9": 1,
     "batch10": 5,
     "batch11": 4,
-    "batch12": 3
+    "batch12": 3,
+    "batch13": 4
   }
 }

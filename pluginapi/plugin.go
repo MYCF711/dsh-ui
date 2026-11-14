@@ -881,6 +881,48 @@ type Actions struct {
 	// **异步**；拉取失败写进 ScheduleCatalog 的 errText。
 	ScheduleRefresh func()
 
+	// ── 官方插件管理页（`dsh-client-ui-plugin-manager`，侧栏「插件」）──────
+
+	// PluginBundles 返回官方 `pluginManager.listBundles` 的全量 bundle 清单（壳缓存）。
+	//
+	// 四个返回值：
+	//   - bundles：最近一次成功拉到的清单；nil = 还没拉到过；
+	//   - loaded：是否已经有过一次成功读取（不能拿空数组当"没有插件"）；
+	//   - unavailable：宿主**没有这个能力**（501 not_implemented）。插件据此画
+	//     官方 `unavailable`（"本部署没有可管理的 profile"），**不是**错误 + 重试
+	//     ——重试一个不存在的方法永远同一个 501；
+	//   - errText：最近一次失败的原因（宿主原文）；空串 = 没有失败。
+	//
+	// **首次调用触发一次后台拉取**（插件每帧问，壳只在没有缓存时发一次请求）。
+	// nil = 壳没接（老壳）：插件这时不画这一页。
+	PluginBundles func() (bundles []apiclient.PluginBundle, loaded bool, unavailable bool, errText string)
+	// PluginBundlesRefresh 重新拉一次 bundle 清单（官方 refresh / 动作后重拉）。**异步**。
+	PluginBundlesRefresh func()
+	// PluginBundleDetail 读一个 bundle 的 README 文档（官方 `readBundleDetail`）。
+	//
+	// 同步返回壳缓存；第一次问触发后台拉取（键是 bundle 名）。
+	// loaded=false 且 errText 空 = 还在读；errText 非空 = 读失败（画重试）。
+	PluginBundleDetail func(name string) (detail apiclient.PluginBundleDetail, loaded bool, errText string)
+	// PluginBundleDetailRefresh 重读一个 bundle 的文档（失败后的重试）。**异步**。
+	PluginBundleDetailRefresh func(name string)
+	// PluginSetBundleEnabled 启用/停用一个 bundle（官方 `setBundleEnabled`）。**异步**。
+	//
+	// 写动作**不做乐观更新**：壳成功后重拉清单，失败把动作名交给
+	// PluginActionError，由插件画官方那一句本地化文案。
+	PluginSetBundleEnabled func(name string, enabled bool)
+	// PluginRemoveBundle 卸载一个 bundle（官方 `removeBundle`）。**异步**。
+	//
+	// 破坏性动作：确认由插件负责（官方是 Modal，本仓按仓规用"同一按钮再点一次"）。
+	PluginRemoveBundle func(name string)
+	// PluginActionError 取走最近一次 pluginManager 写动作的失败（取走即清空）。
+	//
+	// action 是 "enable" / "disable" / "uninstall" 之一，对应官方
+	// `failedEnable` / `failedDisable` / `failedUninstall` 三句本地化文案；
+	// name 是失败的那个 bundle（界面据此清掉它自己的"在飞"标记）；
+	// ok=false = 没有待显示的动作失败。宿主原文由壳写状态栏，
+	// 界面**不另编一句话**。
+	PluginActionError func() (action string, name string, ok bool)
+
 	// OpenDirectoryPicker 打开**官方目录选择器**（官方 `dsh-client-ui-directory-picker-browse`
 	// 的 Miller 双列对话框），用它「添加工作区」。
 	//

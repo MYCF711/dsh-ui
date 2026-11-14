@@ -47,7 +47,9 @@
 package dsagentteam
 
 import (
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
@@ -88,6 +90,11 @@ const (
 	catalogSectionProgTop    = 2 // padding-top:2px
 	catalogSectionProgLine   = 20
 	catalogSectionEmptyFont  = 12
+	catalogMetricFont        = 10 // .metrics{font-size:10px}
+	catalogMetricTokenLine   = 17 // .metricToken{grid-row:1;line-height:17px}
+	catalogMetricLine        = 15 // .metrics{line-height:15px}
+	catalogCheckSize         = 16 // currentCheck 16（IconCheckOutlineRegular size=16）
+	catalogChildIndent       = 16 // .children{margin-left:16px}
 	catalogSectionEmptyLeft  = 28 // padding:0 7px 8px 28px
 	catalogSectionEmptyRight = 7
 
@@ -314,7 +321,7 @@ func (p *Plugin) drawCatalogBackdrop(f ui.C, env *pluginapi.Env) {
 	}
 	id := env.Tree.ID(env.Feat, "subagent-catalog-backdrop")
 	if ui.Row(f).Absolute().Inset(0).Hit(id, zhCatalogTreeAria).Clicked() {
-		p.catalog.close()
+		p.closeCatalog()
 	}
 }
 
@@ -374,7 +381,7 @@ func (p *Plugin) drawCatalogPanel(f ui.C, env *pluginapi.Env, drawSlot func(plug
 	facts := p.catalogFactsFor(env)
 	if !facts.visible {
 		// 面板开着但已经不该可见（目录被清空等）：官方会关掉菜单，这里同步收起。
-		p.catalog.close()
+		p.closeCatalog()
 		return
 	}
 	t := p.themeFor(env)
@@ -413,10 +420,11 @@ func (p *Plugin) drawCatalogPanel(f ui.C, env *pluginapi.Env, drawSlot func(plug
 			if facts.err != "" {
 				p.drawCatalogError(f, env, t, facts.err)
 			}
-			// `div[role=tree]`：子会话行。
-			for _, entry := range facts.entries {
-				p.drawCatalogRow(f, env, t, entry)
-			}
+			// `div[role=tree]`：子会话行（官方根层 `level={1}`，OFF:…tsx:815）。
+			// reserveDisclosure（:259）：这一层只要有可展开行，兄弟叶子行也让出展开列。
+			view := p.team.View()
+			reserve := catalogReserveDisclosure(facts.entries, view.Children)
+			p.drawCatalogRows(f, env, t, facts.entries, reserve)
 			// ── footer：官方 SubagentHeaderLineage.tsx:868 `props.renderFooter?.()` ──
 			// 无论有没有注册者都调一次（与官方 `renderSlot` 一致），
 			// 这样"槽写错了"表现为空而不是"父级忘了画"。
@@ -482,28 +490,187 @@ func (p *Plugin) drawCatalogError(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 		})
 }
 
-// drawCatalogRow 画一行子会话（官方 `.row`）。
+// drawCatalogRows 画一层行（官方 `CatalogRows` 的等价物：逐层递归）。
+func (p *Plugin) drawCatalogRows(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, entries []CatalogEntry, reserve bool) {
+	for _, entry := range entries {
+		p.drawCatalogRow(f, env, t, entry, reserve)
+	}
+}
+
+// drawCatalogRow 画一行子会话（官方 `.row`，OFF:…tsx:353-461 的 DOM 顺序）。
 //
-// 本仓宿主只给 id/createdAt/mode/label：activity 槽保留**结构宽度**但**不画状态点**
-// —— 没有运行态数据就画一个中性点等于编数据（官方在这个位置有 running/completed/
-// inactive 三态）。点行 = 打开那个子会话（官方 openChild）。
-func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, entry CatalogEntry) {
+// 这一版落地的四格（与官方同序）：
+//
+//	① disclosure 列（14×17；可展开画 ▾/▸，否则按 reserveDisclosure 留白）
+//	② activity 槽（14×17）—— **保留宽度、不画状态点**：官方三态需要"该子会话
+//	   是否在跑"的真值，本仓宿主没有这个投影；画一个中性点就是把"不知道"说成
+//	   "未运行"（登记在 docs/official-subagent-evidence-rc2.md）
+//	③ content：label（+ 子会话标题作 secondary，来自 session.list 的真实标题）
+//	④ metrics：token 第 1 行、compact 时长第 2 行（title = exact 时长）
+//	   + 尾列：当前会话画 ✓（官方 `currentCheck`）
+//
+// 点击行 = 打开那个子会话（官方 `openChild`）。
+func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, entry CatalogEntry, reserve bool) {
+	view := p.team.View()
+	child := view.Children[entry.ID]
+	canExpand := catalogCanExpand(entry, child)
+	expanded := canExpand && p.team.CatalogExpanded(entry.ID)
+	now := time.Now().UnixMilli()
+	token, compact, exact := catalogRowMetrics(child, now)
+
 	id := env.Tree.ID(env.Feat, "subagent-catalog-row-"+entry.ID)
+	aria := catalogRowAria(entry, token, compact, exact)
 	row := ui.Row(f).FillWidth().MinHeight(catalogRowMinHeight).Items(ui.Start).
 		Gap(catalogRowGap).
 		PadSides(catalogRowPadV, catalogRowPadRight, catalogRowPadV, catalogRowPadLeft).
-		Radius(t.Radii.MD).Hit(id, entry.catalogLabel()).Children(func() {
-		// `.rowActivitySlot{14×17}`：保留槽宽，不画状态（见函数注释）。
+		Radius(t.Radii.MD).Hit(id, aria).Children(func() {
+		// ① disclosure（官方 `.disclosure` 14×17，svg 12×12 rotate 90°）。
+		switch {
+		case canExpand:
+			glyph := "▸"
+			if expanded {
+				glyph = "▾"
+			}
+			toggleID := env.Tree.ID(env.Feat, "subagent-catalog-branch-"+entry.ID)
+			label := fillTile(zhBranchExpand, "label", entry.catalogLabel())
+			if expanded {
+				label = fillTile(zhBranchCollapse, "label", entry.catalogLabel())
+			}
+			cell := ui.Row(f).Size(catalogRowActW, catalogRowActH).Items(ui.Center).
+				Justify(ui.Center).Hit(toggleID, label).Children(func() {
+				ui.Text(f, glyph).FontSize(11).LineHeight(catalogRowActH).Color(t.LabelTertiary)
+			})
+			if cell.Clicked() {
+				p.team.ToggleCatalogBranch(entry.ID)
+			}
+		case reserve:
+			// 官方 `.disclosureSpace`：只占位 14×17（层内有可展开行时）。
+			ui.Row(f).Size(catalogRowActW, catalogRowActH)
+		}
+		// ② activity 槽：保留宽度，不画状态（见函数注释）。
 		ui.Row(f).Size(catalogRowActW, catalogRowActH)
-		ui.Text(f, entry.catalogLabel()).Grow(1).FontSize(catalogRowFont).
-			LineHeight(catalogRowLine).Color(t.LabelPrimary).Ellipsis()
+		// ③ content：label（当前会话加粗）+ 子会话标题。
+		ui.Column(f).Grow(1).MinWidth(0).Children(func() {
+			label := ui.Text(f, entry.catalogLabel()).FontSize(catalogRowFont).
+				LineHeight(catalogRowLine).Color(t.LabelPrimary).Ellipsis()
+			if entry.ID == env.Data.Cur {
+				label.Weight(500)
+			}
+			if title := catalogSessionTitle(env, entry.ID); title != "" && title != entry.catalogLabel() {
+				ui.Text(f, title).FontSize(catalogRowFont).LineHeight(catalogRowLine).
+					Color(t.LabelTertiary).Ellipsis()
+			}
+		})
+		// ④ metrics：token（第 1 行）+ compact 时长（第 2 行，title = exact）。
+		if token != "" || compact != "" {
+			ui.Column(f).Shrink(0).Items(ui.End).Hit(env.Tree.ID(env.Feat, "subagent-catalog-metrics-"+entry.ID), exact).
+				Children(func() {
+					if token != "" {
+						ui.Text(f, token).FontSize(catalogMetricFont).LineHeight(catalogMetricTokenLine).
+							Color(t.LabelTertiary)
+					}
+					if compact != "" {
+						ui.Text(f, compact).FontSize(catalogMetricFont).LineHeight(catalogMetricLine).
+							Color(t.LabelTertiary)
+					}
+				})
+		}
+		// 尾列：当前会话画 ✓（官方 `currentCheck`，IconCheckOutlineRegular size=16）。
+		if entry.ID == env.Data.Cur {
+			ui.Row(f).Size(catalogCheckSize, catalogRowActH).Items(ui.Center).
+				Justify(ui.Center).Children(func() {
+				ui.Text(f, "✓").FontSize(12).LineHeight(catalogRowActH).Color(t.LabelSecondary)
+			})
+		} else {
+			ui.Row(f).Size(catalogCheckSize, catalogRowActH)
+		}
 	})
 	if row.Clicked() {
-		p.catalog.close()
+		p.closeCatalog()
 		if env.Act.OpenSession != nil {
 			env.Act.OpenSession(entry.ID)
 		}
+		return
 	}
+	// 下一层：官方 `.children`（margin-left:16px; padding-left:3px + 0.5px 竖线）。
+	// 本仓没有 CSS 伪元素，缩进用 margin 表达；**连接线不画**（登记为差异）。
+	if expanded {
+		ui.Column(f).FillWidth().MarginSides(0, 0, 0, catalogChildIndent).Children(func() {
+			p.drawCatalogRows(f, env, t, child.Catalog, catalogReserveDisclosure(child.Catalog, view.Children))
+		})
+	}
+}
+
+// catalogRowAria 是官方行的 `aria-label`（:301-322）：主标签 · 模式 · 指标。
+//
+// viva 只有一个可访问名（`Hit(id,label)`），所以这里把官方那三段落在一句里；
+// 可见文本仍然只有 label / 标题 / 两个指标（与官方 DOM 一致）。
+func catalogRowAria(entry CatalogEntry, token, compact, exact string) string {
+	parts := []string{entry.catalogLabel()}
+	if mode := catalogModeText(entry.Mode); mode != "" {
+		parts = append(parts, mode)
+	}
+	if token != "" {
+		parts = append(parts, token)
+	}
+	if compact != "" {
+		parts = append(parts, compact)
+	}
+	_ = exact
+	return strings.Join(parts, " · ")
+}
+
+// catalogModeText 是官方 `mode.*` 四值（:294-295；只进 aria-label，不画在行上）。
+func catalogModeText(mode string) string {
+	switch mode {
+	case "external":
+		return "外部任务"
+	case "unknown":
+		return "模式未知"
+	case "one-shot":
+		return "一次性"
+	case "continuable":
+		return "可继续"
+	}
+	return ""
+}
+
+// catalogSessionTitle 从壳的会话清单里取子会话标题（官方 `summary.title`）。
+//
+// 官方 primaryLabel 的构成是 `entry.label || summary.title`；本仓宿主的
+// `subagentCatalog.label` 常常是空串（没有 durable 创建标签），所以真实标题来自
+// `session.list`——它是宿主真值，不是编的。
+func catalogSessionTitle(env *pluginapi.Env, sessionID string) string {
+	if env == nil {
+		return ""
+	}
+	for _, session := range env.Data.Sessions {
+		if session.ID == sessionID {
+			return strings.TrimSpace(session.Title)
+		}
+	}
+	return ""
+}
+
+// closeCatalog 收面板并清掉展开态（官方 changeOpen(false) 的
+// `setExpanded(new Set())`，:573-588）。
+func (p *Plugin) closeCatalog() {
+	p.catalog.close()
+	p.team.ResetCatalogExpanded()
+}
+
+// HandleKey 实现 pluginapi.KeyHandler：目录开着时 Esc 关闭（官方 document
+// keydown 的 Escape，:649-653）。其余键不消费（官方树内的方向键见报告：本仓
+// 没有 DOM 焦点模型，登记为差异）。
+func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
+	if ev.Release || ev.Modifiers != 0 {
+		return false
+	}
+	if ev.Key != gfx.KeyEscape || !p.catalog.isOpen() {
+		return false
+	}
+	p.closeCatalog()
+	return true
 }
 
 // AttachShellTier 由壳在 `Load` 之后调用一次，把壳档位告诉本容器。

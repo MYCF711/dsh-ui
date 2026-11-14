@@ -41,7 +41,7 @@
 
 ### 插件体系（3）
 
-- ❌ `plugin-manager`
+- ✅ `plugin-manager`
 - ❌ `plugin-market`
 - ❌ `settings-plugin-inventory`
 
@@ -55,7 +55,7 @@
 - ❌ `plan`
 - ✅ `schedule`（`dsschedule`：侧栏「定时任务」，宿主 `schedule.list`）
 - ✅ `jobs`（`dsjobs`：官方档 header 触发器 + 500px 弹层 / 旧三栏档侧栏清单；`jobs.list` 5 秒轮询 + `jobs.output` rune 游标分页 + `jobs.stop` 两段式；证据见 [official-jobs-evidence-rc2.md](official-jobs-evidence-rc2.md)）
-- ❌ `subagent`
+- ✅ `subagent`
 - ✅ `skill`（`dsskill`：**专用工具行** `SkillRow` 四态 + 两棵树 + 展开说明卡；**`/name` 用户文本规则**逐条实现；**胶囊** `SkillReference`。工具行**零宿主依赖**——官方 `skillRowModel` 只从 durable 的 call/result slice 推。**仍缺**：斜杠候选源（`inputTriggers` 注册表）与 `openSkill`（`skills/list`），见 B 类）
 - ✅ `user-questions`（`dsquestions`：F7/F8 或点击选选项）
 - ❌ `workflow-run`
@@ -120,7 +120,7 @@
 | 26 | `dsh-client-ui-open-in-app` | ✅ IMPLEMENTED | `plugins/dsopen`（3 文件 / 163 行） |
 | 27 | `dsh-client-ui-permission-presets` | ✅ IMPLEMENTED | `dscomposer` + `dssettings` |
 | 28 | `dsh-client-ui-plan` | ❌ MISSING | 无 |
-| 29 | `dsh-client-ui-plugin-manager` | 🟡 PARTIAL | `plugins/dssettings` 的 `plugins` section（只读清单页那半）+ **侧栏管理页未做** |
+| 29 | `dsh-client-ui-plugin-manager` | ✅ IMPLEMENTED | `plugins/dssidebar/plugins_page.go`（侧栏「插件」管理页：列表/详情/启停/卸载）+ `internal/apiclient/plugin_manager.go` + `cmd/app/plugin_manager.go`；证据 [official-plugin-manager-evidence-rc2.md](official-plugin-manager-evidence-rc2.md) |
 | 30 | `dsh-client-ui-plugin-market` | ❌ MISSING | 无 |
 | 31 | `dsh-client-ui-plugin-recommendations` | ❌ MISSING | 无 |
 | 32 | `dsh-client-ui-reference` | ✅ IMPLEMENTED | `plugins/dsconversation/usertext.go`（file/folder/session chip + PreviewFile）+ `plugins/dscomposer/trigger.go` + `internal/reficon` |
@@ -147,7 +147,7 @@
 | 53 | `dsh-client-ui-sidebar-right` | ✅ IMPLEMENTED | `dsrightbar` + `dsshell` + uikernel |
 | 54 | `dsh-client-ui-sidebar-terminal` | 🟡 PARTIAL | `plugins/dsterminal` + `internal/ansi` |
 | 55 | `dsh-client-ui-skill` | ✅ IMPLEMENTED | `plugins/dsskill`（7 文件 / 2238 行） |
-| 56 | `dsh-client-ui-subagent` | 🟡 PARTIAL | `plugins/dsagentteam/catalog.go`（父容器 B） |
+| 56 | `dsh-client-ui-subagent` | ✅ IMPLEMENTED | 目录行本体：`plugins/dsagentteam/catalog.go`（disclosure/递归层级/token+时长指标/当前会话对勾/Esc）+ `catalog_metrics.go` + 壳侧逐子会话投影 `cmd/app/wave3_wiring.go`；footer（TeamBoard）仍是既有落点；证据 [official-subagent-evidence-rc2.md](official-subagent-evidence-rc2.md) |
 | 57 | `dsh-client-ui-theme` | ✅ IMPLEMENTED | `dscore` + `cmd/app/theme.go` |
 | 58 | `dsh-client-ui-tool` | ✅ IMPLEMENTED | `plugins/dstool`（7 文件 / 930 行） |
 | 59 | `dsh-client-ui-trajectory` | 🟡 PARTIAL | `plugins/dsrightbar` |
@@ -165,7 +165,7 @@
 >
 > #34 的结构与几何证据、与官方的差异台账：[official-schedule-evidence-rc2.md](official-schedule-evidence-rc2.md)。未做面：会话头提醒目录、`schedule_create` 转录卡、会话行时钟标记、手动创建表单、可编辑规则、⋯ 菜单（理由与缺口见该文件 §4）。
 
-## 合计：官方 66 个部件 —— ✅ 37 · 🟡 12 · ⬜ 0（不该有） · ❌ 17
+## 合计：官方 66 个部件 —— ✅ 39 · 🟡 10 · ⬜ 0（不该有） · ❌ 17
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），

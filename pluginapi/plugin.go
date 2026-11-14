@@ -793,7 +793,59 @@ type Actions struct {
 	//
 	// **同步返回壳缓存**：壳启动后拉一次、之后每次 `schedule.*` 变更再拉。
 	// nil = 壳没接（老宿主）。
+	//
+	// 注：这是本仓宿主的**扩展面**（按会话落盘的精简投影）。官方任务管理页
+	// 消费的是 `schedule.catalog`，见下面的 ScheduleCatalog。
 	ScheduleList func() []ScheduleItem
+
+	// ScheduleCatalog 返回官方 `schedule.catalog` 的全量任务目录（壳缓存）。
+	//
+	// 与 ScheduleList 的区别：catalog 带官方 `ScheduleCatalogEntry` 的 7-kind
+	// union、`status`、`target`、`involvedSessionIds`、`lastDelivery`、
+	// `deliveryFloorEndsAt`——官方任务管理页的列表/状态/下次运行全靠它。
+	//
+	// 三个返回值：
+	//   - entries：最近一次成功拉到的目录；nil = 还没拉到过；
+	//   - loaded：是否已经有过一次成功读取（**不能拿空数组当"没有任务"**：
+	//     还没拉到与真的没有是两件事，界面必须画成"加载中"而不是空状态）；
+	//   - errText：最近一次失败的原因（宿主原文）；空串 = 没有失败。
+	//
+	// **首次调用会触发一次后台拉取**（与 JobsList 同一模式）：插件每帧问，
+	// 壳只在没有缓存时发一次请求。nil = 壳没接（老壳）。
+	ScheduleCatalog func() (entries []apiclient.ScheduleEntry, loaded bool, errText string)
+
+	// ScheduleHistory 读一条任务的投递历史（官方 `schedule.history`）。
+	//
+	// 同步返回壳缓存；第一次问会触发后台拉取。page/loaded/errText 语义同上，
+	// 另外 page.NextBefore 非空表示"更旧还有"，由 ScheduleHistoryMore 续读。
+	ScheduleHistory func(id string) (page apiclient.ScheduleHistoryPage, loaded bool, errText string)
+
+	// ScheduleHistoryMore 续读更旧的一页（`before=page.NextBefore`）。**异步**。
+	ScheduleHistoryMore func(id string)
+
+	// ScheduleDelete 删除一条任务（官方 `schedule.edit` action=delete）。**异步**。
+	//
+	// 删除是破坏性动作：壳只在宿主回 `{id,deleted:true}` 后重拉目录；
+	// miss（schedule_not_found / schedule_conflict）不是错误，走重拉收敛。
+	ScheduleDelete func(id string)
+
+	// ScheduleSetActive 暂停/恢复一条任务（`schedule.edit` patch.active）。**异步**。
+	ScheduleSetActive func(id string, active bool, expectedUpdatedAt string)
+
+	// ScheduleRun 立即执行一次（官方 `schedule.run`）。**异步**。
+	ScheduleRun func(id string)
+
+	// ScheduleActionError 取走最近一次 schedule 动作失败的动作 id（取走即清空）。
+	//
+	// 返回值是 "delete" / "update" / "run" 之一（对应官方
+	// `toast.deleteFailed` / `host.saveError` / `host.runError` 三句本地化文案）；
+	// ok=false = 没有待显示的动作失败。宿主的原始错误文本由壳写进状态栏，
+	// **不在界面上另编一句话**（官方 toast 也只有那一句）。
+	ScheduleActionError func() (action string, ok bool)
+
+	// ScheduleRefresh 重新拉一次官方任务目录（官方 CatalogFeedback 的重试）。
+	// **异步**；拉取失败写进 ScheduleCatalog 的 errText。
+	ScheduleRefresh func()
 
 	// OpenDirectoryPicker 打开**官方目录选择器**（官方 `dsh-client-ui-directory-picker-browse`
 	// 的 Miller 双列对话框），用它「添加工作区」。

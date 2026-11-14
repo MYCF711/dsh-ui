@@ -126,6 +126,21 @@ type model struct {
 	feedbackResults map[string]pluginapi.FeedbackResult
 	// schedules 是定时任务的缓存（宿主 <home>/state/schedules/ 的投影）。
 	schedules []pluginapi.ScheduleItem
+	// schedCatalog 是官方 `schedule.catalog` 的缓存（7-kind union 的全量目录）。
+	// loaded=false 表示还没成功拉到过——界面必须画"加载中"，不能画空状态。
+	schedCatalog        []apiclient.ScheduleEntry
+	schedCatalogLoaded  bool
+	schedCatalogErr     string
+	schedCatalogPending bool
+	// schedHistory 是按任务 id 的投递历史缓存（官方 schedule.history）。
+	schedHistory        map[string]*apiclient.ScheduleHistoryPage
+	schedHistoryLoaded  map[string]bool
+	schedHistoryErr     map[string]string
+	schedHistoryPending map[string]bool
+	// schedActionFail 是最近一次 schedule 动作（删除/暂停/执行）的失败动作 id
+	// （"delete"/"update"/"run"）。插件取走后清空：用户动作的失败必须当场说一次。
+	// 宿主的原始错误文本由壳写状态栏，界面只画官方那一句本地化文案。
+	schedActionFail string
 	// jobs 是后台任务的缓存（宿主 loopRunner.jobs 的投影）。
 	//
 	// **它靠轮询刷新**：宿主那边是子进程推上来的一份快照，不会主动通知界面。
@@ -341,6 +356,9 @@ func (m *model) toggleRightbar() {
 }
 
 func (m *model) refreshList() {
+	// 官方任务目录：与 schedule.list 一样在启动/新会话入口拉一次（见
+	// schedule_catalog.go）。这里不阻塞 refreshList 的既有链路。
+	go m.refreshScheduleCatalog()
 	// **UI 配置在这里拉**：`refreshList` 是启动与新建会话的公共入口
 	// （`-session` 的自动打开也在它内部），放这儿比放 `newSession` 早且全覆盖。
 	//
@@ -2467,6 +2485,16 @@ func main() {
 			defer m.mu.Unlock()
 			return m.schedules
 		},
+		// 官方 schedule.catalog / history / 三条写动作（见 schedule_catalog.go）。
+		// 与上面的 ScheduleList 并存：那个是侧栏摘要，这个是官方任务页的数据面。
+		ScheduleCatalog:     m.scheduleCatalog,
+		ScheduleHistory:     m.scheduleHistory,
+		ScheduleHistoryMore: m.scheduleHistoryMore,
+		ScheduleDelete:      m.scheduleDelete,
+		ScheduleSetActive:   m.scheduleSetActive,
+		ScheduleRun:         m.scheduleRun,
+		ScheduleActionError: m.scheduleActionError,
+		ScheduleRefresh:     m.scheduleRefresh,
 		// 后台任务：同步返回缓存。**首次问会触发一次后台拉取**——
 		// 否则插件第一帧永远拿不到东西，而它自己没法申请刷新。
 		JobsList: func() []pluginapi.Job {

@@ -1016,10 +1016,96 @@
       },
       "req_note": "撤回一条消息反馈（HOST:internal/transport/handlers_agent_official.go:1957-2005；实现 HOST:cmd/dshd/serve_agent_api.go:1626 起）。`ifVersion` 必填（字符串）；已经不存在时回 `ok:true, value:{absent:true}`（稳定的后置条件，不报冲突，`:1641-1647`）；version 不匹配回 version-conflict + current。",
       "resp_note": "成功只有 absent:true；没有返回值不代表没成功。"
+    },
+    "schedule.catalog": {
+      "batch": 11,
+      "req": {},
+      "resp": [
+        {
+          "id": "string",
+          "kind": "after|at|every|daily|weekly|cron|rrule",
+          "title": "string",
+          "prompt": "string",
+          "afterSeconds": "int?",
+          "everySeconds": "int?",
+          "time": "string?",
+          "timeZone": "string",
+          "weekdays": ["int?"],
+          "expression": "string?",
+          "rrule": "string?",
+          "scheduledAt": "string",
+          "target": {
+            "kind": "session|new_once|new",
+            "sessionId": "string?",
+            "create": {"cwd": "string?", "agentPreset": "string?"}
+          },
+          "involvedSessionIds": ["string"],
+          "status": "active|paused|ended",
+          "createdAt": "string?",
+          "updatedAt": "string?",
+          "executionActive": "bool?",
+          "deliveryFloorEndsAt": "string?",
+          "lastDelivery": {
+            "scheduledAt": "string",
+            "deliveredAt": "string",
+            "messageId": "string",
+            "targetSessionId": "string"
+          }
+        }
+      ],
+      "req_note": "官方 parameters: []（HOST:internal/transport/handlers_schedule_official.go:127-135）。结果**裸数组**；未接线回 501 not_implemented，不是空数组。7 个 kind 的 union：同一份记录只出现其中一组时间字段（:200-260 的 OfficialScheduleEntry）。",
+      "resp_note": "kind 专属字段用 omitempty；timeZone/weekdays 在对应分支是 required（空串/空数组也是'有这句话'）。"
+    },
+    "schedule.edit": {
+      "batch": 11,
+      "req": {
+        "id": "string",
+        "action": "update|delete",
+        "patch": {
+          "active": "bool?",
+          "title": "string?",
+          "prompt": "string?",
+          "timing": "object?",
+          "target": "object?"
+        },
+        "expectedUpdatedAt": "string|null?"
+      },
+      "resp": "ScheduleCatalogEntry | {id,code} | {id,deleted:true}",
+      "req_note": "平铺也可（scheduleRequestObject:1085-1102 两种都收）。patch.active 暂停/恢复；expectedUpdatedAt 是乐观锁。",
+      "resp_note": "miss 是 HTTP 200 成功结果，code ∈ schedule_not_found/schedule_conflict/schedule_execution_pending/delivery_cursor_not_found（:540-575）。"
+    },
+    "schedule.run": {
+      "batch": 11,
+      "req": {"id": "string"},
+      "resp": "ScheduleCatalogEntry | {id,code}",
+      "req_note": "立即执行一次；宿主没有 runner 时回 501（HOST:cmd/dshd/serve_schedule_api.go:827）。",
+      "resp_note": "execution_pending 是正常 miss，不是错误。"
+    },
+    "schedule.history": {
+      "batch": 11,
+      "req": {"id": "string", "limit": "int=20", "before": "string?"},
+      "resp": {
+        "id": "string",
+        "records": [
+          {
+            "prompt": "string?",
+            "scheduledAt": "string",
+            "deliveredAt": "string",
+            "messageId": "string",
+            "targetSessionId": "string"
+          }
+        ],
+        "earlierRecordsUnavailable": "bool",
+        "earlierRecordsPruned": "bool",
+        "retention": {"days": "int", "records": "int"},
+        "nextBefore": "string?"
+      },
+      "req_note": "limit 官方必填 1..100（:946-990）；before 是 messageId 排他游标。",
+      "resp_note": "结果也是 union：可能回 {id,code}。nextBefore 只在'更旧还有'时出现。"
     }
   },
   "counts": {
-    "total": 57,
+    "total": 61,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1029,6 +1115,7 @@
     "batch7": 7,
     "batch8": 1,
     "batch9": 1,
-    "batch10": 5
+    "batch10": 5,
+    "batch11": 4
   }
 }

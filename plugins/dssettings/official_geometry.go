@@ -281,20 +281,150 @@ const (
 	// ModelsSection.module.css:908-910）。
 	DeleteDialogMaxWidth float32 = 480
 
-	// PluginsSectionMaxWidth 是内置插件页最大内容宽
+	// ── 内置插件页（rc.2 两段：ui-settings-plugins 外壳 + ui-settings-plugin-inventory 清单页）──
+	//
+	// 2026-11-14 修了 4 行**错的**：原先 groupTitle 写 13/20（官方 `.groupTitle` 是
+	// 14px/22px）、group gap 写 8（`.group{gap:10px}`）、单列断点写 640（官方是
+	// `@container (max-width: 520px)`）、card padding 的锚点指到 `.card`（`padding`
+	// 其实在 `.cardContent{12px 14px}`）。四处都按 rc.2 原文重锚了。
+	//
+	// PluginsSectionMaxWidth 是清单页最大内容宽
 	// （`max-width: 760px`，PluginInventorySettingsTab.module.css:2-10）。
 	PluginsSectionMaxWidth float32 = 760
-	// PluginsSectionGap 是页内纵向间距（`gap: 14px`，同处）。
-	PluginsSectionGap    float32 = 14
-	PluginsSearchHeight  float32 = 36
-	PluginsSearchPadL    float32 = 36
-	PluginsSearchPadR    float32 = 34
-	PluginsCardsGap      float32 = 10
-	PluginsCardPad       float32 = 12
-	PluginsCardSingleCol float32 = 640
-	PluginsGroupGap      float32 = 8
-	PluginsGroupTitle    float32 = 13
-	PluginsGroupTitleLn  float32 = 20
+	// PluginsSectionGap 是清单页纵向间距（`gap: 14px`，同处）。
+	PluginsSectionGap float32 = 14
+	// PluginsSectionOuterGap 是**外壳**页的纵向间距（`.section{gap:12px}`，
+	// PluginsSettingsSection.module.css:3-9）。
+	PluginsSectionOuterGap float32 = 12
+	// PluginsHeadingFontSize / PluginsHeadingWeight 是外壳标题（18px / 600，
+	// `.heading`，同文件 :11-15）。
+	PluginsHeadingFontSize float32 = 18
+	PluginsHeadingWeight   float32 = 600
+	// PluginsIntroFontSize 是外壳简介（`font-size: 13px`，`.intro`，:17-21）。
+	PluginsIntroFontSize float32 = 13
+	// ── 外壳的 tab 条（只有多 tab 时才画，官方 PluginsSettingsSection.module.css:23-70）──
+	//
+	// PluginsTabsGap / MarginTop 是 `.tabs{gap:22px;margin-top:2px}`（:23-29）；
+	// PluginsTabPadTop/Bottom/X 是 `.tab{padding:7px 1px 9px}`（:31-41）；
+	// PluginsTabFontSize/Ln 是 `.tab{font-size:13px;line-height:20px}`（同处）；
+	// PluginsTabUnderline 是选中态 `::after{height:2px}`（:53-63）。
+	PluginsTabsGap      float32 = 22
+	PluginsTabsMarginT  float32 = 2
+	PluginsTabPadTop    float32 = 7
+	PluginsTabPadBt     float32 = 9
+	PluginsTabPadX      float32 = 1
+	PluginsTabFontSize  float32 = 13
+	PluginsTabLn        float32 = 20
+	PluginsTabUnderline float32 = 2
+
+	// PluginsCatalogGap 是搜索框与分段之间的间距（`.catalog{gap:12px}`，清单页 :47-51）。
+	PluginsCatalogGap float32 = 12
+
+	// PluginsSearchHeight / PadL / PadR / FontSize 是搜索框（`.search input`，
+	// 清单页 :67-78：height 36、padding 0 34 0 36、font-size 13）。
+	PluginsSearchHeight   float32 = 36
+	PluginsSearchPadL     float32 = 36
+	PluginsSearchPadR     float32 = 34
+	PluginsSearchFontSize float32 = 13
+
+	// PluginsCardsGap 是卡片网格间距（`.cards{gap:10px}`，:89-96）。
+	PluginsCardsGap float32 = 10
+	// PluginsCardColumns 是网格列数（`grid-template-columns: repeat(2, minmax(0,1fr))`，同处）。
+	PluginsCardColumns float32 = 2
+	// PluginsCardSingleCol 是**容器**查询的单列断点（`@container plugin-inventory
+	// (max-width: 520px)`，:501-505）——不是视口断点。
+	PluginsCardSingleCol float32 = 520
+	// PluginsCardPad / PluginsCardPadX 是卡片内容内边距（`.cardContent{padding:12px 14px}`，:124-140）。
+	PluginsCardPad  float32 = 12
+	PluginsCardPadX float32 = 14
+	// PluginsCardMinHeight 是卡内容最小高（`.cardContent{min-height:52px}`，同处）。
+	PluginsCardMinHeight float32 = 52
+	// PluginsCardContentGap 是卡内三行之间的间距（`.cardContent{gap:2px}`，同处）。
+	PluginsCardContentGap float32 = 2
+	// PluginsCardMainRowGap 是标题行左右两块的间距（`.cardMainRow{gap:12px}`，:163-169）。
+	PluginsCardMainRowGap float32 = 12
+	// PluginsCardTitleFontSize / Ln 是卡片标题（`.cardTitle` 14px/20px，:178-184）。
+	PluginsCardTitleFontSize float32 = 14
+	PluginsCardTitleLn       float32 = 20
+	// PluginsCardDescFontSize / Ln 是卡片简介（`.cardDescription` 12px/18px，:186-196）。
+	PluginsCardDescFontSize float32 = 12
+	PluginsCardDescLn       float32 = 18
+	// PluginsCardMetaPadTop 是角标行上边距（`.cardMeta{padding-top:6px}`，:204-208）。
+	PluginsCardMetaPadTop float32 = 6
+	// PluginsCardChipFontSize / Ln / PadX / PadY 是 entry id 角标
+	// （`.cardIdentity` 12px/18px、`padding:1px 6px`，:213-228）。
+	PluginsCardChipFontSize float32 = 12
+	PluginsCardChipLn       float32 = 18
+	PluginsCardChipPadX     float32 = 6
+	PluginsCardChipPadY     float32 = 1
+	// PluginsCardTrailingGap 是行尾状态组内部间距（`.cardTrailing{gap:8px}`，:230-236）。
+	PluginsCardTrailingGap float32 = 8
+	// PluginsChevronSize 是 chevron 图标尺寸（TSX `size={12}`，:164）。
+	PluginsChevronSize float32 = 12
+	// PluginsTagFontSize / Ln / PadX / PadY 是状态标签（官方 `Tag` 组件；
+	// 本仓没有该 primitive，按同一档排版画：11px/16px、左右 6、上下 1）。
+	PluginsTagFontSize float32 = 11
+	PluginsTagLn       float32 = 16
+	PluginsTagPadX     float32 = 6
+	PluginsTagPadY     float32 = 1
+	// PluginsDotSize 是状态点直径（官方 `StateDot`；本仓按 8px 的既有档画）。
+	PluginsDotSize float32 = 8
+
+	// PluginsGroupGap 是分段内纵向间距（`.group{gap:10px}`，:245-249）。
+	PluginsGroupGap float32 = 10
+	// PluginsGroupTitleRowGap / MinHeight 是段标题行（`.groupTitleRow{gap:8px;
+	// min-height:36px}`，:253-258）。
+	PluginsGroupTitleRowGap float32 = 8
+	PluginsGroupTitleRowMin float32 = 36
+	// PluginsGroupTitle / Ln 是段标题排版（`.groupTitle{font-size:14px;line-height:22px}`，:296-301）。
+	PluginsGroupTitle   float32 = 14
+	PluginsGroupTitleLn float32 = 22
+	// PluginsGroupSubFontSize / Ln / MarginTop / MarginLeft 是段副标题
+	// （`.groupSub{margin:-6px 0 0 20px;font-size:12px;line-height:18px}`，:303-312）。
+	PluginsGroupSubFontSize float32 = 12
+	PluginsGroupSubLn       float32 = 18
+	PluginsGroupSubMarginL  float32 = 20
+	PluginsGroupSubMarginT  float32 = -6
+	// PluginsGroupDividerPadTop 是段与段之间的分隔（`.group + .group{border-top:.5px;
+	// padding-top:14px}`，:260-263）。
+	PluginsGroupDividerPadTop float32 = 14
+	// PluginsGroupBodyGap 是段体纵向间距（`.groupBody{gap:10px}`，:359-363）。
+	PluginsGroupBodyGap float32 = 10
+
+	// PluginsDetailsPadTop / PadBottom / PadX 是展开详情盒（`.cardDetails{padding:10px 14px 12px}`，:437-441）。
+	PluginsDetailsPadTop    float32 = 10
+	PluginsDetailsPadBottom float32 = 12
+	PluginsDetailsPadX      float32 = 14
+	// PluginsDetailsLabelWidth / ColGap / RowGap / MarginTop 是 `dt`/`dd` 网格
+	// （`.details{grid-template-columns:76px minmax(0,1fr);gap:6px 10px;margin:8px 0 0}`，:449-454）。
+	PluginsDetailsLabelWidth float32 = 76
+	PluginsDetailsColGap     float32 = 10
+	PluginsDetailsRowGap     float32 = 6
+	PluginsDetailsMarginTop  float32 = 8
+	// PluginsDetailsDtFontSize / Ln 与 PluginsDetailsDdFontSize / Ln 是详情两列排版
+	// （`.details dt{font-size:11px;line-height:17px}` / `dd{font-size:12px;line-height:17px}`，:460-473）。
+	PluginsDetailsDtFontSize float32 = 11
+	PluginsDetailsDtLn       float32 = 17
+	PluginsDetailsDdFontSize float32 = 12
+	PluginsDetailsDdLn       float32 = 17
+
+	// PluginsSearchIconLeft 是搜索图标左内缩（`.search > svg{left:12px}`，:61-65）。
+	PluginsSearchIconLeft float32 = 12
+	// PluginsRetryBorderWidth 是搜索框与「重试」按钮的 0.5px 描边
+	// （`.search input{border:0.5px}` :67-78；`.failure button{border:0.5px}` :37-45）。
+	PluginsRetryBorderWidth float32 = 0.5
+	// PluginsRetryPadX / PadY 是「重试」按钮内边距（`.failure button{padding:4px 10px}`，:37-45）。
+	PluginsRetryPadX float32 = 10
+	PluginsRetryPadY float32 = 4
+	// PluginsStatusFontSize / Ln 是状态/空态文案（`.status{font-size:13px;line-height:20px}`，:17-22）。
+	PluginsStatusFontSize float32 = 13
+	PluginsStatusLn       float32 = 20
+	// PluginsBrokenPadX / PadY 与 PluginsBrokenFontSize 是错误条与元信息错误注记
+	// （`.brokenNote{padding:8px 10px;font-size:12px;line-height:18px}`，:366-376）。
+	PluginsBrokenPadX     float32 = 10
+	PluginsBrokenPadY     float32 = 8
+	PluginsBrokenFontSize float32 = 12
+	PluginsBrokenLn       float32 = 18
 )
 
 // ── 设置行的第 3 格：桌面更新指示（`DesktopUpdateIndicator.module.css:1-34`）──
@@ -464,15 +594,76 @@ var OfficialSettingsGeometry = []GeoRow{
 	{Node: "ModelsSection.deleteDialog", Prop: "width", Official: 480, Impl: DeleteDialogMaxWidth, Unit: UnitPx, Status: GeoDerived, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:908-910", Formula: "min(480px, 100%)"},
 
 	// ── plugins 右页 ──
+	{Node: "PluginsSettingsSection.section", Prop: "gap", Official: 12, Impl: PluginsSectionOuterGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:3-9"},
+	{Node: "PluginsSettingsSection.heading", Prop: "font-size", Official: 18, Impl: PluginsHeadingFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:11-15"},
+	{Node: "PluginsSettingsSection.heading", Prop: "font-weight", Official: 600, Impl: PluginsHeadingWeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:11-15"},
+	{Node: "PluginsSettingsSection.intro", Prop: "font-size", Official: 13, Impl: PluginsIntroFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:17-21"},
+	{Node: "PluginsSettingsSection.tabs", Prop: "gap", Official: 22, Impl: PluginsTabsGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:23-29"},
+	{Node: "PluginsSettingsSection.tabs", Prop: "margin-top", Official: 2, Impl: PluginsTabsMarginT, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:23-29"},
+	{Node: "PluginsSettingsSection.tab", Prop: "padding-top", Official: 7, Impl: PluginsTabPadTop, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:31-41"},
+	{Node: "PluginsSettingsSection.tab", Prop: "padding-bottom", Official: 9, Impl: PluginsTabPadBt, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:31-41"},
+	{Node: "PluginsSettingsSection.tab", Prop: "padding-inline", Official: 1, Impl: PluginsTabPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:31-41"},
+	{Node: "PluginsSettingsSection.tab", Prop: "font-size", Official: 13, Impl: PluginsTabFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:31-41"},
+	{Node: "PluginsSettingsSection.tab", Prop: "line-height", Official: 20, Impl: PluginsTabLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:31-41"},
+	{Node: "PluginsSettingsSection.tab[data-active]", Prop: "underline-height", Official: 2, Impl: PluginsTabUnderline, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugins/src/client/PluginsSettingsSection.module.css:53-63"},
 	{Node: "PluginInventorySettingsTab.section", Prop: "max-width", Official: 760, Impl: PluginsSectionMaxWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:2-10"},
 	{Node: "PluginInventorySettingsTab.section", Prop: "gap", Official: 14, Impl: PluginsSectionGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:2-10"},
-	{Node: "PluginInventorySettingsTab.search", Prop: "height", Official: 36, Impl: PluginsSearchHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:53-88"},
+	{Node: "PluginInventorySettingsTab.catalog", Prop: "gap", Official: 12, Impl: PluginsCatalogGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:47-51"},
+	{Node: "PluginInventorySettingsTab.search", Prop: "height", Official: 36, Impl: PluginsSearchHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:67-78"},
+	{Node: "PluginInventorySettingsTab.searchInput", Prop: "padding-left", Official: 36, Impl: PluginsSearchPadL, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:67-78"},
+	{Node: "PluginInventorySettingsTab.searchInput", Prop: "padding-right", Official: 34, Impl: PluginsSearchPadR, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:67-78"},
+	{Node: "PluginInventorySettingsTab.searchInput", Prop: "font-size", Official: 13, Impl: PluginsSearchFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:67-78"},
 	{Node: "PluginInventorySettingsTab.cards", Prop: "gap", Official: 10, Impl: PluginsCardsGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:89-96"},
-	{Node: "PluginInventorySettingsTab.card", Prop: "padding", Official: 12, Impl: PluginsCardPad, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:101"},
-	{Node: "PluginInventorySettingsTab.cards", Prop: "single-column-breakpoint", Official: 640, Impl: PluginsCardSingleCol, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:89-96"},
-	{Node: "PluginInventorySettingsTab.group", Prop: "gap", Official: 8, Impl: PluginsGroupGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:101-120"},
-	{Node: "PluginInventorySettingsTab.groupTitle", Prop: "font-size", Official: 13, Impl: PluginsGroupTitle, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:101-120"},
-	{Node: "PluginInventorySettingsTab.groupTitle", Prop: "line-height", Official: 20, Impl: PluginsGroupTitleLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:101-120"},
+	{Node: "PluginInventorySettingsTab.cards", Prop: "grid-template-columns", Official: 2, Impl: PluginsCardColumns, Unit: UnitRatio, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:89-96"},
+	{Node: "PluginInventorySettingsTab.cards", Prop: "single-column-breakpoint", Official: 520, Impl: PluginsCardSingleCol, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:501-505"},
+	{Node: "PluginInventorySettingsTab.cardContent", Prop: "padding-block", Official: 12, Impl: PluginsCardPad, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:124-140"},
+	{Node: "PluginInventorySettingsTab.cardContent", Prop: "padding-inline", Official: 14, Impl: PluginsCardPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:124-140"},
+	{Node: "PluginInventorySettingsTab.cardContent", Prop: "min-height", Official: 52, Impl: PluginsCardMinHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:124-140"},
+	{Node: "PluginInventorySettingsTab.cardContent", Prop: "gap", Official: 2, Impl: PluginsCardContentGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:124-140"},
+	{Node: "PluginInventorySettingsTab.cardMainRow", Prop: "gap", Official: 12, Impl: PluginsCardMainRowGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:163-169"},
+	{Node: "PluginInventorySettingsTab.cardTitle", Prop: "font-size", Official: 14, Impl: PluginsCardTitleFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:178-184"},
+	{Node: "PluginInventorySettingsTab.cardTitle", Prop: "line-height", Official: 20, Impl: PluginsCardTitleLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:178-184"},
+	{Node: "PluginInventorySettingsTab.cardDescription", Prop: "font-size", Official: 12, Impl: PluginsCardDescFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:186-196"},
+	{Node: "PluginInventorySettingsTab.cardDescription", Prop: "line-height", Official: 18, Impl: PluginsCardDescLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:186-196"},
+	{Node: "PluginInventorySettingsTab.cardMeta", Prop: "padding-top", Official: 6, Impl: PluginsCardMetaPadTop, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:204-208"},
+	{Node: "PluginInventorySettingsTab.cardIdentity", Prop: "font-size", Official: 12, Impl: PluginsCardChipFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:213-228"},
+	{Node: "PluginInventorySettingsTab.cardIdentity", Prop: "line-height", Official: 18, Impl: PluginsCardChipLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:213-228"},
+	{Node: "PluginInventorySettingsTab.cardIdentity", Prop: "padding-inline", Official: 6, Impl: PluginsCardChipPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:213-228"},
+	{Node: "PluginInventorySettingsTab.cardIdentity", Prop: "padding-block", Official: 1, Impl: PluginsCardChipPadY, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:213-228"},
+	{Node: "PluginInventorySettingsTab.cardTrailing", Prop: "gap", Official: 8, Impl: PluginsCardTrailingGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:230-236"},
+	{Node: "PluginInventorySettingsTab.chevron", Prop: "size", Official: 12, Impl: PluginsChevronSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:428-431"},
+	{Node: "PluginInventorySettingsTab.group", Prop: "gap", Official: 10, Impl: PluginsGroupGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:245-249"},
+	{Node: "PluginInventorySettingsTab.groupTitleRow", Prop: "gap", Official: 8, Impl: PluginsGroupTitleRowGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:253-258"},
+	{Node: "PluginInventorySettingsTab.groupTitleRow", Prop: "min-height", Official: 36, Impl: PluginsGroupTitleRowMin, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:253-258"},
+	{Node: "PluginInventorySettingsTab.groupTitle", Prop: "font-size", Official: 14, Impl: PluginsGroupTitle, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:296-301"},
+	{Node: "PluginInventorySettingsTab.groupTitle", Prop: "line-height", Official: 22, Impl: PluginsGroupTitleLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:296-301"},
+	{Node: "PluginInventorySettingsTab.groupSub", Prop: "font-size", Official: 12, Impl: PluginsGroupSubFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:303-312"},
+	{Node: "PluginInventorySettingsTab.groupSub", Prop: "line-height", Official: 18, Impl: PluginsGroupSubLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:303-312"},
+	{Node: "PluginInventorySettingsTab.groupSub", Prop: "margin-left", Official: 20, Impl: PluginsGroupSubMarginL, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:303-312"},
+	{Node: "PluginInventorySettingsTab.groupSub", Prop: "margin-top", Official: -6, Impl: PluginsGroupSubMarginT, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:303-312"},
+	{Node: "PluginInventorySettingsTab.group", Prop: "border-top+padding-top", Official: 14, Impl: PluginsGroupDividerPadTop, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:260-263"},
+	{Node: "PluginInventorySettingsTab.groupBody", Prop: "gap", Official: 10, Impl: PluginsGroupBodyGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:359-363"},
+	{Node: "PluginInventorySettingsTab.cardDetails", Prop: "padding-top", Official: 10, Impl: PluginsDetailsPadTop, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:437-441"},
+	{Node: "PluginInventorySettingsTab.cardDetails", Prop: "padding-bottom", Official: 12, Impl: PluginsDetailsPadBottom, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:437-441"},
+	{Node: "PluginInventorySettingsTab.cardDetails", Prop: "padding-inline", Official: 14, Impl: PluginsDetailsPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:437-441"},
+	{Node: "PluginInventorySettingsTab.details", Prop: "grid-template-columns", Official: 76, Impl: PluginsDetailsLabelWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:449-454"},
+	{Node: "PluginInventorySettingsTab.details", Prop: "column-gap", Official: 10, Impl: PluginsDetailsColGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:449-454"},
+	{Node: "PluginInventorySettingsTab.details", Prop: "row-gap", Official: 6, Impl: PluginsDetailsRowGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:449-454"},
+	{Node: "PluginInventorySettingsTab.details", Prop: "margin-top", Official: 8, Impl: PluginsDetailsMarginTop, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:449-454"},
+	{Node: "PluginInventorySettingsTab.detailsDt", Prop: "font-size", Official: 11, Impl: PluginsDetailsDtFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:460-464"},
+	{Node: "PluginInventorySettingsTab.detailsDt", Prop: "line-height", Official: 17, Impl: PluginsDetailsDtLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:460-464"},
+	{Node: "PluginInventorySettingsTab.detailsDd", Prop: "font-size", Official: 12, Impl: PluginsDetailsDdFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:466-473"},
+	{Node: "PluginInventorySettingsTab.detailsDd", Prop: "line-height", Official: 17, Impl: PluginsDetailsDdLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:466-473"},
+	{Node: "PluginInventorySettingsTab.searchIcon", Prop: "left", Official: 12, Impl: PluginsSearchIconLeft, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:61-65"},
+	{Node: "PluginInventorySettingsTab.retryButton", Prop: "border-width", Official: 0.5, Impl: PluginsRetryBorderWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:37-45"},
+	{Node: "PluginInventorySettingsTab.retryButton", Prop: "padding-inline", Official: 10, Impl: PluginsRetryPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:37-45"},
+	{Node: "PluginInventorySettingsTab.retryButton", Prop: "padding-block", Official: 4, Impl: PluginsRetryPadY, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:37-45"},
+	{Node: "PluginInventorySettingsTab.status", Prop: "font-size", Official: 13, Impl: PluginsStatusFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:17-22"},
+	{Node: "PluginInventorySettingsTab.status", Prop: "line-height", Official: 20, Impl: PluginsStatusLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:17-22"},
+	{Node: "PluginInventorySettingsTab.brokenNote", Prop: "padding-inline", Official: 10, Impl: PluginsBrokenPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:366-376"},
+	{Node: "PluginInventorySettingsTab.brokenNote", Prop: "padding-block", Official: 8, Impl: PluginsBrokenPadY, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:366-376"},
+	{Node: "PluginInventorySettingsTab.brokenNote", Prop: "font-size", Official: 12, Impl: PluginsBrokenFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:366-376"},
+	{Node: "PluginInventorySettingsTab.brokenNote", Prop: "line-height", Official: 18, Impl: PluginsBrokenLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:366-376"},
 	// ── 设置行第 3 格：桌面更新指示（DesktopUpdateIndicator.module.css）──
 	{Node: "DesktopUpdateIndicator.indicator", Prop: "height", Official: 28, Impl: UpdateIndicatorHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:7"},
 	{Node: "DesktopUpdateIndicator.indicator", Prop: "padding-inline", Official: 8, Impl: UpdateIndicatorPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:8"},

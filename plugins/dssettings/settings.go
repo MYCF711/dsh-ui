@@ -86,6 +86,17 @@ type Plugin struct {
 // ID 必须全局唯一。
 func (*Plugin) ID() string { return "ds-settings" }
 
+// Fields 登记本插件自己持有的文本输入框（「内置插件」页的搜索框）。
+//
+// 为什么必须登记：Viva 只把**登记过**的 Field 当作输入焦点候选
+// （壳 `cmd/app/main.go` 的 `newConfig` 把每个实现 `pluginapi.Fields` 的插件的
+// Field 聚合给 `cfg.TextInput`）。不登记的话那个框能点、能画，但**收不到键盘**——
+// 表现出来就是"搜索框打不了字"，与 `dscomposer` / `dssidebar` 同一个坑。
+func (p *Plugin) Fields() []*ui.Field {
+	o := p.ensureOfficial()
+	return []*ui.Field{&o.pluginsSearchField}
+}
+
 // Provides 只提供"怎么打开我"这一个能力（见 register.go 的 ServiceKey）。
 func (*Plugin) Provides() []string { return []string{ServiceKey} }
 

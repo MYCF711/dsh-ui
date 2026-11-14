@@ -131,6 +131,13 @@ type model struct {
 	settingsDescribePending bool
 	// settingsDescribeErr 是最近一次拉取失败的原因（只报状态栏，不清缓存）。
 	settingsDescribeErr error
+	// pluginInventory 是官方 `pluginInventory.list` 的缓存（Plugins 设置页的数据面）。
+	// nil = 还没成功拉到（界面显示「未知·宿主未接」，**不画假卡片**）。
+	pluginInventory *apiclient.PluginInventoryResult
+	// pluginInventoryPending 防重入：每帧都可能问，别每帧发一次请求。
+	pluginInventoryPending bool
+	// pluginInventoryErr 是最近一次拉取失败的原因（只报状态栏，不清缓存）。
+	pluginInventoryErr error
 	// shellChannelServed 报告宿主的壳更新渠道服务能不能应答
 	// （`desktopUpdate.channel.get`）。false = 宿主没这条能力 -> 「更新渠道」行不出现。
 	shellChannelServed bool
@@ -2551,6 +2558,11 @@ func main() {
 		SettingsFormSet:   m.settingsFormSet,
 		SettingsFormReset: m.settingsFormReset,
 		SettingsMutate:    m.settingsMutate,
+		// 内置插件页的数据面：官方 pluginInventory.list 的缓存。
+		// 与 describe 分开一处（它不是 Host 设置，是 Loader 的只读投影），
+		// 见 plugin_inventory_wiring.go。
+		PluginInventory:        m.pluginInventorySnapshot,
+		PluginInventoryRefresh: m.pluginInventoryRefresh,
 		FSRead: func(path string) (string, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

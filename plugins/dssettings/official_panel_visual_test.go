@@ -100,6 +100,10 @@ type officialHarness struct {
 	describe    *apiclient.SettingsDescribeResult
 	status      string
 	mu          sync.Mutex
+	// inventory 是「内置插件」页的数据面（nil = 宿主没接这条能力）。
+	inventory *apiclient.PluginInventoryResult
+	// inventoryRefresh 记录「重试」被点了几次（插件页的刷新动作）。
+	inventoryRefresh int
 }
 
 func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
@@ -151,6 +155,17 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			h.mu.Unlock()
 			h.invalidator.Invalidate()
 		},
+		// 「内置插件」页的数据面：同步返回这一帧的替身清单（与真壳同一个形状）。
+		PluginInventory: func() *apiclient.PluginInventoryResult {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.inventory
+		},
+		PluginInventoryRefresh: func() {
+			h.mu.Lock()
+			h.inventoryRefresh++
+			h.mu.Unlock()
+		},
 	}
 
 	h.tree = &gfx.Tree{}
@@ -183,6 +198,8 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 	}
 	h.invalidator = &app.Invalidator{}
 	config.Invalidator = h.invalidator
+	// 文本输入必须登记（与产品壳 `newConfig` 同一条聚合路径），否则搜索框收不到键盘。
+	config.TextInput = ui.Fields(h.p.Fields()...)
 
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {

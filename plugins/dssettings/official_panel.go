@@ -52,6 +52,18 @@ type officialPanel struct {
 	rows   []PanelRow
 	cursor int
 
+	// 内置插件页的交互态（官方那几个 `useState`，见 official_plugins.go 的 PluginsView）。
+	//
+	// 为什么放在面板状态里而不是模型里：模型每帧从数据面重算，交互态必须跨帧活着
+	// （展开的卡片、搜索串、段的开合）。
+	pluginsSearchField ui.Field
+	pluginsGlobalOpen  *bool
+	pluginsExpanded    string
+	// pluginsActiveTab 是 `settings.plugins.tab` 里选中的那一项（空串 = 第一项）。
+	pluginsActiveTab string
+	// pluginsCursorKey 是键盘光标所在的卡片 rowKey（空串 = 还没有光标）。
+	pluginsCursorKey string
+
 	// layout / titleID 是上一帧算出来的几何与标题 id（测试与 AfterDraw 用）。
 	layout  GridLayout
 	titleID string
@@ -231,6 +243,7 @@ func focusableIDs(rows []PanelRow) []string {
 func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	o := p.ensureOfficial()
 	describe := (*apiclient.SettingsDescribeResult)(nil)
+	inventory := (*apiclient.PluginInventoryResult)(nil)
 	var writer SettingsWriter
 	hasSource := false
 	var facts HostFacts
@@ -242,8 +255,13 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	if env.Act.SettingsHostFacts != nil {
 		facts = fromAPIHostFacts(env.Act.SettingsHostFacts())
 	}
+	// 内置插件页的数据面是**另一条**宿主能力（官方 `pluginInventory.list`），
+	// 与 describe 各自独立：describe 在、清单没接时，那一页显示"未知·宿主未接"。
+	if env.Act.PluginInventory != nil {
+		inventory = env.Act.PluginInventory()
+	}
 
-	model := BuildPanel(describe, facts)
+	model := BuildPanelWithPlugins(describe, facts, inventory, o.pluginsView())
 
 	o.mu.Lock()
 	o.describe = describe
@@ -460,6 +478,13 @@ func (p *Plugin) drawPanelNav(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a 
 
 // drawPanelOptions 画右页（active section 的行）。
 func (p *Plugin) drawPanelOptions(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect, section PanelSection, write WriteState) {
+	// 「内置插件」页有**自己的**渲染面（搜索 + 分组 + 卡片网格 + 展开详情），
+	// 不是"标题 + 一行一个控件"那一套；官方也是另一个组件树
+	// （`settings.plugins.tab` 里渲染 `PluginInventorySettingsTab`）。
+	if section.Plugins != nil {
+		p.drawPluginsPage(f, env, t, a, section)
+		return
+	}
 	ui.Column(f).Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
 		PadSides(OptionsPadTop, OptionsPadRight, OptionsPadBottom, OptionsPadLeft).Children(func() {
 		if section.Note != "" {
@@ -689,17 +714,35 @@ func (p *Plugin) handleOfficialKey(ev gfx.KeyEvent) bool {
 		return false
 	}
 	switch ev.Key {
-	case gfx.KeyDown:
-		p.moveOfficialCursor(1)
-		return true
-	case gfx.KeyUp:
-		p.moveOfficialCursor(-1)
+	case gfx.KeyDown, gfx.KeyUp:
+		delta := 1
+		if ev.Key == gfx.KeyUp {
+			delta = -1
+		}
+		// 插件页的"行"是卡片（`o.rows` 对它为空），所以按卡片走。
+		if section, ok := p.activeSectionModel(); ok && section.Plugins != nil {
+			p.movePluginsCursor(section, delta)
+			return true
+		}
+		p.moveOfficialCursor(delta)
 		return true
 	case gfx.KeyEnter:
+		if section, ok := p.activeSectionModel(); ok && section.Plugins != nil {
+			p.activatePluginsCursor(section)
+			return true
+		}
 		p.activateOfficialCursor()
 		return true
 	}
 	return false
+}
+
+// activeSectionModel 取当前 active section 的模型（键盘分流用）。
+func (p *Plugin) activeSectionModel() (PanelSection, bool) {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.model.Section(o.activeID)
 }
 
 // moveOfficialCursor 在可写行之间移动键盘光标。
@@ -748,6 +791,94 @@ func (p *Plugin) activateOfficialCursor() {
 	if ok {
 		p.activateRow(row)
 	}
+}
+
+// pluginsView 读这一帧的交互态（官方那几个 useState）。
+func (o *officialPanel) pluginsView() PluginsView {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return PluginsView{
+		Query:      o.pluginsSearchField.Text(),
+		GlobalOpen: o.pluginsGlobalOpen,
+		Expanded:   o.pluginsExpanded,
+		ActiveTab:  o.pluginsActiveTab,
+	}
+}
+
+// pluginCardFocused 报告某张卡是不是键盘光标所在（画焦点环用）。
+func (p *Plugin) pluginCardFocused(rowKey string) bool {
+	o := p.official
+	if o == nil {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.pluginsCursorKey != "" && o.pluginsCursorKey == rowKey
+}
+
+// visiblePluginCards 把当前页的可见卡片拍平（键盘光标按它走）。
+//
+// **只算展开那一段里的卡**：收起段里的卡在屏幕上不存在，光标不该停在看不见的东西上。
+func visiblePluginCards(section PanelSection) []PluginCard {
+	if section.Plugins == nil {
+		return nil
+	}
+	var out []PluginCard
+	for _, group := range section.Plugins.Groups {
+		if !group.Open {
+			continue
+		}
+		out = append(out, group.Cards...)
+	}
+	return out
+}
+
+// movePluginsCursor 在可见卡片之间移动键盘光标。
+//
+// 与 moveOfficialCursor 同一个形状（-1 = 还没有光标）；插件页的"行"是卡片，
+// 所以另走一条——`o.rows` 对插件页是空的。
+func (p *Plugin) movePluginsCursor(section PanelSection, delta int) {
+	o := p.ensureOfficial()
+	cards := visiblePluginCards(section)
+	if len(cards) == 0 {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	current := -1
+	for i, card := range cards {
+		if card.RowKey == o.pluginsCursorKey {
+			current = i
+			break
+		}
+	}
+	if current < 0 {
+		if delta > 0 {
+			o.pluginsCursorKey = cards[0].RowKey
+		} else {
+			o.pluginsCursorKey = cards[len(cards)-1].RowKey
+		}
+		return
+	}
+	next := (current + delta + len(cards)) % len(cards)
+	o.pluginsCursorKey = cards[next].RowKey
+}
+
+// activatePluginsCursor 展开/收起键盘光标所在的那张卡（官方卡片是按钮，Enter = 点它）。
+func (p *Plugin) activatePluginsCursor(section PanelSection) {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	key := o.pluginsCursorKey
+	if key == "" {
+		o.mu.Unlock()
+		return
+	}
+	if o.pluginsExpanded == key {
+		o.pluginsExpanded = ""
+	} else {
+		o.pluginsExpanded = key
+	}
+	o.mu.Unlock()
 }
 
 // ── 报告/测试用的小工具 ────────────────────────────────────────────

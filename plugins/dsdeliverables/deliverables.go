@@ -18,6 +18,7 @@ package dsdeliverables
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -49,6 +50,15 @@ type Plugin struct {
 	previewText string
 	// scrolling 是 FSRead 的最近一份（Draw 时刷新给 Clicked 分支用）。
 	scrolling func(string) (string, error)
+
+	// ── 变更记录缓存（见 changes.go）──
+	//
+	// 按 (会话, seq, 路径) 缓存一次解析结果：绘制是每帧跑的，不缓存就等于每帧
+	// 两次 HTTP。键里带 seq 与路径，是因为同一个路径在不同会话/不同轮次
+	// 是完全不同的比较结果——只按路径缓存会把上一轮的 diff 画在这一轮上。
+	changesKey   changesKey
+	changes      changesView
+	changesValid bool
 
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
@@ -153,24 +163,142 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	})
 }
 
-// maxPreviewLines 浮层里最多显示几行。
+// maxPreviewLines 浮层里最多显示几行**全文预览**。
 //
 // 60 行：够看清一个函数或一段配置，又不至于把整屏占满。
 // 完整文件该在编辑器里看——这个浮层的作用是"是不是我改的那个文件"。
 const maxPreviewLines = 60
 
+// 浮层几何。
+//
+// 位置与宽度沿用本插件原有的取值（右侧错开侧栏的那个浮层，`Top(56).Left(280)`）；
+// 新增的只有"正文区高度"：官方那一半是右栏面板里的可滚动区，**撑满面板**
+// （OFF:FileDiff.module.css:5 `.body { overflow: auto }`），本仓的浮层是绝对定位的
+// 自由面板，没有面板高度可撑，只能按窗口高度取一个有界值——不然一节 diff
+// 会直接顶出屏幕底部，而它下面的行永远看不到。
+const (
+	overlayTop      = 56
+	overlayLeft     = 280
+	overlayWidth    = 720
+	overlayMinBody  = 160 // 小窗口里也留得下几行
+	overlayMaxBody  = 640 // 再高就成了全屏编辑器，那不是这个浮层的用途
+	overlayFallback = 320 // 拿不到窗口尺寸时（无头测试）的默认高度
+	overlayChrome   = 96  // 上边距 + 头部 + 说明行 + 离窗口底边的留白
+)
+
+// diffFillAlpha 是增删行底色的透明度。
+//
+// 这不是随手取的数：官方色板里就有这个档——`--dsw-static-green-500-a12:
+// rgb(34 197 94 / 12%)` 与 `--dsw-static-red-*-a12`
+// （design-platform.css:37-38,80），而 `t.Success` 正是 static-green-500、
+// `t.Error` 是同一族的红。见 drawDiffRow 里"哪一半是官方原值、哪一半是 derived"。
+const diffFillAlpha = 0.12
+
+// diffGutterWidth 是行号列的宽度（官方是 3.5em，OFF:FileDiff.module.css:15）。
+const diffGutterWidth = 34
+
+// overlayBodyHeight 是 diff 正文滚动区的高度。
+func overlayBodyHeight(env *pluginapi.Env) float32 {
+	if env == nil || env.Bounds.Height <= 0 {
+		return overlayFallback
+	}
+	h := env.Bounds.Height - overlayChrome
+	if h < overlayMinBody {
+		return overlayMinBody
+	}
+	if h > overlayMaxBody {
+		return overlayMaxBody
+	}
+	return h
+}
+
 // drawPreview 在浮层里显示被点中的那个文件。
 //
-// # 只读一次
+// # 两种正文
+//
+// 有变更记录（宿主的 `workspace/changes` 路由给得出这个文件）就画 **hunk**；
+// 拿不到就退回**全文预览**，并在正文上方写明原因（"这一轮没有变更记录"）。
+// 没有第三种结局——**绝不画一个空 diff 框**：那会让人以为"这个文件没改"，
+// 而真相是"宿主这里没有记录"（非 git 工作目录的会话就是如此，已登记裁剪）。
+func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
+	if p.preview == "" {
+		return
+	}
+	t := p.theme
+	plan := planOverlay(p.resolveChanges(env), filepath.Base(p.preview))
+	ui.Column(f).Absolute().Top(overlayTop).Left(overlayLeft).Width(overlayWidth).Children(func() {
+		ui.Column(f).Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
+			PadSides(14, 14, 12, 14).Gap(4).Children(func() {
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {
+				ui.Text(f, plan.Path).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Grow(1).Ellipsis()
+				// 计数：官方 Counts 是**两个 span 两种色**
+				// （OFF:ChangedFiles.module.css:30-31）：+N 用
+				// `--dsw-alias-state-success-primary`（=t.SuccessPrimary，
+				// 都是 static-green-500），-M 用 `--dsw-alias-state-error-primary`
+				// （=t.Error：暗色 red-400 / 亮色 red-600，与官方同一档）。
+				// 所以这里分两块画，而不是拼成一串单色文字。
+				if plan.CountsLabel != "" {
+					ui.Text(f, plan.CountsLabel).FontSize(t.Fonts.Caption).Mono().Color(t.LabelTertiary)
+				}
+				if plan.ShowCounts {
+					ui.Text(f, fmt.Sprintf(msgChangesAdded, plan.Added)).FontSize(t.Fonts.Caption).
+						Mono().Color(t.SuccessPrimary)
+					ui.Text(f, fmt.Sprintf(msgChangesDeleted, plan.Deleted)).FontSize(t.Fonts.Caption).
+						Mono().Color(t.Error)
+				}
+				// 关：**必须有个关的办法**，否则浮层一直挡着侧栏。
+				closeRow := ui.Row(f).PadSides(4, 4, 2, 2).Hit(env.Tree.ID(env.Feat, "deliv-close"), "关闭预览")
+				if closeRow.Clicked() {
+					p.preview, p.previewText = "", ""
+					p.invalidateChanges()
+				}
+				closeRow.Children(func() {
+					ui.Text(f, "关闭").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+				})
+			})
+			for _, note := range plan.Notes {
+				ui.Text(f, note).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			}
+			if plan.Retry {
+				retryRow := ui.Row(f).PadSides(4, 4, 2, 2).Hit(env.Tree.ID(env.Feat, "deliv-retry"), msgRetry)
+				if retryRow.Clicked() {
+					// 只丢缓存，不在这一帧里重拉：下一帧的 resolveChanges 会重拉，
+					// 于是同一帧里"说明行"和"正文"永远一致——不会出现说明说
+					// 读不到、正文却是刚拉回来的那种自相矛盾。
+					p.invalidateChanges()
+				}
+				retryRow.Children(func() {
+					ui.Text(f, msgRetry).FontSize(t.Fonts.Caption).Color(t.Link)
+				})
+			}
+			if len(plan.Rows) > 0 {
+				// 滚动区的名字带 (会话, 路径)：viva 的滚动偏移**按区域名字**
+				// 记着（ui/scroll.go:8-16），共用一个名字会让 A 文件滚到一半、
+				// 点开 B 文件时直接停在中间。
+				diffBodyKey := "deliv-diff:" + env.Data.Cur + ":" + p.preview
+				ui.Scroll(f.Key(diffBodyKey)).FillWidth().
+					Height(overlayBodyHeight(env)).Scrollbars().Clip().Children(func() {
+					for _, row := range plan.Rows {
+						drawDiffRow(f, t, row)
+					}
+				})
+			}
+			if plan.FullText {
+				for _, ln := range p.fullTextLines(env) {
+					ui.Text(f, ln).FontSize(11).Color(t.LabelSecondary)
+				}
+			}
+		})
+	})
+}
+
+// fullTextLines 读全文预览（**只读一次**）。
 //
 // `FSRead` 是**同步**的（壳里是发 HTTP 等结果）。每帧都读会把绘制卡死，
 // 所以在"点了新文件"的时候读一次、缓存在 `previewText` 里。
 // 代价是文件在别处被改了这里不会自动更新——**能接受**：
 // 这是"看一眼改了什么"的浮层，不是编辑器。
-func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
-	if p.preview == "" {
-		return
-	}
+func (p *Plugin) fullTextLines(env *pluginapi.Env) []string {
 	if p.previewText == "" && env.Act.FSRead != nil {
 		// 读失败也记成一句话，否则每帧都会重试一次失败的 HTTP。
 		if text, err := env.Act.FSRead(p.preview); err == nil {
@@ -185,30 +313,74 @@ func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
 	if len(lines) > maxPreviewLines {
 		lines = lines[:maxPreviewLines]
 	}
+	for i, ln := range lines {
+		if ln == "" {
+			lines[i] = " "
+		}
+	}
+	return lines
+}
 
-	t := p.theme
-	ui.Column(f).Absolute().Top(56).Left(280).Width(720).Children(func() {
-		ui.Column(f).Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
-			PadSides(14, 14, 12, 14).Gap(4).Children(func() {
-			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-				ui.Text(f, filepath.Base(p.preview)).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Grow(1).Ellipsis()
-				// 关：**必须有个关的办法**，否则浮层一直挡着侧栏。
-				closeRow := ui.Row(f).PadSides(4, 4, 2, 2).Hit(env.Tree.ID(env.Feat, "deliv-close"), "关闭预览")
-				if closeRow.Clicked() {
-					p.preview, p.previewText = "", ""
-				}
-				closeRow.Children(func() {
-					ui.Text(f, "关闭").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-				})
-			})
-			for _, ln := range lines {
-				if ln == "" {
-					ln = " "
-				}
-				ui.Text(f, ln).FontSize(11).Color(t.LabelSecondary)
-			}
-		})
+// drawDiffRow 画一行 diff（hunk 头、增、删、上下文）。
+//
+// 几何取自官方 `.line`（OFF:FileDiff.module.css:15）：两个行号列 + 一个 sign 列 +
+// 正文列，行高 22px、`white-space: pre`。这里用 Row + 等宽字近似同样的四列。
+//
+// 颜色分两半，**哪一半是官方原值要写清**：
+//
+//   - 正负号与行号：官方用 `--dsw-alias-file-diff-{added,deleted}-marker`
+//     （OFF:FileDiff.module.css:24-28，亮色 rgb(1,162,65)/rgb(186,39,35)），
+//     这两个值**不在 `pluginapi.Theme` 里**（theme.go 只到 `--dsw-alias-state-*` 一档，
+//     而本任务的写作用域不许动 `pluginapi/**`）。所以取最近的状态色
+//     `t.Success`/`t.Error`（= `--dsw-alias-state-{success,error}-primary`）——
+//     是**同类不同档**，属登记在案的已知差异，不冒充官方那两个原值。
+//   - 行底：官方是 `--dsw-alias-file-diff-{added,deleted}-bg`（同样是 Theme 里没有的
+//     独立令牌），这里用同色 **12% 透明**——那正是官方色板自己的 a12 档
+//     （design-platform.css:37-38 的 `--dsw-static-green-500-a12` 等），
+//     所以底色是"官方色板的 12% 档"，不是编出来的色。
+func drawDiffRow(f ui.C, t *pluginapi.Theme, row diffRow) {
+	if row.Kind == rowHunk {
+		ui.Text(f, row.Text).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
+			Mono().Color(t.LabelTertiary)
+		return
+	}
+	ink, sign, filled := t.LabelSecondary, " ", false
+	var fill ui.Color
+	switch row.Kind {
+	case rowAdd:
+		ink, sign, fill, filled = t.Success, "+", t.Success.WithAlpha(diffFillAlpha), true
+	case rowDel:
+		ink, sign, fill, filled = t.Error, "-", t.Error.WithAlpha(diffFillAlpha), true
+	}
+	r := ui.Row(f).FillWidth().Items(ui.Center).Gap(6)
+	if filled {
+		r = r.Background(fill)
+	}
+	r.Children(func() {
+		ui.Text(f, diffNumber(row.OldNo)).FontSize(t.Fonts.Caption).Mono().
+			Color(t.LabelTertiary).Width(diffGutterWidth).TextEnd()
+		ui.Text(f, diffNumber(row.NewNo)).FontSize(t.Fonts.Caption).Mono().
+			Color(t.LabelTertiary).Width(diffGutterWidth).TextEnd()
+		ui.Text(f, sign).FontSize(t.Fonts.Caption).Mono().Color(ink)
+		ui.Text(f, diffCell(row.Text)).FontSize(t.Fonts.Code).Mono().Color(ink).Grow(1)
 	})
+}
+
+// diffNumber 画一个行号；0 = 这一侧没有行号（官方是 undefined），画成空白。
+func diffNumber(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return itoa(n)
+}
+
+// diffCell 保证空行也有宽度：空字符串的 Text 在某些布局下会塌成 0 宽，
+// 那一行看起来就像"被剪掉了"。
+func diffCell(text string) string {
+	if text == "" {
+		return " "
+	}
+	return text
 }
 
 func itoa(n int) string {

@@ -47,7 +47,7 @@
 
 ### 会话能力（13）
 
-- ❌ `agent-preset`
+- ✅ `agent-preset`（`dssettings` 的 `agent-presets` 页：真名册卡片 + 「设为新任务默认」写 `agent-preset-registry.selectedDefault`；证据见 [official-agent-preset-evidence-rc2.md](official-agent-preset-evidence-rc2.md)）
 - ✅ `approval`（审批条 + 三按钮；允许/拒绝走真实 `session.approve`）
 - ✅ `chat`（`dsconversation` 的消息区；不等于官方的细分能力）
 - ✅ `conversation`
@@ -65,13 +65,13 @@
 
 - ✅ `reference`（`plugins/dsconversation/usertext.go`：`@path` / `@[label]` 加 `dsh-session:` 的 wire 引用 在用户消息里画成 file/folder/session chip，file chip 点击走 `Actions.PreviewFile`；`plugins/dscomposer/trigger.go` 的候选原样插入官方 wire mention；图标转写自 rc.2 dist，见 `docs/official-icon-sprite-register.md`）
 - ⬜ `renderer`（**N/A**：官方的 *"Browser UI renderer: React slot bindings"* 是 React 专用；我们是 Go+Viva，槽位绑定在 `internal/uikernel`）
-- 🟡 `deliverables`（`dsdeliverables` + `dsconversation`：**2/4**，见末尾「仍然缺」第 6 条）
+- ✅ `deliverables`（`dsdeliverables` + `dsconversation`：**3/4**——per-file diff 已接 `/api/changes.summary|diff|open`；证据见 [official-deliverables-changes-evidence-rc2.md](official-deliverables-changes-evidence-rc2.md)）
 - ✅ `trajectory`（`dsrightbar`：按轮分组的轨迹栏）
 - ✅ `tool`（`dstool`：工具卡片 + 展开参数/结果）
 - ❌ `directory-picker-browse`
 - ❌ `directory-picker-native`
 - ✅ `open-in-app`（两半都有：`dsopen` 会话头部「打开」→ `OpenExternal(CWD)`；`dsfiles` 预览卡片「用默认程序打开」→ `OpenFile(file:…)`；**目录走平台文件管理器**——`app.OpenPath` 明确拒绝目录（`is not a regular file`），而「打开工作目录」正是目录，所以两条路必须分开走）。官方的"split button（列出已装应用）"没有，我们是单个按钮）
-- ❌ `workspace`
+- ✅ `workspace`（`dssidebar`：分组按 `registry.SessionIDs` 归属与手动序 + 拖拽写 `workspace.insertSessionBefore`；证据见 [official-workspace-order-evidence-rc2.md](official-workspace-order-evidence-rc2.md)）
 - ✅ `theme`（`dscore` 的 ds-dark / ds-light 两套 + **运行时切换**：F2 命令面板三条 深色/浅色/跟随系统，`-theme` 也收 `system`；官方的 "Appearance 设置行" 我们没有，入口在命令面板）
 - ✅ `shortcuts`（`dsshortcuts`：F1 键位表，**带守卫**——从 `plugins/` 的 AST 里扫出所有 `ui.KeyXxx`，表漏记一个就红；官方的"录制"和"本地改键"没做）
 - ✅ `secret-mask`（`internal/secretmask`：官方 `credential-formats.ts` 的私钥块/JWT/URL 口令/provider 前缀表 + 本仓高熵兜底；`plugins/dsconversation/usertext.go`：逐值遮罩 + 眼睛按钮原位显示/隐藏，长度不变（复制仍是原文））
@@ -94,7 +94,7 @@
 |---|---|---|---|
 | 1 | `dsh-client-ui-account-notifications` | ✅ IMPLEMENTED | `plugins/dsnotifications` |
 | 2 | `dsh-client-ui-action-cards` | ✅ IMPLEMENTED | `plugins/dsactioncards` + `internal/apiclient/action_cards.go` |
-| 3 | `dsh-client-ui-agent-preset` | 🟡 PARTIAL | `dssettings` 的 `agent-presets` section |
+| 3 | `dsh-client-ui-agent-preset` | ✅ IMPLEMENTED | `plugins/dssettings` 的 `agent-presets` 页（真名册卡片网格 + 「设为新任务默认」写 `agent-preset-registry.selectedDefault`）+ `internal/apiclient/agent_presets.go`（`agentPresets.list/read`）+ `cmd/app/agent_preset_wiring.go`；证据 [official-agent-preset-evidence-rc2.md](official-agent-preset-evidence-rc2.md)。**剩余差异**：会话内 seat（新任务 chip / 会话头标签）与「查看配置」composition viewer 未接 |
 | 4 | `dsh-client-ui-agent-team` | ✅ IMPLEMENTED | `plugins/dsagentteam` |
 | 5 | `dsh-client-ui-approval` | ✅ IMPLEMENTED | `dscomposer` + 壳 |
 | 6 | `dsh-client-ui-attachment` | 🟡 PARTIAL | uikernel 槽 + `dscomposer` + `dsconversation` + **`plugins/dsattachment`（rail 真占用方 + 拖入通道）** |
@@ -105,7 +105,7 @@
 | 11 | `dsh-client-ui-conversation` | ✅ IMPLEMENTED | `plugins/dsconversation` + `internal/uikernel` |
 | 12 | `dsh-client-ui-cordis` | ❌ MISSING | 无 |
 | 13 | `dsh-client-ui-creation-recommendations` | ❌ MISSING | 无 |
-| 14 | `dsh-client-ui-deliverables` | 🟡 PARTIAL | `plugins/dsdeliverables` + `dsconversation/file_refs.go` |
+| 14 | `dsh-client-ui-deliverables` | ✅ IMPLEMENTED | `plugins/dsdeliverables`（写过的文件 + **按文件 before/after diff**）+ `dsconversation/file_refs.go` + **`internal/apiclient/changes.go`（`/api/changes.summary\|diff\|open` 裸路由）**；证据 [official-deliverables-changes-evidence-rc2.md](official-deliverables-changes-evidence-rc2.md) |
 | 15 | `dsh-client-ui-directory-picker-browse` | ✅ IMPLEMENTED | `plugins/dsdirpicker` + `internal/apiclient/dirpicker.go` |
 | 16 | `dsh-client-ui-directory-picker-native` | ❌ MISSING | 无 |
 | 17 | `dsh-client-ui-entry-customization` | ❌ MISSING | 无 |
@@ -153,7 +153,7 @@
 | 59 | `dsh-client-ui-trajectory` | 🟡 PARTIAL | `plugins/dsrightbar`；已注册为 `conversation.view` 的 `trajectory` 条目（`order:10`，与官方一致），页签行由注册表驱动（2026-11-15）。剩余缺口是官方的分组/折叠层级——见 [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md) §5 |
 | 60 | `dsh-client-ui-user-questions` | ✅ IMPLEMENTED | `plugins/dsquestions`（3 文件 / 423 行） |
 | 61 | `dsh-client-ui-workflow-run` | ✅ IMPLEMENTED | `dsconversation` 的 workflow-run 节点 |
-| 62 | `dsh-client-ui-workspace` | 🟡 PARTIAL | `internal/apiclient/fs.go` + `dssidebar` + `plugins/dssidebar/workspace_actions.go`（**`workspace.registry`/`rename`/`delete`，#10 contextMenu 入口**）；剩余缺口见 [official-context-menu-workspace-evidence-rc2.md](official-context-menu-workspace-evidence-rc2.md) §2.3 |
+| 62 | `dsh-client-ui-workspace` | ✅ IMPLEMENTED | `internal/apiclient/fs.go` + `dssidebar` + `plugins/dssidebar/workspace_actions.go`（`workspace.registry`/`rename`/`delete`，#10 contextMenu 入口）+ **`plugins/dssidebar/grouping.go`（按 `registry.SessionIDs` 归属与手动序、「未分组」、registry 空时回退 cwd）+ `drag.go`（拖拽 → `workspace.insertSessionBefore`）**；证据 [official-workspace-order-evidence-rc2.md](official-workspace-order-evidence-rc2.md) |
 | 63 | `dsh-experimental-client-ui-cot-translation` | ❌ MISSING | 无 |
 | 64 | `dsh-experimental-client-ui-forge` | ❌ MISSING | 无 |
 | 65 | `dsh-experimental-client-ui-stats` | 🟡 PARTIAL | `plugins/dsstatusbar/metrics.go` + `wave3_wiring.go`；**注册机制已就位**（2026-11-15）：它要的就是往 `conversation.view` 注册一个 `order:40` 的 `stats` 条目，壳已按名录派发；缺的是视图本体（逐 step/turn 列）搬成 view——见 [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md) §5 |
@@ -171,7 +171,7 @@
 > [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md)。**机制本身不改变任何部件的状态**——
 > `#54`/`#59`/`#65` 仍是 🟡，它们从"卡在没机制"变成"只差页面本体"。
 
-## 合计：官方 66 个部件 —— ✅ 39 · 🟡 10 · ⬜ 0（不该有） · ❌ 17
+## 合计：官方 66 个部件 —— ✅ 42 · 🟡 7 · ⬜ 0（不该有） · ❌ 17
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），
@@ -208,18 +208,18 @@
    发送层仍是纯文本（这与官方"plain-text-reference decision"一致：官方也把
    `ref` 作为文本发出去）。
 5. **`jobs.output` 的界面消费** —— **2026-11-14 已做**（#22）：官方档 header 触发器 + 弹层、旧三栏档侧栏清单都能展开读输出（rune 游标分页、`truncated`/错误/加载更多/复制），跑着的行有两段式停止。之前不做的那条理由（"轮次结束就报错"）没有消失，但**报错是可显示的事实**（官方 `output.error` 也是一行错误），所以不再构成"不做"的理由
-6. **`deliverables`** —— **只做了 1/4**。官方包的 description 写得很清楚：
+6. **`deliverables`** —— **3/4**（2026-11-15：per-file diff 已接，`/api/changes.summary|diff|open`）。官方包的 description 写得很清楚：
    > Changed-files card with per-file comparison tabs, delivery cards, and clickable final-response file references
 
    | 官方能力 | 我们 |
    |---|---|
    | Changed-files card | ✅ `dsdeliverables`（从 `write`/`edit` 工具参数提路径） |
-   | **per-file comparison tabs**（点文件看 diff） | ❌ 需要宿主提供「改之前长什么样」——`fs.read` 只给当前内容，没有历史 |
+   | **per-file comparison tabs**（点文件看 diff） | ✅ **2026-11-15 已接**：宿主 `workspace/changes` 帧的 `seq` → `/api/changes.summary`（文件级 added/deleted）→ `/api/changes.diff`（`index` 定位）→ 浮层逐行 hunk；`binary`/`oversized` 只显示官方状态词、零行 hunk；404 退回全文预览并写明「这一轮没有变更记录」。证据 [official-deliverables-changes-evidence-rc2.md](official-deliverables-changes-evidence-rc2.md) |
    | **delivery cards** | ❌ 不清楚它的触发条件（可能是回复里显式的交付声明） |
    | **clickable final-response file references** | ✅ 回复正文里"工具真写过的路径"变成可点链接（`dsconversation/file_refs.go`：只认 `write`/`edit` 参数里的明确路径，不猜 bash/未知路径/URL/行内码/围栏代码；`#L24-L30` 留在显示与 fragment，不进文件路径） |
 
-   **最值得补的是第 4 项**：它不需要新数据源，只需要在渲染 assistant 文本时识别路径。
-   第 2 项要动宿主（`git diff` 或文件快照），第 3 项连语义都还没弄清。
+   **剩下的是第 3 项**：官方 delivery card 的触发条件仍是"回复里显式的交付声明"，本仓没有那份语义约定，不猜。
+   （第 2 项 per-file diff 与第 4 项可点击文件引用都已接，见上表。）
 
 ## 说明
 

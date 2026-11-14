@@ -151,3 +151,33 @@ var errNoWorkspaceClient = &apiclient.APIError{
 	Message: "没有传输客户端，无法写工作区 registry",
 	Hint:    "以真实宿主启动（-base）后再试",
 }
+
+// insertSessionBefore 是 `Actions.WorkspaceInsertSessionBefore`：把一次拖拽落到
+// 宿主的 `sessionIds` 手动序上，成功后**原地更新本地缓存的那条工作区**。
+//
+// 为什么先改本地再重拉：拖拽是"松手就要看到结果"的交互，等一次 HTTP 往返才挪行
+// 会让人以为没拖上。本地改的是**同一个真值**（宿主刚回的那份 Workspace），
+// 不是自造的乐观值——重拉只是核对。
+func (m *model) insertSessionBefore(workspaceID, sessionID, beforeSessionID string) error {
+	if m.cli == nil {
+		return errNoWorkspaceClient
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), workspaceWriteTimeout)
+	defer cancel()
+	workspace, err := m.cli.WorkspaceInsertSessionBefore(ctx, workspaceID, sessionID, beforeSessionID)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	for i := range m.workspaces {
+		if m.workspaces[i].WorkspaceID == workspaceID {
+			m.workspaces[i].SessionIDs = append([]string(nil), workspace.SessionIDs...)
+			m.workspaces[i].UpdatedAt = workspace.UpdatedAt
+			break
+		}
+	}
+	m.mu.Unlock()
+	m.inv.Invalidate()
+	go m.refreshWorkspaces()
+	return nil
+}

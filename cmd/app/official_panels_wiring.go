@@ -24,6 +24,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/plugins/dsactioncards"
 	"github.com/MYCF711/dsh-ui/plugins/dsattachment"
+	"github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
 )
 
 // cardSource 是壳给动作卡插件的数据源。
@@ -73,6 +74,8 @@ func wireOfficialPanels(m *model) {
 	}
 	dsactioncards.SetSource(cardSource{cli: m.cli})
 	dsattachment.SetSink(attachSink{cli: m.cli, m: m})
+	// #14 的按文件 diff：数据面走 `/api/changes.*`（裸 JSON 路由）。
+	dsdeliverables.SetChangesSource(changesSink{cli: m.cli})
 }
 
 // refreshActionCards 让动作卡插件按会话刷一次投影。
@@ -96,4 +99,27 @@ func (m *model) refreshActionCards(sessionID string) {
 			return
 		}
 	}
+}
+
+// changesSink 是壳给交付物面板的「变更 diff」能力（#14）。
+//
+// `dsdeliverables` 拿不到 `*apiclient.Client`（红线 R2），所以壳在这里转一手；
+// 插件拿到 nil 就退回"写过的文件 + 全文预览"的旧路径——**不画空 diff**。
+//
+// 三条走的是**文档相对路由**（`/api/changes.summary|diff|open`），不是
+// `POST /api/<method>`：官方消费端直接 `fetch` + `response.json()`，
+// 响应体是**裸对象**（没有 `result` 信封）。见
+// `HOST:docs/transport-contract.md` §15.3。
+type changesSink struct{ cli *apiclient.Client }
+
+func (s changesSink) Summary(ctx context.Context, sessionID string, seq int) (*apiclient.ChangesSummary, error) {
+	return s.cli.ChangesSummary(ctx, sessionID, seq)
+}
+
+func (s changesSink) Diff(ctx context.Context, sessionID string, seq, index int) (*apiclient.ChangesDiff, error) {
+	return s.cli.ChangesDiff(ctx, sessionID, seq, index)
+}
+
+func (s changesSink) Open(ctx context.Context, sessionID string, seq, index int, action, application string) error {
+	return s.cli.ChangesOpen(ctx, sessionID, seq, index, action, application)
 }

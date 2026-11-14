@@ -676,6 +676,40 @@ var OfficialSettingsGeometry = []GeoRow{
 	{Node: "DesktopUpdateIndicator.indicator", Prop: "line-height", Official: 18, Impl: UpdateIndicatorLineHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:17"},
 	{Node: "DesktopUpdateIndicator.spinner", Prop: "cycle-ms", Official: 1000, Impl: UpdateIndicatorSpinPeriodMS, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:48"},
 	{Node: "DesktopUpdateIndicator.errorDot", Prop: "size", Official: 6, Impl: UpdateErrorDotSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-general/src/client/DesktopUpdateIndicator.module.css:47"},
+
+	// ── 「Agent 预设」页（#3；`ui-agent-preset/src/client/AgentPresetSection.module.css`）──
+	//
+	// 官方 `.section` 的 `gap:12px` / `max-width:720px`（:1-7）、`.cards` 的
+	// `repeat(auto-fill,minmax(268px,1fr))` + `gap:12px`（:44-51）、卡片
+	// `.cardMain{padding:14px 16px 12px;gap:12px}`（:179-192）、页脚
+	// `.cardFoot{padding:6px 10px;gap:2px}`（:271-279）逐条对齐。
+	//
+	// 两条 line-height 是**无单位**值（1.4 / 1.55），本仓按像素实现，所以标 derived
+	// 并把换算写进 Formula —— 别把它写成"官方就是 21px"，那不是原文。
+	{Node: "AgentPresetSection.section", Prop: "gap", Official: 12, Impl: AgentPresetSectionGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:1-7"},
+	{Node: "AgentPresetSection.section", Prop: "max-width", Official: 720, Impl: AgentPresetSectionMaxWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:1-7"},
+	{Node: "AgentPresetSection.title", Prop: "font-size", Official: 18, Impl: AgentPresetTitleFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:9-13"},
+	{Node: "AgentPresetSection.title", Prop: "font-weight", Official: 600, Impl: AgentPresetTitleWeight, Unit: UnitRatio, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:9-13"},
+	{Node: "AgentPresetSection.intro", Prop: "font-size", Official: 13, Impl: AgentPresetIntroFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:15-18"},
+	{Node: "AgentPresetSection.cards", Prop: "grid-minmax", Official: 268, Impl: AgentPresetCardMinW, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:44-51"},
+	{Node: "AgentPresetSection.cards", Prop: "gap", Official: 12, Impl: AgentPresetCardsGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:44-51"},
+	{Node: "AgentPresetSection.card", Prop: "border-width", Official: 0.5, Impl: AgentPresetCardBorderWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:54-56"},
+	{Node: "AgentPresetSection.cardMain", Prop: "padding-block-start", Official: 14, Impl: AgentPresetCardMainPadTop, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:179-192"},
+	{Node: "AgentPresetSection.cardMain", Prop: "padding-block-end", Official: 12, Impl: AgentPresetCardMainPadBottom, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:179-192"},
+	{Node: "AgentPresetSection.cardMain", Prop: "padding-inline", Official: 16, Impl: AgentPresetCardMainPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:179-192"},
+	{Node: "AgentPresetSection.cardMain", Prop: "gap", Official: 12, Impl: AgentPresetCardMainGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:179-192"},
+	{Node: "AgentPresetSection.cardHead", Prop: "gap", Official: 12, Impl: AgentPresetCardHeadGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:204-207"},
+	{Node: "AgentPresetSection.cardIdentity", Prop: "gap", Official: 6, Impl: AgentPresetCardIdentityGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:215-220"},
+	{Node: "AgentPresetSection.cardName", Prop: "font-size", Official: 15, Impl: AgentPresetCardNameFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:223-227"},
+	{Node: "AgentPresetSection.cardName", Prop: "line-height", Official: 1.4, Impl: AgentPresetCardNameLn, Unit: UnitPx, Status: GeoDerived, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:223-227", Formula: "line-height:1.4（无单位）× font-size 15px = 21px"},
+	{Node: "AgentPresetSection.cardDesc", Prop: "font-size", Official: 13, Impl: AgentPresetCardDescFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:240-244"},
+	{Node: "AgentPresetSection.cardDesc", Prop: "line-height", Official: 1.55, Impl: AgentPresetCardDescLn, Unit: UnitPx, Status: GeoDerived, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:240-244", Formula: "line-height:1.55（无单位）× font-size 13px = 20.15px → 取整 20px"},
+	{Node: "AgentPresetSection.cardId", Prop: "font-size", Official: 11, Impl: AgentPresetCardIDFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:259-265"},
+	{Node: "AgentPresetSection.cardId", Prop: "line-height", Official: 21, Impl: AgentPresetCardIDLn, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:259-265"},
+	{Node: "AgentPresetSection.cardFoot", Prop: "padding-block", Official: 6, Impl: AgentPresetCardFootPadY, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:271-279"},
+	{Node: "AgentPresetSection.cardFoot", Prop: "padding-inline", Official: 10, Impl: AgentPresetCardFootPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:271-279"},
+	{Node: "AgentPresetSection.cardFoot", Prop: "gap", Official: 2, Impl: AgentPresetCardFootGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:271-279"},
+	{Node: "AgentPresetSection.error", Prop: "font-size", Official: 12, Impl: AgentPresetErrorFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:384-388"},
 }
 
 // GeoCount 返回表里 aligned / derived / deviation 三种状态的行数。

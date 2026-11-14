@@ -768,6 +768,29 @@ type Actions struct {
 	// 该工作区的会话会落到"未分组"。同步返回错误，调用方在 goroutine 里调。
 	// nil = 壳没接 → 不画"删除工作区"菜单项。
 	WorkspaceDelete func(workspaceID string) error
+	// WorkspaceInsertSessionBefore 把一个会话插到某条工作区名册里 `beforeSessionID` 之前
+	// （宿主 `workspace.insertSessionBefore`，官方 `dsh-api-workspace-controller/src/index.ts:149`）。
+	//
+	// 这是侧栏**拖拽排会话顺序**的唯一写路径：官方 `sessionIds` 就是"手动顺序"，
+	// 拖一次 = 在目标位置前插一次。`beforeSessionID` 传空串 = 插到该组末尾。
+	// 同步返回错误（宿主会校验会话/工作区是否存在），调用方在 goroutine 里调。
+	// nil = 壳没接（老宿主 / mockd）→ 侧栏不进入拖拽态（不是"拖了没反应"）。
+	WorkspaceInsertSessionBefore func(workspaceID, sessionID, beforeSessionID string) error
+
+	// AgentPresetRoster 返回壳缓存的官方 `agentPresets.list` 结果
+	// —— 设置面板「Agent 预设」页的数据面。
+	//
+	// 为什么是独立一路：roster 不是 Host 设置（`settings.describe` 里没有它），
+	// 官方它由 `agent-preset-registry` 服务发布（`dsh-client-ui-agent-preset/src/
+	// client/settings-store.ts:36-46` 的 `readRoster`）。
+	// 与 SettingsDescribe 同一套缓存形状：同步返回壳缓存的那一份，
+	// 首次问会触发一次后台拉取；nil = 壳没接这条能力（那一页退回「未知」说明，
+	// **不画假名册**）。
+	AgentPresetRoster func() *apiclient.AgentPresetRoster
+	// AgentPresetRefresh 触发一次后台重读（名册在宿主侧变了时用）。
+	// 调用后不等结果：壳拉完会 Invalidate，下一帧插件读到的就是新值。
+	// nil = 壳没接 → 页面上不出现"重读"入口。
+	AgentPresetRefresh func()
 
 	// DeleteSession 删掉一个会话（宿主 `session.delete`，**从磁盘上删**）。
 	//

@@ -104,6 +104,10 @@ type officialHarness struct {
 	inventory *apiclient.PluginInventoryResult
 	// inventoryRefresh 记录「重试」被点了几次（插件页的刷新动作）。
 	inventoryRefresh int
+	// roster 是「Agent 预设」页的数据面（nil = 宿主没接 agentPresets.list）。
+	roster *apiclient.AgentPresetRoster
+	// agentPresetRefresh 记录名册被重读了几次（写成功后壳会重拉一次）。
+	agentPresetRefresh int
 }
 
 func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
@@ -126,7 +130,14 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 		CredentialStored:  true,
 	}
 	act := pluginapi.Actions{
-		SettingsDescribe:  func() *apiclient.SettingsDescribeResult { return h.describe },
+		// 加锁读：用例会在会话起来之后换 describe（例如 #3 那条要真的发布
+		// agent-preset-registry 命名空间），而读点在绘制线程上——不加锁就是一条
+		// "本机不炸、-race 才炸"的竞态。与 PluginInventory 的读法保持一致。
+		SettingsDescribe: func() *apiclient.SettingsDescribeResult {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.describe
+		},
 		SettingsHostFacts: func() pluginapi.SettingsHostFacts { return facts },
 		SettingsFormSet: func(ns string, path []string, value any, expectedRevision int) (apiclient.SettingsSectionView, error) {
 			var rev *int
@@ -165,6 +176,18 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			h.mu.Lock()
 			h.inventoryRefresh++
 			h.mu.Unlock()
+		},
+		// 「Agent 预设」页的数据面：与真壳同一个形状（同步返回这一帧的名册）。
+		AgentPresetRoster: func() *apiclient.AgentPresetRoster {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.roster
+		},
+		AgentPresetRefresh: func() {
+			h.mu.Lock()
+			h.agentPresetRefresh++
+			h.mu.Unlock()
+			h.invalidator.Invalidate()
 		},
 	}
 
@@ -241,6 +264,12 @@ func (h *officialHarness) click(name string) {
 	h.t.Helper()
 	hit := h.hitFor(name)
 	x, y := hit.Bounds.X+hit.Bounds.Width/2, hit.Bounds.Y+hit.Bounds.Height/2
+	// 窗口外的点不该"点了没反应"：命中区可能因为滚动/裁剪在树里仍在、但按不到。
+	// 不先判这一条的话，失败会表现成"动作没触发"，查半天查不到是坐标的锅。
+	if snap := h.session.Snapshot(); x < 0 || y < 0 || x >= float32(snap.Width) || y >= float32(snap.Height) {
+		h.t.Fatalf("%s 的中心 (%v,%v) 在窗口 %dx%d 之外——命中断区被裁剪，点击落不到它身上",
+			name, x, y, snap.Width, snap.Height)
+	}
 	if id, ok := h.session.Driver().HitTest(x, y); !ok || id != hit.ID {
 		h.t.Fatalf("%s 的中心没打到它自己：got=%v want=%v", name, id, hit.ID)
 	}
@@ -249,6 +278,28 @@ func (h *officialHarness) click(name string) {
 	}
 	h.pump()
 	h.pump()
+}
+
+// agentPresetRefreshCount 读"名册重读被触发了几次"（加锁：写请求在别的 goroutine 里）。
+func (h *officialHarness) agentPresetRefreshCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.agentPresetRefresh
+}
+
+// waitWriterCalls 等到写请求达到 want 次；等待期间继续 pump。
+//
+// 为什么不能点完立刻断言：卡片点击走 `go applyAgentPresetDefault(...)`
+// （产品里本来就异步——绘制线程不能等 HTTP）。断言跑在测试 goroutine 上，
+// 新 goroutine 未必已经被调度：本机 150 次里有 1~2 次、CI 上更容易输掉这个
+// 竞态（2026-11-15 CI run 43622431919：`点了卡片却没发出任何写请求`）。
+// 这与 official_panel_visual_test.go 里 retryPolicy 那两处的既有写法同一套：
+// pump 到条件成立，超时才失败——断言本身一点没放松。
+func waitWriterCalls(h *officialHarness, want int) bool {
+	for i := 0; i < 400 && h.writer.callCount() < want; i++ {
+		h.pump()
+	}
+	return h.writer.callCount() >= want
 }
 
 func (h *officialHarness) hasText(want string) bool {

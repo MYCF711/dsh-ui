@@ -1,0 +1,463 @@
+{
+ "composer-send": {
+  "package": "@deepseek-ai/dsh-client-ui-conversation",
+  "file": "dsh-client-ui-conversation/lib/client.js",
+  "symbol": "InputBar 主按钮内联 path",
+  "binding": null,
+  "file_sha256": "fd8ee6c74845d017c2d0e2e6fb62fc655c42b084b1b014da08e1ef7355e3e984",
+  "fragment_sha256": "9acaa39ab69c4eb62ade77aa9ec5fa49a6446c30773bfae0ee88ea545b1bfdac",
+  "paths": [
+   {
+    "d": "M8.3125 0.980183C8.66767 1.0531 8.97902 1.20418 9.2627 1.43233C9.48724 1.61297 9.73029 1.85793 9.97949 2.10714L14.707 6.83468L13.293 8.24874L9 3.95577V15.0417H7V3.95577L2.70703 8.24874L1.29297 6.83468L6.02051 2.10714C6.26971 1.85793 6.51277 1.61297 6.7373 1.43233C6.97662 1.23986 7.28445 1.04402 7.6875 0.980183C7.8973 0.947006 8.1031 0.95516 8.3125 0.980183Z",
+    "sha256": "f15a0894c75e1442e73b0d193c319b7ac31abeded63c488d82360b638fc5ff49",
+    "len": 359
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": "currentColor",
+    "stroke": null
+   }
+  ]
+ },
+ "composer-stop": {
+  "package": "@deepseek-ai/dsh-client-ui-conversation",
+  "file": "dsh-client-ui-conversation/lib/client.js",
+  "symbol": "InputBar 主按钮内联 rect",
+  "binding": null,
+  "file_sha256": "fd8ee6c74845d017c2d0e2e6fb62fc655c42b084b1b014da08e1ef7355e3e984",
+  "fragment_sha256": "33a40aea76c92cbece951d6d09f28fc17b59c44246e808132dfb9d22eb6cc00c",
+  "paths": [],
+  "elements": [
+   {
+    "tag": "rect",
+    "x": "3",
+    "y": "3",
+    "width": "10",
+    "height": "10",
+    "rx": "3",
+    "fill": "currentColor"
+   }
+  ]
+ },
+ "send-outline": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "IconSendOutlineRegular",
+  "binding": null,
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "6323bab627fc53d53769354474848ec16d6b69f1e51e80d594a64c57ca8881cf",
+  "paths": [
+   {
+    "d": "M6.97211 1.94476C7.55785 1.35914 8.50767 1.35919 9.09343 1.94476L13.921 6.77228L13.2138 7.47939L8.38632 2.65187C8.19108 2.45682 7.87443 2.45677 7.67922 2.65187L2.74397 7.58711L2.03687 6.88L6.97211 1.94476Z",
+    "sha256": "81aa4b4b927da00749a44fb6963b42f2b68efa739294d7544c28744341f3814f",
+    "len": 205
+   },
+   {
+    "d": "M7.97571 14.5732L8.02421 2.34139",
+    "sha256": "77869504381cdb584fae63791b1b545756e37ee36f9ec91705543460a74eced4",
+    "len": 32
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": "currentColor",
+    "stroke": null
+   },
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "paperclip": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "IconPaperclipOutlineRegular",
+  "binding": null,
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "96974f247bca334924912c623cab93ec33983a97ea782d007726e7924f41c58a",
+  "paths": [
+   {
+    "d": "M12.75 4.5V9.5C12.75 10.7598 12.2496 11.968 11.3588 12.8588C10.468 13.7496 9.25978 14.25 8 14.25C6.74022 14.25 5.53204 13.7496 4.64124 12.8588C3.75045 11.968 3.25 10.7598 3.25 9.5V5C3.25 4.13805 3.59241 3.3114 4.2019 2.7019C4.8114 2.09241 5.63805 1.75 6.5 1.75C7.36195 1.75 8.1886 2.09241 8.7981 2.7019C9.40759 3.3114 9.75 4.13805 9.75 5V9.5C9.75 9.96413 9.56563 10.4092 9.23744 10.7374C8.90925 11.0656 8.46413 11.25 8 11.25C7.53587 11.25 7.09075 11.0656 6.76256 10.7374C6.43437 10.4092 6.25 9.96413 6.25 9.5V5.5",
+    "sha256": "987076dc377d9213b86c2155535ef55de53010f2dd602e2c755b5f2250e06ada",
+    "len": 512
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "composer-add": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "IconPlusOutlineMedium",
+  "binding": "VT",
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "623aca01219f515dfad6f2a095b9cb181e3abd1026f4c5006b09925a9ad745de",
+  "paths": [
+   {
+    "d": "M8 2V14",
+    "sha256": "a80e490b2252bcb0ebcadfa29a86ffdd9935ef49006f840aab8e27334a61bc06",
+    "len": 7
+   },
+   {
+    "d": "M2 8H14",
+    "sha256": "6f6994503ec775b821d9d598061c98365d52fe04de6301d614dbbb6dce4c354c",
+    "len": 7
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "copy": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "IconCopyOutlineRegular",
+  "binding": null,
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "8fe7eab60f9198405a03f0fafd547246fcf435b4ef272d733edfe54f673fc2f5",
+  "paths": [
+   {
+    "d": "M11.9792 1.53296C13.36 1.53296 14.4792 2.65225 14.4792 4.03296V9.42847C14.4792 10.3756 13.9521 11.1987 13.1755 11.6228V10.3298C13.3652 10.0787 13.4792 9.7674 13.4792 9.42847V4.03296C13.4792 3.20453 12.8077 2.53296 11.9792 2.53296H6.58374C6.27966 2.53301 5.99684 2.6235 5.7605 2.77905H4.42358C4.85652 2.03463 5.66056 1.53304 6.58374 1.53296H11.9792Z",
+    "sha256": "6e5591973f97752cd5bb5e43970adf14af82490ef0cf2c4d310f113aaa8e8993",
+    "len": 348
+   }
+  ],
+  "elements": [
+   {
+    "tag": "rect",
+    "x": "1.52075",
+    "y": "4.07373",
+    "width": "10.3932",
+    "height": "10.3932",
+    "rx": "2",
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "path",
+    "fill": "currentColor",
+    "stroke": null
+   }
+  ]
+ },
+ "branch": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "IconBranchOutlineRegular",
+  "binding": null,
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "a216c5436a60e7819f89b19230e307bc22bb20ba6f4d90f89a0d643d4b6e38a5",
+  "paths": [
+   {
+    "d": "M1.01503 8.0001L5.6964 8.0001C6.41913 8.0001 6.78049 8.0001 7.12115 7.91951C7.4232 7.84804 7.71233 7.73014 7.97821 7.57C8.27809 7.38939 8.5364 7.13669 9.05303 6.63129L11.3281 4.40564",
+    "sha256": "9424cc496ba7c953eff1731467b2f5ee4e7487f61e60f58526068a1c78ec1079",
+    "len": 182
+   },
+   {
+    "d": "M1.01221 7.9999L5.6964 7.9999C6.41913 7.9999 6.78049 7.9999 7.12115 8.08049C7.4232 8.15196 7.71233 8.26986 7.97821 8.43C8.27809 8.61061 8.5364 8.86331 9.05303 9.36871L11.3281 11.5944",
+    "sha256": "0c4b2d4639a4ef8ef9fa9656e143fca116a52f9f2789587626e525d8e454d2b5",
+    "len": 182
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "circle",
+    "cx": "12.4502",
+    "cy": "3.3079",
+    "r": "1.56962",
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "circle",
+    "cx": "12.4502",
+    "cy": "12.6921",
+    "r": "1.56962",
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "thumb-up-outline": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "IconLikeOutlineRegular",
+  "binding": null,
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "d4907b70fb1e2d6758b0752035b9153aa2c2866d37d776a12f6f2c7cd9225c07",
+  "paths": [
+   {
+    "d": "M13.537 8.12098L12.3983 12.8455C12.1818 13.7438 11.378 14.3769 10.454 14.3769L9.35595 14.3769H7.43799H5.16577C3.50892 14.3769 2.16577 13.0337 2.16577 11.3769V7.88668C2.16577 7.33439 2.61349 6.88668 3.16577 6.88668H4.02665C5.84943 6.88668 7.38083 3.28711 7.67689 2.54578C7.71259 2.45639 7.73501 2.36373 7.77922 2.27824C7.86506 2.11221 8.08228 1.87578 8.59039 2.07775C10.3291 2.76886 9.23144 6.04071 8.96955 6.75058C8.94502 6.81707 8.99495 6.88668 9.06581 6.88668H12.5648C13.2119 6.88668 13.6886 7.49192 13.537 8.12098Z",
+    "sha256": "b22003d48de25d8796293accb24656ba70e8a6c408308eeb4a09ad19de080af9",
+    "len": 517
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "thumb-up-fill": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "IconLikeFillRegular",
+  "binding": null,
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "aa0f085ee42acc0dda80288a4c01c8dc4280354318836e2effb999367a5baf20",
+  "paths": [
+   {
+    "d": "M13.537 8.12098L12.3983 12.8455C12.1818 13.7438 11.378 14.3769 10.454 14.3769L9.35595 14.3769H7.43799H5.16577C3.50892 14.3769 2.16577 13.0337 2.16577 11.3769V7.88668C2.16577 7.33439 2.61349 6.88668 3.16577 6.88668H4.02665C5.84943 6.88668 7.38083 3.28711 7.67689 2.54578C7.71259 2.45639 7.73501 2.36373 7.77922 2.27824C7.86506 2.11221 8.08228 1.87578 8.59039 2.07775C10.3291 2.76886 9.23144 6.04071 8.96955 6.75058C8.94502 6.81707 8.99495 6.88668 9.06581 6.88668H12.5648C13.2119 6.88668 13.6886 7.49192 13.537 8.12098Z",
+    "sha256": "b22003d48de25d8796293accb24656ba70e8a6c408308eeb4a09ad19de080af9",
+    "len": 517
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": "currentColor",
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "thumb-down-outline": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "IconDislikeOutlineRegular",
+  "binding": null,
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "09a6d187b8d8b23a4b9430b67c9df50da0b409fd0f27ef8e8831ceff6308cf21",
+  "paths": [
+   {
+    "d": "M2.46302 8.06749L3.60171 3.34299C3.81822 2.44467 4.62196 1.81162 5.546 1.8116L6.64406 1.81158L8.56202 1.81158L10.8342 1.81158C12.4911 1.81158 13.8342 3.15473 13.8342 4.81158L13.8342 8.3018C13.8342 8.85408 13.3865 9.3018 12.8342 9.3018L11.9734 9.3018C10.1506 9.3018 8.61918 12.9014 8.32311 13.6427C8.28741 13.7321 8.26499 13.8247 8.22078 13.9102C8.13494 14.0763 7.91772 14.3127 7.40961 14.1107C5.67089 13.4196 6.76856 10.1478 7.03045 9.43789C7.05498 9.37141 7.00505 9.3018 6.93419 9.3018L3.43519 9.3018C2.78811 9.3018 2.31141 8.69656 2.46302 8.06749Z",
+    "sha256": "0075abcf01eef2cc993ec75695cd212871ff98fd3e4bc9bad581371e82438cf7",
+    "len": 549
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "thumb-down-fill": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "IconDislikeFillRegular",
+  "binding": null,
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "4631554b5f73a23d231f002fcec06036fb6ee5c5e3fbe9e5e0afe2fa5ac91c0c",
+  "paths": [
+   {
+    "d": "M2.46302 8.06749L3.60171 3.34299C3.81822 2.44467 4.62196 1.81162 5.546 1.8116L6.64406 1.81158L8.56202 1.81158L10.8342 1.81158C12.4911 1.81158 13.8342 3.15473 13.8342 4.81158L13.8342 8.3018C13.8342 8.85408 13.3865 9.3018 12.8342 9.3018L11.9734 9.3018C10.1506 9.3018 8.61918 12.9014 8.32311 13.6427C8.28741 13.7321 8.26499 13.8247 8.22078 13.9102C8.13494 14.0763 7.91772 14.3127 7.40961 14.1107C5.67089 13.4196 6.76856 10.1478 7.03045 9.43789C7.05498 9.37141 7.00505 9.3018 6.93419 9.3018L3.43519 9.3018C2.78811 9.3018 2.31141 8.69656 2.46302 8.06749Z",
+    "sha256": "0075abcf01eef2cc993ec75695cd212871ff98fd3e4bc9bad581371e82438cf7",
+    "len": 549
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": "currentColor",
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "permission-read-only": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "PermissionIconReadOnlyRegular",
+  "binding": "z_",
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "614f3c5ac31e0809cccea49293cb43a846035ae765556c7b9d792bd9124b20b9",
+  "paths": [
+   {
+    "d": "M5.08545 8.13775L7.18455 10.2368C7.26636 10.3187 7.4003 10.3142 7.47649 10.2271L11.5148 5.61194",
+    "sha256": "a1cf316031195beab15aa432882d38d9109a6df6f99749199932a805986304e9",
+    "len": 95
+   },
+   {
+    "d": "M6.59624 2.14853C7.50155 1.80917 8.49914 1.80919 9.40444 2.14859L13.9245 3.84317V7.11961C13.9245 11.6089 10.5565 13.5975 8.00035 14.5779C5.44423 13.5975 2.07544 11.6089 2.07544 7.11961V3.84317L6.59624 2.14853Z",
+    "sha256": "0183a93baf445fb2d8ac58b9f21f8847704ec22c0e0073580314df824394062f",
+    "len": 209
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "permission-workspace-write": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "PermissionIconWorkspaceWriteRegular",
+  "binding": "E_",
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "c464b7c0628cbc4a385904d0a9d06058394177fe5b492be47dbf53bfbfe860ca",
+  "paths": [
+   {
+    "d": "M6.4209 1.68067C7.43922 1.299 8.56177 1.29898 9.58008 1.68067L14.0996 3.375C14.2946 3.44811 14.4236 3.63455 14.4238 3.84278V6.89063C14.1115 6.71853 13.7761 6.58312 13.4238 6.48926V4.18946L9.22852 2.61621C8.43657 2.31947 7.56341 2.31939 6.77148 2.61621L2.5752 4.18946V7.11914C2.5752 11.1796 5.52369 13.056 8 14.0391C8.27653 13.9293 8.55827 13.8067 8.8418 13.6729C9.07101 13.9468 9.33228 14.1929 9.62012 14.4053C9.12409 14.6579 8.63578 14.8696 8.17871 15.0449C8.0637 15.0889 7.93628 15.0889 7.82129 15.0449C5.22011 14.0472 1.5752 11.9381 1.5752 7.11914V3.84278C1.57541 3.63469 1.70463 3.44821 1.89941 3.375L6.4209 1.68067Z",
+    "sha256": "1fa28eb3dc0f000fdfa3991beabde4f00ca2918ec3c7499adf55a51592b4dd19",
+    "len": 620
+   },
+   {
+    "d": "M5.26392 6.60339H10.7361",
+    "sha256": "d255a4184d6cde601ec7ec0e56439b510ce0bd8f9e83368345278f9d0b0fdbd0",
+    "len": 24
+   },
+   {
+    "d": "M5.26392 9.86902H8.32833",
+    "sha256": "d87b0682f1c71638a5b4642b4e42f1f7a71ab040435573707885d78c4159e381",
+    "len": 24
+   },
+   {
+    "d": "M10.0317 13.2229C10.263 13.3929 10.4943 13.563 10.7256 13.733C10.7932 13.6482 10.8608 13.5634 10.9284 13.4786C12.1455 11.9522 13.3626 10.4258 14.5798 8.89935C14.6474 8.81455 14.715 8.72975 14.7826 8.64495C14.4143 8.37419 14.046 8.10344 13.6777 7.83268C13.6169 7.92252 13.5562 8.01236 13.4954 8.10219C12.4016 9.71926 11.3078 11.3363 10.214 12.9534C10.1532 13.0432 10.0924 13.1331 10.0317 13.2229Z",
+    "sha256": "86f67099ba4a3f699532056182f316118b04b3aa6f82e51442650e71286eff71",
+    "len": 395
+   },
+   {
+    "d": "M12.6516 12.6696C12.6516 12.925 12.6516 13.1804 12.6516 13.4359C12.6952 13.4378 12.7387 13.4398 12.7823 13.4417C13.5663 13.4768 14.3504 13.5118 15.1345 13.5469C15.178 13.5488 15.2216 13.5508 15.2651 13.5527C15.2651 13.2194 15.2651 12.8861 15.2651 12.5527C15.2216 12.5547 15.178 12.5566 15.1345 12.5586C14.3504 12.5936 13.5663 12.6287 12.7823 12.6637C12.7387 12.6657 12.6952 12.6676 12.6516 12.6696Z",
+    "sha256": "da2627e6cac3583b2dbe2f9b76e9631bb0db8d2dd618e9f116d8a2e6bc25d881",
+    "len": 398
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": "currentColor",
+    "stroke": null
+   },
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "path",
+    "fill": "currentColor",
+    "stroke": null
+   },
+   {
+    "tag": "path",
+    "fill": "currentColor",
+    "stroke": null
+   }
+  ]
+ },
+ "permission-full-access": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "PermissionIconFullAccessRegular",
+  "binding": "O_",
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "cfc6ec11ed35d06d0d61224cddfc64accf3b68a8447067ea5250f7996a52b467",
+  "paths": [
+   {
+    "d": "M6.59624 2.14853C7.50155 1.80917 8.49914 1.80919 9.40444 2.14859L13.9245 3.84317V7.11961C13.9245 11.6089 10.5565 13.5975 8.00035 14.5779C5.44423 13.5975 2.07544 11.6089 2.07544 7.11961V3.84317L6.59624 2.14853Z",
+    "sha256": "0183a93baf445fb2d8ac58b9f21f8847704ec22c0e0073580314df824394062f",
+    "len": 209
+   },
+   {
+    "d": "M8 4.39209V9.89209",
+    "sha256": "6ee794d128d4b628e344427ca1be29ed75ce1190f57b9929b4bdf8ac4a3f5846",
+    "len": 18
+   },
+   {
+    "d": "M8 10.8081V11.8081",
+    "sha256": "e1018f31ddf3d4b845da5a2161e9d6e127fc33968853c42aa940716c67de7778",
+    "len": 18
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   }
+  ]
+ },
+ "permission-auto-review": {
+  "package": "@deepseek-ai/dsh-client-ui-primitives",
+  "file": "dsh-web-frontend/dist/assets/index-BXV-oxvX.js",
+  "symbol": "PermissionIconAutoReviewRegular",
+  "binding": "M_",
+  "file_sha256": "0f3fc6b857e4f8bd4d69619ce1010240cdaaa443abf0826532a24ef8f6e32ef0",
+  "fragment_sha256": "1a924b52f86ec03e660fec8534a5058848b2cf7950fe1cb2442ac13e83226425",
+  "paths": [
+   {
+    "d": "M6.59624 2.14853C7.50155 1.80917 8.49914 1.80919 9.40444 2.14859L13.9245 3.84317V7.11961C13.9245 11.6089 10.5565 13.5975 8.00035 14.5779C5.44423 13.5975 2.07544 11.6089 2.07544 7.11961V3.84317L6.59624 2.14853Z",
+    "sha256": "0183a93baf445fb2d8ac58b9f21f8847704ec22c0e0073580314df824394062f",
+    "len": 209
+   },
+   {
+    "d": "M5.75 10.15L8 4.95L10.25 10.15M6.43 8.59H9.57",
+    "sha256": "ff660b33924b4df198b00e723dd04eef8a71e2969a3f1df5096b76834ed4d994",
+    "len": 45
+   }
+  ],
+  "elements": [
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   },
+   {
+    "tag": "path",
+    "fill": null,
+    "stroke": "currentColor"
+   }
+  ]
+ }
+}

@@ -147,6 +147,9 @@ func Dark() *pluginapi.Theme {
 		NavActive: gfx.RGB24(staticNeutralBluish750),
 		NavHover:  gfx.RGB24(staticNeutralBluish850),
 		Hover:     ui.RGBA(255, 255, 255, 0.08), // --dsw-alias-interactive-bg-hover = #ffffff14
+		// --dsw-alias-markdown-tag（design-platform.css:424）= neutral-bluish-850；
+		// dockkit 选中 tab 的底色，见 pluginapi/theme.go 的 MarkdownTag 注释。
+		MarkdownTag: gfx.RGB24(staticNeutralBluish850),
 
 		BorderL1: ui.RGBA(255, 255, 255, 0.06), // #ffffff0f
 		BorderL2: ui.RGBA(255, 255, 255, 0.12), // #ffffff1f
@@ -214,6 +217,8 @@ func Light() *pluginapi.Theme {
 		NavActive: gfx.RGB24(staticNeutralBluish100),
 		NavHover:  gfx.RGB24(staticNeutralBluish75),
 		Hover:     ui.RGBA(38, 49, 72, 0.06), // #2631480f
+		// --dsw-alias-markdown-tag（design-platform.css:272）= neutral-bluish-75。
+		MarkdownTag: gfx.RGB24(staticNeutralBluish75),
 
 		BorderL1: ui.RGBA(0, 0, 0, 0.04), // #0000000a
 		BorderL2: ui.RGBA(0, 0, 0, 0.10), // #0000001a

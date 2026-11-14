@@ -118,16 +118,20 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 }
 
 // Active 实现 viewapi.Store。未知/空会话不继承其他会话的选择。
+//
+// 不再用 `Known(view)` 过滤：那会让"注册表里有、但本包不认识"的 view
+// 永远落回 chat。名录是壳的事（`uikernel.ViewTabs`），这里只存事实。
 func (p *Plugin) Active(sessionID string) string {
-	if view := p.views[sessionID]; viewapi.Known(view) {
+	if view := p.views[sessionID]; view != "" {
 		return view
 	}
 	return viewapi.Chat
 }
 
-// Select 实现 viewapi.Store。只有两个有真实 painter 的官方视图可选。
+// Select 实现 viewapi.Store。准入由注册表把关（壳写之前先查名录），
+// 本包只保证"空 session 不持久化"这一条。
 func (p *Plugin) Select(sessionID, view string) {
-	if sessionID == "" || !viewapi.Known(view) {
+	if sessionID == "" || view == "" {
 		return
 	}
 	if p.views == nil {
@@ -225,19 +229,57 @@ func (p *Plugin) drawTitleCluster(f ui.C, title, cwd string) {
 	})
 }
 
-// drawTabs 画官方 ViewTabs：只有 chat / trajectory 两个有真实 painter 的页签。
+// drawTabs 画官方 ViewTabs（`.viewTabs` 那一行）。
+//
+// 页签**来自注册表**，不再写死 chat / trajectory：名录由壳从内核的
+// `conversation.view` 占用方投影出来（`uikernel.ViewTabs`），经 `Env.Views`
+// 交进来。官方那边这一行也是名录投影（OFF:dsh-client-ui-conversation/src/client/
+// skeleton/ConversationSession.tsx:227-236 的 `visibleTabs.map`）。
+//
 // 点击只改当前会话的本地 view store，不 OpenSession、不 reload、不 Cancel、不写 draft。
 func (p *Plugin) drawTabs(f ui.C, env *pluginapi.Env) {
+	views, active := p.viewRoster(env)
 	p.headerBoxes.Tabs = ui.Row(f).WidthPercent(100).Height(tabsHeight).
 		MarginSides(tabsMarginTop, 0, 0, 0).Gap(tabsGap).Children(func() {
-		p.headerBoxes.ChatTab = p.drawTab(f, env, viewapi.Chat, "对话")
-		p.headerBoxes.TrajectoryTab = p.drawTab(f, env, viewapi.Trajectory, "轨迹")
+		for _, tab := range views {
+			box := p.drawTab(f, env, tab.Key, tab.Label, tab.Key == active)
+			// 两个历史命名保留：几何回归测试按名字取盒子（headerBoxes）。
+			switch tab.Key {
+			case viewapi.Chat:
+				p.headerBoxes.ChatTab = box
+			case viewapi.Trajectory:
+				p.headerBoxes.TrajectoryTab = box
+			}
+		}
 	})
 }
 
-func (p *Plugin) drawTab(f ui.C, env *pluginapi.Env, view, label string) ui.Box {
+// viewRoster 取这一帧的会话视图名录与激活项。
+//
+// 名录非空时**照名录画**：壳从那两个字段说话，本包不自己挑。
+// 名录为空（最小装配 / 单测里只装了本包）时退回 rc.2 之前的两个内建页签——
+// 这是过渡桥，与 `uikernel.ShellOptions.BridgeLegacy` 同一性质：壳没接注册表
+// 这一帧，旧行为不能凭空消失。终态下名录永远非空（ui-chat 一定注册）。
+func (p *Plugin) viewRoster(env *pluginapi.Env) ([]pluginapi.Tab, string) {
+	if env != nil && len(env.Views) > 0 {
+		active := env.ActiveView
+		if active == "" {
+			active = p.Active(env.Data.Cur)
+		}
+		return env.Views, active
+	}
+	cur := ""
+	if env != nil {
+		cur = env.Data.Cur
+	}
+	return []pluginapi.Tab{
+		{Key: viewapi.Chat, Label: "对话"},
+		{Key: viewapi.Trajectory, Label: "轨迹", Order: 10},
+	}, p.Active(cur)
+}
+
+func (p *Plugin) drawTab(f ui.C, env *pluginapi.Env, view, label string, active bool) ui.Box {
 	t := p.theme
-	active := p.Active(env.Data.Cur) == view
 	box := ui.Column(f).Height(tabsHeight).
 		Hit(env.Tree.ID(env.Feat, "view-"+view), label).Children(func() {
 		ui.Row(f).Grow(1).Items(ui.Center).Children(func() {

@@ -255,9 +255,16 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			// 官方 `conversation.view` 槽（动态取名字面量，见 official_transcript_nodes.go
 			// 的 SlotConversationView：这三个名字是官方 slots.ts 的字面量，
 			// **不许改写成 main.body 之类的旧槽名**）。
+			//
+			// 这一槽是**选择器**：`Key` = 官方 view id、`Label` = 芯片文案、
+			// `Order` = 官方注册顺序（ui-chat 是 `id:'chat', order:0`，
+			// OFF:dsh-client-ui-chat/src/client/apply.ts:237-242）。
+			// 壳据此投影出名录、只派发选中的那一个 key。
 			ID:    "official-transcript",
-			Slot:  pluginapi.Slot(SlotConversationView),
-			Order: 20,
+			Slot:  pluginapi.SlotConvView,
+			Key:   pluginapi.ViewChat,
+			Label: "对话",
+			Order: 0,
 			Draw:  p.drawOfficialTranscriptSeat,
 			// 覆画：代码块（banner / 高亮 / 横滚视口 / 复制按钮）必须等布局
 			// 定下来才有真实矩形，见 official_transcript_view.go 的 PaintCodeBlocks。

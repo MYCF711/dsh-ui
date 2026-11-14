@@ -36,12 +36,14 @@ type (
 	ContextMenuAction       = pub.ContextMenuAction
 	ContextMenuContribution = pub.ContextMenuContribution
 	Painter                 = pub.Painter
-	Primitives              = pub.Primitives
-	Env                     = pub.Env
-	Geometry                = pub.Geometry
-	Snapshot                = pub.Snapshot
-	Usage                   = pub.Usage
-	Approval                = pub.Approval
+	// Tab 是选择器条目（会话 view / 右栏 tab 的共同形状）。
+	Tab        = pub.Tab
+	Primitives = pub.Primitives
+	Env        = pub.Env
+	Geometry   = pub.Geometry
+	Snapshot   = pub.Snapshot
+	Usage      = pub.Usage
+	Approval   = pub.Approval
 	// HistoryPaging 是主区「加载更早」单按钮的五态输入（additive）。
 	HistoryPaging = pub.HistoryPaging
 	// LinkState 是壳与宿主流连接的三态事实（`Snapshot.Link`）。
@@ -112,6 +114,15 @@ const (
 	SlotMainComposer  = pub.SlotMainComposer
 	SlotRightbar      = pub.SlotRightbar
 	SlotStatusbar     = pub.SlotStatusbar
+	// 选择器座位（keyed / list），见公开包里的注释与官方锚点。
+	SlotRightbarSession   = pub.SlotRightbarSession
+	SlotRightPaneTab      = pub.SlotRightPaneTab
+	SlotRightPaneTabTitle = pub.SlotRightPaneTabTitle
+	SlotConvView          = pub.SlotConvView
+
+	ViewChat       = pub.ViewChat
+	ViewTrajectory = pub.ViewTrajectory
+	ViewStats      = pub.ViewStats
 )
 
 // Builtin / Register 是注册表函数，别名层透传。

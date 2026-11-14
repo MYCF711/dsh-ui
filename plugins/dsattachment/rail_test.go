@@ -37,11 +37,18 @@ type attachCall struct {
 	id        string
 }
 
+// uploadCall 记录一次 fileUploads.upload 的来源（会话 + 已暂存附件 id）。
+type uploadCall struct {
+	sessionID string
+	id        string
+}
+
 type fakeSink struct {
 	mu       sync.Mutex
 	session  string
 	puts     []string
 	attaches []attachCall
+	uploads  []uploadCall
 	// respond 是这一个假宿主的"上传结果"；nil = 默认成功（1536 字节的 txt）。
 	respond func(path string) (*apiclient.Attachment, error)
 	// gate 非 nil 时 Put 先等它放行（用来把"上传中"这一态钉在画面上）。
@@ -74,10 +81,29 @@ func (f *fakeSink) Attach(_ context.Context, sessionID string, a apiclient.Attac
 	return nil
 }
 
+func (f *fakeSink) Upload(_ context.Context, sessionID string, a apiclient.Attachment) (*apiclient.FileUploadReceipt, error) {
+	f.mu.Lock()
+	f.uploads = append(f.uploads, uploadCall{sessionID: sessionID, id: a.ID})
+	f.mu.Unlock()
+	if a.ID == "" {
+		return nil, errors.New("empty attachment id")
+	}
+	return &apiclient.FileUploadReceipt{
+		ReceiptID: "rcpt-" + a.ID,
+		File:      apiclient.UploadedFile{AttachmentID: a.ID, Name: a.Name, Bytes: a.ByteSize},
+	}, nil
+}
+
 func (f *fakeSink) CurrentSession() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.session
+}
+
+func (f *fakeSink) uploadCalls() []uploadCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]uploadCall(nil), f.uploads...)
 }
 
 func (f *fakeSink) putPaths() []string {
@@ -454,6 +480,91 @@ func TestAttachReadyAttachesReadyItemsOnly(t *testing.T) {
 	}
 	if got := len(sink.attachCalls()); got != 2 {
 		t.Fatalf("没有当前会话时不该再挂，实际累计 %d 次", got)
+	}
+}
+
+// ── PreparePrompt：官方 rc.2 主路径（fileUploads.upload 回执 + session.prompt）──
+
+func TestPreparePromptUploadsReadyItemsInRailOrder(t *testing.T) {
+	sink := &fakeSink{session: "s1"}
+	p, env, _, canvas := fixture(t, sink)
+	HandleFileDrop(drop("/tmp/a.txt", "/tmp/b.txt"))
+	drawOnce(t, p, env, canvas, 1180, 700)
+
+	batch, err := PreparePrompt(context.Background())
+	if err != nil {
+		t.Fatalf("PreparePrompt 不该失败：%v", err)
+	}
+	if batch == nil || batch.Empty() {
+		t.Fatal("两张就绪卡应该生成一批附件 part")
+	}
+	parts := batch.Parts()
+	if len(parts) != 2 {
+		t.Fatalf("应有两段附件 part，实际 %d：%+v", len(parts), parts)
+	}
+	for i, part := range parts {
+		if part.Type != "file" {
+			t.Errorf("part[%d].Type=%q，官方上传回执走 file", i, part.Type)
+		}
+		want := "rcpt-att-" + strconv.Itoa(i+1)
+		if part.ReceiptID != want {
+			t.Errorf("part[%d].receiptId=%q，期望 %q（顺序必须与 rail 一致）", i, part.ReceiptID, want)
+		}
+	}
+	calls := sink.uploadCalls()
+	if len(calls) != 2 || calls[0].sessionID != "s1" || calls[1].sessionID != "s1" {
+		t.Fatalf("上传调用应带当前会话 s1：%+v", calls)
+	}
+	if calls[0].id != "att-1" || calls[1].id != "att-2" {
+		t.Fatalf("上传应按 rail 顺序引用已暂存附件：%+v", calls)
+	}
+
+	// Commit 只删这一批；发送成功后 rail 清空。
+	batch.Commit()
+	if got := p.itemSnapshot(); len(got) != 0 {
+		t.Fatalf("Commit 后 rail 应为空，实际 %d 张", len(got))
+	}
+}
+
+func TestPreparePromptRefusesWhileUploadInFlight(t *testing.T) {
+	sink := &fakeSink{session: "s1", gate: make(chan struct{})}
+	p, env, _, canvas := fixture(t, sink)
+	p.run = nil // 上传卡在 gate 上，必须在后台 goroutine 里才看得到"上传中"
+	HandleFileDrop(drop("/tmp/a.txt"))
+	drawOnce(t, p, env, canvas, 1180, 700)
+	if _, err := PreparePrompt(context.Background()); err == nil {
+		t.Fatal("有卡仍在上传时应拒绝发送（官方 uploadFor 非 ready 直接 throw）")
+	}
+	close(sink.gate)
+	waitFor(t, func() bool {
+		batch, err := PreparePrompt(context.Background())
+		return err == nil && batch != nil && !batch.Empty()
+	})
+}
+
+func TestPreparePromptRefusesWhenCardFailed(t *testing.T) {
+	sink := &fakeSink{session: "s1", respond: func(string) (*apiclient.Attachment, error) {
+		return nil, errors.New("附件不能是 0 bytes")
+	}}
+	p, env, _, canvas := fixture(t, sink)
+	HandleFileDrop(drop("/tmp/empty.txt"))
+	drawOnce(t, p, env, canvas, 1180, 700)
+	if _, err := PreparePrompt(context.Background()); err == nil || !strings.Contains(err.Error(), "0 bytes") {
+		t.Fatalf("失败卡应阻止发送并保留宿主原文，实际 err=%v", err)
+	}
+}
+
+func TestPreparePromptWithoutSessionOrItemsIsNoop(t *testing.T) {
+	sink := &fakeSink{}
+	_, _, _, _ = fixture(t, sink)
+	if batch, err := PreparePrompt(context.Background()); err != nil || batch != nil {
+		t.Fatalf("没有当前会话应返回 (nil,nil)，实际 %v / %v", batch, err)
+	}
+	sink.mu.Lock()
+	sink.session = "s1"
+	sink.mu.Unlock()
+	if batch, err := PreparePrompt(context.Background()); err != nil || batch != nil {
+		t.Fatalf("空 rail 应返回 (nil,nil)，实际 %v / %v", batch, err)
 	}
 }
 

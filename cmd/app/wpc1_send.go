@@ -8,10 +8,12 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsattachment"
 )
 
 func (m *model) sendLocal(text string) {
-	if text == "" {
+	// 官方允许附件-only 消息（text 为空、content 只有附件）；没有附件时才拒绝空文本。
+	if text == "" && !dsattachment.HasItems() {
 		return
 	}
 	m.mu.Lock()
@@ -60,9 +62,29 @@ func (m *model) retrySend(key string) {
 
 func (m *model) dispatchSend(session, key, text string) {
 	go func() {
+		// 附件准备是两步 HTTP（attachment.get + fileUploads.upload），大文件比普通
+		// prompt 慢得多，单独给它 60s；真正的 session.prompt 仍用原来的 5s 超时。
+		attachCtx, attachCancel := context.WithTimeout(context.Background(), 60*time.Second)
+		batch, prepErr := dsattachment.PreparePrompt(attachCtx)
+		attachCancel()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		turn, err := m.cli.Prompt(ctx, session, text)
+		var (
+			turn string
+			err  error
+		)
+		switch {
+		case prepErr != nil:
+			err = prepErr
+		case batch.Empty():
+			turn, err = m.cli.Prompt(ctx, session, text)
+		default:
+			turn, err = m.cli.PromptParts(ctx, session, text, batch.Parts())
+		}
+		if err == nil && !batch.Empty() {
+			// 宿主已接收这条消息，rail 上的这批卡才算发出去（官方提交成功才释放草稿）。
+			batch.Commit()
+		}
 		m.mu.Lock()
 		index := -1
 		for i := range m.outgoing[session] {
@@ -196,7 +218,25 @@ func (m *model) writeDraft(text string, overwrite bool) {
 // 最多清一条，两个同文本发送不会因一次回包被批量误清。失败态仍需显式重试。
 func (m *model) reconcileOutgoingLocked(session, durableText string, durableTurn ...string) {
 	outgoing := m.outgoing[session]
-	if len(outgoing) == 0 || durableText == "" {
+	if len(outgoing) == 0 {
+		return
+	}
+	if durableText == "" {
+		// 附件-only 消息的 durable user event 文本就是空串；只在候选唯一时对账，
+		// 两条同时飞的空文本不猜哪条被接受（与下方同文本歧义同一条判据）。
+		candidate := -1
+		for i, item := range outgoing {
+			if item.State == pubapi.OutgoingFailed || item.Text != "" {
+				continue
+			}
+			if candidate >= 0 {
+				return
+			}
+			candidate = i
+		}
+		if candidate >= 0 {
+			m.outgoing[session] = append(outgoing[:candidate], outgoing[candidate+1:]...)
+		}
 		return
 	}
 	turnID := ""

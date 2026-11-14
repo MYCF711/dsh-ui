@@ -34,6 +34,7 @@ package dsconversation
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 )
@@ -482,10 +483,12 @@ type transcriptBlock struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
 	ID        string `json:"id"`
-	// 附件块（官方 image / file）的字段。
+	// 附件块（官方 image / file / 宿主 attachment）的字段。
 	FileName  string `json:"filename"`
 	MediaType string `json:"mediaType"`
 	Size      *int64 `json:"size"`
+	MIME      string `json:"mime"`
+	ByteSize  *int64 `json:"byteSize"`
 }
 
 type transcriptMessage struct {
@@ -577,6 +580,22 @@ func (f transcriptFrame) attachmentsOf() []TranscriptAttachment {
 			out = append(out, TranscriptAttachment{
 				Name: firstNonEmpty(b.FileName, b.Name, b.Text),
 				Meta: meta,
+			})
+		case "attachment":
+			// 宿主 durable user/message 的附件块（HOST:cmd/dshd/attachments.go:568-578
+			// 的 ResolveBlocks）：附件 id 之外带 name/byteSize/mime，类型仍是 "attachment"。
+			// 官方两个前端块类型 image/file 是浏览器提交形状，落盘后统一成这一个。
+			meta := b.MIME
+			if b.ByteSize != nil {
+				if meta != "" {
+					meta += " · "
+				}
+				meta += itoa64(*b.ByteSize) + " B"
+			}
+			out = append(out, TranscriptAttachment{
+				Name:  b.Name,
+				Meta:  meta,
+				Image: strings.HasPrefix(b.MIME, "image/"),
 			})
 		}
 	}

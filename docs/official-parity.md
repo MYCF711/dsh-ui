@@ -122,7 +122,7 @@
 | 28 | `dsh-client-ui-plan` | ❌ MISSING | 无 |
 | 29 | `dsh-client-ui-plugin-manager` | ✅ IMPLEMENTED | `plugins/dssidebar/plugins_page.go`（侧栏「插件」管理页：列表/详情/启停/卸载）+ `internal/apiclient/plugin_manager.go` + `cmd/app/plugin_manager.go`；证据 [official-plugin-manager-evidence-rc2.md](official-plugin-manager-evidence-rc2.md) |
 | 30 | `dsh-client-ui-plugin-market` | ❌ MISSING | 无 |
-| 31 | `dsh-client-ui-plugin-recommendations` | ❌ MISSING | 无 |
+| 31 | `dsh-client-ui-plugin-recommendations` | ✅ IMPLEMENTED | **`plugins/dspluginreco`（`enable_official_plugin` 卡片正文：header/目录标题+描述/状态行/footer 两个按钮）+ `pluginapi/action_card_bodies.go`（正文注册表）+ `plugins/dsactioncards`（注册表提供方与按 kind 派发）+ `internal/apiclient/recommendations.go`（`pluginRecommendations.describe`）+ `cmd/app/official_panels_wiring.go`（describe + 查看详情接线）**；证据 [official-plugin-recommendations-evidence-rc2.md](official-plugin-recommendations-evidence-rc2.md)。**剩余差异**：目录描述到达前的骨架条不画（主题无 `--dsw-alias-bg-skeleton` 对等令牌，不自造灰色）；「查看详情」是标题行可点（官方 `.details` 是整块按钮） |
 | 32 | `dsh-client-ui-reference` | ✅ IMPLEMENTED | `plugins/dsconversation/usertext.go`（file/folder/session chip + PreviewFile）+ `plugins/dscomposer/trigger.go` + `internal/reficon` |
 | 33 | `dsh-client-ui-renderer` | ✅ IMPLEMENTED | `internal/uikernel`（槽 dispatch） |
 | 34 | `dsh-client-ui-schedule` | ✅ IMPLEMENTED | `plugins/dssidebar/schedule_page.go`（任务管理页）+ `internal/apiclient/schedule.go`（`schedule.catalog/edit/run/history`）+ `cmd/app/schedule_catalog.go`；侧栏摘要仍在 `plugins/dsschedule` |
@@ -172,7 +172,11 @@
 > 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
 > `#54`/`#59` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 44 · 🟡 5 · ⬜ 0（不该有） · ❌ 17
+## 合计：官方 66 个部件 —— ✅ 45 · 🟡 5 · ⬜ 0（不该有） · ❌ 16
+
+> 剩下 16 条 MISSING 的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
+> B 档"要一次架构判断" / C 档"宿主缺前置" / D 档"按 HIDE 登记"）见
+> [official-missing-batch-a-findings-rc2.md](official-missing-batch-a-findings-rc2.md)。
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），

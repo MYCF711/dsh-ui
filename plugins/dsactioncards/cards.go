@@ -11,7 +11,7 @@
 //	OFF:ProposeRow.module.css 6 行：过程行几何
 //	OFF:locales.ts           22 行：zh 字典 14 条（本包**只许**用这 14 条原文）
 //	OFF:mount.ts             63 行：两个座位（conversation.chat.turnTail / tool.call.toolview）
-//	OFF:registry.ts          72 行：kind body 注册表（本包不搬，见文末「没搬」）
+//	OFF:registry.ts          72 行：kind body 注册表（本包**搬了**：见 §「正文注册表」）
 //
 // # 数据面证据（宿主是真的，不是注释）
 //
@@ -21,6 +21,15 @@
 //	HOST:internal/transport/handlers_account_official.go:1447-1502  actionCards.act handler
 //	HOST:internal/transport/handlers_session_official.go:947         values["actionCards"]
 //	HOST:cmd/dshd/serve_action_cards.go:55-57 / serve.go:941       产品启动路径上已挂真实现
+//
+// # 正文注册表（2026-11-15 补齐）
+//
+// 官方 `ctx.actionCards`（OFF:mount.ts:47-49 的 `reflect.provide`）在本仓的对等物是
+// `pluginapi.KeyActionCardBodies`：本包在 `Register` 里把它 `Provide` 出去，任何
+// action kind 的插件用 `Requires()` 声明依赖后，在自己的 `Register` 里
+// `RegisterBody(…)` 一次。派发在 `drawCardTail`：注册了正文的 kind 由正文**接管**
+// 卡片内部（官方 OFF:Card.tsx:99-118 同一形状），没注册的画 FallbackBody。
+// 第一个消费方是 `plugins/dspluginreco`（官方 `dsh-client-ui-plugin-recommendations`）。
 //
 // # 它要壳注入什么（**接线时照这个来**）
 //
@@ -52,12 +61,13 @@
 //
 // # 没搬的官方细节（照实登记，不假装搬了）
 //
-//   - **kind body 注册表**（OFF:registry.ts 全套）：官方允许 action kind 注册自己的
-//     body；本仓宿主侧 kind 注册表还在 `internal/actioncards`（Go 侧），浏览器这条
-//     `ctx.actionCards.register(...)` 通道没有对等物。所以这里只画官方
-//     `FallbackBody`（OFF:Card.tsx:118-150）——卡片框 + 标题 + brief + 决定状态 +
-//     「暂不需要」。kind 自有动词（非 dismiss）因此**没有入口可点**：不认识的 kind
-//     不画假按钮（官方在没有 body 时也只给 dismiss）。
+//   - **kind body 注册表的 TypeScript 形状**：官方 body 是 React 组件，还额外收
+//     `locale`（运行时字典）与 `Folded`（按字素折叠的组件）两个参数。本仓的正文是
+//     `pluginapi.ActionCardBody`（`Action() + Draw()`），没有运行时字典、也没有
+//     Folded——理由逐条写在 `pluginapi/action_card_bodies.go` 文件头的「有意差异」。
+//     没有注册正文的 kind 仍画官方 `FallbackBody`（OFF:Card.tsx:118-150），其中
+//     kind 自有动词（非 dismiss）**没有入口可点**：不画假按钮（官方在没有 body 时
+//     也只给 dismiss）。
 //   - **per-turn 座位**：官方 turnTail 按轮取（`proposalOf(view, turn)`，
 //     OFF:Card.tsx:69-76），我们的骨架在会话级只 dispatch 一次，所以按
 //     「最新一轮 + 最小 callId」选一张（与官方同轮择一规则一致）。
@@ -80,6 +90,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -273,7 +284,19 @@ type Plugin struct {
 	// cardBoxes / rowBoxes 是最近一帧画出来的几何（无头测试量它；产品路径只写不读）。
 	cardBoxes cardBoxes
 	rowBoxes  rowBoxes
+
+	// bodies 是注册进来的 kind 正文（官方 ActionCardRegistry 的 bodies map）。
+	//
+	// 键是 action 名；空 = 一种都没注册，此时所有卡片都走官方 FallbackBody
+	// （与官方"没有 body 就画 fallback"同义）。受 p.mu 保护。
+	bodies map[string]pluginapi.ActionCardBody
 }
+
+// errEmptyCardBodyAction 是"注册了一个说不出 action 名的正文"。
+//
+// 不用 action 名去索引的注册项在本仓无处存放：官方那边注册项自带 action，
+// 空串会在注册时就被类型系统挡住；Go 这边只能显式拒绝。
+var errEmptyCardBodyAction = errors.New("ds-actioncards: 卡片正文没有 action 名")
 
 // cardBoxes 是卡片这一帧的关键矩形与状态行。
 type cardBoxes struct {
@@ -300,16 +323,50 @@ type rowBoxes struct {
 // ID 实现 pluginapi.Plugin。
 func (*Plugin) ID() string { return "ds-actioncards" }
 
-// Provides 实现 pluginapi.Plugin：动作卡不对外提供服务键。
-func (*Plugin) Provides() []string { return nil }
+// Provides 实现 pluginapi.Plugin：动作卡对外提供**正文注册表**
+// （官方 `ctx.reflect.provide('actionCards', registry)`，OFF:mount.ts:47-49）。
+//
+// 不提供它，`enable_official_plugin` 那类卡片就只能画官方 FallbackBody——
+// 也就是"标题 + 暂不需要"，kind 自己的动词没有入口可点。
+func (*Plugin) Provides() []string { return []string{pluginapi.KeyActionCardBodies} }
 
 // Requires 实现 pluginapi.Plugin：没有设计令牌就画不出官方那套颜色。
 func (p *Plugin) Requires() []string { return []string{pluginapi.KeyTheme} }
 
-// Register 实现 pluginapi.Plugin：只做注入，不画东西。
+// Register 实现 pluginapi.Plugin：注入主题 + 提供正文注册表，不画东西。
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme, _ = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
+	ctx.Provide(pluginapi.KeyActionCardBodies, pluginapi.ActionCardBodyRegistry(p))
 	return nil
+}
+
+// RegisterBody 实现 pluginapi.ActionCardBodyRegistry：登记一种 kind 的正文。
+//
+// 重复登记**报错不覆盖**（OFF:registry.ts:104-106 抛 `a body for "…" is already
+// registered`）：两个人抢一种卡片的绘制权，静默覆盖会让被覆盖那一方永远看不见
+// 自己的改动。action 为空同样拒绝——那是注册方写错，不是"画默认"。
+func (p *Plugin) RegisterBody(body pluginapi.ActionCardBody) error {
+	if body == nil || body.Action() == "" {
+		return errEmptyCardBodyAction
+	}
+	action := body.Action()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.bodies == nil {
+		p.bodies = map[string]pluginapi.ActionCardBody{}
+	}
+	if _, exists := p.bodies[action]; exists {
+		return fmt.Errorf("ds-actioncards: action %q 的正文已经被注册过", action)
+	}
+	p.bodies[action] = body
+	return nil
+}
+
+// BodyFor 实现 pluginapi.ActionCardBodyRegistry：取一种 kind 的正文（没有返回 nil）。
+func (p *Plugin) BodyFor(action string) pluginapi.ActionCardBody {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.bodies[action]
 }
 
 // Panels 实现 pluginapi.Panels：官方两个座位各一个画法。
@@ -384,12 +441,31 @@ func failureText(err error) string {
 	return err.Error()
 }
 
-// ── 动作：点「暂不需要」 ────────────────────────────────────────────────────
+// ── 动作：点按钮 ────────────────────────────────────────────────────────────
 
-// act 执行一次卡片动作（目前只有官方共享的 dismiss 有入口）。
+// actCard 执行一次"这一屏上那张卡"的动作（官方共享的 dismiss 那条路）。
+//
+// 单卡片座位（会话级）只画一张，所以这里按 `LatestProposal` 取；kind body
+// 的按钮走 `actVerb`，它带明确的 callId——一个 kind 的动词绝不能"顺手落到
+// 另一张卡的 callId 上"。
 func (p *Plugin) actCard(verb string) {
+	p.mu.Lock()
+	view := p.view
+	p.mu.Unlock()
+	if view == nil {
+		return
+	}
+	proposal, ok := view.LatestProposal()
+	if !ok {
+		return
+	}
+	p.actVerb(proposal.CallID, verb, nil)
+}
+
+// actVerb 对**指定那张卡**执行一次动作（官方 `act(callId, verb, payload)`）。
+func (p *Plugin) actVerb(callID, verb string, payload map[string]json.RawMessage) {
 	src := currentSource()
-	if src == nil {
+	if src == nil || callID == "" || verb == "" {
 		return
 	}
 	p.mu.Lock()
@@ -397,27 +473,25 @@ func (p *Plugin) actCard(verb string) {
 		p.mu.Unlock()
 		return
 	}
-	proposal, ok := p.view.LatestProposal()
 	session := p.session
 	if session == "" {
 		session = p.viewSession
 	}
-	if !ok || session == "" {
+	if session == "" {
 		p.mu.Unlock()
 		return
 	}
 	p.acting = true
 	p.actError = ""
 	p.actResult = apiclient.ActionCardResult{}
-	p.actFor = proposal.CallID
+	p.actFor = callID
 	p.mu.Unlock()
 	p.invalidate() // 先把 disabled 那一帧放出来
 
-	callID := proposal.CallID
 	p.dispatch(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), actTimeout)
 		defer cancel()
-		raw, err := src.Act(ctx, session, callID, verb, nil)
+		raw, err := src.Act(ctx, session, callID, verb, payload)
 		p.mu.Lock()
 		p.acting = false
 		switch {
@@ -492,6 +566,16 @@ func (p *Plugin) drawCardTail(f ui.C, env *pluginapi.Env) {
 	}
 	decision, hasDecision := view.Decision(proposal.CallID)
 
+	// 官方 ActionCard（OFF:Card.tsx:99-118）：这个 kind 注册了正文就**整段**交给它，
+	// 框架只画那层 `<section class=card>`；没注册才画 FallbackBody。
+	//
+	// 先查注册表再画框：body 的存在性属于"这一帧画不画"，和卡片有没有数据同一层。
+	if body := p.BodyFor(proposal.Action); body != nil {
+		p.drawKindCard(f, env, t, body, proposal, decision, hasDecision, session,
+			acting, actError, actResult, actFor == proposal.CallID)
+		return
+	}
+
 	card := ui.Column(f).FillWidth().
 		MarginSides(cardMarginY, 0, cardMarginY, 0).
 		Background(t.BgLayer1).Radius(t.Radii.LG).
@@ -513,6 +597,49 @@ func (p *Plugin) drawCardTail(f ui.C, env *pluginapi.Env) {
 			}
 		})
 	})
+}
+
+// drawKindCard 画"注册了正文的 kind 卡片"：框架只给卡片框，正文由 body 画。
+//
+// 官方把 `<section class=card>` 留在 ActionCard 里、把 `.header` 与 `.body` 留给
+// body（OFF:Card.tsx:99-118 + OFF:plugin-recommendations/Card.tsx:130-159），所以
+// 这里**不加内边距**：header 在官方是通栏的（含左右 20 的内边距），由 body 自己给。
+func (p *Plugin) drawKindCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, body pluginapi.ActionCardBody,
+	proposal apiclient.ActionCardProposal, decision apiclient.ActionCardDecision, hasDecision bool,
+	session string, acting bool, actError string, actResult apiclient.ActionCardResult, feedbackForThisCard bool) {
+	card := ui.Column(f).FillWidth().
+		MarginSides(cardMarginY, 0, cardMarginY, 0).
+		Background(t.BgLayer1).Radius(t.Radii.LG).
+		Border(cardBorder, t.BorderL2).Clip()
+	p.cardBoxes.Card = card
+
+	props := pluginapi.ActionCardBodyProps{
+		SessionID: session,
+		CallID:    proposal.CallID,
+		Action:    proposal.Action,
+		Title:     proposal.Title,
+		Brief:     proposal.Brief,
+		Details:   proposal.Details,
+		Acting:    acting,
+		ActError:  actError,
+		// 动词落在**这张卡**的 callId 上：kind 的 enable 不许顺手落到别的卡。
+		Act: func(verb string, payload map[string]json.RawMessage) {
+			p.actVerb(proposal.CallID, verb, payload)
+		},
+	}
+	if hasDecision {
+		props.HasDecision = true
+		props.Phase = decision.Phase
+		props.Data = decision.Data
+	}
+	if feedbackForThisCard {
+		info := &pluginapi.ActionCardResultInfo{Status: actResult.Status, Reason: actResult.Reason}
+		if actResult.Decision != nil {
+			info.Phase = actResult.Decision.Phase
+		}
+		props.LastResult = info
+	}
+	card.Children(func() { body.Draw(f, env, props) })
 }
 
 // drawBrief 画 brief 与它的折叠开关（官方 FoldedText，OFF:Card.tsx:43-67）。

@@ -28,13 +28,20 @@ type (
 	SkillCandidate            = pub.SkillCandidate
 	FeedbackItem              = pub.FeedbackItem
 	FeedbackResult            = pub.FeedbackResult
-	Painter                   = pub.Painter
-	Primitives                = pub.Primitives
-	Env                       = pub.Env
-	Geometry                  = pub.Geometry
-	Snapshot                  = pub.Snapshot
-	Usage                     = pub.Usage
-	Approval                  = pub.Approval
+	// 官方 workspace registry 的一条工作区（#62）。
+	Workspace = pub.Workspace
+	// context menu 服务与贡献（#10）。
+	ContextMenus            = pub.ContextMenus
+	ContextMenuTarget       = pub.ContextMenuTarget
+	ContextMenuAction       = pub.ContextMenuAction
+	ContextMenuContribution = pub.ContextMenuContribution
+	Painter                 = pub.Painter
+	Primitives              = pub.Primitives
+	Env                     = pub.Env
+	Geometry                = pub.Geometry
+	Snapshot                = pub.Snapshot
+	Usage                   = pub.Usage
+	Approval                = pub.Approval
 	// HistoryPaging 是主区「加载更早」单按钮的五态输入（additive）。
 	HistoryPaging = pub.HistoryPaging
 	// LinkState 是壳与宿主流连接的三态事实（`Snapshot.Link`）。
@@ -59,6 +66,8 @@ type (
 const (
 	KeyTheme      = pub.KeyTheme
 	KeyPrimitives = pub.KeyPrimitives
+	// KeyContextMenus 是 ds-contextmenu 提供的菜单服务键。
+	KeyContextMenus = pub.KeyContextMenus
 
 	// 连接四态（`Snapshot.Link`）的取值：纯转发公开包的常量。
 	LinkUnknown    = pub.LinkUnknown

@@ -101,7 +101,7 @@
 | 7 | `dsh-client-ui-brand-official` | ✅ IMPLEMENTED | `plugins/dsbrand` |
 | 8 | `dsh-client-ui-chat` | ✅ IMPLEMENTED | `plugins/dsconversation`（18 文件 / 8054 行） |
 | 9 | `dsh-client-ui-commands` | ✅ IMPLEMENTED | `plugins/dscommands`（2 文件 / 423 行） |
-| 10 | `dsh-client-ui-context-menu` | ❌ MISSING | 无 |
+| 10 | `dsh-client-ui-context-menu` | ✅ IMPLEMENTED | `plugins/dscontextmenu`（服务+官方槽）+ `dssidebar` 消费（workspace 组头右键/省略号、session 行省略号）；证据 [official-context-menu-workspace-evidence-rc2.md](official-context-menu-workspace-evidence-rc2.md) |
 | 11 | `dsh-client-ui-conversation` | ✅ IMPLEMENTED | `plugins/dsconversation` + `internal/uikernel` |
 | 12 | `dsh-client-ui-cordis` | ❌ MISSING | 无 |
 | 13 | `dsh-client-ui-creation-recommendations` | ❌ MISSING | 无 |
@@ -153,7 +153,7 @@
 | 59 | `dsh-client-ui-trajectory` | 🟡 PARTIAL | `plugins/dsrightbar` |
 | 60 | `dsh-client-ui-user-questions` | ✅ IMPLEMENTED | `plugins/dsquestions`（3 文件 / 423 行） |
 | 61 | `dsh-client-ui-workflow-run` | ✅ IMPLEMENTED | `dsconversation` 的 workflow-run 节点 |
-| 62 | `dsh-client-ui-workspace` | 🟡 PARTIAL | `internal/apiclient/fs.go` + `dssidebar` |
+| 62 | `dsh-client-ui-workspace` | 🟡 PARTIAL | `internal/apiclient/fs.go` + `dssidebar` + `plugins/dssidebar/workspace_actions.go`（**`workspace.registry`/`rename`/`delete`，#10 contextMenu 入口**）；剩余缺口见 [official-context-menu-workspace-evidence-rc2.md](official-context-menu-workspace-evidence-rc2.md) §2.3 |
 | 63 | `dsh-experimental-client-ui-cot-translation` | ❌ MISSING | 无 |
 | 64 | `dsh-experimental-client-ui-forge` | ❌ MISSING | 无 |
 | 65 | `dsh-experimental-client-ui-stats` | 🟡 PARTIAL | `plugins/dsstatusbar/metrics.go` + `wave3_wiring.go` |
@@ -165,7 +165,7 @@
 >
 > #34 的结构与几何证据、与官方的差异台账：[official-schedule-evidence-rc2.md](official-schedule-evidence-rc2.md)。未做面：会话头提醒目录、`schedule_create` 转录卡、会话行时钟标记、手动创建表单、可编辑规则、⋯ 菜单（理由与缺口见该文件 §4）。
 
-## 合计：官方 66 个部件 —— ✅ 36 · 🟡 12 · ⬜ 0（不该有） · ❌ 18
+## 合计：官方 66 个部件 —— ✅ 37 · 🟡 12 · ⬜ 0（不该有） · ❌ 17
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），

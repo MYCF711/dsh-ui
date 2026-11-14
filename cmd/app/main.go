@@ -31,6 +31,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscommands"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscomposer"
+	_ "github.com/MYCF711/dsh-ui/plugins/dscontextmenu"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdecl"
@@ -104,6 +105,13 @@ type model struct {
 	fsDirs map[string][]pluginapi.FSEntry
 	// fsPending 记录哪些目录正在拉，避免同一目录每帧都发一次请求。
 	fsPending map[string]bool
+	// workspaces 是官方 `workspace.registry` 的缓存（#62 的数据面）。
+	// workspacesKnown=false 表示还没成功拉到：消费方必须退回按 cwd 分组，
+	// **不能**把空切片当成"用户没有任何工作区"。
+	workspaces        []pluginapi.Workspace
+	workspacesKnown   bool
+	workspacesPending bool
+	workspacesErr     string
 	// fileRefs/sessionRefs 是 `@` 候选的按查询缓存（键 = sessionID + NUL + query）。
 	// pending 防重入：插件每帧都可能问同一个 query。
 	fileRefs           map[string][]pluginapi.FileReferenceCandidate
@@ -359,6 +367,9 @@ func (m *model) refreshList() {
 	// 官方任务目录：与 schedule.list 一样在启动/新会话入口拉一次（见
 	// schedule_catalog.go）。这里不阻塞 refreshList 的既有链路。
 	go m.refreshScheduleCatalog()
+	// 官方 workspace registry：侧栏工作区分组/改名/删除的唯一数据面（#62）。
+	// 同样是"启动拉一次 + 动作后重拉"，失败只记错误、不打扰用户。
+	go m.refreshWorkspaces()
 	// **UI 配置在这里拉**：`refreshList` 是启动与新建会话的公共入口
 	// （`-session` 的自动打开也在它内部），放这儿比放 `newSession` 早且全覆盖。
 	//
@@ -1742,6 +1753,7 @@ func newConfig(m *model) app.Config {
 
 		m.mu.Lock()
 		sessions := append([]apiclient.Session(nil), m.sessions...)
+		workspaces := cloneWorkspaces(m.workspaces)
 		cur := m.cur
 		msgs := append([]apiclient.Message(nil), m.msgs...)
 		metadata := map[string]pubapi.MessageMetadata{}
@@ -1862,7 +1874,7 @@ func newConfig(m *model) app.Config {
 		env := &pluginapi.Env{
 			Theme: m.theme,
 			Data: pluginapi.Snapshot{
-				Sessions: sessions, Cur: cur, Status: status,
+				Sessions: sessions, Workspaces: workspaces, Cur: cur, Status: status,
 				Msgs: msgs, Frames: frames, JournalEpoch: framesEpoch,
 				// 向前分页五态：**只在"确实开过会话"时才有意义**；
 				// 零值（Baseline/HasMore 全 false、无错）界面不画那一行。
@@ -2661,6 +2673,8 @@ func main() {
 		MessageFeedbackDelete: m.messageFeedbackDelete,
 		FeedbackTakeResult:    m.feedbackTakeResult,
 		OpenSession:           m.openSession,
+		WorkspaceRename:       m.renameWorkspace,
+		WorkspaceDelete:       m.deleteWorkspace,
 		DeleteSession:         m.deleteSession,
 		CompactSession:        m.compactSession,
 		ForkSession:           m.forkSession,

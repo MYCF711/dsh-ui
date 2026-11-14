@@ -26,6 +26,8 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/internal/uiplugins"
 	pubapi "github.com/MYCF711/dsh-ui/pluginapi"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsactioncards"
+	"github.com/MYCF711/dsh-ui/plugins/dsattachment"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscommands"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscomposer"
@@ -34,6 +36,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdecl"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsdirpicker"
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
@@ -1647,6 +1650,9 @@ func newConfig(m *model) app.Config {
 			fields = append(fields, withFields.Fields()...)
 		}
 	}
+	// 官方 `ui-attachment` 的「拖入即添加」：Viva 的系统拖放事件（原生目标给绝对路径）。
+	// 插件自己拿不到窗口配置，所以由壳转发；返回它是否消费了这次事件。
+	cfg.OnFileDrop = func(ev gfx.FileDropEvent) gfx.EventResult { return dsattachment.HandleFileDrop(ev) }
 	configureFrameWindow(&cfg, runtime.GOOS == "windows", theme)
 	cfg.TextInput = m.chrome.wrapTextInput(ui.Fields(fields...))
 	m.chrome.newSession = m.newSession
@@ -2359,6 +2365,9 @@ func main() {
 	// Theme 传包级 `theme` 的地址 → applyPendingTheme 改 theme，下一帧跟着换。
 	// Tree 给整窗的交互树（与 app.Config{Tree: &tree} 是同一棵）。
 	m.view = ui.NewPage(ui.PageConfig{Tree: &tree, Theme: &theme})
+	// 官方目录浏览器：把数据源与「打开后」的回调注入插件（见 dirpicker_wiring.go）。
+	wireDirPicker(m)
+	wireOfficialPanels(m)
 	m.actions = pluginapi.Actions{
 		// 宿主 ui-config.json 的读写。ConfigGet 给的是**缓存**（插件要同步返回），
 		// ConfigSet 异步写、失败只报状态栏——插件不等待也不重试。
@@ -2411,6 +2420,8 @@ func main() {
 			}
 			return names
 		},
+		// 官方目录选择器（「添加工作区」的落点）。nil 时侧栏不画那个按钮。
+		OpenDirectoryPicker: func() { m.openDirectoryPicker() },
 		ScheduleList: func() []pluginapi.ScheduleItem {
 			m.mu.Lock()
 			defer m.mu.Unlock()

@@ -730,6 +730,25 @@ type Actions struct {
 	// nil = 壳没接（老宿主）。
 	ScheduleList func() []ScheduleItem
 
+	// OpenDirectoryPicker 打开**官方目录选择器**（官方 `dsh-client-ui-directory-picker-browse`
+	// 的 Miller 双列对话框），用它「添加工作区」。
+	//
+	// 官方归属：这个对话框是 `ui-workspace` 的 directory-flow 洞的两个填充者之一
+	// （另一个是 `ui-directory-picker-native`，走 OS 原生选择器）。本仓只落地了
+	// browse 那一个 backend，所以这里只有一个入口，没有"二选一"。
+	//
+	// **为什么由壳转一手而不是插件互相找**：对话框本体在 `plugins/dsdirpicker` 里，
+	// 而触发它的「添加工作区」按钮在 `plugins/dssidebar` 的工作区工具带上
+	// （官方同一位置）。插件之间不 direct 引用（R2 只拿 *Scope）；壳知道两者都在，
+	// 所以由壳把这一下转过去。`plugins/dssidebar/frame.go` 那句
+	// 「没有 OS 目录选择/workspace mutation，官方"添加工作区"整钮隐藏」的能力前提
+	// 已经不成立：宿主 `directoryPicker.list/createDirectory` 是真目录浏览
+	// （`HOST:cmd/dshd/serve_workspace_api.go:1668`）、`workspace.create` 是真注册表
+	// （`:583`）。
+	//
+	// nil = 壳没接 → **插件不许画那个按钮**（画一个点了没反应的按钮比不画更糟）。
+	OpenDirectoryPicker func()
+
 	// JobsList 列后台任务（宿主 `jobs.list`）。
 	//
 	// **同步返回壳缓存**，和 ScheduleList 一样。区别在于数据新鲜度：

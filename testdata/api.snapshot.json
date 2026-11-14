@@ -2,7 +2,7 @@
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,
   "input_style": "flat",
-  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method>。入参一律**平铺**：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构。v2（2026-11-04）按真宿主当前实现重写：stream 段原来的 {t:ev,kind,topic} + gap 帧是**错的**，真形状是 {seq,type,data,time} 且服务端不发 gap；方法表随实现增补（2026-11-14 实测 43 个，以 counts.total 为准；本段不再复述数字，免得又漂）。",
+  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method>。入参一律**平铺**：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构。v2（2026-11-04）按真宿主当前实现重写：stream 段原来的 {t:ev,kind,topic} + gap 帧是**错的**，真形状是 {seq,type,data,time} 且服务端不发 gap；方法表随实现增补（以 counts.total 为准；本段不复述具体数字，免得又漂）。",
   "envelope": {
     "request": {
       "style": "flat",
@@ -824,16 +824,53 @@
         "reason": "string?"
       },
       "req_note": "官方动作卡的用户动作（唯一方法；卡片**投影**不是方法，见下）。入参平铺：sessionId（宿主 sessionRef 也认官方 wire 名 agentId / id，HOST:internal/transport/handlers_agent_official.go:511-520）、callId、verb（`dismiss` 或 kind 自己的动词）、payload（可选对象，kind 自定义字段）。handler HOST:internal/transport/handlers_account_official.go:1447-1502（callId/verb 空串 400、payload 非对象 400、未挂运行时 501、非法 status/settled 缺 decision/refused 缺 reason 500）；真实现 HOST:internal/actioncards/service.go:238（四个 status 常量 :36-42，视图类型 :129-133）。产品启动路径已挂真实现：HOST:cmd/dshd/serve.go:926 与 :941、HOST:cmd/dshd/serve_action_cards.go:55-57。**`actionCards.view` 不是宿主方法**：卡片投影走 `session.projections` 的 `values.actionCards`（HOST:internal/transport/handlers_session_official.go:947，来源 HOST:internal/transport/handlers_action_cards_view.go:38-52），所以本快照不登记一条不存在的 view 方法（客户端 ActionCardsView 调的是已在本表的 session.projections）。"
+    },
+    "pluginInventory.list": {
+      "batch": 8,
+      "req": {},
+      "resp": {
+        "managementAvailable": "bool?",
+        "entries": [
+          {
+            "entryId": "string",
+            "moduleName": "string",
+            "meta": "PluginLocalizedMeta?",
+            "enabled": "bool",
+            "fiberPhase": "null|pending|loading|active|failed|unloading",
+            "diagnostic": "string?"
+          }
+        ],
+        "agentPresets": [
+          {
+            "id": "string",
+            "name": "string?",
+            "isDefault": "bool",
+            "broken": "string?",
+            "rows": [
+              {
+                "entryId": "string|null",
+                "moduleName": "string",
+                "meta": "PluginLocalizedMeta?",
+                "enabled": "bool|'conditional'",
+                "condition": "string?",
+                "fiberPhase": "null|pending|loading|active|failed|unloading"
+              }
+            ]
+          }
+        ]
+      },
+      "req_note": "零参数、direct 调用（官方 @deepseek-ai/dsh-host-plugin-inventory 0.2.2-rc.2 的 TypertRemote `pluginInventory.list`：src/index.ts:50-74 声明、src/index.ts:82-121 实现、src/types.ts:16-77 类型）。handler HOST:internal/transport/handlers_plugin_inventory_official.go:26-69（真实现挂在 OfficialPluginManagerAPI.PluginInventoryList 上，与 pluginManager.listPlugins 共用同一份 Manager/Loader）-> HOST:cmd/dshd/serve_plugins_official.go:54-74 适配，条目由 HOST:cmd/dshd/serve_plugins_official.go:188-225 生成（entryId=bundle name、moduleName=manifest entry、fiberPhase 只有 active/null 两种真值）。三处**缺席语义**必须分清：(1) `entryId`/`moduleName`/`enabled`/`fiberPhase` 必填，`fiberPhase: null` 是合法取值（没有活着的 root Fiber），不是缺字段；(2) `meta` 缺席 = 包没有本地显示元数据，官方回退到 moduleName（ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.tsx:94-100），本仓宿主**不产出** meta；(3) `agentPresets` 整键缺席 = 这个部署没有组合 agent-preset roster（**不是**空数组），本仓宿主明确不产出（handlers_plugin_inventory_official.go:20-23）。`meta.title`/`meta.description` 是官方 LocalizedText = string | {en:string,[locale]:string}（dsh-package-manifest/src/types.ts:44）。宿主没接线 -> 501 not_implemented 四字段，**不是**空 entries。"
     }
   },
   "counts": {
-    "total": 50,
+    "total": 51,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
     "batch4": 2,
     "batch5": 1,
     "batch6": 6,
-    "batch7": 7
+    "batch7": 7,
+    "batch8": 1
   }
 }

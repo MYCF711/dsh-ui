@@ -116,6 +116,13 @@ type PanelSection struct {
 	Rows []PanelRow
 	// Anchor 是 rc.2 注册点（报告与结构测试用）。
 	Anchor string
+	// Plugins 非 nil 表示这一页是「内置插件」页：它有**自己的**渲染面
+	// （搜索框 + 分组 + 卡片网格 + 展开详情），不是「标题 + 一行一个控件」的
+	// 那种页（官方也一样：`settings.plugins.tab` 里是另一套组件树）。
+	//
+	// 所以 `Rows` 对它是空的，绘制走 official_plugins_draw.go；
+	// 键盘导航也按卡片走（官方卡片是真按钮，Enter 展开/收起）。
+	Plugins *PluginsPanel
 }
 
 // PanelModel 是一帧设置面板的全部内容。
@@ -156,6 +163,18 @@ func (s PanelSection) Row(id string) (PanelRow, bool) {
 // describe 为 nil 表示宿主没接线（老壳）：那时**结构骨架照画**（5 个 section、
 // 13 个 general item 的标题），但每行都是「未知」——这是「结构先于数据」的落点。
 func BuildPanel(describe *apiclient.SettingsDescribeResult, facts HostFacts) PanelModel {
+	return BuildPanelWithPlugins(describe, facts, nil, PluginsView{})
+}
+
+// BuildPanelWithPlugins 是 BuildPanel 的完整形态：`inventory` 是「内置插件」
+// 页的数据面（nil = 宿主没接这条能力）。
+//
+// 为什么单独一个入口而不是给 BuildPanel 加两个参数：`pluginInventory.list` 与
+// `settings.describe` 是**两条独立的宿主能力**，调用方（壳）拿到的时间点也不同；
+// 只有真接上清单的那条路径需要传它，其余调用点（结构骨架/写入后的重算）
+// 保持原来的两参数形态，读起来才知道"这一帧到底有没有清单"。
+func BuildPanelWithPlugins(describe *apiclient.SettingsDescribeResult, facts HostFacts,
+	inventory *apiclient.PluginInventoryResult, view PluginsView) PanelModel {
 	m := PanelModel{RowCount: facts.VisibleRowCount()}
 	if describe != nil {
 		m.Writable = describe.Writable
@@ -180,8 +199,9 @@ func BuildPanel(describe *apiclient.SettingsDescribeResult, facts HostFacts) Pan
 		case "models":
 			buildModelsSection(&panel, describe, &m)
 		case "plugins":
-			buildStaticSection(&panel, describe, "plugins",
-				"内置插件清单需要 pluginInventory.list（settings.describe 不含该数据）")
+			// 官方这一页的数据**不在** settings.describe 里：它是 Cordis Loader 的
+			// 只读清单（官方 `pluginInventory.list`，另一个 Remote）。所以要单独传。
+			buildPluginsSection(&panel, inventory, view)
 		case "agent-presets":
 			buildStaticSection(&panel, describe, "agent-presets",
 				"Agent 预设需要 agentPreset 数据（settings.describe 不含该数据）")

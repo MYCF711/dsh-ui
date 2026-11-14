@@ -120,7 +120,7 @@
 | 26 | `dsh-client-ui-open-in-app` | ✅ IMPLEMENTED | `plugins/dsopen`（3 文件 / 163 行） |
 | 27 | `dsh-client-ui-permission-presets` | ✅ IMPLEMENTED | `dscomposer` + `dssettings` |
 | 28 | `dsh-client-ui-plan` | ❌ MISSING | 无 |
-| 29 | `dsh-client-ui-plugin-manager` | 🟡 PARTIAL | `dssettings` 的 `plugins` section |
+| 29 | `dsh-client-ui-plugin-manager` | 🟡 PARTIAL | `plugins/dssettings` 的 `plugins` section（只读清单页那半）+ **侧栏管理页未做** |
 | 30 | `dsh-client-ui-plugin-market` | ❌ MISSING | 无 |
 | 31 | `dsh-client-ui-plugin-recommendations` | ❌ MISSING | 无 |
 | 32 | `dsh-client-ui-reference` | 🟡 PARTIAL | `plugins/dscomposer/mention.go` |
@@ -133,8 +133,8 @@
 | 39 | `dsh-client-ui-settings-agent-loop` | ❌ MISSING | 无 |
 | 40 | `dsh-client-ui-settings-general` | ✅ IMPLEMENTED | `dssettings` 的 general 页 |
 | 41 | `dsh-client-ui-settings-models` | 🟡 PARTIAL | `dssettings` 的 models 页 |
-| 42 | `dsh-client-ui-settings-plugin-inventory` | 🟡 PARTIAL | 同 `plugins` section |
-| 43 | `dsh-client-ui-settings-plugins` | 🟡 PARTIAL | 同 `plugins` section |
+| 42 | `dsh-client-ui-settings-plugin-inventory` | ✅ IMPLEMENTED | `plugins/dssettings/official_plugins.go` + `official_plugins_draw.go` + `internal/apiclient/plugin_inventory.go` |
+| 43 | `dsh-client-ui-settings-plugins` | ✅ IMPLEMENTED | `plugins/dssettings/official_tree.go:83` + `official_plugins*.go`（外壳 + tab 台账） |
 | 44 | `dsh-client-ui-settings-session-log` | 🟡 PARTIAL | `dssettings` 的 general item `session-log-upload-toast` |
 | 45 | `dsh-client-ui-settings-shell` | ❌ MISSING | 无 |
 | 46 | `dsh-client-ui-settings-subagent` | ❌ MISSING | 无 |
@@ -159,7 +159,9 @@
 | 65 | `dsh-experimental-client-ui-stats` | 🟡 PARTIAL | `plugins/dsstatusbar/metrics.go` + `wave3_wiring.go` |
 | 66 | `dsh-experimental-client-ui-voice-input` | ❌ MISSING | 无 |
 
-## 合计：官方 66 个部件 —— ✅ 28 · 🟡 21 · ⬜ 0（不该有） · ❌ 17
+> #29 / #42 / #43 三行的完整结构与几何证据（官方 `src/**` 锚点、逐字 locale、HIDE 台账）：[official-plugins-page-evidence-rc2.md](official-plugins-page-evidence-rc2.md)。其中 #43 的「内置/第三方分 tab」在 rc.2 **不存在**——`settings.plugins.tab` 全仓只有只读清单一个贡献方。
+
+## 合计：官方 66 个部件 —— ✅ 30 · 🟡 19 · ⬜ 0（不该有） · ❌ 17
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），

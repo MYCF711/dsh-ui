@@ -845,6 +845,25 @@ type Actions struct {
 	// retryPolicy 的嵌套路径（`providers.<route>.retryPolicy.*`）走这条：
 	// 官方 `settings.form.set` 只接受单段字段名。
 	SettingsMutate func(ns string, ops []apiclient.SettingsOp, expectedRevision int) (apiclient.SettingsNamespaceView, error)
+
+	// PluginInventory 返回壳缓存的官方 `pluginInventory.list` 结果
+	// —— 设置面板「内置插件」页的数据面。
+	//
+	// 为什么它是**独立**于 SettingsDescribe 的一路：官方那份清单不是 Host 设置
+	// （`settings.describe` 里没有它），它是 Cordis Loader 的只读投影
+	// （`dsh-host-plugin-inventory/src/index.ts:82-121`）。本仓宿主同形：
+	// `pluginInventory.list` 与 `pluginManager.listPlugins` 共用同一份
+	// Manager/Loader（`DSH-GO/internal/transport/handlers_plugin_inventory_official.go:26-69`）。
+	//
+	// 与 SettingsDescribe 同一套缓存形状：同步返回**壳缓存的那一份**，
+	// 首次问会触发一次后台拉取；nil = 壳没接这条能力（那时插件页退回
+	// 「未知·宿主未接」的说明，不画假卡片）。
+	PluginInventory func() *apiclient.PluginInventoryResult
+	// PluginInventoryRefresh 触发一次后台重读（官方 Plugins 页的「重试」按钮，
+	// `ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.tsx:321-324`）。
+	//
+	// 调用后不等结果：壳拉完会 Invalidate，下一帧插件读到的就是新值。
+	PluginInventoryRefresh func()
 }
 
 // SettingsHostFacts 是设置面板需要的**宿主事实**（决定动态注册）。

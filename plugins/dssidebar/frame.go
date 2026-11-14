@@ -156,6 +156,11 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 				p.frameBoxes.PanelRows = append(p.frameBoxes.PanelRows, row)
 				if row.Clicked() {
 					p.activePanel = route.ID
+					// 打开任务页时拉一次官方目录：Transport 没有 schedule/changed
+					// 推送，面板不主动拉就会一直显示上一次的缓存（可能是几分钟前）。
+					if route.ID == "schedules" && env.Act.ScheduleRefresh != nil {
+						env.Act.ScheduleRefresh()
+					}
 				}
 			}
 		})
@@ -303,10 +308,6 @@ func (p *Plugin) drawPluginsPanel(f ui.C, env *pluginapi.Env) {
 }
 
 func (p *Plugin) drawSchedulesPanel(f ui.C, env *pluginapi.Env) {
-	t := p.theme
-	ui.Column(f).FillWidth().Gap(8).Children(func() {
-		ui.Text(f, "自动化任务").FontSize(24).LineHeight(32).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
-		ui.Text(f, "当前宿主未提供任务目录").FontSize(t.Fonts.Body).LineHeight(22).Color(t.LabelTertiary)
-		// 没有 schedule catalog/history/action 时不编任务、不画新建/删除死按钮。
-	})
+	// 官方 TaskManagerPage 的落地在 schedule_page.go（数据面 Actions.ScheduleCatalog）。
+	p.drawSchedulePage(f, env)
 }

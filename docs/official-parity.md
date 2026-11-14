@@ -125,7 +125,7 @@
 | 31 | `dsh-client-ui-plugin-recommendations` | ❌ MISSING | 无 |
 | 32 | `dsh-client-ui-reference` | ✅ IMPLEMENTED | `plugins/dsconversation/usertext.go`（file/folder/session chip + PreviewFile）+ `plugins/dscomposer/trigger.go` + `internal/reficon` |
 | 33 | `dsh-client-ui-renderer` | ✅ IMPLEMENTED | `internal/uikernel`（槽 dispatch） |
-| 34 | `dsh-client-ui-schedule` | 🟡 PARTIAL | `plugins/dsschedule`（2 文件 / 125 行） |
+| 34 | `dsh-client-ui-schedule` | ✅ IMPLEMENTED | `plugins/dssidebar/schedule_page.go`（任务管理页）+ `internal/apiclient/schedule.go`（`schedule.catalog/edit/run/history`）+ `cmd/app/schedule_catalog.go`；侧栏摘要仍在 `plugins/dsschedule` |
 | 35 | `dsh-client-ui-secret-mask` | ✅ IMPLEMENTED | `internal/secretmask`（官方格式表）+ `plugins/dsconversation/usertext.go`（逐值显示/隐藏） |
 | 36 | `dsh-client-ui-session` | ✅ IMPLEMENTED | `internal/apiclient` + `cmd/app` |
 | 37 | `dsh-client-ui-settings` | ✅ IMPLEMENTED | `plugins/dssettings`（14 文件 / 5470 行） |
@@ -162,8 +162,10 @@
 > #29 / #42 / #43 三行的完整结构与几何证据（官方 `src/**` 锚点、逐字 locale、HIDE 台账）：[official-plugins-page-evidence-rc2.md](official-plugins-page-evidence-rc2.md)。其中 #43 的「内置/第三方分 tab」在 rc.2 **不存在**——`settings.plugins.tab` 全仓只有只读清单一个贡献方。
 >
 > #22 的结构与几何证据、与官方的 9 条差异台账：[official-jobs-evidence-rc2.md](official-jobs-evidence-rc2.md)。
+>
+> #34 的结构与几何证据、与官方的差异台账：[official-schedule-evidence-rc2.md](official-schedule-evidence-rc2.md)。未做面：会话头提醒目录、`schedule_create` 转录卡、会话行时钟标记、手动创建表单、可编辑规则、⋯ 菜单（理由与缺口见该文件 §4）。
 
-## 合计：官方 66 个部件 —— ✅ 35 · 🟡 13 · ⬜ 0（不该有） · ❌ 18
+## 合计：官方 66 个部件 —— ✅ 36 · 🟡 12 · ⬜ 0（不该有） · ❌ 18
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），

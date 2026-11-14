@@ -141,6 +141,19 @@ type Plugin struct {
 	// lastSig 是上一次打印过的指纹，用来避免每帧刷屏。
 	debug   bool
 	lastSig string
+
+	// ── 官方任务管理页的本地状态（schedule_page.go）──
+	//
+	// 这些都是**界面自己的状态**，不进壳：筛选词、选中任务、详情 tab、
+	// 删除上膛、记录展开。官方的 TaskManagerPage 同样把它们放在组件本地。
+	schedSearch       ui.Field
+	schedFilter       string // active(默认) / paused / ended / all
+	schedSelected     string
+	schedTab          string // rule / records
+	schedDeleteArm    bool   // 删除按钮第一次点击后的"上膛"态
+	schedExpanded     map[string]bool
+	schedActionNotice string
+	schedNoticeUntil  time.Time
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -174,7 +187,10 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 }
 
 // Fields 让壳把搜索框登记进 cfg.TextInput（不登记就收不到键盘）。
-func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.search} }
+//
+// 任务管理页的搜索框同样要登记：它只在那个面板可见，但注册是静态的，
+// 焦点由壳按"点到的输入框"分配，多一个未挂载的 Field 不会抢焦点。
+func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.search, &p.schedSearch} }
 
 // Width 返回侧栏占的宽度。
 func (p *Plugin) Width() float32 { return p.width }

@@ -322,6 +322,98 @@ func (c *ContextPressure) Occupancy() (used int64, window int64, percent int, ok
 	return used, window, percent, true
 }
 
+// SubagentIdentity 是宿主 `subagent` 投影（**子会话自己**的身份）。
+//
+// 官方形状（`HOST:internal/transport/handlers_session_official.go:375-380` 的
+// `OfficialSubagentIdentity`）：`{mode,label,seq}`。`seq` 是 `subagent/spawn`
+// 帧在该子会话自己日志里的序号（own-suffix 证据）。
+//
+// **本仓宿主没有 `parentSessionId`**：官方会话模型里子代理地址带父会话 id，
+// 本仓的 `subagent/spawn` 只在子会话日志里落 mode/label/seq。所以任何"父会话
+// 面包屑"都**不能**从这个键推出来（见 `docs/official-plugin-manager-evidence-rc2.md`
+// 同一批的 #56 登记）。
+type SubagentIdentity struct {
+	Mode  string `json:"mode"`
+	Label string `json:"label"`
+	Seq   int64  `json:"seq"`
+}
+
+// SubagentIdentity 解 `subagent`。返回 (nil,false) = 键缺失/为 null
+// → 这条会话不是（或不知道是不是）子代理会话。
+func (p *SessionProjections) SubagentIdentity() (*SubagentIdentity, bool) {
+	raw, ok := p.raw("subagent")
+	if !ok {
+		return nil, false
+	}
+	var identity SubagentIdentity
+	if err := json.Unmarshal(raw, &identity); err != nil {
+		return nil, false
+	}
+	return &identity, true
+}
+
+// SubagentActive 是官方 `subagentTiming.active`（当前未闭合轮的时间界）。
+type SubagentActive struct {
+	Since   int64 `json:"since"`
+	Through int64 `json:"through"`
+}
+
+// SubagentTiming 是宿主 `subagentTiming` 投影
+// （`HOST:internal/transport/handlers_session_official.go:382-387`）。
+//
+//	SettledMs         已闭合轮的墙钟总和（src/client 的 compact 时长取它）
+//	Active            当前未闭合轮的 {since,through}；nil = 现在没有在跑的轮
+//	LastTurnCompleted 最近闭合轮是否成功收尾（官方 `completedEntry` 的判据之一）
+//
+// 三个字段都是宿主真值；**不要**把 `Active == nil` 当成"未运行"的官方
+// activity 语义——官方 activity 来自会话 status，本仓没有那个面
+// （见 dsagentteam 报告里的 HIDE 登记）。
+type SubagentTiming struct {
+	SettledMs         int64           `json:"settledMs"`
+	Active            *SubagentActive `json:"active,omitempty"`
+	LastTurnCompleted *bool           `json:"lastTurnCompleted,omitempty"`
+}
+
+// DurationMs 是官方 `activityDuration`（`SubagentHeaderLineage.tsx:89-104`）：
+// `settledMs + max(0, (running ? now : active.through) − active.since)`。
+//
+// 官方那一位 `running` 来自会话 status；本仓宿主没有这个投影，所以优先用宿主
+// 给的 `active.through`（真值，且不依赖客户端时钟），只有它缺失/非正时才用 now
+// 兜底。完全没有时长真值时返回 (0,false) = 这一格不画（不是画 0 秒）。
+func (t *SubagentTiming) DurationMs(now int64) (int64, bool) {
+	if t == nil || t.SettledMs < 0 {
+		return 0, false
+	}
+	ms := t.SettledMs
+	if t.Active != nil {
+		through := t.Active.Through
+		if through <= 0 {
+			through = now
+		}
+		if through > t.Active.Since {
+			ms += through - t.Active.Since
+		}
+	}
+	if ms <= 0 {
+		return 0, false
+	}
+	return ms, true
+}
+
+// SubagentTiming 解 `subagentTiming`。返回 (nil,false) = 键缺失/为 null
+// → 时长与完成性**未知**（不画时长、不判"完成"）。
+func (p *SessionProjections) SubagentTiming() (*SubagentTiming, bool) {
+	raw, ok := p.raw("subagentTiming")
+	if !ok {
+		return nil, false
+	}
+	var timing SubagentTiming
+	if err := json.Unmarshal(raw, &timing); err != nil {
+		return nil, false
+	}
+	return &timing, true
+}
+
 // SessionProjections 取一条会话的当前投影（官方 session/projections）。
 func (c *Client) SessionProjections(ctx context.Context, sessionID string) (*SessionProjections, error) {
 	var out SessionProjections

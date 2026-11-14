@@ -63,6 +63,10 @@ type Store struct {
 
 	// expandedTaskID 是官方 expandedTaskId：**单值**，开一个就关上一个（TeamBoard.tsx:85）。
 	expandedTaskID string
+	// catalogExpanded 是子代理目录里"已展开"的子会话集合（官方 CatalogRows 的
+	// `expanded` Set，OFF:SubagentHeaderLineage.tsx:641-646）。关闭目录时整份清空
+	// （官方 changeOpen(false) 的 `setExpanded(new Set())`，:573-588）。
+	catalogExpanded map[string]bool
 	// infoOpen 是 Tooltip(openOnClick) 的展开态（信息按钮点开）。
 	infoOpen bool
 
@@ -131,6 +135,47 @@ func (s *Store) View() View {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.view
+}
+
+// CatalogExpanded 报告某个子会话的下一层是否展开。
+func (s *Store) CatalogExpanded(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.catalogExpanded[id]
+}
+
+// ToggleCatalogBranch 展开/收起一个子会话的下一层。
+//
+// 收起时连同它下面已展开的层级一起清掉（否则再展开会带着旧的下级展开态）。
+func (s *Store) ToggleCatalogBranch(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.catalogExpanded[id] {
+		s.collapseBranchLocked(id)
+		return
+	}
+	if s.catalogExpanded == nil {
+		s.catalogExpanded = map[string]bool{}
+	}
+	s.catalogExpanded[id] = true
+}
+
+// collapseBranchLocked 递归清一个分支的展开态（调用方持锁）。
+func (s *Store) collapseBranchLocked(id string) {
+	if !s.catalogExpanded[id] {
+		return
+	}
+	delete(s.catalogExpanded, id)
+	for _, child := range s.view.Children[id].Catalog {
+		s.collapseBranchLocked(child.ID)
+	}
+}
+
+// ResetCatalogExpanded 清空全部展开态（目录关闭时调，官方同一行为）。
+func (s *Store) ResetCatalogExpanded() {
+	s.mu.Lock()
+	s.catalogExpanded = nil
+	s.mu.Unlock()
 }
 
 // Pending 是开关请求在途。

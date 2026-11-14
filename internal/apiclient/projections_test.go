@@ -197,3 +197,77 @@ func TestSessionProjectionsBadRequestIsAPIError(t *testing.T) {
 		t.Fatalf("code 应为 bad_request，得到 %q", apiErr.Code)
 	}
 }
+
+// TestSessionProjectionsSubagentTimingWireShape 钉住宿主 `subagent` 与
+// `subagentTiming` 两个键的形状（子代理目录行的 token/时长数据面）。
+//
+// HOST:internal/transport/handlers_session_official.go:370-393：
+//
+//	subagent       {mode,label,seq}          —— 子会话自己的身份
+//	subagentTiming {settledMs, active?:{since,through}, lastTurnCompleted?}
+//
+// 三个"未知"都必须是未知：键缺失 / 值为 null / active 缺席。
+func TestSessionProjectionsSubagentTimingWireShape(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"asOfSeq": 7,
+			"values": {
+				"subagent": {"mode":"continuable","label":"","seq":3},
+				"subagentTiming": {
+					"settledMs": 65000,
+					"active": {"since":1762900000000,"through":1762900005000},
+					"lastTurnCompleted": true
+				},
+				"tokenUsage": {"uncachedInputTokens":100,"outputTokens":20,"cacheReadTokens":400,"cacheWriteTokens":30}
+			}
+		}`))
+	}))
+	defer srv.Close()
+
+	proj, err := New(srv.URL).SessionProjections(context.Background(), "child-1")
+	if err != nil {
+		t.Fatalf("应当成功：%v", err)
+	}
+	identity, ok := proj.SubagentIdentity()
+	if !ok || identity.Mode != "continuable" || identity.Seq != 3 {
+		t.Fatalf("subagent 投影没解对：%+v（ok=%v）", identity, ok)
+	}
+	timing, ok := proj.SubagentTiming()
+	if !ok {
+		t.Fatal("subagentTiming 键在，必须解出来")
+	}
+	if timing.SettledMs != 65000 || timing.Active == nil || timing.Active.Since != 1762900000000 {
+		t.Fatalf("timing 没解对：%+v", timing)
+	}
+	if timing.LastTurnCompleted == nil || !*timing.LastTurnCompleted {
+		t.Fatalf("lastTurnCompleted 没解对：%+v", timing.LastTurnCompleted)
+	}
+	// 已闭合轮 + 未闭合轮增量：through − since = 5000。
+	if ms, ok := timing.DurationMs(0); !ok || ms != 70000 {
+		t.Fatalf("DurationMs = (%d,%v)，want (70000,true)", ms, ok)
+	}
+	usage, ok := proj.TokenUsage()
+	if !ok || usage.TotalTokens() != 550 {
+		t.Fatalf("tokenUsage 四桶合计 = %v（ok=%v），want 550", usage, ok)
+	}
+}
+
+// TestSessionProjectionsSubagentTimingMissingIsUnknown：
+// 键缺失 / 值为 null 都必须是"未知"，不许当成"没有子代理"或"0 秒"。
+func TestSessionProjectionsSubagentTimingMissingIsUnknown(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"asOfSeq":1,"values":{"subagent":null,"subagentTiming":null}}`))
+	}))
+	defer srv.Close()
+
+	proj, err := New(srv.URL).SessionProjections(context.Background(), "root")
+	if err != nil {
+		t.Fatalf("应当成功：%v", err)
+	}
+	if _, ok := proj.SubagentIdentity(); ok {
+		t.Fatal("subagent: null 必须解成未知")
+	}
+	if _, ok := proj.SubagentTiming(); ok {
+		t.Fatal("subagentTiming: null 必须解成未知")
+	}
+}

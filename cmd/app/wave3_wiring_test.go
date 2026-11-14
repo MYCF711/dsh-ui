@@ -8,10 +8,13 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
@@ -384,5 +387,84 @@ func TestWave3FetchProjectionsCapabilityMissingIsUnknown(t *testing.T) {
 	}
 	if errText != "" {
 		t.Fatalf("能力缺失不该画成加载失败：%q", errText)
+	}
+}
+
+// TestWave3FetchChildProjectionsFeedsCatalogRows 钉住 #56 的数据面：
+// 目录项的**子会话投影**（官方 `prepareCatalog` 逐个 `refreshProjections(child)`）
+// 必须被拉回来贝壳缓存，并单向流进 AgentTeam 运行时；切换父会话后不得串会话。
+func TestWave3FetchChildProjectionsFeedsCatalogRows(t *testing.T) {
+	parentCatalog := `[{"id":"child-1","createdAt":1762900000000,"mode":"continuable","label":"调研"}]`
+	var parentBody atomic.Value
+	parentBody.Store(parentCatalog)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			SessionID string `json:"sessionId"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		switch body.SessionID {
+		case "sess-root":
+			_, _ = w.Write([]byte(`{"asOfSeq":12,"values":{"subagentCatalog":` + parentBody.Load().(string) + `}}`))
+		case "child-1":
+			_, _ = w.Write([]byte(`{"asOfSeq":3,"values":{
+				"subagentCatalog":[{"id":"grand-1","createdAt":1762900200000,"mode":"continuable","label":"孙任务"}],
+				"subagentTiming":{"settledMs":65000,"lastTurnCompleted":true},
+				"tokenUsage":{"uncachedInputTokens":100,"outputTokens":20,"cacheReadTokens":400,"cacheWriteTokens":30}
+			}}`))
+		default:
+			t.Fatalf("不该请求的会话：%q", body.SessionID)
+		}
+	}))
+	defer srv.Close()
+
+	w := newWave3Wiring()
+	k := uikernel.New("wave3-child-proj")
+	w.provide(k, nil)
+	if err := k.Load(&dscore.Plugin{Dark: true}, &dsagentteam.Plugin{}); err != nil {
+		t.Fatalf("装配失败：%v", err)
+	}
+	m := &model{kernel: k, cli: apiclient.New(srv.URL)}
+	w.attach(m)
+
+	w.fetchProjections(m, "sess-root")
+
+	children := w.childrenSnapshot("sess-root")
+	child, ok := children["child-1"]
+	if !ok {
+		t.Fatalf("子会话投影没进缓存：%+v", children)
+	}
+	if !child.CatalogKnown || len(child.Catalog) != 1 || child.Catalog[0].ID != "grand-1" {
+		t.Fatalf("下一层目录没解对：%+v", child)
+	}
+	if child.Timing == nil || child.Timing.SettledMs != 65000 {
+		t.Fatalf("subagentTiming 没解对：%+v", child.Timing)
+	}
+	if child.Timing.LastTurnCompleted == nil || !*child.Timing.LastTurnCompleted {
+		t.Fatalf("lastTurnCompleted 没解对：%+v", child.Timing)
+	}
+	if child.TokenTotal == nil || *child.TokenTotal != 550 {
+		t.Fatalf("tokenUsage 合计没解对：%v", child.TokenTotal)
+	}
+
+	// 单向流进运行时：feed 之后 Store 的视图里必须带上这份 Children。
+	w.feed("sess-root", 280)
+	if got := w.team.View().Children["child-1"].Catalog; len(got) != 1 || got[0].ID != "grand-1" {
+		t.Fatalf("Store 视图没拿到子投影：%+v", w.team.View().Children)
+	}
+
+	// 切到没拉过的父会话：子投影不跨会话复用（否则会画出别的树的行）。
+	if got := w.childrenSnapshot("sess-other"); got != nil {
+		t.Fatalf("别的父会话不该有子投影：%+v", got)
+	}
+
+	// 目录换了一批（child-1 不在里面了）→ 旧子投影必须被清掉。
+	parentBody.Store(`[]`)
+	w.mu.Lock()
+	w.projAt = time.Time{} // 绕过 10s 轮询节流，模拟下一次刷新
+	w.mu.Unlock()
+	w.fetchProjections(m, "sess-root")
+	if _, still := w.childrenSnapshot("sess-root")["child-1"]; still {
+		t.Fatal("目录里已经没有这个子会话，旧子投影必须清掉")
 	}
 }

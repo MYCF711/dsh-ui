@@ -19,9 +19,10 @@
 //   - 渲染：菜单由 ds-contextmenu 的 `ui.ContextMenu` / `ui.Menu` 画；对话框
 //     是本文件画的模态（没有官方 primitives 的 Modal 源码，几何取本仓既有
 //     模态一档；文案逐字用官方中文）。
-//   - 分组仍按 cwd（官方按 registry.SessionIDs）。因此**只对 registry 里真实
-//     存在的工作区**显示菜单；没有 registry 的组保持原样。这条差异写在
-//     docs/official-parity.md #62 行的"还剩什么"里。
+//   - 分组与手动顺序见 grouping.go：有 registry 时组身份就是**工作区本体**
+//     （按 workspaceId 直达），组内顺序 = 它的 `sessionIds`；没有 registry 时
+//     退回按 cwd 分组，那时这一组没有工作区身份，不显示改名/删除。
+//     拖拽排会话序（同一份工作区身份）见 drag.go。
 package dssidebar
 
 import (

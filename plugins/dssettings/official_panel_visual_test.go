@@ -104,6 +104,10 @@ type officialHarness struct {
 	inventory *apiclient.PluginInventoryResult
 	// inventoryRefresh 记录「重试」被点了几次（插件页的刷新动作）。
 	inventoryRefresh int
+	// roster 是「Agent 预设」页的数据面（nil = 宿主没接 agentPresets.list）。
+	roster *apiclient.AgentPresetRoster
+	// agentPresetRefresh 记录名册被重读了几次（写成功后壳会重拉一次）。
+	agentPresetRefresh int
 }
 
 func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
@@ -165,6 +169,18 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			h.mu.Lock()
 			h.inventoryRefresh++
 			h.mu.Unlock()
+		},
+		// 「Agent 预设」页的数据面：与真壳同一个形状（同步返回这一帧的名册）。
+		AgentPresetRoster: func() *apiclient.AgentPresetRoster {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.roster
+		},
+		AgentPresetRefresh: func() {
+			h.mu.Lock()
+			h.agentPresetRefresh++
+			h.mu.Unlock()
+			h.invalidator.Invalidate()
 		},
 	}
 

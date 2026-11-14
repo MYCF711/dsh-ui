@@ -47,6 +47,14 @@ type officialPanel struct {
 	facts     HostFacts
 	writer    SettingsWriter
 	hasSource bool
+	// roster 是 `agentPresets.list` 的最后一帧结果（nil = 壳没接那条能力）。
+	//
+	// 为什么要留一份：写完「设为默认」后壳会重拉名册，但**本帧的模型**是用
+	// 同步快照算出来的；把它存在这里，才能让"写成功 → 再算一次模型"这条路径
+	// 与绘制用同一份来源，不必再问一次壳。
+	roster *apiclient.AgentPresetRoster
+	// agentPresetRefresh 是壳的"重读名册"入口（写成功后触发一次）。
+	agentPresetRefresh func()
 
 	// rows 是当前 section 的可点行（键盘光标用）。
 	rows   []PanelRow
@@ -260,13 +268,23 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	if env.Act.PluginInventory != nil {
 		inventory = env.Act.PluginInventory()
 	}
+	// 「Agent 预设」页同理是**第三条**独立能力（官方 roster 不在 describe 里）。
+	// nil = 宿主没接 `agentPresets.list` -> 那一页显示「未知」，不画空网格。
+	roster := (*apiclient.AgentPresetRoster)(nil)
+	refresh := (func())(nil)
+	if env.Act.AgentPresetRoster != nil {
+		roster = env.Act.AgentPresetRoster()
+		refresh = env.Act.AgentPresetRefresh
+	}
 
-	model := BuildPanelWithPlugins(describe, facts, inventory, o.pluginsView())
+	model := BuildPanelWithSources(describe, facts, inventory, o.pluginsView(), roster)
 
 	o.mu.Lock()
 	o.describe = describe
 	o.facts = facts
 	o.writer = writer
+	o.roster = roster
+	o.agentPresetRefresh = refresh
 	o.hasSource = hasSource
 	o.model = model
 	if env.Act.Notify != nil {
@@ -483,6 +501,12 @@ func (p *Plugin) drawPanelOptions(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 	// （`settings.plugins.tab` 里渲染 `PluginInventorySettingsTab`）。
 	if section.Plugins != nil {
 		p.drawPluginsPage(f, env, t, a, section)
+		return
+	}
+	// 「Agent 预设」页同理是另一套组件树（官方 `AgentPresetSection` 是卡片网格，
+	// 卡片本体就是选择控件），不是「标题 + 一行一个控件」那一套。
+	if section.AgentPresets != nil {
+		p.drawAgentPresetsPage(f, env, t, a, section)
 		return
 	}
 	ui.Column(f).Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).

@@ -69,6 +69,34 @@ func (c *Client) WorkspaceRename(ctx context.Context, workspaceID, title string)
 	return &out.Workspace, nil
 }
 
+// WorkspaceInsertSessionBefore 把一个会话插到某条工作区名册里 `beforeSessionID` 之前
+// （宿主 `workspace.insertSessionBefore`）。
+//
+// 这是侧栏拖拽排会话顺序的唯一写路径：官方的 `sessionIds` 就是"手动顺序"
+// （`OFF:dsh-api-workspace-controller/src/feed.ts:22-33`），拖一次 = 在目标位置前插一次
+// （`OFF:dsh-api-workspace-controller/src/index.ts:149`）。
+//
+// `beforeSessionID` 传空串 = 插到该组末尾：**那时这个字段要整个省略**，
+// 宿主 `insertSessionBefore` 对"给了但是空串"回 400
+// （`HOST:internal/transport/handlers_workspace_official.go:840-842`）。
+// 宿主会校验工作区与会话都真实存在，不存在回四字段错误——**不许**在客户端把它翻成成功。
+//
+// 参数按宿主接受的两支形状里**平铺**那一支（`officialPickObject` 也收
+// `{request:{…}}`，但本仓其余 workspace 方法一律平铺，不混两种形状）。
+func (c *Client) WorkspaceInsertSessionBefore(ctx context.Context, workspaceID, sessionID, beforeSessionID string) (*WorkspaceView, error) {
+	var out struct {
+		Workspace WorkspaceView `json:"workspace"`
+	}
+	params := map[string]any{"workspaceId": workspaceID, "sessionId": sessionID}
+	if beforeSessionID != "" {
+		params["beforeSessionId"] = beforeSessionID
+	}
+	if err := c.Call(ctx, "workspace.insertSessionBefore", params, &out); err != nil {
+		return nil, err
+	}
+	return &out.Workspace, nil
+}
+
 // WorkspaceDelete 把一条工作区注册从 registry 移除（宿主 `workspace.delete`）。
 //
 // **不删文件夹、不删会话记录**：官方 `delete.desc` 明确会话会落到"未分组"。

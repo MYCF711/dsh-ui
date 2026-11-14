@@ -1242,10 +1242,60 @@
       "resp": "ChangeResult",
       "req_note": "卸载成功后 Loader 里的实例已被回收，warnings 如实说明（cmd/dshd/serve_plugins_official.go:122-130）。",
       "resp_note": "与 setBundleEnabled 同一个 ChangeResult 形状；application=failed 同样是 HTTP 200 的管理性失败。"
+    },
+    "agentPresets.list": {
+      "batch": 14,
+      "req": {},
+      "resp": {
+        "presets": [
+          {
+            "id": "string",
+            "isDefault": true,
+            "name": "string?",
+            "description": "string?",
+            "broken": "string?"
+          }
+        ]
+      },
+      "req_note": "零参数，发裸对象 {}。官方 AgentPresetRoster（dsh-agent-preset-registry/types）。每条至少 id + isDefault，name/description/broken 可选（broken 非空 = 声明存在但装不起来，界面据此禁掉「设为默认」）。本仓宿主的名册 = 内置 modes ∪ <home>/modes/*.toml，isDefault 由 selectedDefault ?? default 解析（HOST:cmd/dshd/agent_preset_default.go:29-46、HOST:cmd/dshd/serve_agent_api.go:985）——客户端不许自己拿设置文档去推哪一条是默认。名册为空 = presets:[]（不是错误）；宿主没接线回四字段 501 not_implemented，这两者必须分开。"
+    },
+    "agentPresets.read": {
+      "batch": 14,
+      "req": {
+        "agentPreset": "string"
+      },
+      "resp": {
+        "agentPreset": "string",
+        "content": "string",
+        "name": "string?",
+        "description": "string?"
+      },
+      "req_note": "参数名逐字是 agentPreset（**不是** presetId）：HOST:internal/transport/handlers_agent_official.go:1676-1690 的 p.str(\"agentPreset\")。空串回 400，未知 id 回四字段错误（不是空正文）。"
+    },
+    "workspace.insertSessionBefore": {
+      "batch": 14,
+      "req": {
+        "workspaceId": "string",
+        "sessionId": "string",
+        "beforeSessionId": "string?"
+      },
+      "resp": {
+        "workspace": {
+        "workspaceId": "string",
+        "path": "string",
+        "title": "string",
+        "sessionIds": [
+          "string"
+        ],
+        "createdAt": "RFC3339",
+        "updatedAt": "RFC3339"
+      }
+      },
+      "req_note": "官方 workspace/insertSessionBefore（dsh-api-workspace-controller/src/index.ts:149）：侧栏拖拽排手动顺序的唯一写路径。**移到组末尾必须整个省略 beforeSessionId**——给空串宿主回 400（HOST:internal/transport/handlers_workspace_official.go:840-842）。宿主也收 {request:{…}} 嵌套形状，但同一请求里两种形状不许混（officialPickObject 会 400）。工作区/会话不存在回四字段错误，不许翻成成功。HOST:internal/transport/handlers_workspace_official.go:817-845"
     }
   },
   "counts": {
-    "total": 68,
+    "total": 71,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1258,6 +1308,7 @@
     "batch10": 5,
     "batch11": 4,
     "batch12": 3,
-    "batch13": 4
+    "batch13": 4,
+    "batch14": 3
   }
 }

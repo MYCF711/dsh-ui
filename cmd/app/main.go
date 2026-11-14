@@ -199,6 +199,13 @@ type model struct {
 	pluginInventoryPending bool
 	// pluginInventoryErr 是最近一次拉取失败的原因（只报状态栏，不清缓存）。
 	pluginInventoryErr error
+	// agentPresetRoster 是官方 `agentPresets.list` 的缓存（Agent 预设页的数据面）。
+	// nil = 还没成功拉到（那一页显示「未知」，**不画假名册**）。
+	agentPresetRoster *apiclient.AgentPresetRoster
+	// agentPresetPending 防重入：每帧都可能问，别每帧发一次请求。
+	agentPresetPending bool
+	// agentPresetErr 是最近一次拉取失败的原因（只报状态栏，不清缓存）。
+	agentPresetErr error
 	// shellChannelServed 报告宿主的壳更新渠道服务能不能应答
 	// （`desktopUpdate.channel.get`）。false = 宿主没这条能力 -> 「更新渠道」行不出现。
 	shellChannelServed bool
@@ -2684,6 +2691,10 @@ func main() {
 		// 见 plugin_inventory_wiring.go。
 		PluginInventory:        m.pluginInventorySnapshot,
 		PluginInventoryRefresh: m.pluginInventoryRefresh,
+		// Agent 预设名册的数据面（官方 agentPresets.list 的缓存）。
+		// 它同样不是 Host 设置，所以与 describe 分开一处，见 agent_preset_wiring.go。
+		AgentPresetRoster:  m.agentPresetRosterSnapshot,
+		AgentPresetRefresh: m.agentPresetRefresh,
 		FSRead: func(path string) (string, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -2719,16 +2730,19 @@ func main() {
 		OpenSession:           m.openSession,
 		WorkspaceRename:       m.renameWorkspace,
 		WorkspaceDelete:       m.deleteWorkspace,
-		DeleteSession:         m.deleteSession,
-		CompactSession:        m.compactSession,
-		ForkSession:           m.forkSession,
-		NewSession:            m.newSession,
-		Send:                  m.sendText,
-		Copy:                  func(text string) { _ = m.copyText(text) },
-		CopyResult:            m.copyText,
-		OpenExternal:          m.openExternal,
-		OpenFile:              m.openFile,
-		Notify:                m.setStatus,
+		// 拖拽排会话顺序的唯一写路径（官方 workspace.insertSessionBefore）。
+		// nil 会让侧栏不进入拖拽态——那是"宿主没这条能力"的诚实表达。
+		WorkspaceInsertSessionBefore: m.insertSessionBefore,
+		DeleteSession:                m.deleteSession,
+		CompactSession:               m.compactSession,
+		ForkSession:                  m.forkSession,
+		NewSession:                   m.newSession,
+		Send:                         m.sendText,
+		Copy:                         func(text string) { _ = m.copyText(text) },
+		CopyResult:                   m.copyText,
+		OpenExternal:                 m.openExternal,
+		OpenFile:                     m.openFile,
+		Notify:                       m.setStatus,
 		// 桌面更新指示器的点击（官方 `DesktopUpdateBridge.open()`）：
 		// 走宿主拿更新入口 URL，再交给**系统默认浏览器**。
 		// 见 desktop_update_wiring.go。

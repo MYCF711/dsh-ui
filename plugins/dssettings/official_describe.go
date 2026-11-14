@@ -123,6 +123,10 @@ type PanelSection struct {
 	// 所以 `Rows` 对它是空的，绘制走 official_plugins_draw.go；
 	// 键盘导航也按卡片走（官方卡片是真按钮，Enter 展开/收起）。
 	Plugins *PluginsPanel
+	// AgentPresets 非 nil 表示这一页是「Agent 预设」页：它同样是**自己的**渲染面
+	// （官方 `AgentPresetSection` 是卡片网格 + 卡片本体即选择控件），
+	// 不是「标题 + 一行一个控件」那一套。Rows 对它是空的。
+	AgentPresets *AgentPresetsPanel
 }
 
 // PanelModel 是一帧设置面板的全部内容。
@@ -175,6 +179,17 @@ func BuildPanel(describe *apiclient.SettingsDescribeResult, facts HostFacts) Pan
 // 保持原来的两参数形态，读起来才知道"这一帧到底有没有清单"。
 func BuildPanelWithPlugins(describe *apiclient.SettingsDescribeResult, facts HostFacts,
 	inventory *apiclient.PluginInventoryResult, view PluginsView) PanelModel {
+	return BuildPanelWithSources(describe, facts, inventory, view, nil)
+}
+
+// BuildPanelWithSources 是 BuildPanelWithPlugins 再加一路 `agentPresets.list`
+// （#3 的数据面：官方 roster 同样**不是** Host 设置，`settings.describe` 里没有它）。
+//
+// 与 inventory 拆成两个参数的理由一样：两者是独立的宿主能力，谁在谁不在
+// 决定对应那一页显示数据还是「未知」，混成一个"数据包"就分不出来了。
+func BuildPanelWithSources(describe *apiclient.SettingsDescribeResult, facts HostFacts,
+	inventory *apiclient.PluginInventoryResult, view PluginsView,
+	roster *apiclient.AgentPresetRoster) PanelModel {
 	m := PanelModel{RowCount: facts.VisibleRowCount()}
 	if describe != nil {
 		m.Writable = describe.Writable
@@ -203,8 +218,7 @@ func BuildPanelWithPlugins(describe *apiclient.SettingsDescribeResult, facts Hos
 			// 只读清单（官方 `pluginInventory.list`，另一个 Remote）。所以要单独传。
 			buildPluginsSection(&panel, inventory, view)
 		case "agent-presets":
-			buildStaticSection(&panel, describe, "agent-presets",
-				"Agent 预设需要 agentPreset 数据（settings.describe 不含该数据）")
+			buildAgentPresetsSection(&panel, describe, roster)
 		case "account":
 			buildStaticSection(&panel, describe, "account",
 				"账号与余额需要 credential-stored 与 account 数据")

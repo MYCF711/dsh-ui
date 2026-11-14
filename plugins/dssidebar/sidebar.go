@@ -179,6 +179,14 @@ type Plugin struct {
 	wsErr    string
 	// wsRename 是重命名对话框的输入框（Fields() 必须登记，否则收不到键盘）。
 	wsRename ui.Field
+
+	// ── #62 拖拽排会话序（drag.go）──
+	//
+	// drag 是指针拖拽的状态机（零值 = 没在拖）；rowGroup 是本帧正在画的那条组的
+	// 拖拽身份（写路径 + 手动顺序 + 行命中 id），drawList 每组摆一次、drawSession 只读。
+	// 两者都只属于绘制/指针线程，不进壳。
+	drag     sessionDrag
+	rowGroup groupDragContext
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -280,6 +288,14 @@ func (p *Plugin) drawFooter(f ui.C, env *pluginapi.Env) {
 
 // drawList 画会话列表：有过滤词走**搜索结果卡**，没有才走分组树。
 func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
+	// 拖拽的兜底清场：平台抢走按下（PointerCancel，比如系统级拖放拿走了这次按压）时
+	// viva 只清掉按下状态，不会再给插件送 PointerUp——不收这个尾，落点线会永远停在
+	// 屏幕上。按下还在的时候 `Pressed()` 是那个行 id，所以"没有按下"这条判据是安全的。
+	if (p.drag.pressing || p.drag.dragging) &&
+		(env.Canvas == nil || env.Canvas.Pressed().IsZero()) {
+		p.drag.reset()
+	}
+
 	q := normalizeQuery(p.search.Text())
 	if q != "" {
 		// 官方搜索态是另一棵平铺的树（`SearchResults` + `searchResultRow`），
@@ -289,17 +305,20 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 	}
 	t := p.theme
 
-	groups, order := groupByWorkspace(env.Data.Sessions, q)
+	// #62：有 registry 就按它的 `sessionIds` 真实归属 + 手动顺序分组；registry 空
+	// （老宿主/mockd/还没拉到）原样退回按 cwd 分组。判据与出处见 grouping.go。
+	plan := planGroups(env.Data.Sessions, env.Data.Workspaces, q)
+	order := plan.Keys()
 	p.known = append(p.known[:0], order...)
 	p.lastCur = env.Data.Cur
 	p.act = env.Act
 	p.lastOrder = p.lastOrder[:0]
-	for _, key := range order {
-		if !p.groupOpen(key) {
+	for gi := range plan.Groups {
+		if !p.groupOpen(plan.Groups[gi].Key) {
 			continue // 收起的分组里的会话不参与键盘导航
 		}
-		for i := range groups[key] {
-			p.lastOrder = append(p.lastOrder, groups[key][i].ID)
+		for i := range plan.Groups[gi].Sessions {
+			p.lastOrder = append(p.lastOrder, plan.Groups[gi].Sessions[i].ID)
 		}
 	}
 
@@ -314,7 +333,7 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 	// 宽度仍然必须钉死（ScrollArea 里用 FillWidth 时内容宽度算不出来，
 	// 标题会被压成竖排，或者整个内容列撑到窗口宽——都踩过）。
 	inner := p.width - sidebarInline
-	p.logSnapshot(env, q, groups, order)
+	p.logSnapshot(env, q, plan)
 	p.scrollBox = ui.Scroll(f).Width(inner).Grow(1).MinHeight(120).Clip()
 	p.scrollBox.Children(func() {
 		// 外层 Gap(0)：行间 2、组间 4 是两档，不能用一个统一的 gap 冒充
@@ -326,8 +345,9 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 				ui.Text(f, "没有会话").FontSize(t.Fonts.Caption).Color(t.LabelCaption).Pad(8)
 				return
 			}
-			for gi, key := range order {
-				sessions := groups[key]
+			for gi := range plan.Groups {
+				group := plan.Groups[gi]
+				key, sessions := group.Key, group.Sessions
 				open := p.groupOpen(key)
 				if gi > 0 {
 					// `.GAkraW_groupSection+.GAkraW_groupSection{margin-top:4px}`
@@ -335,11 +355,13 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 				}
 				gid := env.Tree.ID(env.Feat, "g-"+key)
 				ui.Column(f).Width(inner).Gap(rowGap).Children(func() {
-					// #62：真实 registry 里有这条工作区时，组头用 registry 的标题
+					// #62：这条组背后是 registry 里真实存在的工作区时，组头用它的标题
 					// （用户改过的名字），并挂官方右键菜单 + 省略号按钮。
-					label := displayWorkspace(key)
-					target, hasTarget := workspaceMenuTarget(env.Data.Workspaces, key)
+					label := group.Label
+					target, hasTarget := groupWorkspaceTarget(env.Data.Workspaces, group)
 					if hasTarget {
+						// 有工作区身份时，组头文案以它为准（registry 标题优先，
+						// 空标题退回目录基名）；没身份就用分组那条已经解析好的文案。
 						label = workspaceTargetLabel(target, label)
 						// 服务注册了贡献不等于壳接了写面：老壳上不画空菜单。
 						hasTarget = env.Act.WorkspaceRename != nil || env.Act.WorkspaceDelete != nil
@@ -370,9 +392,21 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 					if !open {
 						return
 					}
+					// 拖拽上下文：只有可拖的组才摆（写路径 + 名册顺序 + 行命中 id）。
+					// 整组一次算齐——落点可能落在还没画到的那一行上（drag.go）。
+					if canDragGroup(group, env.Act) {
+						p.rowGroup = groupDragContext{
+							workspaceID: group.Workspace.WorkspaceID,
+							order:       group.sessionIDs(),
+							hitIDs:      sessionRowHitIDs(env, sessions),
+						}
+					} else {
+						p.rowGroup = groupDragContext{}
+					}
 					for i := range sessions {
 						p.drawSession(f, env, sessions[i])
 					}
+					p.rowGroup = groupDragContext{}
 				})
 			}
 		})
@@ -570,7 +604,18 @@ func (p *Plugin) drawSession(f ui.C, env *pluginapi.Env, s apiclient.Session) {
 				Kind: "session", ID: s.ID, DisplayTitle: title,
 			}, "会话“"+title+"”的操作")
 		}
+		// #62 落点指示：只画在"这一帧解析出来的落点行"上，位置由落点的半区决定。
+		// 几何与出处见 drawDropMarker；官方没有别的拖拽视觉，所以这里只此一件。
+		if p.drag.dragging && p.drag.over == s.ID {
+			p.drawDropMarker(f, p.drag.after)
+		}
 	})
+	// #62 拖拽：只有"registry 里真实存在的工作区分组"里的行才可拖——cwd 回退组没有
+	// 工作区身份，也就没有写路径（canDragGroup）。不可拖的行连 PointerOn 都不问，
+	// 于是"不能拖"与"拖了没反应"在实现上也是两件事。
+	if p.rowGroup.workspaceID != "" && env.Act.WorkspaceInsertSessionBefore != nil {
+		p.handleSessionDragPointer(env, id, s.ID)
+	}
 	if row.Clicked() && env.Act.OpenSession != nil {
 		// 打开别的会话就取消"待确认删除"：用户已经把注意力挪走了，
 		// 留着一个待确认状态，下一次误点会直接删掉。
@@ -780,23 +825,23 @@ func parseUpdated(s string) (time.Time, bool) {
 //
 // 它证明的是"侧栏画的是壳递进来的真实快照"：原始会话数、过滤词、组、每行的
 // id/标题/时间、当前会话、Busy。只在内容变化时打印一次，所以正常使用不会刷屏。
-func (p *Plugin) logSnapshot(env *pluginapi.Env, q string,
-	groups map[string][]apiclient.Session, order []string) {
+func (p *Plugin) logSnapshot(env *pluginapi.Env, q string, plan groupPlan) {
 	if !p.debug {
 		return
 	}
 	rows := 0
 	var b strings.Builder
-	fmt.Fprintf(&b, "会话=%d 过滤=%q 组=%d 当前=%q busy=%v 流=%d 全部收起=%v",
-		len(env.Data.Sessions), q, len(order), env.Data.Cur, env.Data.Busy,
-		len([]rune(env.Data.Stream)), p.allCollapsed)
-	for _, key := range order {
-		fmt.Fprintf(&b, " |组 %q", key)
-		if !p.groupOpen(key) {
+	fmt.Fprintf(&b, "会话=%d 过滤=%q 组=%d 当前=%q busy=%v 流=%d 全部收起=%v registry=%v",
+		len(env.Data.Sessions), q, len(plan.Groups), env.Data.Cur, env.Data.Busy,
+		len([]rune(env.Data.Stream)), p.allCollapsed, plan.Registry)
+	for gi := range plan.Groups {
+		group := plan.Groups[gi]
+		fmt.Fprintf(&b, " |组 %q", group.Key)
+		if !p.groupOpen(group.Key) {
 			b.WriteString("(收起)")
 			continue
 		}
-		for _, s := range groups[key] {
+		for _, s := range group.Sessions {
 			rows++
 			fmt.Fprintf(&b, " |行 %q 标题=%q 时间=%q 选中=%v",
 				s.ID, s.Title, s.UpdatedAt, s.ID == env.Data.Cur)

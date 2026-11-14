@@ -48,6 +48,9 @@ type Plugin struct {
 	tier *uikernel.ShellTier
 	// dialog 是官方 Activity 详情弹窗的跨帧状态（展开态 + 锚点矩形）。
 	dialog statsDialogState
+	// statsOpen 是「统计」视图每轮的展开态（会话 + 轮号 -> bool）。
+	// 官方默认 ViewMode='newest'：只展开最新一轮；用户点过以点击为准。
+	statsOpen map[string]bool
 
 	// conn 是连接指示的 150ms 离场淡出状态机（官方 CSS transition 的等价物，
 	// 见 connection.go 文件头「150ms 淡出」）。
@@ -120,6 +123,11 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Draw: p.drawConnectionIndicator},
 		{ID: "dock-official", Slot: uikernel.OffConvComposer, Order: dockOfficialOrder,
 			Draw: p.drawOfficialDock, AfterDraw: p.afterOfficialDock},
+		// 官方 `conversation.view` 的 stats 条目：#65 的页面本体。
+		// id/order 逐字来自 OFF:dsh-experimental-client-ui-stats/src/client/index.ts:74-81
+		// （id:'stats'、order:40）；label 是 stats zh 字典的 `view.stats`「统计」。
+		{ID: "stats-view", Slot: pluginapi.SlotConvView, Key: pluginapi.ViewStats,
+			Label: "统计", Order: 40, Draw: p.drawStatsView},
 	}
 }
 

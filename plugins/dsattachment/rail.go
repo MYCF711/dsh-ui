@@ -217,11 +217,14 @@ const (
 
 // AttachmentSink 是壳注入的**上传能力**；nil = 没有上传能力，rail 与拖入都不画。
 //
-// 三条方法一一对应宿主的三条真通道（证据在 `internal/apiclient/attachments.go` 的文件头）：
+// 四条方法一一对应宿主四条真通道（证据在 `internal/apiclient/attachments.go` 与
+// `prompt_parts.go` 的文件头）：
 //
 //	Put   → `attachment.put`（要绝对路径；0 字节/超限回 400 原文）
-//	Attach→ `session.attachment`（只承载图片；发消息之前用）
-//	CurrentSession 是壳那一侧的"当前会话 id"；空 = 还没有会话 → 不能 `Attach`。
+//	Attach→ `session.attachment`（只承载图片；旧路径保留，见 AttachReady 的注释）
+//	Upload→ `attachment.get` 取回已暂存字节 + `fileUploads.upload` 换官方回执
+//	        （`session.prompt` 的 `{type:'file', receiptId}` 用它；这是官方主路径）
+//	CurrentSession 是壳那一侧的"当前会话 id"；空 = 还没有会话 → 不能 Attach/Upload。
 //
 // 为什么是本地接口而不是 `pluginapi` 的公共契约：公共契约要动 `pluginapi/plugin.go`，
 // 那是另一条线的事；插件侧只需要"壳能塞进来一个实现"。等公共契约落定，
@@ -229,6 +232,7 @@ const (
 type AttachmentSink interface {
 	Put(ctx context.Context, path string) (*apiclient.Attachment, error)
 	Attach(ctx context.Context, sessionID string, a apiclient.Attachment) error
+	Upload(ctx context.Context, sessionID string, a apiclient.Attachment) (*apiclient.FileUploadReceipt, error)
 	CurrentSession() string
 }
 
@@ -557,6 +561,137 @@ func AttachReady(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// SendBatch 是一次发送要引用的已就绪附件。
+//
+// 官方 `conversation.sendSession` 在提交时把每张卡序列化成 `{type:'file', receiptId}`
+// 放进 `session.prompt.content`（`OFF:service.ts:246-303`）。本仓没有"提交"层，
+// 所以壳在 `session.prompt` 之前调 `PreparePrompt` 拿到这一批，成功后 `Commit` 清掉
+// 已发送的卡；失败则什么都不丢（用户重试时同一批还在 rail 上）。
+//
+// keys 是**快照时刻**的本地身份：发送期间用户新拖进来的卡不在批次里，不会被误删。
+type SendBatch struct {
+	parts []apiclient.PromptPart
+	keys  []string
+}
+
+// Parts 返回按 rail 顺序排好的附件 part（附件在前、文本由壳追加在最后）。
+func (b *SendBatch) Parts() []apiclient.PromptPart {
+	if b == nil {
+		return nil
+	}
+	return append([]apiclient.PromptPart(nil), b.parts...)
+}
+
+// Empty 报告这一批有没有附件（nil 也算空）。
+func (b *SendBatch) Empty() bool { return b == nil || len(b.parts) == 0 }
+
+// Commit 把这一批已经从 rail 发出去的卡删掉（只删快照里那几张）。
+func (b *SendBatch) Commit() {
+	if b == nil || len(b.keys) == 0 {
+		return
+	}
+	p := currentInstance()
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	keep := p.items[:0]
+	for _, it := range p.items {
+		remove := false
+		for _, key := range b.keys {
+			if it.Key == key {
+				remove = true
+				break
+			}
+		}
+		if !remove {
+			keep = append(keep, it)
+		}
+	}
+	p.items = keep
+	p.clampPageLocked()
+	p.mu.Unlock()
+	p.invalidate()
+}
+
+// HasItems 报告 rail 上有没有任何条目（含上传中）。
+//
+// 壳用它决定"空文本能不能发"：官方 `sendSession` 允许附件-only 消息
+// （`content = uploaded + (text === ” ? [] : text)`，OFF:service.ts:302），
+// 所以 composer 的"空文本不提交"只在没有附件时才成立。
+func HasItems() bool {
+	p := currentInstance()
+	if p == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.items) > 0
+}
+
+// PreparePrompt 把 rail 里**全部已就绪**的附件换成官方上传回执。
+//
+// 与 AttachReady 的分工：AttachReady 走旧的 `session.attachment`（只登记、不绑定消息），
+// 官方 rc.2 的 `session.prompt` 现在认 `{type:'file', receiptId}`，所以产品发送路径改走
+// 这一条；AttachReady 保留是给没有 PromptContentPart 的老宿主/旧测试用的兼容桥。
+//
+// 三种"不做"都是正常返回 nil：
+//   - 没有 sink / 没有插件本体（无上传能力）；
+//   - 没有当前会话（壳还没选会话）；
+//   - rail 里没有已就绪附件。
+//
+// 任一上传失败就整批失败并返回错误（宿主原文在 `*apiclient.APIError.Message`）：
+// 继续上传后面的会让"这次到底带了几份附件"变得不可知，与官方"提交前必须全部 ready"
+// 同一条判据。**有卡仍在上传中**也失败（官方 `uploadFor` 在非 ready 时直接 throw）。
+func PreparePrompt(ctx context.Context) (*SendBatch, error) {
+	p := currentInstance()
+	sink := currentSink()
+	if p == nil || sink == nil {
+		return nil, nil
+	}
+	session := strings.TrimSpace(sink.CurrentSession())
+	if session == "" {
+		return nil, nil
+	}
+	p.mu.Lock()
+	items := append([]item(nil), p.items...)
+	p.mu.Unlock()
+	if len(items) == 0 {
+		return nil, nil
+	}
+	for _, it := range items {
+		if it.State == stateReady {
+			continue
+		}
+		if it.State == stateError && it.ErrText != "" {
+			return nil, errors.New(it.ErrText)
+		}
+		return nil, errors.New(zhFileUploading)
+	}
+	batch := &SendBatch{}
+	for _, it := range items {
+		if it.State != stateReady || it.Att.ID == "" {
+			continue
+		}
+		receipt, err := sink.Upload(ctx, session, it.Att)
+		if err != nil {
+			return nil, err
+		}
+		if receipt == nil || receipt.ReceiptID == "" {
+			return nil, errors.New("fileUploads.upload 没有返回回执")
+		}
+		batch.parts = append(batch.parts, apiclient.PromptPart{
+			Type:      "file",
+			ReceiptID: receipt.ReceiptID,
+		})
+		batch.keys = append(batch.keys, it.Key)
+	}
+	if len(batch.parts) == 0 {
+		return nil, nil
+	}
+	return batch, nil
 }
 
 // readyItems 抄一份已就绪的附件（按 rail 顺序）。

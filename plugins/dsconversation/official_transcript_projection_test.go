@@ -467,3 +467,25 @@ func TestRetryTextInfinityWhenModeNotNormal(t *testing.T) {
 }
 
 func intPtr(v int) *int { return &v }
+
+// TestUserAttachmentBlocksRenderAsFileAndImage：宿主 durable user/message 的
+// `type:"attachment"` 块（ResolveBlocks 的落盘形状）必须投影成附件行；
+// 0 字节是官方 `fileSizeText` 的真值，不能被当成"未知"吞掉。
+func TestUserAttachmentBlocksRenderAsFileAndImage(t *testing.T) {
+	entry := mustProject(t, frame(9, "user/message",
+		`{"surfaceOp":"append","content":[`+
+			`{"type":"attachment","attachmentId":"att-1","name":"a.txt","byteSize":0,"mime":"text/plain"},`+
+			`{"type":"attachment","attachmentId":"att-2","name":"p.png","byteSize":2048,"mime":"image/png"}`+
+			`]}`))
+	if len(entry.Data.Attachments) != 2 {
+		t.Fatalf("应投影出 2 个附件，实际 %d：%+v", len(entry.Data.Attachments), entry.Data.Attachments)
+	}
+	file := entry.Data.Attachments[0]
+	if file.Image || file.Name != "a.txt" || file.Meta != "text/plain · 0 B" {
+		t.Fatalf("文件附件投影不对：%+v", file)
+	}
+	image := entry.Data.Attachments[1]
+	if !image.Image || image.Name != "p.png" || image.Meta != "image/png · 2048 B" {
+		t.Fatalf("图片附件投影不对：%+v", image)
+	}
+}

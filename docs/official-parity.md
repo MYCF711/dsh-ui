@@ -97,7 +97,7 @@
 | 3 | `dsh-client-ui-agent-preset` | ✅ IMPLEMENTED | `plugins/dssettings` 的 `agent-presets` 页（真名册卡片网格 + 「设为新任务默认」写 `agent-preset-registry.selectedDefault`）+ `internal/apiclient/agent_presets.go`（`agentPresets.list/read`）+ `cmd/app/agent_preset_wiring.go`；证据 [official-agent-preset-evidence-rc2.md](official-agent-preset-evidence-rc2.md)。**剩余差异**：会话内 seat（新任务 chip / 会话头标签）与「查看配置」composition viewer 未接 |
 | 4 | `dsh-client-ui-agent-team` | ✅ IMPLEMENTED | `plugins/dsagentteam` |
 | 5 | `dsh-client-ui-approval` | ✅ IMPLEMENTED | `dscomposer` + 壳 |
-| 6 | `dsh-client-ui-attachment` | 🟡 PARTIAL | uikernel 槽 + `dscomposer` + `dsconversation` + **`plugins/dsattachment`（rail 真占用方 + 拖入通道）** |
+| 6 | `dsh-client-ui-attachment` | ✅ IMPLEMENTED | uikernel 槽 + `dscomposer` + `dsconversation` + **`plugins/dsattachment`（rail / 拖入 / 三态 / 翻页）** + **`internal/apiclient/prompt_parts.go`（`fileUploads.upload` + `session.prompt` 的附件在前、文本最后）** + **`cmd/app/wpc1_send.go`（发送前把 ready 卡换回执，成功后 `Commit`）**；证据 [official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)。**剩余差异**：图片缩略图/灯箱无像素解码路径（消息区 64×64 占位瓦片），非图片附件全真 |
 | 7 | `dsh-client-ui-brand-official` | ✅ IMPLEMENTED | `plugins/dsbrand` |
 | 8 | `dsh-client-ui-chat` | ✅ IMPLEMENTED | `plugins/dsconversation`（18 文件 / 8054 行） |
 | 9 | `dsh-client-ui-commands` | ✅ IMPLEMENTED | `plugins/dscommands`（2 文件 / 423 行） |
@@ -156,7 +156,7 @@
 | 62 | `dsh-client-ui-workspace` | ✅ IMPLEMENTED | `internal/apiclient/fs.go` + `dssidebar` + `plugins/dssidebar/workspace_actions.go`（`workspace.registry`/`rename`/`delete`，#10 contextMenu 入口）+ **`plugins/dssidebar/grouping.go`（按 `registry.SessionIDs` 归属与手动序、「未分组」、registry 空时回退 cwd）+ `drag.go`（拖拽 → `workspace.insertSessionBefore`）**；证据 [official-workspace-order-evidence-rc2.md](official-workspace-order-evidence-rc2.md) |
 | 63 | `dsh-experimental-client-ui-cot-translation` | ❌ MISSING | 无 |
 | 64 | `dsh-experimental-client-ui-forge` | ❌ MISSING | 无 |
-| 65 | `dsh-experimental-client-ui-stats` | 🟡 PARTIAL | `plugins/dsstatusbar/metrics.go` + `wave3_wiring.go`；**注册机制已就位**（2026-11-15）：它要的就是往 `conversation.view` 注册一个 `order:40` 的 `stats` 条目，壳已按名录派发；缺的是视图本体（逐 step/turn 列）搬成 view——见 [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md) §5 |
+| 65 | `dsh-experimental-client-ui-stats` | ✅ IMPLEMENTED | **`plugins/dsstatusbar/stats_view.go`（官方 `conversation.view` `order:40` 的 `stats` 页面本体：逐 turn/step 11 列 + 总用时条 + 全量/窗口合计；帧投影对齐官方 `stats-fold.ts` / `stats-usage.ts` / `stats-format.ts`）** + `plugins/dsstatusbar/statusbar.go:129-130` 注册；证据 [official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)。**剩余差异**：compaction/非 step 事件行、三个工具栏开关、加载更早分页未做 |
 | 66 | `dsh-experimental-client-ui-voice-input` | ❌ MISSING | 无 |
 
 > #29 / #42 / #43 三行的完整结构与几何证据（官方 `src/**` 锚点、逐字 locale、HIDE 台账）：[official-plugins-page-evidence-rc2.md](official-plugins-page-evidence-rc2.md)。其中 #43 的「内置/第三方分 tab」在 rc.2 **不存在**——`settings.plugins.tab` 全仓只有只读清单一个贡献方。
@@ -168,10 +168,11 @@
 > **多视图座位（会话 view / 右栏 tab）机制**（2026-11-15）：官方那两处「一个位置、多个视图轮流上」的座位，
 > 本仓现在有注册表 + 按名录派发 + 选择器绘制三件套，`conversation.view` 与 `sidebar.right.pane.tab` 都是真的
 > keyed/list 派发（此前骨架 `has→return`，这两族槽**永不 dispatch**）。逐条证据、落点、与官方的 6 条缺口：
-> [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md)。**机制本身不改变任何部件的状态**——
-> `#54`/`#59`/`#65` 仍是 🟡，它们从"卡在没机制"变成"只差页面本体"。
+> [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md)。机制落地时 `#54`/`#59`/`#65`
+> 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
+> `#54`/`#59` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 42 · 🟡 7 · ⬜ 0（不该有） · ❌ 17
+## 合计：官方 66 个部件 —— ✅ 44 · 🟡 5 · ⬜ 0（不该有） · ❌ 17
 
 
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），

@@ -536,6 +536,26 @@ func (p *Plugin) openPluginDetail(name string) {
 // ClosePluginDetail 关闭详情页（测试与壳的无鼠标入口用）。
 func (p *Plugin) ClosePluginDetail() { p.closePluginDetail() }
 
+// OpenPluginDetail 从界面别处打开某个 bundle 的详情页，并切到「插件」面板。
+//
+// 官方出处：动作卡的「查看详情」= `pluginNavigation.openBundle(packageName)`
+// （`dsh-client-ui-plugin-recommendations/src/client/mount.ts:53-58`），而
+// `pluginNavigation` 由 `ui-plugin-manager` 提供——**只在当前 Peer 能用插件页时存在**。
+// 本仓把这条能力落在侧栏这一个插件上，所以壳按能力查表转一手
+// （`cmd/app` 的 wirePluginRecommendations）。
+//
+// 返回 false = 这个壳没有插件页（插件没装 / 还没装配）：调用方此时**不许画那个
+// 「查看详情」入口**，画一个点了没反应的入口比不画更糟。
+func (p *Plugin) OpenPluginDetail(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	p.activePanel = "plugins"
+	p.openPluginDetail(name)
+	return true
+}
+
 func (p *Plugin) closePluginDetail() {
 	p.pluginSelected = ""
 	p.pluginRemoveArm = ""

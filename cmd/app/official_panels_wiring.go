@@ -10,6 +10,7 @@
 //
 //	dsactioncards.SetSource(CardSource)
 //	dsattachment.SetSink(AttachmentSink)
+//	dspluginreco.SetSource(RecoSource) + SetOnOpenDetails(func(name string))
 //
 // 另外 `dsattachment.HandleFileDrop` 要由壳挂到 `app.Config.OnFileDrop`——
 // 那是 Viva 的系统拖放入口（`viva@v0.6.0/app/app.go:150-156`），
@@ -26,6 +27,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsactioncards"
 	"github.com/MYCF711/dsh-ui/plugins/dsattachment"
 	"github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
+	"github.com/MYCF711/dsh-ui/plugins/dspluginreco"
 )
 
 // cardSource 是壳给动作卡插件的数据源。
@@ -92,6 +94,7 @@ func wireOfficialPanels(m *model) {
 	}
 	dsactioncards.SetSource(cardSource{cli: m.cli})
 	dsattachment.SetSink(attachSink{cli: m.cli, m: m})
+	wirePluginRecommendations(m)
 	// #14 的按文件 diff：数据面走 `/api/changes.*`（裸 JSON 路由）。
 	dsdeliverables.SetChangesSource(changesSink{cli: m.cli})
 }
@@ -140,4 +143,43 @@ func (s changesSink) Diff(ctx context.Context, sessionID string, seq, index int)
 
 func (s changesSink) Open(ctx context.Context, sessionID string, seq, index int, action, application string) error {
 	return s.cli.ChangesOpen(ctx, sessionID, seq, index, action, application)
+}
+
+// recoSource 是壳给「官方插件推荐卡」的数据源。
+//
+// 一条方法一一对应官方那条 Remote（`pluginRecommendations.describe`）：
+// `dsh-client-ui-plugin-recommendations/src/client/mount.ts:40-44` 的
+// `ctx.remote.pluginRecommendations.describe(sessionId, callId)`。
+// 宿主侧真实现见 `HOST:internal/recommendations/service.go:120-181`。
+type recoSource struct{ cli *apiclient.Client }
+
+func (s recoSource) Describe(ctx context.Context, sessionID, callID string) (*apiclient.PluginRecommendationDetails, error) {
+	return s.cli.PluginRecommendationDescribe(ctx, sessionID, callID)
+}
+
+// wirePluginRecommendations 把推荐卡的数据面与「查看详情」入口接进产品。
+//
+// 为什么「查看详情」由壳转一手：官方那条 `pluginNavigation.openBundle(packageName)`
+// （`dsh-client-ui-recommendations/src/client/mount.ts:53-58`）服务由 `ui-plugin-manager`
+// 提供，本仓的插件页在侧栏插件里（`plugins/dssidebar/plugins_page.go`）。插件之间不
+// direct 引用（R2），所以壳按能力查表把这一下转过去；**找不到侧栏插件就注入 nil**，
+// 卡片那边会因此不画标题上的可点入口（不画假按钮）。
+func wirePluginRecommendations(m *model) {
+	if m.cli == nil {
+		return
+	}
+	dspluginreco.SetSource(recoSource{cli: m.cli})
+	if m.kernel == nil {
+		dspluginreco.SetOnOpenDetails(nil)
+		return
+	}
+	for _, p := range m.kernel.Plugins() {
+		opener, ok := p.(interface{ OpenPluginDetail(string) bool })
+		if !ok || p.ID() != "ds-sidebar" {
+			continue
+		}
+		dspluginreco.SetOnOpenDetails(func(name string) { opener.OpenPluginDetail(name) })
+		return
+	}
+	dspluginreco.SetOnOpenDetails(nil)
 }

@@ -251,7 +251,7 @@ save()     plan 空 / 只读 / invalid / saving → 不动
 
 | # | 差异 | 原因 |
 |---|---|---|
-| ① | 菜单选中项是 **radio 圆点**，官方是**行尾对勾** | 官方 `Menu` 的 `selection="check"` 在行尾画 `IconCheckOutlineRegular`；viva 的菜单只有 `.Chosen()`（radio）与 `.Checked()`（行首复选框），没有"行尾对勾"。语义一致，图形/位置不同 |
+| ① | 菜单选中项的对勾**字形/尺寸**不是官方那一枚（**位置与语义已一致，不是 radio 圆点**） | 官方 `Menu` 的 `selection="check"` 在**行尾**画 sprite `check-outline`（`index-ghOpC9uV.js:129:100052` 的 `d&&f==="check"&&m.jsx(Cs,...)`，`Cs` 见 `129:76101`；sprite `viewBox="0 0 16 16"` + `M2.25 8.5L5.49732 11.7473C…L13.75 4`；CSS `._check_70kcw_265` 14×14、色 `label-primary`，`index-CSAdOBx6.css:1:16475` / `:1:17024`）。viva 0.6.4 的 `.Chosen(true)` → `DropdownMenuRadio`+`Selected`（`ui/menu.go:465-471` / `:314-331`），`paintItem` 用 `paintCheck` 在**行尾**画内置 `checkIcon`（`components/dropdown_menu.go:1066-1071`、`components/checkbox.go:144-153`：viewBox 24 / stroke 2 / `M20 6.5 L9 17.5 L4 12.5`，16×16，右边缘同样距行右沿 8px）。**故一致的是：行尾位置、对勾语义、右沿 8px、垂直居中、选中行不改底色；不同的是：字形与 14 vs 16px 尺寸。** `ui.MenuItems` 无行尾插槽，`paintItem` 的字形是私有 `checkIcon`（无覆盖入口），官方 path 进不去这一行；本仓已备 `plugins/dsassets.CheckOutline()`，等上游 viva 开 indicator 口子 |
 | ② | 指南链接是**自带命中区**的链接色文字 | 官方 `<a href target=_blank>`；本仓点击经壳的 `OpenExternal`（系统默认浏览器）。`OpenExternal == nil` 时**不挂命中区** |
 | ③ | 密钥 Tag 的 tone 用「填充/描边」表达 | 官方 `Tag tone={configured ? 'neutral' : 'quiet'}`；本仓 neutral 用 `BgLayer3` 底、quiet 用描边，取色同 primitives |
 | ④ | `.chevron` 尺寸按 16（viewBox） | 官方 CSS 只给颜色，`<IconChevronDownOutlineRegular>` 未传 `size`；本仓按 viewBox 16 画，图标路径取自 `plugins/dsassets`（官方 `IconChevronDownOutlineRegular` 原文） |

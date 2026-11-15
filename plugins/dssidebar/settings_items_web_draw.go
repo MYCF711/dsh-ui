@@ -14,10 +14,20 @@
 //
 // # 已登记的差异（缺真实素材/框架能力，不造假）
 //
-//	① **菜单选中项用 radio 圆点**：官方 `Menu` 的 `selection="check"` 在行尾画一枚
-//	   对勾（编译产物 `Zu` 的 `d&&f==="check"&&m.jsx(Cs,...)`）。viva 的菜单只有
-//	   `.Chosen()`（shadcn 的 radio 圆点）与 `.Checked()`（行首复选框），没有"行尾
-//	   对勾"。语义一致（单选的当前项），图形与位置不同；不手绘冒充。
+//	① **菜单选中项的对勾字形不是官方那一枚**（位置与语义已一致，**不是** radio 圆点）：
+//	   官方 `Menu` 的 `selection="check"` 在行尾画 sprite `check-outline`
+//	   （`index-ghOpC9uV.js:129:100052` 的 `d&&f==="check"&&m.jsx(Cs,...)`；`Cs` 见
+//	   `129:76101`；sprite 原文 `viewBox="0 0 16 16"` + `M2.25 8.5L5.49732 11.7473C…L13.75 4`，
+//	   CSS `._check_70kcw_265` 尺寸 14×14、色 `label-primary`，见
+//	   `index-CSAdOBx6.css:1:16475`、`:1:17024`）。
+//	   viva 0.6.4 的 `.Chosen(true)` 走 `DropdownMenuRadio`+`Selected`
+//	   （`ui/menu.go:465-471`、`:314-331`），`paintItem` 用 `paintCheck` 在**行尾**
+//	   画内置 `checkIcon`（`components/dropdown_menu.go:1066-1071`、
+//	   `components/checkbox.go:144-153`，viewBox 24 / stroke 2 / `M20 6.5 L9 17.5 L4 12.5`，
+//	   16×16，右边缘同样距行右沿 8px）。所以：**位置一致、形状同为对勾、字形与尺寸不同**。
+//	   `ui.MenuItems` 没有行尾插槽（`paintItem` 里的字形是私有 `checkIcon`，无覆盖入口），
+//	   官方那枚 path 不能塞进这一行；本仓已备 `dsassets.CheckOutline()`，等上游开口。
+//	   不手绘冒充，也不为一行对勾换掉整个菜单（会丢焦点陷阱/方向键/Esc/点外关闭）。
 //	② **帮助/链接的可点击**：官方 `searchGuide` 是 `<a href target=_blank>`；本仓用
 //	   主题的 link 色文字 + 真命中区，点击经壳的 `OpenExternal`（系统默认浏览器）。
 //	   `OpenExternal == nil` 时不挂命中区（画一个点了没反应的链接比不画更糟）。

@@ -1349,10 +1349,18 @@ type Actions struct {
 
 	// OpenDirectoryPicker 打开**官方目录选择器**（官方 `dsh-client-ui-directory-picker-browse`
 	// 的 Miller 双列对话框），用它「添加工作区」。
+	// OpenDirectoryPicker 打开**官方目录选择器**，用它「添加工作区」。
 	//
-	// 官方归属：这个对话框是 `ui-workspace` 的 directory-flow 洞的两个填充者之一
-	// （另一个是 `ui-directory-picker-native`，走 OS 原生选择器）。本仓只落地了
-	// browse 那一个 backend，所以这里只有一个入口，没有"二选一"。
+	// 官方归属：`ui-workspace` 的 directory-flow 洞有**两个互斥后端**
+	// （`dsh-client-ui-directory-picker-browse` 的 Miller 双列对话框 /
+	// `dsh-client-ui-directory-picker-native` 的 OS 原生框），一个宿主一次只组装
+	// 一套。所以这一格是"**本次启动可用的那一个后端**"的入口，不是固定的对话框：
+	// 壳启动时探一次宿主的组合（打只读的 `directoryPicker.list`），browse 就打开
+	// 对话框、native 就直接弹原生框（见 `cmd/app/dirpicker_wiring.go`）。
+	//
+	// **一套后端都不可用（探针失败 / 宿主两套都不服务）时壳给 nil** —— 于是这一格
+	// 就是"入口整块隐藏"，与"宿主没接"同一个语义。这是有意的：把不可用画成
+	// "点了没反应的按钮"比不画更糟。
 	//
 	// **为什么由壳转一手而不是插件互相找**：对话框本体在 `plugins/dsdirpicker` 里，
 	// 而触发它的「添加工作区」按钮在 `plugins/dssidebar` 的工作区工具带上

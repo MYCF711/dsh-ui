@@ -124,6 +124,11 @@ type model struct {
 	workspacesKnown   bool
 	workspacesPending bool
 	workspacesErr     string
+	// dirPicker 是**本次启动探到的 directoryPicker 组合**（browse / native /
+	// 都不可用）与它的缓存。探针只在启动时打一次，之后每次打开都用这个结果
+	// ——探针有网络开销，而且 native 组合下它必然是一条 501（见
+	// dirpicker_wiring.go 的 wireDirPicker）。
+	dirPicker dirPickerState
 	// fileRefs/sessionRefs 是 `@` 候选的按查询缓存（键 = sessionID + NUL + query）。
 	// pending 防重入：插件每帧都可能问同一个 query。
 	fileRefs           map[string][]pluginapi.FileReferenceCandidate
@@ -2603,8 +2608,10 @@ func main() {
 			}
 			return names
 		},
-		// 官方目录选择器（「添加工作区」的落点）。nil 时侧栏不画那个按钮。
-		OpenDirectoryPicker: func() { m.openDirectoryPicker() },
+		// 官方目录选择器（「添加工作区」的落点）。**nil 时侧栏不画那个按钮**——
+		// `dirPickerAction()` 按启动时探到的组合返回，一套后端都不可用时给 nil
+		// （隐藏入口，不退回到某个默认），见 dirpicker_wiring.go。
+		OpenDirectoryPicker: m.dirPickerAction(),
 		ScheduleList: func() []pluginapi.ScheduleItem {
 			m.mu.Lock()
 			defer m.mu.Unlock()

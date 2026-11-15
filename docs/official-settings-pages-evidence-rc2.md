@@ -180,3 +180,109 @@ save()     plan 空 / 只读 / invalid / saving → 不动
   -run 'TestSettingsItem' ` 产出 `settings-items-group.png`（组 + 三张卡 + 组序）与
   `settings-item-detail-subagent.png`（一节两字段 + 「已覆盖」/「恢复默认」+ 「保存」）
 - 账本：`python scripts/parity-count.py --check`（本轮后 ✅ 47 · 🟡 6 · ❌ 13）
+
+---
+
+# 追加（2026-11-15 第二批）：#47 `web-search` 落地
+
+> 对应账本 `docs/official-parity.md` 的 **#47**（本轮由 ❌ 转 ✅）。这一页与 §1–§7 的三张卡
+> **同一个落点**（插件管理页 `plugins.item`），但形状不同：不是"字段表单"，而是
+> **两个 provider 下拉 + 灰面板**，所以它有自己的模型/绘制文件：
+>
+> - `plugins/dssidebar/settings_items_web.go`（模型：三命名空间、菜单项、计费、密钥、plan/save）
+> - `plugins/dssidebar/settings_items_web_draw.go`（绘制：section/下拉/灰面板/计费/密钥/链接/重试）
+> - `internal/apiclient/web_providers.go`（`web.listProviders`）
+> - `internal/apiclient/credentials.go`（`credentials.describe` / `credentials.set`）
+> - `cmd/app/web_provider_wiring.go`（壳侧缓存、拉取、重试、凭据写）
+
+## 8.1 落点与存在条件
+
+| 项 | 官方 | 本仓 |
+|---|---|---|
+| 注册点 | `ui-settings-web-search/src/client/index.ts:72-74`：`whileServed([WEB_NS]) → slots.register({name:'plugins.item', id:'web-search', order:20, label:t('title')})` | `settings_items.go` 的 `settingsItemLedger()` 新增 `web-search`（`Kind=web-search`, `Order=20`），`buildSettingsItemWebCard` 投影 |
+| 存在条件 | 宿主**服务** `web` 才挂载；不服务整张卡不存在 | `settingsItemWebState.webAvailable`（= `describe.namespaces` 含 `web`），不满足时卡片整张不出现 |
+| 数据面（3 条） | `web` / `web-deepseek-api` / `web-search-deepseek`（宿主 `internal/settingsform/web_namespaces_schema.go` 逐字对齐） | `settingsNSWeb` / `settingsNSWebAPI` / `settingsNSWebSearch` |
+
+## 8.2 三命名空间 → 本页编辑的字段（官方 JSX 逐行）
+
+| 命名空间 | 字段 | 控件 | 官方锚点 |
+|---|---|---|---|
+| `web` | `searchProvider` / `fetchProvider` | 两个 `.selector` 下拉 | `WebSearchCard.tsx:72-78`（搜索）/ `:118-121`（获取）；controller `:279-296` |
+| `web-deepseek-api` | `count` | 数字输入（整数 1–50） | `WebSearchCard.tsx:81-84`；controller `:294-299` |
+| `web-deepseek-api` | `searchBilling` / `fetchBilling` | 计费下拉（auto / account / api-key） | `WebSearchCard.tsx:85-88` / `:122-127`；controller `:291-296` |
+| `web-deepseek-api` | `searchBaseURL` / `searchApiKeyEnv` / `fetchBaseURL` / `fetchApiKeyEnv` | **只读**，只用来挂「已被 … 覆盖」标签并锁死计费菜单 | controller `:147-148`；`WebSearchCard.tsx:224-232` |
+| `web-search-deepseek` | `apiKey`（secret） | `SettingsSecretField`（密码框 + 「已配置/未配置」Tag） | `WebSearchCard.tsx:93-104`；primitives 编译产物 `VZ` |
+| `web-search-deepseek` | `baseURL` / `maxUses` | 文本 / 整数（≥1） | `WebSearchCard.tsx:105-112`；controller `:304-311` |
+
+官方**没有控件**、本页也不画的字段：`model` / `apiVersion` / `maxTokens`（YAML-only）、
+`searchRequestsPerSecond` / `sendOriginalQuestion`（无控件）。少画它们不是缺块。
+
+## 8.3 状态机（照官方 `SettingsFormModel` 编译产物）
+
+`dsh-web-frontend/dist/assets/index-ghOpC9uV.js` 里 `BZ` 类的 `field()/plan()/save()`：
+
+- `format`：数字字段 `typeof === 'number'`；文本字段 `typeof === 'string'`（缺失 = 空串，
+  **不是**"未知"，所以 Base URL 空着也可编辑——见 §8.6 ①）
+- `parse`：空白 → `clear`；数字 `Number.isFinite`；count 另加 `Number.isInteger && 1..50`；
+  maxUses 加 `Number.isInteger && >= 1`；文本 = trim 后原文
+- `plan`：secret 草稿 trim 非空 → 一次 `credentials.set`；`clear` 只在 `stored` 时发 `unset`；
+  文本逐字等于 current → 跳过；解析失败 → 只记 `invalid`
+- `save`：**先 `web-deepseek-api`、再 `web-search-deepseek`、最后 `web`**，任一被拒即停并保留
+  全部草稿；密钥写挂在 `web` 那一节（`savingRef = draftRef`），在其 mutate 之后跑
+
+## 8.4 几何台账（`settingsWebGeometry()`，测试逐行断言 Official == Impl）
+
+| 节点 | 属性 | 官方值 | 原文 |
+|---|---|---|---|
+| `.section + .section` | margin-top | 32 | `WebSearchCard.module.css:16-18` |
+| `.sectionTitle` | font-size / line-height | 14 / 20 | 同文件 `:20-26` |
+| `.field`（下拉那一格，**本页自有**） | padding-block / gap | 8+12 / 6 | `:28-33` |
+| `.selector` | height / padding-inline / gap / font-size / border | 34 / 12 / 12 / 13 / 0.5 | `:35-52` |
+| `.panel` | padding-inline | 16 | `:83-89`（底色 `--dsw-alias-bg-module-platform` → 本仓 `Theme.BgLayer3`） |
+| `.panelField` | padding-block / gap | 12 / 6 | `:92-97` |
+| `.panelHead` / `.panelLabel` | gap / 13px·1.5 | 8 / 13·19.5 | `:105-122` |
+| `.hint` | font-size / line-height | 12 / 18 | `:124-129` |
+| `.notice` | gap / font-size | 12 / 12 | `:131-139` |
+
+面板里的 `SettingsValueField` 仍用上一批那套 primitives 几何（`.field` 12/6、`.input` 34/12/13/0.5…），
+不重复定义。
+
+## 8.5 与官方的差异（登记，不冒充一致）
+
+| # | 差异 | 原因 |
+|---|---|---|
+| ① | 菜单选中项是 **radio 圆点**，官方是**行尾对勾** | 官方 `Menu` 的 `selection="check"` 在行尾画 `IconCheckOutlineRegular`；viva 的菜单只有 `.Chosen()`（radio）与 `.Checked()`（行首复选框），没有"行尾对勾"。语义一致，图形/位置不同 |
+| ② | 指南链接是**自带命中区**的链接色文字 | 官方 `<a href target=_blank>`；本仓点击经壳的 `OpenExternal`（系统默认浏览器）。`OpenExternal == nil` 时**不挂命中区** |
+| ③ | 密钥 Tag 的 tone 用「填充/描边」表达 | 官方 `Tag tone={configured ? 'neutral' : 'quiet'}`；本仓 neutral 用 `BgLayer3` 底、quiet 用描边，取色同 primitives |
+| ④ | `.chevron` 尺寸按 16（viewBox） | 官方 CSS 只给颜色，`<IconChevronDownOutlineRegular>` 未传 `size`；本仓按 viewBox 16 画，图标路径取自 `plugins/dsassets`（官方 `IconChevronDownOutlineRegular` 原文） |
+
+## 8.6 缺口（真实能力，已登记；不拿界面补）
+
+1. **`web-search-deepseek.apiKey` / `apiKeyEnv` 在本仓不改变搜索行为**：宿主
+   `modules/search/deepseek.go:77` 只从启动环境读 `DEEPSEEK_API_KEY` / `DSHD_SEARCH_API_KEY`，
+   没有"按 credential-ref 名字去凭据库取值"的解析器（宿主侧 `web_namespaces_schema.go` 文件头
+   自己也登记了这一条）。所以界面照官方发布面画：密钥**能写**（经 `credentials.set`，真落库）、
+   能往返、"设没设"是**真值**（`credentials.describe` 会回 `source: env|catalog`），但写进去
+   不会让 provider 换用这把钥匙。
+2. **文本字段的"缺值"判据比数字宽**：官方 `settingsTextField.format(undefined)` 就是空串，
+   所以 Base URL 没值时必须可编辑（空 = 用官方地址）。上一批给数字字段定的"宿主没给 current
+   就禁用"不适用于文本字段，否则一个可选字段会被画成死格。两者都写在 `buildSettingsItemField` 里，
+   各带理由。
+3. **官方 `save()` 的只读判据照搬**：`!scope.writable` 会让**密钥也存不下去**（密钥草稿挂在
+   `web` 那一节的 form 上），哪怕凭据域本身可写。官方注释只承诺"密钥控件不因设置只读而禁用"，
+   没承诺"能存"。本仓不擅自修好，行为与官方一致。
+
+## 8.7 证据与门禁
+
+- 模型：`go test ./plugins/dssidebar -run TestSettingsWeb -v`（15 条：菜单顺序/kind 分支/
+  三个面板组成/计费锁/count·maxUses·文本 parse/plan 三段/清覆盖/密钥引用不变量/未知态/
+  读失败提示/几何台账/文案拼接）
+- 真绘制 + 真点击 + 真写：`settings_items_web_visual_test.go`（6 条，真 Viva headless）：
+  页面文案与 34px 下拉命中区、**点菜单真的换 panel 并 stage 草稿 → 保存真的发 `settings.mutate(web)`**、
+  count 写 `web-deepseek-api`（带 api revision）、**密钥真的走 `credentials.set` 且不进 settings**、
+  清单失败画提示 + 点「重试」真的触发重读、写失败画官方 `saveFailed`
+- 截图：`SETTINGS_ITEMS_CAPTURE_DIR=<dir> go test ./plugins/dssidebar -run TestSettingsWebDetailDrawsOfficialPage`
+  产出 `settings-web-detail.png`（两个 section + 下拉 + 灰面板 count/计费 + 指南链接 + 保存）
+- 账本：`python scripts/parity-count.py --check`（本轮后 ✅ 48 · 🟡 6 · ❌ 12）
+- 快照：`testdata/api.snapshot.json` 新增 `web.listProviders` / `credentials.describe` /
+  `credentials.set`（counts.total 73 → 76，各批之和 = total 由 `TestSnapshotCountsMatchMethods` 守着）

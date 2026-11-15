@@ -208,6 +208,20 @@ type model struct {
 	agentPresetPending bool
 	// agentPresetErr 是最近一次拉取失败的原因（只报状态栏，不清缓存）。
 	agentPresetErr error
+	// webProviders 是官方 `web.listProviders` 的缓存（#47 设置页 provider 菜单的数据面）。
+	// nil = 还没成功拉到（菜单只列已选中的那个 id，**不编 provider**）。
+	webProviders *apiclient.WebProviderList
+	// webProvidersPending 防重入：每帧都可能问，别每帧发一次请求。
+	webProvidersPending bool
+	// webProvidersErr 是最近一次 provider 清单拉取失败的原因（只报状态栏，不清缓存）。
+	webProvidersErr error
+	// credentials 是凭据域按 ref 的缓存（官方 credentials.describe；**只回状态不回值**）。
+	// 缺一个键 = "还没问到"，消费方不许当"未配置"。
+	credentials map[string]apiclient.CredentialInfo
+	// credentialPending 是按 ref 的防重入（只问没问到且没在飞的那些）。
+	credentialPending map[string]bool
+	// credentialErr 是最近一次凭据状态读失败的原因（只报状态栏，不清缓存）。
+	credentialErr error
 	// shellChannelServed 报告宿主的壳更新渠道服务能不能应答
 	// （`desktopUpdate.channel.get`）。false = 宿主没这条能力 -> 「更新渠道」行不出现。
 	shellChannelServed bool
@@ -2697,6 +2711,12 @@ func main() {
 		// 它同样不是 Host 设置，所以与 describe 分开一处，见 agent_preset_wiring.go。
 		AgentPresetRoster:  m.agentPresetRosterSnapshot,
 		AgentPresetRefresh: m.agentPresetRefresh,
+		// #47「网页搜索与获取」设置页的两条数据面：官方 web.listProviders 的缓存
+		// 与凭据域（describe/set）。都不是 Host 设置，见 web_provider_wiring.go。
+		WebProviderList:    m.webProviderListSnapshot,
+		WebProviderRefresh: m.webProviderRefresh,
+		CredentialStatus:   m.credentialStatusSnapshot,
+		CredentialSet:      m.credentialSet,
 		FSRead: func(path string) (string, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

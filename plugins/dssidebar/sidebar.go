@@ -167,14 +167,17 @@ type Plugin struct {
 	pluginNotice      string
 	pluginNoticeUntil time.Time
 
-	// ── 官方 4 条插件设置页的本地状态（settings_items*.go，#39/#45/#46）──
+	// ── 官方 4 条插件设置页的本地状态（settings_items*.go，#39/#45/#46/#47）──
 	//
 	// itemSelected 是打开的官方插件配置卡片 id（`plugins.item` 的 id）；
 	// itemForm 是这张卡的草稿 / 写状态（自带 mutex：保存跑在 goroutine 里）；
-	// itemFields 是那几页表单的输入框（Fields() 必须登记，否则收不到键盘）。
+	// itemFields 是那几页表单的输入框（Fields() 必须登记，否则收不到键盘）；
+	// itemWebMenus 是 #47 那两个 provider 下拉 + 计费下拉的展开态（键 = 菜单 id）。
+	// 只由绘制线程读写（与 dscontextmenu 的 buttons 表同一先例）。
 	itemSelected string
 	itemForm     *settingsItemForm
 	itemFields   settingsItemFields
+	itemWebMenus map[string]bool
 
 	// ── #10 context menu 与 #62 工作区动作的本地状态（workspace_actions.go）──
 	//

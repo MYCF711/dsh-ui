@@ -70,14 +70,21 @@
 //     `attachment.previewUrl`（浏览器 `File` 给的对象 URL）与 `<img>`。本仓有字节
 //     （`AttachmentGet`）但没有图片解码/位图绘制链路，**按任务约束不自行画图**，
 //     所以图片也走文字卡，`image.*` 那组文案一律不用。
-//   - **拖拽悬停层（DropOverlay）**：官方是整窗 `position:fixed` + `backdrop-filter: blur(10px)`
-//   - `--dsw-alias-bg-mask-drop` 底色 + 115×84 SVG 插画（`OFF:DropOverlay.module.css:3-14`、
-//     `OFF:DropOverlay.tsx:43-77`）。`pluginapi.Theme` 没有这个底色令牌，viva 也没有 blur，
-//     手画 SVG 违反仓规，插画没有 Go 素材 —— **四样都缺，所以一层都不画**
-//     （与 `plugins/dsdirpicker` 对 Modal 遮罩的处理同一条先例：没有官方 CSS 值就不自造压色）。
-//     另外 viva 的 `OnFileDrop` 文档写明「On Windows only the drop is reported」
-//     （`app/app.go:150-156`），而本仓只做 Windows 稳定版 —— 悬停层在这个平台上本来就到不了。
-//     `dropTitle`/`dropBlocked` 因此**没有可见落点**（读到了，但不画）。
+//   - **拖拽悬停层（DropOverlay）的插画 / 模糊 / 过渡**：主体已经画了，见 `overlay.go`——
+//     整窗压层 + 官方 `attachment.dropTitle`，底色用官方 `--dsw-alias-bg-mask-drop` 的两个原值
+//     （`OFF:dsh-client-ui-theme/src/styles/design-platform.css:188`（亮）/ `:340`（暗））。
+//     仍然缺的三样：115×84 SVG 插画（`OFF:DropOverlay.tsx:43-77`，仓规不许手画 SVG，
+//     `assets/official/**` 里也没有这幅插画）、`backdrop-filter: blur(10px)`
+//     （`OFF:DropOverlay.module.css:12`，viva 没有背景模糊）、`fade-in 160ms`（`:13-25`，
+//     画布没有过渡）。逐条登记在 `overlay.go` 文件头。
+//     **此处曾写「四样都缺，所以一层都不画」，其中第四条论据是错的**：viva 的 OnFileDrop
+//     文档「On Windows only the drop is reported」（`OFF-VIVA:app/app.go:154-159`）只对
+//     **提权进程**的 `WM_DROPFILES` 兜底路径成立（`OFF-VIVA:internal/platform/windows/drop_windows.go:238`、
+//     `:310` `handleDropFiles`）；非提权进程注册的是真 OLE `IDropTarget`
+//     （`:263` `registerDropTarget`），`DragEnter/DragOver/DragLeave` 三个回调都在并逐次上报
+//     （`:174-202` → `FileDropOver` / `FileDropLeave`）。所以悬停态在 Windows 稳定版上**到得了**。
+//     `attachment.dropBlocked`（拒绝态标题）仍然没有可见落点：没有 sink 时本包连
+//     `FileDropOver` 都不消费（官方 `drop-events.ts:50-62` 同一道门），悬停态置不起来。
 //   - **重试**：官方失败卡整张变成重试按钮（`OFF:FileCard.tsx:50-56` + `onRetry`）。
 //     本包只保留右侧 ×（删除后重新拖入即可），不做重试入口。
 //   - **多选文件 / 「选文件」按钮**：`app.OpenFiles` 回的 `FileRef` **只有
@@ -356,6 +363,9 @@ type Plugin struct {
 
 	// boxes 是这一帧的几何，draw 按它的尺寸决定翻页窗口。
 	boxes railBoxes
+	// overlayBox 是这一帧悬停压层的几何（官方 `DropOverlay` 的 `.mask`）。
+	// 单独一格：它画在另一个槽位（`shell.overlay`），与 rail 的 `boxes` 互不作废。
+	overlayBox ui.Box
 }
 
 // ID 实现 pluginapi.Plugin（官方包名 dsh-client-ui-attachment 的 kebab 化）。
@@ -379,18 +389,34 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	return nil
 }
 
-// Panels 实现 pluginapi.Panels：rail 挂官方 `conversation.input.attachments` 座位。
+// Panels 实现 pluginapi.Panels：rail 挂官方 `conversation.input.attachments` 座位，
+// 悬停压层挂官方 `shell.overlay` 座位。
 //
 // Order 0：这个槽是 single 且目前只有本插件注册（官方也是"一个 rail 占满"）。
 // 槽位名来自 `internal/uikernel/official_slots.go:137`，不自己拼字符串。
+//
+// 压层的 Order 5：官方 `file-drag.feedback` 与 `DropOverlay` 都挂在 `shell.overlay`
+// 上（`OFF:dsh-client-ui-file-drag/src/client/index.ts:46-49`、
+// `OFF:client/ComposerAttachments.tsx:56-61`），官方不给 order。本仓同槽按 Order 从小到大
+// 画（大的后画=在上，见 `cmd/app/panels_order_test.go` 的守卫），压层是**纯装饰**，
+// 必须压在对话框/菜单（95–104）**下面**，所以取最小的空位 5。
 func (p *Plugin) Panels() []pluginapi.Painter {
-	return []pluginapi.Painter{{
-		ID:        "attachments",
-		Slot:      uikernel.OffInputAttachments,
-		Order:     0,
-		Draw:      p.draw,
-		AfterDraw: p.afterDraw,
-	}}
+	return []pluginapi.Painter{
+		{
+			ID:        "attachments",
+			Slot:      uikernel.OffInputAttachments,
+			Order:     0,
+			Draw:      p.draw,
+			AfterDraw: p.afterDraw,
+		},
+		{
+			// 官方 `drop-events.ts` 的 `dragActive` → `DropOverlay`（`OFF:client/ComposerAttachments.tsx:56-61`）。
+			ID:    "attachments.drop-overlay",
+			Slot:  pluginapi.SlotShellOverlay,
+			Order: 5,
+			Draw:  p.drawDropOverlay,
+		},
+	}
 }
 
 // ── 拖入（官方 drop-events.ts 的状态机，只认 Paths）────────────────────────

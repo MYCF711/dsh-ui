@@ -176,9 +176,9 @@
 > 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
 > `#54`/`#59` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 50 · 🟡 14 · ⬜ 0（不该有） · ❌ 2
+## 合计：官方 66 个部件 —— ✅ 50 · 🟡 15 · ⬜ 0（不该有） · ❌ 1
 
-> 剩下 2 条 MISSING（`#19 file-drag`、`#66 voice-input`）的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
+> 剩下 1 条 MISSING（`#19 file-drag`、`#66 voice-input`）的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
 > B 档"要一次架构判断" / C 档"宿主缺前置" / D 档"按 HIDE 登记"）见
 > [official-missing-batch-a-findings-rc2.md](official-missing-batch-a-findings-rc2.md)。
 

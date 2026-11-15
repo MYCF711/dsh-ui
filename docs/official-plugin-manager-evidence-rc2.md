@@ -60,9 +60,14 @@ order 0）与 `drawActivePanel` 的主列落地，**入口三要素逐字一致*
 
 **分组由数据决定**：`mine = listed.filter(!official)`、`official = listed.filter(official)`、
 `basicCards` 来自 `plugins.item` 槽贡献方（TSX:1670-1700）。本仓宿主 `listBundles`
-只有 profile bundle（`official=false`），且没有任何 `plugins.item` 贡献方 →
+只有 profile bundle（`official=false`），**官方插件配置卡片**这一组此前零贡献方 →
 官方此时只渲染 `renderGroup('bundles', t('bundlesTitle'), mine.map(packageCard))`
 （TSX:1846-1852），tab 条在 `tabs.length === 0` 时整段不画（TSX:1789-1795）。
+
+> **2026-11-15 更新**：`plugins.item` 已有贡献方——`#39` / `#45` / `#46` 三张官方插件配置卡
+> 现在画在 `basic` 组（「内置插件配置」）里、顺序在「已安装插件」之前，见
+> [official-settings-pages-evidence-rc2.md](official-settings-pages-evidence-rc2.md)。
+> `#47`（`web-search`）下一批。
 
 ---
 
@@ -131,7 +136,7 @@ pluginManager.setBundleEnabled / removeBundle ─▶ Actions.PluginSetBundleEnab
 | **添加插件**（InstallDialog） | 页头主按钮 + `plugins.add.actions` 菜单 + 规格输入 + 检查 + pnpm 终端块 + 进度 + 取消 + 构建审批（TSX:1034-1535） | **HIDE** | 本仓没有 pnpm 终端流、构建审批与 registry 选择面；宿主 `installBundle` 对 JS/Cordis 形态是结构化失败（`HOST:cmd/dshd/serve_plugins_official.go:232-254`）。画半个对话框就是自造交互 |
 | **更新**（UpdateDialog / 版本列表） | `update` 三态 + `listVersions` + registry 检查 | **HIDE** | 本仓 `listBundles` 恒不产出 `update`；`listVersions` 对本仓本地目录包回 `not-updatable`（没有 registry 版本源，`HOST:internal/pluginmgr/official/adapter.go:135-163`） |
 | **多 tab**（`plugins.tab`） | 贡献方注册的 tab 条 | 不画 | 没有任何贡献方；官方也是"零贡献方不画 tab 条"（TSX:1789-1795） |
-| **官方插件配置卡片**（`plugins.item` / config 槽） | 官方包的配置页 | 不画 | 本仓槽位表里没有这 9 个 `plugins.*` 槽，零贡献方 |
+| **官方插件配置卡片**（`plugins.item` / config 槽） | 官方包的配置页 | **已接 3 条**（`#39` agent-loop / `#45` shell / `#46` subagent 的运行限制）；`#47` web-search 下一批 | 2026-11-15 落地，见 [official-settings-pages-evidence-rc2.md](official-settings-pages-evidence-rc2.md)。宿主没服务该命名空间时那张卡**整张不出现**（官方 `whileServed` 同义） |
 | **卸载确认** | `Modal` + 两个按钮 | 行内确认条 + 「同一按钮再点一次」 | 本仓按仓规不新造 Modal；与侧栏删除会话、任务页删除同一先例 |
 | **详细介绍渲染** | `DetailDocument` 的 Markdown 布局（代码块/图片） | **纯文本逐行**画宿主返回的真实 markdown | markdown 布局要走 `Draw`+`AfterDraw` 两段并使用 `components.MarkdownView`（dsconversation 那套），本轮不引入这条链；内容不假，只是样式不同 |
 | **卡片图标** | `PluginArtworkDefault` 精灵图 / manifest icon data URL | 48×48 边框框 + 标题首字（**derived**） | 本仓没有官方 sprite 导出、宿主也不产出 `meta.icon`；按仓规不手绘冒充官方图标 |

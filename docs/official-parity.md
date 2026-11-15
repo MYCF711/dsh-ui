@@ -1,10 +1,10 @@
 # 官方部件清单 vs 我们的
 
-> 来源：`tmp/official/` 下从官方 asar 提取的 `@deepseek-ai/dsh-client-ui-*` 包（59 个）。
-> 我们有 **22 个插件目录**，对上官方 55 个部件里的 20 个（+ 7 个只做了一半）。
+> 来源：官方 asar 提取的 `@deepseek-ai/dsh-client-ui-*` 包（**62 个**）+ `dsh-experimental-client-ui-*`（**4 个**）= **66 个**（rc.2 口径，见 §权威清单）。
+> 我们有 **34 个插件目录**；账本对官方 **66 个部件**逐 id 判状态（分母由 `scripts/parity-count.py --check` 动态读官方清单并断言零缺零多）。
 > **"几何对齐 ≠ 像官方"**，差距在功能面。
 
-## 官方 59 个部件（按用途分组）
+## 官方 66 个部件（按用途分组）
 
 ### 设置类（11）
 
@@ -104,7 +104,7 @@
 | 10 | `dsh-client-ui-context-menu` | ✅ IMPLEMENTED | `plugins/dscontextmenu`（服务+官方槽）+ `dssidebar` 消费（workspace 组头右键/省略号、session 行省略号）；证据 [official-context-menu-workspace-evidence-rc2.md](official-context-menu-workspace-evidence-rc2.md) |
 | 11 | `dsh-client-ui-conversation` | ✅ IMPLEMENTED | `plugins/dsconversation` + `internal/uikernel` |
 | 12 | `dsh-client-ui-cordis` | ❌ MISSING | 无 |
-| 13 | `dsh-client-ui-creation-recommendations` | ❌ MISSING | 无 |
+| 13 | `dsh-client-ui-creation-recommendations` | ✅ IMPLEMENTED | **`plugins/dscreationreco`（`create_personalized_page` 卡片正文：header + info 说明块 + summary/预填内容折叠 + 位置四项菜单 + 「自行撰写」textarea + 四个动词 + **11 档 phase** + 8 条 reason 文案）+ 复用 `pluginapi/action_card_bodies.go`（正文注册表）与 `plugins/dsactioncards`（按 kind 派发）**；**零新增宿主方法**（官方 `inject` 里只有 locale/actionCards，卡片数据全在 props 上；`testdata/api.snapshot.json` 不变）；证据 [official-creation-recommendations-evidence-rc2.md](official-creation-recommendations-evidence-rc2.md)。**`refused{creator-unavailable}` 逐字走官方兜底档 `unavailable`**（"暂时无法执行，请到插件页面查看"——官方 REASON_KEYS 只有 8 条，其余 reason 一律读作 unavailable，见证据文档 §4）。**剩余差异（5 处，均登记在证据文档 §7）**：flex-wrap 无对等物 / `textarea maxLength=1000` 无对等物 / info 图标用官方 `IconInfoOutlineRegular` 顶替未导出的 warning-triangle / 菜单无"当前项高亮" / ARIA 角色无对等物 |
 | 14 | `dsh-client-ui-deliverables` | ✅ IMPLEMENTED | `plugins/dsdeliverables`（写过的文件 + **按文件 before/after diff**）+ `dsconversation/file_refs.go` + **`internal/apiclient/changes.go`（`/api/changes.summary\|diff\|open` 裸路由）**；证据 [official-deliverables-changes-evidence-rc2.md](official-deliverables-changes-evidence-rc2.md) |
 | 15 | `dsh-client-ui-directory-picker-browse` | ✅ IMPLEMENTED | `plugins/dsdirpicker` + `internal/apiclient/dirpicker.go` |
 | 16 | `dsh-client-ui-directory-picker-native` | ❌ MISSING | 无 |
@@ -176,7 +176,7 @@
 > 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
 > `#54`/`#59` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 48 · 🟡 8 · ⬜ 0（不该有） · ❌ 10
+## 合计：官方 66 个部件 —— ✅ 49 · 🟡 8 · ⬜ 0（不该有） · ❌ 9
 
 > 剩下 11 条 MISSING 的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
 > B 档"要一次架构判断" / C 档"宿主缺前置" / D 档"按 HIDE 登记"）见
@@ -256,7 +256,7 @@
 **同样受此限制的还有**：`attachment`（没有上传通道）、`settings*`（9 个，宿主没有对应读写面）、
 `sidebar-files` / `sidebar-terminal`（宿主有 `fs.read`/`fs.write`，但没有目录列举与终端会话）。
 
-**这解释了"为什么差得很远"的一半**：59 个官方部件里，相当一部分依赖宿主提供的能力面，界面单方面补不出来。
+**这解释了"为什么差得很远"的一半**：66 个官方部件里，相当一部分依赖宿主提供的能力面，界面单方面补不出来。
 
 ## 53 个缺口按「谁挡着」分类
 

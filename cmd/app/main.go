@@ -34,6 +34,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dscontextmenu"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	_ "github.com/MYCF711/dsh-ui/plugins/dscreationreco"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdecl"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"

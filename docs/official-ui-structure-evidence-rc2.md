@@ -40,7 +40,7 @@
 | 2 | `action-cards` | 9 / 476 | `conversation.chat.turnTail`、`tool.call.toolview` | `actionCards.view`/`.act` | **是** | 否 | **本仓已实现** |
 | 10 | `context-menu` | 11 / 749 | `contextMenu.button`(factory)、`contextMenu.content`/`.icon`(keyed)、`shell.overlay` | 无（纯 UI 基础设施） | n/a | 仅 `shell.overlay` | **HIDE** |
 | 12 | `cordis` | 18 / 2833 | `sidebar.footer.action`、`tool.call.toolview` | `dynamicCordisRunner.*` ×12 | **是** | 仅 footer | **HIDE** |
-| 13 | `creation-recommendations` | 7 / 631 | 无自有槽（注册进 `actionCards`） | `ctx.actionCards` | **否**（传递） | 否 | **HIDE** |
+| 13 | `creation-recommendations` | 7 / 651 | 无自有槽（注册进 `actionCards`） | `ctx.actionCards`（**无 remote**） | **是**（宿主 PR #45） | 复用 #2 的注册表 | **本仓已实现** |
 | 15 | `directory-picker-browse` | 5 / 1745 | `conversation.hero.workspace.directoryFlow`、`sidebar.workspaces.directoryFlow` | `directoryPicker.list/createDirectory` | **是** | 自有模态 | **本仓已实现** |
 | 16 | `directory-picker-native` | 3 / 117 | 同上一对洞 | `directoryPicker.pick` / Viva `app.OpenDirectory` | **是** | 无 | **HIDE** |
 | 17 | `entry-customization` | 5 / 258 | `sidebar.panellist.actions`、`conversation.session.header.views.actions`、`sidebar.right.tab.guide.actions` | `uiWorkspace.startSession`、`pluginNavigation` | **否** | 三个槽都在 | **HIDE** |
@@ -124,12 +124,19 @@
   GUI 还缺 `tool.call.toolview` 槽 + 12 个客户端通道。
 - **怎么补**：宿主先落那四个 cordis 工具并真的注册到工具面；之后本仓补槽与通道。
 
-### #13 `creation-recommendations`（7 文件 / 631 行）— **HIDE**
+### #13 `creation-recommendations`（7 文件 / 651 行）— **本仓已实现**（2026-11-15 更新）
 - **无自有槽**：`mount.ts` 只做 `ctx.actionCards.register({ action: 'create_personalized_page', Body })`
-  （`OFF:creation-recommendations/src/client/mount.ts:24-27`），即它是 **`ui-action-cards` 的一个 body 贡献者**。
-- 组件：`OFF:creation-recommendations/src/client/Card.tsx:1-159`、`Card.module.css:1-28`；文案 `locales.ts:1-402`
-- **差什么**：**传递依赖**——它没有 `actionCards` 服务就无处注册（#2 已判 HIDE）。
-- **怎么补**：随 #2 一起；宿主先有 action-card 运行时。
+  （`OFF:creation-recommendations/src/client/mount.ts:24-27`），即它是 **`ui-action-cards` 的一个 body 贡献者**
+  ——所以它的槽面就是 #2 的注册表，**不需要自己的槽**。
+- 组件：`OFF:creation-recommendations/src/client/Card.tsx:1-159`、`Card.module.css:1-16`；文案 `locales.ts:1-402`（zh 58 条在 `:44-78`）
+- **原判 HIDE 的两个前提都已消失**：① #2 的动作卡运行时早已落地（`plugins/dsactioncards`，
+  注册表 `pluginapi.KeyActionCardBodies`）；② 宿主 PR `MYCF711/dsh-go#45` 补齐了
+  `create_personalized_page` kind（`HOST:internal/creation/**`）。
+- **落地**：`plugins/dscreationreco`（11 档 phase / 4 动词 / 位置四项菜单 / 自行撰写 textarea /
+  info 说明块），**零新增宿主方法**；逐条证据、几何表与 7 处差异见
+  [official-creation-recommendations-evidence-rc2.md](official-creation-recommendations-evidence-rc2.md)。
+- **`refused{creator-unavailable}`**（宿主生产路径必然返回的那一格）按官方兜底档读作
+  `unavailable`——官方 REASON_KEYS 只有 8 条，其余 reason 一律 `unavailable`。
 
 ### #15 `directory-picker-browse`（5 文件 / 1745 行）— **本仓已实现**
 - 自有槽：`conversation.hero.workspace.directoryFlow`、`sidebar.workspaces.directoryFlow`（`OFF:.../src/client/index.ts:60-66`）

@@ -34,6 +34,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscontextmenu"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
+	_ "github.com/MYCF711/dsh-ui/plugins/dscordis"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscreationreco"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdecl"
@@ -253,6 +254,12 @@ type model struct {
 	// 本地改动 / 工作树请求态。字段全部由 m.mu 保护，读写数据面的理由与线程
 	// 约定见 forge_wiring.go 文件头。
 	forge forgeState
+	// cordis 是 #12（官方 Cordis 插件面板）的壳侧缓存：全局清单 + 两条事件帧的
+	// 水位 + removed 集合。字段全部由 m.mu 保护，理由与线程约定见 cordis_wiring.go。
+	//
+	// 它**不挂会话**：官方面板是 frame-wide surface，读的是一次全局 inventory，
+	// 页面自己按每行自带的 agentId 分组（见 pluginapi/cordis.go 文件头）。
+	cordis cordisState
 	// credentials 是凭据域按 ref 的缓存（官方 credentials.describe；**只回状态不回值**）。
 	// 缺一个键 = "还没问到"，消费方不许当"未配置"。
 	credentials map[string]apiclient.CredentialInfo
@@ -2001,6 +2008,12 @@ func newConfig(m *model) app.Config {
 				// forge 面板 A 档数据面（#64a）。nil = 没有客户端/没有会话：
 				// 插件据此整块不画，不画成"这个会话没有改动"。
 				Forge: m.forgeFor(),
+				// Cordis 面板的数据面（#12）。nil = 没有客户端（无头/测试）：
+				// 插件据此**整块不画**（连触发器都不画）。有客户端但还没读到 →
+				// Known=false，面板画「读取中…」，不画「还没有定义任何插件」。
+				// frames 就是上面那份当前会话原始帧：两条 cordis 事件帧落在这里
+				// （宿主 `emitFrameAt` 写归属会话 journal），壳据此触发后台重读。
+				Cordis: m.cordisFor(frames),
 				// whole-log `sessionStats` 投影（状态栏「活动」的唯一来源）。
 				// nil = 还没拉到 / 老宿主没有这个键 → 写「未知」，不拿 Msgs 凑。
 				SessionStats: m.wave3.sessionStatsSnapshot(cur),
@@ -2557,6 +2570,14 @@ func main() {
 			RequestWorktree: m.forgeRequestWorktreeAction,
 			CancelWorktree:  m.forgeCancelWorktreeAction,
 		},
+		// #12 Cordis 面板的三个生命周期动词 + 一次手动重读。
+		// 三条都是**同步阻塞**的（会真的动宿主的插件进程），所以插件的点击回调
+		// 里必须开 goroutine——这里就是那个 goroutine 的落点：动作本身在
+		// cordis_wiring.go 里、成功/失败都回灌给调用方。
+		CordisRun:     m.cordisRunAction,
+		CordisStop:    m.cordisStopAction,
+		CordisRemove:  m.cordisRemoveAction,
+		CordisRefresh: m.cordisRefreshAction,
 		// 宿主 ui-config.json 的读写。ConfigGet 给的是**缓存**（插件要同步返回），
 		// ConfigSet 异步写、失败只报状态栏——插件不等待也不重试。
 		ConfigGet: func() map[string]string {

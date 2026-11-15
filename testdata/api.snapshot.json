@@ -1741,10 +1741,112 @@
       },
       "req_note": "官方 forgePanel.worktreeCleanup（rc.2；OFF:…/src/index.ts:210，typert 2763 行）。revision=null 读当下；给一个 revision 表示\"等那一次完成\"。宿主：HOST:cmd/dshd/serve_forge_rc2.go:330（internal/worktree 清理状态机）。",
       "resp_note": "结果允许 **null**：没有工作树服务 / 没有尝试 / revision 不是当前那一个（客户端解成 *ForgeWorktreeCleanup = nil，不是零值对象）。status 四态是官方 eviction 状态机的取值。"
+    },
+    "dynamicCordisRunner.inventory": {
+      "batch": 22,
+      "req": {},
+      "resp": {
+        "array_of": {
+          "pluginId": "string",
+          "agentId": "string",
+          "packages": {
+            "array_of": {
+              "packageId": "string",
+              "name": "string",
+              "purpose": "string",
+              "hasHostHalf": "boolean",
+              "hasClientHalf": "boolean"
+            }
+          },
+          "currentPackageId": "string?",
+          "nextPackageId": "string?",
+          "activeRun": {
+            "pluginRunId": "string",
+            "packageId": "string"
+          },
+          "latestRun": {
+            "pluginRunId": "string",
+            "packageId": "string",
+            "mode": "run|update",
+            "status": "awaiting-approval|starting-host|client-pending|running|waiting|rejected|failed|cancelled|stopped",
+            "approvalRequestId": "string?",
+            "requiresApproval": "boolean?",
+            "host": {
+              "status": "absent|pending|stopped|running|waiting|failed",
+              "waitingFor": "string[]",
+              "error": "string?"
+            },
+            "client": {
+              "status": "absent|pending|stopped|running|waiting|failed",
+              "waitingFor": "string[]",
+              "error": "string?"
+            },
+            "error": {
+              "phase": "approval|host-load|host-apply|client-load|client-apply|client-render",
+              "message": "string",
+              "pluginId": "string",
+              "packageId": "string",
+              "pluginRunId": "string"
+            }
+          }
+        }
+      },
+      "req_note": "官方 dynamicCordisRunner.inventory（OFF:dsh-cordis-host-runner/src/types.ts:233-251 的 DynamicCordisInventoryRow）。无入参：面板是 frame-wide 的，一次全局读。宿主：HOST:cmd/dshd/serve_cordis_api.go（HandleOfficialCordis 的 inventory 分支，返回数组本体）。",
+      "resp_note": "**本宿主如实缺席**（界面必须能处理空值，不许补默认值）：agentId 可能是空串（没有 define 通道，归属只来自激活/面板调用时的 sessionId）；packages[].purpose 恒空串；packages 恒 1 项（一个插件目录一个版本）；nextPackageId 不出现；latestRun.approvalRequestId / requiresApproval 不出现（没有 Cordis 审批队列）；host/client.waitingFor 恒 []。currentPackageId 只在结算成功（或无 Client 半的原位 commit）后出现，client-pending 期间不推进。"
+    },
+    "dynamicCordisRunner.stopFromPanel": {
+      "batch": 22,
+      "req": {
+        "sessionId": "string",
+        "pluginId": "string"
+      },
+      "resp": {
+        "ok": "true",
+        "reason": "plugin-missing|not-running",
+        "message": "string"
+      },
+      "req_note": "官方 stopFromPanel(agent, pluginId)（OFF:dsh-cordis-host-runner/src/types.ts:308-310）。官方是位置参数，本仓 wire 用命名参数承载第一个 agent：面板路径用 sessionId（宿主 sessionId/agentId 两个都收）。宿主：HOST:cmd/dshd/serve_cordis_api.go。",
+      "resp_note": "**200 里的判别联合，不是四字段错误**：{ok:true} | {ok:false,reason,message}。官方面板的折算（OFF:dsh-client-ui-cordis/src/client/index.ts:46-51）：ok:true 与 reason=not-running 都算成功，只有 plugin-missing 与传输失败是失败。"
+    },
+    "dynamicCordisRunner.undefineFromPanel": {
+      "batch": 22,
+      "req": {
+        "sessionId": "string",
+        "pluginId": "string"
+      },
+      "resp": {
+        "ok": "true",
+        "wasRunning": "boolean",
+        "reason": "plugin-missing",
+        "message": "string"
+      },
+      "req_note": "官方 undefineFromPanel(agent, pluginId)（OFF:dsh-cordis-host-runner/src/types.ts:254-256）。命名参数同 stopFromPanel。宿主：HOST:cmd/dshd/serve_cordis_api.go。",
+      "resp_note": "**200 里的判别联合**：{ok:true,wasRunning} | {ok:false,reason:plugin-missing,message}。官方 onRemove 成功后调 inventory.retire(pluginId)（OFF:dsh-client-ui-cordis/src/client/index.ts:106-110）：本仓壳照做，那一帧行就消失。"
+    },
+    "dynamicCordisRunner.runHostHalf": {
+      "batch": 22,
+      "req": {
+        "agentId": "string",
+        "pluginId": "string",
+        "packageId": "string",
+        "mode": "run|update"
+      },
+      "resp": {
+        "ok": "true",
+        "pluginId": "string",
+        "packageId": "string",
+        "pluginRunId": "string",
+        "waitingFor": "string[]",
+        "startedHere": "boolean",
+        "message": "string?",
+        "stack": "string?"
+      },
+      "req_note": "官方 runHostHalf(agent, pluginId, packageId, mode, requestId, approveFutureVersions)（OFF:dsh-cordis-host-runner/src/types.ts:313-323；zod 入参 OFF:dsh-cordis-host-runner/lib/typert.host.js:146-157）。**本仓只发前 4 个**：requestId / approveFutureVersions 属于模型侧审批路径，本宿主没有 cordis 审批队列，官方面板路径同样传 null / false。mode 由调用方按 OFF:CordisPanel.tsx:248-249 算（currentPackageId 存在且选中包不是它 -> update，否则 run）。宿主：HOST:cmd/dshd/serve_cordis_api.go。",
+      "resp_note": "**200 里的判别联合**：{ok:true,pluginId,packageId,pluginRunId,waitingFor,startedHere} | {ok:false,message,stack?}。waitingFor 恒 []（没有 Cordis 服务依赖图）。startedHere=false 表示\"面板只是挂到已活的那次运行\"。失败不是 501：只有\"这台机器没有可用的 node\"才是 501+not_implemented（CordisAPIError）。"
     }
   },
   "counts": {
-"total": 98,
+    "total": 102,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1765,6 +1867,7 @@
     "batch18": 1,
     "batch19": 2,
     "batch20": 3,
-    "batch21": 14
+    "batch21": 14,
+    "batch22": 4
   }
 }

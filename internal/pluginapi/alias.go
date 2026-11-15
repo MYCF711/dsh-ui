@@ -43,6 +43,12 @@ type (
 	ForgeDiff         = pub.ForgeDiff
 	ForgeCommit       = pub.ForgeCommit
 	ForgeActions      = pub.ForgeActions
+	// Cordis 面板的只读数据面（#12，pluginapi/cordis.go）。
+	//
+	// 为什么必须在这里转发：壳（`cmd/app/cordis_wiring.go`）与插件
+	// （`plugins/dscordis`）分别 import 两个路径，而这是**同一个类型**的两个名字。
+	// 漏一行就是"插件编译得动、壳编译不动"（2026-11-15 实测踩到）。
+	CordisView = pub.CordisView
 	// context menu 服务与贡献（#10）。
 	ContextMenus            = pub.ContextMenus
 	ContextMenuTarget       = pub.ContextMenuTarget

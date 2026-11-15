@@ -1400,10 +1400,34 @@
       },
       "req_note": "官方 rc.2 workspaceFiles.readBytes（HOST:internal/transport/handlers_workspace_official.go:997-1026；生产接线 HOST:cmd/dshd/serve_workspace_api.go:570）。三个都是**位置参数**：sessionId（宿主别名 workspaceFileScopeId|agentId）按会话解析工作区根，path 是**工作区内的相对路径**（根为空串），options 是官方必填对象（读整个文件给 {}，宿主缺它回 400）。data 是**原始字节的 base64**——官方 typert 是 Uint8Array，L1 用 base64 表达并显式标 encoding:\"base64\"（HOST 同一文件 208-220 行），客户端必须解码后再当二进制用。",
       "resp_note": "失败按官方 workspace-file/* 码：not-found / not-regular-file / unreadable（符号链接与目录一律 not-regular-file，宿主不跟随链接）。空文件是 200 + data:\"\"，**不是** 404。"
+    },
+    "cotTranslation.limits": {
+      "batch": 19,
+      "req": {},
+      "resp": {
+        "maxTextChars": 0,
+        "preferences": {"provider": "google|bing|deepseek-account|deepseek-official", "targetLanguage": "string"},
+        "availableProviders": ["google|bing|deepseek-account|deepseek-official"]
+      },
+      "req_note": "官方 rc.2 cotTranslation.limits（OFF:dsh-experimental-client-ui-cot-translation/src/index.ts:46-53；typert 的 parameters: []，**严格无参**；HOST:internal/transport/handlers_cot_translation_limits_official.go:71-83 无参校验）。它只读偏好与上限，**不发送任何文本**，所以界面展开就能问。",
+      "resp_note": "字段逐字对齐官方 zod（OFF:.../src/types.ts 的 CotTranslationSnapshot）。maxTextChars 是 **UTF-16 码元**上限（宿主 cotTextUTF16Len 同一口径，BMP 算 1、增补平面算 2）。availableProviders 是宿主**真的能翻**的 provider 清单，不是四个官方枚举的全集——本仓 translate 对 google/bing 回 501（不代理匿名端点），所以清单只有 deepseek-official / deepseek-account；界面必须照这份清单挑 provider，自己按枚举补齐会把 501 的路径列成可用。"
+    },
+    "cotTranslation.translate": {
+      "batch": 19,
+      "req": {
+        "text": "string",
+        "targetLanguage": "string",
+        "sourceLanguage": "string?",
+        "provider": "google|bing|deepseek-account|deepseek-official?",
+        "sessionId": "string?"
+      },
+      "resp": "string",
+      "req_note": "官方 rc.2 cotTranslation.translate（OFF:src/index.ts:55-…；参数形状 OFF:lib/typert.remote-client.js:53-81）。text 必填且不超过 limits.maxTextChars（UTF-16 码元；宿主超限回 400）；targetLanguage 必填、非空（`auto` 不在 translate 这一层解析——官方 TranslationBody 先把 auto 换成 locale 的具体 tag 再发）；sourceLanguage/provider/sessionId 可省。provider 省略 = 走宿主默认网关；给 google/bing 回 501 not_implemented。",
+      "resp_note": "结果是**裸字符串**（官方 zod 是 z.string()，不是对象）——客户端 Call 的 out 必须是 *string，写成结构体会静默解成零值。空文入参宿主直接回空串（不打模型）。失败一律四字段错误：provider 不可用 / 模型空输出 / 网关连不上，**宿主绝不拿原文顶替译文**，界面照官方画「翻译暂不可用，已显示原文」。"
     }
   },
   "counts": {
-    "total": 78,
+    "total": 80,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1421,6 +1445,7 @@
     "batch15": 2,
     "batch16": 3,
     "batch17": 1,
-    "batch18": 1
+    "batch18": 1,
+    "batch19": 2
   }
 }

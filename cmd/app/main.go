@@ -29,6 +29,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsactioncards"
 	"github.com/MYCF711/dsh-ui/plugins/dsattachment"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsbrand"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsbrowser"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscommands"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscomposer"
 	_ "github.com/MYCF711/dsh-ui/plugins/dscontextmenu"
@@ -97,8 +98,12 @@ type model struct {
 	draft  ui.Field
 	search ui.Field // 侧栏过滤（按标题 + cwd 匹配）
 	inv    app.Invalidator
-	cli    *apiclient.Client
-	cache  map[string]*cachedSession
+	// web 是本窗口的网页宿主（官方右栏浏览器那一层的载具）。
+	// 零值可用；窗口建好后才可 Open（`app.WebHost.OnReady` 之后）。
+	// 无头驱动下它永远不会 ready，插件据此整块降级。
+	web   *app.WebHost
+	cli   *apiclient.Client
+	cache map[string]*cachedSession
 	// cwd 是当前会话的工作目录（来自 session.load.cwd）。插件拼文件路径要用它，
 	// 空串表示不知道——那时它们不该拼。
 	cwd string
@@ -1753,8 +1758,14 @@ func parseWinSize(s string) (int, int, bool) {
 }
 
 func newConfig(m *model) app.Config {
+	if m.web == nil {
+		m.web = &app.WebHost{}
+	}
 	cfg := app.Config{Tree: &tree, Title: winTitle, Width: winWidth, Height: winHeight,
-		MinWidth: 760, MinHeight: 520, Invalidator: &m.inv}
+		MinWidth: 760, MinHeight: 520, Invalidator: &m.inv,
+		// 网页宿主交给窗口；`app.RunCanvas` 会把它接到 painter 上
+		// （OFF:viva@v0.6.4/app/run_canvas.go:117、:164）。
+		Web: m.web}
 	// 插件的输入框也要登记，否则收不到键盘（viva 只把登记过的 Field 当输入焦点候选）。
 	// 走一次统一的聚合：以后再加插件不用改这里。
 	fields := []*ui.Field{&m.draft}
@@ -1917,6 +1928,9 @@ func newConfig(m *model) app.Config {
 		var hasScrollBox bool
 		env := &pluginapi.Env{
 			Theme: m.theme,
+			// 网页宿主：nil 的 host 也照样放进去（webPages.Open 会回
+			// ErrWebUnsupported），插件因此只需要认一个错误值。
+			Web: webPages{host: m.web},
 			Data: pluginapi.Snapshot{
 				Sessions: sessions, Workspaces: workspaces, Cur: cur, Status: status,
 				Msgs: msgs, Frames: frames, JournalEpoch: framesEpoch,

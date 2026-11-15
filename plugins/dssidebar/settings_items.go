@@ -1,4 +1,6 @@
-// settings_items.go —— 官方 4 条「插件设置页」在本仓的**数据模型**（#39 / #45 / #46，本轮 3 条）。
+// settings_items.go —— 官方 4 条「插件设置页」在本仓的**数据模型**
+// （#39 / #45 / #46 上一批；#47「网页搜索与获取」本批，它的专用模型在
+// settings_items_web.go，绘制在 settings_items_web_draw.go）。
 //
 // # 官方结构（为什么落点在「插件」页，而不是设置面板的某一页）
 //
@@ -14,7 +16,8 @@
 //	#46 OFF:dsh-client-ui-settings-subagent/src/client/index.ts:85-92
 //	      whileServed([SUBAGENT_NS, SUBAGENT_MODEL_SELECTION_NS]) → {id:'subagent', order:10}
 //	#47 OFF:dsh-client-ui-settings-web-search/src/client/index.ts:72-74
-//	      whileServed([WEB_NS]) → {id:'web-search', order:20}   ← 本批未做
+//	      whileServed([WEB_NS]) → {id:'web-search', order:20}   ← 本批（它的形态是
+//	      provider 菜单 + 灰面板，不是字段表单：见 settingsItem.Kind）
 //
 // 卡片落点是插件管理页的 `basic` 组（官方 `renderGroup('basic', t('basicTitle'), …)`，
 // OFF:PluginManagerPage.tsx:1855；`basicTitle: '内置插件配置'`，locales.ts:34），
@@ -154,6 +157,8 @@ const (
 type settingsItemField struct {
 	// Name 是宿主字段名（也是写路径的 path[0]）。
 	Name string
+	// Kind 是字段的解析/格式化语义；零值 = 官方 `settingsNumberField`。
+	Kind settingsItemFieldKind
 	// Label 是官方 `label`。
 	Label string
 	// Hint 是官方 `hint`（`''` = 官方这页没给 hint）。
@@ -171,7 +176,24 @@ type settingsItemField struct {
 	Limit bool
 	// Min 只对 Limit 字段有意义（官方 `limitField(field, minimum)` 的 minimum）。
 	Min int64
+	// Max 是额外上限（官方 `count` 的自定义 parse 里 `value <= 50`）；nil = 无上限。
+	//
+	// 为什么单独一个字段：官方 count 的 parse 不是 `limitField`，而是
+	// `Number.isInteger(v) && v >= 1 && v <= 50`（OFF:web-search-card-controller.ts:296-299）。
+	Max *int64
 }
+
+// settingsItemFieldKind 是字段的解析/格式化语义（官方三种 `settings*Field`）。
+type settingsItemFieldKind uint8
+
+const (
+	// settingsItemFieldNumber 是官方 `settingsNumberField`
+	// （format：只有 number 才有文本；parse：空白 clear、`Number.isFinite` 才 set）。
+	settingsItemFieldNumber settingsItemFieldKind = iota
+	// settingsItemFieldText 是官方 `settingsTextField`
+	// （format：只有 string 才有文本；parse：空白 clear，否则 set **trim 后的原文**）。
+	settingsItemFieldText
+)
 
 // settingsItemSection 是一页里的一个 section（对应一条命名空间）。
 type settingsItemSection struct {
@@ -193,11 +215,22 @@ type settingsItem struct {
 	Title string
 	// Summary 是卡片/详情页的一句话（官方 summary 视图）。
 	Summary string
-	// Sections 是这一页的 section。
+	// Kind 是这一页的**渲染形态**：'' = 普通字段表单（Sections 驱动）；
+	// `web-search` = #47 那一页（provider 菜单 + 灰面板 + 计费 + 密钥，见 settings_items_web.go）。
+	//
+	// 为什么需要它：官方 `plugins.item` 槽里各页的形状本来就不一样——#39/#45/#46 是
+	// 一串 `SettingsValueField`，而 #47 自带 `.selector` 下拉、`.panel` 灰面板和
+	// 只读的 advanced override 标签（`WebSearchCard.tsx:68-129`）。用一个字段类型
+	// 去硬套另一种布局只会让两边都变形。
+	Kind string
+	// Sections 是这一页的 section（Kind='' 时驱动渲染）。
 	Sections []settingsItemSection
 	// Anchor 是注册点的官方锚点（报告与结构测试用）。
 	Anchor string
 }
+
+// settingsItemKindWebSearch 是 #47 那一页的形态标记。
+const settingsItemKindWebSearch = "web-search"
 
 // Namespaces 返回这张卡绑定的全部命名空间（`whileServed([...])` 的那一组）。
 func (it settingsItem) Namespaces() []string {
@@ -208,9 +241,9 @@ func (it settingsItem) Namespaces() []string {
 	return out
 }
 
-// settingsItemLedger 是本轮实现的 3 张卡（#47 下一批，见文件头的映射表）。
+// settingsItemLedger 是本批实现的 4 张卡（#39 / #45 / #46 上批 + #47 本批）。
 //
-// 顺序按官方 order：subagent(10) → agent-loop(30) → shell(40)。
+// 顺序按官方 order：subagent(10) → web-search(20) → agent-loop(30) → shell(40)。
 // **不按名字重排**：顺序是官方注册意图。
 func settingsItemLedger() []settingsItem {
 	return []settingsItem{
@@ -251,6 +284,14 @@ func settingsItemLedger() []settingsItem {
 					},
 				},
 			}},
+		},
+		{
+			ID:      "web-search",
+			Order:   20,
+			Kind:    settingsItemKindWebSearch,
+			Title:   zhWebTitle,
+			Summary: zhWebSummary,
+			Anchor:  "ui-settings-web-search/src/client/index.ts:72-74",
 		},
 		{
 			ID:      "agent-loop",
@@ -349,6 +390,14 @@ type settingsItemDraft struct {
 	Text string
 	// Clear 表示"保存时发 unset"（官方 `{clear:true}`）。
 	Clear bool
+	// Ref 只对**密钥草稿**有意义：它是输入这份草稿时控件指向的凭据引用
+	// （官方 `draftRef`，`web-search-card-controller.ts:427-432` 与 :545-551）。
+	//
+	// 为什么草稿要自己记引用：官方在发布时发现引用变了就把草稿**整份丢掉**
+	// （`dropStaleKeyDraft`），所以一次输入永远不会被写到另一个引用名下。本仓
+	// 把这条不变量放在 plan 里判（`draft.Ref == 当前引用` 才写），等价且没有
+	// "绘制顺带改状态"的副作用；引用变了以后遗留的旧草稿在 plan/显示上都被忽略。
+	Ref string
 }
 
 // settingsItemDraftKey 是草稿表的键：`ns\x00field`。
@@ -441,6 +490,16 @@ func (f *settingsItemForm) setWrite(write settingsItemWrite) {
 	f.mu.Unlock()
 }
 
+// setBaseline 把某个命名空间的乐观锁 revision 换新（保存成功后用宿主回来的值）。
+func (f *settingsItemForm) setBaseline(ns string, revision int) {
+	f.mu.Lock()
+	if f.baseline == nil {
+		f.baseline = map[string]int{}
+	}
+	f.baseline[ns] = revision
+	f.mu.Unlock()
+}
+
 // clearDrafts 在保存成功后清草稿（官方 `this.staged.clear()`）。
 func (f *settingsItemForm) clearDrafts(keys []string) {
 	f.mu.Lock()
@@ -524,10 +583,16 @@ type settingsItemCardState struct {
 	Plan     settingsItemPlan
 	// Saving 是保存中的写状态。
 	Saving bool
+	// Web 是 #47 那一页的专用状态（Kind==settingsItemKindWebSearch 时非 nil）。
+	// 那一页不是"section → 字段"的形状（provider 菜单 + 灰面板），所以状态也是并行的。
+	Web *settingsItemWebState
 }
 
 // Available 报告这张卡这一帧有没有内容可画（= 至少一节被服务）。
 func (c settingsItemCardState) Available() bool {
+	if c.Web != nil {
+		return c.Web.webAvailable
+	}
 	for _, section := range c.Sections {
 		if section.Available {
 			return true
@@ -537,10 +602,20 @@ func (c settingsItemCardState) Available() bool {
 }
 
 // Dirty 报告表单有没有未保存的改动（官方 `state.dirty`）。
-func (c settingsItemCardState) Dirty() bool { return c.Plan.Dirty() }
+func (c settingsItemCardState) Dirty() bool {
+	if c.Web != nil {
+		return c.Web.plan.Dirty()
+	}
+	return c.Plan.Dirty()
+}
 
 // Invalid 报告表单里有没有解析不了的草稿（官方 `state.invalid`）。
-func (c settingsItemCardState) Invalid() bool { return c.Plan.Invalid }
+func (c settingsItemCardState) Invalid() bool {
+	if c.Web != nil {
+		return c.Web.plan.Invalid
+	}
+	return c.Plan.Invalid
+}
 
 // CanSave 是官方 Save 按钮的 disabled 判据：
 // `!state.dirty || state.invalid || state.saving`，且不可写时一律不许保存。
@@ -579,6 +654,9 @@ func formatItemNumber(value any) string {
 //
 // 返回 (draft, ok)：ok=false 是"解析不了"（官方 `undefined`，记 invalid）。
 // 官方 parse 返回 {kind:'clear'} 时草稿等价于 unset，这里用 clear 标志表达。
+//
+// `Max` 非 nil 时按官方 count 的自定义 parse 判上限（`value <= 50`，
+// OFF:web-search-card-controller.ts:296-299）。
 func parseItemField(spec settingsItemField, text string) (value float64, clear, ok bool) {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
@@ -597,7 +675,34 @@ func parseItemField(spec settingsItemField, text string) (value float64, clear, 
 			return 0, false, false
 		}
 	}
+	if spec.Max != nil && parsed > float64(*spec.Max) {
+		return 0, false, false
+	}
 	return parsed, false, true
+}
+
+// formatItemText 是官方 `settingsTextField.format`：`typeof v === 'string' ? v : ”`。
+//
+// 与数字字段同一判据：**不许把缺失变成空串以外的任何东西**，也**不许把数字变成
+// 字符串**（官方那样做等于替宿主改类型）。
+func formatItemText(value any) string {
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return text
+}
+
+// parseItemText 是官方 `settingsTextField.parse`：
+// `r = t.trim(); r === ” ? {kind:'clear'} : {kind:'set', value: r}`。
+//
+// 注意官方对文本字段**也 trim**（写下去的是 trim 后的原文），与数字字段同一处实现。
+func parseItemText(text string) (value string, clear, ok bool) {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return "", true, true
+	}
+	return trimmed, false, true
 }
 
 // buildSettingsItemCard 把 describe + 草稿投影成一张卡的呈现状态。
@@ -688,9 +793,18 @@ func buildSettingsItemField(ns string, spec settingsItemField, describe *apiclie
 		}
 	}
 	if found {
-		state.Known = field.Current != nil
-		state.Current = formatItemNumber(field.Current)
-		state.Default = formatItemNumber(field.Default)
+		if spec.Kind == settingsItemFieldText {
+			// 官方 `settingsTextField.format` 的判据：没有值 = **空文本**，不是一个
+			// "未知值"。文本字段（baseURL / 端点）天生可以空，空就是"用默认"，
+			// 所以这里 Known 恒为真（数字字段不能这样——见下一个分支的理由）。
+			state.Known = true
+			state.Current = formatItemText(field.Current)
+			state.Default = formatItemText(field.Default)
+		} else {
+			state.Known = field.Current != nil
+			state.Current = formatItemNumber(field.Current)
+			state.Default = formatItemNumber(field.Default)
+		}
 		state.Stored = field.Overridden
 	}
 	draft, staged := drafts[settingsItemDraftKey(ns, spec.Name)]
@@ -719,7 +833,7 @@ func buildSettingsItemField(ns string, spec settingsItemField, describe *apiclie
 		}
 		return state, nil, false
 	}
-	value, clear, ok := parseItemField(spec, draft.Text)
+	value, clear, ok := parseSettingsItemDraft(spec, draft.Text)
 	if !ok {
 		state.Invalid = true
 		state.Overridden = false
@@ -739,6 +853,26 @@ func buildSettingsItemField(ns string, spec settingsItemField, describe *apiclie
 		return state, nil, false
 	}
 	return state, &apiclient.SettingsOp{Op: "set", Path: []string{spec.Name}, Value: value}, false
+}
+
+// parseSettingsItemDraft 是按字段语义解析草稿文本的唯一入口（官方 `parse`）。
+//
+// 返回的 setValue 只在 `ok && !clear` 时有意义，且**类型跟官方走**：
+// 数字字段发数字、文本字段发字符串。绝不把字符串数字发成字符串
+// （那会让宿主的 `invalid_type` 拒掉一次本来合法的写入）。
+func parseSettingsItemDraft(spec settingsItemField, text string) (setValue any, clear, ok bool) {
+	if spec.Kind == settingsItemFieldText {
+		value, textClear, textOK := parseItemText(text)
+		if !textOK || textClear {
+			return nil, textClear, textOK
+		}
+		return value, false, true
+	}
+	value, numberClear, numberOK := parseItemField(spec, text)
+	if !numberOK || numberClear {
+		return nil, numberClear, numberOK
+	}
+	return value, false, true
 }
 
 // applySettingsItemSave 是官方 `SettingsFormModel.save()`：逐 ns 提交，全部成功才清草稿。
@@ -766,12 +900,7 @@ func (p *Plugin) applySettingsItemSave(act pluginapi.Actions, plan settingsItemP
 		// 写成功后用宿主回来的 revision 更新 baseline：同一次保存里的下一个 ns 不受影响，
 		// 但下一次保存必须 fence 新的 revision（官方也用 scope 的最新 revision）。
 		if view.Revision > 0 {
-			form.mu.Lock()
-			if form.baseline == nil {
-				form.baseline = map[string]int{}
-			}
-			form.baseline[section.NS] = view.Revision
-			form.mu.Unlock()
+			form.setBaseline(section.NS, view.Revision)
 		}
 	}
 	keys := make([]string, 0, len(drafts))

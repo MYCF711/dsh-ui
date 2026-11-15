@@ -38,6 +38,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdirpicker"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsfileactions"
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
@@ -2740,6 +2741,10 @@ func main() {
 				}
 			}
 		},
+		// 原始字节的两条保存动作（官方 `fileActions.save`，见 file_actions.go）。
+		// 插件只给 target 身份（sessionId/path/name）与模式；读字节、开对话框、
+		// 写盘、反馈全在壳里。
+		SaveWorkspaceFile: m.saveWorkspaceFile,
 		// `@` / `/` 候选：同步读壳缓存，首次问触发后台拉取（见 reference_wiring.go）。
 		FileReferences:             m.fileReferences,
 		SessionReferenceCandidates: m.sessionReferenceCandidates,

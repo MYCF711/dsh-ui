@@ -109,7 +109,7 @@
 | 15 | `dsh-client-ui-directory-picker-browse` | ✅ IMPLEMENTED | `plugins/dsdirpicker` + `internal/apiclient/dirpicker.go` |
 | 16 | `dsh-client-ui-directory-picker-native` | ❌ MISSING | 无 |
 | 17 | `dsh-client-ui-entry-customization` | ❌ MISSING | 无 |
-| 18 | `dsh-client-ui-file-actions` | ❌ MISSING | 无 |
+| 18 | `dsh-client-ui-file-actions` | 🟡 PARTIAL | **`plugins/dsfileactions`（`file` order 200 / `image` order 100 两段菜单：`下载` / `另存为…`）** + `pluginapi/context_menu.go`（新增 `file`/`image` 两个 kind + 官方逐族字段）+ `plugins/dsfiles`（文件行是 `file` target 的生产方，带会话 + 工作区相对路径）+ `internal/apiclient/workspace_files.go`（`workspaceFiles.readBytes`，base64 解码）+ `cmd/app/file_actions.go`（壳侧：原生另存 / 系统下载目录 / 状态栏反馈）+ `pluginapi.Actions.SaveWorkspaceFile`；证据 [official-file-actions-evidence-rc2.md](official-file-actions-evidence-rc2.md)。**剩余差异**：「复制图片」不画（viva 无剪贴板图片**写**入口）、`image` target 今天没有生产方（消息区图片是占位瓦片）、「在文件夹显示」没接（宿主无 `openWorkspacePath`）、没有 `stat` 前置的置灰态 |
 | 19 | `dsh-client-ui-file-drag` | ❌ MISSING | 无 |
 | 20 | `dsh-client-ui-goal` | ✅ IMPLEMENTED | `plugins/dsgoal`（4 文件 / 364 行） |
 | 21 | `dsh-client-ui-input-trigger` | ✅ IMPLEMENTED | `plugins/dscomposer/trigger.go` + `internal/apiclient/references.go`（`@` 文件/会话 + `/` 技能；detect/分组/Tab drill/pick 路由） |
@@ -176,9 +176,9 @@
 > 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
 > `#54`/`#59` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 48 · 🟡 7 · ⬜ 0（不该有） · ❌ 11
+## 合计：官方 66 个部件 —— ✅ 48 · 🟡 8 · ⬜ 0（不该有） · ❌ 10
 
-> 剩下 12 条 MISSING 的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
+> 剩下 11 条 MISSING 的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
 > B 档"要一次架构判断" / C 档"宿主缺前置" / D 档"按 HIDE 登记"）见
 > [official-missing-batch-a-findings-rc2.md](official-missing-batch-a-findings-rc2.md)。
 

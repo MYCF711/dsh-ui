@@ -38,6 +38,9 @@ const maxShown = 8
 type Plugin struct {
 	theme *pluginapi.Theme
 	prims pluginapi.Primitives
+	// menus 是 context menu 服务（可选：没有它文件行就没有右键菜单，
+	// 列表本身照常画——官方 ui-context-menu 与 ui-sidebar-files 也是两条独立的包）。
+	menus pluginapi.ContextMenus
 	// read 是每帧从 env.Act 刷新的读文件函数（Open 走测试开关时用最近一次的值）。
 	read func(string) (string, error)
 
@@ -58,6 +61,12 @@ func (*Plugin) Requires() []string {
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	// 可选注入：没有菜单服务时文件行不挂右键菜单（不报错、也不假装有）。
+	if value := ctx.Inject(pluginapi.KeyContextMenus); value != nil {
+		if menus, ok := value.(pluginapi.ContextMenus); ok {
+			p.menus = menus
+		}
+	}
 	return nil
 }
 
@@ -127,6 +136,19 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 			row := p.prims.ListRow(f, env.Tree.ID(env.Feat, "file-"+e.Name), active, 22, func() {
 				ui.Text(f, label).FontSize(12).Color(t.LabelSecondary)
 			})
+			// 文件行是官方 `file` target 的生产方（#18）：身份是
+			// (会话, 工作区相对路径)，**不是**"当前选中"——菜单打开后用户可能
+			// 已经切走会话或进别的目录（官方 types.ts:30 的 sessionId + path）。
+			// 目录不挂：官方 file target 的 `read` 家族只认普通文件
+			// （HOST:cmd/dshd/serve_workspace_api.go 的 statRegularFile）。
+			if !e.IsDir && p.menus != nil && env.Data.Cur != "" {
+				p.menus.Attach(f, row, pluginapi.ContextMenuTarget{
+					Kind:         pluginapi.TargetFile,
+					SessionID:    env.Data.Cur,
+					Path:         relPath(p.curDir, e.Name),
+					DisplayTitle: e.Name,
+				})
+			}
 			if !row.Clicked() {
 				continue
 			}

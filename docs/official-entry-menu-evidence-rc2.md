@@ -2,7 +2,7 @@
 
 > 权威原文：官方 rc.2 随包 `src/**`（`OFF:` 前缀的锚点全部指向它）与安装态
 > `dsh-web-frontend/dist/assets/index-ghOpC9uV.js`（图标 sprite）。
-> 本文只写**已落地**的东西与**登记在案**的差异；没落地的部分是第 5 节。
+> 本文只写**已落地**的东西与**登记在案**的差异；#17 本体落地与三项 HIDE 见第 5 节。
 
 ## 1. 官方形状（逐处）
 
@@ -41,6 +41,10 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
 | 左栏宿主 | `plugins/dssidebar/entry_menu.go` | More 行（`更多`）+ 菜单面 + 行尾取消固定按钮；可见行按固定态过滤 |
 | 会话头宿主 | `plugins/dstopbar/entry_menu.go` | `viewsMore` 按钮（22×22 / 13px）+ 菜单面；tab 行按官方 `preferred` + 宽度预算切 |
 | 图标 | `plugins/dssidebar/icons.go`（`pin-fill`）、`plugins/dstopbar/icons.go`（`ellipsis-outline`） | 按 rc.2 sprite 原文转写，见 `official-icon-sprite-register.md` |
+| **菜单行本体（#17）** | `plugins/dsentrycustom/entry_menu.go` | 两个座位各一份 painter：左栏 = 未固定条目行（行首面板图标 + 行尾「固定」按钮）+「浏览更多插件」；会话头 = 折起 view 行（active 带行尾对勾）+「浏览更多插件」。行几何取 rc.2 产物 CSS，见 §3.1 |
+| **面板导航服务** | `plugins/dssidebar/panelapi`（`ui.pluginNavigation`，ds-sidebar 提供 `OpenList()`） | 官方 `pluginNavigation` 客户端服务（`dsh-client-ui-plugin-manager/src/client/index.ts:153-166`）的等价物；服务不在册 → 「浏览更多插件」整行不画（官方 `browsable`） |
+| **owner props 两格补充** | `pluginapi/entry_menu.go`（`EntryMenuEntry.Glyph`）、`plugins/dstopbar/entry_menu.go`（会话头 entries 的 `active`） | `Glyph` = 官方 `renderFactorySlot('sidebar.panel.icon')` 的投影（同一枚面板字形）；`active` = 官方 `active: viewTab.id === active?.id`（`ConversationSession.tsx:244-247`） |
+| **图标** | `plugins/dsentrycustom/icons.go`（`pin-outline` / `plugin-pinwheel-outline` / 复用 `check-outline`） | 按 rc.2 sprite 原文转写，见 `official-icon-sprite-register.md` |
 
 固定态语义（`panel-pins.ts:24-31` 逐行）：
 
@@ -64,6 +68,17 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
   `visible = preferred[:limit]`、`more = tabs - visible`（`ConversationSession.tsx:127-166`）。
   本仓行宽取 `env.MainWidth - 20 - 28`（官方 header 的左右内边距）。
 
+### 3.1 菜单行的几何（rc.2 产物原文，逐条可查）
+
+| 项 | 官方原文 | 本仓落点 |
+|---|---|---|
+| 行 | `_item_70kcw_173`：`display:flex;align-items:center;gap:6px;width:100%;min-height:34px;padding:6px 8px;border-radius:--dsw-radius-md;font-size:13px;line-height:20px;color:label-primary`；`:hover` = `interactive-bg-hover` | `entryRowMinHeight/…Gap/…PadX/…PadY` + `entryFontSize/…LineHeight`，`Hover(ui.Look{}.Background(t.Hover))` |
+| 行首图标 | `_itemIcon_70kcw_233{width:14px;height:14px}` + `_itemIcon svg{width:14px;height:14px}`（属性 size=16 被 CSS 夹到 14） | 图标框 14×14，字形/图标一律 `.Size(14,14)` |
+| active 对勾 | `_check_70kcw_265{flex:none;color:label-primary}` + `.activeMark{flex:none;margin-left:auto}` | 会话头行尾 `check-outline` 14，`LabelPrimary` |
+| 分离线 | `_separator_70kcw_157{height:.5px;margin:3px 8px;background:border-l2}` | `PadSides(3,8,3,8)` 里一条 1px（半像素在整像素对齐下会被抹掉） |
+| 左栏行 | `.sidebarEntry .entryName{padding-right:28px}` / `.pinAnchor{right:6px;top:0;bottom:0}` / `.pinButton{width:22px;height:22px;padding:0;color:label-tertiary}`（`EntryMenu.module.css:5-16`） | 行内「按钮 + 22×22 固定按钮 + 右 6」，28 = 22+6 与官方留白对齐 |
+| 左栏行首图标 | `renderFactorySlot('sidebar.panel.icon', { size: 16, active })`（`EntryMenuContent.tsx:43-45`） | 面板字形（`EntryMenuEntry.Glyph`），与面板行**同一个**字形 |
+
 ## 4. 登记在案的差异（都不是"差不多就行"，每条都写清原因）
 
 1. **左栏 More 行的图标不画**：`apps-add-outline` 由 3 个 `<rect rx=1>` + 1 条路径组成，
@@ -80,19 +95,35 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
 5. **右栏 guide 的 More 卡片没有宿主**：本仓还没有 guide 面（`sidebar.right.tab.guide`
    无占用方，右栏是 dockkit tab 条 + 面板体），所以这一处 More **按 HIDE 登记**，
    不自造一枚"更多工具"卡片挂在别处。
+6. **左栏行的图标色用 `LabelDimmed`**：官方 `.itemIcon{color:var(--dsw-alias-menu-icon)}`（亮色 `--dsw-static-neutral-bluish-800` / 暗色 `label-primary-dimmed`）。本仓主题没有这一档令牌，取最接近的 `LabelDimmed`（亮色 = `neutral-bluish-750`），差一格的灰阶**登记在此、不新造令牌**。
+7. **左栏行尾的对勾不画**：官方 `.sidebarEntry .activeMark{opacity:0}`，只在行 hover 时对勾出现、固定按钮隐去（`EntryMenu.module.css:20-31`）。viva 的 `Box` 没有"本帧是否悬停"的读口，本仓按**非 hover 态**画（固定按钮恒显、对勾不画）。会话头那一侧没有 hover 规则，对勾恒画。
+8. **固定按钮占位而非覆盖**：官方 `.pinAnchor` 绝对定位在行右端（行 `padding-right:38px`）；本仓是同一行里 `[行(flex:1)] [按钮 22×22 + 右 6]`，与 `dssidebar` 的面板行尾按钮同一条处理。
 
-## 5. 还差什么（#17 本身）
+## 5. #17 本体：落地了什么、HIDE 了什么（2026-11-15）
 
-三个宿主的**入口**只在座位有占用方时出现（官方 `hasEntryActions`），今天没有占用方，
-所以界面上看不到它们——这是官方行为，不是缺功能。要真正落地 #17，还需要它自己的内容插件：
+落地（`plugins/dsentrycustom`，逐条对 `EntryMenuContent.tsx`）：
 
-1. 往三个座位注册菜单行：未固定条目的行 + 行尾「固定」按钮（`IconPinOutlineRegular` 14）、
-   「浏览更多插件」（`pluginNavigation` 等价物 = 选中 `plugins` 面板）、
-   「创建插件」（`IconPlusOutlineRegular` 16）；
-2. 「创建插件」要走 `uiWorkspace.startSession(undefined, {agentPreset:'cordis', …})`
-   ——**宿主今天不认 `agentPreset`**：`internal/transport/server.go` 的
-   `handleSessionCreate` 只解 `Mode`，`opt.Create` 签名是 `func(mode string)`（DSH-GO 仓）。
-   这一条不在 GUI 仓范围内，落地前 #17 的 Creator 行必须 HIDE 或等宿主补参数。
+| 官方行 | 做了什么 | 断言 |
+|---|---|---|
+| 未固定条目行（`entries.filter(!pinned)`，左栏） | 行首面板字形 + 标题 + 行尾 22×22「固定」按钮（`pin-outline` 14）；点了 `onDismiss()+onOpen(id)` / `onDismiss()+onPinnedChange(id,true)` | `TestSidebarRowsListOnlyUnpinnedEntries`、`TestSidebarRowClickOpensEntry`、`TestPinButtonPinsUnpinnedEntry` |
+| 折起 view 行（`moreEntries = entries`，会话头） | 标题 + active 行尾对勾；无图标、无固定按钮 | `TestConversationRowsShowEveryFoldedViewWithActiveMark` |
+| 「浏览更多插件」 | `plugin-pinwheel-outline` 行首；**服务在册才画**；点了 `onDismiss()+openList()` | `TestBrowsePluginsRowOpensList`、`TestBrowsePluginsRowHiddenWithoutNavigation` |
+| 不在菜单里 | `Env.EntryMenu == nil` → 一行都不画 | `TestEntryRowsHiddenOutsideMenu` |
+| 装配 | Builtin 里真的在册、两个座位都有占用方、导航能力可注入 | `cmd/app/entry_customization_assembly_test.go` |
+
+HIDE 三项（都不自造）：
+
+1. **「创建你的插件」整行不画**。官方点了走
+   `uiWorkspace.startSession(undefined, {agentPreset:'cordis', prompt, whenDraftExists:'append'})`
+   （`OFF:src/client/index.ts:47-52`）；落点是宿主 `session.create` 要认 `agentPreset`。
+   DSH-GO 宿主今天**不认**：`internal/transport/server.go` 的 `handleSessionCreate` 只解 `Mode`，
+   `opt.Create` 签名是 `func(mode string) (string, error)`。画出来点了只会建出一个没有预设的会话，
+   所以整行 HIDE；宿主能收 `agentPreset` 后再补（并同时补官方
+   `separatorBefore={!browsable && moreEntries.length > 0}` 这条与「浏览更多插件」的互斥留白）。
+   断言（防"手滑补一半"）：`TestCreatePluginRowIsHIDEEntilHostAcceptsAgentPreset`。
+2. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 没有宿主
+   （guide 面未落地，账本 #53），注册了也没有派发方。
+3. **左栏行尾对勾不画**：见 §4 第 7 条（viva 没有 hover 读口）。
 
 ## 6. 断言（防回退）
 
@@ -102,3 +133,5 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
 | 菜单面：关着不画/没 drawSlot 不画/派发一次/props 派发后恢复/288 夹宽 | `internal/uikernel/entry_menu_test.go` |
 | 左栏：无占用方无「更多」行；点开→派发+props 行真的画出来；未固定行离场；行尾按钮真的改状态 | `plugins/dssidebar/entry_menu_test.go` |
 | 会话头：无占用方/单 view 无按钮；点开→派发+entries=moreTabs；未固定 view 离场并进菜单 | `plugins/dstopbar/entry_menu_test.go` |
+| 内容行：不在菜单里不画 / 左栏只列未固定且行首有图标行尾有固定按钮 / 点行=onDismiss+onOpen / 点固定=onDismiss+onPinnedChange / 「浏览更多插件」服务在册才画且点了 openList / 「创建你的插件」不在画面里 / 会话头 active 多一枚对勾 / 三枚图标按 sprite 转写 | `plugins/dsentrycustom/entry_menu_test.go` |
+| 装配：Builtin 在册 + 两个座位都有占用方 + `ui.pluginNavigation` 可注入可调用 | `cmd/app/entry_customization_assembly_test.go` |

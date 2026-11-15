@@ -251,3 +251,37 @@ func TestTopbarEntryMenuUnpinnedViewLeavesTabRow(t *testing.T) {
 		t.Fatalf("取消固定的 view 没进 More entries：%+v", f.props)
 	}
 }
+
+// TestViewEntryEntriesCarryActiveProjection：#17 菜单行读的 `active` 真的填了。
+//
+// 官方 ConversationSession.tsx:244-247 传给 More 的是
+// `{id, label, pinned, active: viewTab.id === active?.id}`——`active` 是那一组四个字段
+// 里的第四格，菜单据此在行尾画对勾（`EntryMenuContent.tsx:50`）。少了它，界面上
+// 永远不会有"当前 view 在 More 里"的那一格提示，且不报错。
+func TestViewEntryEntriesCarryActiveProjection(t *testing.T) {
+	p := &Plugin{}
+	all := []pluginapi.Tab{
+		{Key: "chat", Label: "对话"},
+		{Key: "trajectory", Label: "轨迹"},
+		{Key: "stats", Label: "统计"},
+	}
+	visible := all[:1] // 只有 chat 画成 tab，其余两个进 More
+	entries := p.viewEntryEntries(all, visible, "stats")
+	if len(entries) != 2 {
+		t.Fatalf("entries 应为两个折起来的 view，got %+v", entries)
+	}
+	for _, entry := range entries {
+		if entry.ID == "stats" && !entry.Active {
+			t.Fatalf("当前 view（stats）在 entries 里却没标 active：%+v", entries)
+		}
+		if entry.ID == "trajectory" && entry.Active {
+			t.Fatalf("非当前 view（trajectory）被标成了 active：%+v", entries)
+		}
+	}
+	// 没有当前 view（空串）时一条都不该标 active。
+	for _, entry := range p.viewEntryEntries(all, visible, "") {
+		if entry.Active {
+			t.Fatalf("active 空串时不该有条目被标 active：%+v", entry)
+		}
+	}
+}

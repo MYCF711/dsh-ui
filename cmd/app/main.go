@@ -40,6 +40,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdeliverables"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdemo"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsdirpicker"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsentrycustom"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsfileactions"
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"

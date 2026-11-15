@@ -207,6 +207,11 @@ func TestEntryMenuMoreRowOpensMenuAndDispatches(t *testing.T) {
 	if len(props.Entries) != 1 || props.Entries[0].ID != "schedules" || props.Entries[0].Pinned {
 		t.Fatalf("entries 不是除固定行以外的全部面板：%+v", props.Entries)
 	}
+	// 行首图标：官方那一格是 `renderFactorySlot('sidebar.panel.icon')`，本仓把面板行
+	// 同一个字形投影进 props（#17 的菜单行要用它，`EntryMenuEntry.Glyph`）。
+	if props.Entries[0].Glyph == "" {
+		t.Fatalf("entries 没带面板字形：菜单行会没有图标（官方 EntryMenuContent.tsx:43-45）")
+	}
 	if !f.hasText("菜单:自动化任务") {
 		t.Fatal("菜单行没画出来（占用方没拿到 props）")
 	}

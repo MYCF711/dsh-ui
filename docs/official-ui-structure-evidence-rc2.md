@@ -43,7 +43,7 @@
 | 13 | `creation-recommendations` | 7 / 651 | 无自有槽（注册进 `actionCards`） | `ctx.actionCards`（**无 remote**） | **是**（宿主 PR #45） | 复用 #2 的注册表 | **本仓已实现** |
 | 15 | `directory-picker-browse` | 5 / 1745 | `conversation.hero.workspace.directoryFlow`、`sidebar.workspaces.directoryFlow` | `directoryPicker.list/createDirectory` | **是** | 自有模态 | **本仓已实现** |
 | 16 | `directory-picker-native` | 3 / 117 | 同上一对洞 | `directoryPicker.pick` / Viva `app.OpenDirectory` | **是** | 无 | **HIDE** |
-| 17 | `entry-customization` | 5 / 258 | `sidebar.panellist.actions`、`conversation.session.header.views.actions`、`sidebar.right.tab.guide.actions` | `uiWorkspace.startSession`、`pluginNavigation` | **否** | 三个槽都在 | **HIDE** |
+| 17 | `entry-customization` | 5 / 258 | `sidebar.panellist.actions`、`conversation.session.header.views.actions`、`sidebar.right.tab.guide.actions` | `uiWorkspace.startSession`、`pluginNavigation` | **否** | 三个槽都在 | **🟡 本体已落地**（左栏未固定行 + 行尾固定 + 「浏览更多插件」+ 会话头折起 view 行）；「创建你的插件」等宿主收 `agentPreset`，右栏 guide 无宿主 |
 | 18 | `file-actions` | 6 / 424 | `contextMenu.icon` | `workspaceFiles.*`、`session.openWorkspacePath` | **是** | 否（依赖 #10） | **HIDE** |
 | 19 | `file-drag` | 5 / 274 | `shell.overlay` | 无（拖出侧，需 OS 拖源） | n/a | 是 | **HIDE** |
 | 28 | `plan` | 14 / 904 | `conversation.input.plan`、`conversation.chat.turnTail`、`conversation.plan-review.actions`、`sidebar.right.pane.tab(+.title)` | `session.page`/`.commands`/`.events` | **是** | 2/5 | **可做（受限）** |
@@ -176,19 +176,19 @@
   `func OpenDirectory(OpenDirectoryOptions) (string, error)`）接成第二个 backend。
   **能力本身已经在了**（`HOST:cmd/dshd/serve_native_api.go:58` 挂了 `PickDirectory`，Windows 走 `IFileOpenDialog`），缺的是结构证据。
 
-### #17 `entry-customization`（5 文件 / 258 行）— **HIDE**
+### #17 `entry-customization`（5 文件 / 258 行）— **🟡 本体已落地（2026-11-15）**
 - 自有槽（三个都注册同一份菜单行）：`sidebar.panellist.actions`、`conversation.session.header.views.actions`、
   `sidebar.right.tab.guide.actions`（`OFF:entry-customization/src/client/index.ts:58-72`）。**这三个槽 GUI 都在册。**
 - 组件：`OFF:entry-customization/src/client/EntryMenuContent.tsx:1-71`；几何 `EntryMenu.module.css:1-32`
 - 文案（zh）：`pinTooltip` 固定到左侧栏 · `pin` 将{name}固定到侧边栏 · `install` 浏览更多插件 ·
   `create` 创建你的插件 · `createPrompt.sidebar/conversation/rightbar` 三段创作提示（`locales.ts:16-25`）
-- **差什么**（两条都致命）：
-  1. 它填的是三个 **More 菜单**（"…"按钮弹的菜单）。GUI 里这三个槽只是座位，
-     **没有对应的 More 菜单容器**（官方容器在 `ui-sidebar` / `ui-conversation` / `ui-sidebar-right`，主库无该面几何证据）。
-  2. `install` 行依赖 `pluginNavigation` 服务（`index.ts:50-56`），宿主 `pluginInventory.list`
-     返回 `officialNotImplemented`（`HOST:internal/transport/handlers_plugin_inventory_official.go:35` 附近）；
-     `create` 行依赖 `uiWorkspace.startSession({agentPreset:'cordis', …})`，GUI 无 agentPreset 通道。
-- **怎么补**：先取证三个 More 菜单容器的几何（或由宿主补 `pluginInventory.list`）。
+- **已补**（2026-11-15）：① 三个 More 菜单容器**已有两个**（左栏 `PanelMoreMenu` / 会话头 `ViewsMoreMenu`，
+  见 [official-entry-menu-evidence-rc2.md](official-entry-menu-evidence-rc2.md)），槽在册且真的 dispatch；
+  ② `install` 行不再依赖宿主 `pluginInventory.list`，本仓等价物是 ds-sidebar 的插件管理页
+  （`plugins/dssidebar/panelapi` 提供的 `ui.pluginNavigation`）。
+- **仍差（HIDE 登记）**：`create` 行要宿主 `session.create` 收 `agentPreset:'cordis'`
+  （DSH-GO 的 `handleSessionCreate` 只解 `Mode`，`opt.Create` 是 `func(mode string)`）；
+  右栏 guide 的 More 卡片要 guide 面先落地（输出 `sidebar.right.tab.guide.actions` 的宿主）。
 
 ### #18 `file-actions`（6 文件 / 424 行）— **HIDE**
 - 只注册 `contextMenu.icon`（`OFF:file-actions/src/client/index.ts`），即它是 #10 的**消费方**

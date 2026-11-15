@@ -28,6 +28,8 @@ type (
 	SkillCandidate            = pub.SkillCandidate
 	FeedbackItem              = pub.FeedbackItem
 	FeedbackResult            = pub.FeedbackResult
+	// 思考译文（pluginapi/cot_translation.go，#63）。
+	CotTranslationResult = pub.CotTranslationResult
 	// 官方 workspace registry 的一条工作区（#62）。
 	Workspace = pub.Workspace
 	// context menu 服务与贡献（#10）。

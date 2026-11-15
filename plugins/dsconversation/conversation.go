@@ -98,6 +98,10 @@ type Plugin struct {
 	// expanded 记录哪些思考块被展开（键是 MessageKey，状态不跨会话串用）。
 	// 缺省全收起：真实语料里思考比正文多八倍，默认展开会把消息流淹没。
 	expanded map[string]bool
+	// cot 是思考译文状态（#63，键同为 MessageKey），见 cot_translation.go。
+	// 只有在展开态才推进：官方那条贡献挂在 reasoning.body 这个座位上，
+	// 收起即卸载、不发请求。
+	cot map[string]*cotEntry
 	// codeBlocks / fileLinks 与 Markdown 缓存同下标。代码块保留自己的 wrap/横滚
 	// 状态；文件链接只来自显式 file: Markdown destination 的映射。
 	codeBlocks map[int][]messageCode
@@ -658,9 +662,22 @@ func (p *Plugin) drawThinking(f ui.C, env *pluginapi.Env, msg apiclient.Message,
 		return
 	}
 	// 展开态：浅底盒子，不描边（官方 callRow / compactionBody 都没有边框色）。
+	//
+	// #63（`dsh-experimental-client-ui-cot-translation`）：盒子里先画译文工具栏，
+	// 再画正文——官方那份贡献就挂在 `conversation.chat.reasoning.body` 这个座位上，
+	// 工具栏在正文之上（OFF:TranslationBody.tsx:50-60）。
+	//
+	// 三条边界都在 cot_translation.go 里：宿主没接就整条工具栏不画；收起态不推进
+	// （官方收起即卸载）；译文与原文同一个画法（不给译文另造 Markdown）。
+	running := env.Data.Busy && index == len(env.Data.Msgs)-1
 	ui.Column(f).WidthPercent(100).Pad(8).Radius(t.Radii.SM).Background(t.BgLayer1).
 		Children(func() {
-			ui.Wrap(f, reasoningBodyText(msg)).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			var entry *cotEntry
+			if limits, ok := cotToolbarAvailable(env.Act); ok {
+				entry = p.cotAdvance(env.Act, env.Data.Cur, key, cotSourceText(msg), running, limits)
+				p.drawCotToolbar(f, env, key, entry)
+			}
+			p.drawCotBody(f, entry, reasoningBodyText(msg))
 		})
 }
 

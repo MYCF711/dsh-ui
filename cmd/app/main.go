@@ -229,6 +229,17 @@ type model struct {
 	webProvidersPending bool
 	// webProvidersErr 是最近一次 provider 清单拉取失败的原因（只报状态栏，不清缓存）。
 	webProvidersErr error
+	// cotLimits 是官方 `cotTranslation.limits` 的缓存（#63 思考译文的数据面）。
+	// loaded=false = 还没拉到（插件那时不画译文入口，不猜上限/不猜 provider）。
+	cotLimits apiclient.CotTranslationLimits
+	// cotLimitsLoaded / Pending / Err 与 webProviders 那三个同一套语义。
+	cotLimitsLoaded  bool
+	cotLimitsPending bool
+	cotLimitsErr     error
+	// cotResults 是按 jobID 的翻译终态（插件取走后清空，见 cot_translation_wiring.go）。
+	cotResults map[string]pluginapi.CotTranslationResult
+	// cotJobSeq 是 jobID 序号（不重复即可，不跨进程持久化）。
+	cotJobSeq int64
 	// credentials 是凭据域按 ref 的缓存（官方 credentials.describe；**只回状态不回值**）。
 	// 缺一个键 = "还没问到"，消费方不许当"未配置"。
 	credentials map[string]apiclient.CredentialInfo
@@ -2779,9 +2790,15 @@ func main() {
 		MessageFeedbackPut:    m.messageFeedbackPut,
 		MessageFeedbackDelete: m.messageFeedbackDelete,
 		FeedbackTakeResult:    m.feedbackTakeResult,
-		OpenSession:           m.openSession,
-		WorkspaceRename:       m.renameWorkspace,
-		WorkspaceDelete:       m.deleteWorkspace,
+		// #63 思考译文：limits 同步读缓存（首次问后台拉），translate 只发起、
+		// 终态按 jobID 留给插件取。三条一起 nil 就等于"宿主没这条能力"，
+		// 插件那时不画译文入口。见 cot_translation_wiring.go。
+		CotTranslationLimits:    m.cotTranslationLimits,
+		CotTranslationTranslate: m.cotTranslationTranslate,
+		CotTranslationResult:    m.cotTranslationTakeResult,
+		OpenSession:             m.openSession,
+		WorkspaceRename:         m.renameWorkspace,
+		WorkspaceDelete:         m.deleteWorkspace,
 		// 拖拽排会话顺序的唯一写路径（官方 workspace.insertSessionBefore）。
 		// nil 会让侧栏不进入拖拽态——那是"宿主没这条能力"的诚实表达。
 		WorkspaceInsertSessionBefore: m.insertSessionBefore,

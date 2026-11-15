@@ -243,6 +243,11 @@ func (p *Plugin) drawWorkspaceHeaderMargin(f ui.C, env *pluginapi.Env, marginTop
 		// 仍然守住「不画死按钮」：**只有壳真的接了 `OpenDirectoryPicker` 才画**
 		// （`env.Act` 为 nil = 老壳 / 无头装配 → 这一枚不出现）。
 		//
+		// 2026-11-15 起这一格的含义变宽了：官方 directory-flow 两个后端（应用内
+		// 对话框 / OS 原生框）互斥，壳在启动时探一次宿主的组合，再决定这一格接
+		// 哪个后端；**一套都不可用时壳给 nil**，于是这里照样不画。判据没变，
+		// 变的只是"接了哪个后端"由壳决定（`cmd/app/dirpicker_wiring.go`）。
+		//
 		// 字形用 `+` 而不是手画图标：官方这里是 sprite 里的 `IconPlusOutlineRegular`
 		// （`OFF:ui-sidebar` 的 sprite 表），本仓没有那张 sprite 的导出，
 		// 按仓规**不许手绘冒充官方图标**；`+` 与旁边 `⌕`/`▾` 同为文字字形，风格一致。

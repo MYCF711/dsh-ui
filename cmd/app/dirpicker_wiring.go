@@ -1,15 +1,43 @@
-// dirpicker_wiring.go —— 把「官方目录浏览器」接进产品：壳注入数据源 + 一键打开。
+// dirpicker_wiring.go —— 把「官方目录选择器」接进产品：**先问出宿主支持哪一套后端**，
+// 再按那一套注入数据源 / 动作；一套都不是就把入口整块隐藏。
 //
-// # 为什么这两步必须由壳做
+// # 为什么必须先问（官方两个后端是互斥的）
 //
-// `plugins/dsdirpicker`（官方 `dsh-client-ui-directory-picker-browse` 的落地）
-// 自己拿不到 `*apiclient.Client`，也不该拿：插件只拿 `*Scope`（红线 R2）。
-// 所以它暴露两个注入点（见 `plugins/dsdirpicker/browse.go:216,225`）：
+// 官方把「选择工作区目录」拆成两个**互斥**的客户端包，它们填的是同一对
+// `directoryFlow` 洞，所以同时存在即冲突：
 //
-//	SetSource(DirSource)        —— 数据面：列目录 / 建目录 / 注册工作区
-//	SetOnPicked(func(path))     —— 「打开」成功之后的回调
+//	native（`dsh-client-ui-directory-picker-native`）—— 无界面流程，每次 `open`
+//	  边沿调一次 `pick()`，结果走 `onPicked` / `onCancel` / `onError`
+//	  （`OFF:dpn/src/client/flow.ts:20-90`）。**只在**
+//	  `remoteAccess.whenAccess('directoryPicker/pick')` 为真时注册
+//	  （`OFF:dpn/src/client/index.ts:32-41`）。
+//	browse（`dsh-client-ui-directory-picker-browse`）—— 应用内 Miller 双列对话框，
+//	  注入 `listDirectory` / `createDirectory`（`OFF:dpb/src/client/index.ts:176-184`），
+//	  **无门控**注册同一对洞。
 //
-// 壳是唯一同时知道 `cli` 和两个插件实例的地方，所以由壳转这一手。
+// 本仓没有 `remoteAccess` 服务，等价的问题就是"宿主这次启动声明的是哪一套"。
+// 宿主侧的 seam（`HOST:cmd/dshd/serve_directory_picker_seam.go`）给的判据是：
+//
+//	打只读的 directoryPicker.list
+//	  → 200                                  ⇒ browse
+//	  → 501 且 details.capability = native   ⇒ native
+//	  → 其它                                  ⇒ 失败
+//
+// **刻意不拿 `pick` 当探针**：它是交互动词，打一下会真的弹出宿主屏幕上的原生框。
+//
+// # 三种结局（都不许静默退化）
+//
+//	browse —— 现有路径不变：`plugins/dsdirpicker`（对话框）+ `dirSource` 数据面。
+//	native —— 没有应用内对话框：点「添加工作区」= 调 `directoryPicker.pick`，
+//	          选到路径后 `workspace.create` 采用它（与 browse 同一个"采用"语义）。
+//	都不可用 —— **入口整块隐藏**（`Actions.OpenDirectoryPicker = nil`），并把
+//	          探针失败的原因写进日志。不画"点了没反应"的按钮，也不退回到某一套
+//	          默认——那等于假装宿主有能力。
+//
+// # 探针只在启动时打一次
+//
+// `wireDirPicker` 在装配末尾（第一帧之前）跑一次，结果缓存在 `m.dirPicker`。
+// 之后每次打开都读缓存：探针有网络开销，而且 native 组合下它必然是一条 501。
 //
 // # 数据从哪来（三条都是宿主真实现，不是壳自己算的）
 //
@@ -18,6 +46,8 @@
 //     真实现 `HOST:cmd/dshd/serve_workspace_api.go:1668` 起（`os.ReadDir` 真目录浏览）。
 //   - `directoryPicker.createDirectory` → 同上 `:612`（`CreateDirectory: h.pickerCreateDirectory`）
 //   - `workspace.create`                → `HOST:cmd/dshd/serve_workspace_api.go:583`（`Create: h.createWorkspace`）
+//   - `directoryPicker.pick`            → `HOST:internal/transport/handlers_native_official.go`
+//     的 `MethodDirectoryPickerPick`（真实现 `HOST:internal/native`，Windows COM 文件对话框）
 //
 // # 为什么不用 `workspace.list` 顶替
 //
@@ -28,6 +58,8 @@ package main
 
 import (
 	"context"
+	"log"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/plugins/dsdirpicker"
@@ -51,36 +83,131 @@ func (s dirSource) Register(ctx context.Context, path string) error {
 	return s.cli.WorkspaceCreate(ctx, path)
 }
 
-// wireDirPicker 把数据源与回调注入目录浏览器插件。
+// dirPickerMode 是本次启动的 `directoryPicker` 组合（零值 = 一套都不可用）。
+type dirPickerMode uint8
+
+const (
+	// dirPickerUnavailable 是零值：探不到组合 / 探针失败 / 宿主两套都不服务。
+	// 这个状态下**入口整块隐藏**——不画一个点了没反应的按钮。
+	dirPickerUnavailable dirPickerMode = iota
+	// dirPickerBrowse：宿主服务 `list` + `createDirectory`，走应用内对话框。
+	dirPickerBrowse
+	// dirPickerNative：宿主服务 `pick`，点入口直接弹 OS 原生选择器。
+	dirPickerNative
+)
+
+// dirPickerProbeTimeout 是启动探针的上限。
 //
-// `cli == nil`（无头的部分测试会这么构造）时**什么都不注入**——插件拿到 nil
-// 就不会画任何东西（官方「空槽不占位」同义），测试里也不会意外发请求。
-func wireDirPicker(m *model) {
-	if m.cli == nil {
-		return
-	}
-	dsdirpicker.SetSource(dirSource{cli: m.cli})
-	// 「打开」成功后：把这个目录登记为工作区之后，壳要做的事。
-	//
-	// 现在只做一件事：**把侧栏的会话列表刷新一下**，让新工作区下一个会话落进去时
-	// 就能出现在列表里。这里刻意**不**弹提示、不切会话——官方 ui-workspace 的
-	// directory-flow 在 adopt 一个路径之后也只是把工作区加进注册表，UI 由
-	// 侧栏自己的数据流反映。我们没有 `workspace.registry` 的读通道
-	// （GUI apiclient 尚无该客户端），所以看不到注册表的形状，
-	// **也就不假装刷新了工作区树**：只刷会话列表，这是真能生效的那一半。
-	dsdirpicker.SetOnPicked(func(path string) {
-		go m.refreshList()
-	})
+// 探针是**只读本地 HTTP 调用**（列宿主 home），正常是毫秒级；给 3s 是为了
+// "宿主没起来/卡住"时不把窗口启动拖到 8s 传输超时。超时 = 探针失败 = 隐藏入口。
+const dirPickerProbeTimeout = 3 * time.Second
+
+// dirPickerPickTimeout 是一次原生选择的上限。
+//
+// 这里**不是**传输超时那 8s：原生框是人工交互，用户逛三分钟是正常用法。
+// 取 5 分钟只是防"框被遗弃在后台、never answered"——那时至少错误是可见的。
+const dirPickerPickTimeout = 5 * time.Minute
+
+// dirPickerState 是壳缓存的组合判定结果。
+//
+// 三个字段都由 `wireDirPicker` 在第一帧之前写一次，之后只读（所以不需要锁）。
+type dirPickerState struct {
+	// mode 是本次启动的组合；dirPickerUnavailable = 入口隐藏。
+	mode dirPickerMode
+	// err 是探针失败的原因（mode=unavailable 且宿主真起了时才有值）。
+	// 它只用于日志/诊断——界面不编文案，直接隐藏入口。
+	err error
+	// onPicked 是"采用了一个目录"之后的壳动作（两种后端共用同一个语义：
+	// 官方 owner 在 `onPicked(path)` 里采用它）。测试可以换掉它。
+	onPicked func(path string)
 }
 
-// openDirectoryPicker 是 `Actions.OpenDirectoryPicker` 的实现：
-// 从 kernel 里找到目录浏览器插件并打开它。
+// wireDirPicker 探一次组合并按结果接线。
+//
+// 调用点在装配末尾（`main.go` 的 `wireDirPicker(m)`）：那时 `/connect` 已经
+// 换过 cookie、`refreshList` 已经发过第一轮请求，但**第一帧还没画**——所以
+// 同步探一次不会卡住任何已显示的窗口，也不会有"先画再看"的闪烁。
+//
+// `cli == nil`（无头的部分测试会这么构造）时**什么都不接**：插件拿到 nil 就不会
+// 画任何东西（官方"空槽不占位"同义），测试里也不会意外发请求。
+func wireDirPicker(m *model) {
+	if m == nil || m.cli == nil {
+		return
+	}
+	// 两种后端共用同一条"采用"语义：官方 owner 拿到 picked path 之后的事由壳做。
+	// browse 那条由对话框在 `workspace.create` 成功后回调；native 那条由
+	// `pickNativeDirectory` 自己调 `workspace.create` 后再调它。
+	m.dirPicker.onPicked = func(path string) { go m.refreshList() }
+	dsdirpicker.SetOnPicked(m.dirPicker.onPicked)
+
+	ctx, cancel := context.WithTimeout(context.Background(), dirPickerProbeTimeout)
+	defer cancel()
+	kind, err := m.cli.ProbeDirectoryPicker(ctx)
+	if err != nil {
+		// 如实报错 + **隐藏入口**：不退回到某一套默认。
+		m.dirPicker.mode = dirPickerUnavailable
+		m.dirPicker.err = err
+		dsdirpicker.SetSource(nil)
+		log.Printf("目录选择器：%v —— 「添加工作区」入口隐藏（不静默退化成某一套）", err)
+		return
+	}
+
+	switch kind {
+	case apiclient.DirectoryPickerKindBrowse:
+		m.dirPicker.mode = dirPickerBrowse
+		dsdirpicker.SetSource(dirSource{cli: m.cli})
+	case apiclient.DirectoryPickerKindNative:
+		// native 组合没有应用内对话框：**不注入对话本源**，否则 dsdirpicker 会
+		// 画出一个 list 一定被宿主拒（501）的浏览器。
+		m.dirPicker.mode = dirPickerNative
+		dsdirpicker.SetSource(nil)
+	default:
+		// ProbeDirectoryPicker 只在成功时返回合法 kind；走到这里说明它的
+		// 契约被改坏了。按"不可用"处理（隐藏），不猜。
+		m.dirPicker.mode = dirPickerUnavailable
+		m.dirPicker.err = errUnknownDirPickerKind(kind)
+		dsdirpicker.SetSource(nil)
+		log.Printf("目录选择器：%v —— 「添加工作区」入口隐藏", m.dirPicker.err)
+	}
+}
+
+// dirPickerAction 返回壳交给侧栏的那一格动作；nil = **入口整块隐藏**。
+//
+// 侧栏（`plugins/dssidebar/frame.go:249`）只在它非 nil 时画「添加工作区」——
+// 这是"不画死按钮"的唯一判据，所以"不可用"必须表达成 nil，不能表达成
+// "一个点了什么都不做的函数"。
+func (m *model) dirPickerAction() func() {
+	if m == nil || m.dirPicker.mode == dirPickerUnavailable {
+		return nil
+	}
+	return func() { m.openDirectoryPicker() }
+}
+
+// openDirectoryPicker 是 `Actions.OpenDirectoryPicker` 的实现：按探到的组合分派。
+//
+// 返回值 = "这次点击有没有真的打开一个选择流程"（native 那条是异步的，返回 true
+// 表示已经把请求发出去了）。
+func (m *model) openDirectoryPicker() bool {
+	if m == nil {
+		return false
+	}
+	switch m.dirPicker.mode {
+	case dirPickerBrowse:
+		return m.openBrowseDirectoryPicker()
+	case dirPickerNative:
+		go m.pickNativeDirectory()
+		return true
+	}
+	return false
+}
+
+// openBrowseDirectoryPicker 从 kernel 里找到目录浏览器插件并打开它（browse 组合）。
 //
 // 为什么遍历而不是让壳持有实例：壳持有的实例（`side`/`settings`/`statusbar`）
 // 都是为了**装配顺序**或**无头截图**才持的（见 main.go 里那几个字段的注释）。
 // 目录选择器两者都不需要，所以按能力查表更稳——插件没装时这里返回 false，
 // 侧栏那个按钮就不会画（`Actions.OpenDirectoryPicker` 为 nil 也是这个语义）。
-func (m *model) openDirectoryPicker() bool {
+func (m *model) openBrowseDirectoryPicker() bool {
 	if m.kernel == nil {
 		return false
 	}
@@ -90,4 +217,49 @@ func (m *model) openDirectoryPicker() bool {
 		}
 	}
 	return false
+}
+
+// pickNativeDirectory 走 native 组合：真弹宿主的 OS 选择器，选到就采用它。
+//
+// 官方语义逐条对得上（`OFF:dpn/src/client/flow.ts:56-72`）：
+//
+//	path !== null ⇒ onPicked(path)   —— 我们这里 = `workspace.create` 之后刷新列表
+//	path === null ⇒ onCancel()       —— 操作员取消，**什么都不做、不报错**
+//	rejected      ⇒ onError(message) —— 宿主原文进状态栏，不另编文案
+//
+// 它是同步的（`openDirectoryPicker` 用 goroutine 包着调）：测试直接调它，
+// 断言就在同一线程落定，不必等 goroutine。
+func (m *model) pickNativeDirectory() {
+	if m == nil || m.cli == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), dirPickerPickTimeout)
+	defer cancel()
+	path, picked, err := m.cli.DirectoryPick(ctx)
+	if err != nil {
+		// 官方 `onError(reason)`：把宿主/传输的原文交给用户，不翻译。
+		m.setStatus("目录选择器失败: " + err.Error())
+		return
+	}
+	if !picked {
+		return // 官方 null = 取消：不是错误，不打扰用户。
+	}
+	if err := m.cli.WorkspaceCreate(ctx, path); err != nil {
+		m.setStatus("打开目录失败: " + err.Error())
+		return
+	}
+	if m.dirPicker.onPicked != nil {
+		m.dirPicker.onPicked(path)
+	}
+}
+
+// errUnknownDirPickerKind 是"探针成功但给出一个不认识的 kind"的报错。
+func errUnknownDirPickerKind(kind apiclient.DirectoryPickerKind) error {
+	return &unknownDirPickerKindError{kind: kind}
+}
+
+type unknownDirPickerKindError struct{ kind apiclient.DirectoryPickerKind }
+
+func (e *unknownDirPickerKindError) Error() string {
+	return "探到了一个不认识的 directoryPicker 组合: " + e.kind.String()
 }

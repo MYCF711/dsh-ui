@@ -269,7 +269,22 @@ func parseError(raw json.RawMessage) *APIError {
 }
 
 // Call 发一次一元调用，把 result 解到 out。
+//
+// 它不把 HTTP 状态交出来：**四字段错误是冻结契约**，绝大多数调用方只需要
+// "成功/失败 + 四字段"。要状态的地方（例如 `directoryPicker` 的组合探测：
+// 200 = browse、501 + details.capability = native）用 `CallStatus`。
 func (c *Client) Call(ctx context.Context, method string, params any, out any) error {
+	_, err := c.CallStatus(ctx, method, params, out)
+	return err
+}
+
+// CallStatus 与 `Call` 同一条实现，另外交回**HTTP 状态码**（连不上/编码失败时为 0）。
+//
+// 为什么加它而不是让调用方自己去查 `Details`："501"本身有语义——宿主用它表达
+// "这台宿主没有这个交互"（`HOST:internal/transport/handlers_workspace_official.go`
+// 的 `directoryPickerUnavailable` 就是 `StatusNotImplemented`）；拿 message 文本
+// 去猜状态，是把协议事实降级成正则匹配。
+func (c *Client) CallStatus(ctx context.Context, method string, params any, out any) (int, error) {
 	// 入参是**平铺**的：真 dshd 的 handler 直接 decode 到
 	// `struct{ SessionID string `json:"sessionId"`; ID string `json:"id"`; ... }`，
 	// 外面再套一层 `{"params":…}` 会让每个参数都解成零值——症状极隐蔽：
@@ -283,11 +298,11 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 	if params == nil {
 		body = []byte("{}")
 	} else if body, err = json.Marshal(params); err != nil {
-		return fmt.Errorf("encode params: %w", err)
+		return 0, fmt.Errorf("encode params: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/api/"+method, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	for _, ck := range c.cookies {
@@ -296,13 +311,13 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("连不上 %s：%w", c.Base, err)
+		return 0, fmt.Errorf("连不上 %s：%w", c.Base, err)
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	var env envelope
 	envOK := json.Unmarshal(raw, &env) == nil
@@ -320,30 +335,30 @@ func (c *Client) Call(ctx context.Context, method string, params any, out any) e
 					apiErr.Details = details
 				}
 			}
-			return apiErr
+			return resp.StatusCode, apiErr
 		}
 	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("HTTP %d: %.200s", resp.StatusCode, raw)
+		return resp.StatusCode, fmt.Errorf("HTTP %d: %.200s", resp.StatusCode, raw)
 	}
 
 	// 约定信封：有 result 就解 result。
 	if envOK && len(env.Result) > 0 {
 		if out == nil {
-			return nil
+			return resp.StatusCode, nil
 		}
-		return json.Unmarshal(env.Result, out)
+		return resp.StatusCode, json.Unmarshal(env.Result, out)
 	}
 
 	// 真宿主目前**不套信封**，直接返回 payload（{"sessions":[...]}）。
 	// 这里退一步把整个 body 当 result，否则界面永远看到 0 个会话（踩过）。
 	if out == nil || len(raw) == 0 {
-		return nil
+		return resp.StatusCode, nil
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return fmt.Errorf("响应不是合法 JSON（HTTP %d）: %.200s", resp.StatusCode, raw)
+		return resp.StatusCode, fmt.Errorf("响应不是合法 JSON（HTTP %d）: %.200s", resp.StatusCode, raw)
 	}
-	return nil
+	return resp.StatusCode, nil
 }
 
 // callRaw 发一个请求并把 2xx 的原始 body 交回调用方，**不解释顶层 `error`**。

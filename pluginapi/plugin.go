@@ -1129,6 +1129,28 @@ type Actions struct {
 	// ok=false = 没有待处理结果。插件在下一帧读它来显示 toast。
 	FeedbackTakeResult func(sessionID string) (FeedbackResult, bool)
 
+	// CotTranslationLimits 读壳缓存的官方 `cotTranslation.limits`
+	// （已生效偏好 + 单次请求上限 + 真的能翻的 provider 清单）。
+	//
+	// **同步返回缓存**：插件在 draw 里调，等 HTTP 会卡首帧。首次问会触发一次
+	// 后台拉取，拉成功 `Invalidate`，下一帧插件读到就是新值。
+	//
+	// ok=false = 壳还没拉到。nil = 壳没接这条能力（老壳 / 宿主没有
+	// cotTranslation）——**这时界面不该画译文入口**：画一个点了没反应的东西，
+	// 比不画更让人以为"翻译坏了"。
+	CotTranslationLimits func() (apiclient.CotTranslationLimits, bool)
+	// CotTranslationTranslate 发起一次翻译。**异步**：返回 jobID（空串 = 没发起，
+	// 比如壳没接或参数明显不合法），终态由 CotTranslationResult(jobID) 交给插件。
+	//
+	// 为什么是 jobID 而不是回调：插件状态机在 draw 里推进（与官方
+	// ReasoningTranslation.run 同形状——同时只有一个请求在飞、按序推进），
+	// 回调会让"谁先回来"与"界面这一帧读到什么"错位；jobID 把结果留在壳里，
+	// 插件下一帧按自己的节奏取。
+	CotTranslationTranslate func(sessionID, text, targetLanguage, provider string) string
+	// CotTranslationResult 取走某个 jobID 的终态（取走即清空）。
+	// ok=false = 这个 jobID 还没有结果（仍在飞，或已被取走）。
+	CotTranslationResult func(jobID string) (CotTranslationResult, bool)
+
 	// ScheduleList 列定时任务（宿主 `schedule.list`）。
 	//
 	// **同步返回壳缓存**：壳启动后拉一次、之后每次 `schedule.*` 变更再拉。

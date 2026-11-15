@@ -130,14 +130,14 @@
 | 36 | `dsh-client-ui-session` | ✅ IMPLEMENTED | `internal/apiclient` + `cmd/app` |
 | 37 | `dsh-client-ui-settings` | ✅ IMPLEMENTED | `plugins/dssettings`（14 文件 / 5470 行） |
 | 38 | `dsh-client-ui-settings-account` | 🟡 PARTIAL | `dssettings` 的 `account` section |
-| 39 | `dsh-client-ui-settings-agent-loop` | ❌ MISSING | 无 |
+| 39 | `dsh-client-ui-settings-agent-loop` | ✅ IMPLEMENTED | **`plugins/dssidebar/settings_items.go` + `settings_items_draw.go`**（插件管理页「内置插件配置」组的 `agent-loop` 卡：`maxParallelToolCalls` 一个数值字段，官方 lock/`hint` 逐字，写走 `settings.mutate`）+ `plugins/dssidebar/plugins_page.go`（组与详情接线）；证据 [official-settings-pages-evidence-rc2.md](official-settings-pages-evidence-rc2.md) §2.1 |
 | 40 | `dsh-client-ui-settings-general` | ✅ IMPLEMENTED | `dssettings` 的 general 页 |
 | 41 | `dsh-client-ui-settings-models` | 🟡 PARTIAL | `dssettings` 的 models 页 |
 | 42 | `dsh-client-ui-settings-plugin-inventory` | ✅ IMPLEMENTED | `plugins/dssettings/official_plugins.go` + `official_plugins_draw.go` + `internal/apiclient/plugin_inventory.go` |
 | 43 | `dsh-client-ui-settings-plugins` | ✅ IMPLEMENTED | `plugins/dssettings/official_tree.go:83` + `official_plugins*.go`（外壳 + tab 台账） |
 | 44 | `dsh-client-ui-settings-session-log` | 🟡 PARTIAL | `dssettings` 的 general item `session-log-upload-toast` |
-| 45 | `dsh-client-ui-settings-shell` | ❌ MISSING | 无 |
-| 46 | `dsh-client-ui-settings-subagent` | ❌ MISSING | 无 |
+| 45 | `dsh-client-ui-settings-shell` | ✅ IMPLEMENTED | 同一落点的 `shell` 卡（`timeoutMs` / `maxOutputBytes`，按官方 `served.has(PWSH_NS) ? pwsh : bash` 绑定 `pwsh-sandbox`/`bash-sandbox`）；证据 [official-settings-pages-evidence-rc2.md](official-settings-pages-evidence-rc2.md) §2.2 |
+| 46 | `dsh-client-ui-settings-subagent` | 🟡 PARTIAL | 同一落点的 `subagent` 卡：**「运行限制」一节已落地**（`maxDepth` / `maxActiveSubagents` + 官方 help 正文 + `limitField` 整数/下限判据）；**「模型选择」一节 HIDE**——宿主把该命名空间的 `allowedModels`（对象数组）投影不进 `sections[].fields`（只支持三种标量），且本仓宿主这条命名空间无消费方。理由见 [official-settings-pages-evidence-rc2.md](official-settings-pages-evidence-rc2.md) §6.1 |
 | 47 | `dsh-client-ui-settings-web-search` | ❌ MISSING | 无 |
 | 48 | `dsh-client-ui-shortcuts` | ✅ IMPLEMENTED | `plugins/dsshortcuts`（2 文件 / 213 行） |
 | 49 | `dsh-client-ui-sidebar` | ✅ IMPLEMENTED | `plugins/dssidebar`（5 文件 / 1418 行） |
@@ -159,6 +159,10 @@
 | 65 | `dsh-experimental-client-ui-stats` | ✅ IMPLEMENTED | **`plugins/dsstatusbar/stats_view.go`（官方 `conversation.view` `order:40` 的 `stats` 页面本体：逐 turn/step 11 列 + 总用时条 + 全量/窗口合计；帧投影对齐官方 `stats-fold.ts` / `stats-usage.ts` / `stats-format.ts`）** + `plugins/dsstatusbar/statusbar.go:129-130` 注册；证据 [official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)。**剩余差异**：compaction/非 step 事件行、三个工具栏开关、加载更早分页未做 |
 | 66 | `dsh-experimental-client-ui-voice-input` | ❌ MISSING | 无 |
 
+> #39 / #45 / #46 三行的**页面落点、逐字文案、表单状态机、几何台账与 4 条差异**、以及
+> #46 的 HIDE 理由和 #47（`web-search`，下一批）的排序：[official-settings-pages-evidence-rc2.md](official-settings-pages-evidence-rc2.md)。
+> 它们不是设置面板的 section，而是插件管理页 `plugins.item` 的卡片（官方锚点见该文件 §1）。
+>
 > #29 / #42 / #43 三行的完整结构与几何证据（官方 `src/**` 锚点、逐字 locale、HIDE 台账）：[official-plugins-page-evidence-rc2.md](official-plugins-page-evidence-rc2.md)。其中 #43 的「内置/第三方分 tab」在 rc.2 **不存在**——`settings.plugins.tab` 全仓只有只读清单一个贡献方。
 >
 > #22 的结构与几何证据、与官方的 9 条差异台账：[official-jobs-evidence-rc2.md](official-jobs-evidence-rc2.md)。
@@ -172,7 +176,7 @@
 > 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
 > `#54`/`#59` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 45 · 🟡 5 · ⬜ 0（不该有） · ❌ 16
+## 合计：官方 66 个部件 —— ✅ 47 · 🟡 6 · ⬜ 0（不该有） · ❌ 13
 
 > 剩下 16 条 MISSING 的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
 > B 档"要一次架构判断" / C 档"宿主缺前置" / D 档"按 HIDE 登记"）见

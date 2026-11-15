@@ -167,6 +167,15 @@ type Plugin struct {
 	pluginNotice      string
 	pluginNoticeUntil time.Time
 
+	// ── 官方 4 条插件设置页的本地状态（settings_items*.go，#39/#45/#46）──
+	//
+	// itemSelected 是打开的官方插件配置卡片 id（`plugins.item` 的 id）；
+	// itemForm 是这张卡的草稿 / 写状态（自带 mutex：保存跑在 goroutine 里）；
+	// itemFields 是那几页表单的输入框（Fields() 必须登记，否则收不到键盘）。
+	itemSelected string
+	itemForm     *settingsItemForm
+	itemFields   settingsItemFields
+
 	// ── #10 context menu 与 #62 工作区动作的本地状态（workspace_actions.go）──
 	//
 	// menus 是 ds-contextmenu 提供的服务（生产装配注入；服务键不在 Requires 里，
@@ -235,7 +244,14 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 //
 // 任务管理页的搜索框同样要登记：它只在那个面板可见，但注册是静态的，
 // 焦点由壳按"点到的输入框"分配，多一个未挂载的 Field 不会抢焦点。
-func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.search, &p.schedSearch, &p.wsRename} }
+func (p *Plugin) Fields() []*ui.Field {
+	fields := []*ui.Field{&p.search, &p.schedSearch, &p.wsRename}
+	// 官方 4 条插件设置页的输入框：#39 一个、#45 两个、#46 两个。
+	//
+	// 与任务页搜索框同一条理由：注册是静态的、焦点由壳按"点到的输入框"分配，
+	// 多几个当前没挂载的 Field 不会抢焦点；不登记的话输入框能画、能点，但收不到键盘。
+	return append(fields, p.itemFields.all()...)
+}
 
 // Width 返回侧栏占的宽度。
 func (p *Plugin) Width() float32 { return p.width }

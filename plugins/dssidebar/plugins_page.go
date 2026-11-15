@@ -34,8 +34,11 @@
 //	  （与侧栏删除会话、任务页删除同一先例）。
 //	· 官方「详细介绍」走 `DetailDocument` 的 Markdown 渲染（含代码块/图片）；
 //	  本仓这一版按**纯文本**画真实 markdown 原文（内容不假，样式不同）。
-//	· 官方列表有多 tab（`plugins.tab` 贡献方）与官方插件配置卡片（`plugins.item`）；
-//	  本仓没有任何贡献方，按官方「没有贡献方就不画 tab 条」的规则整段不画。
+//	· 官方列表有多 tab（`plugins.tab` 贡献方）；本仓没有贡献方，按官方
+//	  「没有贡献方就不画 tab 条」的规则整段不画。
+//	· 官方插件配置卡片（`plugins.item`）**已接**（2026-11-15）：`#39` / `#45` /
+//	  `#46` 三张卡画在「内置插件配置」组里、排在「已安装插件」之前，
+//	  见 settings_items.go / settings_items_draw.go（`#47` web-search 下一批）。
 package dssidebar
 
 import (
@@ -244,10 +247,15 @@ const (
 	pluginFactMinHeight   = 44   // .facts div{min-height:44px;padding:8px 2px}
 	pluginFactFontSize    = 13   // .facts dt/dd{font-size:13px;line-height:20px}
 	pluginFactLine        = 20
-	pluginSwitchWidth     = 36 // 官方 Switch 36×20（本仓 dssettings 的 ItemSwitch 同一几何）
-	pluginSwitchHeight    = 20
-	pluginSwitchKnob      = 16
-	pluginSwitchPad       = 2
+	// 官方 `.page{padding:0 clamp(24px,4vw,48px) 48px}` 的两个边界值。
+	pluginPagePadMinX   float32 = 24   // clamp 下限 24px
+	pluginPagePadMaxX   float32 = 48   // clamp 上限 48px
+	pluginPagePadVw     float32 = 0.04 // 4vw
+	pluginPageBottomPad float32 = 48   // 页面底部 48px
+	pluginSwitchWidth           = 36   // 官方 Switch 36×20（本仓 dssettings 的 ItemSwitch 同一几何）
+	pluginSwitchHeight          = 20
+	pluginSwitchKnob            = 16
+	pluginSwitchPad             = 2
 )
 
 // ── 本地状态（Plugin 上的字段，见 sidebar.go）──────────────────────────────
@@ -311,8 +319,24 @@ func (p *Plugin) drawPluginManagerPage(f ui.C, env *pluginapi.Env) {
 		}
 	}
 
-	ui.Column(f).FillWidth().FillHeight().Items(ui.Center).Children(func() {
+	// 官方 `.page{padding:0 clamp(24px,4vw,48px) 48px}`（PluginManagerPage.module.css）：
+	// 内缩在**页面**这层，`.page > *{max-width:960px}` 在里层。此前本仓只做了里层的
+	// 960 上限、没有外层内缩，结果是内容在窗口边缘齐平（右栏尾部的徽标/按钮贴边被切）。
+	// 这条是**官方几何**，不是本批三张卡自造：整页一起对齐（#29 那一页同时受益）。
+	pagePadding := pluginPagePadX(env)
+	ui.Column(f).FillWidth().FillHeight().Items(ui.Center).
+		PadSides(0, pagePadding, pluginPageBottomPad, pagePadding).Children(func() {
 		ui.Column(f).FillWidth().MaxWidth(pluginPageMaxWidth).FillHeight().Children(func() {
+			// 官方插件配置卡片（`plugins.item`）的详情页优先于 bundle 详情：
+			// 两者是同一个「详情」位置（官方 ItemDetail / PackageDetail 二选一）。
+			if p.itemSelected != "" {
+				if card, ok := p.settingsItemCardByID(env, p.itemSelected); ok {
+					p.drawSettingsItemDetail(f, env, card)
+					return
+				}
+				// 卡片这一帧不存在了（宿主不再服务那条命名空间）→ 回列表。
+				p.closeSettingsItem()
+			}
 			if p.pluginSelected != "" {
 				p.drawPluginDetail(f, env)
 				return
@@ -330,6 +354,24 @@ func (p *Plugin) drawPluginManagerPage(f ui.C, env *pluginapi.Env) {
 			})
 		})
 	})
+}
+
+// pluginPagePadX 是官方 `.page` 的左右内缩 `clamp(24px,4vw,48px)`。
+//
+// 取整窗宽度算 4vw（没有几何信息时退回下限 24——宁可窄一点，也不要贴边）。
+func pluginPagePadX(env *pluginapi.Env) float32 {
+	width := env.Geometry.Width
+	if width <= 0 && env.Bounds.Width > 0 {
+		width = env.Bounds.Width
+	}
+	value := width * pluginPagePadVw
+	if value < pluginPagePadMinX {
+		return pluginPagePadMinX
+	}
+	if value > pluginPagePadMaxX {
+		return pluginPagePadMaxX
+	}
+	return value
 }
 
 // drawPluginHeading 画官方 `.pageHead`：标题 + 简介。
@@ -371,11 +413,17 @@ func (p *Plugin) drawPluginBody(f ui.C, env *pluginapi.Env, bundles []apiclient.
 		ui.Text(f, zhPluginEmpty).FontSize(pluginStatusSize).LineHeight(pluginStatusLine).
 			Color(t.LabelTertiary).FillWidth()
 	}
+	// 官方 `renderGroup('basic', t('basicTitle'), basicCards)`：`plugins.item` 槽里
+	// 每个官方插件配置一张卡，**排在「已安装插件」之前**（OFF:PluginManagerPage.tsx:1855-1857）。
+	// 本仓当前实现 3 张（#39 / #45 / #46），#47 下一批；宿主不服务某条命名空间时
+	// 那张卡整张不出现（官方 `whileServed` 同义）。
+	if items := p.settingsItemCardsFor(env); len(items) > 0 {
+		p.drawSettingsItemsGroup(f, env, t, items)
+	}
 	if len(list) > 0 {
 		// 官方 `renderGroup('bundles', t('bundlesTitle'), mine.map(packageCard))`。
 		// 本仓宿主 listBundles 只有 profile bundle（official=false），所以
-		// 「内置插件配置」与「实验性插件」两组没有数据源，整组不画（官方也是
-		// 空组即 null）。
+		// 「实验性插件」这一组没有数据源，整组不画（官方也是空组即 null）。
 		ui.Column(f).FillWidth().Gap(pluginGroupGap).Children(func() {
 			ui.Text(f, zhPluginBundlesTtl).FontSize(pluginGroupTitleSize).
 				LineHeight(pluginGroupTitleLine).Weight(gfx.WeightMedium).Color(t.LabelPrimary)

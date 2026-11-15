@@ -38,6 +38,8 @@ function M(name, weight) {                          // 组件
 | `goal-outline` | regular (1) | `0 0 16 16` | **14** | `dsh-client-ui-goal/src/client/GoalBar.tsx:137` → `<IconGoalOutlineRegular size={14} />`；CSS `.goalGlyph{color:var(--dsw-alias-label-tertiary);flex:none;display:inline-flex}` | `index-ghOpC9uV.js` 第 129 行 第 53572 列 | `0fe6266990c7ce022cc1245145ffab032cba1db98736b743222f33d945f63485` | **有**：`assets/icons/tools/goal.jsx`，sha256 `aca46bf4068391abddb67c70b4af3c84c12a46144e587de4361ca22f14584ea0`（4 段 path 与 sprite **逐字节相同**） |
 | `check-outline` | regular (1) | `0 0 16 16` | **14** | primitives `ConnectionIndicator` 的 success 态（`ui-settings-general/src/client/SettingsRoot.tsx` 的 `triggerRow` 渲染它）；`Cs = M("check-outline","regular")` | 第 129 行 第 10644 列 | `41e32b03bef4130a030a4f4827a13e2e474e9c0fe8f9fe42dc7ca9ba437fc291` | **有**：`assets/icons/composer/check.jsx`，sha256 `3b47a8c21d5bf626867f2d6b45a6ff8b2f7362123cfa76de5a395a2b2916bb8c`（`d` 逐字节相同） |
 | `refresh-outline` | regular (1) | `0 0 16 16` | **14** | 同上，disconnected 态（可点重连的按钮图标）；`Jw = M("refresh-outline","regular")` | 第 129 行 第 14896 列 | `06a5745f7fe0ceddf5ecfd9dfbd80f78e3927e395eacd9d9a20f0b66fb71eadb` | 否（库内暂无；按 sprite 原文转写，登记在此） |
+| `pin-fill` | regular (1) | `0 0 16 16` | **14** | `ui-sidebar/src/client/SidebarRoot.tsx:113-120` → `<IconPinFillRegular size={14} />`（面板行尾「取消固定」按钮 `.panelUnpin`） | `index-ghOpC9uV.js` 第 129 行 第 69448 列 | `51c6115cc935c69bfad1836e0a51ad5b44cf58b595944bd088d1df2e7a95cc07` | 否（库内暂无；按 sprite 原文转写，登记在此） |
+| `ellipsis-outline` | regular (1) | `0 0 16 16` | **13** | `ui-conversation/src/client/skeleton/ConversationSession.tsx:37-43` → `<IconEllipsisOutlineRegular size={13}/>`（view tab 行 More 按钮） | `index-ghOpC9uV.js` 第 129 行 第 9854 列 | `fe08b1b020c452a8887c22c846ce995fce5f0e54cb2110f25a356886fc1ad1ad` | 否（库内暂无；按 sprite 原文转写，登记在此） |
 
 ### 1.1 bundle 内联组件转写（不在 sprite 表里）
 
@@ -76,6 +78,8 @@ go 侧：`internal/reficon/reficon.go`（`File/Folder/Session` 三个 Kind + `Ic
 | `goal-outline` | `plugins/dsgoal/icons.go`（`goalOutlineIcon`、`goalGlyphSize=14`） | `plugins/dsgoal/official_seat.go`（官方座位 `conversation.composer`）、`plugins/dsgoal/goal.go`（legacy 座位） |
 | `check-outline` | `plugins/dsstatusbar/icons.go`（`checkOutlineIcon`、`connectionIconSize=14`） | `plugins/dsstatusbar/connection.go`（`ConnectionIndicator` 的 success 态） |
 | `refresh-outline` | `plugins/dsstatusbar/icons.go`（`refreshOutlineIcon`） | 同上，warning 态 |
+| `pin-fill` | `plugins/dssidebar/icons.go`（`pinFillIcon`） | `plugins/dssidebar/entry_menu.go`（面板行尾取消固定按钮） |
+| `ellipsis-outline` | `plugins/dstopbar/icons.go`（`ellipsisIcon`） | `plugins/dstopbar/entry_menu.go`（view tab 行 More 按钮，13px） |
 
 ## 3. 断言（防回退）
 
@@ -84,6 +88,8 @@ go 侧：`internal/reficon/reficon.go`（`File/Folder/Session` 三个 Kind + `Ic
 | viewBox=16 / stroke=1 / 4 段 path / 首点 `M14.5001 8` / 显示尺寸 14 | `plugins/dsgoal/icons_test.go` |
 | viewBox=16 / stroke=1 / 段数 / 首点 | `plugins/dsstatusbar/connection_test.go`（`TestConnectionIconsAreOfficialSprites`） |
 | 目标条不再有 4×4 圆点矩形、确有描边图元 | `plugins/dsgoal/official_slot_test.go`、`plugins/dsgoal/goal_visual_test.go`、`cmd/app/hf_real_chain_test.go` |
+| `pin-fill`：viewBox=16 / stroke=1 / 2 条 path（1 描边+2 填充层）/ 取消固定按钮真的改固定态 | `plugins/dssidebar/entry_menu_test.go`（`TestEntryMenuUnpinButtonRestoresPinnedPanel`） |
+| `ellipsis-outline`：viewBox=16 / 3 条填充 path / More 按钮 22×22 图标 13px | `plugins/dstopbar/entry_menu_test.go`（`TestTopbarEntryMenuOpensAndDispatches`） |
 
 ## 4. 边界（不要违反）
 

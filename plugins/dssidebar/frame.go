@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/MYCF711/dsh-ui/internal/entrypins"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -133,8 +134,11 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 			}
 		}
 
-		routes := p.panelRoutes()
-		if len(routes) == 0 {
+		// 官方列表判据（SidebarRoot.tsx:404-405）：未固定的面板不进列表，
+		// 改由 More 菜单列出；没有一个未固定时与原来逐像素相同。
+		routes := p.visiblePanelRoutes(env)
+		actionsLive := p.entryActionsLive(env)
+		if len(routes) == 0 && !actionsLive {
 			p.frameBoxes.PanelList = ui.Box{}
 			return
 		}
@@ -143,7 +147,7 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 			for _, route := range routes {
 				route := route
 				var row ui.Box
-				ui.Row(f).FillWidth().PadSides(0, 2, 0, 2).Children(func() {
+				rowBody := func() {
 					row = p.prims.ListRow(f, env.Tree.ID(env.Feat, "panel-"+route.ID),
 						p.activePanel == route.ID, panelRowHeight, func() {
 							ui.Row(f).Width(16).Height(22).Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
@@ -152,16 +156,26 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 							ui.Text(f, route.Label).FontSize(t.Fonts.Body).LineHeight(22).
 								Color(t.LabelPrimary).MarginSides(0, 0, 0, 8).Ellipsis()
 						})
-				})
+				}
+				// 行尾「取消固定」：官方 `.panelUnpin`（绝对定位在行右端）。本仓同列
+				// 布局：行占剩余宽度、按钮 28×28 跟在后面（见 entry_menu.go 差异 2）。
+				if actionsLive && p.pins != nil && route.ID != entrypins.FixedPanelID {
+					ui.Row(f).FillWidth().Children(func() {
+						ui.Row(f).Grow(1).MinWidth(0).PadSides(0, 2, 0, 2).Children(rowBody)
+						p.drawPanelUnpin(f, env, route)
+					})
+				} else {
+					ui.Row(f).FillWidth().PadSides(0, 2, 0, 2).Children(rowBody)
+				}
 				p.frameBoxes.PanelRows = append(p.frameBoxes.PanelRows, row)
 				if row.Clicked() {
-					p.activePanel = route.ID
-					// 打开任务页时拉一次官方目录：Transport 没有 schedule/changed
-					// 推送，面板不主动拉就会一直显示上一次的缓存（可能是几分钟前）。
-					if route.ID == "schedules" && env.Act.ScheduleRefresh != nil {
-						env.Act.ScheduleRefresh()
-					}
+					// 与 More 菜单里的 onOpen 走同一条路（任务页顺带拉一次目录）。
+					p.openPanel(route.ID)
 				}
+			}
+			// More 行：只在座位有占用方时出现（官方 `hasEntryActions`）。
+			if actionsLive {
+				p.drawPanelMoreRow(f, env)
 			}
 		})
 	})

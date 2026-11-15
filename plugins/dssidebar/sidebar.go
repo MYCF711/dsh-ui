@@ -184,6 +184,15 @@ type Plugin struct {
 	// menus 是 ds-contextmenu 提供的服务（生产装配注入；服务键不在 Requires 里，
 	// 单测/最小装配可以没有）；nil = 没有服务——所有菜单入口都安静退化为旧路径。
 	menus pluginapi.ContextMenus
+
+	// ── 面板固定态与 More 菜单（entry_menu.go，#17 的前置）──
+	//
+	// pins 是壳提供的**纯内存**固定态服务（官方 `createPanelPins()` 的等价物，
+	// 见 internal/entrypins）。nil = 壳没接线/最小装配：所有面板按"固定"处理，
+	// 面板行不画取消固定按钮——没有服务就没有动作，不画死按钮。
+	pins pluginapi.EntryPins
+	// entryMenu 是 More 菜单的展开态与上一帧量到的两个矩形（锚点 / 菜单面高）。
+	entryMenu entryMenuState
 	// wsMu 保护下面四个字段：改名/删除动作在 goroutine 里跑，绘制线程同时读。
 	wsMu     sync.Mutex
 	wsAction workspaceActionRequest
@@ -225,6 +234,13 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	if err := p.registerContextMenus(ctx); err != nil {
 		return err
 	}
+	// 面板固定态服务（壳提供，值为 pluginapi.EntryPins）。没接线时保持 nil：
+	// 所有面板按"固定"处理，行尾取消固定按钮不画（见 struct 注释）。
+	if service := ctx.Inject(pluginapi.KeyEntryPins); service != nil {
+		if pins, ok := service.(pluginapi.EntryPins); ok {
+			p.pins = pins
+		}
+	}
 	if p.CollapseAll {
 		p.allCollapsed = true
 	}
@@ -262,7 +278,11 @@ func (p *Plugin) Width() float32 { return p.width }
 // Panels 实现 pluginapi.Panels：品牌/导航、工作区列表、footer 与真实主区路由。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
-		{ID: "header", Slot: pluginapi.SlotSidebarHeader, Order: 10, Draw: p.drawHeader},
+		// header 是**两半**：Draw 画品牌/新会话/面板行（含 More 行与行尾取消固定），
+		// Children 画 More 菜单面并把 `sidebar.panellist.actions` 派发进去，
+		// AfterDraw 把本帧量到的行/菜单面矩形留给下一帧（见 entry_menu.go）。
+		{ID: "header", Slot: pluginapi.SlotSidebarHeader, Order: 10,
+			Draw: p.drawHeader, Children: p.entryMenuChildren, AfterDraw: p.afterEntryMenu},
 		{ID: "list", Slot: pluginapi.SlotSidebarList, Order: 20, Draw: p.drawWorkspace},
 		{ID: "footer", Slot: pluginapi.SlotSidebarFooter, Order: 30, Draw: p.drawFooter},
 		{ID: "active-panel", Slot: pluginapi.SlotShellOverlay, Order: 50, Draw: p.drawActivePanel},

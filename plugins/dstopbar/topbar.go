@@ -88,6 +88,14 @@ type Plugin struct {
 	headerBoxes headerBoxes
 	// views 只保存用户明确选择过的会话视图；缺省永远是 chat。
 	views map[string]string
+
+	// ── view tab 行 More 菜单（entry_menu.go，#17 的前置）──
+	//
+	// pins 是壳提供的**纯内存**固定态服务（官方 `createViewPins()` 的等价物，
+	// 见 internal/entrypins）。nil = 壳没接线/最小装配：所有 view 按"固定"处理。
+	pins pluginapi.EntryPins
+	// entryMenu 是 More 菜单的展开态与上一帧量到的两个矩形。
+	entryMenu viewEntryMenuState
 }
 
 type headerBoxes struct {
@@ -112,6 +120,13 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	if p.views == nil {
 		p.views = map[string]string{}
+	}
+	// view 固定态服务（壳提供，值为 pluginapi.EntryPins）。没接线时保持 nil：
+	// 所有 view 按"固定"处理（见 struct 注释）。
+	if service := ctx.Inject(pluginapi.KeyEntryPins); service != nil {
+		if pins, ok := service.(pluginapi.EntryPins); ok {
+			p.pins = pins
+		}
 	}
 	ctx.Provide(viewapi.ServiceKey, p)
 	return nil
@@ -143,7 +158,11 @@ func (p *Plugin) Select(sessionID, view string) {
 // Panels 实现 pluginapi.Panels。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
-		{ID: "bar", Slot: pluginapi.SlotMainHeader, Order: 10, Draw: p.draw},
+		// 两半：Draw 画导航行与 view tab 行（含 More 按钮），
+		// Children 画 More 菜单面并把 `conversation.session.header.views.actions`
+		// 派发进去，AfterDraw 把本帧量到的按钮/菜单面矩形留给下一帧。
+		{ID: "bar", Slot: pluginapi.SlotMainHeader, Order: 10,
+			Draw: p.draw, Children: p.entryMenuChildren, AfterDraw: p.afterEntryMenu},
 	}
 }
 
@@ -238,10 +257,12 @@ func (p *Plugin) drawTitleCluster(f ui.C, title, cwd string) {
 //
 // 点击只改当前会话的本地 view store，不 OpenSession、不 reload、不 Cancel、不写 draft。
 func (p *Plugin) drawTabs(f ui.C, env *pluginapi.Env) {
-	views, active := p.viewRoster(env)
+	// 名录**过滤**在 p.viewEntryRoster 里：没有 More 座位时与原来逐像素相同
+	// （可见 = 全部），有座位时未固定的 view 让位给 More 菜单（官方语义）。
+	all, visible, active, actionsLive := p.viewEntryRoster(env)
 	p.headerBoxes.Tabs = ui.Row(f).WidthPercent(100).Height(tabsHeight).
 		MarginSides(tabsMarginTop, 0, 0, 0).Gap(tabsGap).Children(func() {
-		for _, tab := range views {
+		for _, tab := range visible {
 			box := p.drawTab(f, env, tab.Key, tab.Label, tab.Key == active)
 			// 两个历史命名保留：几何回归测试按名字取盒子（headerBoxes）。
 			switch tab.Key {
@@ -251,7 +272,26 @@ func (p *Plugin) drawTabs(f ui.C, env *pluginapi.Env) {
 				p.headerBoxes.TrajectoryTab = box
 			}
 		}
+		// More 按钮：官方只在 `showTabs`（多于一个 view）且座位有占用方时出现。
+		if actionsLive && len(all) > 1 {
+			p.drawViewsMoreButton(f, env, active, p.hiddenViews(all, visible))
+		}
 	})
+}
+
+// hiddenViews 返回没画成 tab 的那些 view（官方 `moreTabs`）。
+func (p *Plugin) hiddenViews(all, visible []pluginapi.Tab) []pluginapi.Tab {
+	shown := make(map[string]bool, len(visible))
+	for _, tab := range visible {
+		shown[tab.Key] = true
+	}
+	out := make([]pluginapi.Tab, 0, len(all))
+	for _, tab := range all {
+		if !shown[tab.Key] {
+			out = append(out, tab)
+		}
+	}
+	return out
 }
 
 // viewRoster 取这一帧的会话视图名录与激活项。

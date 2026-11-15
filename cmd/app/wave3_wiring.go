@@ -38,6 +38,8 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/internal/entrypins"
+	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dsagentteam"
 	"github.com/MYCF711/dsh-ui/plugins/dsnotifications"
@@ -119,11 +121,16 @@ type wave3Wiring struct {
 	projChildren      map[string]dsagentteam.ChildProjection
 	projChildAt       map[string]time.Time
 	projChildFetching bool
+
+	// pins 是三个区域「哪些条目被固定」的纯内存表（#17 前置，见
+	// internal/entrypins）。它由壳**提供**给插件：区域宿主（dssidebar /
+	// dstopbar）读它决定可见性，菜单内容插件（#17）写它。
+	pins *entrypins.Store
 }
 
 // newWave3Wiring 造一份接线状态（壳在装配前调用）。
 func newWave3Wiring() wave3Wiring {
-	return wave3Wiring{tier: uikernel.NewShellTier()}
+	return wave3Wiring{tier: uikernel.NewShellTier(), pins: entrypins.New()}
 }
 
 // provide 在 `kernel.Load` **之前**把壳侧能力交给插件。
@@ -134,6 +141,8 @@ func (w *wave3Wiring) provide(k *uikernel.Kernel, cli *apiclient.Client) {
 		return
 	}
 	k.Root().Provide(uikernel.KeyShellTier, w.tier)
+	// 固定态服务必须在 Load 之前提供：区域宿主在 Register 里就会 Inject 它。
+	k.Root().Provide(pluginapi.KeyEntryPins, pluginapi.EntryPins(w.pins))
 	if cli != nil {
 		k.Root().Provide(keyAPIClient, cli)
 	}

@@ -347,6 +347,17 @@ type Env struct {
 	// Bounds 是这一帧的整窗尺寸。AfterDraw 拿到的 canvas 没有尺寸接口，
 	// 要在覆画时算裁剪区就用这个。
 	Bounds ui.Rect
+	// EntryMenu 是本帧派发官方三个「区域 More 菜单」内容座位时交给占用方的
+	// owner props（官方那三处 owner props 是同一组四个字段，见 entry_menu.go）。
+	//
+	// **只在** `sidebar.panellist.actions` /
+	// `conversation.session.header.views.actions` /
+	// `sidebar.right.tab.guide.actions` 这三个 list 座位的 dispatch 期间非 nil；
+	// 写者是区域宿主，它**必须在 dispatch 结束后恢复原值**——与 `ViewportOffset`
+	// 同一约定：写者负责恢复，读方不缓存。
+	//
+	// nil = 本帧不在菜单里：占用方这时不该画任何行。
+	EntryMenu *EntryMenuProps
 }
 
 // Geometry 是一帧的三栏几何（像素，已扣掉 padding 之前的外框宽）。

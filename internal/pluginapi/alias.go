@@ -35,7 +35,11 @@ type (
 	ContextMenuTarget       = pub.ContextMenuTarget
 	ContextMenuAction       = pub.ContextMenuAction
 	ContextMenuContribution = pub.ContextMenuContribution
-	Painter                 = pub.Painter
+	// 三个区域 More 菜单的 owner props 与固定态服务（#17 前置，见 entry_menu.go）。
+	EntryPins      = pub.EntryPins
+	EntryMenuProps = pub.EntryMenuProps
+	EntryMenuEntry = pub.EntryMenuEntry
+	Painter        = pub.Painter
 	// Tab 是选择器条目（会话 view / 右栏 tab 的共同形状）。
 	Tab        = pub.Tab
 	Primitives = pub.Primitives
@@ -70,6 +74,12 @@ const (
 	KeyPrimitives = pub.KeyPrimitives
 	// KeyContextMenus 是 ds-contextmenu 提供的菜单服务键。
 	KeyContextMenus = pub.KeyContextMenus
+	// KeyEntryPins 是壳提供的面板/view/guide 固定态服务键（纯内存）。
+	KeyEntryPins = pub.KeyEntryPins
+	// 三个区域 More 菜单的 region 身份（官方 EntryRegion）。
+	EntryRegionSidebar      = pub.EntryRegionSidebar
+	EntryRegionConversation = pub.EntryRegionConversation
+	EntryRegionRightbar     = pub.EntryRegionRightbar
 
 	// context menu 的 target kind（官方 `ContextMenuTargetMap` 的判别键，
 	// OFF:ui-context-menu/src/client/types.ts:29-40 + open-in-app 的 workspace 扩展）。

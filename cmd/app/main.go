@@ -43,6 +43,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsentrycustom"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsfileactions"
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsforge"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsmarket"
@@ -243,6 +244,10 @@ type model struct {
 	cotResults map[string]pluginapi.CotTranslationResult
 	// cotJobSeq 是 jobID 序号（不重复即可，不跨进程持久化）。
 	cotJobSeq int64
+	// forge 是 #64a（官方 forge 面板 A 档）的壳侧缓存：checkout / 候选分支 /
+	// 本地改动 / 工作树请求态。字段全部由 m.mu 保护，读写数据面的理由与线程
+	// 约定见 forge_wiring.go 文件头。
+	forge forgeState
 	// credentials 是凭据域按 ref 的缓存（官方 credentials.describe；**只回状态不回值**）。
 	// 缺一个键 = "还没问到"，消费方不许当"未配置"。
 	credentials map[string]apiclient.CredentialInfo
@@ -1988,6 +1993,9 @@ func newConfig(m *model) app.Config {
 				},
 				ContextTokens: contextTokens,
 				ContextWindow: contextWindow,
+				// forge 面板 A 档数据面（#64a）。nil = 没有客户端/没有会话：
+				// 插件据此整块不画，不画成"这个会话没有改动"。
+				Forge: m.forgeFor(),
 				// whole-log `sessionStats` 投影（状态栏「活动」的唯一来源）。
 				// nil = 还没拉到 / 老宿主没有这个键 → 写「未知」，不拿 Msgs 凑。
 				SessionStats: m.wave3.sessionStatsSnapshot(cur),
@@ -2533,6 +2541,17 @@ func main() {
 	wireDirPicker(m)
 	wireOfficialPanels(m)
 	m.actions = pluginapi.Actions{
+		// #64a forge 面板 A 档的动作面（读一律异步，写落地成 goroutine）。
+		// 每条都指向 forge_wiring.go 里的实现；插件只认这里，不碰 apiclient。
+		Forge: &pluginapi.ForgeActions{
+			Refresh:         m.forgeRefreshAction,
+			LoadBranches:    m.forgeBranchesAction,
+			LoadScope:       m.forgeScopeAction,
+			LoadBases:       m.forgeBasesAction,
+			LoadText:        m.forgeTextAction,
+			RequestWorktree: m.forgeRequestWorktreeAction,
+			CancelWorktree:  m.forgeCancelWorktreeAction,
+		},
 		// 宿主 ui-config.json 的读写。ConfigGet 给的是**缓存**（插件要同步返回），
 		// ConfigSet 异步写、失败只报状态栏——插件不等待也不重试。
 		ConfigGet: func() map[string]string {

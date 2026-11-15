@@ -734,6 +734,19 @@ type Snapshot struct {
 	// 才画 `.older` 那一行；按钮 `disabled={!hasMore}`；文案五态由
 	// `loadingOlder` / `historyLoadStatus === 'error'` / 其余决定。
 	History HistoryPaging
+
+	// Forge 是官方 `dsh-experimental-client-ui-forge` 的 **A 档数据面**（GUI 账本 #64a）。
+	//
+	// nil = 壳没接这条能力（老壳 / 测试 / 插件单独渲染）：插件这时**一个字都不画**，
+	// 不画成"这个会话没有改动"——那是没有证据的断言。
+	//
+	// 它为什么不是一个 `follow` 流的快照：本仓宿主的 `forgePanel.follow` 流的是
+	// 绑定清单帧（`{type:'baseline',value:{bindings}}` / `upsert` / `remove`），
+	// **不是**官方 `ForgePanelState`（OFF:…/lib/typert.host.js:1752）。所以 checkout /
+	// worktree / local 三块改由有真实现的单点方法拼（逐条见 `pluginapi/forge.go`
+	// 文件头）；`creation` / `missing` / `changeRequests` 因此**没有读出口**，
+	// 相应的卡片整块不画（gap G6 已登记）。
+	Forge *ForgeView
 }
 
 // HistoryPaging 是「加载更早」单按钮的**五态输入**（additive）。
@@ -1326,6 +1339,13 @@ type Actions struct {
 	// ok=false = 没有待显示的动作失败。宿主原文由壳写状态栏，
 	// 界面**不另编一句话**。
 	PluginActionError func() (action string, name string, ok bool)
+
+	// Forge 是 #64a 的**动作面**（请求/撤回工作树、切 diff 范围、读分支与提交）。
+	//
+	// nil = 壳没接：插件这时不画任何可点入口（画一个点了没反应的东西比不画更坏）。
+	// 读动作一律异步（后台拉 + Invalidate），结果下一帧从 `Snapshot.Forge` 取——
+	// 插件的 Draw 在绘制线程上，同步等 HTTP 会卡首帧。
+	Forge *ForgeActions
 
 	// OpenDirectoryPicker 打开**官方目录选择器**（官方 `dsh-client-ui-directory-picker-browse`
 	// 的 Miller 双列对话框），用它「添加工作区」。

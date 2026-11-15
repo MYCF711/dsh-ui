@@ -1188,9 +1188,17 @@
           "name": "string",
           "official": false,
           "availability": "profile|missing|installation",
-          "installTarget": {"spec": "string", "version": "string"} ,
+          "installTarget": {
+            "spec": "string",
+            "version": "string"
+          },
           "version": "string?",
-          "meta": {"title": "LocalizedText?", "description": "LocalizedText?", "icon": "string?", "error": "string?"},
+          "meta": {
+            "title": "LocalizedText?",
+            "description": "LocalizedText?",
+            "icon": "string?",
+            "error": "string?"
+          },
           "description": "string?",
           "listedByDefault": "bool?",
           "enabled": true,
@@ -1200,7 +1208,11 @@
           "removable": true,
           "update": "registry|git",
           "readOnlyReason": "string?",
-          "error": {"code": "string", "diagnostic": "string?", "incompatible": []},
+          "error": {
+            "code": "string",
+            "diagnostic": "string?",
+            "incompatible": []
+          },
           "rows": [],
           "overrides": []
         }
@@ -1213,7 +1225,9 @@
       "req": {
         "name": "string",
         "language": "string",
-        "npmFileSources": ["jsdelivr|unpkg|npmmirror"]
+        "npmFileSources": [
+          "jsdelivr|unpkg|npmmirror"
+        ]
       },
       "resp": {
         "status": "found|none",
@@ -1244,22 +1258,22 @@
       "resp_note": "与 setBundleEnabled 同一个 ChangeResult 形状；application=failed 同样是 HTTP 200 的管理性失败。"
     },
     "pluginMarket.readEntryDetail": {
-    "batch": 18,
-    "req": {
-      "url": "string",
-      "name": "string",
-      "version": "string",
-      "language": "string"
+      "batch": 18,
+      "req": {
+        "url": "string",
+        "name": "string",
+        "version": "string",
+        "language": "string"
+      },
+      "resp": {
+        "status": "found|none",
+        "origin": "locale|readme|repository",
+        "markdown": "string",
+        "document": "string"
+      },
+      "req_note": "官方 rc.2 pluginMarket.readEntryDetail（OFF:../dsh-plugin-market/lib/typert.host.js:17-38：四个位置参数 + 可选第五个 options{refresh,npmFileSources}；结果是 {status:'found',origin,markdown,document}|{status:'none'} 判别联合）。HOST:internal/transport/handlers_plugin_market_official.go:53-63 只解平铺的 url/name/version/language 四个键，**不读** options 里的 refresh/npmFileSources——所以客户端不提供那两个参数（传了也没用）。语言是官方必填 BCP-47，宿主用它挑本地化兜底文案（HOST:cmd/dshd/serve_plugin_market.go:278-295）。",
+      "resp_note": "status=none 是官方合法的「这一版没有文档」，**不是错误**；失败档走官方 plugin-market/detail-unavailable + details.reason 六值（too-large/network/denied/git-unavailable/invalid/other，OFF:../dsh-plugin-market/src/types.ts:26-30），本仓宿主的 detail_unavailable / index_unavailable / registry_unavailable 都没有结构化 reason，一律投影成 other（与官方客户端 market-store.ts:142 同一判据）。origin 本仓只产出 readme/repository（官方还有 locale）。document 指向详情文档 id，官方用它走 /api/plugin-market/detail-file 取相对图片，本仓**没有那条路由**，界面不解析相对图片。"
     },
-    "resp": {
-      "status": "found|none",
-      "origin": "locale|readme|repository",
-      "markdown": "string",
-      "document": "string"
-    },
-    "req_note": "官方 rc.2 pluginMarket.readEntryDetail（OFF:../dsh-plugin-market/lib/typert.host.js:17-38：四个位置参数 + 可选第五个 options{refresh,npmFileSources}；结果是 {status:'found',origin,markdown,document}|{status:'none'} 判别联合）。HOST:internal/transport/handlers_plugin_market_official.go:53-63 只解平铺的 url/name/version/language 四个键，**不读** options 里的 refresh/npmFileSources——所以客户端不提供那两个参数（传了也没用）。语言是官方必填 BCP-47，宿主用它挑本地化兜底文案（HOST:cmd/dshd/serve_plugin_market.go:278-295）。",
-    "resp_note": "status=none 是官方合法的「这一版没有文档」，**不是错误**；失败档走官方 plugin-market/detail-unavailable + details.reason 六值（too-large/network/denied/git-unavailable/invalid/other，OFF:../dsh-plugin-market/src/types.ts:26-30），本仓宿主的 detail_unavailable / index_unavailable / registry_unavailable 都没有结构化 reason，一律投影成 other（与官方客户端 market-store.ts:142 同一判据）。origin 本仓只产出 readme/repository（官方还有 locale）。document 指向详情文档 id，官方用它走 /api/plugin-market/detail-file 取相对图片，本仓**没有那条路由**，界面不解析相对图片。"
-  },
     "pluginMarket.listIndexes": {
       "batch": 19,
       "req": {},
@@ -1381,15 +1395,15 @@
       },
       "resp": {
         "workspace": {
-        "workspaceId": "string",
-        "path": "string",
-        "title": "string",
-        "sessionIds": [
-          "string"
-        ],
-        "createdAt": "RFC3339",
-        "updatedAt": "RFC3339"
-      }
+          "workspaceId": "string",
+          "path": "string",
+          "title": "string",
+          "sessionIds": [
+            "string"
+          ],
+          "createdAt": "RFC3339",
+          "updatedAt": "RFC3339"
+        }
       },
       "req_note": "官方 workspace/insertSessionBefore（dsh-api-workspace-controller/src/index.ts:149）：侧栏拖拽排手动顺序的唯一写路径。**移到组末尾必须整个省略 beforeSessionId**——给空串宿主回 400（HOST:internal/transport/handlers_workspace_official.go:840-842）。宿主也收 {request:{…}} 嵌套形状，但同一请求里两种形状不许混（officialPickObject 会 400）。工作区/会话不存在回四字段错误，不许翻成成功。HOST:internal/transport/handlers_workspace_official.go:817-845"
     },
@@ -1441,26 +1455,68 @@
         ],
         "fetch": [],
         "resolution": {
-          "search": {"configured": "string?", "source": "config|env|default|auto?", "selected": "string?", "errorCode": "string?", "error": "string?"},
-          "fetch": {"configured": "string?", "source": "config|env|default|auto?", "selected": "string?", "errorCode": "string?", "error": "string?"}
+          "search": {
+            "configured": "string?",
+            "source": "config|env|default|auto?",
+            "selected": "string?",
+            "errorCode": "string?",
+            "error": "string?"
+          },
+          "fetch": {
+            "configured": "string?",
+            "source": "config|env|default|auto?",
+            "selected": "string?",
+            "errorCode": "string?",
+            "error": "string?"
+          }
         },
-        "baseline": {"search": "string", "searchRegistered": true, "fetch": "string", "fetchRegistered": true},
-        "limits": {"maxQueries": 0, "maxResults": 0, "summaryMaxChars": 0, "searchTimeoutMs": 0},
-        "credentials": [{"name": "string", "configured": false, "role": "string?", "capability": "search|fetch|both?"}]
+        "baseline": {
+          "search": "string",
+          "searchRegistered": true,
+          "fetch": "string",
+          "fetchRegistered": true
+        },
+        "limits": {
+          "maxQueries": 0,
+          "maxResults": 0,
+          "summaryMaxChars": 0,
+          "searchTimeoutMs": 0
+        },
+        "credentials": [
+          {
+            "name": "string",
+            "configured": false,
+            "role": "string?",
+            "capability": "search|fetch|both?"
+          }
+        ]
       },
       "req_note": "官方 rc.2 web.listProviders（OFF:dsh-web/src/index.ts:146-157；typert 的 parameters: []，**严格无参**，HOST:internal/transport/handlers_web_providers_rc2.go:139-160 无参校验 + 未接线回四字段 501）。search/fetch 是官方字段：每条 provider 的 id 必填，title/description **缺席**表示 provider 没声明（OFF:types.ts:196-205 与 index.ts:246-252），客户端不许把缺席当空串；清单**不按可用性过滤**（OFF:index.ts:146-157 'Availability does not filter the lists'）。resolution/baseline/limits/credentials 是宿主附加的只读运行态（不冒充官方），客户端只用来解释失败原因，不作为选择真值。",
       "resp_note": "宿主没接线时回 501 not_implemented（四字段），**不是**空清单——空清单是在说'一个 provider 都没注册'，那是另一句话。"
     },
     "credentials.describe": {
       "batch": 16,
-      "req": {"refs": ["string"]},
-      "resp": {"DSH_KEY": {"configured": true, "source": "catalog|env?", "writable": true}},
+      "req": {
+        "refs": [
+          "string"
+        ]
+      },
+      "resp": {
+        "DSH_KEY": {
+          "configured": true,
+          "source": "catalog|env?",
+          "writable": true
+        }
+      },
       "req_note": "官方 rc.2 credentials.describe（HOST:internal/transport/handlers_settings_official.go:492-539；官方行号在文件头 L154）。refs 是字符串数组：≤64 条、每条必须匹配 ^[A-Za-z_][A-Za-z0-9_]*$（宿主同一道 grammar guard，错误串只报位置与长度、**不回显 ref**）。",
       "resp_note": "结果是以 ref 为键的对象，值为 {configured, source?, writable}——**没有值字段**：官方读取路径就没有它，宿主也不加（HOST:internal/transport/handlers_settings_official.go:110-118）。客户端只有拿到某个 ref 的键才许说'未配置'；缺席 = 没问到。宿主没挂凭据后端回 501 not_implemented，不许当成'未配置'。"
     },
     "credentials.set": {
       "batch": 16,
-      "req": {"ref": "string", "value": "string"},
+      "req": {
+        "ref": "string",
+        "value": "string"
+      },
       "resp": {},
       "req_note": "官方 rc.2 credentials.set（HOST:internal/transport/handlers_settings_official.go:577-624；官方行号在文件头 L186）。ref 同一道 grammar guard；value 是明文密钥，官方 min(1) 且宿主额外拒绝纯空白/首尾空白/含 NUL（既有存储会 trim 后当作删除）。错误串只提 ref、**绝不回显 value**。",
       "resp_note": "官方结果是 void；宿主成功信封是 {}（不含 null）。写完后客户端必须自己再 credentials.describe 一次才知道'是否已配置'——set 不回值。"
@@ -1489,8 +1545,13 @@
       "req": {},
       "resp": {
         "maxTextChars": 0,
-        "preferences": {"provider": "google|bing|deepseek-account|deepseek-official", "targetLanguage": "string"},
-        "availableProviders": ["google|bing|deepseek-account|deepseek-official"]
+        "preferences": {
+          "provider": "google|bing|deepseek-account|deepseek-official",
+          "targetLanguage": "string"
+        },
+        "availableProviders": [
+          "google|bing|deepseek-account|deepseek-official"
+        ]
       },
       "req_note": "官方 rc.2 cotTranslation.limits（OFF:dsh-experimental-client-ui-cot-translation/src/index.ts:46-53；typert 的 parameters: []，**严格无参**；HOST:internal/transport/handlers_cot_translation_limits_official.go:71-83 无参校验）。它只读偏好与上限，**不发送任何文本**，所以界面展开就能问。",
       "resp_note": "字段逐字对齐官方 zod（OFF:.../src/types.ts 的 CotTranslationSnapshot）。maxTextChars 是 **UTF-16 码元**上限（宿主 cotTextUTF16Len 同一口径，BMP 算 1、增补平面算 2）。availableProviders 是宿主**真的能翻**的 provider 清单，不是四个官方枚举的全集——本仓 translate 对 google/bing 回 501（不代理匿名端点），所以清单只有 deepseek-official / deepseek-account；界面必须照这份清单挑 provider，自己按枚举补齐会把 501 的路径列成可用。"
@@ -1507,10 +1568,177 @@
       "resp": "string",
       "req_note": "官方 rc.2 cotTranslation.translate（OFF:src/index.ts:55-…；参数形状 OFF:lib/typert.remote-client.js:53-81）。text 必填且不超过 limits.maxTextChars（UTF-16 码元；宿主超限回 400）；targetLanguage 必填、非空（`auto` 不在 translate 这一层解析——官方 TranslationBody 先把 auto 换成 locale 的具体 tag 再发）；sourceLanguage/provider/sessionId 可省。provider 省略 = 走宿主默认网关；给 google/bing 回 501 not_implemented。",
       "resp_note": "结果是**裸字符串**（官方 zod 是 z.string()，不是对象）——客户端 Call 的 out 必须是 *string，写成结构体会静默解成零值。空文入参宿主直接回空串（不打模型）。失败一律四字段错误：provider 不可用 / 模型空输出 / 网关连不上，**宿主绝不拿原文顶替译文**，界面照官方画「翻译暂不可用，已显示原文」。"
+    },
+    "forgePanel.branches": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string",
+        "maxBranches": "number?"
+      },
+      "resp": {
+        "current": "string|null",
+        "branches": [
+          "string"
+        ]
+      },
+      "req_note": "官方 forgePanel.branches（OFF:…/src/index.ts:222，typert 注册块 1029 行）：参数只有 sessionId（+可选上限）。结果 `current` 是 **nullable**：分离 HEAD 时是 null，不是空串。宿主真实现：HOST:cmd/dshd/serve_forge_git.go:54（真 git symbolic-ref/for-each-ref）。",
+      "resp_note": "current=null 表示分离 HEAD（界面画 `checkout.detached`）。宿主对非 git 目录回 422 `not_a_repository`（界面据此画 checkout.none，不是 failed）。"
+    },
+    "forgePanel.localDiff": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string",
+        "scope": "{kind:\"branch\",base:string|null,commits:{from,to}|null} | {kind:\"uncommitted\"} | {kind:\"unstaged\"} | {kind:\"staged\"}",
+        "maxDiffBytes": "number?"
+      },
+      "resp": {
+        "base": "string|null",
+        "files": [
+          "{path,previousPath,status,binary,oversized,untracked,additions,deletions,hunks[],layer,digest}"
+        ],
+        "omitted": "number"
+      },
+      "req_note": "官方 forgePanel.localDiff（OFF:…/src/index.ts:301，typert 1840 行）。官方 ForgeLocalScope 四支联合：branch 那支 base/commits 是**必填可空**，其余三支 `additionalProperties:false` 只能有 kind（客户端 forgeScopeWire 逐 kind 造，见 internal/apiclient/forge.go）。",
+      "resp_note": "宿主**只读 scope.kind**（HOST:cmd/dshd/serve_forge_git.go:69-74 解成 struct{Kind string}），所以 branch 范围的 base/commits 传了也被忽略：分支范围永远按自动分叉点算（客户端因此不提供\"选别的基准分支\"交互）。files[].layer/digest 是官方字段，宿主真实填。"
+    },
+    "forgePanel.localText": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string",
+        "scope": "{kind:\"branch\",base:string|null,commits:{from,to}|null} | {kind:\"uncommitted\"} | {kind:\"unstaged\"} | {kind:\"staged\"}",
+        "path": "string"
+      },
+      "resp": "string",
+      "req_note": "官方 forgePanel.localText（OFF:…/src/index.ts:347，typert 1892 行）。结果为**裸字符串**（z.string()），写成结构体会静默解成零值。官方 ForgeLocalScope 四支联合：branch 那支 base/commits 是**必填可空**，其余三支 `additionalProperties:false` 只能有 kind（客户端 forgeScopeWire 逐 kind 造，见 internal/apiclient/forge.go）。",
+      "resp_note": "staged 读 index、branch 的选定提交读那个提交、其余读工作树。宿主：HOST:cmd/dshd/serve_forge_git.go:74（path 越界回 422）。"
+    },
+    "forgePanel.diffBases": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string",
+        "query": "string"
+      },
+      "resp": {
+        "automatic": "{name,worktree}|null",
+        "remote": [
+          "{ref,name}"
+        ],
+        "local": [
+          "{ref,name}"
+        ]
+      },
+      "req_note": "官方 forgePanel.diffBases（rc.2；OFF:…/src/index.ts:236，typert 1649 行）。query 是分支名过滤（忽略大小写）；automatic 是\"没选基准时用的分叉点\"，worktree=true 表示它就是本会话工作树的起点提交。宿主：HOST:cmd/dshd/serve_forge_rc2.go:235。",
+      "resp_note": "automatic 可以是 null（没有可用分叉点）。remote/local 各最多 maxBranches 条、按最近提交排序，且**不含当前检出分支**。"
+    },
+    "forgePanel.localCommits": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string",
+        "base": "string|null"
+      },
+      "resp": {
+        "headSha": "string",
+        "commits": [
+          "{sha,parent,title,author,authoredAt}"
+        ],
+        "truncated": "bool"
+      },
+      "req_note": "官方 forgePanel.localCommits（rc.2；OFF:…/src/index.ts:323，typert 1788 行）。base 是**必填可空**：null = 自动分叉点。宿主：HOST:cmd/dshd/serve_forge_rc2.go:257。",
+      "resp_note": "commits 是 fork point 到 HEAD、最老在前，最后一条是 HEAD；truncated=true 表示分支上还有更多。parent/author 都是 nullable。"
+    },
+    "forgePanel.requestWorktree": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string",
+        "from": "string|null"
+      },
+      "resp": {},
+      "req_note": "官方 requestWorktree（OFF:…/src/index.ts:729，typert 2200 行）：参数 {sessionId, from:string|null}，from=null 表示基于源 checkout 的 HEAD。 结果官方是 **z.void()**（宿主回 {}）。宿主真实现：HOST:cmd/dshd/serve_worktree_api.go:173（internal/worktree 真实状态机 + git 子进程）。",
+      "resp_note": "void：客户端不解析结果。宿主成功时回 `{}`；失败四字段（busy / not_found / bad_request 等）。"
+    },
+    "forgePanel.cancelWorktree": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": {},
+      "req_note": "官方 cancelWorktree（OFF:…/src/index.ts:748，typert 1064 行）：撤回还没建的工作树请求。 结果官方是 **z.void()**（宿主回 {}）。宿主真实现：HOST:cmd/dshd/serve_worktree_api.go:173（internal/worktree 真实状态机 + git 子进程）。",
+      "resp_note": "void：客户端不解析结果。宿主成功时回 `{}`；失败四字段（busy / not_found / bad_request 等）。"
+    },
+    "forgePanel.retryWorktree": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": {},
+      "req_note": "官方 retryWorktree（OFF:…/src/index.ts:777，typert 2353 行）：对\"失败/被停下\"的那次创建再试一次。 结果官方是 **z.void()**（宿主回 {}）。宿主真实现：HOST:cmd/dshd/serve_worktree_api.go:173（internal/worktree 真实状态机 + git 子进程）。",
+      "resp_note": "void：客户端不解析结果。宿主成功时回 `{}`；失败四字段（busy / not_found / bad_request 等）。"
+    },
+    "forgePanel.stopCreation": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": {},
+      "req_note": "官方 stopCreation（OFF:…/src/index.ts:764，typert 2524 行）：停下一条消息正在等的那次创建；消息**继续等**，请求仍开着（与 cancel 不同）。 结果官方是 **z.void()**（宿主回 {}）。宿主真实现：HOST:cmd/dshd/serve_worktree_api.go:173（internal/worktree 真实状态机 + git 子进程）。",
+      "resp_note": "void：客户端不解析结果。宿主成功时回 `{}`；失败四字段（busy / not_found / bad_request 等）。"
+    },
+    "forgePanel.restoreWorktree": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": {},
+      "req_note": "官方 restoreWorktree（OFF:…/src/index.ts:798，typert 2319 行）：把被移除的工作树重新检出来。 结果官方是 **z.void()**（宿主回 {}）。宿主真实现：HOST:cmd/dshd/serve_worktree_api.go:173（internal/worktree 真实状态机 + git 子进程）。",
+      "resp_note": "void：客户端不解析结果。宿主成功时回 `{}`；失败四字段（busy / not_found / bad_request 等）。"
+    },
+    "forgePanel.continueInProject": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": {},
+      "req_note": "官方 continueInProject（OFF:…/src/index.ts:829，typert 1615 行）：让会话回到工作树的源 checkout 继续。 结果官方是 **z.void()**（宿主回 {}）。宿主真实现：HOST:cmd/dshd/serve_worktree_api.go:173（internal/worktree 真实状态机 + git 子进程）。",
+      "resp_note": "void：客户端不解析结果。宿主成功时回 `{}`；失败四字段（busy / not_found / bad_request 等）。"
+    },
+    "forgePanel.track": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string",
+        "url": "string"
+      },
+      "resp": {},
+      "req_note": "官方 forgePanel.track（OFF:…/src/index.ts:253）：把一个变更请求按 URL 绑到会话上 / 隐藏已绑定的那条。结果官方是 **z.void()**。宿主：HOST:cmd/dshd/serve_forge_state.go。",
+      "resp_note": "void：官方结果 z.void()。**已知宽容偏差(G5)**：本仓宿主多回 `{binding}`，客户端按官方 void 处理——绑定内容的真相由 follow 帧给，不由这个返回值给。"
+    },
+    "forgePanel.dismiss": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string",
+        "url": "string"
+      },
+      "resp": {},
+      "req_note": "官方 forgePanel.dismiss（OFF:…/src/index.ts:268）：把一个变更请求按 URL 绑到会话上 / 隐藏已绑定的那条。结果官方是 **z.void()**。宿主：HOST:cmd/dshd/serve_forge_state.go。",
+      "resp_note": "void：官方结果 z.void()。**已知宽容偏差(G5)**：本仓宿主多回 `{binding}`，客户端按官方 void 处理——绑定内容的真相由 follow 帧给，不由这个返回值给。"
+    },
+    "forgePanel.worktreeCleanup": {
+      "batch": 21,
+      "req": {
+        "sessionId": "string",
+        "revision": "number|null"
+      },
+      "resp": {
+        "null_or": {
+          "revision": "number",
+          "status": "scheduled|retained|removed|failed"
+        }
+      },
+      "req_note": "官方 forgePanel.worktreeCleanup（rc.2；OFF:…/src/index.ts:210，typert 2763 行）。revision=null 读当下；给一个 revision 表示\"等那一次完成\"。宿主：HOST:cmd/dshd/serve_forge_rc2.go:330（internal/worktree 清理状态机）。",
+      "resp_note": "结果允许 **null**：没有工作树服务 / 没有尝试 / revision 不是当前那一个（客户端解成 *ForgeWorktreeCleanup = nil，不是零值对象）。status 四态是官方 eviction 状态机的取值。"
     }
   },
   "counts": {
-    "total": 83,
+    "total": 97,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1530,6 +1758,7 @@
     "batch17": 1,
     "batch18": 1,
     "batch19": 2,
-    "batch20": 3
+    "batch20": 3,
+    "batch21": 14
   }
 }

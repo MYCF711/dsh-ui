@@ -1,0 +1,387 @@
+// forge.go —— 官方 `forgePanel.*` 的**A 档 14 个方法**的客户端（GUI 侧账本 #64a）。
+//
+// # 契约唯一来源是官方 rc.2 源码（不是我们的宿主，也不是推理）
+//
+//	OFF:dsh-experimental-client-ui-forge/src/index.ts:222   @Remote branches(session, maxBranches?)
+//	OFF:…/src/index.ts:301                                   @Remote localDiff(session, scope, maxDiffBytes?)
+//	OFF:…/src/index.ts:347                                   @Remote localText(session, scope, path)
+//	OFF:…/src/index.ts:236                                   @Remote diffBases(session, query)
+//	OFF:…/src/index.ts:323                                   @Remote localCommits(session, base)
+//	OFF:…/src/index.ts:729                                   @Remote requestWorktree(session, from)
+//	OFF:…/src/index.ts:748 / 777 / 764 / 798 / 829            cancel / retry / stopCreation / restore / continueInProject
+//	OFF:…/src/index.ts:253 / 268                             @Remote track / dismiss
+//	OFF:…/src/index.ts:210                                   @Remote worktreeCleanup(session, revision)
+//	形状逐字段见 `lib/typert.host.js` 的注册块（行号在各方法注释里）。
+//
+// # 两条形状硬事实（照官方，不照我们的方便）
+//
+//  1. **五个 worktree 生命周期方法的结果是 `z.void()`**（`requestWorktree` /
+//     `cancelWorktree` / `retryWorktree` / `stopCreation` / `restoreWorktree` /
+//     `continueInProject`，六个都是）。所以这里签名是 `error` 而不是某个结构体。
+//     `track` / `dismiss` 官方也是 void，但**本仓宿主多回了一个 `{binding}`**——
+//     这是已知宽容偏差（DSH-GO 的 gap 报告 G5）。客户端按官方 void 处理：
+//     不解析结果，也不把它当成"宿主确认了绑定内容"的证据。
+//  2. **`localText` 与 `localDiff` 的结果分别是裸字符串和对象**：`localText` 是
+//     `z.string()`，写成结构体会静默解成零值（#63 的 `translate` 踩过同一坑）。
+//
+// # 宿主侧真实现落点（逐条核对过，2026-11-15）
+//
+//	../DSH-GO/cmd/dshd/serve_forge_git.go:54/62/74      branches / localDiff / localText
+//	../DSH-GO/cmd/dshd/serve_forge_state.go             track / dismiss
+//	../DSH-GO/cmd/dshd/serve_forge_rc2.go:235/257/330   diffBases / localCommits / worktreeCleanup
+//	../DSH-GO/cmd/dshd/serve_worktree_api.go:173        worktree 6 方法（internal/worktree 状态机）
+//
+// # 一条宿主限制（客户端据此**不画**基准分支选择器）
+//
+// 宿主 `localDiff` / `localText` 只取 `scope.kind`（`serve_forge_git.go:69-74` 把
+// `scope` 解成 `struct{ Kind string }` 再交给 `forge.Scope{Kind: …}`），
+// 所以官方 `branch` 范围里的 `base` / `commits` 传了也被忽略：分支范围永远按
+// **自动分叉点**算。于是界面只显示宿主回的 `base`，不提供"选别的基准分支"的
+// 交互——画一个宿主不认的选择器就是假交互。
+package apiclient
+
+import "context"
+
+// 官方 `ForgeLocalScope` 的四个 kind（OFF:…/src/types.ts 的 ForgeLocalScope 联合）。
+const (
+	// ForgeScopeBranch 是"本分支相对分叉点的全部改动"。
+	ForgeScopeBranch = "branch"
+	// ForgeScopeUncommitted 是"相对 HEAD，含未跟踪文件"（工作树 + 暂存）。
+	ForgeScopeUncommitted = "uncommitted"
+	// ForgeScopeUnstaged 是"相对暂存区，含未跟踪文件"。
+	ForgeScopeUnstaged = "unstaged"
+	// ForgeScopeStaged 是"暂存区相对 HEAD"。
+	ForgeScopeStaged = "staged"
+)
+
+// 官方 `ForgeDiffFile.status` 的四个取值。
+const (
+	ForgeFileDeleted  = "deleted"
+	ForgeFileAdded    = "added"
+	ForgeFileModified = "modified"
+	ForgeFileRenamed  = "renamed"
+)
+
+// 官方 `ForgeDiffFile.layer` 的三个取值（评审分层）。
+const (
+	ForgeLayerInterface      = "interface"
+	ForgeLayerImplementation = "implementation"
+	ForgeLayerTest           = "test"
+)
+
+// ForgeBranches 是 `forgePanel.branches` 的结果（官方 ForgeBranches）。
+//
+// Current 是**指针**：官方 `z.string().nullable()` —— 分离 HEAD 时是 null，
+// 那不是"空分支名"，界面要据此走 `checkout.detached` 那一句。
+type ForgeBranches struct {
+	Current  *string  `json:"current"`
+	Branches []string `json:"branches"`
+}
+
+// ForgeCommitRange 是官方 `branch` 范围里的 `commits:{from,to}`（可选）。
+type ForgeCommitRange struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// ForgeLocalScope 是官方 `ForgeLocalScope` 联合。
+//
+// Base / Commits 只在 Kind == ForgeScopeBranch 时有意义。别在 struct tag 上用
+// omitempty 了事：官方 strict codec 对**非 branch** 的三种 kind 是
+// `additionalProperties:false`，多发一个 `base:null` 就是参数错；而对 branch 那支
+// `base` / `commits` 是**必填（可空）**，少发也是参数错。所以 wire 形状由
+// forgeScopeWire 逐 kind 造，见那里的注释。
+type ForgeLocalScope struct {
+	Kind string `json:"kind"`
+	// Base 只在 Kind == ForgeScopeBranch 时有意义；nil = 自动分叉点。
+	Base *string `json:"-"`
+	// Commits 只在 Kind == ForgeScopeBranch 时有意义；nil = 整个范围。
+	Commits *ForgeCommitRange `json:"-"`
+}
+
+// forgeScopeWire 造官方 strict codec 认的那份 scope JSON。
+//
+//	kind=branch          {kind, base (string|null), commits ({from,to}|null)}   ← 两键必填
+//	kind=uncommitted/…   {kind}                                                ← 只有 kind
+//
+// 依据：`OFF:…/lib/typert.host.js` 的 `forgePanel/localDiff` 参数 jsonSchema
+// （branch 那支 `additionalProperties:true` 但 `required:[kind,base,commits]`；
+// 其余三支 `additionalProperties:false`）。
+func forgeScopeWire(scope ForgeLocalScope) map[string]any {
+	wire := map[string]any{"kind": scope.Kind}
+	if scope.Kind != ForgeScopeBranch {
+		return wire
+	}
+	wire["base"] = nil
+	if scope.Base != nil {
+		wire["base"] = *scope.Base
+	}
+	wire["commits"] = nil
+	if scope.Commits != nil {
+		wire["commits"] = map[string]any{"from": scope.Commits.From, "to": scope.Commits.To}
+	}
+	return wire
+}
+
+// ForgeHunk 是官方 `ForgeHunk`：一段 hunk 的坐标 + patch 形式行。
+//
+// Lines 每行首字符是 ` ` / `+` / `-` / `\`（官方那句：a leading space for context,
+// `+` for added, `-` for deleted, and `\` for a missing final newline）。
+type ForgeHunk struct {
+	OldStart int      `json:"oldStart"`
+	OldLines int      `json:"oldLines"`
+	NewStart int      `json:"newStart"`
+	NewLines int      `json:"newLines"`
+	Lines    []string `json:"lines"`
+}
+
+// ForgeDiffFile 是官方 `ForgeDiffFile`。
+type ForgeDiffFile struct {
+	Path         string      `json:"path"`
+	PreviousPath *string     `json:"previousPath"`
+	Status       string      `json:"status"`
+	Binary       bool        `json:"binary"`
+	Oversized    bool        `json:"oversized"`
+	Untracked    bool        `json:"untracked"`
+	Additions    int         `json:"additions"`
+	Deletions    int         `json:"deletions"`
+	Hunks        []ForgeHunk `json:"hunks"`
+	Layer        string      `json:"layer"`
+	Digest       string      `json:"digest"`
+}
+
+// ForgeLocalDiff 是官方 `ForgeLocalDiff`。
+//
+// Base 是 `branch` 范围比对的 ref（例如 `origin/master`），其余范围是 null。
+// Omitted 是"超出 maxUntrackedFiles 被略掉的未跟踪文件数"——界面照官方
+// `diff.omitted` 那句如实说，不把它算进 files 长度。
+type ForgeLocalDiff struct {
+	Base    *string         `json:"base"`
+	Files   []ForgeDiffFile `json:"files"`
+	Omitted int             `json:"omitted"`
+}
+
+// ForgeBaseRef 是 `diffBases` 的一个分支（full ref + 简称）。
+type ForgeBaseRef struct {
+	Ref  string `json:"ref"`
+	Name string `json:"name"`
+}
+
+// ForgeBasePoint 是 `diffBases.automatic`：没有选基准时用的分叉点。
+//
+// Worktree 为 true 表示这个分叉点是本会话创建的工作树的起点提交
+// （官方 `forkPoint`：created.path 就是会话 checkout 时用 created.baseCommit）。
+type ForgeBasePoint struct {
+	Name     string `json:"name"`
+	Worktree bool   `json:"worktree"`
+}
+
+// ForgeBaseBranches 是官方 `ForgeBaseBranches`。
+type ForgeBaseBranches struct {
+	Automatic *ForgeBasePoint `json:"automatic"`
+	Remote    []ForgeBaseRef  `json:"remote"`
+	Local     []ForgeBaseRef  `json:"local"`
+}
+
+// ForgeCommit 是官方 `ForgeCommit`（`localCommits` 的一项）。
+type ForgeCommit struct {
+	SHA        string  `json:"sha"`
+	Parent     *string `json:"parent"`
+	Title      string  `json:"title"`
+	Author     *string `json:"author"`
+	AuthoredAt string  `json:"authoredAt"`
+}
+
+// ForgeLocalCommits 是官方 `ForgeLocalCommits`：fork point 到 HEAD 之间最老的在前。
+type ForgeLocalCommits struct {
+	HeadSHA   string        `json:"headSha"`
+	Commits   []ForgeCommit `json:"commits"`
+	Truncated bool          `json:"truncated"`
+}
+
+// ForgeWorktreeCleanup 是官方 `ForgeWorktreeCleanup`（`worktreeCleanup` 的 null 分支之外）。
+//
+// Status 四个取值（官方 eviction 状态机）：`scheduled` / `retained` / `removed` / `failed`。
+type ForgeWorktreeCleanup struct {
+	Revision int64  `json:"revision"`
+	Status   string `json:"status"`
+}
+
+// 官方 `ForgeWorktreeCleanup.status` 的四个取值。
+const (
+	ForgeCleanupScheduled = "scheduled"
+	ForgeCleanupRetained  = "retained"
+	ForgeCleanupRemoved   = "removed"
+	ForgeCleanupFailed    = "failed"
+)
+
+// ── 本地 git 三条 ────────────────────────────────────────────────────────
+
+// ForgeBranches 读会话 checkout 的本地分支（官方 `forgePanel/branches`）。
+//
+// maxBranches <= 0 表示"不传"，由宿主按自己的上限取（官方 `maxBranches?`）。
+func (c *Client) ForgeBranches(ctx context.Context, sessionID string, maxBranches int) (ForgeBranches, error) {
+	params := struct {
+		SessionID   string `json:"sessionId"`
+		MaxBranches int    `json:"maxBranches,omitempty"`
+	}{SessionID: sessionID, MaxBranches: maxBranches}
+	var out ForgeBranches
+	if err := c.Call(ctx, "forgePanel.branches", params, &out); err != nil {
+		return ForgeBranches{}, err
+	}
+	return out, nil
+}
+
+// ForgeLocalDiff 读一个范围的本地改动（官方 `forgePanel/localDiff`）。
+//
+// maxDiffBytes <= 0 表示"不传"（宿主自己的上限）。返回的 Base 是**宿主真的
+// 拿来做比对的那个 ref**，界面显示它而不是自己猜基准。
+func (c *Client) ForgeLocalDiff(ctx context.Context, sessionID string, scope ForgeLocalScope, maxDiffBytes int) (ForgeLocalDiff, error) {
+	params := struct {
+		SessionID    string         `json:"sessionId"`
+		Scope        map[string]any `json:"scope"`
+		MaxDiffBytes int            `json:"maxDiffBytes,omitempty"`
+	}{SessionID: sessionID, Scope: forgeScopeWire(scope), MaxDiffBytes: maxDiffBytes}
+	var out ForgeLocalDiff
+	if err := c.Call(ctx, "forgePanel.localDiff", params, &out); err != nil {
+		return ForgeLocalDiff{}, err
+	}
+	return out, nil
+}
+
+// ForgeLocalText 读一个改动文件的**新侧全文**（官方 `forgePanel/localText`）。
+//
+// 结果是裸字符串（官方 `z.string()`）：staged 读 index，branch 的选定提交读那个
+// 提交，其余读工作树。
+func (c *Client) ForgeLocalText(ctx context.Context, sessionID string, scope ForgeLocalScope, path string) (string, error) {
+	params := struct {
+		SessionID string         `json:"sessionId"`
+		Scope     map[string]any `json:"scope"`
+		Path      string         `json:"path"`
+	}{SessionID: sessionID, Scope: forgeScopeWire(scope), Path: path}
+	var out string
+	if err := c.Call(ctx, "forgePanel.localText", params, &out); err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
+// ForgeDiffBases 列可选的基准分支与自动分叉点（官方 `forgePanel/diffBases`）。
+//
+// 注意：即使拿到这份清单，宿主 `localDiff` 也**不认** `base`（见文件头"一条宿主
+// 限制"）。所以界面只用 `Automatic` 说清"现在按什么比"。
+func (c *Client) ForgeDiffBases(ctx context.Context, sessionID, query string) (ForgeBaseBranches, error) {
+	params := struct {
+		SessionID string `json:"sessionId"`
+		Query     string `json:"query"`
+	}{SessionID: sessionID, Query: query}
+	var out ForgeBaseBranches
+	if err := c.Call(ctx, "forgePanel.diffBases", params, &out); err != nil {
+		return ForgeBaseBranches{}, err
+	}
+	return out, nil
+}
+
+// ForgeLocalCommits 列 fork point 到 HEAD 的提交（官方 `forgePanel/localCommits`）。
+//
+// base 为 nil 时发 `null`（官方 `base: string | null`，null = 自动分叉点）。
+func (c *Client) ForgeLocalCommits(ctx context.Context, sessionID string, base *string) (ForgeLocalCommits, error) {
+	params := struct {
+		SessionID string  `json:"sessionId"`
+		Base      *string `json:"base"`
+	}{SessionID: sessionID, Base: base}
+	var out ForgeLocalCommits
+	if err := c.Call(ctx, "forgePanel.localCommits", params, &out); err != nil {
+		return ForgeLocalCommits{}, err
+	}
+	return out, nil
+}
+
+// ── worktree 生命周期六条（官方结果都是 z.void()）─────────────────────────
+
+// ForgeRequestWorktree 请求"本会话在独立工作树里跑"（官方 `forgePanel/requestWorktree`）。
+//
+// from 为 nil 表示基于源 checkout 的 HEAD；否则是基准分支名。**成功 = 请求被记录**，
+// 不是"工作树已建好"——创建发生在会话的第一步之前，界面要如实画成"等待创建"。
+func (c *Client) ForgeRequestWorktree(ctx context.Context, sessionID string, from *string) error {
+	params := struct {
+		SessionID string  `json:"sessionId"`
+		From      *string `json:"from"`
+	}{SessionID: sessionID, From: from}
+	return c.Call(ctx, "forgePanel.requestWorktree", params, nil)
+}
+
+// ForgeCancelWorktree 撤回未创建的工作树请求（官方 `forgePanel/cancelWorktree`）。
+func (c *Client) ForgeCancelWorktree(ctx context.Context, sessionID string) error {
+	return c.Call(ctx, "forgePanel.cancelWorktree", forgeSessionOnly(sessionID), nil)
+}
+
+// ForgeRetryWorktree 再试一次被失败/停下挡住的那次创建（官方 `forgePanel/retryWorktree`）。
+func (c *Client) ForgeRetryWorktree(ctx context.Context, sessionID string) error {
+	return c.Call(ctx, "forgePanel.retryWorktree", forgeSessionOnly(sessionID), nil)
+}
+
+// ForgeStopCreation 停下一条消息正在等的那次创建（官方 `forgePanel/stopCreation`）。
+//
+// 官方语义：消息**继续等**，请求仍然开着（与 cancel 不同）。
+func (c *Client) ForgeStopCreation(ctx context.Context, sessionID string) error {
+	return c.Call(ctx, "forgePanel.stopCreation", forgeSessionOnly(sessionID), nil)
+}
+
+// ForgeRestoreWorktree 把被移除的工作树重新检出来（官方 `forgePanel/restoreWorktree`）。
+func (c *Client) ForgeRestoreWorktree(ctx context.Context, sessionID string) error {
+	return c.Call(ctx, "forgePanel.restoreWorktree", forgeSessionOnly(sessionID), nil)
+}
+
+// ForgeContinueInProject 让会话回到工作树的源 checkout 继续（官方 `forgePanel/continueInProject`）。
+func (c *Client) ForgeContinueInProject(ctx context.Context, sessionID string) error {
+	return c.Call(ctx, "forgePanel.continueInProject", forgeSessionOnly(sessionID), nil)
+}
+
+// ── 面板状态两条（track / dismiss）──────────────────────────────────────
+
+// ForgeTrack 把一个变更请求按 URL 绑到会话上（官方 `forgePanel/track`）。
+//
+// 官方结果是 void；宿主回 `{binding}`（已知宽容偏差 G5），这里**不解析**——
+// 绑定内容的真相仍由 `follow` 的帧给出，不由这个返回值给出。
+func (c *Client) ForgeTrack(ctx context.Context, sessionID, url string) error {
+	return c.Call(ctx, "forgePanel.track", forgeRef(sessionID, url), nil)
+}
+
+// ForgeDismiss 隐藏一个已绑定的变更请求（官方 `forgePanel/dismiss`）。
+func (c *Client) ForgeDismiss(ctx context.Context, sessionID, url string) error {
+	return c.Call(ctx, "forgePanel.dismiss", forgeRef(sessionID, url), nil)
+}
+
+// ── rc.2 归档清理 ────────────────────────────────────────────────────────
+
+// ForgeWorktreeCleanup 读（revision 为 nil）或等（给定 revision）归档时的 checkout 清理。
+//
+// 官方结果允许 **null**：没有工作树服务、没有尝试过、或 revision 不是当前那一个。
+// 所以这里返回指针——`nil` 与"status 是空串"是两件事，不能合并。
+func (c *Client) ForgeWorktreeCleanup(ctx context.Context, sessionID string, revision *int64) (*ForgeWorktreeCleanup, error) {
+	params := struct {
+		SessionID string `json:"sessionId"`
+		Revision  *int64 `json:"revision"`
+	}{SessionID: sessionID, Revision: revision}
+	var out *ForgeWorktreeCleanup
+	if err := c.Call(ctx, "forgePanel.worktreeCleanup", params, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// forgeSessionOnly 是"只有 sessionId 一个参数"的官方形状。
+func forgeSessionOnly(sessionID string) any {
+	return struct {
+		SessionID string `json:"sessionId"`
+	}{SessionID: sessionID}
+}
+
+// forgeRef 是 track / dismiss 的官方形状 `{sessionId, url}`。
+func forgeRef(sessionID, url string) any {
+	return struct {
+		SessionID string `json:"sessionId"`
+		URL       string `json:"url"`
+	}{SessionID: sessionID, URL: url}
+}

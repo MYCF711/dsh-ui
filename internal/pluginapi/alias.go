@@ -35,6 +35,14 @@ type (
 	CotTranslationResult = pub.CotTranslationResult
 	// 官方 workspace registry 的一条工作区（#62）。
 	Workspace = pub.Workspace
+	// forge 面板 A 档的数据面与动作（#64a，pluginapi/forge.go）。
+	ForgeView         = pub.ForgeView
+	ForgeCheckout     = pub.ForgeCheckout
+	ForgeWorktree     = pub.ForgeWorktree
+	ForgeLocalSummary = pub.ForgeLocalSummary
+	ForgeDiff         = pub.ForgeDiff
+	ForgeCommit       = pub.ForgeCommit
+	ForgeActions      = pub.ForgeActions
 	// context menu 服务与贡献（#10）。
 	ContextMenus            = pub.ContextMenus
 	ContextMenuTarget       = pub.ContextMenuTarget
@@ -178,4 +186,12 @@ var (
 	Builtin    = pub.Builtin
 	Register   = pub.Register
 	Registered = pub.Registered
+)
+
+// 官方 checkout 四态的取值（公开包里的常量在这一层不重复定义，直接转发常量值）。
+const (
+	ForgeCheckoutPending = pub.ForgeCheckoutPending
+	ForgeCheckoutNone    = pub.ForgeCheckoutNone
+	ForgeCheckoutFailed  = pub.ForgeCheckoutFailed
+	ForgeCheckoutReady   = pub.ForgeCheckoutReady
 )

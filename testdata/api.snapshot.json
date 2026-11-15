@@ -1260,6 +1260,89 @@
     "req_note": "官方 rc.2 pluginMarket.readEntryDetail（OFF:../dsh-plugin-market/lib/typert.host.js:17-38：四个位置参数 + 可选第五个 options{refresh,npmFileSources}；结果是 {status:'found',origin,markdown,document}|{status:'none'} 判别联合）。HOST:internal/transport/handlers_plugin_market_official.go:53-63 只解平铺的 url/name/version/language 四个键，**不读** options 里的 refresh/npmFileSources——所以客户端不提供那两个参数（传了也没用）。语言是官方必填 BCP-47，宿主用它挑本地化兜底文案（HOST:cmd/dshd/serve_plugin_market.go:278-295）。",
     "resp_note": "status=none 是官方合法的「这一版没有文档」，**不是错误**；失败档走官方 plugin-market/detail-unavailable + details.reason 六值（too-large/network/denied/git-unavailable/invalid/other，OFF:../dsh-plugin-market/src/types.ts:26-30），本仓宿主的 detail_unavailable / index_unavailable / registry_unavailable 都没有结构化 reason，一律投影成 other（与官方客户端 market-store.ts:142 同一判据）。origin 本仓只产出 readme/repository（官方还有 locale）。document 指向详情文档 id，官方用它走 /api/plugin-market/detail-file 取相对图片，本仓**没有那条路由**，界面不解析相对图片。"
   },
+    "pluginMarket.listIndexes": {
+      "batch": 19,
+      "req": {},
+      "resp": [
+        {
+          "url": "string",
+          "title": "string|localized",
+          "description": "string|localized?",
+          "error": "string?"
+        }
+      ],
+      "req_note": "官方 rc.2 pluginMarket.listIndexes（OFF:../dsh-plugin-market/lib/typert.host.js 的 MarketIndexSummary[]），**无参数**：HOST:internal/transport/handlers_plugin_market_official.go:337-351 一个键都不读，多传键 400。真实现是 internal/market/store.go 的 ListURLs + 逐源抓索引文档（失败的那个源带 error 字段，不是整次失败）。",
+      "resp_note": "空数组是合法回答（一个索引源都没配置），界面据此画官方 emptyTitle +「添加索引源」。⚠ 宿主差值：没有配置时 ListIndexes 回 503 registry_unavailable（HOST:cmd/dshd/serve_plugin_market.go:94-99），而官方是空数组；客户端用「registry_unavailable 且消息不含未接线」把它认成空清单（internal/apiclient/plugin_market_discover.go 的 PluginMarketNoIndexes），要宿主改成回 []。title/description 是 string|localized union。"
+    },
+    "pluginMarket.search": {
+      "batch": 19,
+      "req": {
+        "url": "string",
+        "query": {
+          "text": "string?",
+          "category": "string?",
+          "labels": "string[]?",
+          "sort": {
+            "kind": "index|relevance|published|key",
+            "id": "string?",
+            "direction": "asc|desc?"
+          },
+          "offset": "integer",
+          "limit": "integer(1..100)",
+          "refresh": "bool?",
+          "fetchedAt": "integer?"
+        }
+      },
+      "resp": {
+        "url": "string",
+        "title": "string|localized",
+        "description": "string|localized?",
+        "metadata": {
+          "categories": "map[id]{title}",
+          "labels": "map[id]{title}",
+          "sortKeys": "map[id]{title,order}"
+        },
+        "fetchedAt": "integer(ms)",
+        "entries": [
+          {
+            "name": "string",
+            "title": "string|localized?",
+            "description": "string|localized?",
+            "icon": "string?",
+            "author": "string?",
+            "homepage": "string?",
+            "repository": "{url,directory?}?",
+            "metadata": "{category?,keywords[],labels[],sortKeys{}}",
+            "versions": [
+              {
+                "version": "string",
+                "publishTimestamp": "integer(秒)",
+                "source": "{type:'npm',registry?}|{type:'git',url,commit,path?}",
+                "install": "{spec,registry?}",
+                "engines": "{dsh?}",
+                "compatibility": "{compatible:true}|{compatible:false,runtimeVersion,requirements,exempted?}",
+                "update": "bool"
+              }
+            ],
+            "defaultVersion": "string?",
+            "installation": "{status,installedVersion?}"
+          }
+        ],
+        "total": "integer",
+        "nextOffset": "integer|null"
+      },
+      "req_note": "官方 rc.2 pluginMarket.search(url, query)（OFF:../dsh-plugin-market/lib/typert.host.js 的 MarketSearchResult）。HOST:internal/transport/handlers_plugin_market_official.go:370-390 读平铺的 url + query；query 里 sort/offset/limit 必填、limit 1..100、未知键一律 400（官方 strictObject）。空的 text/category/labels 整键不发（官方对象展开写法）。fetchedAt 由客户端在拼后续页时钉住第一页的值——宿主用它判断「还是不是同一份文档」。",
+      "resp_note": "结果形状 = 官方 MarketListingEntry 逐字段；**没有**旧的自造 index/plugins/offset 三个字段。nextOffset 末页是**显式 null**（不能用 omitempty，缺席与 null 语义不同）。versions[].publishTimestamp 是 Unix 秒；compatibility 是 union（不是 bool）；installation 五态（provided 不下发）。失败：索引取不到/文档非法都是 502 index_unavailable（宿主不细分），界面统一画「无法读取此索引」+ 重试。"
+    },
+    "pluginMarket.setIndexes": {
+      "batch": 19,
+      "req": {
+        "urls": "string[]"
+      },
+      "resp": {},
+      "req_note": "官方 rc.2 pluginMarket.setIndexes(urls)（OFF:../dsh-plugin-market/lib/typert.host.js，结果 z.void()），真实现写 <home>/state/plugin-market-indexes.json（HOST:internal/market/store.go:220-249 的 SetURLs + HOST:cmd/dshd/serve_plugin_market.go:112-121）。非法索引 URL 是 400 bad_request（官方是 plugin-market/invalid-index-url）；空数组表示清空。重复 URL 宿主静默去重（不报错）。",
+      "resp_note": "结果无载荷，宿主用 {} 表达「这次调用没有载荷」（HOST:internal/transport/handlers_plugin_market_official.go:366-369 写明理由：writeJSON 不接受 {\"result\":null}）。界面在成功后重读 listIndexes（官方 saveSources 同一条）。"
+    },
     "agentPresets.list": {
       "batch": 14,
       "req": {},
@@ -1427,7 +1510,7 @@
     }
   },
   "counts": {
-    "total": 80,
+    "total": 83,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1446,6 +1529,7 @@
     "batch16": 3,
     "batch17": 1,
     "batch18": 1,
-    "batch19": 2
+    "batch19": 2,
+    "batch20": 3
   }
 }

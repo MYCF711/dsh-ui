@@ -48,6 +48,21 @@ const (
 	KeyTheme = "ui.theme"
 	// KeyPrimitives 由 ds-core 提供，值是 *Primitives（基础组件的画法）。
 	KeyPrimitives = "ui.primitives"
+	// KeyMarketDetail 由 ds-market 提供，值是官方插件市场**条目详情页**的本体
+	// （`dsh-client-ui-plugin-market` 的 `EntryDetail`，`#30` C 块）。
+	//
+	// 消费方是插件页（`plugins/dssidebar` 的 `plugins.tab` 座位）。
+	KeyMarketDetail = "ui.market.detail"
+	// KeyPluginsTabs 由 ds-sidebar（Plugins 页属主）提供，值是 PluginsTabs：
+	// 别的插件把 tab 交给它（官方 `plugins.tab` list 槽的注册面）。
+	KeyPluginsTabs = "ui.plugins.tabs"
+	// KeyMarketDiscover 由 ds-market 提供，值是官方插件市场**「发现」tab 的本体**
+	// （`DiscoverSection`：索引源 + 搜索 + 筛选工具栏 + 结果列表，`#30` A/B 块）。
+	//
+	// 为什么两个键分开：详情页是"一条条目的页面"（可以由别的入口打开），
+	// 「发现」是"整个 tab"（自带工具栏与索引源状态）。合成一个会让消费方
+	// 同时拿到两套状态却只能画其中一个。
+	KeyMarketDiscover = "ui.market.discover"
 )
 
 // Source 提供一批插件。
@@ -1234,6 +1249,66 @@ type Actions struct {
 	// MarketEntryDetailRetry 让壳重新读一次（官方 `retryDetail`，绕过缓存）。**异步**。
 	// nil = 壳没接 → 失败后不画重试按钮。
 	MarketEntryDetailRetry func(url, name, version, language string)
+	// ── 官方插件市场「发现」tab（`dsh-client-ui-plugin-market`，`#30` A/B 块）──
+	//
+	// 数据面全部走宿主 `pluginMarket.listIndexes` / `search` / `setIndexes` 三个真方法
+	// （HOST:internal/transport/handlers_plugin_market_official.go:337-392）。官方
+	// 客户端的状态机在 `OFF:../dsh-client-ui-plugin-market/src/client/market-store.ts`
+	// （索引源读取 / 分页 / fetchedAt 钉住 / 声明表裁剪 / 写回失败档），本仓按同一条
+	// 判据把它放在壳里：插件只读缓存、只发意图，**不持有连接、不在 Draw 里等 HTTP**。
+	//
+	// 与 `MarketEntryDetail` 的分工：那一个是详情文档（C 块，已完成），这一组是
+	// 索引源与列表（A/B 块）。
+
+	// MarketIndexes 返回宿主已配置的索引源（官方 `pluginMarket.listIndexes` 的壳缓存）。
+	//
+	// indexes：最近一次成功读到的清单；nil = 还没读到过。
+	// loaded：是否已经有过一次成功读取（空数组 ≠ 没读到）。
+	// unavailable：宿主**没有这个能力**（501 not_implemented / 未接线）——插件据此
+	// 按官方 `sourcesFailed` 画重试，而**不是**当"一个索引源都没配"。
+	// errText：最近一次失败的原因（宿主原文）；空串 = 没有失败。
+	//
+	// **首次调用触发一次后台拉取**（插件每帧问，壳只在没有缓存时发一次）。
+	// nil = 壳没接（老壳）→ 插件不画这个 tab 体（不画一个永远空白的发现页）。
+	MarketIndexes func() (indexes []apiclient.MarketIndexSummary, loaded bool, unavailable bool, errText string)
+	// MarketIndexesReload 重新读一次索引源清单（官方 `reload`）。**异步**。
+	MarketIndexesReload func()
+	// MarketSelectIndex 选中一个索引源并读它的第一页（官方 `select`）。**异步**。
+	//
+	// 同一个 URL 再选一次不发请求（官方 `select` 里 `selected === url` 直接返回）。
+	MarketSelectIndex func(url string)
+	// MarketListing 返回当前列表状态（官方 `ListingState` 的壳缓存）。
+	//
+	// ok=false = 还没有任何列表状态（还没选过索引源）→ 插件按 `idle` 画骨架。
+	// value 指向壳里的只读快照；**不要**原地改它。
+	MarketListing func() (listing MarketListing, ok bool)
+	// MarketSearch 用新 query 重读第一页（官方 `search` → `load(url, query, PAGE_SIZE)`）。
+	//
+	// **异步**，且壳内做官方那 250ms 去抖（`OFF:DiscoverSection.tsx:44,455-459`）：
+	// 插件可以在每次输入框变化时都调一次，壳只发最后一次。
+	//
+	// query 是完整 query（text/category/labels/sort），由插件按官方 union 造好；
+	// text 单独再传一份是给壳的去抖比较用的（query.Text 里也有，别传不一致的值）。
+	MarketSearch func(query apiclient.MarketQuery, text string)
+	// MarketMore 读下一页并追加（官方 `more`）。**异步**。
+	MarketMore func()
+	// MarketRefresh 强制重读当前索引的第一页（官方 `refresh`，带 `refresh:true`）。**异步**。
+	MarketRefresh func()
+	// MarketRetry 重跑上一次失败的列表读（官方 `retry`，跑的是**失败的那一次**：
+	// 第一页或下一页，判据同 `market-store.ts:236-240` 的 `failed` 闭包）。**异步**。
+	MarketRetry func()
+	// MarketSetIndexes 写回索引源列表（官方 `pluginMarket.setIndexes(urls)`）。**异步**。
+	//
+	// 写动作**不做乐观更新**：成功后壳重读索引源清单（官方 `saveSources` 里的
+	// `await this.loadIndexes()`），失败把失败档交给 MarketSourcesState。
+	MarketSetIndexes func(urls []string)
+	// MarketSourcesState 返回索引源写回的状态（官方 `saving` + `sourceFailure`）。
+	//
+	// saving=true 时插件禁用「添加/移除」（官方同样 `disabled={state.saving}`）。
+	// failure 是官方四档之一（`apiclient.MarketSourceFailureKind`），空串 = 没有失败；
+	// reason 是宿主原文（只有 `other` 档用到它，官方 `sourceFailure` 的 other 分支
+	// 带 `reason`——界面那一句仍取官方 `sourceFailed` 文案，不显示宿主原文）。
+	MarketSourcesState func() (saving bool, failure apiclient.MarketSourceFailureKind, reason string)
 	// PluginSetBundleEnabled 启用/停用一个 bundle（官方 `setBundleEnabled`）。**异步**。
 	//
 	// 写动作**不做乐观更新**：壳成功后重拉清单，失败把动作名交给

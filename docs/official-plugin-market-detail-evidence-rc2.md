@@ -9,6 +9,22 @@
 > A 块（Discover tab 骨架 / 索引源增删）与 B 块（搜索 + 分类/标签/排序工具栏）
 > 仍在等宿主改形状，本轮不做。**
 
+> ## 更新（2026-11-15）：A 块与 B 块已落地，本文的"没做"与三处差异已过期
+>
+> 宿主 PR `MYCF711/dsh-go#46` 补齐了 `pluginMarket.search` / `listIndexes` / `setIndexes`
+> 的官方形状，GUI 侧 A/B 两块同批落地，**`#30` 现在是 ✅**。本文保留为 C 块当时的现场，
+> 但下面几处结论已被取代（新证据：[official-plugin-market-discover-evidence-rc2.md](official-plugin-market-discover-evidence-rc2.md)）：
+>
+> - §0 的表格里 A/B 两行写"不做/等宿主"——**已做**；
+> - §3「为什么不注册槽位」——**discover tab 已注册**（`plugins/dssidebar/plugins_tabs.go`
+>   的 `plugins.tab` 台账 + `ui.market.discover` 贡献方）；
+> - §4 差异 3「分类/标签/索引名三行通常不画」——**现在画**（索引 `metadata.*` 已解析）；
+> - §4 差异 11「面包屑没有返回目标时不画」——**现在有返回目标**（详情页从 Discover 列表点开，
+>   面包屑回到列表，`dsmarket/discover.go` 的 `SetBack`）。
+>
+> 仍然有效的是 §4 其余差异（安装/更新 501、`detail-file` 路由缺、`origin` 无 `locale` 档、
+> 日期两档、primitives 不发 CSS 等）。
+
 ---
 
 ## 0. 为什么 `#30` 被拆成三块、为什么先做 C

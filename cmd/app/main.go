@@ -178,6 +178,9 @@ type model struct {
 	//
 	// nil = 一次都没问过（懒初始化）；`resetMarketDetails` 在连接重置时整表作废。
 	marketDetails map[marketDetailKey]*marketDetailRead
+	// market 是官方「发现」tab 的壳侧状态（索引源、列表、写回），见
+	// cmd/app/market_discover.go。零值即"还没读过"。
+	market marketState
 	// pluginActionFail 是最近一次 pluginManager 写动作的失败动作名
 	// （"enable"/"disable"/"uninstall"）与失败的 bundle 名。
 	// 插件取走后清空，同一套"当场说一次"的规矩。
@@ -2608,6 +2611,18 @@ func main() {
 		// 插件市场条目详情（官方 pluginMarket.readEntryDetail，`#30` C 块）。
 		MarketEntryDetail:      m.marketEntryDetail,
 		MarketEntryDetailRetry: m.marketEntryDetailRetry,
+		// 官方「发现」tab（`#30` A/B 块）：索引源 + 列表 + 写回。
+		// 见 cmd/app/market_discover.go（状态机照官方 market-store.ts 移植）。
+		MarketIndexes:          m.marketIndexes,
+		MarketIndexesReload:    m.marketIndexesReload,
+		MarketSelectIndex:      m.marketSelectIndex,
+		MarketListing:          m.marketListingNow,
+		MarketSearch:           m.marketSearch,
+		MarketMore:             m.marketMore,
+		MarketRefresh:          m.marketRefresh,
+		MarketRetry:            m.marketRetry,
+		MarketSetIndexes:       m.marketSetIndexes,
+		MarketSourcesState:     m.marketSourcesState,
 		PluginSetBundleEnabled: m.pluginSetBundleEnabled,
 		PluginRemoveBundle:     m.pluginRemoveBundle,
 		PluginActionError:      m.pluginActionError,

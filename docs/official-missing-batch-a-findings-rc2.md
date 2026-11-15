@@ -15,14 +15,15 @@
 | id | 本文档里的结论 | 现在的状态 | 证据 |
 |---|---|---|---|
 | #28 `dsh-client-ui-plan` | §2「未深入核查」，要确认宿主有没有 plan 投影 | **🟡 PARTIAL 已落**：Turn 尾计划卡 + 右栏计划全文两座真实现（数据来自 journal 的 `exit_plan_mode` 调用参数，零新宿主方法）；另两座（计划模式 chip / 待批计划「查看全文」）**复核后确认缺数据**，按 HIDE 登记 | [official-plan-evidence-rc2.md](official-plan-evidence-rc2.md) |
-| #13 `dsh-client-ui-creation-recommendations` | §1 C 档：宿主没有 `create_personalized_page` 这个 kind | **复核仍然成立**，且不是"还没做"而是"产品里根本没有这个 kind"：宿主唯一注册 kind 的地方是 `HOST:internal/recommendations/service.go:79-88`（只注册 `enable_official_plugin`），`grep -rn "create_personalized_page" --include=*.go internal/ cmd/` 为空 | 同上文 §1 |
+| #13 `dsh-client-ui-creation-recommendations` | §1 C 档：宿主没有 `create_personalized_page` 这个 kind | **已解阻并落地（✅ IMPLEMENTED）**：宿主 PR `MYCF711/dsh-go#45`（`feat/host-unblock-gui`，commit `0b065cf`）补齐 `HOST:internal/creation/**`（kind + skill `personalized-pages` + 四动词 + 9 档 phase + slot 三值与 `customLocation` trim 1..1000），GUI 侧 `plugins/dscreationreco` 已按官方 `src/**` 逐层实现（零新增宿主方法）| [official-creation-recommendations-evidence-rc2.md](official-creation-recommendations-evidence-rc2.md) |
 
-> 结论：#13 要动**宿主仓**（先有那个 kind + 四个动词），GUI 侧单方面做就是永不出现的死代码；
-> 这一条不该排在 GUI 批次里。
+> 结论更新（2026-11-15 第三批）：#13 的**宿主前置已由 PR `MYCF711/dsh-go#45` 补齐**，
+> GUI 侧随之按官方 `src/**` 落地（`plugins/dscreationreco`），本条**不再需要"先等宿主"**；
+> 下一批遇到 C 档条目时，先确认宿主 PR 是否已经落地，再决定排期。
 
 ---
 
-## 0. 本轮已闭合（1 条）
+## 0. 本轮已闭合（3 条）
 
 | id | 包 | 状态变化 | 证据 |
 |---|---|---|---|
@@ -51,7 +52,7 @@
 
 | id | 包 | 缺的前置（已核） |
 |---|---|---|
-| #13 | `dsh-client-ui-creation-recommendations` | 本包只是 `create_personalized_page` 的卡片正文（`OFF:cr/src/client/mount.ts:17-27`）。**宿主没有这个 kind**：`HOST:internal/actioncards` 只注册了 `enable_official_plugin`（`HOST:internal/recommendations/service.go:34`、`:70-80`）。宿主侧还缺 `dsh-creation-recommendations` / `dsh-personalized-recommendations` 两条线的 kind + 动词（create/undo/restore/cancel）。先做界面 = 永远不出现的死代码 |
+| #13 | ✅ **已解阻落地（见 §0.1）** | 本包只是 `create_personalized_page` 的卡片正文（`OFF:cr/src/client/mount.ts:24-27`）。~~宿主没有这个 kind~~ → 宿主 PR #45 已补齐 `HOST:internal/creation/**`，GUI 侧 `plugins/dscreationreco` 已实现：`HOST:internal/actioncards` 只注册了 `enable_official_plugin`（`HOST:internal/recommendations/service.go:34`、`:70-80`）。宿主侧还缺 `dsh-creation-recommendations` / `dsh-personalized-recommendations` 两条线的 kind + 动词（create/undo/restore/cancel）。先做界面 = 永远不出现的死代码 |
 | #39 #45 #46 #47 | `settings-agent-loop` / `-shell` / `-subagent` / `-web-search` | **2026-11-15 已解阻（部分落地）**：四页都是 `configForms` 的 `plugins.item` 卡片（`OFF:sal/src/client/index.ts:44-52` 等），只在宿主服务该命名空间时才挂载（`whileServed([...])`）。① 宿主已补 8 条命名空间（`HOST:docs/settings-namespaces-official-pages.md`，`settings.describe` 11 → 19 行，PR MYCF711/dsh-go#41）；② 插件页的 `plugins.item` 槽已接（`plugins/dssidebar/settings_items*.go`）。现状：**#39 / #45 ✅，#46 🟡（只差「模型选择」一节：`allowedModels` 是对象数组、宿主 sections 投影只有标量，且该命名空间无消费方），#47 待做**（最大的一条：3 ns / 9+7 字段 / secret 槽位）。逐条证据与 #47 的排序见 [official-settings-pages-evidence-rc2.md](official-settings-pages-evidence-rc2.md)。 |
 | #17 | `dsh-client-ui-entry-customization` | 三个「更多」菜单（`OFF:ec/src/client/index.ts:52-76` 注册进 `sidebar.panellist.actions` / `conversation.session.header.views.actions` / `sidebar.right.tab.guide.actions`——**本仓三个槽已声明**：`internal/uikernel/official_slots.go:99,129,185`）。但「创建你的插件」= `uiWorkspace.startSession(undefined,{agentPreset:'cordis',prompt})`（`OFF:ec/src/client/index.ts:46`），而**宿主没有 `cordis` 预设**（`grep 'cordis' internal/agent cmd/dshd \| preset` 为空）→ 那一行点了必然失败。另需 unpinned 入口清单 + pin 控件（两个都不是现有能力） |
 

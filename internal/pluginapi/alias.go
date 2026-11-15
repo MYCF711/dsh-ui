@@ -79,6 +79,17 @@ const (
 	// KeyContextMenus 是 ds-contextmenu 提供的菜单服务键。
 	KeyContextMenus = pub.KeyContextMenus
 
+	// context menu 的 target kind（官方 `ContextMenuTargetMap` 的判别键，
+	// OFF:ui-context-menu/src/client/types.ts:29-40 + open-in-app 的 workspace 扩展）。
+	TargetSession   = pub.TargetSession
+	TargetWorkspace = pub.TargetWorkspace
+	TargetFile      = pub.TargetFile
+	TargetImage     = pub.TargetImage
+
+	// 原始字节保存的两种模式（官方 `'download' | 'saveAs'`）。
+	FileSaveAs   = pub.FileSaveAs
+	FileDownload = pub.FileDownload
+
 	// 连接四态（`Snapshot.Link`）的取值：纯转发公开包的常量。
 	LinkUnknown    = pub.LinkUnknown
 	LinkConnected  = pub.LinkConnected

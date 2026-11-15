@@ -825,6 +825,15 @@ type ApprovalOption struct {
 	Kind string
 }
 
+// SaveWorkspaceFile 的两种模式（官方 `'download' | 'saveAs'`，
+// OFF:ui-file-actions/src/types.ts:20-25）。
+const (
+	// FileSaveAs 让用户在**原生另存对话框**里选位置（官方 `desktop.save({mode:'saveAs'})`）。
+	FileSaveAs = "saveAs"
+	// FileDownload 不问位置，直接写系统的下载目录（官方 `desktop.save({mode:'download'})`）。
+	FileDownload = "download"
+)
+
 // Actions 是插件能触发的动作。
 //
 // 只放「用户点了会改状态」的入口；读状态走 Snapshot。
@@ -1045,6 +1054,24 @@ type Actions struct {
 	// 是"在应用内预览"，两条能力不能互相顶替。
 	// nil = 壳没接 → 引用 chip **不画成可点**（死按钮比没有更坏）。
 	PreviewFile func(path string)
+
+	// SaveWorkspaceFile 把一个工作区文件的**原始字节**保存到用户位置
+	// （官方 `fileActions.save(source, mode)`，OFF:ui-file-actions/src/client/files.ts:70-103）。
+	//
+	//	sessionID / path  官方 file target 的 (sessionId, path)，原样转发：
+	//	                  字节由壳走 `workspaceFiles.readBytes` 取（宿主按会话解析工作区根，
+	//	                  插件不许自己拼绝对路径）
+	//	name              建议文件名（官方 `FileActionSource.name`）
+	//	mode              FileSaveAs / FileDownload
+	//
+	// **同步、阻塞、由壳写反馈**：`saveAs` 会弹原生另存对话框（UI 线程模态），
+	// 用户取消是合法结果（壳静默返回）；成败都只写壳的状态栏，插件不重画按钮态。
+	// 之所以同步：原生对话框必须在 UI 线程上开，而插件的动作回调就在那一桢里执行
+	// （官方那边是 async 的 Promise，React 能把对话框留给下一次事件循环；viva 没有
+	// 那一层，异步反而要把 Box 生命周期拖过帧边界）。
+	//
+	// nil = 壳没接 → 插件**不画**下载/另存为（死按钮比没有更坏）。
+	SaveWorkspaceFile func(sessionID, path, name, mode string)
 
 	// FileReferences 列 `@` 之后的文件候选（宿主 `fileReferences.list`）。
 	//

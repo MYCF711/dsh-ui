@@ -27,6 +27,23 @@ func dirPath(cwd, curDir string) string {
 	return strings.TrimRight(cwd, "/\\") + "/" + strings.Trim(curDir, "/\\")
 }
 
+// relPath 是官方 `file` target 的 `path`：**相对于会话工作区根**的路径。
+//
+// 与 dirPath 的关系是"同一个事实的两种坐标"：dirPath 给宿主 `fs.read` / `workspace.list`
+// 用（绝对），relPath 给 `workspaceFiles.readBytes` 用（官方按会话解析工作区根，
+// 客户端**不许**自己塞绝对路径进去——HOST:cmd/dshd/serve_workspace_api.go:1208 的
+// `workspaceRootForSession` 才是唯一解析点）。
+//
+// 分隔符统一用 `/`（宿主两端都接受，但官方 wire 上给的是 `/`）。
+func relPath(curDir, name string) string {
+	dir := strings.Trim(strings.ReplaceAll(curDir, `\`, "/"), "/")
+	name = strings.TrimPrefix(strings.ReplaceAll(name, `\`, "/"), "/")
+	if dir == "" {
+		return name
+	}
+	return dir + "/" + name
+}
+
 // fileURL 把一个绝对路径翻成 `file:` 链接，给 `Actions.OpenFile` 用。
 //
 // 为什么非要是链接而不是裸路径：壳那边的 `filePathFromLink` **只接受显式

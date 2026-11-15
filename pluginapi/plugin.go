@@ -1232,6 +1232,35 @@ type Actions struct {
 	//
 	// 调用后不等结果：壳拉完会 Invalidate，下一帧插件读到的就是新值。
 	PluginInventoryRefresh func()
+
+	// ── Web 搜索/获取的 provider 清单与凭据域（#47 `ui-settings-web-search`）──
+	//
+	// 为什么是**独立**两路而不是塞进 SettingsDescribe：
+	//   - provider 清单不是设置文档的一部分。官方它由 `web` 服务在运行期发布
+	//     （`OFF:dsh-web/src/index.ts:146-157` 的 `listProviders()`，注册/注销时发
+	//     `web/providers-changed`），`settings.describe` 里没有它；
+	//   - 凭据（`apiKey`）走官方 credentials 域，与设置文档是**两个库、两套拒绝
+	//     语义**（设置文档只读时凭据仍可写）。把它当普通字段写 settings 就等于
+	//     把明文密钥塞进设置文档，那是另一个产品。
+	//
+	// 三个都是"同步返回壳缓存的那一份，首次问触发一次后台拉取"，与
+	// SettingsDescribe / PluginInventory 同一形状。
+	WebProviderList func() *apiclient.WebProviderList
+	// WebProviderRefresh 触发一次后台重读（官方页面 provider 清单读失败时的
+	// 「重试」，`OFF:web-search-card-controller.ts` 的 `retryProviders`）。
+	// 调用后不等结果：壳拉完会 Invalidate。
+	WebProviderRefresh func()
+	// CredentialStatus 返回壳缓存的 `credentials.describe` 结果（键 = ref）。
+	//
+	// 返回的 map **只含真的问到的 ref**：某个 ref 不在 map 里 = "不知道"，
+	// 消费方这时必须画中性说明，不许说"未配置"（官方对未知 ref 也是
+	// `configured: view?.configured ?? false` + 保留可写）。
+	// nil = 壳没接这条能力 → 密钥控件整个不画（不画一个点了没反应的框）。
+	CredentialStatus func(refs []string) map[string]apiclient.CredentialInfo
+	// CredentialSet 写一个凭据引用（宿主 `credentials.set`）。同步返回错误，
+	// 调用方必须在 goroutine 里调（绘制线程不能等 HTTP）。
+	// nil = 壳没接 → 密钥控件禁用并说明原因。
+	CredentialSet func(ref, value string) error
 }
 
 // SettingsHostFacts 是设置面板需要的**宿主事实**（决定动态注册）。

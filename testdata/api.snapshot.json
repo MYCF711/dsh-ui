@@ -1324,10 +1324,50 @@
         "reason": "unknown|unavailable|access-denied|not-live-root|closing?"
       },
       "req_note": "官方 rc.2 pluginRecommendations.describe（OFF:pr/src/client/mount.ts:40-44；HOST:internal/transport/handlers_plugin_recommendations_official.go:53-84 收 sessionId|agentId|id 三个别名 + callId，两个都非空才查）。status 是判别联合：available 带 title/description/enabled（目录来自 pluginMarket 索引、启用态来自 pluginManager state，HOST:internal/recommendations/service.go:120-181），refused 只有 reason 且**没有**标题——客户端按 status 分支解，不许把 refused 解成'标题为空的 available'。"
+    },
+    "web.listProviders": {
+      "batch": 16,
+      "req": {},
+      "resp": {
+        "search": [
+          {
+            "id": "string",
+            "title": "string?",
+            "description": "string|LocalizedText?",
+            "available": "bool?",
+            "default": "bool?",
+            "selected": "bool?"
+          }
+        ],
+        "fetch": [],
+        "resolution": {
+          "search": {"configured": "string?", "source": "config|env|default|auto?", "selected": "string?", "errorCode": "string?", "error": "string?"},
+          "fetch": {"configured": "string?", "source": "config|env|default|auto?", "selected": "string?", "errorCode": "string?", "error": "string?"}
+        },
+        "baseline": {"search": "string", "searchRegistered": true, "fetch": "string", "fetchRegistered": true},
+        "limits": {"maxQueries": 0, "maxResults": 0, "summaryMaxChars": 0, "searchTimeoutMs": 0},
+        "credentials": [{"name": "string", "configured": false, "role": "string?", "capability": "search|fetch|both?"}]
+      },
+      "req_note": "官方 rc.2 web.listProviders（OFF:dsh-web/src/index.ts:146-157；typert 的 parameters: []，**严格无参**，HOST:internal/transport/handlers_web_providers_rc2.go:139-160 无参校验 + 未接线回四字段 501）。search/fetch 是官方字段：每条 provider 的 id 必填，title/description **缺席**表示 provider 没声明（OFF:types.ts:196-205 与 index.ts:246-252），客户端不许把缺席当空串；清单**不按可用性过滤**（OFF:index.ts:146-157 'Availability does not filter the lists'）。resolution/baseline/limits/credentials 是宿主附加的只读运行态（不冒充官方），客户端只用来解释失败原因，不作为选择真值。",
+      "resp_note": "宿主没接线时回 501 not_implemented（四字段），**不是**空清单——空清单是在说'一个 provider 都没注册'，那是另一句话。"
+    },
+    "credentials.describe": {
+      "batch": 16,
+      "req": {"refs": ["string"]},
+      "resp": {"DSH_KEY": {"configured": true, "source": "catalog|env?", "writable": true}},
+      "req_note": "官方 rc.2 credentials.describe（HOST:internal/transport/handlers_settings_official.go:492-539；官方行号在文件头 L154）。refs 是字符串数组：≤64 条、每条必须匹配 ^[A-Za-z_][A-Za-z0-9_]*$（宿主同一道 grammar guard，错误串只报位置与长度、**不回显 ref**）。",
+      "resp_note": "结果是以 ref 为键的对象，值为 {configured, source?, writable}——**没有值字段**：官方读取路径就没有它，宿主也不加（HOST:internal/transport/handlers_settings_official.go:110-118）。客户端只有拿到某个 ref 的键才许说'未配置'；缺席 = 没问到。宿主没挂凭据后端回 501 not_implemented，不许当成'未配置'。"
+    },
+    "credentials.set": {
+      "batch": 16,
+      "req": {"ref": "string", "value": "string"},
+      "resp": {},
+      "req_note": "官方 rc.2 credentials.set（HOST:internal/transport/handlers_settings_official.go:577-624；官方行号在文件头 L186）。ref 同一道 grammar guard；value 是明文密钥，官方 min(1) 且宿主额外拒绝纯空白/首尾空白/含 NUL（既有存储会 trim 后当作删除）。错误串只提 ref、**绝不回显 value**。",
+      "resp_note": "官方结果是 void；宿主成功信封是 {}（不含 null）。写完后客户端必须自己再 credentials.describe 一次才知道'是否已配置'——set 不回值。"
     }
   },
   "counts": {
-    "total": 73,
+    "total": 76,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1342,6 +1382,7 @@
     "batch12": 3,
     "batch13": 4,
     "batch14": 3,
-    "batch15": 2
+    "batch15": 2,
+    "batch16": 3
   }
 }

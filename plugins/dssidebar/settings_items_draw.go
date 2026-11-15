@@ -164,14 +164,24 @@ type settingsItemFields struct {
 	shellMaxOutput    ui.Field
 	subagentDepth     ui.Field
 	subagentActive    ui.Field
-	mirror            map[string]string
+	// #47「网页搜索与获取」的四个输入框。
+	webCount   ui.Field
+	webBaseURL ui.Field
+	webMaxUses ui.Field
+	webKey     ui.Field
+	mirror     map[string]string
 }
 
 // all 返回全部输入框（Fields() 用）。
 func (f *settingsItemFields) all() []*ui.Field {
+	// 密钥框是官方 `<input type="password">`（OFF:WebSearchCard.tsx:96-103 经
+	// primitives `SettingsSecretField`）：viva 的等价物是 `Field.Secure`——显示圆点、
+	// 不进无障碍树。**每帧设一次**（幂等），这样无论从哪条路径进到这一页都已经打开。
+	f.webKey.Secure = true
 	return []*ui.Field{
 		&f.agentLoopParallel, &f.shellTimeout, &f.shellMaxOutput,
 		&f.subagentDepth, &f.subagentActive,
+		&f.webCount, &f.webBaseURL, &f.webMaxUses, &f.webKey,
 	}
 }
 
@@ -188,6 +198,14 @@ func (f *settingsItemFields) slot(ns, name string) *ui.Field {
 		return &f.subagentDepth
 	case settingsNSSubagent + "." + settingsFieldMaxActiveSubagents:
 		return &f.subagentActive
+	case settingsNSWebAPI + "." + settingsFieldWebCount:
+		return &f.webCount
+	case settingsNSWebSearch + "." + settingsFieldLegacyBaseURL:
+		return &f.webBaseURL
+	case settingsNSWebSearch + "." + settingsFieldLegacyMaxUses:
+		return &f.webMaxUses
+	case settingsNSWeb + "." + settingsFieldLegacySecret:
+		return &f.webKey
 	default:
 		return nil
 	}
@@ -236,7 +254,27 @@ func (p *Plugin) settingsItemCardsFor(env *pluginapi.Env) []settingsItemCardStat
 	if env == nil || env.Act.SettingsDescribe == nil {
 		return nil
 	}
-	return settingsItemCards(env.Act.SettingsDescribe(), p.itemFormSnapshot())
+	snapshot := p.itemFormSnapshot()
+	// #47 那一页的两个额外数据面：provider 清单与凭据状态。
+	// 两者都**同步返回壳缓存**；壳没接时对应字段保持 nil/false，页面自己决定
+	// 不画菜单/不画密钥控件（不是画一个空清单）。
+	if env.Act.WebProviderList != nil {
+		snapshot.providerWired = true
+		snapshot.providers = env.Act.WebProviderList()
+	}
+	if env.Act.CredentialStatus != nil {
+		snapshot.credentialWired = true
+		snapshot.credentials = env.Act.CredentialStatus([]string{
+			settingsWebKeyRefFromDescribe(env.Act.SettingsDescribe()),
+		})
+	}
+	return settingsItemCards(env.Act.SettingsDescribe(), snapshot)
+}
+
+// settingsWebKeyRefFromDescribe 取这一帧密钥控件指向的引用（`apiKeyEnv` 或默认）。
+func settingsWebKeyRefFromDescribe(describe *apiclient.SettingsDescribeResult) string {
+	view, ok := describe.Section(settingsNSWebSearch)
+	return settingsWebKeyRef(view, ok)
 }
 
 // settingsItemCards 返回这一帧要画的卡片（官方 whileServed 未满足的**整张不出现**）。
@@ -244,9 +282,15 @@ func settingsItemCards(describe *apiclient.SettingsDescribeResult, fallback sett
 	if describe == nil {
 		return nil
 	}
-	out := make([]settingsItemCardState, 0, len(settingsItemLedger()))
-	for _, item := range settingsItemLedger() {
-		card := buildSettingsItemCard(item, describe, fallback.drafts, fallback.write)
+	ledger := settingsItemLedger()
+	out := make([]settingsItemCardState, 0, len(ledger))
+	for _, item := range ledger {
+		var card settingsItemCardState
+		if item.Kind == settingsItemKindWebSearch {
+			card = buildSettingsItemWebCard(item, describe, fallback)
+		} else {
+			card = buildSettingsItemCard(item, describe, fallback.drafts, fallback.write)
+		}
 		if !card.Available() {
 			continue
 		}
@@ -260,6 +304,14 @@ type settingsItemFormSnapshot struct {
 	drafts   map[string]settingsItemDraft
 	baseline map[string]int
 	write    settingsItemWrite
+	// providers 是官方 `web.listProviders` 的壳缓存（nil = 还没拉到 / 壳没接）。
+	providers *apiclient.WebProviderList
+	// providerWired 表示壳接了这条能力；false 时页面不画"重试"，也不说"清单读失败"。
+	providerWired bool
+	// credentials 是凭据域按 ref 的答案（**缺键 = 不知道**）。
+	credentials map[string]apiclient.CredentialInfo
+	// credentialWired 表示壳接了凭据域；false 时密钥控件整个不画。
+	credentialWired bool
 }
 
 // itemFormSnapshot 取这一帧的草稿快照。
@@ -404,20 +456,25 @@ func (p *Plugin) drawSettingsItemForm(f ui.C, env *pluginapi.Env, t *pluginapi.T
 				LineHeight(itemFormFailedLine).Color(t.LabelTertiary).
 				MarginSides(0, 0, itemFormReadOnlyGap, 0)
 		}
-		for index, section := range card.Sections {
-			section := section
-			if section.Title != "" {
-				// `SubagentCard.module.css .section{padding:16px 0}` + `.heading`。
-				ui.Column(f).FillWidth().PadSides(itemSectionPadY, 0, itemSectionPadY, 0).Children(func() {
-					ui.Text(f, section.Title).FontSize(itemSectionHeadSze).
-						LineHeight(itemSectionHeadLn).Weight(gfx.WeightSemibold).
-						Color(t.LabelPrimary)
-				})
-			}
-			for _, field := range section.Fields {
-				field := field
-				// `.field+.field{border-top:.5px solid …}`：同一个容器里除第一个之外都带顶线。
-				p.drawSettingsItemField(f, env, t, card, section, field, index == 0 && fieldIndex(section, field) == 0)
+		if card.Web != nil {
+			// #47 那一页：provider 菜单 + 灰面板，不是"section → 字段"形状。
+			p.drawSettingsWebForm(f, env, t, card)
+		} else {
+			for index, section := range card.Sections {
+				section := section
+				if section.Title != "" {
+					// `SubagentCard.module.css .section{padding:16px 0}` + `.heading`。
+					ui.Column(f).FillWidth().PadSides(itemSectionPadY, 0, itemSectionPadY, 0).Children(func() {
+						ui.Text(f, section.Title).FontSize(itemSectionHeadSze).
+							LineHeight(itemSectionHeadLn).Weight(gfx.WeightSemibold).
+							Color(t.LabelPrimary)
+					})
+				}
+				for _, field := range section.Fields {
+					field := field
+					// `.field+.field{border-top:.5px solid …}`：同一个容器里除第一个之外都带顶线。
+					p.drawSettingsItemField(f, env, t, card, section, field, index == 0 && fieldIndex(section, field) == 0)
+				}
 			}
 		}
 		p.drawSettingsItemFormFooter(f, env, t, card)
@@ -491,11 +548,27 @@ func (p *Plugin) drawSettingsItemField(f ui.C, env *pluginapi.Env, t *pluginapi.
 
 // drawSettingsItemOverriddenTag 画 primitives 的 `Tag tone=neutral`（「已覆盖」）。
 func (p *Plugin) drawSettingsItemOverriddenTag(f ui.C, t *pluginapi.Theme) {
+	p.drawSettingsItemTag(f, t, zhFormOverridden, true)
+}
+
+// drawSettingsItemTag 画 primitives 的 `Tag`（`._tag_brmue_4`：11px / line-height 17 /
+// padding-inline 8 / 圆角 = 高度一半）。
+//
+// `emphasis` 对应官方的 tone：neutral（当前项/已覆盖/已配置）用 layer-3 底 + 次要字，
+// quiet（未配置）只留次要字与描边。官方这两种 tone 的取色原文在
+// `dsh-web-frontend/dist/assets/index-CSAdOBx6.css` 的 `._tag_brmue_4[data-tone=...]`。
+func (p *Plugin) drawSettingsItemTag(f ui.C, t *pluginapi.Theme, label string, emphasis bool) {
 	height := itemTagLine + 2*itemTagPadY
-	ui.Row(f).Height(height).Shrink(0).Radius(height/2).
+	row := ui.Row(f).Height(height).Shrink(0).Radius(height/2).
 		PadSides(itemTagPadYx, itemTagPadX, itemTagPadYx, itemTagPadX).
-		Items(ui.Center).Justify(ui.Center).Background(t.BgLayer3).Children(func() {
-		ui.Text(f, zhFormOverridden).FontSize(itemTagFont).LineHeight(itemTagLine).Color(t.LabelSecondary)
+		Items(ui.Center).Justify(ui.Center)
+	if emphasis {
+		row = row.Background(t.BgLayer3)
+	} else {
+		row = row.Border(itemFieldStrokeW, t.BorderL3)
+	}
+	row.Children(func() {
+		ui.Text(f, label).FontSize(itemTagFont).LineHeight(itemTagLine).Color(t.LabelSecondary)
 	})
 }
 
@@ -603,7 +676,12 @@ func (p *Plugin) startSettingsItemSave(act pluginapi.Actions, card settingsItemC
 	form := p.ensureSettingsItemForm()
 	snapshot := p.itemFormSnapshot()
 	form.setWrite(settingsItemWrite{Saving: true})
-	go p.applySettingsItemSave(act, card.Plan, snapshot.baseline, form, snapshot.drafts)
+	if card.Web != nil {
+		// #47：三段 mutate（api → legacy → selection）+ 可选的凭据写。
+		go p.applySettingsItemWebSave(act, card.Web.plan, snapshot.baseline, form, snapshot.drafts)
+	} else {
+		go p.applySettingsItemSave(act, card.Plan, snapshot.baseline, form, snapshot.drafts)
+	}
 	if act.Invalidate != nil {
 		act.Invalidate()
 	}

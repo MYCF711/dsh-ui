@@ -41,13 +41,21 @@ type (
 	EntryMenuEntry = pub.EntryMenuEntry
 	Painter        = pub.Painter
 	// Tab 是选择器条目（会话 view / 右栏 tab 的共同形状）。
-	Tab        = pub.Tab
-	Primitives = pub.Primitives
-	Env        = pub.Env
-	Geometry   = pub.Geometry
-	Snapshot   = pub.Snapshot
-	Usage      = pub.Usage
-	Approval   = pub.Approval
+	Tab = pub.Tab
+	// WebHost / WebPage / WebOpenOptions 是窗口里的网页宿主（官方右栏浏览器那一层）。
+	// `Env.Web` 已经带上了它；这里补别名是为了让 import internal 路径的插件也能
+	// 在自己的测试里造假载具，而不必去 import 公开包。
+	WebHost        = pub.WebHost
+	WebPage        = pub.WebPage
+	WebOpenOptions = pub.WebOpenOptions
+	WebLoad        = pub.WebLoad
+	WebLoadPhase   = pub.WebLoadPhase
+	Primitives     = pub.Primitives
+	Env            = pub.Env
+	Geometry       = pub.Geometry
+	Snapshot       = pub.Snapshot
+	Usage          = pub.Usage
+	Approval       = pub.Approval
 	// HistoryPaging 是主区「加载更早」单按钮的五态输入（additive）。
 	HistoryPaging = pub.HistoryPaging
 	// LinkState 是壳与宿主流连接的三态事实（`Snapshot.Link`）。
@@ -141,10 +149,18 @@ const (
 	SlotRightPaneTabTitle = pub.SlotRightPaneTabTitle
 	SlotConvView          = pub.SlotConvView
 
+	// 网页加载相位（与公开包同三个值）。
+	WebLoadStart     = pub.WebLoadStart
+	WebLoadCommitted = pub.WebLoadCommitted
+	WebLoadDone      = pub.WebLoadDone
+
 	ViewChat       = pub.ViewChat
 	ViewTrajectory = pub.ViewTrajectory
 	ViewStats      = pub.ViewStats
 )
+
+// ErrWebUnsupported 是"这个部署放不了网页"的哨兵错误（公开包定义，这里透传）。
+var ErrWebUnsupported = pub.ErrWebUnsupported
 
 // Builtin / Register 是注册表函数，别名层透传。
 var (

@@ -22,10 +22,21 @@
 package pluginapi
 
 import (
+	"errors"
+
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
+
+// ErrWebUnsupported 表示这个部署放不了网页（无头驱动 / 没有引擎 / 非桌面平台）。
+//
+// 壳把 Viva 的 `app.ErrUnsupported` 折成这一个值，插件只需要认它一个：
+// 认出来就整块降级，认不出来就当普通错误（页面加载失败）。
+//
+// 官方同判据：`src/client/index.ts:60-65` 拿不到 `carrier.browser` 就退回
+// iframe 实现；两个载具都没有的时候，官方这个 tab 类型根本不该被注册。
+var ErrWebUnsupported = errors.New("pluginapi: 这个部署放不了网页")
 
 // ── 服务键 ────────────────────────────────────────────────────────────────
 //
@@ -358,6 +369,93 @@ type Env struct {
 	//
 	// nil = 本帧不在菜单里：占用方这时不该画任何行。
 	EntryMenu *EntryMenuProps
+	// Web 是本窗口的**网页宿主**（官方 `@deepseek-ai/dsh-client-ui-sidebar-browser`
+	// 那一层的对等物：web 侧是 `<iframe>`，桌面侧是 Electron `<webview>`）。
+	//
+	// 这里是 Viva v0.6.4 的 `app.WebHost`：Windows 走 WebView2、macOS 走
+	// WKWebView、Linux 走 WebKitGTK，**引擎由系统提供，Viva 不打包**。
+	//
+	// nil = 这个部署放不了网页（无头驱动、没有引擎、非桌面平台）。**nil 不是
+	// "画个空框"的理由**：注册网页 tab 的插件必须据此整块不注册，而不是画一个
+	// 永远白屏的 tab（官方同判据：载具拿不到就退回 iframe 实现，iframe 也开不了
+	// 就根本不该有这个 tab 类型）。
+	Web WebHost
+}
+
+// WebHost 是"这个窗口能不能放网页"的唯一入口。
+//
+// 与官方两处一一对应：
+//
+//	web 载具     `IframePresentation.mount` 造一个 `<iframe>`
+//	             （OFF:dsh-client-ui-sidebar-browser/src/client/view/IframePresentation.ts:76-88）
+//	桌面载具     `ElectronWebViewImpl` 用主进程批下来的 `<webview>`
+//	             （同包 src/client/electron/ElectronWebViewImpl.ts:1-60、
+//	              src/client/index.ts:60-75 的 `carrier.browser` 判据）
+//
+// 两者在官方被 `BrowserFrame` 这层抽掉载具差异；这里同一个位置就是本接口。
+type WebHost interface {
+	// Open 打开一个页面。URL 为空 = 先开一个什么都不加载的页面（官方
+	// `BrowserController.start` 只在有 initialUrl 时才导航）。
+	//
+	// 失败必须原样返回：`ErrWebUnsupported` 表示这台机器/这个平台放不了网页，
+	// 调用方据此**降级或整块不注册**，不许把失败画成空白页。
+	Open(options WebOpenOptions) (WebPage, error)
+}
+
+// WebOpenOptions 是打开一个页面时给的选项。
+//
+// 为什么 OnLoad 只能在这里给、不能事后订阅：Viva 的 `OnLoad` 是
+// `WebViewConfig` 的一个字段（OFF:viva@v0.6.4/app/web.go:107），页面开出来之后
+// 就没有再挂监听的口子了（`*WebView` 上只有 Load/Reload/Back/Forward/Eval/
+// PostMessage/Focus/Close，见 :277-306）。契约照这个形状写，插件就不会以为
+// 自己能中途换订阅。
+type WebOpenOptions struct {
+	// URL 是初始地址；空表示先不开导航（官方 `start(undefined)`）。
+	URL string
+	// OnLoad 收导航事件；nil 表示不关心。
+	OnLoad func(WebLoad)
+}
+
+// WebLoadPhase 是导航走到哪一步（与 Viva `app.WebLoadPhase` 同序同义）。
+type WebLoadPhase uint8
+
+const (
+	// WebLoadStart 是导航开始（官方 iframe 的 `load` 之前）。
+	WebLoadStart WebLoadPhase = iota
+	// WebLoadCommitted 是引擎收下了文档。
+	WebLoadCommitted
+	// WebLoadDone 是文档加载完成。官方 iframe 只能观察到这一步
+	// （`IframeImpl.handleLoaded`），所以 Back/Forward 的可用性也只由它推进。
+	WebLoadDone
+)
+
+// WebLoad 是一次导航事件（官方 `BrowserLoadError` / `location` 观察的合并面）。
+type WebLoad struct {
+	URL   string
+	Phase WebLoadPhase
+}
+
+// WebPage 是一个已经打开的网页。
+//
+// 方法集合刻意与官方 `BrowserFrame`（src/client/browser/BrowserFrame.ts:30-45）
+// 对齐：`loadUrl` / `goBack` / `goForward` / `reload` / `dispose`，加上
+// `<webview>` 才有的 `Focus`。**历史与地址栏策略都不在这里**——它们在插件里
+// （官方 `BrowserNavigation` / `parseBrowserAddress`），载具只负责"给个地址就导航"。
+type WebPage interface {
+	// ID 交给 `canvas.NativeView`（或 `ui.Box.NativeView`）把页面摆进某个矩形。
+	ID() gfx.NativeViewID
+	// Load 导航到一个**已校验**的地址。
+	Load(url string)
+	// Reload 重载当前地址，不新增历史项。
+	Reload()
+	// Back 后退一步（引擎自己的历史，与插件记录的应用历史是两层，都保留）。
+	Back()
+	// Forward 前进一步。
+	Forward()
+	// Focus 把键盘交给页面（官方 `<webview>` 的 `focus()`）。
+	Focus()
+	// Close 关掉页面；之后它的 ID 不再能被摆到任何矩形里。
+	Close()
 }
 
 // Geometry 是一帧的三栏几何（像素，已扣掉 padding 之前的外框宽）。

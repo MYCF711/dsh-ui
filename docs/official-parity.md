@@ -23,7 +23,7 @@
 ### 侧栏类（6）
 
 - ✅ `sidebar`（`dssidebar`：工作区分组 + 搜索 + 状态点 + **两次点击删除会话**——宿主早就有 `session.delete`，界面一直没接；现在三条都接了：`session.delete`（侧栏两次点击）/ `session.compact`（F2「压缩上下文」）/ `session.fork`（F2「分支这个会话」，**整份复制**））
-- ❌ `sidebar-browser`
+- 🟡 `sidebar-browser`（`plugins/dsbrowser`：右栏 `browser` tab = 官方 HTTP(S) 沙箱浏览器。地址白名单/历史状态机/工具条逐条搬官方 `src/client/**`，网页本体走 Viva 的 webview 宿主（`app.WebHost` + `canvas.NativeView`）。缺多实例 tab 与"上次打开"恢复卡，见 #50 行）
 - ✅ `sidebar-documentpreview`（`dsfiles` 的预览浮层；16KB 上限、20 行截断）
 - ✅ `sidebar-files`（`dsfiles`；`workspace.list(path)` + `fs.read`，可进子目录）
 - ✅ `sidebar-right`（`dsshell` 的 `SlotRightbar` + `ToggleRightbar` + `ui.rightbarWidth`；收起后 corner 可重开）
@@ -108,7 +108,7 @@
 | 14 | `dsh-client-ui-deliverables` | ✅ IMPLEMENTED | `plugins/dsdeliverables`（写过的文件 + **按文件 before/after diff**）+ `dsconversation/file_refs.go` + **`internal/apiclient/changes.go`（`/api/changes.summary\|diff\|open` 裸路由）**；证据 [official-deliverables-changes-evidence-rc2.md](official-deliverables-changes-evidence-rc2.md) |
 | 15 | `dsh-client-ui-directory-picker-browse` | ✅ IMPLEMENTED | `plugins/dsdirpicker` + `internal/apiclient/dirpicker.go` |
 | 16 | `dsh-client-ui-directory-picker-native` | ❌ MISSING | 无 |
-| 17 | `dsh-client-ui-entry-customization` | ❌ MISSING | **两处真前置已落地（2026-11-15）**：① 三个座位外面的 More 菜单宿主——左栏 `plugins/dssidebar/entry_menu.go`（官方 `PanelMoreMenu`，行 + 菜单面 + 派发 `sidebar.panellist.actions`）、会话头 `plugins/dstopbar/entry_menu.go`（官方 `ViewsMoreMenu`，22×22 + `conversation.session.header.views.actions` + 官方宽度预算）、菜单面本体 `internal/uikernel/entry_menu.go`（288 夹宽/贴锚点翻面/整窗遮罩/owner props 生命周期）；② 面板固定态 `internal/entrypins`（官方 `panel-pins.ts` 的纯内存语义，壳按 `ui.entryPins` 提供，两处宿主按它做可见性）。**本行仍 ❌**：官方那三包菜单**行**（未固定条目 + 固定按钮 + 「浏览更多插件」「创建插件」）还没写，右栏 guide 的 More 卡片没有宿主（guide 面未落地，按 HIDE 登记），「创建插件」还需宿主 `session.create` 收 `agentPreset`（DSH-GO 仓 `internal/transport/server.go`）。证据 [official-entry-menu-evidence-rc2.md](official-entry-menu-evidence-rc2.md) |
+| 17 | `dsh-client-ui-entry-customization` | ❌ MISSING | **两处真前置已落地（2026-11-15）**：① 三个座位外面的 More 菜单宿主——左栏 `plugins/dssidebar/entry_menu.go`（官方 `PanelMoreMenu`，行 + 菜单面 + 派发 `sidebar.panellist.actions`）、会话头 `plugins/dstopbar/entry_menu.go`（官方 `ViewsMoreMenu`，22×22 + `conversation.session.header.views.actions` + 官方宽度预算）、菜单面本体 `internal/uikernel/entry_menu.go`（288 夹宽/贴锚点翻面/整窗遮罩/owner props 生命周期）；② 面板固定态 `internal/entrypins`（官方 `panel-pins.ts` 的纯内存语义，壳按 `ui.entryPins` 提供，两处宿主按它做可见性）。**本行仍 ❌**：官方那三包菜单**行**（未固定条目 + 固定按钮 + 「浏览更多插件」「创建插件」）还没写，右栏 guide 的 More 卡片没有宿主（guide 面未落地，按 HIDE 登记），「创建插件」还需宿主 `session.create` 收 `agentPreset`（DSH-GO 仓 `internal/transport/server.go`）。证据 [official-entry-menu-evidence-rc2.md](official-entry-menu-evidence-rc2.md) **（此前考古，一并保留）** **无实现；本轮考古推翻上一批的两条判断、确认第三条**（详见下方「#17 考古」）。三个 owner 座位**都在**（`internal/uikernel/official_slots.go:255` `sidebar.panellist.actions` / `:312` `conversation.session.header.views.actions` / `:466` `sidebar.right.tab.guide.actions`，且骨架都 dispatch）；`pluginNavigation` **不是宿主能力**（是 plugin-manager 的客户端服务 `ctx.reflect.provide`，`dsh-client-ui-plugin-manager/src/client/index.ts:50-60`、`:153`），本仓等价物就是 `plugins/dssidebar/plugins_page.go` 那个插件页；真正缺的是 **Creator 预设**：`uiWorkspace.startSession(undefined,{agentPreset:'cordis'})` 要宿主 `session.create` 收 `agentPreset`，而本仓 `internal/transport/server.go:952` 的 `handleSessionCreate` **只读 `mode`**、`opt.Create` 签名是 `func(mode string)`（`server.go:175`）。此外三处"More 菜单宿主"本仓都还没有（官方在 `SidebarRoot.tsx:123-146` 的 `PanelMoreMenu`），没有宿主就没有可放的行——这是本条的真正前置 |
 | 18 | `dsh-client-ui-file-actions` | 🟡 PARTIAL | **`plugins/dsfileactions`（`file` order 200 / `image` order 100 两段菜单：`下载` / `另存为…`）** + `pluginapi/context_menu.go`（新增 `file`/`image` 两个 kind + 官方逐族字段）+ `plugins/dsfiles`（文件行是 `file` target 的生产方，带会话 + 工作区相对路径）+ `internal/apiclient/workspace_files.go`（`workspaceFiles.readBytes`，base64 解码）+ `cmd/app/file_actions.go`（壳侧：原生另存 / 系统下载目录 / 状态栏反馈）+ `pluginapi.Actions.SaveWorkspaceFile`；证据 [official-file-actions-evidence-rc2.md](official-file-actions-evidence-rc2.md)。**剩余差异**：「复制图片」不画（viva 无剪贴板图片**写**入口）、`image` target 今天没有生产方（消息区图片是占位瓦片）、「在文件夹显示」没接（宿主无 `openWorkspacePath`）、没有 `stat` 前置的置灰态 |
 | 19 | `dsh-client-ui-file-drag` | ❌ MISSING | 无 |
 | 20 | `dsh-client-ui-goal` | ✅ IMPLEMENTED | `plugins/dsgoal`（4 文件 / 364 行） |
@@ -141,7 +141,7 @@
 | 47 | `dsh-client-ui-settings-web-search` | ✅ IMPLEMENTED | 同一落点的 `web-search` 卡（`order:20`，`plugins/dssidebar/settings_items_web.go` + `settings_items_web_draw.go`）：两个 provider 下拉 + 灰面板（`web-deepseek-api` 的 `count` / `searchBilling` / `fetchBilling`，`web-search-deepseek` 的 `baseURL` / `maxUses` / 密钥）+ 官方「已被 … 覆盖」锁 + provider 清单失败提示与「重试」；provider 清单走 `web.listProviders`，密钥走 `credentials.describe`/`credentials.set`（**不进 settings**）。证据 [official-settings-pages-evidence-rc2.md](official-settings-pages-evidence-rc2.md) §8。**缺口（宿主侧，已登记）**：legacy 搜索 provider 只读环境变量（`modules/search/deepseek.go:77`），所以密钥写进凭据库后**不改变搜索行为**——界面照官方发布面画，能读写、能往返 |
 | 48 | `dsh-client-ui-shortcuts` | ✅ IMPLEMENTED | `plugins/dsshortcuts`（2 文件 / 213 行） |
 | 49 | `dsh-client-ui-sidebar` | ✅ IMPLEMENTED | `plugins/dssidebar`（5 文件 / 1418 行） |
-| 50 | `dsh-client-ui-sidebar-browser` | ❌ MISSING | 无（HIDE：官方是右栏沙箱 HTTP(S) 浏览器 tab。**tab 注册表已建**（2026-11-15，[official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md)），但本仓**没有 iframe/Electron webview 这一层**——Go 即时模式界面里嵌不了网页；此前的 `dssidebar` 搜索框是误映射） |
+| 50 | `dsh-client-ui-sidebar-browser` | 🟡 PARTIAL | **`plugins/dsbrowser`（4 文件 / 900 行）**：右栏 tab 类型 `browser`（`sidebar.right.pane.tab` + `.title`，同 key）+ `url.go`（官方 `url.ts` 45 行逐条搬：16 KiB 上限 / 隐式 scheme 补 `https://` / http(s) 白名单 / 凭据拒 / 应用自身 origin 拒 / `title=hostname`）+ `navigation.go`（官方 `BrowserNavigation.ts` 状态机：100 条上限、前进分支截断、loading→known→unknown）+ 工具条（38px、后退/前进/刷新/地址框/前往/系统浏览器打开）+ `AfterDraw` 里 `canvas.NativeView(page.ID(), rect)`。**载具是 Viva v0.6.4 自带的 webview 宿主**（`app/web.go:40` `WebHost`、`app.go:225` `Config.Web`、`gfx/native_view.go:32` `Canvas.NativeView`），本机 `EdgeWebView\Application` 有 156/157 三份 WebView2 Runtime。**上一批的 HIDE 理由（"本仓没有 iframe/webview 这一层"）是错的**。剩余差异：① 无法多实例（官方 `multiple:true`，本仓 tab 机制没有多实例/关闭，见 [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md) G3）；② 官方 `.restore` 恢复卡没有（应用侧历史只在内存，重启即空，官方 web 载具同样如此，桌面载具才按 workspace 持久化）；③ 沙箱开关不暴露——官方 `BrowserFrame.sandbox` 是**可选**的（`BrowserFrame.ts:20` "Undefined when this provider does not expose a sandbox control"），本仓策略固定为开；④ `Navigage`/`NewWindow` 折成"窗口外打开"与"拒下载"（官方 iframe 沙箱 `IframePresentation.ts:96-99` 无 `allow-downloads`）；⑤ 地址栏"前往"按钮常显（官方 `:focus-within` 才显示），地球图标赤道线的 `stroke-linecap="square"` 画成 butt（半个描边宽，14px 下不可见） |
 | 51 | `dsh-client-ui-sidebar-documentpreview` | ✅ IMPLEMENTED | `plugins/dsfiles` 预览浮层 |
 | 52 | `dsh-client-ui-sidebar-files` | ✅ IMPLEMENTED | `plugins/dsfiles` |
 | 53 | `dsh-client-ui-sidebar-right` | ✅ IMPLEMENTED | `dsrightbar` + `dsshell` + uikernel；右栏现在是**两阶段注册 + tab 条**（2026-11-15）：类型/体分开注册、按名录派发选中项，见 [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md) §2.4 |
@@ -176,7 +176,7 @@
 > 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
 > `#54`/`#59` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 49 · 🟡 8 · ⬜ 0（不该有） · ❌ 9
+## 合计：官方 66 个部件 —— ✅ 49 · 🟡 9 · ⬜ 0（不该有） · ❌ 8
 
 > 剩下 11 条 MISSING 的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
 > B 档"要一次架构判断" / C 档"宿主缺前置" / D 档"按 HIDE 登记"）见
@@ -186,6 +186,26 @@
 > 这五个数是**从下面那张表里数出来的**（脚本按 `^- [状态] \`名字\`` 去重统计），
 > 不是手填的。上一次手填的是"我们有 10 个 · 缺 53 个"——**已经错了很久**，
 > 因为每次补完一个部件都没人回头改这个数。所以这次把它写成"数出来的"。
+
+## #17 考古（2026-11-15）：上一批三条判断里，两条错、一条对
+
+上一批给 `dsh-client-ui-entry-customization` 的结论是：
+「需插件贡献侧栏条目 + Creator 预设 + `pluginNavigation`（本仓三者皆无）」。逐条核：
+
+| # | 上一批的判断 | 考古结论 | 证据 |
+|---|---|---|---|
+| 1 | 需"插件贡献侧栏条目" | **对，但只看了一半** | 三个 owner 座位**都已存在**并且骨架都 dispatch：`internal/uikernel/official_slots.go:255`（`sidebar.panellist.actions`，list/root）、`:312`（`conversation.session.header.views.actions`）、`:466`（`sidebar.right.tab.guide.actions`）；派发点 `internal/uikernel/shell_skeleton.go:754`、`:854`、`:1090`。缺的**不是座位**，是座位**外面那层菜单**——官方三处都挂在各自区域的 More 菜单里（`dsh-client-ui-sidebar/src/client/SidebarRoot.tsx:123-146` 的 `PanelMoreMenu`，行内容由 `EntryMenuContent.tsx:35-70` 画），本仓三处都没有 More 菜单宿主 |
+| 2 | 需 `pluginNavigation`（本仓无） | **错** | `pluginNavigation` 不是宿主能力，是 plugin-manager 的**客户端服务**：`ctx.reflect.provide('pluginNavigation', {openList, openBundle})`（`OFF:dsh-client-ui-plugin-manager/src/client/index.ts:153-166`，类型声明同文件 `:50-60`）。entry-customization 只是在它**存在时**多画一行"浏览更多插件"（`src/client/index.ts:32-39` 的 `ctx.inject(['pluginNavigation'], …)`）。本仓等价物是现成的：插件管理页 = `plugins/dssidebar/plugins_page.go`（`panelRoutes()` 的 `plugins` 路由），"打开插件列表"就是选中那个面板 |
+| 3 | 需 Creator 预设（本仓无） | **对** | `createPlugin` 走 `uiWorkspace.startSession(undefined, {agentPreset: 'cordis', prompt, whenDraftExists: 'append'})`（`OFF:dsh-client-ui-entry-customization/src/client/index.ts:47-52`）。`agentPreset` 一路传到 `openWorkspace(target, beforeOpen, {agentPreset})`（`OFF:dsh-client-ui-workspace/src/client/navigation.ts:337-372`），落点是宿主建会话时要认 preset。本仓宿主**建会话不认 preset**：`internal/transport/server.go:952` 的 `handleSessionCreate` 只解 `Mode`，`internal/transport/server.go:175` 的 `opt.Create` 签名是 `func(mode string) (string, error)`。`internal/session/log.go:30` 虽然有 `CreateSession(home, cwd, id, agentPreset)`，但没有一条方法能把 `agentPreset` 从请求送到它 |
+
+**顺带纠正一处**：`pinned`（"固定到左侧栏"）也**不是**宿主能力——官方 `createPanelPins()` 只存在内存里，
+"Ids of unpinned panel launchers held in memory until plugin reload"（`OFF:dsh-client-ui-sidebar/src/client/panel-pins.ts:9-33` +
+`contract/slots.ts:219`），reload 即丢，没有任何持久化方法。
+
+**结论**：本条的真正前置不是"宿主加方法"（那只影响 Creator 那一行），而是 **三个区域的 More 菜单宿主 +
+面板进场/固定状态**——那属于 `dsh-client-ui-sidebar`（#49）/ `dsh-client-ui-conversation`（#7）/
+`dsh-client-ui-sidebar-right`（#53）的 chrome，三条在账本上已是 ✅，但它们的 More 菜单/固定这两块
+官方 chrome 本仓没搬。按 HIDE 登记，不自己发明一个"更多"按钮放在别处冒充。
 
 ## 缺的里面，用户最能直接感知的
 

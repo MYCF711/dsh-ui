@@ -747,6 +747,20 @@ type Snapshot struct {
 	// 文件头）；`creation` / `missing` / `changeRequests` 因此**没有读出口**，
 	// 相应的卡片整块不画（gap G6 已登记）。
 	Forge *ForgeView
+
+	// Cordis 是官方 `dsh-client-ui-cordis` 的**清单数据面**（GUI 账本 #12）。
+	//
+	// 面板是 frame-wide 的（不按会话过滤），读的是一次全局
+	// `dynamicCordisRunner.inventory`，所以这份视图**不挂会话**：`Cordis.Rows`
+	// 里每一行自己带 `AgentID`，界面按它分「当前会话 / 其他会话」两组。
+	//
+	// nil = 壳没接这条能力（老壳 / 测试 / 宿主没有 dynamicCordisRunner）：
+	// 插件这时**整块不画**（连触发器都不画），不画成"还没有定义任何插件"——
+	// 那是没有证据的断言。`Cordis != nil && !Cordis.Known` 才是"读取中"。
+	//
+	// 四条 `cordis_*` 历史工具卡的座位**不在**这里：本宿主注册 0 个 cordis 工具
+	// （见 `pluginapi/cordis.go` 文件头的 HIDE 依据），没有生产者。
+	Cordis *CordisView
 }
 
 // HistoryPaging 是「加载更早」单按钮的**五态输入**（additive）。
@@ -1538,6 +1552,42 @@ type Actions struct {
 	// 调用方必须在 goroutine 里调（绘制线程不能等 HTTP）。
 	// nil = 壳没接 → 密钥控件禁用并说明原因。
 	CredentialSet func(ref, value string) error
+
+	// ── Cordis 面板的三个生命周期动词（GUI 账本 #12）─────────────────────
+	//
+	// 三个都是官方面板真有的用户动作，形状照 OFF:CordisPanel.tsx:326-396 的
+	// 三个 `RowAction`：
+	//
+	//	运行（run）    → runHostHalf(agent, pluginId, packageId, mode, null, false)
+	//	停止（stop）   → stopFromPanel(agent, pluginId)
+	//	移除（remove） → undefineFromPanel(agent, pluginId)
+	//
+	// **同步返回错误 = 只能在 goroutine 里调**：三条都会真的动宿主的插件进程
+	// （run 会拉起外部 node，stop/undefine 会关掉它），在绘制线程里等就是卡整窗。
+	// 成功时壳自己重读清单并 Invalidate，插件不重试、不改本地状态。
+	//
+	// 业务失败（`ok:false` 带 reason）与传输失败都折成 error，错误文本用**宿主原文**：
+	// 面板那一行下方就是要显示它（官方 `.rowError` 同一个位置，OFF:CordisPanel.tsx:431-437）。
+	// 唯一的例外是官方那条等价语义（OFF:index.ts:49：`reason === 'not-running'` 算成功），
+	// 由壳折算成 nil，插件不重复判断。
+	//
+	// nil = 壳没接 → 面板**不画那三个按钮**（死按钮比没有更坏）。
+	CordisRun func(sessionID, pluginID, packageID, mode string) error
+	// CordisStop 停一次运行（保留 Package）。语义见 CordisRun 的注释。
+	CordisStop func(sessionID, pluginID string) error
+	// CordisRemove 停并移除一个插件及其全部 Package（**破坏性**：宿主会删定义）。
+	//
+	// 壳只负责发请求与报结果；官方那一下点击就是**一次**（没有二次确认，
+	// OFF:CordisPanel.tsx:387-396），所以确认与否由插件决定——本仓照官方面板
+	// 同形状：点一次就发。
+	CordisRemove func(sessionID, pluginID string) error
+	// CordisRefresh 触发一次后台清单重读（官方 `onRefresh`，OFF:index.ts:112）。
+	//
+	// 面板打开、每次生命周期动作之后、以及收到两条 `cordis/*` 事件帧时都会调；
+	// 调用后不等结果：壳拉完 Invalidate，下一帧插件读到的就是新值。
+	// nil = 壳没接 → 面板不画「重读」入口（本仓面板本来也没有该按钮，
+	// 留这个字段是给"事件没到但清单变了"的手动兜底）。
+	CordisRefresh func()
 }
 
 // SettingsHostFacts 是设置面板需要的**宿主事实**（决定动态注册）。

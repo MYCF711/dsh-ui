@@ -747,6 +747,12 @@
       "resp": "string",
       "req_note": "平铺；path = 父目录绝对路径，name = 单个路径段。响应是裸 JSON 字符串（新目录绝对路径）。宿主 handler: HOST:internal/transport/handlers_workspace_official.go:1316"
     },
+    "directoryPicker.pick": {
+      "batch": 7,
+      "req": {},
+      "resp": "string?",
+      "req_note": "平铺；无参数。响应是裸 JSON 字符串（选中的绝对路径），**null = 操作员取消**（官方结果类型就是 string|null，宿主 writeOfficialNullResult）。只在本次组合声明 native 时可用；组合是 browse 的宿主回 501 + 信封顶层 details.capability=browse，message 前缀 directory-picker/unavailable:。客户端二选一的探针**不许**用这条（它会真弹原生框），见 internal/apiclient/dirpicker.go 的 ProbeDirectoryPicker。"
+    },
     "workspace.create": {
       "batch": 7,
       "req": {
@@ -1510,14 +1516,14 @@
     }
   },
   "counts": {
-    "total": 83,
+    "total": 84,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
     "batch4": 2,
     "batch5": 1,
     "batch6": 6,
-    "batch7": 7,
+    "batch7": 8,
     "batch8": 1,
     "batch9": 1,
     "batch10": 5,

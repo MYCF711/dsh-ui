@@ -284,11 +284,19 @@ func (p *Plugin) pluginBusy(name string, current bool) bool {
 // 按「宿主没给就整段不画」的规则只画标题与一句真实原因，不画死控件。
 func (p *Plugin) drawPluginManagerPage(f ui.C, env *pluginapi.Env) {
 	t := p.theme
+	// 多 tab 骨架（#30 A 块）：贡献方存在且选中它时画它那一页。
+	// 这一条**先于**下面的 PluginBundles 判空：发现页一个 pluginManager 数据都不需要，
+	// 把它挡在"这个宿主没有插件管理面"后面会让一个能用的页面消失。
+	if p.activePluginTab() == pluginsTabDiscover {
+		p.drawDiscoverTab(f, env)
+		return
+	}
 	if env.Act.PluginBundles == nil {
 		ui.Column(f).FillWidth().Gap(8).Children(func() {
 			ui.Text(f, zhPluginTitle).FontSize(pluginTitleSize).LineHeight(pluginTitleLine).
 				Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 			ui.Text(f, "当前宿主未提供插件管理面").FontSize(t.Fonts.Body).LineHeight(22).Color(t.LabelTertiary)
+			p.drawPluginTabBar(f)
 		})
 		return
 	}
@@ -342,6 +350,7 @@ func (p *Plugin) drawPluginManagerPage(f ui.C, env *pluginapi.Env) {
 				return
 			}
 			p.drawPluginHeading(f)
+			p.drawPluginTabBar(f)
 			if p.pluginNotice != "" {
 				ui.Text(f, p.pluginNotice).FontSize(t.Fonts.Secondary).LineHeight(pluginStatusLine).
 					Color(t.Error).MarginSides(0, 0, 8, 0)

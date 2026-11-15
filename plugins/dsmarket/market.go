@@ -134,9 +134,15 @@ type Entry struct {
 	Homepage    string
 	Repository  *Repository
 
-	MarketTitle   string
+	MarketTitle string
+	// CategoryID 是条目声明的分类 id（查索引声明表用）；CategoryTitle 是查到的标题。
+	//
+	// 与官方一致：id 有、但索引没声明它时标题为空，**不拿 id 冒充标题**。
+	CategoryID    string
 	CategoryTitle string
-	LabelTitles   []string
+	// LabelIDs 是条目声明的标签 id（按索引声明顺序），LabelTitles 是对应标题。
+	LabelIDs    []string
+	LabelTitles []string
 
 	Versions       []Version
 	DefaultVersion string

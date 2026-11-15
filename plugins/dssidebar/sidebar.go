@@ -168,6 +168,14 @@ type Plugin struct {
 	pluginWant        map[string]bool
 	pluginNotice      string
 	pluginNoticeUntil time.Time
+	// pluginTab 是官方 Plugins 页的 tab 条选中的那一个（`installed` / `discover`，
+	// 见 plugins_tabs.go）。空串与 `installed` 同义（页面自带那一页）。
+	pluginTab string
+	// marketSeat 是「发现」tab 的贡献方（ds-market 在它自己的 Register 里通过
+	// `RegisterPluginsTab` 登记进来）。nil = 没有贡献方 → 不画 tab 条。
+	marketSeat marketTabSeat
+	// pluginsTabLedger 是 `plugins.tab` 的台账（见 plugins_tabs.go）。
+	pluginsTabLedger pluginsTabLedger
 
 	// ── 官方 4 条插件设置页的本地状态（settings_items*.go，#39/#45/#46/#47）──
 	//
@@ -234,6 +242,11 @@ func (*Plugin) Requires() []string {
 	// context menu 服务是**可选**的：单测/最小装配里没有 ds-contextmenu 时，
 	// 侧栏必须还能画（菜单入口退化为旧路径），不能把整个装配卡住。
 	// 生产装配（Builtin 全量）里 ds-contextmenu 总会先就位，Register 时注入。
+	//
+	// 反过来：本插件**提供** `ui.plugins.tabs`（Plugins 页的 tab 贡献口），
+	// 由贡献方（ds-market 的「发现」）在它自己的 Register 里登记进来——所以侧栏
+	// 不依赖任何具体贡献方，最小装配（只有 ds-core + 侧栏）照样起得来，
+	// 而台账为空时页面按官方规则不画 tab 条。
 	return []string{pluginapi.KeyTheme, pluginapi.KeyPrimitives}
 }
 
@@ -263,6 +276,9 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	if p.pluginWant == nil {
 		p.pluginWant = map[string]bool{}
 	}
+	// Plugins 页的 tab 贡献口（官方 `plugins.tab`）：贡献方在自己的 Register 里
+	// 登记，本插件只负责画 tab 条与派发。值就是 *Plugin（实现了 PluginsTabs）。
+	ctx.Provide(pluginapi.KeyPluginsTabs, pluginapi.PluginsTabs(p))
 	// 调试入口：预填搜索词。放在 Register 而不是 drawList 里，是为了不每帧
 	// 覆盖用户正在敲的内容（否则搜索框永远只能显示这一个词）。
 	if *flagFilter != "" {

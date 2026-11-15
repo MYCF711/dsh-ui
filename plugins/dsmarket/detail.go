@@ -346,8 +346,13 @@ func (p *Page) drawVersionRow(f ui.C, row VersionRow) {
 //	neutral → BgLayer3 底 + LabelSecondary 字（同上）
 //
 // 不拿纯色降透明度凑：那不是官方那个色（同 dssidebar 的 `drawPluginTag` 注释）。
-func (p *Page) drawTag(f ui.C, tag Tag) {
-	t := p.theme
+func (p *Page) drawTag(f ui.C, tag Tag) { drawTagPill(f, p.theme, tag) }
+
+// drawTagPill 是 Tag 的画法（详情页与「发现」tab 的卡片共用一份度量）。
+func drawTagPill(f ui.C, t *pluginapi.Theme, tag Tag) {
+	if t == nil {
+		return
+	}
 	bg, fg := t.BgLayer3, t.LabelSecondary
 	switch tag.Tone {
 	case TagSuccess:

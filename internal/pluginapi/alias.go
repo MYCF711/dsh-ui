@@ -21,7 +21,10 @@ type (
 	ScheduleItem = pub.ScheduleItem
 	Job          = pub.Job
 	JobOutput    = pub.JobOutput
-	Model        = pub.Model
+	// PluginsTab / PluginsTabs 是 Plugins 页的 tab 贡献口（官方 `plugins.tab`）。
+	PluginsTab  = pub.PluginsTab
+	PluginsTabs = pub.PluginsTabs
+	Model       = pub.Model
 	// 引用 / 技能候选 / 消息反馈（pluginapi/references.go）。
 	FileReferenceCandidate    = pub.FileReferenceCandidate
 	SessionReferenceCandidate = pub.SessionReferenceCandidate
@@ -80,6 +83,12 @@ type (
 const (
 	KeyTheme      = pub.KeyTheme
 	KeyPrimitives = pub.KeyPrimitives
+	// KeyMarketDetail / KeyMarketDiscover 是 ds-market 交出的两个官方市场能力
+	// （详情页本体 / 「发现」tab 本体，`#30` A/B/C 三块）。
+	KeyMarketDetail   = pub.KeyMarketDetail
+	KeyMarketDiscover = pub.KeyMarketDiscover
+	// KeyPluginsTabs 是 Plugins 页接收 `plugins.tab` 贡献的服务键。
+	KeyPluginsTabs = pub.KeyPluginsTabs
 	// KeyContextMenus 是 ds-contextmenu 提供的菜单服务键。
 	KeyContextMenus = pub.KeyContextMenus
 	// KeyEntryPins 是壳提供的面板/view/guide 固定态服务键（纯内存）。

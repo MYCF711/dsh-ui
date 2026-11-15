@@ -44,6 +44,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dsfiles"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsmarket"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsopen"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsplan"
 	_ "github.com/MYCF711/dsh-ui/plugins/dspluginreco"
@@ -171,6 +172,11 @@ type model struct {
 	pluginDetailLoaded  map[string]bool
 	pluginDetailErr     map[string]string
 	pluginDetailPending map[string]bool
+	// marketDetails 是按 (url, 包名, 版本, 语言) 的市场条目详情缓存
+	// （官方 `pluginMarket.readEntryDetail`，见 cmd/app/market_detail.go）。
+	//
+	// nil = 一次都没问过（懒初始化）；`resetMarketDetails` 在连接重置时整表作废。
+	marketDetails map[marketDetailKey]*marketDetailRead
 	// pluginActionFail 是最近一次 pluginManager 写动作的失败动作名
 	// （"enable"/"disable"/"uninstall"）与失败的 bundle 名。
 	// 插件取走后清空，同一套"当场说一次"的规矩。
@@ -2587,9 +2593,12 @@ func main() {
 		PluginBundlesRefresh:      m.pluginBundlesRefresh,
 		PluginBundleDetail:        m.pluginBundleDetail,
 		PluginBundleDetailRefresh: m.pluginBundleDetailRefresh,
-		PluginSetBundleEnabled:    m.pluginSetBundleEnabled,
-		PluginRemoveBundle:        m.pluginRemoveBundle,
-		PluginActionError:         m.pluginActionError,
+		// 插件市场条目详情（官方 pluginMarket.readEntryDetail，`#30` C 块）。
+		MarketEntryDetail:      m.marketEntryDetail,
+		MarketEntryDetailRetry: m.marketEntryDetailRetry,
+		PluginSetBundleEnabled: m.pluginSetBundleEnabled,
+		PluginRemoveBundle:     m.pluginRemoveBundle,
+		PluginActionError:      m.pluginActionError,
 		// 后台任务：同步返回缓存。**首次问会触发一次后台拉取**——
 		// 否则插件第一帧永远拿不到东西，而它自己没法申请刷新。
 		JobsList: func() []pluginapi.Job {

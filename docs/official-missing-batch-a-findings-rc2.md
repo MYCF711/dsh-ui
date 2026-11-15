@@ -10,12 +10,23 @@
 
 ---
 
-## 0. 本轮已闭合
+## 0.1 后续批次回填（2026-11-15，第二批）
+
+| id | 本文档里的结论 | 现在的状态 | 证据 |
+|---|---|---|---|
+| #28 `dsh-client-ui-plan` | §2「未深入核查」，要确认宿主有没有 plan 投影 | **🟡 PARTIAL 已落**：Turn 尾计划卡 + 右栏计划全文两座真实现（数据来自 journal 的 `exit_plan_mode` 调用参数，零新宿主方法）；另两座（计划模式 chip / 待批计划「查看全文」）**复核后确认缺数据**，按 HIDE 登记 | [official-plan-evidence-rc2.md](official-plan-evidence-rc2.md) |
+| #13 `dsh-client-ui-creation-recommendations` | §1 C 档：宿主没有 `create_personalized_page` 这个 kind | **复核仍然成立**，且不是"还没做"而是"产品里根本没有这个 kind"：宿主唯一注册 kind 的地方是 `HOST:internal/recommendations/service.go:79-88`（只注册 `enable_official_plugin`），`grep -rn "create_personalized_page" --include=*.go internal/ cmd/` 为空 | 同上文 §1 |
+
+> 结论：#13 要动**宿主仓**（先有那个 kind + 四个动词），GUI 侧单方面做就是永不出现的死代码；
+> 这一条不该排在 GUI 批次里。
+
+---
+
+## 0. 本轮已闭合（3 条）
 
 | id | 包 | 状态变化 | 证据 |
 |---|---|---|---|
 | #31 | `dsh-client-ui-plugin-recommendations` | ❌ → ✅ | [official-plugin-recommendations-evidence-rc2.md](official-plugin-recommendations-evidence-rc2.md) |
-| #18 *(已落地，见 §0)* | `dsh-client-ui-file-actions` | ❌ → 🟡（2026-11-15 第二批） | [official-file-actions-evidence-rc2.md](official-file-actions-evidence-rc2.md)：`file`/`image` 两段菜单 + `workspaceFiles.readBytes` 客户端 + 壳侧原生另存/下载；缺「复制图片」（viva 无剪贴板图片写）、`image` target 生产方、「在文件夹显示」 |
 
 实现同时补上了动作卡框架一直缺的那一格（官方 `ctx.actionCards` 注册表 → 本仓
 `pluginapi.KeyActionCardBodies`），所以**下一个「kind 自有正文」的包不需要再动框架**。

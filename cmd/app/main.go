@@ -43,6 +43,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsgoal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsjobs"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsopen"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsplan"
 	_ "github.com/MYCF711/dsh-ui/plugins/dspluginreco"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsquestions"
 	_ "github.com/MYCF711/dsh-ui/plugins/dsrightbar"

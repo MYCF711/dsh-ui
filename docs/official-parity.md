@@ -52,7 +52,7 @@
 - ✅ `chat`（`dsconversation` 的消息区；不等于官方的细分能力）
 - ✅ `conversation`
 - ✅ `goal`（`dsgoal`：GoalBar 停靠 composer 上方，数据来自宿主 `session.setGoal`）
-- ❌ `plan`
+- 🟡 `plan`（`plugins/dsplan`：**Turn 尾计划卡**（点开在右栏读全文）+ **右栏计划全文**（完整 Markdown、滚动裁剪、链接走壳打开）；数据直接从 journal 帧里的 `exit_plan_mode` 调用参数读，零新宿主方法。缺两座：计划模式 chip 要宿主 `plan` 投影（本仓没有）、待批计划的「查看全文」要 plan-review 待答问题（本仓 `exit_plan_mode` 不产生问题）——两者几何/文案证据齐但数据缺，按 HIDE 登记；证据见 [official-plan-evidence-rc2.md](official-plan-evidence-rc2.md)）
 - ✅ `schedule`（`dsschedule`：侧栏「定时任务」，宿主 `schedule.list`）
 - ✅ `jobs`（`dsjobs`：官方档 header 触发器 + 500px 弹层 / 旧三栏档侧栏清单；`jobs.list` 5 秒轮询 + `jobs.output` rune 游标分页 + `jobs.stop` 两段式；证据见 [official-jobs-evidence-rc2.md](official-jobs-evidence-rc2.md)）
 - ✅ `subagent`
@@ -119,7 +119,7 @@
 | 25 | `dsh-client-ui-model-selection` | ✅ IMPLEMENTED | `internal/uikernel/official_model_menu.go` + `dscomposer` |
 | 26 | `dsh-client-ui-open-in-app` | ✅ IMPLEMENTED | `plugins/dsopen`（3 文件 / 163 行） |
 | 27 | `dsh-client-ui-permission-presets` | ✅ IMPLEMENTED | `dscomposer` + `dssettings` |
-| 28 | `dsh-client-ui-plan` | ❌ MISSING | 无 |
+| 28 | `dsh-client-ui-plan` | 🟡 PARTIAL | **`plugins/dsplan`（`cards.go` Turn 尾计划卡 → `preview.go` 右栏计划全文 `<->` `plan.go` 帧解析/地址）**；数据面零新增（journal `tool/call` 的 `exit_plan_mode` 参数，`pluginapi.Snapshot.Frames`）。**缺两座（HIDE）**：`conversation.input.plan` 要宿主 `plan` 投影 `{active,pending}`（`session.values` 没有）、`conversation.plan-review.actions` 要 plan-review 待答问题（宿主 `exit_plan_mode` 直接 `Stop`，不产生问题）；证据 [official-plan-evidence-rc2.md](official-plan-evidence-rc2.md) |
 | 29 | `dsh-client-ui-plugin-manager` | ✅ IMPLEMENTED | `plugins/dssidebar/plugins_page.go`（侧栏「插件」管理页：列表/详情/启停/卸载）+ `internal/apiclient/plugin_manager.go` + `cmd/app/plugin_manager.go`；证据 [official-plugin-manager-evidence-rc2.md](official-plugin-manager-evidence-rc2.md) |
 | 30 | `dsh-client-ui-plugin-market` | ❌ MISSING | 无 |
 | 31 | `dsh-client-ui-plugin-recommendations` | ✅ IMPLEMENTED | **`plugins/dspluginreco`（`enable_official_plugin` 卡片正文：header/目录标题+描述/状态行/footer 两个按钮）+ `pluginapi/action_card_bodies.go`（正文注册表）+ `plugins/dsactioncards`（注册表提供方与按 kind 派发）+ `internal/apiclient/recommendations.go`（`pluginRecommendations.describe`）+ `cmd/app/official_panels_wiring.go`（describe + 查看详情接线）**；证据 [official-plugin-recommendations-evidence-rc2.md](official-plugin-recommendations-evidence-rc2.md)。**剩余差异**：目录描述到达前的骨架条不画（主题无 `--dsw-alias-bg-skeleton` 对等令牌，不自造灰色）；「查看详情」是标题行可点（官方 `.details` 是整块按钮） |
@@ -176,7 +176,7 @@
 > 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
 > `#54`/`#59` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 48 · 🟡 7 · ⬜ 0（不该有） · ❌ 11
+## 合计：官方 66 个部件 —— ✅ 48 · 🟡 8 · ⬜ 0（不该有） · ❌ 10
 
 > 剩下 11 条 MISSING 的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
 > B 档"要一次架构判断" / C 档"宿主缺前置" / D 档"按 HIDE 登记"）见

@@ -10,11 +10,12 @@
 
 ---
 
-## 0. 本轮已闭合（1 条）
+## 0. 本轮已闭合
 
 | id | 包 | 状态变化 | 证据 |
 |---|---|---|---|
 | #31 | `dsh-client-ui-plugin-recommendations` | ❌ → ✅ | [official-plugin-recommendations-evidence-rc2.md](official-plugin-recommendations-evidence-rc2.md) |
+| #18 *(已落地，见 §0)* | `dsh-client-ui-file-actions` | ❌ → 🟡（2026-11-15 第二批） | [official-file-actions-evidence-rc2.md](official-file-actions-evidence-rc2.md)：`file`/`image` 两段菜单 + `workspaceFiles.readBytes` 客户端 + 壳侧原生另存/下载；缺「复制图片」（viva 无剪贴板图片写）、`image` target 生产方、「在文件夹显示」 |
 
 实现同时补上了动作卡框架一直缺的那一格（官方 `ctx.actionCards` 注册表 → 本仓
 `pluginapi.KeyActionCardBodies`），所以**下一个「kind 自有正文」的包不需要再动框架**。

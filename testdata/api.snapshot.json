@@ -1364,10 +1364,29 @@
       "resp": {},
       "req_note": "官方 rc.2 credentials.set（HOST:internal/transport/handlers_settings_official.go:577-624；官方行号在文件头 L186）。ref 同一道 grammar guard；value 是明文密钥，官方 min(1) 且宿主额外拒绝纯空白/首尾空白/含 NUL（既有存储会 trim 后当作删除）。错误串只提 ref、**绝不回显 value**。",
       "resp_note": "官方结果是 void；宿主成功信封是 {}（不含 null）。写完后客户端必须自己再 credentials.describe 一次才知道'是否已配置'——set 不回值。"
+    },
+    "workspaceFiles.readBytes": {
+      "batch": 17,
+      "req": {
+        "sessionId": "string",
+        "path": "string",
+        "options": {}
+      },
+      "resp": {
+        "offset": 0,
+        "data": "base64(string)",
+        "encoding": "base64",
+        "eof": true,
+        "absolutePath": "string",
+        "version": "string",
+        "bytes": 0
+      },
+      "req_note": "官方 rc.2 workspaceFiles.readBytes（HOST:internal/transport/handlers_workspace_official.go:997-1026；生产接线 HOST:cmd/dshd/serve_workspace_api.go:570）。三个都是**位置参数**：sessionId（宿主别名 workspaceFileScopeId|agentId）按会话解析工作区根，path 是**工作区内的相对路径**（根为空串），options 是官方必填对象（读整个文件给 {}，宿主缺它回 400）。data 是**原始字节的 base64**——官方 typert 是 Uint8Array，L1 用 base64 表达并显式标 encoding:\"base64\"（HOST 同一文件 208-220 行），客户端必须解码后再当二进制用。",
+      "resp_note": "失败按官方 workspace-file/* 码：not-found / not-regular-file / unreadable（符号链接与目录一律 not-regular-file，宿主不跟随链接）。空文件是 200 + data:\"\"，**不是** 404。"
     }
   },
   "counts": {
-    "total": 76,
+    "total": 77,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1383,6 +1402,7 @@
     "batch13": 4,
     "batch14": 3,
     "batch15": 2,
-    "batch16": 3
+    "batch16": 3,
+    "batch17": 1
   }
 }

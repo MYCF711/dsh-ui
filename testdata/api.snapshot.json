@@ -1243,6 +1243,23 @@
       "req_note": "卸载成功后 Loader 里的实例已被回收，warnings 如实说明（cmd/dshd/serve_plugins_official.go:122-130）。",
       "resp_note": "与 setBundleEnabled 同一个 ChangeResult 形状；application=failed 同样是 HTTP 200 的管理性失败。"
     },
+    "pluginMarket.readEntryDetail": {
+    "batch": 18,
+    "req": {
+      "url": "string",
+      "name": "string",
+      "version": "string",
+      "language": "string"
+    },
+    "resp": {
+      "status": "found|none",
+      "origin": "locale|readme|repository",
+      "markdown": "string",
+      "document": "string"
+    },
+    "req_note": "官方 rc.2 pluginMarket.readEntryDetail（OFF:../dsh-plugin-market/lib/typert.host.js:17-38：四个位置参数 + 可选第五个 options{refresh,npmFileSources}；结果是 {status:'found',origin,markdown,document}|{status:'none'} 判别联合）。HOST:internal/transport/handlers_plugin_market_official.go:53-63 只解平铺的 url/name/version/language 四个键，**不读** options 里的 refresh/npmFileSources——所以客户端不提供那两个参数（传了也没用）。语言是官方必填 BCP-47，宿主用它挑本地化兜底文案（HOST:cmd/dshd/serve_plugin_market.go:278-295）。",
+    "resp_note": "status=none 是官方合法的「这一版没有文档」，**不是错误**；失败档走官方 plugin-market/detail-unavailable + details.reason 六值（too-large/network/denied/git-unavailable/invalid/other，OFF:../dsh-plugin-market/src/types.ts:26-30），本仓宿主的 detail_unavailable / index_unavailable / registry_unavailable 都没有结构化 reason，一律投影成 other（与官方客户端 market-store.ts:142 同一判据）。origin 本仓只产出 readme/repository（官方还有 locale）。document 指向详情文档 id，官方用它走 /api/plugin-market/detail-file 取相对图片，本仓**没有那条路由**，界面不解析相对图片。"
+  },
     "agentPresets.list": {
       "batch": 14,
       "req": {},
@@ -1386,7 +1403,7 @@
     }
   },
   "counts": {
-    "total": 77,
+    "total": 78,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -1403,6 +1420,7 @@
     "batch14": 3,
     "batch15": 2,
     "batch16": 3,
-    "batch17": 1
+    "batch17": 1,
+    "batch18": 1
   }
 }

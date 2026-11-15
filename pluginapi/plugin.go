@@ -1185,6 +1185,22 @@ type Actions struct {
 	PluginBundleDetail func(name string) (detail apiclient.PluginBundleDetail, loaded bool, errText string)
 	// PluginBundleDetailRefresh 重读一个 bundle 的文档（失败后的重试）。**异步**。
 	PluginBundleDetailRefresh func(name string)
+	// MarketEntryDetail 读一条**插件市场条目**某一版的详细介绍
+	// （官方 `pluginMarket.readEntryDetail`，`dsh-client-ui-plugin-market` 的详情页）。
+	//
+	// 与 PluginBundleDetail 同一形状：同步返回壳缓存，第一次问触发后台拉取
+	// （键是 url + 包名 + 版本 + 语言）；loaded=false 且 failure 空 = 还在读。
+	//
+	// **failure 是官方六档之一**（`apiclient.PluginMarketDetailFailure`），不是自由文本：
+	// 界面按档取官方 zh 文案，不自己编第七种。本仓宿主用的是自己的三个错误码
+	// （`detail_unavailable` / `index_unavailable` / `registry_unavailable`），
+	// 它们都没有结构化 reason，一律投影成 `other`（判据与官方客户端同一条）。
+	//
+	// nil = 壳没接 → 详情段整段不画（不画一个永远"读取中"的空框）。
+	MarketEntryDetail func(url, name, version, language string) (detail apiclient.PluginMarketEntryDetail, loaded bool, failure apiclient.PluginMarketDetailFailure)
+	// MarketEntryDetailRetry 让壳重新读一次（官方 `retryDetail`，绕过缓存）。**异步**。
+	// nil = 壳没接 → 失败后不画重试按钮。
+	MarketEntryDetailRetry func(url, name, version, language string)
 	// PluginSetBundleEnabled 启用/停用一个 bundle（官方 `setBundleEnabled`）。**异步**。
 	//
 	// 写动作**不做乐观更新**：壳成功后重拉清单，失败把动作名交给

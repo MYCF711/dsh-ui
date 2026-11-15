@@ -1,7 +1,7 @@
 # 官方部件清单 vs 我们的
 
 > 来源：官方 asar 提取的 `@deepseek-ai/dsh-client-ui-*` 包（**62 个**）+ `dsh-experimental-client-ui-*`（**4 个**）= **66 个**（rc.2 口径，见 §权威清单）。
-> 我们有 **34 个插件目录**；账本对官方 **66 个部件**逐 id 判状态（分母由 `scripts/parity-count.py --check` 动态读官方清单并断言零缺零多）。
+> 我们有 **36 个插件目录**（判据：`plugins/*/register.go`，由 `cmd/app/plugins_assembled_test.go` 的 `TestEveryPluginDirIsImported` 双向守着）；账本对官方 **66 个部件**逐 id 判状态（分母由 `scripts/parity-count.py --check` 动态读官方清单并断言零缺零多）。
 > **"几何对齐 ≠ 像官方"**，差距在功能面。
 
 ## 官方 66 个部件（按用途分组）
@@ -42,7 +42,7 @@
 ### 插件体系（3）
 
 - ✅ `plugin-manager`
-- ❌ `plugin-market`
+- 🟡 `plugin-market`（`plugins/dsmarket`：条目**详情页**——详情 markdown（`pluginMarket.readEntryDetail`，真实现且形状对得上）+ 官方版本列表（推荐/预发布/当前已安装/不兼容四类标签 + 三档说明）+ 来源 facts。**Discover tab 骨架与搜索/筛选工具栏没做**，见 [official-plugin-market-detail-evidence-rc2.md](official-plugin-market-detail-evidence-rc2.md)）
 - ❌ `settings-plugin-inventory`
 
 ### 会话能力（13）
@@ -121,7 +121,7 @@
 | 27 | `dsh-client-ui-permission-presets` | ✅ IMPLEMENTED | `dscomposer` + `dssettings` |
 | 28 | `dsh-client-ui-plan` | 🟡 PARTIAL | **`plugins/dsplan`（`cards.go` Turn 尾计划卡 → `preview.go` 右栏计划全文 `<->` `plan.go` 帧解析/地址）**；数据面零新增（journal `tool/call` 的 `exit_plan_mode` 参数，`pluginapi.Snapshot.Frames`）。**缺两座（HIDE）**：`conversation.input.plan` 要宿主 `plan` 投影 `{active,pending}`（`session.values` 没有）、`conversation.plan-review.actions` 要 plan-review 待答问题（宿主 `exit_plan_mode` 直接 `Stop`，不产生问题）；证据 [official-plan-evidence-rc2.md](official-plan-evidence-rc2.md) |
 | 29 | `dsh-client-ui-plugin-manager` | ✅ IMPLEMENTED | `plugins/dssidebar/plugins_page.go`（侧栏「插件」管理页：列表/详情/启停/卸载）+ `internal/apiclient/plugin_manager.go` + `cmd/app/plugin_manager.go`；证据 [official-plugin-manager-evidence-rc2.md](official-plugin-manager-evidence-rc2.md) |
-| 30 | `dsh-client-ui-plugin-market` | ❌ MISSING | 无 |
+| 30 | `dsh-client-ui-plugin-market` | 🟡 PARTIAL | **C 块（详情 markdown + 版本列表）已在 `plugins/dsmarket`：`internal/apiclient/plugin_market.go`（`pluginMarket.readEntryDetail`，形状与官方判别联合 ✅）+ `cmd/app/market_detail.go`（壳侧缓存 + 真 HTTP + 六档失败投影，接线由 `TestEveryUsedActionIsWired` 守着）+ 官方几何的详情页（面包屑/头/兼容性提示/文档/版本/来源 facts，markdown 走现成 `MarkdownView`）+ 官方四类版本标签与三档说明**；证据 [official-plugin-market-detail-evidence-rc2.md](official-plugin-market-detail-evidence-rc2.md)。**A 块（`plugins.tab` 的 discover tab 骨架 / 索引源增删）与 B 块（搜索 + 分类/标签/排序工具栏）没做**：卡在宿主 `pluginMarket.listIndexes`/`search` 结果形状与索引文档不解析 `metadata.*`。**已知差异（11 处，逐条登记在证据文档 §4）**：安装/更新按钮不画（宿主 501）／文档相对图片不出（无 `detail-file` 路由）／分类·标签·索引名三行通常不画（`metadata.*` 缺）／提示条无警告图标与面包屑用 `‹` 字形（无 sprite 导出）／`DetailDocument` 外框不画（primitives 随包不发 CSS）／`origin` 无 `locale` 档／日期只有 zh 与英文两档 |
 | 31 | `dsh-client-ui-plugin-recommendations` | ✅ IMPLEMENTED | **`plugins/dspluginreco`（`enable_official_plugin` 卡片正文：header/目录标题+描述/状态行/footer 两个按钮）+ `pluginapi/action_card_bodies.go`（正文注册表）+ `plugins/dsactioncards`（注册表提供方与按 kind 派发）+ `internal/apiclient/recommendations.go`（`pluginRecommendations.describe`）+ `cmd/app/official_panels_wiring.go`（describe + 查看详情接线）**；证据 [official-plugin-recommendations-evidence-rc2.md](official-plugin-recommendations-evidence-rc2.md)。**剩余差异**：目录描述到达前的骨架条不画（主题无 `--dsw-alias-bg-skeleton` 对等令牌，不自造灰色）；「查看详情」是标题行可点（官方 `.details` 是整块按钮） |
 | 32 | `dsh-client-ui-reference` | ✅ IMPLEMENTED | `plugins/dsconversation/usertext.go`（file/folder/session chip + PreviewFile）+ `plugins/dscomposer/trigger.go` + `internal/reficon` |
 | 33 | `dsh-client-ui-renderer` | ✅ IMPLEMENTED | `internal/uikernel`（槽 dispatch） |
@@ -176,9 +176,9 @@
 > 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
 > `#54`/`#59` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 49 · 🟡 9 · ⬜ 0（不该有） · ❌ 8
+## 合计：官方 66 个部件 —— ✅ 49 · 🟡 10 · ⬜ 0（不该有） · ❌ 7
 
-> 剩下 11 条 MISSING 的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
+> 剩下 7 条 MISSING 的**逐条核查结论、精确阻断点与下一批排序**（A 档"宿主已在只差界面" /
 > B 档"要一次架构判断" / C 档"宿主缺前置" / D 档"按 HIDE 登记"）见
 > [official-missing-batch-a-findings-rc2.md](official-missing-batch-a-findings-rc2.md)。
 

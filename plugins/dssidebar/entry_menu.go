@@ -112,7 +112,9 @@ func (p *Plugin) pinned(id string) bool {
 
 // entryMenuEntries 是官方传给菜单的 entries：除固定行以外的**全部**面板
 // （SidebarRoot.tsx:419-421 的 `panels.filter(({id}) => id !== FIXED_PANEL_ID)`），
-// 每条带 `{id, label, pinned, active}`。
+// 每条带 `{id, label, pinned, active}`。图标（`Glyph`）一并给：#17 的菜单行要用
+// 面板行**同一个**图标（官方那一格是 `sidebar.panel.icon` 渲染工厂槽，
+// OFF:dsh-client-ui-entry-customization/src/client/EntryMenuContent.tsx:43-45）。
 func (p *Plugin) entryMenuEntries() []pluginapi.EntryMenuEntry {
 	routes := p.panelRoutes()
 	out := make([]pluginapi.EntryMenuEntry, 0, len(routes))
@@ -123,6 +125,7 @@ func (p *Plugin) entryMenuEntries() []pluginapi.EntryMenuEntry {
 		out = append(out, pluginapi.EntryMenuEntry{
 			ID:     route.ID,
 			Label:  route.Label,
+			Glyph:  route.Glyph,
 			Pinned: p.pinned(route.ID),
 			Active: p.activePanel == route.ID,
 		})

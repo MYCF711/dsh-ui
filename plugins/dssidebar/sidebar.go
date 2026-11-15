@@ -23,7 +23,9 @@ import (
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/internal/entrypins"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dssidebar/panelapi"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -213,8 +215,19 @@ type Plugin struct {
 // ID 实现 pluginapi.Plugin。
 func (*Plugin) ID() string { return "ds-sidebar" }
 
-// Provides 实现 pluginapi.Plugin：侧栏目前不对外提供能力。
-func (*Plugin) Provides() []string { return nil }
+// Provides 实现 pluginapi.Plugin：对外提供**面板导航**一项能力。
+//
+// 官方这条服务由 plugin-manager 提供（`ctx.reflect.provide('pluginNavigation',
+// {openList, openBundle})`，OFF:dsh-client-ui-plugin-manager/src/client/index.ts:153-166），
+// 消费方是三个 More 菜单里的「浏览更多插件」（#17）。本仓的插件管理面就在本包的
+// `plugins` 路由里，所以由本包提供这条服务（契约见 `plugins/dssidebar/panelapi`）。
+func (*Plugin) Provides() []string { return []string{panelapi.ServiceKey} }
+
+// OpenList 实现 panelapi.Navigation：打开插件主列表（官方 `openList()`）。
+//
+// 与点面板行走同一条路（`openPanel`）：面板切换是这一处状态机的唯一写入口，
+// 菜单再去写一遍 `activePanel` 就会有两份真相。
+func (p *Plugin) OpenList() { p.openPanel(entrypins.FixedPanelID) }
 
 // Requires 实现 pluginapi.Plugin：没有根本依赖插件它什么都画不了。
 func (*Plugin) Requires() []string {
@@ -229,6 +242,8 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	p.collapsed = map[string]bool{}
+	// 面板导航服务（#17 的「浏览更多插件」行按它存在与否决定画不画）。
+	ctx.Provide(panelapi.ServiceKey, panelapi.Navigation(p))
 	// #10/#62：菜单服务与两份业务贡献（workspace 改名/删除、session 复制 id）。
 	// 贡献是数据面，渲染由服务统一做；这里只登记文案与动作。
 	if err := p.registerContextMenus(ctx); err != nil {

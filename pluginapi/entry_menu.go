@@ -85,6 +85,17 @@ type EntryMenuEntry struct {
 	ID string
 	// Label 是已本地化的显示名（区域宿主给，菜单不查字典）。
 	Label string
+	// Glyph 是条目的图标字形，只给**左栏**菜单行用。
+	//
+	// 官方那一格不是 owner props，而是渲染工厂槽
+	// `renderFactorySlot('sidebar.panel.icon', { id, size: 16, active })`
+	// （OFF:dsh-client-ui-entry-customization/src/client/EntryMenuContent.tsx:43-45），
+	// 由 ui-sidebar 按面板 id 出一枚 16px 图标。本仓的面板行本来就用一个字形
+	// （`dssidebar` 的 `panelRoute.Glyph`，同一枚字形画在面板行上），所以这里把它
+	// 投影进 owner props——菜单行与面板行因此永远是**同一个图标**，不会两处各画一套。
+	//
+	// 空 = 没有图标（会话头区域官方本来就不给这一格，那一侧恒为空）。
+	Glyph string
 	// Pinned 表示这条当前是固定态（= 没进未固定表）。
 	Pinned bool
 	// Active 表示这条是区域里当前选中的那一条。

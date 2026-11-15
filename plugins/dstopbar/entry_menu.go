@@ -140,7 +140,11 @@ func (p *Plugin) visibleViewLimit(env *pluginapi.Env) int {
 
 // viewEntryEntries 是官方 `moreTabs` 的 entries：可见 tab 之外的**全部** view，
 // 每条带 `{id, label, pinned, active}`。
-func (p *Plugin) viewEntryEntries(all, visible []pluginapi.Tab) []pluginapi.EntryMenuEntry {
+//
+// `active` 是官方那一条投影的第四格（`active: viewTab.id === active?.id`，
+// OFF:dsh-client-ui-conversation/src/client/skeleton/ConversationSession.tsx:244-247）：
+// 当前 view 落在 More 里时，菜单那一行要画行尾对勾（#17 的菜单行读它）。
+func (p *Plugin) viewEntryEntries(all, visible []pluginapi.Tab, active string) []pluginapi.EntryMenuEntry {
 	shown := make(map[string]bool, len(visible))
 	for _, tab := range visible {
 		shown[tab.Key] = true
@@ -156,6 +160,7 @@ func (p *Plugin) viewEntryEntries(all, visible []pluginapi.Tab) []pluginapi.Entr
 		}
 		out = append(out, pluginapi.EntryMenuEntry{
 			ID: tab.Key, Label: tab.Label, Pinned: pinned,
+			Active: tab.Key == active && active != "",
 		})
 	}
 	return out
@@ -224,7 +229,7 @@ func (p *Plugin) entryMenuChildren(f ui.C, env *pluginapi.Env, drawSlot func(plu
 	if !p.entryMenu.open || drawSlot == nil {
 		return
 	}
-	all, visible, _, actionsLive := p.viewEntryRoster(env)
+	all, visible, active, actionsLive := p.viewEntryRoster(env)
 	if !actionsLive {
 		// 座位被撤回（插件卸载）而菜单还开着：这一帧直接收起来，不留空菜单面。
 		p.entryMenu.open = false
@@ -237,7 +242,7 @@ func (p *Plugin) entryMenuChildren(f ui.C, env *pluginapi.Env, drawSlot func(plu
 		Open:        true,
 		Slot:        uikernel.OffSessionHeaderViewAction,
 		Region:      pluginapi.EntryRegionConversation,
-		Entries:     p.viewEntryEntries(all, visible),
+		Entries:     p.viewEntryEntries(all, visible, active),
 		OpenEntry:   func(id string) { p.Select(env.Data.Cur, id) },
 		SetPinned:   p.setViewPinned,
 		Dismiss:     func() { p.entryMenu.open = false },

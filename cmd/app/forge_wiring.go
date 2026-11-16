@@ -320,8 +320,8 @@ func (m *model) forgeLoadScope(sessionID string, generation int, scope string) {
 
 // forgeLoadCommits 读 fork point 到 HEAD 的提交（只有 branch 范围显示）。
 //
-// base 传 nil：本仓宿主不认 client 选的 base（`localDiff` 只读 scope.kind），
-// 所以这里也一律用自动分叉点，避免"提交列表按 A 分支、diff 按自动分叉点"的对不上。
+// base 传 nil：BaseMenu 尚未实现，当前视图没有选中分支，因此 diff 与提交列表
+// 都明确使用自动分叉点；两者仍共用同一基准，不会出现各按一套的比较。
 func (m *model) forgeLoadCommits(sessionID string, generation int) {
 	ctx, cancel := context.WithTimeout(context.Background(), forgeReadTimeout)
 	defer cancel()

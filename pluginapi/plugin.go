@@ -1420,6 +1420,14 @@ type Actions struct {
 	// ModelsList 列可选模型（壳缓存，启动后拉一次）。
 	// nil = 壳没接（老宿主）。
 	ModelsList func() []Model
+	// ModelsPageSnapshot 同步返回 Models 页三路宿主目录的缓存快照。
+	// 首次读取返回 Loading=true，并在后台请求 llm.listProviders、
+	// llm.listConfigurableProviders 与 session.modelCatalog；完成后壳会 Invalidate。
+	// nil = 壳没接，插件不得把 nil 当成真实空目录。
+	ModelsPageSnapshot func() *apiclient.ModelsPageSnapshot
+	// ModelsPageRefresh 请求后台重读三路目录；已有请求在飞时不重复触发。
+	// 调用方不等待结果，刷新完成后由壳 Invalidate。nil = 壳没接。
+	ModelsPageRefresh func()
 	// SetModel 改当前会话的模型覆盖（空串 = 清除）。
 	SetModel func(id string)
 
@@ -1504,6 +1512,10 @@ type Actions struct {
 	// retryPolicy 的嵌套路径（`providers.<route>.retryPolicy.*`）走这条：
 	// 官方 `settings.form.set` 只接受单段字段名。
 	SettingsMutate func(ns string, ops []apiclient.SettingsOp, expectedRevision int) (apiclient.SettingsNamespaceView, error)
+	// SettingsMutateRevision 是完整 revision 写口：非 nil 的 0 也必须发送，
+	// nil 才表示不 fence。Models retryPolicy 用它避免覆盖新文档的首次并发写。
+	// nil = 老壳没有这条能力；老壳对 revision 0 必须明确拒绝写，不能静默降级。
+	SettingsMutateRevision func(ns string, ops []apiclient.SettingsOp, expectedRevision *int) (apiclient.SettingsNamespaceView, error)
 
 	// PluginInventory 返回壳缓存的官方 `pluginInventory.list` 结果
 	// —— 设置面板「内置插件」页的数据面。

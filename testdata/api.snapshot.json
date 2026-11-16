@@ -288,6 +288,51 @@
       },
       "req_note": "空串 = 清除覆盖"
     },
+    "session.modelCatalog": {
+      "batch": 5,
+      "req": {},
+      "resp": {
+        "default": {
+          "provider": "string",
+          "model": "string",
+          "reasoningEffort": "string?"
+        },
+        "routableProviders": [
+          "string"
+        ],
+        "groups": [
+          {
+            "id": "string",
+            "name": "string",
+            "models": [
+              {
+                "id": "string",
+                "name": "string",
+                "description": "string?",
+                "reasoning": {
+                  "efforts": [
+                    {
+                      "id": "string",
+                      "name": "string",
+                      "description": "string?"
+                    }
+                  ],
+                  "defaultEffort": "string?"
+                }
+              }
+            ]
+          }
+        ],
+        "failures": [
+          {
+            "id": "string",
+            "name": "string",
+            "message": "string"
+          }
+        ]
+      },
+      "req_note": "官方 parameters: []（传任何字段回 400）；结果 {default,routableProviders,groups,failures}，reasoning/defaultEffort 可省略。未接线回 501 not_implemented，**不是空目录**。"
+    },
     "session.setPermission": {
       "batch": 2,
       "req": {
@@ -537,6 +582,17 @@
         }
       },
       "req_note": "宿主 handlers_session_official.go:875。结果 {asOfSeq,values}；values 是**开放集合**，键缺失 = 该能力不存在（不许当空数组/0 用）。本仓界面只解 subagentCatalog 与 teamMode 两个键；空会话 asOfSeq=-1。sessionId 必填，空串回 bad_request。"
+    },
+    "llm.listProviders": {
+      "batch": 5,
+      "req": {},
+      "resp": [
+        {
+          "id": "string",
+          "name": "string"
+        }
+      ],
+      "req_note": "官方 parameters: []（传任何字段回 400）；结果是已注册 provider 的 {id,name} 数组。未接线回 501 not_implemented，**不是空数组**。"
     },
     "llm.listConfigurableProviders": {
       "batch": 5,
@@ -1846,12 +1902,12 @@
     }
   },
   "counts": {
-    "total": 102,
+    "total": 104,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
     "batch4": 2,
-    "batch5": 1,
+    "batch5": 3,
     "batch6": 6,
     "batch7": 8,
     "batch8": 1,
@@ -1865,8 +1921,8 @@
     "batch16": 3,
     "batch17": 1,
     "batch18": 1,
-    "batch19": 2,
-    "batch20": 3,
+    "batch19": 5,
+    "batch20": 0,
     "batch21": 14,
     "batch22": 4
   }

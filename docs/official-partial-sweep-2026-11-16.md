@@ -90,7 +90,7 @@ seam、pick/null/error、workspace.create 已接，宿主也有真 IFileOpenDial
 
 ### #41 `dsh-client-ui-settings-models` — 保持 🟡
 
-宿主 provider 目录、discoverModels、modelCatalog、credentials describe/set/unset 已有。GUI 目前只有 defaultModel 与 retryPolicy 行，且 retry 是逐行立即写。缺 provider directory join、账号行、凭据点与密钥写删、baseURL/protocol/models/input/reasoning 编辑、catalog/custom 添加、模型发现测试、删除 Modal、保存/只读/加载/失败/冲突态、动态 provider-card/footer、onboarding 与推送失效刷新；是独立 Models store/page，不是小文案补丁。
+宿主 provider 目录、discoverModels、modelCatalog、credentials describe/set/unset 已有。本轮 GUI 已把独立数据页接上：provider 目录来自 `llm.listProviders` + `llm.listConfigurableProviders` 的真实 join；模型目录按 `session.modelCatalog.groups` 渲染；默认模型候选来自同一目录；retryPolicy 从逐行立即写改为 provider 卡内草稿，Cancel 丢弃、Apply 按开卡 revision 发一次最小 `settings.mutate`，409 保留草稿。保存/只读/加载/失败/冲突态与真实滚动点击已有测试。剩余：账号可用性/登录态、凭据点与密钥写删、baseURL/protocol/models/input/reasoning 编辑、catalog/custom 添加、模型发现测试、删除 Modal、whole-section namespace 编辑、schema 驱动的文本与自定义 code 控件、动态 provider-card/footer、onboarding、失败重试与推送失效刷新。
 
 ### #50 `dsh-client-ui-sidebar-browser` — 保持 🟡
 

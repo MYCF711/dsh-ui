@@ -108,6 +108,8 @@ type officialHarness struct {
 	roster *apiclient.AgentPresetRoster
 	// agentPresetRefresh 记录名册被重读了几次（写成功后壳会重拉一次）。
 	agentPresetRefresh int
+	// modelsSnapshot 是 Models 独立页的三路宿主快照；nil 走真实 llm 设置回退。
+	modelsSnapshot *apiclient.ModelsPageSnapshot
 }
 
 func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
@@ -189,6 +191,11 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			h.mu.Unlock()
 			h.invalidator.Invalidate()
 		},
+		ModelsPageSnapshot: func() *apiclient.ModelsPageSnapshot {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.modelsSnapshot
+		},
 	}
 
 	h.tree = &gfx.Tree{}
@@ -219,6 +226,7 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 		}
 		return gfx.EventResult{}
 	}
+	config.OnScroll = func(ev gfx.ScrollEvent) gfx.EventResult { return view.Wheel(ev) }
 	h.invalidator = &app.Invalidator{}
 	config.Invalidator = h.invalidator
 	// 文本输入必须登记（与产品壳 `newConfig` 同一条聚合路径），否则搜索框收不到键盘。
@@ -244,19 +252,34 @@ func (h *officialHarness) pump() {
 
 func (h *officialHarness) close() { h.session.Close() }
 
-func (h *officialHarness) hitFor(name string) gfx.Hit {
+func (h *officialHarness) findHit(name string) (gfx.Hit, bool) {
 	h.t.Helper()
 	id := h.tree.ID(h.feat, name)
 	for _, hit := range h.session.Snapshot().Hits {
 		if hit.ID == id {
-			return hit
+			return hit, true
 		}
+	}
+	return gfx.Hit{}, false
+}
+
+func (h *officialHarness) hitFor(name string) gfx.Hit {
+	h.t.Helper()
+	if hit, ok := h.findHit(name); ok {
+		return hit
 	}
 	ids := make([]string, 0, len(h.session.Snapshot().Hits))
 	for _, hit := range h.session.Snapshot().Hits {
 		ids = append(ids, fmt.Sprint(hit.ID))
 	}
-	h.t.Fatalf("没有命中区 %q；hits=%v", name, ids)
+	if section, ok := h.p.PanelModel().Section(h.p.ActiveSection()); ok {
+		for _, row := range section.Rows {
+			if hit, found := h.findHit("settings-row-" + row.ID); found {
+				h.t.Logf("行命中 %q bounds=%+v", row.ID, hit.Bounds)
+			}
+		}
+	}
+	h.t.Fatalf("没有命中区 %q；hits=%v；texts=%v", name, ids, h.session.Texts())
 	return gfx.Hit{}
 }
 
@@ -278,6 +301,30 @@ func (h *officialHarness) click(name string) {
 	}
 	h.pump()
 	h.pump()
+}
+
+// clickScrolled 在真实滚动容器里把长 Models 卡的行滚到可见后再点击；
+// 每轮都 pump，绝不拿未布局的旧命中区断言。
+func (h *officialHarness) clickScrolled(name string) {
+	h.t.Helper()
+	for i := 0; i < 40; i++ {
+		if hit, ok := h.findHit(name); ok {
+			x, y := hit.Bounds.X+hit.Bounds.Width/2, hit.Bounds.Y+hit.Bounds.Height/2
+			snap := h.session.Snapshot()
+			if x >= 0 && y >= 0 && x < float32(snap.Width) && y < float32(snap.Height) {
+				if id, hitOK := h.session.Driver().HitTest(x, y); hitOK && id == hit.ID {
+					h.click(name)
+					return
+				}
+			}
+		}
+		snap := h.session.Snapshot()
+		if err := h.session.Scroll(gfx.ScrollEvent{X: float32(snap.Width) * 0.75, Y: float32(snap.Height) / 2, DeltaY: 180}); err != nil {
+			h.t.Fatal(err)
+		}
+		h.pump()
+	}
+	h.click(name)
 }
 
 // agentPresetRefreshCount 读"名册重读被触发了几次"（加锁：写请求在别的 goroutine 里）。
@@ -411,8 +458,54 @@ func TestOfficialPanelRendersFiveSections(t *testing.T) {
 
 }
 
-// TestOfficialPanelRetryRowsRenderAndWrite 证明 retryPolicy 行真的画出来、
-// 点击真的走写路径，且 409 失败态**画在右页上**。
+// TestOfficialModelsDirectoryAndDefaultWrite 用真实三路快照证明 provider join、
+// 按 provider 分组的模型目录与默认模型选择都落到可点击页面。
+func TestOfficialModelsDirectoryAndDefaultWrite(t *testing.T) {
+	h := openOfficialHarness(t, 1182, 832)
+	defer h.close()
+	h.mu.Lock()
+	h.modelsSnapshot = modelsSnapshotFixture()
+	for index := range h.describe.Sections {
+		if h.describe.Sections[index].NS == apiclient.SettingsNSModel {
+			h.describe.Sections[index].Fields[0].Current = "zeta-1"
+		}
+	}
+	h.mu.Unlock()
+	h.pump()
+	h.pump()
+	if err := h.session.Driver().Key(gfx.KeyF2, gfx.ModifierShift); err != nil {
+		t.Fatal(err)
+	}
+	h.pump()
+	h.pump()
+	h.click("settings-nav-models")
+	for i := 0; i < 20 && !h.hasText("Zeta One"); i++ {
+		h.pump()
+	}
+	for _, want := range []string{"Zeta configurable", "Registered only", "模型目录 · Zeta", "Zeta One", "DeepSeek Chat"} {
+		if !h.hasText(want) {
+			t.Fatalf("Models 页缺真实目录文本 %q；texts=%v", want, h.session.Texts())
+		}
+	}
+
+	h.click("settings-row-model-default")
+	if !waitWriterCalls(h, 1) {
+		t.Fatal("点击默认模型选择器没有触发 settings.form.set")
+	}
+	for i := 0; i < 400 && h.p.WriteState().Kind != WriteSaved; i++ {
+		h.pump()
+	}
+	call, ok := h.writer.lastCall()
+	if !ok || call.value != "zeta-2" {
+		t.Fatalf("默认模型写入 = %+v, ok=%v；应从 zeta-1 移到 zeta-2", call, ok)
+	}
+	if strings.Join(call.path, ".") != "defaultModel" || call.expectedRev == nil || *call.expectedRev != 3 {
+		t.Fatalf("默认模型写路径/revision 错：%+v", call)
+	}
+}
+
+// TestOfficialPanelRetryRowsRenderAndWrite 证明 retryPolicy 行真的画出来；
+// 字段点击只改草稿，Apply 才发一次原子 mutate，409 失败态画在右页且草稿保留。
 func TestOfficialPanelRetryRowsRenderAndWrite(t *testing.T) {
 	h := openOfficialHarness(t, 1182, 832)
 	defer h.close()
@@ -423,6 +516,7 @@ func TestOfficialPanelRetryRowsRenderAndWrite(t *testing.T) {
 	h.pump()
 	h.pump()
 	h.click("settings-nav-models")
+	h.click("settings-row-provider-edit-deepseek")
 
 	// 8 个 code 候选都画出来了（文本至少出现 RATE_LIMIT / TIMEOUT / TRANSPORT）。
 	for _, code := range []string{"RATE_LIMIT", "TIMEOUT", "TRANSPORT", "EMPTY_RESPONSE"} {
@@ -431,28 +525,54 @@ func TestOfficialPanelRetryRowsRenderAndWrite(t *testing.T) {
 		}
 	}
 
-	// 点击一个 code 行 → 真实写路径（mutate，多段 path）。
-	h.click("settings-row-retry-deepseek-code-TIMEOUT")
-	deadline := 200
-	for h.writer.callCount() == 0 && deadline > 0 {
+	h.clickScrolled("settings-row-retry-deepseek-code-RATE_LIMIT")
+	for i := 0; i < 20; i++ {
 		h.pump()
-		deadline--
 	}
-	if h.writer.callCount() == 0 {
-		t.Fatalf("点击 code 行没有触发写（status=%q）", h.statusText())
+	if got := h.writer.callCount(); got != 0 {
+		t.Fatalf("字段点击必须只改草稿，却在 Apply 前写了 %d 次", got)
+	}
+	models, _ := h.p.PanelModel().Section("models")
+	if _, ok := models.Row("retry-deepseek-apply"); !ok {
+		t.Fatal("打开 provider 卡后缺 Apply 行")
+	}
+	h.clickScrolled("settings-row-retry-deepseek-apply")
+	if !waitWriterCalls(h, 1) {
+		t.Fatalf("Apply 没有触发写（status=%q）", h.statusText())
+	}
+	for i := 0; i < 400 && h.p.WriteState().Kind != WriteSaved; i++ {
+		h.pump()
+	}
+	if h.p.WriteState().Kind != WriteSaved {
+		t.Fatalf("第一次 Apply 未进入已保存：%+v", h.p.WriteState())
 	}
 
-	// 再点一次，但让写入回 409：失败态必须画出来。
+	// 再改一次并注入 409：Apply 后失败态必须画出来，编辑卡不能消失。
+	models, _ = h.p.PanelModel().Section("models")
+	providerRow, _ := models.Row("provider-edit-deepseek")
+	h.p.activateRow(providerRow)
+	h.pump()
+	for i := 0; i < 20; i++ {
+		models, _ = h.p.PanelModel().Section("models")
+		if _, ok := models.Row("retry-deepseek-apply"); ok {
+			break
+		}
+		h.pump()
+	}
+	if _, ok := models.Row("retry-deepseek-apply"); !ok {
+		t.Fatalf("第二次点击 Edit 未打开编辑卡；texts=%v", h.session.Texts())
+	}
+	h.clickScrolled("settings-row-retry-deepseek-code-TIMEOUT")
 	h.writer.mu.Lock()
-	// retryPolicy 走 settings.mutate（多段路径），所以冲突注入在 mutateErr。
 	h.writer.mutateErr = apiError(apiclient.SettingsCodeRevisionConflict,
 		"llm revision 已变化", "重新 describe 后再提交", false)
 	h.writer.mu.Unlock()
-	h.click("settings-row-retry-deepseek-code-SERVER")
-	deadline = 200
-	for h.writer.callCount() < 2 && deadline > 0 {
+	h.clickScrolled("settings-row-retry-deepseek-apply")
+	if !waitWriterCalls(h, 2) {
+		t.Fatal("第二次 Apply 没有触发写")
+	}
+	for i := 0; i < 100 && h.p.WriteState().Kind != WriteConflict; i++ {
 		h.pump()
-		deadline--
 	}
 	h.pump()
 	h.pump()
@@ -470,6 +590,13 @@ func TestOfficialPanelRetryRowsRenderAndWrite(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("冲突文案没画到右页上；文本=%v", h.session.Texts())
+	}
+	models, ok := h.p.PanelModel().Section("models")
+	if !ok {
+		t.Fatal("冲突后 Models 页消失")
+	}
+	if _, ok = models.Row("retry-deepseek-apply"); !ok {
+		t.Fatal("冲突后编辑卡被关闭，用户草稿丢失")
 	}
 }
 

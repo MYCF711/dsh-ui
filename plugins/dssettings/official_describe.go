@@ -127,6 +127,9 @@ type PanelSection struct {
 	// （官方 `AgentPresetSection` 是卡片网格 + 卡片本体即选择控件），
 	// 不是「标题 + 一行一个控件」那一套。Rows 对它是空的。
 	AgentPresets *AgentPresetsPanel
+	// Models 非 nil 表示 Models 独立页：provider 目录、分组模型目录与
+	// retryPolicy 草稿卡。Rows 仍保留拍平投影供键盘焦点与测试使用。
+	Models *ModelsPage
 }
 
 // PanelModel 是一帧设置面板的全部内容。
@@ -408,77 +411,10 @@ func generalRow(id, title, hostField, field string, choices []Choice, defaultVal
 	return row
 }
 
-// buildModelsSection 造 models 页：provider 列表 + retryPolicy 编辑。
-//
-// 数据来源：`model` 命名空间（默认模型）与 `llm` 命名空间
-// （`providers.<route>.retryPolicy`，可写）。
+// buildModelsSection 造 Models 独立页。老壳没有目录快照时只从真实 llm 设置
+// 回推出 route；产品路径随后由 syncPanel 用三路桥接快照重建同一页。
 func buildModelsSection(panel *PanelSection, describe *apiclient.SettingsDescribeResult, m *PanelModel) {
-	if describe == nil {
-		panel.State = PanelUnknown
-		panel.Note = "未知：宿主未接 settings.describe"
-		return
-	}
-
-	// ── 默认模型（model 命名空间）──
-	if section, ok := describe.Section(apiclient.SettingsNSModel); ok {
-		row := PanelRow{
-			ID: "model-default", Title: "默认模型", Kind: ItemSelector,
-			NS: section.NS, Field: "defaultModel", Path: []string{"defaultModel"},
-			Revision: section.Revision,
-			Disabled: !section.Writable,
-			Choices: []PanelChoice{
-				{Value: "", Label: "跟随启动参数", Desc: "清除覆盖，回到宿主的 --model"},
-			},
-		}
-		if f, ok := section.Field("defaultModel"); ok {
-			if value, known := apiclient.SettingValueString(f.Current); known {
-				row.Value, row.Known, row.Selected = value, true, value
-			}
-			if enum := f.Enum; len(enum) > 0 {
-				row.Choices = nil
-				for _, v := range enum {
-					row.Choices = append(row.Choices, PanelChoice{Value: v, Label: v})
-				}
-			}
-		}
-		if !row.Known {
-			m.Unknown = append(m.Unknown, "model.defaultModel")
-		}
-		panel.Rows = append(panel.Rows, row)
-	} else {
-		m.Unknown = append(m.Unknown, "model.*")
-	}
-
-	// ── provider 的 retryPolicy（llm 命名空间）──
-	routes, policies, ok := llmRetryPolicies(describe)
-	switch {
-	case !ok:
-		panel.Rows = append(panel.Rows, PanelRow{
-			ID: "retry-policy-unknown", Title: "重试策略", Kind: ItemSelector,
-			Disabled: true, Reason: "宿主未提供 llm 命名空间（providers.<route>.retryPolicy）",
-		})
-		m.Unknown = append(m.Unknown, "llm.providers.*.retryPolicy")
-	case len(routes) == 0:
-		panel.State = PanelEmpty
-		panel.Note = "宿主 llm 命名空间里没有任何 provider 配置"
-	default:
-		// llm 的 section 可能没有单独的 form 投影（宿主只给 namespace value），
-		// 那时用顶层 writable / revision：**不要**因为「没有 section」就把行判成
-		// 只读——那会让可写的 retryPolicy 整页点不动。
-		revision, writable := 0, describe.Writable
-		if section, ok := describe.Section(apiclient.SettingsNSLLM); ok {
-			revision, writable = section.Revision, section.Writable
-		}
-		for _, route := range routes {
-			view := policies[route]
-			for _, row := range RetryPolicyRows(route, view, revision, writable) {
-				panel.Rows = append(panel.Rows, row)
-			}
-		}
-	}
-
-	panel.Groups = []PanelGroup{{Title: "模型与重试", Rows: panel.Rows}}
-	panel.Writable = describe.Writable
+	*panel = buildModelsPage(*panel, describe, m, nil, nil)
 }
 
 // buildStaticSection 是「结构在、数据不在」的 section 的统一降级：

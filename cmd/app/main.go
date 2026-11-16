@@ -211,6 +211,12 @@ type model struct {
 
 	// models 是可选模型清单（宿主 models.list 的投影），启动拉一次。
 	models []pluginapi.Model
+	// modelsPageCache 是 Models 页三路官方目录的同步快照缓存。
+	// loaded=false 表示首次读取尚未完成；pending 防止每帧重复发三路请求。
+	modelsPageCache         apiclient.ModelsPageSnapshot
+	modelsPageLoaded        bool
+	modelsPagePending       bool
+	modelsPageRefreshQueued bool
 	// settingsDescribe 是宿主 settings.describe 的缓存（设置面板的数据面）。
 	// nil = 还没拉到（界面显示「未知」，不编值）。
 	settingsDescribe *apiclient.SettingsDescribeResult
@@ -2699,6 +2705,9 @@ func main() {
 			defer m.mu.Unlock()
 			return m.models
 		},
+		// Models 页：三路官方目录同步读缓存，首读/显式刷新都在后台完成。
+		ModelsPageSnapshot: m.modelsPageSnapshot,
+		ModelsPageRefresh:  m.modelsPageRefresh,
 		// 模型覆盖：写宿主 <home>/state/session-model.json。
 		// **空串 = 清除覆盖**，回到宿主默认。异步、失败只写状态栏。
 		SetModel: func(modelID string) {
@@ -2796,11 +2805,12 @@ func main() {
 		// 设置面（HOST-SETTINGS-FORM，rc.2 官方 SettingsRoot）：
 		// describe 同步返回缓存、首次问触发后台拉取；写路径同步（调用方在
 		// goroutine 里）、冲突原样回给插件渲染。见 settings_panel_wiring.go。
-		SettingsDescribe:  m.settingsDescribeSnapshot,
-		SettingsHostFacts: m.settingsHostFacts,
-		SettingsFormSet:   m.settingsFormSet,
-		SettingsFormReset: m.settingsFormReset,
-		SettingsMutate:    m.settingsMutate,
+		SettingsDescribe:       m.settingsDescribeSnapshot,
+		SettingsHostFacts:      m.settingsHostFacts,
+		SettingsFormSet:        m.settingsFormSet,
+		SettingsFormReset:      m.settingsFormReset,
+		SettingsMutate:         m.settingsMutate,
+		SettingsMutateRevision: m.settingsMutateRevision,
 		// 内置插件页的数据面：官方 pluginInventory.list 的缓存。
 		// 与 describe 分开一处（它不是 Host 设置，是 Loader 的只读投影），
 		// 见 plugin_inventory_wiring.go。

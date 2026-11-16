@@ -56,6 +56,11 @@ type officialPanel struct {
 	// agentPresetRefresh 是壳的"重读名册"入口（写成功后触发一次）。
 	agentPresetRefresh func()
 
+	// modelsEdit 是唯一展开中的 provider retryPolicy 草稿。字段点击只改它；
+	// 只有 Apply 行会经 writer 发一次 settings.mutate。
+	modelsEdit           *retryEditorState
+	nextModelsGeneration uint64
+
 	// rows 是当前 section 的可点行（键盘光标用）。
 	rows   []PanelRow
 	cursor int
@@ -286,6 +291,18 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	}
 
 	model := BuildPanelWithSources(describe, facts, inventory, o.pluginsView(), roster)
+	var modelsSnapshot *apiclient.ModelsPageSnapshot
+	if env.Act.ModelsPageSnapshot != nil {
+		modelsSnapshot = env.Act.ModelsPageSnapshot()
+	}
+	o.mu.Lock()
+	modelsEdit := o.modelsEdit.clone()
+	o.mu.Unlock()
+	for index := range model.Sections {
+		if model.Sections[index].ID == "models" {
+			model.Sections[index] = buildModelsPage(model.Sections[index], describe, nil, modelsSnapshot, modelsEdit)
+		}
+	}
 
 	o.mu.Lock()
 	o.describe = describe
@@ -366,8 +383,17 @@ func (w actionWriter) SettingsFormReset(_ context.Context, ns string, path []str
 }
 
 func (w actionWriter) SettingsMutate(_ context.Context, ns string, ops []apiclient.SettingsOp, expectedRevision *int) (apiclient.SettingsNamespaceView, error) {
+	if w.act.SettingsMutateRevision != nil {
+		return w.act.SettingsMutateRevision(ns, ops, expectedRevision)
+	}
 	if w.act.SettingsMutate == nil {
 		return apiclient.SettingsNamespaceView{}, errNoSettingsWriter
+	}
+	if expectedRevision != nil && *expectedRevision == 0 {
+		return apiclient.SettingsNamespaceView{}, &apiclient.APIError{
+			Code: apiclient.SettingsCodeInternal, Message: "老壳不能对 revision 0 做乐观锁写",
+			Hint: "升级壳的 SettingsMutateRevision；本次未写入",
+		}
 	}
 	return w.act.SettingsMutate(ns, ops, derefRevision(expectedRevision))
 }
@@ -504,6 +530,10 @@ func (p *Plugin) drawPanelNav(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a 
 
 // drawPanelOptions 画右页（active section 的行）。
 func (p *Plugin) drawPanelOptions(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect, section PanelSection, write WriteState) {
+	if section.Models != nil {
+		p.drawModelsPage(f, env, t, a, section, write)
+		return
+	}
 	// 「内置插件」页有**自己的**渲染面（搜索 + 分组 + 卡片网格 + 展开详情），
 	// 不是"标题 + 一行一个控件"那一套；官方也是另一个组件树
 	// （`settings.plugins.tab` 里渲染 `PluginInventorySettingsTab`）。
@@ -654,6 +684,9 @@ func (p *Plugin) activateRow(row PanelRow) {
 	if !row.Writable() {
 		return
 	}
+	if p.activateModelsRow(row) {
+		return
+	}
 	if row.NS == apiclient.SettingsNSSessionLog {
 		o := p.ensureOfficial()
 		o.mu.Lock()
@@ -686,7 +719,10 @@ func (p *Plugin) applyRowWrite(row PanelRow) WriteState {
 	ctx, cancel := context.WithTimeout(context.Background(), panelWriteTimeout)
 	defer cancel()
 	var state WriteState
-	if len(row.Path) > 2 {
+	if row.NS == apiclient.SettingsNSModel && row.Field == "defaultModel" && value == "" {
+		// defaultModel 的 MinLength=1；空选项是清除 user 覆盖，不是写空串。
+		state = ApplyReset(ctx, writer, row.NS, row.Path, row.Revision)
+	} else if len(row.Path) > 2 {
 		// 多段路径（retryPolicy）走 mutate。
 		ops := []apiclient.SettingsOp{apiclient.SettingsSetOp(row.Path, value)}
 		state = ApplyMutate(ctx, writer, row.NS, ops, row.Revision)

@@ -213,6 +213,10 @@ type model struct {
 	termText    string // 已剥掉 ANSI 的可读文本（累计）
 	termNext    int    // 增量水位
 	termPending bool
+	// terminalViews/terminalWatchers 是官方用户终端控制面的 per-session 缓存与
+	// 长连接。键分别为 session+"\x00"+occurrence 与 session；见 terminal_wiring.go。
+	terminalViews    map[string]*terminalViewState
+	terminalWatchers map[string]*terminalWatchState
 
 	// models 是可选模型清单（宿主 models.list 的投影），启动拉一次。
 	models []pluginapi.Model
@@ -2792,6 +2796,12 @@ func main() {
 			defer m.mu.Unlock()
 			return m.termText
 		},
+		TerminalEnsure:         m.terminalEnsure,
+		TerminalRetry:          m.terminalRetry,
+		TerminalSnapshot:       m.terminalSnapshot,
+		TerminalWriteOfficial:  m.terminalWriteOfficial,
+		TerminalRenameOfficial: m.terminalRenameOfficial,
+		TerminalCloseOfficial:  m.terminalCloseOfficial,
 		// 审批策略：写宿主 <home>/state/session-permission.json。
 		// **异步、失败只写状态栏**——和 ConfigSet 同一个策略：插件不等待、不重试。
 		SetPermission: func(perm string) {

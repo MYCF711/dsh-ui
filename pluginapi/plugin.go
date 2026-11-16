@@ -926,6 +926,20 @@ const (
 	FileDownload = "download"
 )
 
+// TerminalViewState 是官方 TerminalViewState 的壳缓存子集：阶段、环境、shell
+// 名录、终端元数据、可写性与待绘制文本。Screen 是本仓既有的 ANSI 剥离投影，
+// 不冒充 xterm 的完整 VT 屏幕。
+type TerminalViewState struct {
+	Phase       string
+	Info        *apiclient.TerminalInfo
+	Environment *apiclient.TerminalEnvironment
+	Shells      []apiclient.TerminalShell
+	Writable    bool
+	Retained    bool
+	Screen      string
+	Error       string
+}
+
 // Actions 是插件能触发的动作。
 //
 // 只放「用户点了会改状态」的入口；读状态走 Snapshot。
@@ -1498,6 +1512,20 @@ type Actions struct {
 	// 返回的是"到目前为止的全部"（不是增量）——插件画的时候要能整段重绘，
 	// 让它自己维护增量只会多一处可能对不上的状态。
 	TerminalRead func(id string) string
+
+	// TerminalEnsure 按右栏 occurrence 创建或恢复官方用户终端，并启动
+	// environment/shells/list → retain → attach 的真实链。重复调用幂等。
+	TerminalEnsure func(tabID string)
+	// TerminalRetry 在 failed/disconnected 后重新 retain+attach（不替换 Host 身份）。
+	TerminalRetry func(tabID string)
+	// TerminalSnapshot 同步读某 occurrence 的缓存；绝不发 HTTP。
+	TerminalSnapshot func(tabID string) TerminalViewState
+	// TerminalWriteOfficial 写入当前 tab 绑定的 PTY；typed=true 只用于真实人员输入。
+	TerminalWriteOfficial func(tabID, data string, typed bool)
+	// TerminalRenameOfficial / TerminalCloseOfficial 是同步宿主动作，调用方在
+	// goroutine 或壳的 close handler 中使用；错误必须原样返回，不静默成功。
+	TerminalRenameOfficial func(tabID, title string) error
+	TerminalCloseOfficial  func(tabID string) error
 
 	// SetPermission 改当前会话的审批策略（deny/ask/allow/auto）。
 	//

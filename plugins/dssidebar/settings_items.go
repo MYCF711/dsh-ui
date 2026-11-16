@@ -102,6 +102,22 @@ const (
 	zhSubagentCapBody   = "同一主 Agent 下，所有递归层级同时存活的子智能体总数，主 Agent 不计入。达到上限时，新的启动请求会被拒绝。" // 'subagentCapacityHelp' :83
 	zhSubagentCapBad    = "请输入不小于 1 的整数。"                                               // 'subagentCapacityInvalid' :85
 
+	// #46 模型选择（OFF:ui-settings-subagent/src/client/locales.ts:86-99）。
+	zhSubagentModels           = "模型选择"                                              // 'subagentModelSelectionTitle' :86
+	zhSubagentModelToggle      = "允许 Agent 为子智能体选择模型"                                // 'subagentModelSelectionToggle' :87
+	zhSubagentModelChoose      = "开启后，Agent 可以从下方授权模型中，为每个子智能体选择提供方、模型和推理强度。仅影响新会话。" // :88
+	zhSubagentModelAllowed     = "Agent 可选择的模型"                                      // :89
+	zhSubagentModelLoading     = "正在加载模型…"                                           // :90
+	zhSubagentModelLoadFailed  = "无法加载模型。"                                           // :91
+	zhSubagentModelRetry       = "重试"                                                // :92
+	zhSubagentModelPartial     = "部分模型提供方暂时无法加载；已保存的选择仍可移除。"                         // :93
+	zhSubagentModelUnavailable = "当前不可用"                                             // :94
+	zhSubagentModelStaleGroup  = "已保存但当前不可用"                                         // :95
+	zhSubagentModelEmpty       = "当前没有模型提供方公布模型。"                                    // :96
+	zhSubagentModelRequired    = "保存前请至少选择一个模型。"                                     // :97
+	zhSubagentModelConflict    = "设置已在其他位置更新。请放弃修改后重试。"                              // :98
+	zhSubagentModelOff         = "关闭后，子智能体使用配置的默认模型或继承父 Agent 的模型；已选模型会保留。"          // :99
+
 	// 三个页面共用的表单框架文案（各自 locales.ts 的同名键，逐字相同）：
 	// agent-loop:40-47 / shell:38-45 / subagent:65-71。
 	zhFormOverridden = "已覆盖"                 // 'overridden'
@@ -137,20 +153,19 @@ const (
 
 	// settingsNSSubagent 是 #46 的第一条命名空间（OFF:index.ts:50）。
 	settingsNSSubagent = "subagent"
-	// settingsNSSubagentModelSelection 是同一页的第二条命名空间（同文件 :24-25 的常量
-	// `SUBAGENT_MODEL_SELECTION_NS = 'subagent-model-selection-settings'`）。
-	//
-	// 本轮**不画**它那一节：宿主把它发布了，但 `allowedModels` 是对象数组，
-	// 宿主 sections 投影只有标量三种（HOST:internal/settingsform/registry.go:14-21），
-	// 字段根本到不了界面；而且本仓宿主这条命名空间**没有消费方**
-	// （HOST:docs/settings-namespaces-official-pages.md §4.2）。缺真实能力就 HIDE + 登记，
-	// 不拿一个"能点但没人读"的开关冒充。理由与台账见
-	// docs/official-settings-pages-evidence-rc2.md §3。
+	// settingsNSSubagentModelSelection 是同一页的第二条命名空间
+	// （OFF:subagent-model-selection-card-controller.ts:9）。allowedModels 是对象数组，
+	// 不走 sections.fields，而从 NamespaceView.Value 的原始 JSON 投影；写路径仍是
+	// settings.mutate（宿主 host_settings_pages_test.go:257-271 已钉住往返）。
 	settingsNSSubagentModelSelection = "subagent-model-selection-settings"
 	// settingsFieldMaxDepth / settingsFieldMaxActiveSubagents 是效果那一节的两个字段
 	// （OFF:subagent-limits-card-controller.ts:10-13）。
 	settingsFieldMaxDepth           = "maxDepth"
 	settingsFieldMaxActiveSubagents = "maxActiveSubagents"
+	// 模型选择一节在同一次 mutate 里写这两个字段
+	// （OFF:subagent-model-selection-card-controller.ts:279-286）。
+	settingsFieldSubagentModelEnabled = "enabled"
+	settingsFieldAllowedModels        = "allowedModels"
 )
 
 // settingsItemField 是一页表单里的一个字段（官方 `SettingsValueField`）。
@@ -398,6 +413,10 @@ type settingsItemDraft struct {
 	// 把这条不变量放在 plan 里判（`draft.Ref == 当前引用` 才写），等价且没有
 	// "绘制顺带改状态"的副作用；引用变了以后遗留的旧草稿在 plan/显示上都被忽略。
 	Ref string
+	// Subagent 非 nil 时，这份草稿承载 #46 整个模型选择 section，而不是文本字段。
+	// enabled 与 allowedModels 必须共享一个草稿和 baseline，保存时才能按官方形状
+	// 在同一次 settings.mutate 中提交（OFF:subagent-model-selection-card-controller.ts:262-286）。
+	Subagent *settingsSubagentModelDraft
 }
 
 // settingsItemDraftKey 是草稿表的键：`ns\x00field`。
@@ -474,6 +493,9 @@ func (f *settingsItemForm) snapshot() (map[string]settingsItemDraft, map[string]
 	defer f.mu.Unlock()
 	drafts := make(map[string]settingsItemDraft, len(f.drafts))
 	for key, draft := range f.drafts {
+		if draft.Subagent != nil {
+			draft.Subagent = cloneSettingsSubagentModelDraft(draft.Subagent)
+		}
 		drafts[key] = draft
 	}
 	baseline := make(map[string]int, len(f.baseline))
@@ -586,12 +608,17 @@ type settingsItemCardState struct {
 	// Web 是 #47 那一页的专用状态（Kind==settingsItemKindWebSearch 时非 nil）。
 	// 那一页不是"section → 字段"的形状（provider 菜单 + 灰面板），所以状态也是并行的。
 	Web *settingsItemWebState
+	// Model 是 #46 的模型选择 section；allowedModels 是对象数组，与标量 limits 并行投影。
+	Model *settingsSubagentModelState
 }
 
 // Available 报告这张卡这一帧有没有内容可画（= 至少一节被服务）。
 func (c settingsItemCardState) Available() bool {
 	if c.Web != nil {
 		return c.Web.webAvailable
+	}
+	if c.Model != nil && c.Model.Available {
+		return true
 	}
 	for _, section := range c.Sections {
 		if section.Available {
@@ -606,13 +633,16 @@ func (c settingsItemCardState) Dirty() bool {
 	if c.Web != nil {
 		return c.Web.plan.Dirty()
 	}
-	return c.Plan.Dirty()
+	return c.Plan.Dirty() || (c.Model != nil && c.Model.Dirty)
 }
 
 // Invalid 报告表单里有没有解析不了的草稿（官方 `state.invalid`）。
 func (c settingsItemCardState) Invalid() bool {
 	if c.Web != nil {
 		return c.Web.plan.Invalid
+	}
+	if c.Model != nil && (c.Model.Invalid || (c.Model.Dirty && c.Model.Conflicted)) {
+		return true
 	}
 	return c.Plan.Invalid
 }

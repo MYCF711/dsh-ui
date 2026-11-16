@@ -254,7 +254,17 @@ func (p *Plugin) settingsItemCardsFor(env *pluginapi.Env) []settingsItemCardStat
 	if env == nil || env.Act.SettingsDescribe == nil {
 		return nil
 	}
+	describe := env.Act.SettingsDescribe()
+	p.ensureSettingsItemForm().reconcileSubagentModel(describe)
 	snapshot := p.itemFormSnapshot()
+	// #46 只在 enabled（含草稿开启）时触发目录；关闭时官方不请求 modelCatalog。
+	if settingsSubagentModelWantsCatalog(describe, snapshot.drafts) {
+		if env.Act.ModelsPageSnapshot != nil {
+			snapshot.catalogWired = true
+			snapshot.catalog = env.Act.ModelsPageSnapshot()
+		}
+		snapshot.catalogRetryWired = env.Act.ModelsPageRefresh != nil
+	}
 	// #47 那一页的两个额外数据面：provider 清单与凭据状态。
 	// 两者都**同步返回壳缓存**；壳没接时对应字段保持 nil/false，页面自己决定
 	// 不画菜单/不画密钥控件（不是画一个空清单）。
@@ -265,10 +275,10 @@ func (p *Plugin) settingsItemCardsFor(env *pluginapi.Env) []settingsItemCardStat
 	if env.Act.CredentialStatus != nil {
 		snapshot.credentialWired = true
 		snapshot.credentials = env.Act.CredentialStatus([]string{
-			settingsWebKeyRefFromDescribe(env.Act.SettingsDescribe()),
+			settingsWebKeyRefFromDescribe(describe),
 		})
 	}
-	return settingsItemCards(env.Act.SettingsDescribe(), snapshot)
+	return settingsItemCards(describe, snapshot)
 }
 
 // settingsWebKeyRefFromDescribe 取这一帧密钥控件指向的引用（`apiKeyEnv` 或默认）。
@@ -290,6 +300,9 @@ func settingsItemCards(describe *apiclient.SettingsDescribeResult, fallback sett
 			card = buildSettingsItemWebCard(item, describe, fallback)
 		} else {
 			card = buildSettingsItemCard(item, describe, fallback.drafts, fallback.write)
+			if item.ID == "subagent" {
+				attachSettingsSubagentModel(&card, describe, fallback)
+			}
 		}
 		if !card.Available() {
 			continue
@@ -312,6 +325,10 @@ type settingsItemFormSnapshot struct {
 	credentials map[string]apiclient.CredentialInfo
 	// credentialWired 表示壳接了凭据域；false 时密钥控件整个不画。
 	credentialWired bool
+	// catalog 是 #46 模型选择的壳缓存；Loading/Error/真实空目录分别保留。
+	catalog           *apiclient.ModelsPageSnapshot
+	catalogWired      bool
+	catalogRetryWired bool
 }
 
 // itemFormSnapshot 取这一帧的草稿快照。
@@ -475,6 +492,9 @@ func (p *Plugin) drawSettingsItemForm(f ui.C, env *pluginapi.Env, t *pluginapi.T
 					// `.field+.field{border-top:.5px solid …}`：同一个容器里除第一个之外都带顶线。
 					p.drawSettingsItemField(f, env, t, card, section, field, index == 0 && fieldIndex(section, field) == 0)
 				}
+			}
+			if card.Model != nil && card.Model.Available {
+				p.drawSettingsSubagentModelSection(f, env, t, card)
 			}
 		}
 		p.drawSettingsItemFormFooter(f, env, t, card)

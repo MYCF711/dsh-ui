@@ -10,6 +10,7 @@
 package dssidebar
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -38,6 +39,14 @@ func settingsItemDescribeFixture() *apiclient.SettingsDescribeResult {
 		apiclient.SettingsFieldView{Name: settingsFieldMaxDepth, Path: []string{settingsFieldMaxDepth}, Type: "integer", Current: float64(1), Default: float64(1), Writable: true},
 		apiclient.SettingsFieldView{Name: settingsFieldMaxActiveSubagents, Path: []string{settingsFieldMaxActiveSubagents}, Type: "integer", Current: float64(8), Default: float64(8), Overridden: true, Writable: true},
 	)
+	add(settingsNSSubagentModelSelection, 11,
+		apiclient.SettingsFieldView{Name: settingsFieldSubagentModelEnabled, Path: []string{settingsFieldSubagentModelEnabled}, Type: "boolean", Current: false, Default: false, Writable: true},
+	)
+	// allowedModels 是 schema-only 对象数组：真实宿主只从 NamespaceView.Value 发布。
+	value := json.RawMessage(`{"enabled":false,"allowedModels":[{"provider":"saved-provider","model":"saved-model"}]}`)
+	base := json.RawMessage(`{"enabled":false,"allowedModels":[]}`)
+	describe.Namespaces[len(describe.Namespaces)-1].Value = value
+	describe.Namespaces[len(describe.Namespaces)-1].Base = base
 	return describe
 }
 

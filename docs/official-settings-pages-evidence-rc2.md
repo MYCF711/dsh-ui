@@ -286,3 +286,46 @@ save()     plan 空 / 只读 / invalid / saving → 不动
 - 账本：`python scripts/parity-count.py --check`（本轮后 ✅ 48 · 🟡 6 · ❌ 12）
 - 快照：`testdata/api.snapshot.json` 新增 `web.listProviders` / `credentials.describe` /
   `credentials.set`（counts.total 73 → 76，各批之和 = total 由 `TestSnapshotCountsMatchMethods` 守着）
+
+---
+
+## 9. 追加（2026-11-17）：#46「模型选择」落地；§6.1 的 HIDE 仅为历史记录
+
+### 9.1 官方形状 → 本仓实现
+
+| 项 | 官方依据 | 本仓 |
+|---|---|---|
+| 两节同卡、同一 Save | `SubagentCard.tsx:29-50`；共享保存 models → limits 见 `subagent-card-controller.ts:62-69` | `settings_items_draw.go` 在 limits 后挂 `settings_items_subagent_draw.go`，模型 ops 放在同一 `settingsItemPlan` 前部 |
+| 原始值 | `subagent-model-selection-card-controller.ts:189-203` 从 `scope.value.enabled/allowedModels` 读；对象数组不进标量 fields | `settings_items_subagent.go` 解码 `SettingsNamespaceView.Value`，坏 JSON 不伪成 false/空授权 |
+| enabled / hint | `SubagentModelSelectionFields.tsx:61-77`；zh `locales.ts:86-99` | 官方 36×20 Switch、开启/关闭两句逐字；仅 enabled 时才取目录 |
+| 目录与候选 | `subagent-model-selection-card-controller.ts:87-118,315-331` 调 `session.modelCatalog`，按目录顺序 join | 复用壳 `ModelsPageSnapshot/Refresh` 中的真实 `session.modelCatalog` 缓存；不 invented provider/model |
+| 分组与失效路由 | `SubagentModelSelectionFields.tsx:24-60,96-118`：available 按 provider 分组，stored 但目录已消失者追加到「已保存但当前不可用」 | `settingsSubagentModelCandidates` + `groupSettingsSubagentCandidates`，失效项仍可取消并保存移除 |
+| loading / error / partial / empty | 同文件 `:80-95,116-118`；`catalogPartial=failures.length>0` 见 controller `:323-329` | 四态分别投影；错误只在壳接了 Refresh 时画「重试」，真实空目录不把 nil/501 当空 |
+| 至少一项 / conflict | controller `:266-273,333-350`；zh `locales.ts:97-98` | enabled 且空路由 invalid；草稿 baseline 与 describe revision 不同且值仍 dirty 时 conflict，两者均禁止 Save |
+| 保存 | controller `:279-286`：同一次 `scope.mutate` 写 `enabled` 与对象数组，使用 draft revision | `attachSettingsSubagentModel` 产生恰好两条 set；现有 `applySettingsItemSave` 走 `settings.mutate`，失败保留草稿 |
+
+宿主本轮**零改动**：`internal/settingsform/subagent_schema.go:121-150,162-206` 已声明并校验对象数组，
+`host_settings_pages_test.go:257-271` 已证明 `enabled=true` 与 `allowedModels` 同批写入后从
+`NamespaceView.Value` 往返。GUI 不需要、也没有新增 Transport 方法或 API 快照条目。
+
+### 9.2 几何与平台适配差异
+
+`settingsSubagentModelGeometry()` 对照 `SubagentModelSelectionFields.module.css:1-138` 钉住
+permission 12/6、selection gap 10、模型框 max-height 280/padding 10/border .5、组间距、
+11px provider/route、13px modelName 等 23 行。Viva 没有原生 `fieldset` 与浏览器 checkbox：
+用同位置滚动框、14px 方框和 `dsassets.CheckOutline()`（官方 `IconCheckOutlineRegular` 路径）
+表达选中；没有自造文案或新图标。
+
+### 9.3 测试证据与剩余缺口
+
+- `settings_items_subagent_test.go`：原始 Value、目录 join、provider 分组、失效路由、集合比较、
+  两字段同批写、revision 11 baseline、required/conflict、loading/error/partial/empty、默认关闭不拉目录、
+  坏 Value 不伪造、23 行几何。
+- `settings_items_subagent_visual_test.go`：真 Viva 开卡 → Switch → 勾选 `provider-a/model-a1` → Save；
+   spy 实收 `settingsNSSubagentModelSelection`、revision 11、两条 op 与两条精确路由；失效路由真点击移除、
+  required、目录错误真点「重试」、loading/partial/empty 实画。
+- `go test ./plugins/dssidebar -run 'TestSettingsSubagentModel' -count=1` EXIT=0；
+  `go test ./plugins/dssidebar -count=1` EXIT=0。
+- **#46 保持 🟡，不升 ✅**：剩余不是 GUI，而是宿主行为消费方。`subagent_schema.go:49-68` 明确子代理
+  仍固定父模型，工具没有 provider/model 参数，也没有 `subagent/model-selection-policy` 会话授权投影；
+  因此表单可读写不等于委派时真的能选模型。该缺口继续显式登记，不用设置保存成功冒充行为生效。

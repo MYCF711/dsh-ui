@@ -62,6 +62,8 @@
 
 仍为 D 的原因是宿主没有消费方：子代理固定父模型，无 provider/model 参数与授权投影（`DSH-GO/internal/settingsform/subagent_schema.go:49-68`）。GUI 还缺 enabled Switch、按 provider 分组候选、失效路由保留、loading/error/partial/empty、至少一项校验和同 revision 两字段保存；这些属于 G 子项，但仅画可读写表单不会让设置真实生效。
 
+**2026-11-17 后续**：上述 G 子项已全部落地（证据 `official-settings-pages-evidence-rc2.md` §9）；D 的宿主消费方缺口未变，所以本行继续保持 🟡。
+
 ### #54 `dsh-client-ui-sidebar-terminal` — 保持 🟡
 
 宿主用户终端能力已齐：create/attach/list/close/environment/shells/rename/retain/watch 与 PTY input/resize（`DSH-GO/internal/transport/handlers_job_terminal_official.go:89-100`）。GUI 仍只有 open/input/output、单 termID，缺 per-tab 多终端、close/retain、shell guide、动态标题/重命名、VT snapshot/raw input/resize 和连接状态，这是 G 子项。

@@ -79,26 +79,30 @@ func (s *settingsItemWriteSpy) last() (settingsItemMutateCall, bool) {
 
 // settingsItemHarness 是一帧可点、可读文字的插件管理页。
 type settingsItemHarness struct {
-	t            *testing.T
-	p            *Plugin
-	kernel       *uikernel.Kernel
-	theme        *pluginapi.Theme
-	tree         *gfx.Tree
-	feat         gfx.Scope
-	session      *headless.Session
-	invalidator  *app.Invalidator
-	spy          *settingsItemWriteSpy
-	mu           sync.Mutex
-	describe     *apiclient.SettingsDescribeResult
-	bundles      []apiclient.PluginBundle
-	cotLimits    apiclient.CotTranslationLimits
-	cotRefreshes int
+	t              *testing.T
+	p              *Plugin
+	kernel         *uikernel.Kernel
+	theme          *pluginapi.Theme
+	tree           *gfx.Tree
+	feat           gfx.Scope
+	session        *headless.Session
+	invalidator    *app.Invalidator
+	spy            *settingsItemWriteSpy
+	mu             sync.Mutex
+	describe       *apiclient.SettingsDescribeResult
+	bundles        []apiclient.PluginBundle
+	cotLimits      apiclient.CotTranslationLimits
+	cotRefreshes   int
+	catalog        *apiclient.ModelsPageSnapshot
+	catalogReads   int
+	catalogRetries int
 }
 
 func openSettingsItemHarness(t *testing.T, width, height int) *settingsItemHarness {
 	t.Helper()
 	h := &settingsItemHarness{t: t, spy: &settingsItemWriteSpy{rev: 99}}
 	h.describe = settingsItemDescribeFixture()
+	h.catalog = settingsSubagentCatalogFixture()
 	h.bundles = []apiclient.PluginBundle{pluginBundleFixture()}
 	h.cotLimits = apiclient.CotTranslationLimits{
 		MaxTextChars:       100000,
@@ -127,6 +131,18 @@ func openSettingsItemHarness(t *testing.T, width, height int) *settingsItemHarne
 			h.mu.Lock()
 			h.cotRefreshes++
 			h.mu.Unlock()
+		},
+		ModelsPageSnapshot: func() *apiclient.ModelsPageSnapshot {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.catalogReads++
+			return h.catalog
+		},
+		ModelsPageRefresh: func() {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.catalogRetries++
+			h.catalog = settingsSubagentCatalogFixture()
 		},
 		PluginBundles: func() ([]apiclient.PluginBundle, bool, bool, string) {
 			h.mu.Lock()

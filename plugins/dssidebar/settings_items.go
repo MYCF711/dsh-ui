@@ -193,6 +193,12 @@ const (
 	// settingsItemFieldText 是官方 `settingsTextField`
 	// （format：只有 string 才有文本；parse：空白 clear，否则 set **trim 后的原文**）。
 	settingsItemFieldText
+	// settingsItemFieldProvider 是 cot TranslationPreferencesForm 的 provider：
+	// 空白 clear，非空只接受 PROVIDER_PREFERENCES（preferences-form.ts:25-31）。
+	settingsItemFieldProvider
+	// settingsItemFieldTargetLanguage 是 cot targetLanguage：空白也算 invalid，
+	// 只接受 auto 或官方 BCP 47 pattern（preferences-form.ts:33-35）。
+	settingsItemFieldTargetLanguage
 )
 
 // settingsItemSection 是一页里的一个 section（对应一条命名空间）。
@@ -586,6 +592,8 @@ type settingsItemCardState struct {
 	// Web 是 #47 那一页的专用状态（Kind==settingsItemKindWebSearch 时非 nil）。
 	// 那一页不是"section → 字段"的形状（provider 菜单 + 灰面板），所以状态也是并行的。
 	Web *settingsItemWebState
+	// Cot 是 #63 `plugins.bundle.config` 的 provider 清单快照；nil = 普通表单。
+	Cot *settingsCotState
 }
 
 // Available 报告这张卡这一帧有没有内容可画（= 至少一节被服务）。
@@ -793,7 +801,7 @@ func buildSettingsItemField(ns string, spec settingsItemField, describe *apiclie
 		}
 	}
 	if found {
-		if spec.Kind == settingsItemFieldText {
+		if spec.Kind != settingsItemFieldNumber {
 			// 官方 `settingsTextField.format` 的判据：没有值 = **空文本**，不是一个
 			// "未知值"。文本字段（baseURL / 端点）天生可以空，空就是"用默认"，
 			// 所以这里 Known 恒为真（数字字段不能这样——见下一个分支的理由）。
@@ -861,7 +869,13 @@ func buildSettingsItemField(ns string, spec settingsItemField, describe *apiclie
 // 数字字段发数字、文本字段发字符串。绝不把字符串数字发成字符串
 // （那会让宿主的 `invalid_type` 拒掉一次本来合法的写入）。
 func parseSettingsItemDraft(spec settingsItemField, text string) (setValue any, clear, ok bool) {
-	if spec.Kind == settingsItemFieldText {
+	switch spec.Kind {
+	case settingsItemFieldProvider:
+		return parseCotProviderDraft(text)
+	case settingsItemFieldTargetLanguage:
+		return parseCotTargetLanguageDraft(text)
+	}
+	if spec.Kind != settingsItemFieldNumber {
 		value, textClear, textOK := parseItemText(text)
 		if !textOK || textClear {
 			return nil, textClear, textOK

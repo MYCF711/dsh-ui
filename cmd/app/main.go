@@ -214,6 +214,10 @@ type model struct {
 	termText    string // 已剥掉 ANSI 的可读文本（累计）
 	termNext    int    // 增量水位
 	termPending bool
+	// terminalViews/terminalWatchers 是官方用户终端控制面的 per-session 缓存与
+	// 长连接。键分别为 session+"\x00"+occurrence 与 session；见 terminal_wiring.go。
+	terminalViews    map[string]*terminalViewState
+	terminalWatchers map[string]*terminalWatchState
 
 	// models 是可选模型清单（宿主 models.list 的投影），启动拉一次。
 	models []pluginapi.Model
@@ -258,6 +262,9 @@ type model struct {
 	cotLimitsLoaded  bool
 	cotLimitsPending bool
 	cotLimitsErr     error
+	// cotLimitsRevision 是失效代际：在飞期间收到新事件时，旧响应不得覆盖新偏好，
+	// 完成后必须补读一次（官方 mount.ts:23-80 的同一规则）。
+	cotLimitsRevision uint64
 	// cotResults 是按 jobID 的翻译终态（插件取走后清空，见 cot_translation_wiring.go）。
 	cotResults map[string]pluginapi.CotTranslationResult
 	// cotJobSeq 是 jobID 序号（不重复即可，不跨进程持久化）。
@@ -1026,6 +1033,8 @@ func (m *model) subscribe(id string) {
 //
 // 幂等：没有当前会话时只重绘一帧（按钮仍然"点得动"，但没东西可连）。
 func (m *model) reconnectNow() {
+	// 官方 cot mount 在 connection/reset 上失效 limits；重连不沿用可能过期的偏好。
+	m.cotTranslationRefresh()
 	m.mu.Lock()
 	id := m.cur
 	if sub, ok := m.subs[id]; ok {
@@ -2850,6 +2859,12 @@ func main() {
 			defer m.mu.Unlock()
 			return m.termText
 		},
+		TerminalEnsure:         m.terminalEnsure,
+		TerminalRetry:          m.terminalRetry,
+		TerminalSnapshot:       m.terminalSnapshot,
+		TerminalWriteOfficial:  m.terminalWriteOfficial,
+		TerminalRenameOfficial: m.terminalRenameOfficial,
+		TerminalCloseOfficial:  m.terminalCloseOfficial,
 		// 审批策略：写宿主 <home>/state/session-permission.json。
 		// **异步、失败只写状态栏**——和 ConfigSet 同一个策略：插件不等待、不重试。
 		SetPermission: func(perm string) {
@@ -2948,6 +2963,7 @@ func main() {
 		// 终态按 jobID 留给插件取。三条一起 nil 就等于"宿主没这条能力"，
 		// 插件那时不画译文入口。见 cot_translation_wiring.go。
 		CotTranslationLimits:    m.cotTranslationLimits,
+		CotTranslationRefresh:   m.cotTranslationRefresh,
 		CotTranslationTranslate: m.cotTranslationTranslate,
 		CotTranslationResult:    m.cotTranslationTakeResult,
 		OpenSession:             m.openSession,

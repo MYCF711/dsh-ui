@@ -99,6 +99,37 @@ func TestForgeLocalDiffBranchScopeCarriesBaseAndCommits(t *testing.T) {
 	}
 }
 
+func TestForgeLocalDiffSelectedBaseCommitsAndFileStates(t *testing.T) {
+	var body map[string]any
+	cli := forgeServer(t, "/api/forgePanel.localDiff",
+		`{"result":{"base":"origin/main","files":[{"path":"new.go","previousPath":"old.go","status":"renamed","binary":false,"oversized":false,"untracked":false,"additions":0,"deletions":0,"hunks":[],"layer":"test","digest":"digest-renamed"}],"omitted":3}}`,
+		func(b map[string]any) { body = b })
+	base := "refs/remotes/origin/main"
+	from := "1111111111111111111111111111111111111111"
+	to := "2222222222222222222222222222222222222222"
+	scope := ForgeLocalScope{Kind: ForgeScopeBranch, Base: &base, Commits: &ForgeCommitRange{From: from, To: to}}
+	got, err := cli.ForgeLocalDiff(context.Background(), "s-1", scope, 0)
+	if err != nil {
+		t.Fatalf("localDiff 应当成功：%v", err)
+	}
+	wire, _ := body["scope"].(map[string]any)
+	if wire["base"] != base {
+		t.Fatalf("选中 base 没有发给宿主：%v", wire)
+	}
+	commits, _ := wire["commits"].(map[string]any)
+	if commits["from"] != from || commits["to"] != to {
+		t.Fatalf("选中 commits 没有发给宿主：%v", wire)
+	}
+	if len(got.Files) != 1 {
+		t.Fatalf("files = %+v", got.Files)
+	}
+	file := got.Files[0]
+	if file.Status != ForgeFileRenamed || file.PreviousPath == nil || *file.PreviousPath != "old.go" ||
+		file.Layer != ForgeLayerTest || file.Digest != "digest-renamed" || got.Omitted != 3 {
+		t.Fatalf("官方文件字段/omitted 解码不完整：%+v omitted=%d", file, got.Omitted)
+	}
+}
+
 func TestForgeLocalDiffOtherScopesCarryKindOnly(t *testing.T) {
 	for _, kind := range []string{ForgeScopeUncommitted, ForgeScopeUnstaged, ForgeScopeStaged} {
 		t.Run(kind, func(t *testing.T) {

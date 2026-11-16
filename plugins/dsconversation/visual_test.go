@@ -22,9 +22,13 @@ func newHeroTestCanvas(tree *gfx.Tree) *gfx.Canvas {
 	return canvas
 }
 
-func drawHeroTest(t *testing.T, data pluginapi.Snapshot, mainWidth float32) (*gfx.Canvas, *Plugin) {
+func drawHeroTest(t *testing.T, data pluginapi.Snapshot, mainWidth float32, actions ...pluginapi.Actions) (*gfx.Canvas, *Plugin) {
 	t.Helper()
 	theme := dscore.Dark()
+	var act pluginapi.Actions
+	if len(actions) > 0 {
+		act = actions[0]
+	}
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
 	tree := &gfx.Tree{}
 	canvas := newHeroTestCanvas(tree)
@@ -33,7 +37,7 @@ func drawHeroTest(t *testing.T, data pluginapi.Snapshot, mainWidth float32) (*gf
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	view.Draw(canvas, gfx.Rect{Width: mainWidth, Height: 700}, func(f ui.C) {
 		p.draw(f, &pluginapi.Env{
-			Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("hero-test"), Canvas: canvas,
+			Theme: theme, Data: data, Act: act, Tree: tree, Feat: tree.Feature("hero-test"), Canvas: canvas,
 			Bounds: gfx.Rect{Width: mainWidth, Height: 700}, MainWidth: mainWidth,
 		})
 	})

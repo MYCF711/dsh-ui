@@ -23,8 +23,8 @@
 //  2. 打开：`(*Plugin).Open() bool`。壳按 `kernel.Plugins()` 做类型断言调用
 //     （`interface{ Open() bool }`，与 `AttachShellTier` 同一种做法）。
 //     返回 false = 没有 source，**没打开**（不许画一个点了没反应的入口）。
-//  3. 选定回调：`SetOnPicked(func(path string))`。用户点「打开」→ 本插件对
-//     当前目录调 `workspace.create`，成功后才回调它；壳在这里切到新工作区。
+//  3. 选定回调：`SetOnPicked(func(WorkspaceView))`。用户点「打开」→ 本插件对
+//     当前目录调 `workspace.create`，成功后按官方 onPick 回传其 workspaceId 所在视图。
 //  4. 文案/键盘：实现 `Fields()` 把「新建文件夹」的输入框交给壳登记
 //     （不登记收不到键盘，见 pluginapi.Fields）。
 //
@@ -199,15 +199,16 @@ const reqTimeout = 15 * time.Second
 type DirSource interface {
 	List(ctx context.Context, path string) (*apiclient.DirectoryListing, error)
 	Create(ctx context.Context, parent, name string) (string, error)
-	Register(ctx context.Context, path string) error
+	Register(ctx context.Context, path string) (apiclient.WorkspaceView, error)
 }
 
 var (
 	injectMu sync.RWMutex
 	// injected 是壳塞进来的数据源（nil = 没有）。
 	injected DirSource
-	// picked 是「用户选定了这个目录」的回调（nil = 只关对话框）。
-	picked func(path string)
+	// picked 是「用户选定了这个工作区」的回调（nil = 只关对话框）。
+	// 与官方 onPick 一样传 workspaceId 所在的完整 WorkspaceView，不回显请求 path。
+	picked func(workspace apiclient.WorkspaceView)
 )
 
 // SetSource 由壳注入数据面（**必须在 Load 之后**）。
@@ -222,7 +223,7 @@ func SetSource(src DirSource) {
 // SetOnPicked 由壳注入「选定了某个目录」的回调。
 //
 // 只在 `workspace.create` **成功之后**才会被调；失败留在对话框里显示宿主原文。
-func SetOnPicked(fn func(path string)) {
+func SetOnPicked(fn func(workspace apiclient.WorkspaceView)) {
 	injectMu.Lock()
 	picked = fn
 	injectMu.Unlock()
@@ -236,7 +237,7 @@ func currentSource() DirSource {
 }
 
 // currentPicked 取当前注入的选定回调。
-func currentPicked() func(path string) {
+func currentPicked() func(workspace apiclient.WorkspaceView) {
 	injectMu.RLock()
 	defer injectMu.RUnlock()
 	return picked
@@ -350,6 +351,12 @@ func (p *Plugin) Open() bool {
 		return false
 	}
 	p.mu.Lock()
+	if p.open {
+		// 与 native 的 armed ref 相同：open 已经为 true 时重渲染/重复点击
+		// 不启动第二个选择流程，也不把在飞导航作废。
+		p.mu.Unlock()
+		return true
+	}
 	p.open = true
 	p.gen++ // 重开 = 新世代：上一次打开遗留的结算一律作废
 	p.level, p.selected, p.child = nil, nil, nil
@@ -500,9 +507,13 @@ func (p *Plugin) confirmOpen() {
 	p.dispatch(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
 		defer cancel()
-		err := src.Register(ctx, target)
+		workspace, err := src.Register(ctx, target)
 		p.mu.Lock()
 		stale := gen != p.gen
+		if !stale && err == nil && workspace.WorkspaceID == "" {
+			// 官方 onPick 只接受 workspaceId；空 id 是宿主违约，不能关闭卡片假成功。
+			err = errNoWorkspaceSelection
+		}
 		if !stale && err != nil {
 			p.errText = failureText(err) // 失败：卡片留着，宿主原文挂在 .error
 		}
@@ -516,7 +527,7 @@ func (p *Plugin) confirmOpen() {
 		}
 		p.Close()
 		if fn := currentPicked(); fn != nil {
-			fn(target)
+			fn(workspace)
 		}
 		p.invalidate()
 	})
@@ -605,6 +616,9 @@ func (p *Plugin) confirmCreate() {
 // errNoCreatedPath 是「宿主回了空路径」这一种失败（不是宿主错误原文，
 // 而是我们自己发现的对端不合约；文案照实写，不修饰）。
 var errNoCreatedPath = errors.New("宿主没有返回新目录的路径")
+
+// errNoWorkspaceSelection 表示 workspace.create 成功信封里却缺 onPick 必需的 id。
+var errNoWorkspaceSelection = errors.New("workspace.create 没有返回 workspaceId，无法选择工作区")
 
 // targetLocked 是「创建 / 打开」当前作用在哪个目录（官方 targetPath，:602-605）：
 // 有选中行就是它，否则是当前列出的那一层。返回空串 = 还没有目标。

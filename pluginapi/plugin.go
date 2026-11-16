@@ -239,6 +239,11 @@ type Painter struct {
 	Label string
 	// Icon 是芯片前的字形；官方 tab 类型可以带图标，没有就是纯文字。
 	Icon string
+	// Multiple 对应官方 SidebarRightTabDefinition.multiple：每次 openTab(kind)
+	// 都创建一个独立 occurrence，而不是在同 pane 里复用同 kind 的 tab。
+	// 只对 sidebar.right.pane.tab 有意义；conversation.view 留 false。
+	// OFF:dsh-client-ui-sidebar-right/src/client/tab-registry.ts:103-108
+	Multiple bool
 	// Draw 画自己。frame 已经是这块槽的位置和尺寸，别自己算全局坐标。
 	Draw func(f ui.C, env *Env)
 	// AfterDraw 在整棵树布局完成之后调用，给那些「必须先知道位置才能画」的东西用：
@@ -295,9 +300,29 @@ type Primitives interface {
 //
 // 壳把内核里的 keyed painter 投影成这张表（`uikernel.ViewTabs` / `RightTabs`），
 // 插件只负责注册，不查表、不排序、不算激活。
+// RightTabTitleProvider 让右栏 occurrence 提供实时标题（官方
+// sidebar.right.pane.tab.title；例如 BrowserTitle 显示当前 hostname）。
+// 返回空串表示沿用注册时的类型标题。实现只读自己的状态，不发请求。
+type RightTabTitleProvider interface {
+	RightTabTitle(sessionID, tabID string) string
+}
+
+// RightTabCloseHandler 是官方 sidebarRight.registerCloseHandler 的插件面：
+// 壳在移除 occurrence 之前调用；关闭网页、删除对应持久化记录等清理必须先成功。
+// 返回 error 会保留 occurrence，不能把失败吞成"已关闭"。
+type RightTabCloseHandler interface {
+	CloseRightTab(sessionID, tabID, kind string, actions Actions) error
+}
+
 type Tab struct {
-	// Key 是 keyed 槽的 key = 官方那条条目的 `id`。
+	// Key 是选择器条目的稳定身份。会话 view 与单实例右栏 tab 等于 keyed 槽 key；
+	// 多实例右栏 tab 等于 occurrence 的 tabId（官方 TabRecord.id）。
 	Key string
+	// Kind 是右栏 tab 的类型/keyed 槽派发 key；会话 view 留空。
+	// 多实例时 Key 是 occurrence、Kind 仍是 "browser"，两者不能混用。
+	Kind string
+	// Multiple 表示这个右栏类型允许并存多个 occurrence。
+	Multiple bool
 	// Label 是芯片上的文案；官方是 thunk（`label: () => t('view.chat')`），
 	// 本仓按当前语言在注册处取好。
 	Label string
@@ -349,8 +374,15 @@ type Env struct {
 	ActiveView string
 	// RightTabs 是本帧注册的**右栏 tab 类型**名录（官方 `sidebar.right.pane.tab` 的 keyed 槽投影）。
 	RightTabs []Tab
-	// ActiveRightTab 是本帧选中的右栏 tab 类型 key；空 = 没有可画的 tab。
+	// ActiveRightTab 是本帧选中的右栏 occurrence key；空 = 没有可画的 tab。
 	ActiveRightTab string
+	// ActiveRightTabKind 是 ActiveRightTab 的类型/keyed 槽派发 key。
+	// 单实例时通常与 ActiveRightTab 相同；多实例时 ActiveRightTab 是 tabId，
+	// 而这里仍是 "browser" 等类型 key。
+	ActiveRightTabKind string
+	// RightTabID 是本帧浏览器体所属的官方 TabRecord.id（occurrence 身份）。
+	// 空 = 老壳/单实例测试环境，插件用 ActiveRightTab 或类型 key 兼容。
+	RightTabID string
 	// DrawKeyed 把一个 **keyed 子槽**按 key 交回壳去画：只画 key 命中的那几份。
 	//
 	// 为什么要有它：`Painter.Children` 拿到的 `drawSlot` 只带槽名，按官方 keyed 语义
@@ -1013,6 +1045,14 @@ type Actions struct {
 	// 官方对应 `sidebarRight.openTab(kind)`（OFF:dsh-client-ui-sidebar-right/src/client/index.ts:228）。
 	// nil = 壳没接，调用方不要画可点的芯片。
 	SelectRightTab func(key string)
+	// OpenRightTab 按官方 sidebarRight.openTab(kind) 打开一个右栏 tab。
+	// Multiple=true 的类型每次调用都新建 occurrence；其他类型复用并选中已有项。
+	// nil = 壳没接，芯片行不画新建入口。
+	OpenRightTab func(kind string)
+	// CloseRightTab 按官方 TabActions.close 关闭指定 occurrence key。
+	// 壳先调用资源 owner's close handler，成功后才从布局移除。
+	// nil = 壳没接，芯片行不画关闭入口。
+	CloseRightTab func(key string)
 	// Retry 重发上一条用户消息。
 	Retry func()
 	// RetrySend 按本地发送 key 重试同一份失败草稿，不另取最后一条消息冒充。

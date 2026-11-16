@@ -511,9 +511,106 @@
       "req": {},
       "resp": {
         "status": "credential-stored|signed-out",
+        "links": {
+          "usageUrl": "string",
+          "topUpUrl": "string"
+        },
+        "attempt": null,
         "source": "local|official|oidc"
       },
-      "req_note": "rc.2 账号状态机（宿主 handlers_account_official.go:929，`return api.AccountGetState(ctx)`）。结果**平铺**是 AccountView（不是 {state:…}）：status 闭集两值 credential-stored|signed-out；links/attempt 界面这一轮不解码。宿主没有账号状态机时回 not_implemented（界面按“未知”处理，不许写成 signed-out）。"
+      "req_note": "rc.2 账号状态机（宿主 handlers_account_official.go:929）。结果平铺 AccountView；attempt 是 null 或 {id,phase,authorizeUrl?,userCode?,expiresAt?,errorCode?}。宿主没有账号状态机时回 not_implemented（界面按未知处理，不写成 signed-out）。"
+    },
+    "account.getProfile": {
+      "batch": 4,
+      "req": {
+        "client": {
+          "version": "string",
+          "locale": "string",
+          "timezoneOffsetSeconds": 0
+        }
+      },
+      "resp": {
+        "profile": {
+          "status": "ready|failed",
+          "value": {
+            "id": "string|null",
+            "name": "string|null",
+            "contact": "string|null",
+            "avatarUrl": "string?"
+          },
+          "source": "local|official|oidc?"
+        }
+      },
+      "req_note": "宿主 handlers_account_official.go:694-715；profile 可为 null，不能伪造成 ready 空资料。"
+    },
+    "account.getBalance": {
+      "batch": 4,
+      "req": {
+        "client": {
+          "version": "string",
+          "locale": "string",
+          "timezoneOffsetSeconds": 0
+        }
+      },
+      "resp": {
+        "balance": {
+          "status": "ready|failed",
+          "value": [
+            {
+              "currency": "CNY|USD",
+              "balance": "decimal-string"
+            }
+          ],
+          "bonusWallets": [
+            {
+              "currency": "CNY|USD",
+              "balance": "decimal-string"
+            }
+          ],
+          "source": "local|official|oidc?"
+        }
+      },
+      "req_note": "宿主 handlers_account_official.go:717-746；balance 可为 null，金额保持字符串。"
+    },
+    "account.startSignIn": {
+      "batch": 4,
+      "req": {
+        "client": {
+          "version": "string",
+          "locale": "string",
+          "timezoneOffsetSeconds": 0
+        },
+        "callbackOrigin": "http(s) loopback origin",
+        "loginSource": "desktop|web"
+      },
+      "resp": "AccountView",
+      "req_note": "宿主 handlers_account_official.go:856-884；返回平铺 AccountView。"
+    },
+    "account.cancelSignIn": {
+      "batch": 4,
+      "req": {
+        "attemptId": "string"
+      },
+      "resp": "AccountView",
+      "req_note": "attemptId 原样来自当前 AccountView.attempt.id；返回平铺 AccountView。"
+    },
+    "account.signOut": {
+      "batch": 4,
+      "req": {
+        "client": {
+          "version": "string",
+          "locale": "string",
+          "timezoneOffsetSeconds": 0
+        }
+      },
+      "resp": "AccountView",
+      "req_note": "移除本地账号授权，不是 credentials.unset；返回平铺 AccountView。"
+    },
+    "account.hasRunningAccountTasks": {
+      "batch": 4,
+      "req": {},
+      "resp": true,
+      "req_note": "官方结果是裸 boolean（宿主 handlers_account_official.go:940-953），用于登出前三态确认。"
     },
     "session.projections": {
       "batch": 4,
@@ -1856,11 +1953,11 @@
     }
   },
   "counts": {
-    "total": 102,
+    "total": 108,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
-    "batch4": 2,
+    "batch4": 8,
     "batch5": 1,
     "batch6": 6,
     "batch7": 8,
@@ -1875,8 +1972,8 @@
     "batch16": 3,
     "batch17": 1,
     "batch18": 1,
-    "batch19": 2,
-    "batch20": 3,
+    "batch19": 5,
+    "batch20": 0,
     "batch21": 14,
     "batch22": 4
   }

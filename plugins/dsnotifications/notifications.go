@@ -42,6 +42,8 @@
 package dsnotifications
 
 import (
+	"sync"
+
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/ui"
@@ -79,6 +81,14 @@ type Plugin struct {
 	// settings 是"打开设置浮层"的可选能力（`plugins/dssettings` 的 ui.settings.open）。
 	// nil = 没装设置面板：点账号启动器要**如实说没有**，不假装跳转。
 	settings func() bool
+
+	// AccountMenu 的本地交互态；网络完成位由 accountUIMu 保护。
+	accountUIMu          sync.Mutex
+	accountMenuOpen      *bool
+	accountSignInBusy    bool
+	accountSignOutBusy   bool
+	accountSignOutImpact string // ""=关闭；idle/running/unknown 对应官方三态
+	accountSignOutFailed bool
 }
 
 // ID 实现 pluginapi.Plugin。

@@ -172,7 +172,7 @@ func (p *Plugin) drawSettingsLauncherRow(f ui.C, env *pluginapi.Env, drawSlot fu
 //     可见性由被挂组件自己按 `active` 判）；这保证了"槽真被画到"而不是
 //     "只在表里登记过"。
 //  2. 启动器触发行：avatar 24 + label；`data-collapsed` 36×36；登出 32px。
-//     点击 = 官方 `openSettings('account')`（本仓打开设置浮层，见差距登记）。
+//     点击 = 官方 Menu；菜单里的「设置」才调 `openSettings('account')`。
 func (p *Plugin) drawLauncher(f ui.C, env *pluginapi.Env) {
 	st := p.ctrl.AccountStateSnapshot()
 	t := p.theme
@@ -189,6 +189,7 @@ func (p *Plugin) drawLauncher(f ui.C, env *pluginapi.Env) {
 	root.Children(func() {
 		p.drawLauncherTrigger(f, env, t, st, h)
 	})
+	p.drawAccountDialogs(f, env)
 }
 
 // drawLauncherTrigger 画触发行本体（`.trigger`）。
@@ -198,6 +199,7 @@ func (p *Plugin) drawLauncherTrigger(f ui.C, env *pluginapi.Env, t *pluginapi.Th
 
 	// 官方三档几何只在**这一处**决定：宽态 6px 内边距 + 8px 间距；收起轨
 	// 36×36 居中、无内边距无间距（`[data-collapsed='true']`）。
+	snapshot := p.accountSnapshot(env)
 	pad, gap, justify := LauncherRowPad, LauncherGap, ui.Start
 	if !st.Wide {
 		pad, gap, justify = 0, 0, ui.Center
@@ -230,8 +232,15 @@ func (p *Plugin) drawLauncherTrigger(f ui.C, env *pluginapi.Env, t *pluginapi.Th
 		label := zhAccountMore
 		line := LauncherFontSize + 6 // 登出态 `.trigger[data-signed-out] line-height:20px`
 		if st.SignedIn {
-			// 官方：profile 未 ready 时 label = t('signedIn')（不编名字）。
+			// 官方：profile.name ?? profile.contact ?? t('signedIn')。
 			label = zhAccountSignedIn
+			if snapshot.Profile != nil && snapshot.Profile.Status == "ready" && snapshot.Profile.Value != nil {
+				if snapshot.Profile.Value.Name != nil {
+					label = *snapshot.Profile.Value.Name
+				} else if snapshot.Profile.Value.Contact != nil {
+					label = *snapshot.Profile.Value.Contact
+				}
+			}
 			line = LauncherFontSize + 4 // 已登录行 14px 字 → 18px 行高
 		}
 		ui.Text(f, label).FontSize(LauncherFontSize).LineHeight(line).
@@ -239,8 +248,9 @@ func (p *Plugin) drawLauncherTrigger(f ui.C, env *pluginapi.Env, t *pluginapi.Th
 	})
 
 	if row.Clicked() {
-		p.LauncherOpenSettings(env)
+		p.toggleAccountMenu()
 	}
+	p.drawAccountMenu(f, row, env, st)
 }
 
 // drawLauncherSeat 是 `.notifications` 座位本体：脱离文档流、贴着启动器行上沿。

@@ -86,7 +86,7 @@
 
 ### #38 `dsh-client-ui-settings-account` — 保持 🟡
 
-宿主 profile/balance/start/cancel/signOut/state/runningTasks/watch 已发布，不再记 D。GUI 有账号状态缓存与通知座位，但 `CredentialStored` 写死 false，设置 section 只是静态未知页。缺 identity/profile/avatar、余额/赠送余额、usage/top-up、刷新/失败态、登录/取消/登出、联系、运行任务确认、两类 onboarding、quota notice、Platform page 和真正的 AccountMenu；是整页/整菜单工程。
+宿主 profile/balance/start/cancel/signOut/state/runningTasks/watch 已发布，不再记 D。**2026-11-16 后续实现已闭合主链**：`CredentialStored` 不再写死，账号 section 不再是静态未知页；真实 profile/contact、充值/赠金余额、usage/top-up、打开设置边沿刷新、失败态、登录/取消、运行任务三态确认与登出均经宿主真方法。证据：`internal/apiclient/account_actions_test.go`、`cmd/app/account_settings_test.go`、`plugins/dssettings/official_account_test.go`、`plugins/dsnotifications/account_menu_test.go`；API 快照 102→108，counts 与 methods 一致。**保持 🟡的剩余项**：avatar 图片加载（目前仅官方 skeleton）、contact、addApiKey、两类 onboarding、quota notice、Platform page、完整 AccountMenu，以及 `account.watch` 流（当前仍是 30s 轮询，未冒充 watch 已接）。
 
 ### #41 `dsh-client-ui-settings-models` — 保持 🟡
 

@@ -728,3 +728,11 @@ INFO 插件已装配 id=ds-decl provides=[] requires="[ui.theme ui.primitives]"
 - 它**不参与** `ui-plugins.json` 的白名单：白名单管的是"哪些编译进来的插件装不装"，声明部件由 `ds-decl` 这一个插件统一挂。要关掉它，就在白名单里 `{"id":"ds-decl","enabled":false}`。
 - 声明目录里放一万个 JSON 就是一万块画，谁也不拦你；单帧代价没量过（未验证）。
 - 声明部件之间没有顺序依赖，只有 `order`；`id` 只用于报错和日志，不用于引用。
+
+## 15. 工作区目录流与选择（#16）
+
+- `Actions.OpenDirectoryPicker` 同时供侧栏与首屏 WorkspacePicker 使用；具体后端由启动探针决定，插件不得自行选择 browse/native。
+- `Actions.SelectWorkspace(workspaceID)` 对应官方 `onPick(workspaceId)`。壳只复用经 `session.load` 证实 `Total==0`、cwd 匹配且未归档的成员会话；没有空白会话时如实报 `session.create` 的宿主边界，不得在进程 cwd 建会话后冒充选择成功。
+- `Snapshot.WorkspacesKnown` 区分“registry 未落地”与“真空 registry”：首屏前者显示 `正在加载工作区…`，后者且仅有添加动作时点击 chip 直接打开目录流。
+- `Snapshot.PendingWorkspaceID` 对应官方 pending chip；`Snapshot.DirectoryBusy` 是 native `armed/in-flight`，期间菜单动作禁用，结算后才 re-arm。
+- `workspace.create` 的调用方必须消费返回的 `workspace.workspaceId`。`plugins/dsdirpicker.SetOnPicked` 因而已改为传 `apiclient.WorkspaceView`，不再回显请求 path。

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/plugins/dsdirpicker"
@@ -95,7 +96,7 @@ func (h *dirPickerHost) serve(t *testing.T) *httptest.Server {
 			h.mu.Lock()
 			h.created = append(h.created, req.Path)
 			h.mu.Unlock()
-			_, _ = w.Write([]byte(`{"result":{}}`))
+			_, _ = w.Write([]byte(`{"result":{"workspace":{"workspaceId":"ws-picked","path":"C:\\picked","title":"picked","sessionIds":[],"createdAt":"1","updatedAt":"1"},"created":true}}`))
 		default:
 			// refreshList 那一族（老壳会顺手拉）与其它方法：给个空对象，别把测试挂住。
 			_, _ = w.Write([]byte(`{}`))
@@ -177,15 +178,15 @@ func TestWireDirPickerNativeRoutesToPick(t *testing.T) {
 		t.Fatalf("接线阶段不许碰 pick（探针禁用 pick），实际 %d 次", n)
 	}
 
-	var picked []string
-	m.dirPicker.onPicked = func(path string) { picked = append(picked, path) }
+	var picked []apiclient.WorkspaceView
+	m.dirPicker.onPicked = func(workspace apiclient.WorkspaceView) { picked = append(picked, workspace) }
 	m.pickNativeDirectory()
 
 	if got := host.createdPaths(); len(got) != 1 || got[0] != `C:\picked` {
 		t.Fatalf("workspace.create 收到的路径 = %v，期望 [C:\\picked]", got)
 	}
-	if len(picked) != 1 || picked[0] != `C:\picked` {
-		t.Fatalf("onPicked 收到 %v，期望 [C:\\picked]", picked)
+	if len(picked) != 1 || picked[0].WorkspaceID != "ws-picked" || picked[0].Path != `C:\picked` {
+		t.Fatalf("onPicked 收到 %+v，期望官方返回的 ws-picked/C:\\picked", picked)
 	}
 	// 顺序也要对：pick 在 workspace.create 之前。
 	if host.count("directoryPicker.pick") != 1 {
@@ -204,8 +205,8 @@ func TestWireDirPickerNativeCancelIsSilent(t *testing.T) {
 	m := newDirPickerModel(t, srv)
 	wireDirPicker(m)
 
-	var picked []string
-	m.dirPicker.onPicked = func(path string) { picked = append(picked, path) }
+	var picked []apiclient.WorkspaceView
+	m.dirPicker.onPicked = func(workspace apiclient.WorkspaceView) { picked = append(picked, workspace) }
 	m.pickNativeDirectory()
 
 	if len(host.createdPaths()) != 0 {
@@ -231,8 +232,8 @@ func TestWireDirPickerNativeErrorKeepsHostText(t *testing.T) {
 	m := newDirPickerModel(t, srv)
 	wireDirPicker(m)
 
-	var picked []string
-	m.dirPicker.onPicked = func(path string) { picked = append(picked, path) }
+	var picked []apiclient.WorkspaceView
+	m.dirPicker.onPicked = func(workspace apiclient.WorkspaceView) { picked = append(picked, workspace) }
 	m.pickNativeDirectory()
 
 	m.mu.Lock()
@@ -277,5 +278,87 @@ func TestWireDirPickerUnavailableHidesEntry(t *testing.T) {
 	// 也不许偷偷给 browse 对话框注数据源（那等于退化成默认）。
 	if (&dsdirpicker.Plugin{}).Open() {
 		t.Fatal("不可用时不该给 dsdirpicker 注入数据源（不许静默退化成 browse）")
+	}
+}
+
+// TestNativeDirectoryPickRearmsOncePerOpen 钉住官方 armed ref：在飞期间重复点击
+// 不启动第二个原生框；选中结算后下一次点击才允许重新打开。
+func TestNativeDirectoryPickRearmsOncePerOpen(t *testing.T) {
+	started := make(chan struct{}, 2)
+	gates := make(chan chan struct{}, 2)
+	gate1, gate2 := make(chan struct{}), make(chan struct{})
+	gates <- gate1
+	gates <- gate2
+	var mu sync.Mutex
+	picks := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch strings.TrimPrefix(r.URL.Path, "/api/") {
+		case "directoryPicker.list":
+			w.WriteHeader(http.StatusNotImplemented)
+			_, _ = w.Write([]byte(`{"error":{"code":"not_implemented","message":"directory-picker/unavailable: native","hint":"","retryable":false},"details":{"capability":"native"}}`))
+		case "directoryPicker.pick":
+			mu.Lock()
+			picks++
+			mu.Unlock()
+			started <- struct{}{}
+			gate := <-gates
+			<-gate
+			_, _ = w.Write([]byte(`{"result":"C:\\picked"}`))
+		case "workspace.create":
+			_, _ = w.Write([]byte(`{"result":{"workspace":{"workspaceId":"ws-picked","path":"C:\\picked","title":"picked","sessionIds":[]},"created":true}}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	m := newDirPickerModel(t, srv)
+	wireDirPicker(m)
+	m.dirPicker.onPicked = func(apiclient.WorkspaceView) {}
+
+	if !m.openDirectoryPicker() {
+		t.Fatal("第一次 open 应启动原生目录流")
+	}
+	<-started
+	if m.openDirectoryPicker() {
+		t.Fatal("open 尚未结算时不得启动第二个原生目录流")
+	}
+	mu.Lock()
+	gotPicks := picks
+	mu.Unlock()
+	if gotPicks != 1 {
+		t.Fatalf("在飞期间 pick 次数=%d，want 1", gotPicks)
+	}
+	close(gate1)
+	waitNativePickerIdle(t, m)
+
+	if !m.openDirectoryPicker() {
+		t.Fatal("结算后应 re-arm，允许下一次 open")
+	}
+	<-started
+	close(gate2)
+	waitNativePickerIdle(t, m)
+	mu.Lock()
+	gotPicks = picks
+	mu.Unlock()
+	if gotPicks != 2 {
+		t.Fatalf("两次独立 open 的 pick 总次数=%d，want 2", gotPicks)
+	}
+}
+
+func waitNativePickerIdle(t *testing.T, m *model) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		m.mu.Lock()
+		busy := m.dirPicker.nativeBusy
+		m.mu.Unlock()
+		if !busy {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("原生目录流结算后没有 re-arm")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

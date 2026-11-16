@@ -85,6 +85,11 @@ const (
 const (
 	heroHeadlineText = "探索未至之境"
 	heroBadgeText    = "预览版"
+	// 以下逐字来自官方 conversation.hero / ui-workspace 的 zh 字典。
+	heroChooseWorkspaceText  = "选择工作区"
+	heroDefaultWorkspaceText = "默认工作区"
+	heroAddWorkspaceText     = "添加工作区…"
+	heroWorkspaceLoadingText = "正在加载工作区…"
 )
 
 // drawHero 画官方首屏：居中的「品牌标记 + 标题 + 预览徽标」，底下是当前工作区。
@@ -98,10 +103,9 @@ const (
 // 不是"消息数组是否为空"。
 //
 // 什么时候不画：**拿不到真实内容就只画静态品牌面，不编任何"最近会话""推荐问题"。**
-// 官方 hero 里剩下的两处内容都需要真实数据：
-//   - `conversation.hero.workspace`：已实现，但只认**当前会话**的 cwd；
-//     没有当前会话时整行不出现（绝不用别的会话的 cwd 冒充当前工作区）。
-//     官方那是个按钮（开工作区选择器），我们没有对应 Action，所以这里画成纯标签。
+// 官方 hero 里剩下的内容都需要真实数据：
+//   - `conversation.hero.workspace`：WorkspaceChip + 单选 WorkspacePicker；pending/registry
+//     未落地时的 cwd 桥接逐条照官方，没有当前会话就显示 placeholder，不借别的会话 cwd。
 //   - `conversation.hero.options` / `agentPreset`：需要真实的模型/预设动作，未实现。
 type heroBoxes struct {
 	Root, Stack, Headline, Mark, TitleGroup, Badge, WorkspaceRow, Workspace ui.Box
@@ -153,38 +157,148 @@ func (p *Plugin) drawHero(f ui.C, env *pluginapi.Env) {
 				})
 			})
 
-			// body：官方在这里放 workspace 行（有真实数据才画）。
-			if ws := currentWorkspace(env); ws != "" {
+			// body：官方 WorkspaceChip + WorkspacePicker。没有会话时显示官方 placeholder；
+			// registry 为空且已 ready 时，点击直接升起目录流，不多点一次单行菜单。
+			label := heroWorkspaceLabel(env)
+			interactive := heroWorkspaceMenuAvailable(env)
+			if label == "" {
+				label = heroChooseWorkspaceText
+			}
+			if label != heroChooseWorkspaceText || interactive {
 				p.heroBoxes.WorkspaceRow = ui.Row(f).FillWidth().
 					PadSides(0, heroWorkspaceRowPadRight, 0, heroWorkspaceRowPadLeft).
 					Children(func() {
-						p.heroBoxes.Workspace = ui.Row(f).Height(heroWorkspaceMinHeight).MaxWidth(heroWorkspaceMaxWidth).
-							PadX(heroWorkspacePadX).Radius(t.Radii.SM).Items(ui.Center).Children(func() {
-							ui.Text(f, ws).
+						chip := ui.Row(f).Height(heroWorkspaceMinHeight).MaxWidth(heroWorkspaceMaxWidth).
+							PadX(heroWorkspacePadX).Radius(t.Radii.SM).Items(ui.Center).Gap(4)
+						if interactive {
+							chip = chip.Hover(ui.Look{}.Background(t.Hover)).
+								Hit(env.Tree.ID(env.Feat, "hero-workspace"), heroChooseWorkspaceText)
+						}
+						chip = chip.Children(func() {
+							ui.Text(f, label).
 								FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
 								Weight(gfx.WeightMedium).Color(t.LabelPrimary).
 								MaxLines(1).Ellipsis()
+							if interactive {
+								ui.Text(f, "▾").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+							}
 						})
+						p.heroBoxes.Workspace = chip
+						p.drawWorkspacePicker(f, env, chip, interactive && chip.Clicked())
 					})
 			}
 		})
 	})
 }
 
-// currentWorkspace 返回**当前会话**的工作区短名；没有当前会话就返回空串。
-//
-// 这条规则不能松：首屏上写一个工作区名字，用户会当成"我现在在这个目录里"。
-// 拿当前会话的 cwd 是事实，拿列表里第一个会话的 cwd 是编的。
-func currentWorkspace(env *pluginapi.Env) string {
+// heroWorkspaceLabel 按官方 ConversationContent 的优先级解析 chip：
+// pending → 当前会话所属 registry 项 → registry 未就绪时的 cwd 桥接 → placeholder。
+// 没有当前会话时绝不借用列表里别的会话 cwd。
+func heroWorkspaceLabel(env *pluginapi.Env) string {
+	if env.Data.PendingWorkspaceID != "" {
+		for _, workspace := range env.Data.Workspaces {
+			if workspace.WorkspaceID == env.Data.PendingWorkspaceID {
+				return heroWorkspaceTitle(workspace)
+			}
+		}
+	}
 	if env.Data.Cur == "" {
 		return ""
 	}
-	for _, s := range env.Data.Sessions {
-		if s.ID == env.Data.Cur {
-			return workspaceOf(s.Cwd)
+	for _, workspace := range env.Data.Workspaces {
+		for _, sessionID := range workspace.SessionIDs {
+			if sessionID == env.Data.Cur {
+				return heroWorkspaceTitle(workspace)
+			}
+		}
+	}
+	if env.Data.WorkspacesKnown {
+		return "" // 已 ready 但没有 owner：官方显示 placeholder，不回退已删除目录的 cwd。
+	}
+	for _, session := range env.Data.Sessions {
+		if session.ID == env.Data.Cur {
+			return workspaceOf(session.Cwd)
+		}
+	}
+	return workspaceOf(env.Data.CWD)
+}
+
+func heroWorkspaceTitle(workspace pluginapi.Workspace) string {
+	if workspace.Title == "" {
+		return heroDefaultWorkspaceText
+	}
+	return workspace.Title
+}
+
+func heroWorkspaceMenuAvailable(env *pluginapi.Env) bool {
+	return env.Act.OpenDirectoryPicker != nil ||
+		(env.Act.SelectWorkspace != nil && len(env.Data.Workspaces) > 0)
+}
+
+func heroSelectedWorkspaceID(env *pluginapi.Env) string {
+	if env.Data.PendingWorkspaceID != "" {
+		return env.Data.PendingWorkspaceID
+	}
+	for _, workspace := range env.Data.Workspaces {
+		for _, sessionID := range workspace.SessionIDs {
+			if sessionID == env.Data.Cur {
+				return workspace.WorkspaceID
+			}
 		}
 	}
 	return ""
+}
+
+// drawWorkspacePicker 是官方 WorkspacePickFlow 的首屏菜单面：已有工作区单选，
+// 「添加工作区…」升起同一个 directory-flow；busy 时所有菜单动作禁用。
+func (p *Plugin) drawWorkspacePicker(f ui.C, env *pluginapi.Env, anchor ui.Box, clicked bool) {
+	if !heroWorkspaceMenuAvailable(env) {
+		p.workspaceMenuOpen = false
+		return
+	}
+	open := p.workspaceMenuOpen
+	addOnlyDirect := env.Data.WorkspacesKnown && len(env.Data.Workspaces) == 0 &&
+		env.Act.OpenDirectoryPicker != nil && !env.Data.DirectoryBusy
+	if clicked {
+		if addOnlyDirect {
+			open = false
+			env.Act.OpenDirectoryPicker()
+		} else {
+			open = !open
+		}
+	}
+	ui.Menu(f, anchor, &open, func(items *ui.MenuItems) {
+		if items == nil {
+			return
+		}
+		items.WidthRange(280, heroWorkspaceMaxWidth)
+		if !env.Data.WorkspacesKnown && len(env.Data.Workspaces) == 0 {
+			items.Item(heroWorkspaceLoadingText).Disabled(true)
+			return
+		}
+		selected := heroSelectedWorkspaceID(env)
+		if env.Act.SelectWorkspace != nil {
+			for _, workspace := range env.Data.Workspaces {
+				workspace := workspace
+				if items.Item(heroWorkspaceTitle(workspace)).
+					Chosen(workspace.WorkspaceID == selected).
+					Disabled(env.Data.DirectoryBusy).
+					Clicked() && !env.Data.DirectoryBusy {
+					env.Act.SelectWorkspace(workspace.WorkspaceID)
+				}
+			}
+		}
+		if env.Act.OpenDirectoryPicker != nil {
+			if len(env.Data.Workspaces) > 0 {
+				items.Separator()
+			}
+			if items.Item(heroAddWorkspaceText).Disabled(env.Data.DirectoryBusy).
+				Clicked() && !env.Data.DirectoryBusy {
+				env.Act.OpenDirectoryPicker()
+			}
+		}
+	})
+	p.workspaceMenuOpen = open
 }
 
 // workspaceOf 把 cwd 变成短名（首屏只放得下一个名字，放全路径会把标题挤掉）。

@@ -22,6 +22,9 @@ const (
 	zhNotFound       = "未找到这份计划"                    // preview.notFound
 	zhUnavailable    = "计划预览不可用"                    // preview.unavailable
 	zhExpired        = "临时计划预览已失效，请从仍在等待审批的卡片重新打开。" // preview.expired
+	zhChipLabel      = "计划"                         // chip.label
+	zhChipTitle      = "计划模式已开启 — 点击关闭（/plan off）"  // chip.on.title
+	zhChipExitFailed = "退出计划模式失败"                   // chip.exitFailed
 )
 
 // 卡片几何：OFF:PlanPreview.module.css:1-21 逐条。

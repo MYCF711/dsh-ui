@@ -114,6 +114,9 @@ type wave3Wiring struct {
 	// projUsage 是 whole-log `tokenUsage` 投影的四桶（nil = 未知，与 projStats
 	// 同一份 `session.projections`、同一次拉取；同样"换指针不原地改"）。
 	projUsage *apiclient.TokenUsage
+	// projPlan 是官方 plan 投影（nil = 未知）；与 stats/usage 同一次拉取、
+	// 同一 session 键发布，切换或失败时绝不留用上一会话的值。
+	projPlan *apiclient.PlanProjection
 	// projModelKnown / projModelLastUsed 是 `modelSelection` 投影的两个官方判据：
 	// 键存在 = 开关可用（`modelSelection !== undefined`）；
 	// `lastUsed !== null` = 关闭前要先弹停用确认（TeamModeToggle.tsx:43/47）。
@@ -274,6 +277,16 @@ func (w *wave3Wiring) tokenUsageSnapshot(session string) *apiclient.TokenUsage {
 	return w.projUsage
 }
 
+// planSnapshot 取当前会话的官方 plan 投影；nil = 未知，不是 active=false。
+func (w *wave3Wiring) planSnapshot(session string) *apiclient.PlanProjection {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if session == "" || session != w.projSession {
+		return nil
+	}
+	return w.projPlan
+}
+
 // modelSelectionSnapshot 取 `modelSelection` 投影的两个官方判据。
 //
 // known=false = 键缺失（老宿主 / 没拉到）→ 官方 `modelSelection === undefined`，
@@ -339,7 +352,8 @@ func (w *wave3Wiring) refreshDue(m *model, sessionID string) (account, projectio
 		w.accountPending = true
 		account = true
 	}
-	if w.team != nil && sessionID != "" && !w.projPending &&
+	// dsplan 也消费同一份投影：即使 team 插件没装配，仍按既有 10s 节流拉取。
+	if sessionID != "" && !w.projPending &&
 		(sessionID != w.projSession || now.Sub(w.projAt) >= projectionsPollEvery) {
 		w.projPending = true
 		projections = true
@@ -442,6 +456,7 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 		// 不沿用上一个会话的数字（跨会话复用比"未知"更坏）。
 		w.projStats = nil
 		w.projUsage = nil
+		w.projPlan = nil
 		w.projModelKnown = false
 		w.projModelLastUsed = false
 		if isCapabilityMissing(err) {
@@ -465,6 +480,7 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 	// whole-log 用量四桶（状态栏「用量」与它的详情弹窗）。
 	usage, usageKnown := proj.TokenUsage()
 	selection, selectionKnown := proj.ModelSelection()
+	plan := proj.Plan()
 
 	w.mu.Lock()
 	w.projSession = sessionID
@@ -491,6 +507,7 @@ func (w *wave3Wiring) fetchProjections(m *model, sessionID string) {
 	} else {
 		w.projUsage = nil
 	}
+	w.projPlan = plan
 	w.projModelKnown = selectionKnown
 	w.projModelLastUsed = selectionKnown && selection != nil && selection.LastUsed != nil
 	w.mu.Unlock()

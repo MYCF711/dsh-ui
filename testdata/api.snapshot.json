@@ -675,10 +675,14 @@
           ],
           "teamMode": {
             "enabled": true
+          },
+          "plan": {
+            "active": "boolean",
+            "pending": "boolean"
           }
         }
       },
-      "req_note": "宿主 handlers_session_official.go:875。结果 {asOfSeq,values}；values 是**开放集合**，键缺失 = 该能力不存在（不许当空数组/0 用）。本仓界面只解 subagentCatalog 与 teamMode 两个键；空会话 asOfSeq=-1。sessionId 必填，空串回 bad_request。"
+      "req_note": "宿主 handlers_session_official.go:875。结果 {asOfSeq,values}；values 是**开放集合**，键缺失 = 该能力不存在（不许当空数组/0/false 用）。plan 缺键、null、字段缺失或坏类型均为未知；空会话 asOfSeq=-1。sessionId 必填，空串回 bad_request。"
     },
     "llm.listProviders": {
       "batch": 5,
@@ -2006,10 +2010,47 @@
       },
       "req_note": "官方 runHostHalf(agent, pluginId, packageId, mode, requestId, approveFutureVersions)（OFF:dsh-cordis-host-runner/src/types.ts:313-323；zod 入参 OFF:dsh-cordis-host-runner/lib/typert.host.js:146-157）。**本仓只发前 4 个**：requestId / approveFutureVersions 属于模型侧审批路径，本宿主没有 cordis 审批队列，官方面板路径同样传 null / false。mode 由调用方按 OFF:CordisPanel.tsx:248-249 算（currentPackageId 存在且选中包不是它 -> update，否则 run）。宿主：HOST:cmd/dshd/serve_cordis_api.go。",
       "resp_note": "**200 里的判别联合**：{ok:true,pluginId,packageId,pluginRunId,waitingFor,startedHere} | {ok:false,message,stack?}。waitingFor 恒 []（没有 Cordis 服务依赖图）。startedHere=false 表示\"面板只是挂到已活的那次运行\"。失败不是 501：只有\"这台机器没有可用的 node\"才是 501+not_implemented（CordisAPIError）。"
+    },
+    "commands.execute": {
+      "batch": 23,
+      "req": {
+        "agentId": "string",
+        "line": "string",
+        "submittedAttachments": []
+      },
+      "resp": {
+        "commandId": "string",
+        "result": {
+          "kind": "success|error|...（宿主原文）",
+          "text": "string?",
+          "sourceEventSeq": "int64?"
+        }
+      },
+      "req_note": "官方 commands.execute；GUI 当前只执行 /plan off，不提交附件，但 submittedAttachments 必须显式为 []。宿主 handlers_agent_official.go:1333-1373。",
+      "resp_note": "官方 undefined / null = 命令名未解析，客户端返回 nil；result.kind=error 是已结算的命令 outcome，不是 Transport 错误，两层不得混用。"
+    },
+    "userQuestions.answer": {
+      "batch": 23,
+      "req": {
+        "agentId": "string",
+        "callId": "string",
+        "answer": {
+          "answers": [
+            {
+              "id": "string",
+              "selected": ["string"],
+              "custom": "string?"
+            }
+          ]
+        }
+      },
+      "resp": "boolean",
+      "req_note": "官方 userQuestions.answer；类型与 transport.OfficialQuestionAnswer 对齐。宿主 handlers_agent_official.go:1512-1565。",
+      "resp_note": "裸 boolean 是 still-continued 真值；false 表示问题已经关闭，是合法业务结果，不是 Transport 错误。"
     }
   },
   "counts": {
-    "total": 110,
+    "total": 112,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2031,6 +2072,7 @@
     "batch19": 5,
     "batch20": 0,
     "batch21": 14,
-    "batch22": 4
+    "batch22": 4,
+    "batch23": 2
   }
 }

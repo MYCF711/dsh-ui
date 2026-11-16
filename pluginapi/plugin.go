@@ -395,6 +395,9 @@ type Env struct {
 	//
 	// key 传空串时按「这个槽上什么都没命中」处理（不画），不是「全画一遍」。
 	DrawKeyed func(f ui.C, slot Slot, key string)
+	// DrawSlot 把一个普通子槽交回壳派发，与 DrawKeyed 共用调用点的布局游标。
+	// dsquestions 用它把 conversation.plan-review.actions 画进 PlanReviewPanel.strip。
+	DrawSlot func(f ui.C, slot Slot)
 	// Geometry 是本帧三栏的几何（壳算好，框架插件照着摆）。
 	// 为什么壳算：它已经知道侧栏插件要的宽度、右栏开合、白名单里有没有这些部件。
 	// 框架插件拿到的是"结果"，不是"猜"。
@@ -734,6 +737,9 @@ type Snapshot struct {
 	// 界面按官方 gate 决定画不画：`billed === 0 && output === 0` 时不画弹窗，
 	// 但读数仍写成 `0 tok`（宿主说 0），**不是**「未知」。
 	TokenUsage *apiclient.TokenUsage
+	// Plan 是官方 plan 投影 {active,pending}；nil = 缺键、null、坏形状、
+	// 查询失败或尚未拉到。dsplan 不得把 nil 当成计划模式已关闭。
+	Plan *apiclient.PlanProjection
 	// Model 是宿主 §12 H4 给的最近一次 request/context 的模型名。
 	// 空串 = 不知道；插件不许拿自己的默认值冒充。
 	Model string
@@ -1067,6 +1073,13 @@ type Actions struct {
 	// Send 把这段文字发出去。输入框由哪个插件画，文字就由哪个插件给——
 	// 壳不再持有草稿，所以不用 SetDraft 回灌。
 	Send func(text string)
+	// ExecuteCommand 同步执行当前会话的官方 commands.execute；调用方负责 goroutine。
+	// null/undefined 结果返回 unknown command；result.kind=error 返回宿主 text；
+	// Transport 错误原样返回。任何路径都不得伪造执行成功。
+	ExecuteCommand func(line string) error
+	// AnswerQuestion 同步提交当前会话的 userQuestions.answer；调用方负责 goroutine。
+	// 返回的 bool 是宿主的 still-continued 真值，false 不是 Transport 错误。
+	AnswerQuestion func(callID string, answer apiclient.QuestionAnswer) (bool, error)
 	// Cancel 打断当前会话正在跑的 turn（H13 的 session.cancel）。
 	//
 	// nil = 壳没接；插件要自己判，别假设一定有。

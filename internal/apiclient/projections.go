@@ -91,6 +91,29 @@ func (p *SessionProjections) SubagentCatalog() ([]SubagentCatalogEntry, bool) {
 	return entries, true
 }
 
+// PlanProjection 是官方 `plan` 投影：计划模式的已生效状态与待结算切换。
+type PlanProjection struct {
+	Active  bool `json:"active"`
+	Pending bool `json:"pending"`
+}
+
+// Plan 解官方 `plan`。缺键、null、字段缺失或类型错误都返回 nil（未知），
+// 不把坏形状折叠成 active=false/pending=false 的真值。
+func (p *SessionProjections) Plan() *PlanProjection {
+	raw, ok := p.raw("plan")
+	if !ok {
+		return nil
+	}
+	var wire struct {
+		Active  *bool `json:"active"`
+		Pending *bool `json:"pending"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil || wire.Active == nil || wire.Pending == nil {
+		return nil
+	}
+	return &PlanProjection{Active: *wire.Active, Pending: *wire.Pending}
+}
+
 // TeamModeProjection 是宿主的 `teamMode` 投影（rc.2 新增折叠，
 // `officialTeamModeFold`：只认最后一次 `team/mode` 事件）。
 type TeamModeProjection struct {

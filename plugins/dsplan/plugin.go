@@ -1,6 +1,10 @@
 package dsplan
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+
 	"github.com/MYCF711/dsh-ui/pluginapi"
 )
 
@@ -29,6 +33,15 @@ type Plugin struct {
 
 	// boxes 是上一帧的几何（同一 paint 内有效，跨帧只抄值，见 cards.go 的 snapnote）。
 	boxes previewBoxes
+
+	// chip 是 /plan off 的在飞与错误状态。
+	chip planChipState
+	// openedReviews 记录本会话已自动打开过的审阅，手动关右栏后不被下一帧重新打开。
+	openedReviews map[string]bool
+	// reviewWindow 是官方 reviewPreviewAddress 的浏览器生命周期随机前缀。
+	reviewWindow string
+	// temporaryReviews 只存临时 plan-review 文档，不进入会话历史或右栏布局持久化。
+	temporaryReviews map[string]Document
 }
 
 func (*Plugin) ID() string { return ServiceID }
@@ -42,17 +55,20 @@ func (*Plugin) Requires() []string {
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	var entropy [16]byte
+	if _, err := rand.Read(entropy[:]); err != nil {
+		return fmt.Errorf("dsplan: 创建 plan-review 浏览窗口身份失败: %w", err)
+	}
+	p.reviewWindow = hex.EncodeToString(entropy[:])
 	return nil
 }
 
-// Panels 注册两个**官方真有的**座位：
+// Panels 注册官方四个可见座位：
 //
-//	conversation.chat.turnTail（list/session）       Turn 尾计划卡
-//	sidebar.right.pane.tab     （keyed/session）      右栏计划全文（key = plan）
-//
-// 官方另外两个座位（`conversation.input.plan` 的 chip、`conversation.plan-review.actions`
-// 的「查看全文」）本包**不注册**：缺的数据/前置在 plan.go 包注释里逐条写了，
-// 注册上去只会是永不出现的死代码。
+//	conversation.chat.turnTail          Turn 尾计划卡
+//	sidebar.right.pane.tab (plan)       右栏计划全文
+//	conversation.input.plan             计划模式 chip（真实 plan 投影 + /plan off）
+//	conversation.plan-review.actions    待审计划的自动/手动「查看全文」
 //
 // 右栏 tab 芯片上的文案来自 `Painter.Label`（官方 `title: () => t('preview.title')`，
 // OFF:index.ts:104-108）；官方还注册了 `sidebar.right.pane.tab.title` 画"图标 + 标题"，
@@ -65,6 +81,18 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Slot:  offChatTurnTail,
 			Order: 20, // dsactioncards 是 0；官方 Turn 尾也是"动作卡在上、计划卡在下"
 			Draw:  p.drawCards,
+		},
+		{
+			ID:    "plan-mode-chip",
+			Slot:  offInputPlan,
+			Order: 20,
+			Draw:  p.drawPlanChip,
+		},
+		{
+			ID:    "plan-review-open",
+			Slot:  offPlanReviewActions,
+			Order: 20,
+			Draw:  p.drawReviewAction,
 		},
 		{
 			ID:    "plan-preview",
@@ -85,3 +113,8 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // 单独写一遍而不是引 `uikernel.OffChatTurnTail`：插件不 import uikernel
 // （与 dsactioncards 的 `SlotTurnTail` 同一条做法，值必须与官方逐字一致）。
 const offChatTurnTail pluginapi.Slot = "conversation.chat.turnTail"
+
+const (
+	offInputPlan         pluginapi.Slot = "conversation.input.plan"
+	offPlanReviewActions pluginapi.Slot = "conversation.plan-review.actions"
+)

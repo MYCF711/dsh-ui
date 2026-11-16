@@ -32,9 +32,10 @@ import (
 
 // 官方几何常量。每一个都能在 docs/official-specs.md 里找到出处：
 //
-//	.wnFoaW_sessionRow{height:32px;gap:0}          ← sessionRowHeight
-//	.wnFoaW_projectRow{height:34px}                ← groupRowHeight
-//	.wnFoaW_sessionRow .wnFoaW_title{margin:0 6px 0 4px} ← titleMarginRight/Left
+//	Rows.module.css:123-126 .sessionRow{height:32px;gap:0} ← sessionRowHeight
+//	Rows.module.css:112-116 .projectRow{height:32px}       ← groupRowHeight（rc.2）
+//	Rows.module.css:128-130 + SidebarRoot.module.css:7-11（rc.2）：
+//	title margin-left = var(--dsh-sidebar-label-gap) = 6px
 //	.wnFoaW_slot{width:16px;height:20px}           ← slotWidth/slotHeight
 //	.wnFoaW_title{font-size:14px;line-height:20px} ← titleLineHeight
 //	.wnFoaW_time{font-size:10px;line-height:16px}  ← timeLineHeight
@@ -48,7 +49,7 @@ import (
 // 搜索结果卡（官方 `Rows.module.css`，类名前缀 `wnFoaW`；只有搜索态才用）：
 //
 //	.wnFoaW_searchResultRow{…;min-height:48px;flex-direction:column;padding:4px 8px} ← searchResultHeight
-//	.wnFoaW_searchResultTitle{…;margin-left:4px;font-size:14px;line-height:20px}    ← searchTitleLineHeight
+//	Rows.module.css:66-75 .searchResultTitle{margin:0 var(--dsh-sidebar-label-gap)} ← 左右各 6px
 //	.wnFoaW_searchResultMeta{…;gap:6px;margin-left:20px}                            ← searchMetaMarginLeft/Gap
 //	.wnFoaW_searchResultWorkspace{font-size:12px;line-height:17px;max-width:40%}    ← searchMetaLineHeight/Percent
 //	.wnFoaW_searchResultSnippet{font-size:12px;line-height:17px;flex:1}             ← 同上
@@ -56,7 +57,7 @@ import (
 //	.GAkraW_empty{padding:16px 12px;font-size:13px}                                 ← emptyStatePadY/X
 const (
 	sessionRowHeight  = 32
-	groupRowHeight    = 34
+	groupRowHeight    = 32
 	rowGap            = 2
 	groupGap          = 4
 	listBottomPadding = 16
@@ -64,7 +65,7 @@ const (
 	timeLineHeight    = 16
 	slotWidth         = 16
 	slotHeight        = 20
-	titleMarginLeft   = 4
+	titleMarginLeft   = 6
 	titleMarginRight  = 6
 	searchHeight      = 30
 	sidebarInline     = 12
@@ -607,7 +608,7 @@ func (p *Plugin) drawSearchCard(f ui.C, env *pluginapi.Env, r searchResult) sear
 // 数值全部来自官方 `.wnFoaW_sessionRow`（见 prims.ListRow 的注释）：
 //   - 行高 32、radius md(12)、左右内边距 8；
 //   - 标题 14px/**20px**、正文色（官方对未选中行**不降级**，一直是 label-primary）；
-//   - 标题 `margin:0 6px 0 4px`：左边离图标槽 4、右边离时间 6；
+//   - 标题 `margin:0 6px 0 var(--dsh-sidebar-label-gap)`：左右分别离图标槽/时间 6；
 //   - 时间是 10px/**16px**、`--dsw-alias-label-tertiary`；
 //   - 行首有一个 16×20 的图标槽 `.wnFoaW_slot`；
 //   - 会话行要挂在项目行下面，官方用 `padding-inline-start:calc(8px + indent)`，

@@ -1,6 +1,7 @@
 package dscomposer
 
 import (
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -10,54 +11,34 @@ import (
 // 宿主额外暴露的 ask/deny 是审批 policy、不是官方 preset，官方没有同名图标；
 // 这两枚只复用官方盾牌轮廓，分别用问号和斜线表达真值，不冒称 preset 图标。
 
-var primarySendIcon = gfx.Icon{
-	ViewBox: 16,
-	Commands: []gfx.PathCommand{
-		gfx.MoveTo(8.3125, 0.980183),
-		gfx.CubicTo(8.66767, 1.0531, 8.97902, 1.20418, 9.2627, 1.43233),
-		gfx.CubicTo(9.48724, 1.61297, 9.73029, 1.85793, 9.97949, 2.10714),
-		gfx.LineTo(14.707, 6.83468),
-		gfx.LineTo(13.293, 8.24874),
-		gfx.LineTo(9, 3.95577),
-		gfx.LineTo(9, 15.0417),
-		gfx.LineTo(7, 15.0417),
-		gfx.LineTo(7, 3.95577),
-		gfx.LineTo(2.70703, 8.24874),
-		gfx.LineTo(1.29297, 6.83468),
-		gfx.LineTo(6.02051, 2.10714),
-		gfx.CubicTo(6.26971, 1.85793, 6.51277, 1.61297, 6.7373, 1.43233),
-		gfx.CubicTo(6.97662, 1.23986, 7.28445, 1.04402, 7.6875, 0.980183),
-		gfx.CubicTo(7.8973, 0.947006, 8.1031, 0.95516, 8.3125, 0.980183),
-		gfx.ClosePath(),
-	},
+// primarySendIcon / primaryStopRect / addPlusIcon 都直接消费 dsassets 登记图元：
+// assets/official/icons/composer/{send,stop,plus-medium}.jsx；本文件不再复制坐标。
+var (
+	primarySendIcon = mustOfficialIcon(dsassets.ComposerSend)
+	primaryStopRect = mustOfficialNativeRect(dsassets.ComposerStop)
+	addPlusIcon     = mustOfficialIcon(dsassets.ComposerAdd)
+)
+
+func mustOfficialIcon(asset dsassets.Asset) gfx.Icon {
+	icon, ok := dsassets.Build(asset, gfx.Color{})
+	if !ok {
+		panic("official composer asset is not buildable: " + asset.ID)
+	}
+	return icon
 }
 
-// addPlusIcon 是控件行左端「加号」入口的图标（官方 `IconPlusOutlineMedium
-// size={14}`，`InputBar.tsx:517`）。
-//
-// **derived**：rc.2 随包的 `dsh-client-ui-primitives` 没有 `src/` 可锚
-// （GT 报告 §8 的未取证第 1 条），所以这里不是逐点抄来的路径，而是按
-// 16 viewBox 画的等宽十字（官方图标名明确是 "Outline Medium"，即描边式）。
-// 几何（14×14 显示、1px 描边、圆头）来自上面那行 size 与 `.pill svg` 的
-// 同类规则；**不得**把它当成官方逐字节素材（official-assets-reuse 里记为 derived）。
-var addPlusIcon = gfx.Icon{
-	ViewBox: 16, Stroke: 1, Join: gfx.JoinRound,
-	Commands: []gfx.PathCommand{
-		gfx.MoveTo(8, 3.5), gfx.LineTo(8, 12.5),
-		gfx.MoveTo(3.5, 8), gfx.LineTo(12.5, 8),
-	},
-}
-
-var primaryStopIcon = gfx.Icon{
-	ViewBox: 16,
-	Commands: []gfx.PathCommand{
-		// 官方 <rect x=3 y=3 width=10 height=10 rx=3> 的等价闭合路径。
-		gfx.MoveTo(6, 3), gfx.LineTo(10, 3),
-		gfx.QuadTo(13, 3, 13, 6), gfx.LineTo(13, 10),
-		gfx.QuadTo(13, 13, 10, 13), gfx.LineTo(6, 13),
-		gfx.QuadTo(3, 13, 3, 10), gfx.LineTo(3, 6),
-		gfx.QuadTo(3, 3, 6, 3), gfx.ClosePath(),
-	},
+// 官方停止键是 <rect> 而不是 <path>。dsassets.Build 只产出 gfx.Icon 路径；
+// Viva 原生圆角矩形能精确表达同一图元，所以这里只取登记表中的几何，不补画路径。
+func mustOfficialNativeRect(asset dsassets.Asset) dsassets.Element {
+	if len(asset.Elements) != 1 {
+		panic("official composer native rect must have one element: " + asset.ID)
+	}
+	rect := asset.Elements[0]
+	if rect.Kind != dsassets.RectElement || !rect.Fill || rect.Stroke ||
+		rect.Width <= 0 || rect.Height <= 0 || rect.RX < 0 {
+		panic("official composer asset is not a filled native rect: " + asset.ID)
+	}
+	return rect
 }
 
 func permissionShield() []gfx.PathCommand {

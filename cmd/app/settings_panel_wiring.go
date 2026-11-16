@@ -113,7 +113,8 @@ func (m *model) settingsHostFacts() pluginapi.SettingsHostFacts {
 		ShortcutCount: len(dsshortcuts.Bindings()),
 		// 右侧栏插件（ds-rightbar）存在：`sidebarRightTabs` 服务可用。
 		SidebarRightTabs: true,
-		// 宿主当前不服务 session-log-deepseek（没有上传通道）。
+		// session-log-deepseek 是否出现由 describe 真值决定（官方 whileServed）。
+		// 没有上传方不等于 namespace 未服务：写 true 的失败会由官方 Toast 呈现。
 		SessionLogServed: false,
 		// build 注入的版本号（brand.go 的 version，`-X main.version=…`）。
 		ClientVersion: version,
@@ -130,6 +131,9 @@ func (m *model) settingsHostFacts() pluginapi.SettingsHostFacts {
 	if describe != nil {
 		if _, ok := describe.Namespace(apiclient.SettingsNSPermission); ok {
 			facts.PermissionCatalog = true
+		}
+		if _, ok := describe.Namespace(apiclient.SettingsNSSessionLog); ok {
+			facts.SessionLogServed = true
 		}
 	}
 	// transcriptView 是壳自己的配置（ui-chat.transcriptView）；空 = 未知。

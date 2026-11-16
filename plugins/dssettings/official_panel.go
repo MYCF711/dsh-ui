@@ -77,6 +77,14 @@ type officialPanel struct {
 	titleID string
 
 	notify func(string)
+
+	// session-log-deepseek 的 shell.overlay Toast（官方 UploadToast）。
+	// generation 让旧定时器不能清掉后一次写的通知。
+	sessionLogBusy         bool
+	sessionLogToast        string
+	sessionLogToastSuccess bool
+	sessionLogToastTimer   *time.Timer
+	sessionLogGeneration   uint64
 }
 
 // ensureOfficial 惰性造面板状态（零值可用）。
@@ -521,6 +529,12 @@ func (p *Plugin) drawPanelOptions(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 		}
 		for i, row := range section.Rows {
 			row := row
+			// 官方 UploadRow 在 mutation.busy 时禁用 Switch；下一帧由
+			// syncPanel 重建宿主真值。
+			if row.NS == apiclient.SettingsNSSessionLog && p.sessionLogBusySnapshot() {
+				row.Disabled = true
+				row.Reason = "保存中…"
+			}
 			p.drawOfficialRow(f, env, t, row)
 			if i < len(section.Rows)-1 {
 				if p.prims != nil {
@@ -640,6 +654,18 @@ func (p *Plugin) activateRow(row PanelRow) {
 	if !row.Writable() {
 		return
 	}
+	if row.NS == apiclient.SettingsNSSessionLog {
+		o := p.ensureOfficial()
+		o.mu.Lock()
+		busy := o.sessionLogBusy
+		o.mu.Unlock()
+		if busy {
+			return
+		}
+		// 官方 UploadPreference 先发布 busy，再启动 mutation：同一帧的第二次
+		// 点击/Enter 也会被挡住，不会叠加两笔 Session Log 设置写。
+		p.setWriteState(WriteState{Kind: WriteSaving, NS: row.NS, Path: append([]string(nil), row.Path...)})
+	}
 	go func() { _ = p.applyRowWrite(row) }()
 }
 
@@ -698,6 +724,7 @@ func (p *Plugin) setWriteState(state WriteState) {
 	o.write = state
 	notify := o.notify
 	o.mu.Unlock()
+	p.updateSessionLogWrite(state)
 	if notify == nil {
 		notify = p.notify
 	}

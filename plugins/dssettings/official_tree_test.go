@@ -93,7 +93,7 @@ func TestThirteenGeneralItemsInOfficialOrder(t *testing.T) {
 	want := []string{
 		"permission", "language", "appearance", "font-size", "transcript-view",
 		"developer-tools", "shortcuts", "link-opening", "composer-enter",
-		"performance-usage", "session-log-upload-toast", "desktop-update-channel",
+		"performance-usage", "session-log-deepseek", "desktop-update-channel",
 		"current-version",
 	}
 	for i, id := range want {
@@ -176,7 +176,7 @@ func TestTranscriptViewRowsCollapseInVerbose(t *testing.T) {
 // TestItemConditionsHideRowsWhenServicesMissing 钉住「服务缺失 → 整行不注册」。
 func TestItemConditionsHideRowsWhenServicesMissing(t *testing.T) {
 	bare := HostFacts{}
-	for _, id := range []string{"permission", "link-opening", "session-log-upload-toast", "current-version", "desktop-update-channel"} {
+	for _, id := range []string{"permission", "link-opening", "session-log-deepseek", "current-version", "desktop-update-channel"} {
 		if _, ok := sectionGeneralItem(bare, id); ok {
 			t.Fatalf("没有任何服务时 %s 不该注册", id)
 		}

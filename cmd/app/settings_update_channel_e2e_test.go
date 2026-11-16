@@ -118,3 +118,32 @@ func TestUpdateChannelRowShowsUnavailableOnNull(t *testing.T) {
 		t.Fatalf("channel=null 时事实位必须是 nil，实得 %v", *facts.ShellChannel)
 	}
 }
+
+// Session Log 的 whileServed 也必须读 describe 真值：namespace 在就画 Switch，
+// 不在就整行隐藏；上传方的另一直接缺口不能反过来伪造成 namespace 未服务。
+func TestSessionLogFactFollowsDescribe(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		namespaces string
+		want       bool
+	}{
+		{"served", `[{"ns":"session-log-deepseek","value":{"enabled":false},"revision":1}]`, true},
+		{"absent", `[]`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := channelProbeServer(t, func(w http.ResponseWriter, method string) bool {
+				if method != "settings.describe" {
+					return false
+				}
+				_, _ = w.Write([]byte(`{"result":{"namespaces":` + tc.namespaces + `,"sections":[],"errors":[],"hasDocument":true}}`))
+				return true
+			})
+			defer srv.Close()
+			m, _ := newChannelProbeModel(t, srv.URL)
+			m.refreshSettingsDescribe()
+			if got := m.settingsHostFacts().SessionLogServed; got != tc.want {
+				t.Fatalf("SessionLogServed = %v，期望 %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -26,6 +26,8 @@ const (
 	SettingsNSModel      = "model"
 	SettingsNSPermission = "permission"
 	SettingsNSLLM        = "llm"
+	// SettingsNSSessionLog 是官方 ui-settings-session-log 的 general Switch 命名空间。
+	SettingsNSSessionLog = "session-log-deepseek"
 )
 
 // 设置面错误码（`settings-form.md` §4 表格，逐条与宿主一致）。

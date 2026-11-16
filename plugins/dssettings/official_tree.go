@@ -100,7 +100,7 @@ const (
 	// ItemSelector 标题 + 选择器 pill（permission / language / link-opening /
 	// composer-enter / performance-usage / transcript-view 三行 / desktop-update-channel）。
 	ItemSelector ItemKind = "selector"
-	// ItemSwitch 右侧 Switch（developer-tools / session-log-upload-toast）。
+	// ItemSwitch 右侧 Switch（developer-tools / session-log-deepseek）。
 	ItemSwitch ItemKind = "switch"
 	// ItemStepper 字号 stepper（font-size）。
 	ItemStepper ItemKind = "stepper"
@@ -322,8 +322,8 @@ var officialGeneralItems = []OfficialGeneralItem{
 		Default: "detailed",
 	},
 	{
-		ID: "session-log-upload-toast", Order: 90, Title: "在使用官方模型 API 时上传 Session Log",
-		Desc: "",
+		ID: "session-log-deepseek", Order: 90, Title: "在使用官方模型 API 时上传 Session Log",
+		Desc: "帮助改进 DeepSeek 模型与产品",
 		Kind: ItemSwitch, HostField: "session-log-deepseek.enabled", Rows: 1,
 		Condition: ItemSessionLogServed,
 		Anchor:    "ui-settings-session-log/src/client/index.ts:25-37",

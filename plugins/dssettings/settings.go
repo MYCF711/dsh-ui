@@ -139,6 +139,14 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Draw:  p.drawOfficialPanel,
 		},
 		{
+			// 官方 ui-settings-session-log 的 shell.overlay/session-log-upload-toast：
+			// 设置面关闭后仍保留本次 Switch 写入结果。Order 105 压在设置面之上。
+			ID:    "session-log-upload-toast",
+			Slot:  pluginapi.SlotShellOverlay,
+			Order: 105,
+			Draw:  p.drawSessionLogToast,
+		},
+		{
 			// 官方 `SettingsRoot.triggerRow` 里的设置按钮（`settings.launcher`
 			// 的 fallback，见 official_trigger.go）。挂 `sidebar.settings` 官方槽：
 			// 壳把这一槽摆进**一行**（行容器在 uikernel 骨架里），本画家只画

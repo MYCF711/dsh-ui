@@ -46,17 +46,9 @@
 //
 // # HIDE（登记在案，不是"以后再说"）
 //
-//  1. **「创建你的插件」整行不画**：官方点了走
-//     `uiWorkspace.startSession(undefined, {agentPreset:'cordis', prompt, whenDraftExists:'append'})`
-//     （OFF:src/client/index.ts:47-52），落点是宿主 `session.create` 要认 `agentPreset`。
-//     DSH-GO 宿主今天**不认**：`internal/transport/server.go` 的 `handleSessionCreate`
-//     只解 `Mode`，`opt.Create` 签名是 `func(mode string) (string, error)`。
-//     画一行点了建不出正确预设的按钮，比不画更坏——所以整行 HIDE，
-//     等宿主能收 `agentPreset` 再补（那时「浏览更多插件」那行的 separatorBefore
-//     还要按官方补一条 `!browsable && moreEntries.length > 0`）。
-//  2. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 本仓还没有
+//  1. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 本仓还没有
 //     宿主（guide 面未落地，`docs/official-parity.md` 的 #53），注册了也没有派发方。
-//  3. **左栏行尾的对勾不画**（两处差异里的一条，另一条见 `drawSidebarRows`）：
+//  2. **左栏行尾的对勾不画**（两处差异里的一条，另一条见 `drawSidebarRows`）：
 //     官方 `.sidebarEntry .activeMark{opacity:0}`，只在行 hover 时对勾出现、固定按钮
 //     隐去（OFF:EntryMenu.module.css:20-31）。viva 没有"本帧是否悬停"的读口，
 //     本包按**非 hover 态**画（固定按钮恒显、对勾不画），不冒充 hover。
@@ -69,7 +61,7 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
-// 官方 zh 文案（locales.ts:13-21，逐字；`create` 只用于 HIDE 登记与测试断言）。
+// 官方 zh 文案（locales.ts:13-21，逐字）。
 const (
 	// zhPinTooltip 是 'pinTooltip'（locales.ts:14）。
 	zhPinTooltip = "固定到左侧栏"
@@ -79,9 +71,11 @@ const (
 	zhPinSuffix = "固定到侧边栏"
 	// zhInstall 是 'install'（locales.ts:16）。
 	zhInstall = "浏览更多插件"
-	// zhCreate 是 'create'（locales.ts:17）——本包**不画**这一行（见包注释 HIDE 段），
-	// 常量留着给测试钉住"它确实不在画面里"。
+	// zhCreate 是 'create'（locales.ts:17）。
 	zhCreate = "创建你的插件"
+	// 两个 Creator 提示词逐字来自 locales.ts:18-19；rightbar 没有区域宿主，仍按 HIDE。
+	zhCreatePromptSidebar      = "创建一个带左侧栏入口的 DSH 插件。"
+	zhCreatePromptConversation = "创建一个 DSH 会话视图插件。"
 )
 
 // 官方 primitives 菜单行的几何（出处见文件头；dist CSS 的 `_70kcw_` 模块）。
@@ -182,7 +176,7 @@ func (p *Plugin) drawSidebarRows(f ui.C, env *pluginapi.Env) {
 	for _, entry := range more {
 		p.drawSidebarEntryRow(f, env, props, entry)
 	}
-	p.drawBrowseRow(f, env, props, len(more) > 0)
+	p.drawFooterRows(f, env, props, len(more))
 }
 
 // drawConversationRows 画会话头 More 菜单里的行。
@@ -197,7 +191,7 @@ func (p *Plugin) drawConversationRows(f ui.C, env *pluginapi.Env) {
 	for _, entry := range props.Entries {
 		p.drawConversationEntryRow(f, env, props, entry)
 	}
-	p.drawBrowseRow(f, env, props, len(props.Entries) > 0)
+	p.drawFooterRows(f, env, props, len(props.Entries))
 }
 
 // drawSidebarEntryRow 画左栏的一条未固定条目：`[图标][标题][固定按钮]`。
@@ -286,6 +280,55 @@ func (p *Plugin) drawPinButton(f ui.C, env *pluginapi.Env, props *pluginapi.Entr
 		// 先关菜单，再把这一条固定回去。
 		p.dismiss(props)
 		props.SetPinned(entry.ID, true)
+	}
+}
+
+// drawFooterRows 按官方顺序画浏览行与 Creator。浏览服务缺席时，Creator
+// 自己承担 separatorBefore = !browsable && moreEntries.length > 0（官方 :66）。
+func (p *Plugin) drawFooterRows(f ui.C, env *pluginapi.Env, props *pluginapi.EntryMenuProps, moreEntries int) {
+	p.drawBrowseRow(f, env, props, moreEntries > 0)
+	p.drawCreateRow(f, env, props, p.nav == nil && moreEntries > 0)
+}
+
+// drawCreateRow 画官方「创建你的插件」（EntryMenuContent.tsx:66-69）。点击只创建
+// cordis 草稿，不自动发送；区域提示词与 whenDraftExists:'append' 逐字来自 index.ts:47-52。
+func (p *Plugin) drawCreateRow(f ui.C, env *pluginapi.Env, props *pluginapi.EntryMenuProps, separatorBefore bool) {
+	t := p.theme
+	if env.Act.StartSession == nil || props == nil {
+		return
+	}
+	prompt := ""
+	switch props.Region {
+	case pluginapi.EntryRegionSidebar:
+		prompt = zhCreatePromptSidebar
+	case pluginapi.EntryRegionConversation:
+		prompt = zhCreatePromptConversation
+	default:
+		return
+	}
+	if separatorBefore {
+		p.drawSeparator(f)
+	}
+	row := ui.Row(f).FillWidth().MinHeight(entryRowMinHeight).
+		PadSides(entryRowPadY, entryRowPadX, entryRowPadY, entryRowPadX).
+		Gap(entryRowGap).Radius(t.Radii.MD).Items(ui.Center).
+		Hover(ui.Look{}.Background(t.Hover)).
+		Hit(env.Tree.ID(env.Feat, "entry-create-plugin"), zhCreate)
+	row.Children(func() {
+		ui.Row(f).Size(entryIconBox, entryIconBox).Shrink(0).
+			Items(ui.Center).Justify(ui.Center).Children(func() {
+			if icon, ok := plusOutlineIcon(); ok {
+				ui.Icon(f, icon).Size(entryIconBox, entryIconBox).Color(t.LabelDimmed)
+			}
+		})
+		ui.Text(f, zhCreate).FontSize(entryFontSize).LineHeight(entryLineHeight).
+			Grow(1).Ellipsis().Color(t.LabelPrimary)
+	})
+	if row.Clicked() {
+		p.dismiss(props)
+		env.Act.StartSession(pluginapi.StartSessionOptions{
+			AgentPreset: "cordis", Prompt: prompt, WhenDraftExists: pluginapi.DraftAppend,
+		})
 	}
 }
 

@@ -41,6 +41,7 @@ function M(name, weight) {                          // 组件
 | `pin-fill` | regular (1) | `0 0 16 16` | **14** | `ui-sidebar/src/client/SidebarRoot.tsx:113-120` → `<IconPinFillRegular size={14} />`（面板行尾「取消固定」按钮 `.panelUnpin`） | `index-ghOpC9uV.js` 第 129 行 第 69448 列 | `51c6115cc935c69bfad1836e0a51ad5b44cf58b595944bd088d1df2e7a95cc07` | 否（库内暂无；按 sprite 原文转写，登记在此） |
 | `pin-outline` | regular (1) | `0 0 16 16` | **14** | `dsh-client-ui-entry-customization/src/client/EntryMenuContent.tsx:57` → `<IconPinOutlineRegular size={14} />`（#17 左栏 More 菜单行尾的「固定」按钮 `.pinButton`）；`Cs = M("pin-outline","regular")` | `index-ghOpC9uV.js` 第 129 行 第 729837 列 | `3c4451475b12ae2996ab4f460734a6a2aed49c5581ac82c67c5fd56b44293b3d` | 否（库内暂无；按 sprite 原文转写，登记在此） |
 | `plugin-pinwheel-outline` | regular (1) | `0 0 16 16` | **16**（菜单行 CSS 把它夹到 14×14） | `dsh-client-ui-entry-customization/src/client/EntryMenuContent.tsx:62` → `<IconPluginPinwheelOutlineRegular size={16} />`（#17「浏览更多插件」行首） | `index-ghOpC9uV.js` 第 129 行 第 719755 列 | `1d2abb76e6d23882f1bdab5fd08124d2f1fb9e0821544d3b505dbb79e062f485` | **有**：`assets/official/icons/sidebar/plugin-pinwheel.jsx`，sha256 `29e4835f09ea781114691721eaa8fa074223d73c72ca3e2fc3bf73a17bca645d`（4 段 `d` 与 sprite 逐字节相同） |
+| `plus-outline` | regular (1) | `0 0 16 16` | **16**（菜单行 CSS 把它夹到 14×14） | `dsh-client-ui-entry-customization/src/client/EntryMenuContent.tsx:66` → `<IconPlusOutlineRegular size={16} />`（#17「创建你的插件」行首） | `index-ghOpC9uV.js` 第 129 行 第 10417 列 | `792449e19144422e5899b2180eba870e401e31495ad89c52514085d112e8b280` | 否（库内暂无；按 sprite 原文转写，登记在此） |
 | `ellipsis-outline` | regular (1) | `0 0 16 16` | **13** | `ui-conversation/src/client/skeleton/ConversationSession.tsx:37-43` → `<IconEllipsisOutlineRegular size={13}/>`（view tab 行 More 按钮） | `index-ghOpC9uV.js` 第 129 行 第 9854 列 | `fe08b1b020c452a8887c22c846ce995fce5f0e54cb2110f25a356886fc1ad1ad` | 否（库内暂无；按 sprite 原文转写，登记在此） |
 
 ### 1.1 bundle 内联组件转写（不在 sprite 表里）
@@ -85,6 +86,7 @@ go 侧：`internal/reficon/reficon.go`（`File/Folder/Session` 三个 Kind + `Ic
 | `pin-outline` | `plugins/dsentrycustom/icons.go`（`pinOutlineIcon`，14px） | `plugins/dsentrycustom/entry_menu.go`（#17 左栏 More 菜单行尾「固定」按钮） |
 | `plugin-pinwheel-outline` | `plugins/dsentrycustom/icons.go`（`pluginPinwheelIcon`，14px） | `plugins/dsentrycustom/entry_menu.go`（#17「浏览更多插件」行首） |
 | `check-outline`（#17 复用） | `plugins/dsentrycustom/icons.go`（`checkOutlineIcon`） | `plugins/dsentrycustom/entry_menu.go`（#17 会话头 More 里 active view 的行尾对勾） |
+| `plus-outline` | `plugins/dsentrycustom/icons.go`（`plusOutlineIcon`） | `plugins/dsentrycustom/entry_menu.go`（#17「创建你的插件」行首） |
 
 ## 3. 断言（防回退）
 
@@ -95,7 +97,7 @@ go 侧：`internal/reficon/reficon.go`（`File/Folder/Session` 三个 Kind + `Ic
 | 目标条不再有 4×4 圆点矩形、确有描边图元 | `plugins/dsgoal/official_slot_test.go`、`plugins/dsgoal/goal_visual_test.go`、`cmd/app/hf_real_chain_test.go` |
 | `pin-fill`：viewBox=16 / stroke=1 / 2 条 path（1 描边+2 填充层）/ 取消固定按钮真的改固定态 | `plugins/dssidebar/entry_menu_test.go`（`TestEntryMenuUnpinButtonRestoresPinnedPanel`） |
 | `ellipsis-outline`：viewBox=16 / 3 条填充 path / More 按钮 22×22 图标 13px | `plugins/dstopbar/entry_menu_test.go`（`TestTopbarEntryMenuOpensAndDispatches`） |
-| `pin-outline` / `plugin-pinwheel-outline` / `check-outline`：viewBox=16 / stroke=1 / pin-outline 是「1 描边 + 1 填充层」/ pinwheel 4 段曲线 | `plugins/dsentrycustom/entry_menu_test.go`（`TestIconSymbolsMatchRc2Sprite`） |
+| `pin-outline` / `plugin-pinwheel-outline` / `check-outline` / `plus-outline`：viewBox=16 / stroke=1 / pin-outline 是「1 描边 + 1 填充层」/ pinwheel 4 段曲线 / plus 2 条直线 | `plugins/dsentrycustom/entry_menu_test.go`（`TestIconSymbolsMatchRc2Sprite`） |
 | #17 会话头 active 行真的多画一枚对勾（矢量图元数） | 同上（`TestConversationRowsShowEveryFoldedViewWithActiveMark`） |
 
 ## 4. 边界（不要违反）

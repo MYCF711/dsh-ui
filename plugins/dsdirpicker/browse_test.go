@@ -61,11 +61,14 @@ func (f *fakeSource) Create(_ context.Context, parent, name string) (string, err
 	return parent + "/" + name, nil
 }
 
-func (f *fakeSource) Register(_ context.Context, path string) error {
+func (f *fakeSource) Register(_ context.Context, path string) (apiclient.WorkspaceView, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.registers = append(f.registers, path)
-	return f.err
+	if f.err != nil {
+		return apiclient.WorkspaceView{}, f.err
+	}
+	return apiclient.WorkspaceView{WorkspaceID: "ws-home", Path: path, Title: "home"}, nil
 }
 
 func (f *fakeSource) listed() []string {
@@ -390,8 +393,8 @@ func TestRowClickListsChildPath(t *testing.T) {
 func TestOpenRegistersCurrentDirectory(t *testing.T) {
 	src := &fakeSource{levels: map[string]*apiclient.DirectoryListing{"": homeListing()}}
 	p, env, tree, canvas := fixture(t, src)
-	picked := ""
-	SetOnPicked(func(path string) { picked = path })
+	picked := apiclient.WorkspaceView{}
+	SetOnPicked(func(workspace apiclient.WorkspaceView) { picked = workspace })
 
 	p.Open()
 	drawOnce(t, p, env, canvas, 1200, 800)
@@ -400,14 +403,32 @@ func TestOpenRegistersCurrentDirectory(t *testing.T) {
 	if got := src.registered(); len(got) != 1 || got[0] != "/home" {
 		t.Fatalf("Register 调用=%v，want [/home]", got)
 	}
-	if picked != "/home" {
-		t.Fatalf("选定回调收到 %q，want /home", picked)
+	if picked.WorkspaceID != "ws-home" || picked.Path != "/home" {
+		t.Fatalf("选定回调收到 %+v，want workspaceId=ws-home path=/home", picked)
 	}
 	p.mu.Lock()
 	open := p.open
 	p.mu.Unlock()
 	if open {
 		t.Fatal("注册成功后对话框应该关闭")
+	}
+}
+
+func TestOpenWhileAlreadyOpenDoesNotRestartFlow(t *testing.T) {
+	src := &fakeSource{levels: map[string]*apiclient.DirectoryListing{"": homeListing()}}
+	p, _, _, _ := fixture(t, src)
+	if !p.Open() || !p.Open() {
+		t.Fatal("有 source 时 open 应可用；重复 open 应保持现有流程")
+	}
+	if got := src.listed(); len(got) != 1 {
+		t.Fatalf("open 已经为 true 时不得重新导航/启动第二流程，list=%v", got)
+	}
+	p.Close()
+	if !p.Open() {
+		t.Fatal("close 后下一次 open 应重新 arm")
+	}
+	if got := src.listed(); len(got) != 2 {
+		t.Fatalf("close/open 新边沿应重新列 home，list=%v", got)
 	}
 }
 

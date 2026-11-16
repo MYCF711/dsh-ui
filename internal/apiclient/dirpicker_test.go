@@ -210,6 +210,32 @@ func TestProbeDirectoryPickerRejectsEmptyListing(t *testing.T) {
 	}
 }
 
+// TestWorkspaceCreateReturnsOfficialSelection 钉住官方 adoptDirectory 的输入：
+// onPick 收的是 createWorkspace 返回的 workspaceId，不是客户端回显的请求 path。
+func TestWorkspaceCreateReturnsOfficialSelection(t *testing.T) {
+	srv := serveRaw(t, http.StatusOK, `{"result":{"workspace":{"workspaceId":"ws-17","path":"C:\\canonical","title":"canonical","sessionIds":["blank-1"],"createdAt":"1","updatedAt":"2"},"created":false}}`)
+	workspace, err := New(srv.URL).WorkspaceCreate(context.Background(), `C:\picked`)
+	if err != nil {
+		t.Fatalf("合法 workspace.create 不该失败：%v", err)
+	}
+	if workspace.WorkspaceID != "ws-17" || workspace.Path != `C:\canonical` || len(workspace.SessionIDs) != 1 || workspace.SessionIDs[0] != "blank-1" {
+		t.Fatalf("官方 workspace 返回值被丢了：%+v", workspace)
+	}
+}
+
+func TestWorkspaceCreateRejectsMissingSelection(t *testing.T) {
+	for _, body := range []string{
+		`{"result":{"workspace":{"path":"C:\\picked"},"created":true}}`,
+		`{"result":{"workspace":{"workspaceId":"ws-17"},"created":true}}`,
+		`{"result":{}}`,
+	} {
+		srv := serveRaw(t, http.StatusOK, body)
+		if workspace, err := New(srv.URL).WorkspaceCreate(context.Background(), `C:\picked`); err == nil {
+			t.Fatalf("缺 workspaceId/path 不能静默成功：body=%s workspace=%+v", body, workspace)
+		}
+	}
+}
+
 // TestDirectoryPickPathAndCancel：官方结果类型是 `string | null`，
 // null = 操作员取消（**不是错误**），空串 = 宿主坏了（是错误）。
 func TestDirectoryPickPathAndCancel(t *testing.T) {

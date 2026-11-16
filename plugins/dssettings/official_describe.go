@@ -127,6 +127,9 @@ type PanelSection struct {
 	// （官方 `AgentPresetSection` 是卡片网格 + 卡片本体即选择控件），
 	// 不是「标题 + 一行一个控件」那一套。Rows 对它是空的。
 	AgentPresets *AgentPresetsPanel
+	// Account 非 nil 表示官方 AccountSection 的独立组件树；数据来自 account.*，
+	// 不属于 settings.describe，绝不能走 buildStaticSection 的“未知”占位。
+	Account *apiclient.AccountSnapshot
 }
 
 // PanelModel 是一帧设置面板的全部内容。
@@ -220,8 +223,9 @@ func BuildPanelWithSources(describe *apiclient.SettingsDescribeResult, facts Hos
 		case "agent-presets":
 			buildAgentPresetsSection(&panel, describe, roster)
 		case "account":
-			buildStaticSection(&panel, describe, "account",
-				"账号与余额需要 credential-stored 与 account 数据")
+			// 空快照只表示这一帧尚未注入；syncPanel 会填入 account.* 真值。
+			// section 是否注册仍只由 CredentialStored 决定（官方 index.ts:318-334）。
+			panel.Account = &apiclient.AccountSnapshot{}
 		}
 		m.Sections = append(m.Sections, panel)
 	}

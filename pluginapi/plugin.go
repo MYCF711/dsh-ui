@@ -610,10 +610,17 @@ type Snapshot struct {
 	// 空 = 宿主没有 registry 或还没拉到：消费方必须退回"按 cwd 分组"的旧路径，
 	// 不能把空切片当成"用户没有任何工作区"而画空状态。
 	Workspaces []Workspace
-	Cur        string
-	Search     string
-	Status     string
-	Msgs       []apiclient.Message
+	// WorkspacesKnown=false 表示 registry 基线尚未落地；首屏此时显示加载状态，
+	// 不能把空缓存当成“没有工作区”而直接打开目录流（官方 WorkspacePickFlow:178-184）。
+	WorkspacesKnown bool
+	// PendingWorkspaceID 是刚 onPick、但空白会话尚未落地的工作区；首屏 chip 优先显示它。
+	PendingWorkspaceID string
+	// DirectoryBusy 是 native pick 的 armed/in-flight 真值，菜单动作在此期间禁用。
+	DirectoryBusy bool
+	Cur           string
+	Search        string
+	Status        string
+	Msgs          []apiclient.Message
 	// Frames 是当前会话 journal 的**原始 Transport 帧**（`session.history` 的
 	// `frames[]` 与 WS 推送**同一个形状**），按 seq 升序、已去重。
 	//
@@ -1401,6 +1408,11 @@ type Actions struct {
 	// 插件的 Draw 在绘制线程上，同步等 HTTP 会卡首帧。
 	Forge *ForgeActions
 
+	// SelectWorkspace 是首屏 WorkspacePicker 的 onPick(workspaceId)：复用该工作区的
+	// 空白会话并打开；没有可复用空白会话时必须如实报错，不能用只解 mode 的
+	// session.create 假装会在所选目录建会话。nil = 壳没接，首屏不画现有工作区菜单项。
+	SelectWorkspace func(workspaceID string)
+
 	// OpenDirectoryPicker 打开**官方目录选择器**（官方 `dsh-client-ui-directory-picker-browse`
 	// 的 Miller 双列对话框），用它「添加工作区」。
 	// OpenDirectoryPicker 打开**官方目录选择器**，用它「添加工作区」。
@@ -1544,6 +1556,20 @@ type Actions struct {
 	// retryPolicy 的嵌套路径（`providers.<route>.retryPolicy.*`）走这条：
 	// 官方 `settings.form.set` 只接受单段字段名。
 	SettingsMutate func(ns string, ops []apiclient.SettingsOp, expectedRevision int) (apiclient.SettingsNamespaceView, error)
+
+	// ── 账号页与账号菜单（官方 ui-settings-account）─────────────────────
+	// AccountSnapshot 同步返回壳缓存；View=nil 是未知，不是 signed-out。
+	AccountSnapshot func() apiclient.AccountSnapshot
+	// AccountRefresh 在后台合并重读 state/profile/balance，完成后由壳 Invalidate。
+	AccountRefresh func()
+	// AccountShowLogin 控制官方 SignInDialog；不直接改变宿主登录状态。
+	AccountShowLogin func(visible bool)
+	// 以下四个动作会真实调用宿主，调用方必须在 goroutine 中执行并展示返回错误。
+	AccountStartSignIn  func() error
+	AccountCancelSignIn func(attemptID string) error
+	AccountSignOut      func() error
+	// AccountHasRunningTasks 用于官方登出前确认；失败必须显示 unknown 文案。
+	AccountHasRunningTasks func() (bool, error)
 
 	// PluginInventory 返回壳缓存的官方 `pluginInventory.list` 结果
 	// —— 设置面板「内置插件」页的数据面。

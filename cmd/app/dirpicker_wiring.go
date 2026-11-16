@@ -79,7 +79,7 @@ func (s dirSource) Create(ctx context.Context, parent, name string) (string, err
 	return s.cli.DirectoryCreate(ctx, parent, name)
 }
 
-func (s dirSource) Register(ctx context.Context, path string) error {
+func (s dirSource) Register(ctx context.Context, path string) (apiclient.WorkspaceView, error) {
 	return s.cli.WorkspaceCreate(ctx, path)
 }
 
@@ -110,16 +110,19 @@ const dirPickerPickTimeout = 5 * time.Minute
 
 // dirPickerState 是壳缓存的组合判定结果。
 //
-// 三个字段都由 `wireDirPicker` 在第一帧之前写一次，之后只读（所以不需要锁）。
+// mode/err/onPicked 由 `wireDirPicker` 在第一帧之前写一次，之后只读；nativeBusy 由 m.mu 保护。
 type dirPickerState struct {
 	// mode 是本次启动的组合；dirPickerUnavailable = 入口隐藏。
 	mode dirPickerMode
 	// err 是探针失败的原因（mode=unavailable 且宿主真起了时才有值）。
 	// 它只用于日志/诊断——界面不编文案，直接隐藏入口。
 	err error
-	// onPicked 是"采用了一个目录"之后的壳动作（两种后端共用同一个语义：
-	// 官方 owner 在 `onPicked(path)` 里采用它）。测试可以换掉它。
-	onPicked func(path string)
+	// onPicked 是 createWorkspace 结算后的壳动作；与官方一致传返回的 WorkspaceView，
+	// 由其中的 workspaceId 驱动选择，不把请求 path 当工作区身份。
+	onPicked func(workspace apiclient.WorkspaceView)
+	// nativeBusy 对应官方 armed/in-flight：原生框未结算时不再启动第二个 pick。
+	// 只由 m.mu 保护读写；mode/err 仍是启动期写一次、之后只读。
+	nativeBusy bool
 }
 
 // wireDirPicker 探一次组合并按结果接线。
@@ -134,10 +137,10 @@ func wireDirPicker(m *model) {
 	if m == nil || m.cli == nil {
 		return
 	}
-	// 两种后端共用同一条"采用"语义：官方 owner 拿到 picked path 之后的事由壳做。
-	// browse 那条由对话框在 `workspace.create` 成功后回调；native 那条由
-	// `pickNativeDirectory` 自己调 `workspace.create` 后再调它。
-	m.dirPicker.onPicked = func(path string) { go m.refreshList() }
+	// 两种后端共用同一条"采用"语义：createWorkspace 返回 WorkspaceView 后，
+	// 官方 owner 用它的 workspaceId 选择空白会话。browse 由对话框回调；native 由
+	// `pickNativeDirectory` 自己调 `workspace.create` 后再调同一个入口。
+	m.dirPicker.onPicked = m.adoptPickedWorkspace
 	dsdirpicker.SetOnPicked(m.dirPicker.onPicked)
 
 	ctx, cancel := context.WithTimeout(context.Background(), dirPickerProbeTimeout)
@@ -195,7 +198,18 @@ func (m *model) openDirectoryPicker() bool {
 	case dirPickerBrowse:
 		return m.openBrowseDirectoryPicker()
 	case dirPickerNative:
-		go m.pickNativeDirectory()
+		m.mu.Lock()
+		if m.dirPicker.nativeBusy {
+			m.mu.Unlock()
+			return false // 官方 armed=true：同一个 open 生命周期不再 pick 第二次。
+		}
+		m.dirPicker.nativeBusy = true
+		m.mu.Unlock()
+		m.inv.Invalidate()
+		go func() {
+			defer m.finishNativeDirectoryPick()
+			m.pickNativeDirectory()
+		}()
 		return true
 	}
 	return false
@@ -219,11 +233,20 @@ func (m *model) openBrowseDirectoryPicker() bool {
 	return false
 }
 
+// finishNativeDirectoryPick 在 pick 的三种结局（选中/取消/失败）后统一 re-arm。
+// 没有 finally 的 Go 版本必须走 defer，否则一次宿主错误会让入口永久锁死。
+func (m *model) finishNativeDirectoryPick() {
+	m.mu.Lock()
+	m.dirPicker.nativeBusy = false
+	m.mu.Unlock()
+	m.inv.Invalidate()
+}
+
 // pickNativeDirectory 走 native 组合：真弹宿主的 OS 选择器，选到就采用它。
 //
 // 官方语义逐条对得上（`OFF:dpn/src/client/flow.ts:56-72`）：
 //
-//	path !== null ⇒ onPicked(path)   —— 我们这里 = `workspace.create` 之后刷新列表
+//	path !== null ⇒ createWorkspace → onPick(workspace.workspaceId)
 //	path === null ⇒ onCancel()       —— 操作员取消，**什么都不做、不报错**
 //	rejected      ⇒ onError(message) —— 宿主原文进状态栏，不另编文案
 //
@@ -244,12 +267,13 @@ func (m *model) pickNativeDirectory() {
 	if !picked {
 		return // 官方 null = 取消：不是错误，不打扰用户。
 	}
-	if err := m.cli.WorkspaceCreate(ctx, path); err != nil {
+	workspace, err := m.cli.WorkspaceCreate(ctx, path)
+	if err != nil {
 		m.setStatus("打开目录失败: " + err.Error())
 		return
 	}
 	if m.dirPicker.onPicked != nil {
-		m.dirPicker.onPicked(path)
+		m.dirPicker.onPicked(workspace)
 	}
 }
 

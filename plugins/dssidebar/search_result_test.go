@@ -10,7 +10,8 @@
 //	  background:var(--dsw-alias-interactive-bg-hover)}
 //	.wnFoaW_searchResultMeta{align-items:center;gap:6px;min-width:0;
 //	  margin-left:20px;display:flex}
-//	.wnFoaW_searchResultTitle{…;margin-left:4px;font-size:14px;line-height:20px;…}
+//	Rows.module.css:66-75 .searchResultTitle{margin:0 var(--dsh-sidebar-label-gap);
+//	  font-size:14px;line-height:20px;…}（rc.2 label-gap=6）
 //	.wnFoaW_searchResultWorkspace,.wnFoaW_searchResultSnippet{…;
 //	  font-size:12px;line-height:17px;…}
 //	.wnFoaW_searchResultWorkspace{max-width:40%;color:var(--dsw-alias-label-tertiary);flex:none}
@@ -322,9 +323,11 @@ func TestSearchResultCardInnerGeometry(t *testing.T) {
 	if got := boxes.Meta.Rect().Y - boxes.Heading.Rect().Y; got != 20 {
 		t.Fatalf("标题行到元信息行 = %v，want 20（两行紧挨）", got)
 	}
-	// 标题左边 = 卡片内边距 8 + 图标槽 16 + 官方 .searchResultTitle{margin-left:4px}
-	if got := boxes.Title.Rect().X - card.X; got != 28 {
-		t.Fatalf("标题左偏移 = %v，want 28（8+16+4）", got)
+	// 标题左边 = 卡片内边距 8 + 图标槽 16 + rc.2 label-gap 6：
+	// Rows.module.css:66-75 margin:0 var(--dsh-sidebar-label-gap)；变量值见
+	// SidebarRoot.module.css:7-11（rc.2 = 6px）。
+	if got := boxes.Title.Rect().X - card.X; got != 30 {
+		t.Fatalf("标题左偏移 = %v，want 30（8+16+6）", got)
 	}
 	// 元信息左边 = 卡片内边距 8 + 官方 .searchResultMeta{margin-left:20px}
 	if got := boxes.Meta.Rect().X - card.X; got != 28 {

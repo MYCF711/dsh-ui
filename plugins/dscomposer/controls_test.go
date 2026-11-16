@@ -166,8 +166,25 @@ func TestPrimaryButtonsUseOfficialVectorsAnd34pxHitArea(t *testing.T) {
 			if _, found := composerText(canvas, tc.banned); found {
 				t.Fatalf("仍在依赖字体 glyph %q，必须改官方 16 viewBox 矢量", tc.banned)
 			}
-			if got := trianglesInside(canvas, primary.Bounds, onInfo(p.theme)); got == 0 {
-				t.Fatalf("34px 主按钮内没有官方矢量三角形")
+			if tc.running {
+				// assets/official/icons/composer/stop.jsx:1-8：停止键不是 path，而是
+				// 16 viewBox 中 x/y=3、10×10、rx=3 的 <rect>；校验原生矩形及居中坐标。
+				wantX := primary.Bounds.X + (sendSize-primaryIconWH)/2 + primaryStopRect.X
+				wantY := primary.Bounds.Y + (sendSize-primaryIconWH)/2 + primaryStopRect.Y
+				found := false
+				for _, rect := range canvas.Rectangles() {
+					if rect.Color == onInfo(p.theme) && closeEnough(rect.Bounds.X, wantX) &&
+						closeEnough(rect.Bounds.Y, wantY) && rect.Bounds.Width == primaryStopRect.Width &&
+						rect.Bounds.Height == primaryStopRect.Height && rect.Radius == primaryStopRect.RX {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatalf("34px 主按钮内没有官方 10×10/rx=3 停止矩形；want x/y=%v/%v", wantX, wantY)
+				}
+			} else if got := trianglesInside(canvas, primary.Bounds, onInfo(p.theme)); got == 0 {
+				t.Fatalf("34px 主按钮内没有官方发送矢量三角形")
 			}
 			hit, found := composerHit(canvas, tc.label)
 			if !found || hit.Bounds.Width != 34 || hit.Bounds.Height != 34 || hit.Disabled {

@@ -181,7 +181,7 @@ func TestV2SelectionAndClickUseRealSessionID(t *testing.T) {
 	}
 }
 
-// TestV2GroupGeometryAndScroll 直接量 flex 布局：组头 34、会话 32、
+// TestV2GroupGeometryAndScroll 直接量 flex 布局：rc.2 组头/会话均 32、
 // 组头到首行 2、上一组末行到下一组头 4；wheel 必须移动这个列表自己的滚动区。
 func TestV2GroupGeometryAndScroll(t *testing.T) {
 	p, recorder, env, _, canvas := v2Fixture()
@@ -199,20 +199,21 @@ func TestV2GroupGeometryAndScroll(t *testing.T) {
 		})
 	}
 	draw()
-	// 最新组 b 在前：第一组头 y=0，第一行 y=36；第二组头应在第一行结束后 4px。
+	// 最新组 b 在前：第一组头 y=0、高 32（rc.2 Rows.module.css:112-116），
+	// 第一行 y=34；第二组头应在第一行结束后 4px。
 	if len(recorder.rows) < 2 {
 		t.Fatalf("实际行数 %d，无法检查组间距", len(recorder.rows))
 	}
 	first, second := recorder.rows[0].box.Rect(), recorder.rows[1].box.Rect()
-	if first.Y != 36 || first.Height != 32 {
-		t.Fatalf("首行矩形 = %+v，want y=36 height=32", first)
+	if first.Y != 34 || first.Height != 32 {
+		t.Fatalf("首行矩形 = %+v，want y=34 height=32", first)
 	}
 	if len(recorder.headers) != 2 {
 		t.Fatalf("实际组头数 = %d，want 2", len(recorder.headers))
 	}
 	firstHeader, secondHeader := recorder.headers[0].Rect(), recorder.headers[1].Rect()
-	if firstHeader.Height != 34 || secondHeader.Height != 34 {
-		t.Fatalf("组头高度 = %v/%v，want 34/34", firstHeader.Height, secondHeader.Height)
+	if firstHeader.Height != 32 || secondHeader.Height != 32 {
+		t.Fatalf("组头高度 = %v/%v，want 32/32", firstHeader.Height, secondHeader.Height)
 	}
 	if got := first.Y - (firstHeader.Y + firstHeader.Height); got != 2 {
 		t.Fatalf("组头到首行间距 = %v，want 2", got)

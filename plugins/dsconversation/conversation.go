@@ -548,21 +548,20 @@ func (p *Plugin) drawMessage(f ui.C, env *pluginapi.Env, i int, width float32) {
 		p.drawMessageMeta(f, env, msg, key)
 
 	case kindUser:
-		// 用户消息：右对齐气泡（官方 .LOmM4q_userStack：
-		//   max-width = min(chat-content-width × .702, 82%)，flex-column + align-items:flex-end，gap 8
-		//   气泡本体 .bubble：radius xl、specific-bubble 底、正文 14/22）
-		// 外观交给 prims.Bubble；这里只负责"右对齐"和"宽度上限"两件事。
+		// 用户消息：右对齐气泡（MessageItem.module.css:10-21：
+		// max-width=min(chat-content-width×.702,82%)；UserMessageBubble.module.css:1-11：
+		// padding 10px 16px、radius xl、正文 14/22）。
 		ui.Row(f).WidthPercent(100).Justify(ui.End).Children(func() {
-			// 官方的 82%/748px 是相对**会话内容列**算的，而槽位里拿不到列宽；
-			// viva 的文字会自然换行，气泡按内容宽度收缩，所以不需要像素上限（见验收说明）。
-			p.prims.Bubble(f, func() {
-				// 用户粘进来的凭据与 `@` 引用：没有这两类东西时走原来的整段 Wrap；
-				// 有它们才走行内布局（usertext.go），免得把普通消息的排版也换成近似实现。
-				if hasUserInline(msg.Text) {
-					p.drawUserInline(f, env, msg, width)
-					return
-				}
-				ui.Wrap(f, userDisplayText(msg)).FontSize(t.Fonts.Body)
+			ui.Row(f).MaxWidth(userStackMaxWidth(width)).Justify(ui.End).Children(func() {
+				p.prims.Bubble(f, func() {
+					// 用户粘进来的凭据与 `@` 引用：没有这两类东西时走原来的整段 Wrap；
+					// 有它们才走行内布局（usertext.go），免得把普通消息的排版也换成近似实现。
+					if hasUserInline(msg.Text) {
+						p.drawUserInline(f, env, msg, width)
+						return
+					}
+					ui.Wrap(f, userDisplayText(msg)).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine)
+				})
 			})
 		})
 		p.drawMessageMeta(f, env, msg, key)

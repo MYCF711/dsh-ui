@@ -51,9 +51,9 @@ const (
 
 // browserTarget 是官方 `BrowserTarget`（url.ts:9-11）。
 type browserTarget struct {
-	Kind  targetKind
-	URL   string
-	Title string
+	Kind  targetKind `json:"kind"`
+	URL   string     `json:"url"`
+	Title string     `json:"title"`
 }
 
 // addressFailure 是官方 `BrowserAddressFailure`（url.ts:14）。

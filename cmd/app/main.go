@@ -125,6 +125,11 @@ type model struct {
 	workspacesKnown   bool
 	workspacesPending bool
 	workspacesErr     string
+	archivedSessions  map[string]bool
+	// workspaceSelectionPending 对应官方 ConversationContent.pendingWorkspaceId：
+	// 首屏 chip 先显示刚选中的工作区，空白会话落地或失败后撤掉。
+	workspaceSelectionPending string
+	workspaceSelectionSeq     uint64
 	// dirPicker 是**本次启动探到的 directoryPicker 组合**（browse / native /
 	// 都不可用）与它的缓存。探针只在启动时打一次，之后每次打开都用这个结果
 	// ——探针有网络开销，而且 native 组合下它必然是一条 501（见
@@ -403,11 +408,15 @@ type model struct {
 	// rightbarDefault 保留 -rightbar 的显式默认；普通启动为 false。
 	rightbarDefault  bool
 	rightbarSessions map[string]rightbarSessionState
-	// rightTabSel 是每会话选中的右栏 tab **类型 key**（官方也是 per-session 的
-	// dockkit 页签选择）。空/未命中由 uikernel.ResolveActiveRightTab 落名录第一条。
-	rightTabSel map[string]string
-	status      string
-	loading     bool
+	// rightTabSel 是每会话选中的右栏 occurrence key；rightTabSurfaces 是官方
+	// dsh.sidebar-right.v1 的单 pane 布局子集。Loaded/Dirty 区分「配置未到」
+	// 与「用户已改动」，防止异步配置读回覆盖刚新建或关闭的 tab。
+	rightTabSel      map[string]string
+	rightTabSurfaces map[string]*rightTabSurface
+	rightTabLoaded   map[string]bool
+	rightTabDirty    map[string]bool
+	status           string
+	loading          bool
 
 	// WP-C1 的本地发送与原始终局均按会话隔离；不进入 apiclient.Message.Seq。
 	outgoing   map[string][]pubapi.OutgoingMessage
@@ -1855,6 +1864,9 @@ func newConfig(m *model) app.Config {
 		m.mu.Lock()
 		sessions := append([]apiclient.Session(nil), m.sessions...)
 		workspaces := cloneWorkspaces(m.workspaces)
+		workspacesKnown := m.workspacesKnown
+		workspaceSelectionPending := m.workspaceSelectionPending
+		directoryBusy := m.dirPicker.nativeBusy
 		cur := m.cur
 		msgs := append([]apiclient.Message(nil), m.msgs...)
 		metadata := map[string]pubapi.MessageMetadata{}
@@ -1978,7 +1990,9 @@ func newConfig(m *model) app.Config {
 			// ErrWebUnsupported），插件因此只需要认一个错误值。
 			Web: webPages{host: m.web},
 			Data: pluginapi.Snapshot{
-				Sessions: sessions, Workspaces: workspaces, Cur: cur, Status: status,
+				Sessions: sessions, Workspaces: workspaces, WorkspacesKnown: workspacesKnown,
+				PendingWorkspaceID: workspaceSelectionPending, DirectoryBusy: directoryBusy,
+				Cur: cur, Status: status,
 				Msgs: msgs, Frames: frames, JournalEpoch: framesEpoch,
 				// 向前分页五态：**只在"确实开过会话"时才有意义**；
 				// 零值（Baseline/HasMore 全 false、无错）界面不画那一行。
@@ -2063,9 +2077,11 @@ func newConfig(m *model) app.Config {
 		// 会话 view 的选中项存在 dstopbar 提供的 viewapi.Store 里（那是插件间既有
 		// 的唯一出处，壳不另起一份），右栏 tab 的选中项存在壳自己的模型里。
 		env.Views = uikernel.ViewTabs(m.kernel)
-		env.RightTabs = uikernel.RightTabs(m.kernel)
+		env.RightTabs = m.rightTabsFor()
 		env.ActiveView = m.activeViewKey()
 		env.ActiveRightTab = m.activeRightTabKey(env.RightTabs)
+		env.ActiveRightTabKind = uikernel.RightTabKind(env.RightTabs, env.ActiveRightTab)
+		env.RightTabID = env.ActiveRightTab
 		// 三栏几何由壳算：它知道侧栏要的宽度、右栏开不开、白名单里有没有底部整行。
 		// 框架插件照着摆，不再自己猜（猜错过：白名单里漏掉 shell，部件就上下堆叠）。
 		// 与上面 env.MainWidth 用的是**同一份**求解结果，不允许两处各算一遍。
@@ -2811,6 +2827,14 @@ func main() {
 		SettingsFormReset:      m.settingsFormReset,
 		SettingsMutate:         m.settingsMutate,
 		SettingsMutateRevision: m.settingsMutateRevision,
+		// 账号页与 AccountMenu 共享同一份宿主快照和真实动作。
+		AccountSnapshot:        m.wave3.accountDetailsSnapshot,
+		AccountRefresh:         m.accountRefresh,
+		AccountShowLogin:       m.accountShowLogin,
+		AccountStartSignIn:     m.accountStartSignIn,
+		AccountCancelSignIn:    m.accountCancelSignIn,
+		AccountSignOut:         m.accountSignOut,
+		AccountHasRunningTasks: m.accountHasRunningTasks,
 		// 内置插件页的数据面：官方 pluginInventory.list 的缓存。
 		// 与 describe 分开一处（它不是 Host 设置，是 Loader 的只读投影），
 		// 见 plugin_inventory_wiring.go。
@@ -2869,6 +2893,7 @@ func main() {
 		CotTranslationTranslate: m.cotTranslationTranslate,
 		CotTranslationResult:    m.cotTranslationTakeResult,
 		OpenSession:             m.openSession,
+		SelectWorkspace:         m.selectWorkspace,
 		WorkspaceRename:         m.renameWorkspace,
 		WorkspaceDelete:         m.deleteWorkspace,
 		// 拖拽排会话顺序的唯一写路径（官方 workspace.insertSessionBefore）。
@@ -2896,6 +2921,8 @@ func main() {
 		// 选择器动作：两个座位共用一套语义（只切"看哪一个"，不发请求、不 reload）。
 		SelectView:     m.selectViewKey,
 		SelectRightTab: m.selectRightTabKey,
+		OpenRightTab:   m.openRightTab,
+		CloseRightTab:  m.closeRightTab,
 		// 审批：真调 session.approve，把宿主的 requestId 与它自己的 optionId 原样回传。
 		// **只有宿主 200 且 accepted 才收气泡**——本地收掉不等于批准了（宿主 §11.7）。
 		// 失败时气泡留着、状态栏报错，用户可以再点一次。

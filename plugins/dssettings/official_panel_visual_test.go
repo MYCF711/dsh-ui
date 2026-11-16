@@ -110,12 +110,21 @@ type officialHarness struct {
 	agentPresetRefresh int
 	// modelsSnapshot 是 Models 独立页的三路宿主快照；nil 走真实 llm 设置回退。
 	modelsSnapshot *apiclient.ModelsPageSnapshot
+	// account 是账号页的真实快照与动作记录。
+	account          apiclient.AccountSnapshot
+	accountRefresh   int
+	accountStarts    int
+	accountCancels   []string
+	accountExternals []string
 }
 
 func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 	t.Helper()
 	h := &officialHarness{t: t, writer: &raceSafeWriter{section: apiclient.SettingsSectionView{NS: "permission", Revision: 9}}}
 	h.describe = describeFixture()
+	h.account = apiclient.AccountSnapshot{
+		View: &apiclient.AccountView{Status: apiclient.AccountCredentialStored}, Known: true,
+	}
 	h.p = &Plugin{}
 	h.kernel = uikernel.New("official-settings")
 	if err := h.kernel.Load(&dscore.Plugin{Dark: true}, &dsshell.Plugin{}, h.p); err != nil {
@@ -161,6 +170,35 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 				rev = &expectedRevision
 			}
 			return h.writer.SettingsMutate(context.Background(), ns, ops, rev)
+		},
+		AccountSnapshot: func() apiclient.AccountSnapshot {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.account
+		},
+		AccountRefresh: func() {
+			h.mu.Lock()
+			h.accountRefresh++
+			h.mu.Unlock()
+			h.invalidator.Invalidate()
+		},
+		AccountStartSignIn: func() error {
+			h.mu.Lock()
+			h.accountStarts++
+			h.mu.Unlock()
+			return nil
+		},
+		AccountCancelSignIn: func(id string) error {
+			h.mu.Lock()
+			h.accountCancels = append(h.accountCancels, id)
+			h.mu.Unlock()
+			return nil
+		},
+		OpenExternal: func(destination string) error {
+			h.mu.Lock()
+			h.accountExternals = append(h.accountExternals, destination)
+			h.mu.Unlock()
+			return nil
 		},
 		Notify: func(msg string) {
 			h.mu.Lock()

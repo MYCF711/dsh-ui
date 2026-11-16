@@ -144,7 +144,7 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 			}
 			uikernel.DrawRightTabs(f, env, tabs, active, selectTab)
 			ui.Row(f).FillWidth().Grow(1).Children(func() {
-				env.DrawKeyed(f, pluginapi.SlotRightPaneTab, active)
+				env.DrawKeyed(f, pluginapi.SlotRightPaneTab, uikernel.RightTabKind(tabs, active))
 			})
 			return
 		}

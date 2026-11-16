@@ -1078,7 +1078,7 @@ func drawRightbarSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispat
 			}
 			DrawRightTabs(f, env, layout.Options.RightTabs, layout.Options.ActiveRightTab, selectTab)
 			ui.Row(f).FillWidth().Grow(1).Children(func() {
-				env.DrawKeyed(f, OffRightPaneTab, layout.Options.ActiveRightTab)
+				env.DrawKeyed(f, OffRightPaneTab, RightTabKind(layout.Options.RightTabs, layout.Options.ActiveRightTab))
 			})
 			ui.Row(f).FillWidth().Children(func() { dispatch(OffRightTabMenuItem) })
 			return

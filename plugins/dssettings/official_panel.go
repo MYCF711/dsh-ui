@@ -90,6 +90,10 @@ type officialPanel struct {
 	sessionLogToastSuccess bool
 	sessionLogToastTimer   *time.Timer
 	sessionLogGeneration   uint64
+
+	// 账号页：官方 AccountMenu 在 Settings false→true 边沿刷新一次。
+	accountOpenRefreshed bool
+	accountBusy          bool
 }
 
 // ensureOfficial 惰性造面板状态（零值可用）。
@@ -289,6 +293,11 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 		roster = env.Act.AgentPresetRoster()
 		refresh = env.Act.AgentPresetRefresh
 	}
+	var account *apiclient.AccountSnapshot
+	if env.Act.AccountSnapshot != nil {
+		snapshot := env.Act.AccountSnapshot()
+		account = &snapshot
+	}
 
 	model := BuildPanelWithSources(describe, facts, inventory, o.pluginsView(), roster)
 	var modelsSnapshot *apiclient.ModelsPageSnapshot
@@ -301,6 +310,9 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	for index := range model.Sections {
 		if model.Sections[index].ID == "models" {
 			model.Sections[index] = buildModelsPage(model.Sections[index], describe, nil, modelsSnapshot, modelsEdit)
+		}
+		if model.Sections[index].Account != nil && account != nil {
+			model.Sections[index].Account = account
 		}
 	}
 
@@ -328,8 +340,18 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	if !hasSource {
 		o.open = false
 	}
+	refreshAccount := o.open && account != nil && !o.accountOpenRefreshed
+	if refreshAccount {
+		o.accountOpenRefreshed = true
+	}
+	if !o.open {
+		o.accountOpenRefreshed = false
+	}
 	o.mu.Unlock()
 
+	if refreshAccount && env.Act.AccountRefresh != nil {
+		env.Act.AccountRefresh()
+	}
 	if p.notify == nil && o.notify != nil {
 		p.notify = o.notify
 	}
@@ -532,6 +554,10 @@ func (p *Plugin) drawPanelNav(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a 
 func (p *Plugin) drawPanelOptions(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect, section PanelSection, write WriteState) {
 	if section.Models != nil {
 		p.drawModelsPage(f, env, t, a, section, write)
+		return
+	}
+	if section.Account != nil {
+		p.drawAccountPage(f, env, t, a, *section.Account)
 		return
 	}
 	// 「内置插件」页有**自己的**渲染面（搜索 + 分组 + 卡片网格 + 展开详情），

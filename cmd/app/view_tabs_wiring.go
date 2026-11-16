@@ -117,23 +117,28 @@ func (m *model) selectRightTabKey(key string) {
 	if key == "" {
 		return
 	}
-	known := false
-	for _, tab := range uikernel.RightTabs(m.kernel) {
+	selected := ""
+	for _, tab := range m.rightTabsFor() {
+		kind := tab.Kind
+		if kind == "" {
+			kind = tab.Key
+		}
+		// occurrence key 优先；旧插件仍可按类型 key 选择第一个实例。
+		if tab.Key == key || selected == "" && kind == key {
+			selected = tab.Key
+		}
 		if tab.Key == key {
-			known = true
 			break
 		}
 	}
-	if !known {
+	if selected == "" {
 		return
 	}
 	m.mu.Lock()
 	if m.cur != "" {
-		if m.rightTabSel == nil {
-			m.rightTabSel = map[string]string{}
-		}
-		m.rightTabSel[m.cur] = key
+		m.markRightTabSelectionLocked(m.cur, selected)
 	}
 	m.mu.Unlock()
+	m.persistRightTabSurface(m.cur)
 	m.inv.Invalidate()
 }

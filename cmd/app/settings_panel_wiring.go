@@ -94,6 +94,7 @@ func (m *model) settingsDescribeSnapshot() *apiclient.SettingsDescribeResult {
 // 每一项都必须**来自真实来源**：宿主没提供的一律零值（= 不注册），
 // 不许为了"界面上多一行"编一个 true。
 func (m *model) settingsHostFacts() pluginapi.SettingsHostFacts {
+	accountSignedIn, _, accountKnown := m.wave3.accountSnapshot()
 	m.mu.Lock()
 	shellServed := m.shellChannelServed
 	shellChannel := m.shellChannel
@@ -118,8 +119,9 @@ func (m *model) settingsHostFacts() pluginapi.SettingsHostFacts {
 		SessionLogServed: false,
 		// build 注入的版本号（brand.go 的 version，`-X main.version=…`）。
 		ClientVersion: version,
-		// 账号默认 Local（W0 架构裁定）：没有 credential-stored 状态。
-		CredentialStored: false,
+		// 账号 section 的唯一判据：宿主 account.getState 的真实状态；
+		// known=false（未读到/能力缺失）绝不能冒充 credential-stored。
+		CredentialStored: accountKnown && accountSignedIn,
 	}
 
 	m.mu.Lock()

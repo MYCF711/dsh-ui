@@ -115,6 +115,9 @@ const (
 	OffConvComposer     pluginapi.Slot = "conversation.composer"
 	OffConvComposerBar  pluginapi.Slot = "conversation.composer.bar"
 	OffConvComposerDock pluginapi.Slot = "conversation.composer.dock"
+	// OffPlanReviewActions 是 ui-user-questions 在 PlanReviewPanel.strip 里声明的
+	// list/session 子槽；dsplan 的「查看全文」占用它。
+	OffPlanReviewActions pluginapi.Slot = "conversation.plan-review.actions"
 )
 
 // Session header 的六个座位（conversation/src/client/contract/slots.ts:239-283）。
@@ -384,7 +387,6 @@ var builtinOfficialSlots = []SlotSpec{
 		Anchor: "ui-conversation/src/client/contract/slots.ts:315",
 		Note:   "卡片下方环境条目（Activity/Usage/ContextMeter 不在这里，它们在 dock 内）",
 	},
-
 	// ── Hero（空白会话）─────────────────────────────────────────────
 	{
 		Name: OffHeroFrame, Kind: KindHOC, Scope: ScopeRoot, Parent: OffConvContent, Host: "Hero.frame",

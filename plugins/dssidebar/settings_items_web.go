@@ -230,6 +230,8 @@ type settingsWebProviderOption struct {
 	Description any
 	// Missing 表示这个 id 是"选中了但宿主当前没注册"（官方 `missing`）。
 	Missing bool
+	// Disabled 对应 cot 的 providerUnavailableOption：保留当前失效值可见但不可重选。
+	Disabled bool
 }
 
 // settingsWebHint 是 provider 菜单下的一行说明（官方 `<p class=hint>`，:289-290）。

@@ -25,6 +25,7 @@ package dsquestions
 import (
 	"encoding/json"
 	"strconv"
+	"sync"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
@@ -60,6 +61,16 @@ type Plugin struct {
 	act pluginapi.Actions
 	// cur 是当前显示的那条问题（draw 填、HandleKey 读）。
 	cur Question
+	// review 是计划审阅的在飞/失败/本地关闭状态；网络回答不阻塞绘制线程。
+	review planReviewInteraction
+}
+
+type planReviewInteraction struct {
+	mu        sync.Mutex
+	busy      map[string]bool
+	err       map[string]string
+	answered  map[string]bool
+	discussed map[string]bool
 }
 
 func (*Plugin) ID() string { return "ds-questions" }

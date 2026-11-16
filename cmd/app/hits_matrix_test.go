@@ -110,6 +110,7 @@ func hitsActions() pluginapi.Actions {
 	noopString := func(string) {}
 	return pluginapi.Actions{
 		OpenSession:      noopString,
+		StartSession:     func(pluginapi.StartSessionOptions) {},
 		ForkSession:      noop,
 		CompactSession:   noop,
 		DeleteSession:    noopString,

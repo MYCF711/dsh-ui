@@ -239,12 +239,13 @@ INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives
 | 字段 | 签名 | 壳是否接线 | 说明 |
 |---|---|---|---|
 | `OpenSession` | `func(id string)` | ✅ | 切会话 |
+| `StartSession` | `func(StartSessionOptions)` | ✅ | 官方 `uiWorkspace.startSession` 三字段投影：`agentPreset` / `prompt` / `whenDraftExists`；真实建会话后初始化草稿，不自动发送；nil 时 Creator 整行 HIDE |
 | `NewSession` | `func()` | ✅ | 新建并打开 |
 | `Send` | `func(text string)` | ✅ | 发出去；文字由画输入框的插件给 |
 | `Copy` | `func(text string)` | ✅ | 壳调 `app.SetClipboardText`，成功后状态栏显示「已复制 N 字」 |
 | `Retry` | `func()` | ✅ | 重发最后一条用户消息 |
 | `Notify` | `func(msg string)` | ✅ | 让壳在状态栏说一句话（插件不直接写状态栏，那是别的插件的地盘） |
-| `SetDraft` | `func(text string)` | ❌ 未接线（nil） | 没有插件在用 |
+| `SetDraft` | `func(text string)` | ✅ | 覆盖草稿；需要官方 keep/append 语义时走 `StartSession` |
 | `Approve` | `func(requestID, optionID string)` | ✅ | **审批的正路**：两个 id 原样转发给 `session.approve`。插件不许自己造 id |
 | `Cancel` | `func()` | ✅ | 打断当前会话的 turn（`session.cancel`）；宿主对没有 turn 的调用幂等 |
 | `Allow` | `func()` | ✅ | **旧接口**，只在 `Approve == nil` 时兜底（它没有 id，宿主那边无从对应） |
@@ -753,3 +754,13 @@ INFO 插件已装配 id=ds-decl provides=[] requires="[ui.theme ui.primitives]"
 布局使用 `dsh.sidebar-right.v1.<sessionId>`，浏览器导航使用
 `dsh.sidebar-browser.v1.<sessionId>`，都经既有 `ConfigGet/ConfigSet` 落在宿主 `ui-config.json`。
 恢复记录不等于自动加载网页：插件必须等用户显式恢复动作才创建 `WebPage`。
+
+## 17. 计划投影与待答问题（2026-11-17）
+
+- `Snapshot.Plan` 是宿主 `session.projections.plan` 的 `{active,pending}`；nil 只表示未知，
+  不得写成 active=false。`Actions.ExecuteCommand(line)` 同步执行当前会话命令，插件必须后台调用。
+- `Actions.AnswerQuestion(callID, answer)` 走官方 `userQuestions.answer`；批准选项 label
+  逐字回传，不能用界面翻译替代协议值。`ViewSpec.Questions/AwaitingAnswer` 是 durable
+  tool/result.view 的恢复数据，问题字段使用官方 `multiSelect` camelCase。
+- `Env.DrawSlot` 与 `DrawKeyed` 一样保留调用点布局游标，供父容器在准确 DOM 等价位置
+  派发普通子槽；plan-review 父卡因此在 strip 内派发 `conversation.plan-review.actions`。

@@ -59,6 +59,8 @@ const (
 	heroInputMinHeight = 52
 	inputPadLeft       = 14
 	inputPadRight      = 8
+	// InputBar.module.css:145-151 .scroll{margin-right:4px}。
+	inputScrollMarginRight = 4
 
 	// .GRgSLq_row{padding:2px 8px 6px;gap:12px;justify-content:space-between;align-items:center}
 	rowPadTop    = 2
@@ -309,8 +311,9 @@ func (p *Plugin) drawInput(f ui.C, env *pluginapi.Env, cardW float32) {
 	t := p.theme
 	// 文字要从卡片外沿 +14 起：Field 自己缩进 11，所以外层左边补 3。
 	left := float32(inputPadLeft - fieldTextInset)
-	// 右边缘落在卡片外沿 -8（官方 padding-right:8）。
-	fieldW := cardW - inputPadLeft + fieldTextInset - inputPadRight
+	// Field 的文字左右各有 11px 内缩。官方文字右缘 = 卡片右缘 - (8 padding + 4 scroll)，
+	// 所以 Field 右缘要落在卡片右缘 - (8+4-11) = -1；文字左缘仍是卡片 +14。
+	fieldW := cardW - left - (inputPadRight + inputScrollMarginRight - fieldTextInset)
 	// 首屏（没有会话）用官方 hero 档 52，有会话时是 36。
 	inputH := float32(inputMinHeight)
 	if env.Data.Cur == "" {
@@ -512,7 +515,7 @@ func (p *Plugin) busyDot(f ui.C) {
 // 官方 fill = --dsw-alias-button-info-fill = deepseek-400/500，正好是主题里的 Info
 // （深色 deepseek-400、浅色 deepseek-500，逐档一致）；前景色官方写死 #fff，
 // 我们没有 "on-info" 令牌，取对比度最高的那一档，见 onInfo()。
-// 图标是官方 16 viewBox 的填充路径，不再依赖 ↑/■ 的字体字形。
+// 图标是 dsassets 登记的官方 16 viewBox 发送路径 / 停止矩形，不依赖 ↑/■ 字体字形。
 func (p *Plugin) sendButton(f ui.C, env *pluginapi.Env, running bool) {
 	t := p.theme
 	id := env.Tree.ID(env.Feat, "send")
@@ -520,7 +523,7 @@ func (p *Plugin) sendButton(f ui.C, env *pluginapi.Env, running bool) {
 	disabled := strings.TrimSpace(p.field.Text()) == "" || env.Act.Send == nil
 	if running {
 		id = env.Tree.ID(env.Feat, "stop")
-		icon, label = primaryStopIcon, "停止"
+		label = "停止"
 		disabled = env.Act.Cancel == nil
 	}
 	fill, foreground := t.Info, onInfo(t)
@@ -541,6 +544,13 @@ func (p *Plugin) sendButton(f ui.C, env *pluginapi.Env, running bool) {
 		// 键盘仍走输入框 Enter 发送、Esc 停止，审批按钮保持自己的焦点语义。
 		SkipFocus: true,
 	}).Children(func() {
+		if running {
+			// assets/official/icons/composer/stop.jsx:1-8 的官方 <rect> 由
+			// dsassets.ComposerStop 登记；16px SVG 在 34px 圆钮内居中，矩形也直接居中。
+			ui.Row(f).Size(primaryStopRect.Width, primaryStopRect.Height).
+				Radius(primaryStopRect.RX).Background(foreground)
+			return
+		}
 		ui.Icon(f, icon).Size(primaryIconWH, primaryIconWH).Color(foreground)
 	}).Clicked()
 	if clicked && !disabled {

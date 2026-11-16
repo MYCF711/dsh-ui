@@ -213,7 +213,7 @@ func (p *Plugin) drawSettingsWebMenu(f ui.C, env *pluginapi.Env, t *pluginapi.Th
 			option := option
 			// viva 的菜单行由 Scope 身份驱动（`MenuItems.Item` 内部分配），不是 `Box.Hit`；
 			// 与 plugins/dscontextmenu 的 `declare` 同一写法。
-			if items.Item(label(option)).Chosen(option.ID == selected).Clicked() {
+			if items.Item(label(option)).Chosen(option.ID == selected).Disabled(option.Disabled).Clicked() && !option.Disabled {
 				onSelect(option.ID)
 			}
 		}

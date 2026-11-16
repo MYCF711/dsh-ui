@@ -31,13 +31,12 @@
 //	../DSH-GO/cmd/dshd/serve_forge_rc2.go:235/257/330   diffBases / localCommits / worktreeCleanup
 //	../DSH-GO/cmd/dshd/serve_worktree_api.go:173        worktree 6 方法（internal/worktree 状态机）
 //
-// # 一条宿主限制（客户端据此**不画**基准分支选择器）
+// # branch scope 的完整接线
 //
-// 宿主 `localDiff` / `localText` 只取 `scope.kind`（`serve_forge_git.go:69-74` 把
-// `scope` 解成 `struct{ Kind string }` 再交给 `forge.Scope{Kind: …}`），
-// 所以官方 `branch` 范围里的 `base` / `commits` 传了也被忽略：分支范围永远按
-// **自动分叉点**算。于是界面只显示宿主回的 `base`，不提供"选别的基准分支"的
-// 交互——画一个宿主不认的选择器就是假交互。
+// `base` / `commits` 由 forgeScopeWire 按官方 required+nullable 形状发送；宿主
+// `serve_forge_git.go` 解成完整 `forge.Scope`，分别走 chosenForkPoint 与连续提交
+// diff。当前 GUI 尚未实现 BaseMenu / CommitMenu，所以壳仍传 null（自动分叉点、
+// 全部提交）；这是未做的菜单，不再是对端忽略字段的限制。
 package apiclient
 
 import "context"
@@ -268,8 +267,8 @@ func (c *Client) ForgeLocalText(ctx context.Context, sessionID string, scope For
 
 // ForgeDiffBases 列可选的基准分支与自动分叉点（官方 `forgePanel/diffBases`）。
 //
-// 注意：即使拿到这份清单，宿主 `localDiff` 也**不认** `base`（见文件头"一条宿主
-// 限制"）。所以界面只用 `Automatic` 说清"现在按什么比"。
+// Automatic 与 remote/local 都按官方形状解码；当前 Changes 视图只显示 Automatic，
+// BaseMenu 选择交互仍未实现（见 #64 账本），但 `localDiff` 客户端已能发送选中 ref。
 func (c *Client) ForgeDiffBases(ctx context.Context, sessionID, query string) (ForgeBaseBranches, error) {
 	params := struct {
 		SessionID string `json:"sessionId"`

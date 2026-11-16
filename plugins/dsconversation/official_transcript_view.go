@@ -321,12 +321,18 @@ func (v *OfficialTranscriptView) drawRow(f ui.C, env *pluginapi.Env, e Transcrip
 // drawUser 画 §5.1 用户消息：右对齐行 + 内容栈 + 气泡 + 附件行 + 引用摘要。
 func (v *OfficialTranscriptView) drawUser(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
 	t := v.Theme
+	column := env.MainWidth
+	if column <= 0 {
+		column = env.Bounds.Width
+	}
 	ui.Row(f).FillWidth().Justify(ui.End).Gap(UserRowGap).Children(func() {
 		stack := ui.Column(f).Items(ui.End).Gap(UserStackGap).MinWidth(0).
-			MaxWidthPercent(UserStackWidthCap * 100)
+			MaxWidth(userStackMaxWidth(column))
 		stack.Children(func() {
 			if e.Data.Text != "" {
-				ui.Text(f, e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+				v.Prims.Bubble(f, func() {
+					ui.Wrap(f, e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+				})
 			}
 			// 引用摘要（.referenceSummary：13px / 18px + delta-secondary，label-tertiary）
 			if len(e.Data.References) > 0 {
@@ -379,10 +385,16 @@ func (v *OfficialTranscriptView) drawAttachment(f ui.C, attachment TranscriptAtt
 // 且行上带 `data-pending-steering`（Host 权威待入）。
 func (v *OfficialTranscriptView) drawSteering(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
 	t := v.Theme
+	column := env.MainWidth
+	if column <= 0 {
+		column = env.Bounds.Width
+	}
 	ui.Row(f).FillWidth().Justify(ui.End).Gap(UserRowGap).
 		MarginSides(ChatFlowGapSteeringBatch-ChatFlowGapDefault, 0, 0, 0).Children(func() {
-		ui.Column(f).Items(ui.End).Gap(UserStackGap).MinWidth(0).Children(func() {
-			ui.Text(f, e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelSecondary)
+		ui.Column(f).Items(ui.End).Gap(UserStackGap).MinWidth(0).MaxWidth(userStackMaxWidth(column)).Children(func() {
+			v.Prims.Bubble(f, func() {
+				ui.Wrap(f, e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+			})
 		})
 	})
 }

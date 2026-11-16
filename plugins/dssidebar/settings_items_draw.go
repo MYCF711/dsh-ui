@@ -169,7 +169,9 @@ type settingsItemFields struct {
 	webBaseURL ui.Field
 	webMaxUses ui.Field
 	webKey     ui.Field
-	mirror     map[string]string
+	// #63 目标语言输入框；provider 是官方 select，不占文本槽。
+	cotTargetLanguage ui.Field
+	mirror            map[string]string
 }
 
 // all 返回全部输入框（Fields() 用）。
@@ -182,6 +184,7 @@ func (f *settingsItemFields) all() []*ui.Field {
 		&f.agentLoopParallel, &f.shellTimeout, &f.shellMaxOutput,
 		&f.subagentDepth, &f.subagentActive,
 		&f.webCount, &f.webBaseURL, &f.webMaxUses, &f.webKey,
+		&f.cotTargetLanguage,
 	}
 }
 
@@ -206,6 +209,8 @@ func (f *settingsItemFields) slot(ns, name string) *ui.Field {
 		return &f.webMaxUses
 	case settingsNSWeb + "." + settingsFieldLegacySecret:
 		return &f.webKey
+	case settingsNSCotTranslation + "." + settingsFieldCotTargetLanguage:
+		return &f.cotTargetLanguage
 	default:
 		return nil
 	}
@@ -473,6 +478,9 @@ func (p *Plugin) drawSettingsItemForm(f ui.C, env *pluginapi.Env, t *pluginapi.T
 				LineHeight(itemFormFailedLine).Color(t.LabelTertiary).
 				MarginSides(0, 0, itemFormReadOnlyGap, 0)
 		}
+		if card.Cot != nil {
+			p.drawCotTranslationNotices(f, t, card)
+		}
 		if card.Web != nil {
 			// #47 那一页：provider 菜单 + 灰面板，不是"section → 字段"形状。
 			p.drawSettingsWebForm(f, env, t, card)
@@ -615,6 +623,10 @@ func (p *Plugin) drawSettingsItemReset(f ui.C, env *pluginapi.Env, t *pluginapi.
 // drawSettingsItemInput 画 `.input`（34px 圆角框；有输入框槽位时是真编辑器）。
 func (p *Plugin) drawSettingsItemInput(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 	card settingsItemCardState, section settingsItemSectionState, field settingsItemFieldState) {
+	if field.Spec.Kind == settingsItemFieldProvider {
+		p.drawCotProviderInput(f, env, t, card, section, field)
+		return
+	}
 	borderColor := t.BorderL4
 	if field.Invalid {
 		// `.input[aria-invalid=true]{border-color:state-error-primary}`

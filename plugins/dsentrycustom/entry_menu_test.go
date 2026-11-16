@@ -11,7 +11,8 @@ package dsentrycustom
 //	   行尾带固定按钮；点了行 = onDismiss + onOpen，点了固定按钮 = onDismiss + onPinnedChange(id,true)
 //	③ 会话头画**全部**折起来的 view，没有固定按钮；`active` 那条行尾多一枚对勾
 //	④ 「浏览更多插件」在面板导航在册时画（官方 `browsable`），点了 = onDismiss + openList
-//	⑤ 「创建你的插件」**不画**（HIDE：宿主 `session.create` 不收 agentPreset）
+//	⑤ 「创建你的插件」点了 = onDismiss + startSession({agentPreset:'cordis',
+//	   区域 prompt, whenDraftExists:'append'})，不自动发送
 //
 // 点击走真 Viva 无头窗口（`headless.Session.Click` → 真命中区 → 真事件 pass），
 // 与 `plugins/dssidebar/entry_menu_test.go` 同一套夹具写法；读状态一律"泵到条件成立"。
@@ -51,6 +52,7 @@ type entryFixture struct {
 	invalidator *app.Invalidator
 	props       pluginapi.EntryMenuProps
 	calls       entryRowCalls
+	started     []pluginapi.StartSessionOptions
 	region      string
 	draws       int
 }
@@ -72,7 +74,11 @@ func newEntryFixture(t *testing.T, region string, entries []pluginapi.EntryMenuE
 		},
 		Dismiss: func() { f.calls.dismissed++ },
 	}
-	f.env = &pluginapi.Env{Theme: theme, Tree: tree, Feat: f.feat, Act: pluginapi.Actions{}}
+	f.env = &pluginapi.Env{Theme: theme, Tree: tree, Feat: f.feat, Act: pluginapi.Actions{
+		StartSession: func(options pluginapi.StartSessionOptions) {
+			f.started = append(f.started, options)
+		},
+	}}
 	pageTheme := dscore.VivaTheme(theme)
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	config := app.Config{Title: "entry-customization", Width: 288, Height: 400, Tree: tree, WindowMode: app.WindowFrameless}
@@ -274,23 +280,36 @@ func TestBrowsePluginsRowHiddenWithoutNavigation(t *testing.T) {
 	if _, ok := f.hit("entry-browse-plugins"); ok {
 		t.Fatal("面板导航不在册却挂了「浏览更多插件」的命中区")
 	}
+	// 浏览服务缺席不牵连 Creator；官方此时由 Creator 自己承担 separatorBefore。
+	f.mustHit("entry-create-plugin")
 }
 
-// TestCreatePluginRowIsHIDEEntilHostAcceptsAgentPreset：「创建你的插件」整行不画。
-//
-// 宿主 DSH-GO 的 `session.create` 只收 `mode`（`internal/transport/server.go` 的
-// `handleSessionCreate` + `opt.Create func(mode string)`），官方那一行要的是
-// `agentPreset:'cordis'`——画出来点了也只会建出一个没有预设的会话。HIDE 到宿主补上。
-func TestCreatePluginRowIsHIDEEntilHostAcceptsAgentPreset(t *testing.T) {
-	nav := &fakeNavigation{}
-	f := newEntryFixture(t, pluginapi.EntryRegionSidebar, sidebarEntries(), nav)
-	defer f.close()
-
-	if f.session.HasText(zhCreate) {
-		t.Fatalf("宿主还收不了 agentPreset，「创建你的插件」（%q）必须 HIDE", zhCreate)
-	}
-	if _, ok := f.hit("entry-create-plugin"); ok {
-		t.Fatal("「创建你的插件」不画，却还挂着一个命中区")
+// TestCreatePluginRowStartsCordisDraftByRegion：两个已接区域都画官方 Creator；
+// 点击只发 StartSession 动作，preset / 区域 prompt / append 三格逐字核对。
+func TestCreatePluginRowStartsCordisDraftByRegion(t *testing.T) {
+	for _, tc := range []struct {
+		region string
+		prompt string
+	}{
+		{region: pluginapi.EntryRegionSidebar, prompt: zhCreatePromptSidebar},
+		{region: pluginapi.EntryRegionConversation, prompt: zhCreatePromptConversation},
+	} {
+		t.Run(tc.region, func(t *testing.T) {
+			f := newEntryFixture(t, tc.region, sidebarEntries(), &fakeNavigation{})
+			defer f.close()
+			f.mustHit("entry-create-plugin")
+			f.click("entry-create-plugin")
+			if f.calls.dismissed != 1 {
+				t.Fatalf("Creator 应先 onDismiss，dismissed=%d", f.calls.dismissed)
+			}
+			if len(f.started) != 1 {
+				t.Fatalf("Creator 应调一次 StartSession，实际 %d", len(f.started))
+			}
+			got := f.started[0]
+			if got.AgentPreset != "cordis" || got.Prompt != tc.prompt || got.WhenDraftExists != pluginapi.DraftAppend {
+				t.Fatalf("StartSession = %+v，want cordis / %q / append", got, tc.prompt)
+			}
+		})
 	}
 }
 
@@ -331,7 +350,7 @@ func TestConversationRowsShowEveryFoldedViewWithActiveMark(t *testing.T) {
 	}
 }
 
-// TestIconSymbolsMatchRc2Sprite：三枚图标按 sprite 原文转写（不是手画近似形）。
+// TestIconSymbolsMatchRc2Sprite：四枚图标按 sprite 原文转写（不是手画近似形）。
 func TestIconSymbolsMatchRc2Sprite(t *testing.T) {
 	pin, ok := pinOutlineIcon(gfx.RGB24(0xffffff))
 	if !ok || pin.ViewBox != 16 || pin.Stroke != 1 || pin.Join != gfx.JoinRound {
@@ -352,6 +371,11 @@ func TestIconSymbolsMatchRc2Sprite(t *testing.T) {
 	check, ok := checkOutlineIcon()
 	if !ok || check.ViewBox != 16 || check.Stroke != 1 {
 		t.Fatalf("check-outline 转写不对：ok=%v viewBox=%v stroke=%v", ok, check.ViewBox, check.Stroke)
+	}
+	plus, ok := plusOutlineIcon()
+	if !ok || plus.ViewBox != 16 || plus.Stroke != 1 || len(plus.Commands) != 4 {
+		t.Fatalf("plus-outline 转写不对：ok=%v viewBox=%v stroke=%v commands=%d",
+			ok, plus.ViewBox, plus.Stroke, len(plus.Commands))
 	}
 }
 
@@ -381,5 +405,10 @@ func TestSidebarRowsGeometry(t *testing.T) {
 	if browse.Bounds.Y < pin.Bounds.Y+pin.Bounds.Height {
 		t.Fatalf("「浏览更多插件」没有排条目行下面（browse.y=%v pin.bottom=%v）",
 			browse.Bounds.Y, pin.Bounds.Y+pin.Bounds.Height)
+	}
+	create := f.mustHit("entry-create-plugin")
+	if create.Bounds.Y < browse.Bounds.Y+browse.Bounds.Height {
+		t.Fatalf("Creator 没有排在浏览行下面（create.y=%v browse.bottom=%v）",
+			create.Bounds.Y, browse.Bounds.Y+browse.Bounds.Height)
 	}
 }

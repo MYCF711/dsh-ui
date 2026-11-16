@@ -111,19 +111,21 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
 | 不在菜单里 | `Env.EntryMenu == nil` → 一行都不画 | `TestEntryRowsHiddenOutsideMenu` |
 | 装配 | Builtin 里真的在册、两个座位都有占用方、导航能力可注入 | `cmd/app/entry_customization_assembly_test.go` |
 
-HIDE 三项（都不自造）：
+Creator 已接（2026-11-17）：
 
-1. **「创建你的插件」整行不画**。官方点了走
-   `uiWorkspace.startSession(undefined, {agentPreset:'cordis', prompt, whenDraftExists:'append'})`
-   （`OFF:src/client/index.ts:47-52`）；落点是宿主 `session.create` 要认 `agentPreset`。
-   DSH-GO 宿主今天**不认**：`internal/transport/server.go` 的 `handleSessionCreate` 只解 `Mode`，
-   `opt.Create` 签名是 `func(mode string) (string, error)`。画出来点了只会建出一个没有预设的会话，
-   所以整行 HIDE；宿主能收 `agentPreset` 后再补（并同时补官方
-   `separatorBefore={!browsable && moreEntries.length > 0}` 这条与「浏览更多插件」的互斥留白）。
-   断言（防"手滑补一半"）：`TestCreatePluginRowIsHIDEEntilHostAcceptsAgentPreset`。
-2. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 没有宿主
+- 官方调用是 `uiWorkspace.startSession(undefined, {agentPreset:'cordis', prompt, whenDraftExists:'append'})`
+  （`OFF:src/client/index.ts:47-52`）。本仓 `pluginapi.Actions.StartSession` 接收同一组三字段；
+  壳经真实 `session.create{mode:'cordis'}` 建会话（宿主写 `header.agentPreset`），打开后按官方
+  新段落规则 append 草稿，**不自动 prompt**。区域提示词逐字取 `OFF:locales.ts:18-19`；
+  创建失败保留原草稿并显示错误。断言：`TestCreatePluginRowStartsCordisDraftByRegion`、
+  `TestStartSessionCreatesCordisAndAppendsDraftWithoutSending`、
+  `TestStartSessionCreateFailureKeepsExistingDraft`。
+
+HIDE 两项（都不自造）：
+
+1. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 没有宿主
    （guide 面未落地，账本 #53），注册了也没有派发方。
-3. **左栏行尾对勾不画**：见 §4 第 7 条（viva 没有 hover 读口）。
+2. **左栏行尾对勾不画**：见 §4 第 7 条（viva 没有 hover 读口）。
 
 ## 6. 断言（防回退）
 
@@ -133,5 +135,6 @@ HIDE 三项（都不自造）：
 | 菜单面：关着不画/没 drawSlot 不画/派发一次/props 派发后恢复/288 夹宽 | `internal/uikernel/entry_menu_test.go` |
 | 左栏：无占用方无「更多」行；点开→派发+props 行真的画出来；未固定行离场；行尾按钮真的改状态 | `plugins/dssidebar/entry_menu_test.go` |
 | 会话头：无占用方/单 view 无按钮；点开→派发+entries=moreTabs；未固定 view 离场并进菜单 | `plugins/dstopbar/entry_menu_test.go` |
-| 内容行：不在菜单里不画 / 左栏只列未固定且行首有图标行尾有固定按钮 / 点行=onDismiss+onOpen / 点固定=onDismiss+onPinnedChange / 「浏览更多插件」服务在册才画且点了 openList / 「创建你的插件」不在画面里 / 会话头 active 多一枚对勾 / 三枚图标按 sprite 转写 | `plugins/dsentrycustom/entry_menu_test.go` |
+| 内容行：不在菜单里不画 / 左栏只列未固定且行首有图标行尾有固定按钮 / 点行=onDismiss+onOpen / 点固定=onDismiss+onPinnedChange / 「浏览更多插件」服务在册才画且点了 openList / Creator 按区域启动 cordis append 草稿 / 会话头 active 多一枚对勾 / 四枚图标按 sprite 转写 | `plugins/dsentrycustom/entry_menu_test.go` |
 | 装配：Builtin 在册 + 两个座位都有占用方 + `ui.pluginNavigation` 可注入可调用 | `cmd/app/entry_customization_assembly_test.go` |
+| Creator：真实 `session.create{mode:'cordis'}` + 新段落 append + 不自动发送；失败保留原草稿 | `cmd/app/session_start_test.go` |

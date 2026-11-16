@@ -26,6 +26,8 @@ const (
 	SettingsNSModel      = "model"
 	SettingsNSPermission = "permission"
 	SettingsNSLLM        = "llm"
+	// SettingsNSCotTranslation 是官方 configForms.get('cot-translation') 的 namespace。
+	SettingsNSCotTranslation = "cot-translation"
 	// SettingsNSSessionLog 是官方 ui-settings-session-log 的 general Switch 命名空间。
 	SettingsNSSessionLog = "session-log-deepseek"
 )

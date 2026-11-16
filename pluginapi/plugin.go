@@ -578,10 +578,17 @@ type Snapshot struct {
 	// 空 = 宿主没有 registry 或还没拉到：消费方必须退回"按 cwd 分组"的旧路径，
 	// 不能把空切片当成"用户没有任何工作区"而画空状态。
 	Workspaces []Workspace
-	Cur        string
-	Search     string
-	Status     string
-	Msgs       []apiclient.Message
+	// WorkspacesKnown=false 表示 registry 基线尚未落地；首屏此时显示加载状态，
+	// 不能把空缓存当成“没有工作区”而直接打开目录流（官方 WorkspacePickFlow:178-184）。
+	WorkspacesKnown bool
+	// PendingWorkspaceID 是刚 onPick、但空白会话尚未落地的工作区；首屏 chip 优先显示它。
+	PendingWorkspaceID string
+	// DirectoryBusy 是 native pick 的 armed/in-flight 真值，菜单动作在此期间禁用。
+	DirectoryBusy bool
+	Cur           string
+	Search        string
+	Status        string
+	Msgs          []apiclient.Message
 	// Frames 是当前会话 journal 的**原始 Transport 帧**（`session.history` 的
 	// `frames[]` 与 WS 推送**同一个形状**），按 seq 升序、已去重。
 	//
@@ -1360,6 +1367,11 @@ type Actions struct {
 	// 读动作一律异步（后台拉 + Invalidate），结果下一帧从 `Snapshot.Forge` 取——
 	// 插件的 Draw 在绘制线程上，同步等 HTTP 会卡首帧。
 	Forge *ForgeActions
+
+	// SelectWorkspace 是首屏 WorkspacePicker 的 onPick(workspaceId)：复用该工作区的
+	// 空白会话并打开；没有可复用空白会话时必须如实报错，不能用只解 mode 的
+	// session.create 假装会在所选目录建会话。nil = 壳没接，首屏不画现有工作区菜单项。
+	SelectWorkspace func(workspaceID string)
 
 	// OpenDirectoryPicker 打开**官方目录选择器**（官方 `dsh-client-ui-directory-picker-browse`
 	// 的 Miller 双列对话框），用它「添加工作区」。

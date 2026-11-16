@@ -125,6 +125,11 @@ type model struct {
 	workspacesKnown   bool
 	workspacesPending bool
 	workspacesErr     string
+	archivedSessions  map[string]bool
+	// workspaceSelectionPending 对应官方 ConversationContent.pendingWorkspaceId：
+	// 首屏 chip 先显示刚选中的工作区，空白会话落地或失败后撤掉。
+	workspaceSelectionPending string
+	workspaceSelectionSeq     uint64
 	// dirPicker 是**本次启动探到的 directoryPicker 组合**（browse / native /
 	// 都不可用）与它的缓存。探针只在启动时打一次，之后每次打开都用这个结果
 	// ——探针有网络开销，而且 native 组合下它必然是一条 501（见
@@ -1849,6 +1854,9 @@ func newConfig(m *model) app.Config {
 		m.mu.Lock()
 		sessions := append([]apiclient.Session(nil), m.sessions...)
 		workspaces := cloneWorkspaces(m.workspaces)
+		workspacesKnown := m.workspacesKnown
+		workspaceSelectionPending := m.workspaceSelectionPending
+		directoryBusy := m.dirPicker.nativeBusy
 		cur := m.cur
 		msgs := append([]apiclient.Message(nil), m.msgs...)
 		metadata := map[string]pubapi.MessageMetadata{}
@@ -1972,7 +1980,9 @@ func newConfig(m *model) app.Config {
 			// ErrWebUnsupported），插件因此只需要认一个错误值。
 			Web: webPages{host: m.web},
 			Data: pluginapi.Snapshot{
-				Sessions: sessions, Workspaces: workspaces, Cur: cur, Status: status,
+				Sessions: sessions, Workspaces: workspaces, WorkspacesKnown: workspacesKnown,
+				PendingWorkspaceID: workspaceSelectionPending, DirectoryBusy: directoryBusy,
+				Cur: cur, Status: status,
 				Msgs: msgs, Frames: frames, JournalEpoch: framesEpoch,
 				// 向前分页五态：**只在"确实开过会话"时才有意义**；
 				// 零值（Baseline/HasMore 全 false、无错）界面不画那一行。
@@ -2867,6 +2877,7 @@ func main() {
 		CotTranslationTranslate: m.cotTranslationTranslate,
 		CotTranslationResult:    m.cotTranslationTakeResult,
 		OpenSession:             m.openSession,
+		SelectWorkspace:         m.selectWorkspace,
 		WorkspaceRename:         m.renameWorkspace,
 		WorkspaceDelete:         m.deleteWorkspace,
 		// 拖拽排会话顺序的唯一写路径（官方 workspace.insertSessionBefore）。

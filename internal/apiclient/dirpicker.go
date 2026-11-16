@@ -67,7 +67,6 @@ package apiclient
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -197,12 +196,23 @@ func (c *Client) DirectoryCreate(ctx context.Context, parent, name string) (stri
 
 // WorkspaceCreate 把一个目录注册成工作区（宿主 `workspace.create`）。
 //
-// 响应体本客户端**不用**：官方「打开」的语义只是"采用这个目录"
-// （`flow.ts:34` 的 `onOpen: props.onPicked`），工作区的后续投影由壳自己重拉。
-// 用 `json.RawMessage` 接住，是为了将来宿主在响应里加字段时不至于解崩。
-func (c *Client) WorkspaceCreate(ctx context.Context, path string) error {
-	var out json.RawMessage
-	return c.Call(ctx, "workspace.create", map[string]any{"path": path}, &out)
+// 官方 owner 并不是在 pick 后直接采用 path：`WorkspacePickFlow.adoptDirectory`
+// 先等待 createWorkspace，再把**返回值的 workspaceId** 交给 onPick
+// （`OFF:ui-workspace/src/client/WorkspacePicker.tsx:152-161`）。所以这里必须保留
+// `{workspace,created}` 中的 workspace；缺 id/path 是宿主违约，不能拿请求里的 path
+// 猜一份 WorkspaceView 冒充成功。
+func (c *Client) WorkspaceCreate(ctx context.Context, path string) (WorkspaceView, error) {
+	var out struct {
+		Workspace WorkspaceView `json:"workspace"`
+		Created   bool          `json:"created"`
+	}
+	if err := c.Call(ctx, "workspace.create", map[string]any{"path": path}, &out); err != nil {
+		return WorkspaceView{}, err
+	}
+	if out.Workspace.WorkspaceID == "" || out.Workspace.Path == "" {
+		return WorkspaceView{}, fmt.Errorf("workspace.create 没有返回可选中的 workspace（workspaceId/path 缺一不可）")
+	}
+	return out.Workspace, nil
 }
 
 // ── 组合探测（二选一的唯一判据） ──────────────────────────────────────────

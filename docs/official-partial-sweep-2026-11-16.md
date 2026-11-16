@@ -82,7 +82,7 @@
 
 ### #16 `dsh-client-ui-directory-picker-native` — 保持 🟡
 
-seam、pick/null/error、workspace.create 已接，宿主也有真 IFileOpenDialog；ENV_BOUNDARY 只是人工验收边界，不是产品能力缺失。剩余：① 官方同时注册首屏与侧栏两个 directoryFlow，本仓只有侧栏按钮，首屏 WorkspacePicker/flow 未接；② 每次点击都可启动 pick，没有官方 armed/in-flight 防重入；③ `WorkspaceCreate` 丢弃返回的 workspace，成功只 refreshList，没有官方 `onPick(workspace.workspaceId)` 选择语义。完成这些后仍需桌面人工执行 `DSH_NATIVE_PICKER=1 go test ./internal/native -run TestRealPickerProbe -v` 验收。
+本轮已补首屏 WorkspaceChip/WorkspacePicker、native/browse 防重入与 `WorkspaceCreate → onPick(workspaceId)`；两种后端只复用经 `session.load` 证实 `Total==0`、cwd 匹配且未归档的空白会话。ENV_BOUNDARY 仍只是人工验收边界，不是产品能力缺失。**新确认的 D 阻断**：宿主 `session.create` 只解 `mode`（`DSH-GO/internal/transport/server.go:1211-1227`），空工作区无法按官方 `{workspaceId,sessionId?}` 创建/复用，GUI 明确报错而不在进程 cwd 假建。宿主补齐此契约并完成桌面人工 `DSH_NATIVE_PICKER=1 go test ./internal/native -run TestRealPickerProbe -v` 后才可升 ✅。
 
 ### #38 `dsh-client-ui-settings-account` — 保持 🟡
 

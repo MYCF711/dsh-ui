@@ -855,8 +855,18 @@
       "req": {
         "path": "string"
       },
-      "resp": "object",
-      "req_note": "平铺也可（handler 走 officialPickObject，嵌套/平铺都收）。真实现 HOST:cmd/dshd/serve_workspace_api.go:583"
+      "resp": {
+        "workspace": {
+          "workspaceId": "string",
+          "path": "string",
+          "title": "string",
+          "sessionIds": "[]string",
+          "createdAt": "string",
+          "updatedAt": "string"
+        },
+        "created": "bool"
+      },
+      "req_note": "平铺也可（handler 走 officialPickObject，嵌套/平铺都收）。真实现 HOST:cmd/dshd/serve_workspace_api.go:768。GUI 必须消费返回的 workspace.workspaceId 执行官方 onPick(workspaceId)，不能只回显请求 path 或仅刷新列表。"
     },
     "attachment.put": {
       "batch": 7,

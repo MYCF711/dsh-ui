@@ -257,6 +257,9 @@ type model struct {
 	cotLimitsLoaded  bool
 	cotLimitsPending bool
 	cotLimitsErr     error
+	// cotLimitsRevision 是失效代际：在飞期间收到新事件时，旧响应不得覆盖新偏好，
+	// 完成后必须补读一次（官方 mount.ts:23-80 的同一规则）。
+	cotLimitsRevision uint64
 	// cotResults 是按 jobID 的翻译终态（插件取走后清空，见 cot_translation_wiring.go）。
 	cotResults map[string]pluginapi.CotTranslationResult
 	// cotJobSeq 是 jobID 序号（不重复即可，不跨进程持久化）。
@@ -1025,6 +1028,8 @@ func (m *model) subscribe(id string) {
 //
 // 幂等：没有当前会话时只重绘一帧（按钮仍然"点得动"，但没东西可连）。
 func (m *model) reconnectNow() {
+	// 官方 cot mount 在 connection/reset 上失效 limits；重连不沿用可能过期的偏好。
+	m.cotTranslationRefresh()
 	m.mu.Lock()
 	id := m.cur
 	if sub, ok := m.subs[id]; ok {
@@ -2890,6 +2895,7 @@ func main() {
 		// 终态按 jobID 留给插件取。三条一起 nil 就等于"宿主没这条能力"，
 		// 插件那时不画译文入口。见 cot_translation_wiring.go。
 		CotTranslationLimits:    m.cotTranslationLimits,
+		CotTranslationRefresh:   m.cotTranslationRefresh,
 		CotTranslationTranslate: m.cotTranslationTranslate,
 		CotTranslationResult:    m.cotTranslationTakeResult,
 		OpenSession:             m.openSession,

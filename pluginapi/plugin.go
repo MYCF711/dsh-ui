@@ -1213,6 +1213,10 @@ type Actions struct {
 	// cotTranslation）——**这时界面不该画译文入口**：画一个点了没反应的东西，
 	// 比不画更让人以为"翻译坏了"。
 	CotTranslationLimits func() (apiclient.CotTranslationLimits, bool)
+	// CotTranslationRefresh 使 limits 缓存失效并重读。设置保存、账号/凭据变化、
+	// 连接重置与插件配置页挂载共用这一条；在飞期间再次触发会在完成后补读，
+	// 对应官方 mount.ts:31-80 的 revision/refresh 链。
+	CotTranslationRefresh func()
 	// CotTranslationTranslate 发起一次翻译。**异步**：返回 jobID（空串 = 没发起，
 	// 比如壳没接或参数明显不合法），终态由 CotTranslationResult(jobID) 交给插件。
 	//

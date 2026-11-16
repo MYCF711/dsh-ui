@@ -188,6 +188,9 @@ type Plugin struct {
 	itemForm     *settingsItemForm
 	itemFields   settingsItemFields
 	itemWebMenus map[string]bool
+	// cotSettingsMounted 对应官方 TranslationSettings 的挂载 effect：每次进入
+	// bundle 配置段只主动 refreshProviders 一次，离开详情后重新武装。
+	cotSettingsMounted bool
 
 	// ── #10 context menu 与 #62 工作区动作的本地状态（workspace_actions.go）──
 	//

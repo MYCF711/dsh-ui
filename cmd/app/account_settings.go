@@ -33,6 +33,9 @@ func (m *model) accountCallbackOrigin() (string, error) {
 
 // accountRefresh 合并重复刷新；真正读写由 fetchAccount 完成。
 func (m *model) accountRefresh() {
+	// 官方 cot mount 同时监听 session-expired/model-sign-in-required；账号快照
+	// 重读与 provider 可用性失效共用这次触发，不传思考正文。
+	m.cotTranslationRefresh()
 	m.wave3.mu.Lock()
 	if m.wave3.accountPending {
 		m.wave3.mu.Unlock()

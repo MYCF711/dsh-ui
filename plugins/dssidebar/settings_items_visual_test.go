@@ -79,18 +79,20 @@ func (s *settingsItemWriteSpy) last() (settingsItemMutateCall, bool) {
 
 // settingsItemHarness 是一帧可点、可读文字的插件管理页。
 type settingsItemHarness struct {
-	t           *testing.T
-	p           *Plugin
-	kernel      *uikernel.Kernel
-	theme       *pluginapi.Theme
-	tree        *gfx.Tree
-	feat        gfx.Scope
-	session     *headless.Session
-	invalidator *app.Invalidator
-	spy         *settingsItemWriteSpy
-	mu          sync.Mutex
-	describe    *apiclient.SettingsDescribeResult
-	bundles     []apiclient.PluginBundle
+	t            *testing.T
+	p            *Plugin
+	kernel       *uikernel.Kernel
+	theme        *pluginapi.Theme
+	tree         *gfx.Tree
+	feat         gfx.Scope
+	session      *headless.Session
+	invalidator  *app.Invalidator
+	spy          *settingsItemWriteSpy
+	mu           sync.Mutex
+	describe     *apiclient.SettingsDescribeResult
+	bundles      []apiclient.PluginBundle
+	cotLimits    apiclient.CotTranslationLimits
+	cotRefreshes int
 }
 
 func openSettingsItemHarness(t *testing.T, width, height int) *settingsItemHarness {
@@ -98,6 +100,11 @@ func openSettingsItemHarness(t *testing.T, width, height int) *settingsItemHarne
 	h := &settingsItemHarness{t: t, spy: &settingsItemWriteSpy{rev: 99}}
 	h.describe = settingsItemDescribeFixture()
 	h.bundles = []apiclient.PluginBundle{pluginBundleFixture()}
+	h.cotLimits = apiclient.CotTranslationLimits{
+		MaxTextChars:       100000,
+		Preferences:        apiclient.CotTranslationPreferences{Provider: "deepseek-official", TargetLanguage: "auto"},
+		AvailableProviders: []string{"deepseek-official", "deepseek-account"},
+	}
 	h.p = &Plugin{}
 	h.kernel = uikernel.New("settings-items")
 	if err := h.kernel.Load(&dscore.Plugin{Dark: true}, &dsshell.Plugin{}, h.p); err != nil {
@@ -111,6 +118,16 @@ func openSettingsItemHarness(t *testing.T, width, height int) *settingsItemHarne
 			return h.describe
 		},
 		SettingsMutate: h.spy.mutate,
+		CotTranslationLimits: func() (apiclient.CotTranslationLimits, bool) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.cotLimits, true
+		},
+		CotTranslationRefresh: func() {
+			h.mu.Lock()
+			h.cotRefreshes++
+			h.mu.Unlock()
+		},
 		PluginBundles: func() ([]apiclient.PluginBundle, bool, bool, string) {
 			h.mu.Lock()
 			defer h.mu.Unlock()
@@ -185,6 +202,23 @@ func (h *settingsItemHarness) click(name string) {
 }
 
 func (h *settingsItemHarness) hasText(want string) bool { return h.session.HasText(want) }
+
+// clickText 点菜单项文字的中心；viva 菜单项没有 tree id，与 web 设置页同一先例。
+func (h *settingsItemHarness) clickText(label string) {
+	h.t.Helper()
+	for _, text := range h.session.Snapshot().Texts {
+		if text.Value == label {
+			x, y := text.Bounds.X+text.Bounds.Width/2, text.Bounds.Y+text.Bounds.Height/2
+			if err := h.session.Click(x, y); err != nil {
+				h.t.Fatal(err)
+			}
+			h.pump()
+			h.pump()
+			return
+		}
+	}
+	h.t.Fatalf("没有画文字 %q；texts=%q", label, h.session.Texts())
+}
 
 // waitMutate 等到写请求达到 want 次；等待期间继续 pump。
 //

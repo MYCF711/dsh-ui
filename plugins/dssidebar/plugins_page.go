@@ -586,6 +586,11 @@ func (p *Plugin) drawPluginSwitch(f ui.C, env *pluginapi.Env, key string, on boo
 
 // openPluginDetail / closePluginDetail 是详情页的本地状态迁移。
 func (p *Plugin) openPluginDetail(name string) {
+	if name == cotTranslationBundleName || p.pluginSelected == cotTranslationBundleName {
+		p.ensureSettingsItemForm().discard()
+		p.itemFields.forgetMirror()
+	}
+	p.cotSettingsMounted = false
 	p.pluginSelected = name
 	p.pluginRemoveArm = ""
 }
@@ -614,6 +619,11 @@ func (p *Plugin) OpenPluginDetail(name string) bool {
 }
 
 func (p *Plugin) closePluginDetail() {
+	if p.pluginSelected == cotTranslationBundleName {
+		p.ensureSettingsItemForm().discard()
+		p.itemFields.forgetMirror()
+	}
+	p.cotSettingsMounted = false
 	p.pluginSelected = ""
 	p.pluginRemoveArm = ""
 }
@@ -703,6 +713,8 @@ func (p *Plugin) drawPluginDetail(f ui.C, env *pluginapi.Env) {
 			// `.detailSections{gap:32px}`：详细介绍 / 包含的组件 / 来源信息。
 			ui.Column(f).FillWidth().Gap(pluginBodyGap).Children(func() {
 				p.drawPluginDocument(f, env, b)
+				// 官方 PackagePage.tsx:817-825 的 data-plugin-config 段。
+				p.drawCotTranslationSettings(f, env, b)
 				p.drawPluginParts(f, t, b)
 				p.drawPluginSource(f, t, b)
 			})

@@ -161,6 +161,9 @@ func (m *model) settingsFormSet(ns string, path []string, value any, expectedRev
 		// session.modelCatalog.default 也是默认模型的投影，不能只刷新 describe。
 		m.modelsPageRefresh()
 	}
+	if ns == apiclient.SettingsNSCotTranslation {
+		m.cotTranslationRefresh()
+	}
 	return section, nil
 }
 
@@ -201,5 +204,8 @@ func (m *model) settingsMutateRevision(ns string, ops []apiclient.SettingsOp, ex
 		return apiclient.SettingsNamespaceView{}, err
 	}
 	go m.refreshSettingsDescribe()
+	if ns == apiclient.SettingsNSCotTranslation {
+		m.cotTranslationRefresh()
+	}
 	return view, nil
 }

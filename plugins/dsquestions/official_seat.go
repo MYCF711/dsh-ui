@@ -40,6 +40,7 @@
 package dsquestions
 
 import (
+	"github.com/MYCF711/dsh-ui/internal/planreview"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/ui"
 )
@@ -90,6 +91,10 @@ func (p *Plugin) composerSeatLive() bool { return p.tier.Official() }
 // 可见性：**只在有待答问题时显示**（`pending(Msgs)` 为空 → 整块不画）。
 func (p *Plugin) drawOfficial(f ui.C, env *pluginapi.Env) {
 	if !p.composerSeatLive() {
+		return
+	}
+	if review, ok := planreview.Pending(env.Data.Msgs); ok {
+		p.drawPlanReviewOfficial(f, env, review)
 		return
 	}
 	qs := pending(env.Data.Msgs)

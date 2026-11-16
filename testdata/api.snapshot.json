@@ -1,125 +1,4 @@
 {
-  "$schema": "dsh-ui/api-contract@1",
-  "version": 2,
-  "input_style": "flat",
-  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method>。入参一律**平铺**：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构。v2（2026-11-04）按真宿主当前实现重写：stream 段原来的 {t:ev,kind,topic} + gap 帧是**错的**，真形状是 {seq,type,data,time} 且服务端不发 gap；方法表随实现增补（以 counts.total 为准；本段不复述具体数字，免得又漂）。",
-  "envelope": {
-    "request": {
-      "style": "flat",
-      "body": "{ \"id\": \"…\", \"tailMessages\": 2 }",
-      "alias_rule": "同一字段的多个名字都收：sessionId 优先于 id，limit 优先于 tailMessages（对齐宿主 fillID / firstNonZero）",
-      "legacy_wrapped": "{\"params\":{…}} 仅 cmd/mockd 兼容，真宿主只认平铺"
-    },
-    "response": {
-      "result": "object"
-    },
-    "error": {
-      "code": "string",
-      "message": "string",
-      "hint": "string",
-      "retryable": "bool"
-    },
-    "details": {
-      "reason": "string?",
-      "note": "409 的稳定机器字段（DSH-GO/docs/transport-contract.md §3D）。**可选**：老宿主不带，客户端必须能判空并走 message 文本兜底（cmd/app/frames.go journalEvictedError）。它是 error 的**兄弟**，不是四字段之一——error 仍然恰好 code/message/hint/retryable。",
-      "envelope_example": "{\"error\":{\"code\":\"stale_epoch\",\"message\":\"…\",\"hint\":\"…\",\"retryable\":true},\"journalEpoch\":7,\"lastSeq\":1024,\"details\":{\"reason\":\"history_evicted\"}}"
-    }
-  },
-  "errors": {
-    "not_found": "会话或路径不存在",
-    "busy": "该会话有 turn 在跑，retryable=true",
-    "invalid_arg": "参数不合法，hint 写清怎么改",
-    "unsupported": "该方法本版本未实现",
-    "internal": "宿主内部错误"
-  },
-  "conflict_reasons": {
-    "note": "409 的 details.reason 取值表。宿主侧唯一来源是 DSH-GO internal/transport/ConflictReasons()（快照 internal/transport/testdata/api.snapshot.json 的 conflict_reasons 段），两侧同表：加新值必须一起改。",
-    "values": [
-      "stale_epoch",
-      "history_evicted",
-      "revision_conflict",
-      "job_finished",
-      "job_owner_not_live",
-      "stale_head",
-      "agent_busy",
-      "NO_CONTINUABLE_FAILURE_OR_PENDING_INPUT",
-      "conflict"
-    ],
-    "semantics": {
-      "stale_epoch": "journal 换代 / 水位比当前还大 → 丢掉旧水位重新 load 基线",
-      "history_evicted": "sinceSeq 之前的历史已滑出内存 journal → 这就是「没有更早的了」，不要重建（UI 消费：cmd/app/frames.go）",
-      "revision_conflict": "乐观并发 revision 过期 → 重新读最新 revision",
-      "job_finished": "任务已结束 → 只读 jobs.output",
-      "job_owner_not_live": "任务 owner 已不在（官方 JOB_OWNER_NOT_LIVE）",
-      "stale_head": "forge 写入基于旧 head（远端已前进）",
-      "agent_busy": "会话/管理器正忙（code=busy）→ 等 turn/done",
-      "NO_CONTINUABLE_FAILURE_OR_PENDING_INPUT": "官方 session/agent-busy 的逐字 reason（不是 agent_busy）",
-      "conflict": "叫不出更细名字的 409（兜底）"
-    }
-  },
-  "stream": {
-    "path": "/ws",
-    "transport": "websocket",
-    "client_frames": [
-      {
-        "t": "sub",
-        "topic": "string",
-        "sinceSeq": "int?",
-        "journalEpoch": "int64?",
-        "note": "两个水位要一起带；只带一个会让宿主补出一段错位数据"
-      },
-      {
-        "t": "unsub",
-        "topic": "string"
-      },
-      {
-        "t": "ping",
-        "note": "应用层心跳，不占用 WS 控制帧"
-      }
-    ],
-    "server_frames": [
-      {
-        "seq": "int",
-        "type": "string",
-        "data": "object",
-        "time": "int64",
-        "note": "type 是 v4 原始事件名；**没有 topic 字段**——连接本身就是会话归属；也不是 {t:ev,kind}"
-      }
-    ],
-    "control_frames": [
-      {
-        "type": "pong",
-        "note": "无 seq、不入 journal"
-      },
-      {
-        "type": "session/reset",
-        "data": {
-          "journalEpoch": "int64",
-          "lastSeq": "int"
-        },
-        "note": "无 seq；收到就重建基线（清水位 → 重新 load → 按新基线 resub），不是 sinceSeq=0 重连"
-      }
-    ],
-    "no_gap_frames": "服务端**不发** gap 帧：断号由客户端按 seq 连续性自己发现，再调 session.history 补洞",
-    "types": [
-      "turn/start",
-      "turn/end",
-      "turn/done",
-      "turn/error",
-      "user/message",
-      "assistant/message",
-      "tool/call",
-      "tool/result",
-      "system/message",
-      "developer/message",
-      "approval/request",
-      "approval/timeout",
-      "approval/cancel",
-      "session/reset",
-      "pong"
-    ],
-    "turn_end_shape": "{\"turn\":5,\"reason\":{\"kind\":\"completed|error|aborted|blocked|max-tokens|interrupted|forked\",\"error\":{\"message\":\"…\"},\"reason\":\"…\"}} —— 结局和失败原因都在 reason 里面"
-  },
   "methods": {
     "session.list": {
       "batch": 1,
@@ -2011,61 +1890,167 @@
     },
     "terminal.create": {
       "batch": 23,
-      "req": {"agentId": "string", "request": {"id": "string", "shellPath": "string?", "cols": "int", "rows": "int"}},
-      "resp": {"id": "string", "title": "string", "shell": {"path": "string", "args": "string[]", "name": "string"}, "cwd": "string", "cols": "int", "rows": "int", "state": "running|failed|exited", "exitCode": "int|null", "origin": "user|agent", "control": "user|agent", "sandboxMode": "string?"},
+      "req": {
+        "agentId": "string",
+        "request": {
+          "id": "string",
+          "shellPath": "string?",
+          "cols": "int",
+          "rows": "int"
+        }
+      },
+      "resp": {
+        "id": "string",
+        "title": "string",
+        "shell": {
+          "path": "string",
+          "args": "string[]",
+          "name": "string"
+        },
+        "cwd": "string",
+        "cols": "int",
+        "rows": "int",
+        "state": "running|failed|exited",
+        "exitCode": "int|null",
+        "origin": "user|agent",
+        "control": "user|agent",
+        "sandboxMode": "string?"
+      },
       "req_note": "OFF:dsh-api-terminal-controller/src/index.ts:185-210；caller-generated id，open identity 幂等，closed identity 不复活。宿主 HTTP 同时接受 sessionId。"
     },
     "terminal.attach": {
       "batch": 23,
-      "req": {"agentId": "string", "id": "string"},
-      "resp": {"stream": "snapshot{sequence,screen,info,writable} → output{sequence,data}* → state{info,writable} / ack{sequence,refusal?}"},
+      "req": {
+        "agentId": "string",
+        "id": "string"
+      },
+      "resp": {
+        "stream": "snapshot{sequence,screen,info,writable} → output{sequence,data}* → state{info,writable} / ack{sequence,refusal?}"
+      },
       "req_note": "OFF:src/index.ts:321-333 + src/types.ts:128-132；HTTP 为 NDJSON 一行一帧，无 result 包壳。sequence 是 attach 内连续帧序号，不是 PTY 字节 offset。"
     },
     "terminal.list": {
       "batch": 23,
-      "req": {"sessionId": "string"},
-      "resp": ["WebTerminalInfo"],
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": [
+        "WebTerminalInfo"
+      ],
       "req_note": "OFF:src/index.ts:173-183；只列 Session 保留终端，未接线是 501 而非空数组。"
     },
     "terminal.close": {
       "batch": 23,
-      "req": {"agentId": "string", "id": "string"},
+      "req": {
+        "agentId": "string",
+        "id": "string"
+      },
       "resp": null,
       "req_note": "OFF:src/index.ts:347-370；终止完整进程范围，重复 close 成功，失败保留以供重试。"
     },
     "terminal.environment": {
       "batch": 23,
-      "req": {"agentId": "string"},
-      "resp": {"cwd": "string", "maxInputBytes": "int", "maxBufferedBytes": "int", "maxCols": "int", "maxRows": "int", "scrollback": "int"},
+      "req": {
+        "agentId": "string"
+      },
+      "resp": {
+        "cwd": "string",
+        "maxInputBytes": "int",
+        "maxBufferedBytes": "int",
+        "maxCols": "int",
+        "maxRows": "int",
+        "scrollback": "int"
+      },
       "req_note": "OFF:src/types.ts:31-41；六项全来自宿主真实限制。"
     },
     "terminal.shells": {
       "batch": 23,
-      "req": {"agentId": "string"},
-      "resp": [{"path": "string", "args": "string[]", "name": "string", "supported": "bool?（本宿主 additive）"}],
+      "req": {
+        "agentId": "string"
+      },
+      "resp": [
+        {
+          "path": "string",
+          "args": "string[]",
+          "name": "string",
+          "supported": "bool?（本宿主 additive）"
+        }
+      ],
       "req_note": "OFF:src/index.ts:161-171；默认 shell 第一。create 只选真实可执行项。"
     },
     "terminal.rename": {
       "batch": 23,
-      "req": {"agentId": "string", "id": "string", "title": "string"},
+      "req": {
+        "agentId": "string",
+        "id": "string",
+        "title": "string"
+      },
       "resp": null,
       "req_note": "OFF:src/index.ts:335-345；trim 后 1–120 字符，watch/attach state 发布新标题。"
     },
     "terminal.retain": {
       "batch": 23,
-      "req": {"sessionId": "string", "id": "string"},
-      "resp": {"stream": "retained 一帧后保持打开直到取消"},
+      "req": {
+        "sessionId": "string",
+        "id": "string"
+      },
+      "resp": {
+        "stream": "retained 一帧后保持打开直到取消"
+      },
       "req_note": "OFF:src/index.ts:304-319 + src/retention.ts；窗口持有，不取得输入控制权。"
     },
     "terminal.watch": {
       "batch": 23,
-      "req": {"sessionId": "string"},
-      "resp": {"stream": "WebTerminalInfo[] whole-set，首帧当前集合，变化后再发整份"},
+      "req": {
+        "sessionId": "string"
+      },
+      "resp": {
+        "stream": "WebTerminalInfo[] whole-set，首帧当前集合，变化后再发整份"
+      },
       "req_note": "OFF:src/index.ts:271-302；creation/removal/任意 published state change 都发新集合，无自然结束。"
+    },
+    "commands.execute": {
+      "batch": 23,
+      "req": {
+        "agentId": "string",
+        "line": "string",
+        "submittedAttachments": []
+      },
+      "resp": {
+        "commandId": "string",
+        "result": {
+          "kind": "success|error|...（宿主原文）",
+          "text": "string?",
+          "sourceEventSeq": "int64?"
+        }
+      },
+      "req_note": "官方 commands.execute；GUI 当前只执行 /plan off，不提交附件，但 submittedAttachments 必须显式为 []。宿主 handlers_agent_official.go:1333-1373。",
+      "resp_note": "官方 undefined / null = 命令名未解析，客户端返回 nil；result.kind=error 是已结算的命令 outcome，不是 Transport 错误，两层不得混用。"
+    },
+    "userQuestions.answer": {
+      "batch": 23,
+      "req": {
+        "agentId": "string",
+        "callId": "string",
+        "answer": {
+          "answers": [
+            {
+              "id": "string",
+              "selected": [
+                "string"
+              ],
+              "custom": "string?"
+            }
+          ]
+        }
+      },
+      "resp": "boolean",
+      "req_note": "官方 userQuestions.answer；类型与 transport.OfficialQuestionAnswer 对齐。宿主 handlers_agent_official.go:1512-1565。",
+      "resp_note": "裸 boolean 是 still-continued 真值；false 表示问题已经关闭，是合法业务结果，不是 Transport 错误。"
     }
   },
   "counts": {
-    "total": 119,
+    "total": 121,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2085,9 +2070,129 @@
     "batch17": 1,
     "batch18": 1,
     "batch19": 5,
-    "batch20": 0,
     "batch21": 14,
     "batch22": 4,
-    "batch23": 9
+    "batch23": 11
+  },
+  "$schema": "dsh-ui/api-contract@1",
+  "version": 2,
+  "input_style": "flat",
+  "note": "自定契约，不复刻官方 {path,key} 信封；路径保持 /api/<method>。入参一律**平铺**：真宿主 handler 就是 json.NewDecoder(r.Body).Decode(&in) 直接解平铺结构。v2（2026-11-04）按真宿主当前实现重写：stream 段原来的 {t:ev,kind,topic} + gap 帧是**错的**，真形状是 {seq,type,data,time} 且服务端不发 gap；方法表随实现增补（以 counts.total 为准；本段不复述具体数字，免得又漂）。",
+  "envelope": {
+    "request": {
+      "style": "flat",
+      "body": "{ \"id\": \"…\", \"tailMessages\": 2 }",
+      "alias_rule": "同一字段的多个名字都收：sessionId 优先于 id，limit 优先于 tailMessages（对齐宿主 fillID / firstNonZero）",
+      "legacy_wrapped": "{\"params\":{…}} 仅 cmd/mockd 兼容，真宿主只认平铺"
+    },
+    "response": {
+      "result": "object"
+    },
+    "error": {
+      "code": "string",
+      "message": "string",
+      "hint": "string",
+      "retryable": "bool"
+    },
+    "details": {
+      "reason": "string?",
+      "note": "409 的稳定机器字段（DSH-GO/docs/transport-contract.md §3D）。**可选**：老宿主不带，客户端必须能判空并走 message 文本兜底（cmd/app/frames.go journalEvictedError）。它是 error 的**兄弟**，不是四字段之一——error 仍然恰好 code/message/hint/retryable。",
+      "envelope_example": "{\"error\":{\"code\":\"stale_epoch\",\"message\":\"…\",\"hint\":\"…\",\"retryable\":true},\"journalEpoch\":7,\"lastSeq\":1024,\"details\":{\"reason\":\"history_evicted\"}}"
+    }
+  },
+  "errors": {
+    "not_found": "会话或路径不存在",
+    "busy": "该会话有 turn 在跑，retryable=true",
+    "invalid_arg": "参数不合法，hint 写清怎么改",
+    "unsupported": "该方法本版本未实现",
+    "internal": "宿主内部错误"
+  },
+  "conflict_reasons": {
+    "note": "409 的 details.reason 取值表。宿主侧唯一来源是 DSH-GO internal/transport/ConflictReasons()（快照 internal/transport/testdata/api.snapshot.json 的 conflict_reasons 段），两侧同表：加新值必须一起改。",
+    "values": [
+      "stale_epoch",
+      "history_evicted",
+      "revision_conflict",
+      "job_finished",
+      "job_owner_not_live",
+      "stale_head",
+      "agent_busy",
+      "NO_CONTINUABLE_FAILURE_OR_PENDING_INPUT",
+      "conflict"
+    ],
+    "semantics": {
+      "stale_epoch": "journal 换代 / 水位比当前还大 → 丢掉旧水位重新 load 基线",
+      "history_evicted": "sinceSeq 之前的历史已滑出内存 journal → 这就是「没有更早的了」，不要重建（UI 消费：cmd/app/frames.go）",
+      "revision_conflict": "乐观并发 revision 过期 → 重新读最新 revision",
+      "job_finished": "任务已结束 → 只读 jobs.output",
+      "job_owner_not_live": "任务 owner 已不在（官方 JOB_OWNER_NOT_LIVE）",
+      "stale_head": "forge 写入基于旧 head（远端已前进）",
+      "agent_busy": "会话/管理器正忙（code=busy）→ 等 turn/done",
+      "NO_CONTINUABLE_FAILURE_OR_PENDING_INPUT": "官方 session/agent-busy 的逐字 reason（不是 agent_busy）",
+      "conflict": "叫不出更细名字的 409（兜底）"
+    }
+  },
+  "stream": {
+    "path": "/ws",
+    "transport": "websocket",
+    "client_frames": [
+      {
+        "t": "sub",
+        "topic": "string",
+        "sinceSeq": "int?",
+        "journalEpoch": "int64?",
+        "note": "两个水位要一起带；只带一个会让宿主补出一段错位数据"
+      },
+      {
+        "t": "unsub",
+        "topic": "string"
+      },
+      {
+        "t": "ping",
+        "note": "应用层心跳，不占用 WS 控制帧"
+      }
+    ],
+    "server_frames": [
+      {
+        "seq": "int",
+        "type": "string",
+        "data": "object",
+        "time": "int64",
+        "note": "type 是 v4 原始事件名；**没有 topic 字段**——连接本身就是会话归属；也不是 {t:ev,kind}"
+      }
+    ],
+    "control_frames": [
+      {
+        "type": "pong",
+        "note": "无 seq、不入 journal"
+      },
+      {
+        "type": "session/reset",
+        "data": {
+          "journalEpoch": "int64",
+          "lastSeq": "int"
+        },
+        "note": "无 seq；收到就重建基线（清水位 → 重新 load → 按新基线 resub），不是 sinceSeq=0 重连"
+      }
+    ],
+    "no_gap_frames": "服务端**不发** gap 帧：断号由客户端按 seq 连续性自己发现，再调 session.history 补洞",
+    "types": [
+      "turn/start",
+      "turn/end",
+      "turn/done",
+      "turn/error",
+      "user/message",
+      "assistant/message",
+      "tool/call",
+      "tool/result",
+      "system/message",
+      "developer/message",
+      "approval/request",
+      "approval/timeout",
+      "approval/cancel",
+      "session/reset",
+      "pong"
+    ],
+    "turn_end_shape": "{\"turn\":5,\"reason\":{\"kind\":\"completed|error|aborted|blocked|max-tokens|interrupted|forked\",\"error\":{\"message\":\"…\"},\"reason\":\"…\"}} —— 结局和失败原因都在 reason 里面"
   }
 }

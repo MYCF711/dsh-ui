@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -2048,7 +2049,9 @@ func newConfig(m *model) app.Config {
 				SessionStats: m.wave3.sessionStatsSnapshot(cur),
 				// whole-log `tokenUsage` 投影四桶（用量胶囊 + 用量详情弹窗的唯一来源）。
 				// nil = 还没拉到 / 老宿主没有这个键 → 写「未知」，不拿 UsageTotal 反推。
-				TokenUsage:   m.wave3.tokenUsageSnapshot(cur),
+				TokenUsage: m.wave3.tokenUsageSnapshot(cur),
+				// 官方 plan 投影；nil = 未知，dsplan 不做本地乐观切换。
+				Plan:         m.wave3.planSnapshot(cur),
 				Model:        modelName,
 				Permission:   permission,
 				Approval:     approvalView,
@@ -2114,6 +2117,10 @@ func newConfig(m *model) app.Config {
 		}
 
 		m.view.Draw(canvas, contentBounds, func(f ui.C) {
+			// 普通子槽与 keyed 子槽共享同一个 env 和调用点布局游标。
+			env.DrawSlot = func(target ui.C, slot pluginapi.Slot) {
+				m.kernel.DrawSlot(target, slot, env)
+			}
 			// keyed 座位（conversation.view / sidebar.right.pane.tab）按 key 派发：
 			// 只有这一帧真的有一个 key 时才接上，插件据此判断"壳接了注册表没有"。
 			env.DrawKeyed = func(target ui.C, slot pluginapi.Slot, key string) {
@@ -2390,6 +2397,57 @@ func itoaLocal(n int) string {
 		n /= 10
 	}
 	return string(buf[i:])
+}
+
+// executeCommandLine 是插件 Actions.ExecuteCommand 的同步实现。
+// 命令 outcome 与 Transport 错误是两层：只有非 error outcome 才算成功。
+func (m *model) executeCommandLine(line string) error {
+	m.mu.Lock()
+	sessionID := m.cur
+	m.mu.Unlock()
+	if m.cli == nil {
+		return errors.New("commands.execute 未接线")
+	}
+	if sessionID == "" {
+		return errors.New("没有当前会话，执行不了命令")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	execution, err := m.cli.CommandsExecute(ctx, sessionID, line)
+	if err != nil {
+		return err
+	}
+	if execution == nil {
+		return fmt.Errorf("unknown command: %s", line)
+	}
+	if execution.Result.Kind == "error" {
+		return errors.New(execution.Result.Text)
+	}
+	if line == "/plan off" {
+		// 不做本地乐观 active=false：只让下一帧按既有 10s 节流立即重读，
+		// chip 等宿主投影真值更新。projPending 防止并发重复拉取。
+		m.wave3.mu.Lock()
+		m.wave3.projAt = time.Time{}
+		m.wave3.mu.Unlock()
+		m.inv.Invalidate()
+	}
+	return nil
+}
+
+// answerQuestion 是插件 Actions.AnswerQuestion 的同步实现。
+func (m *model) answerQuestion(callID string, answer apiclient.QuestionAnswer) (bool, error) {
+	m.mu.Lock()
+	sessionID := m.cur
+	m.mu.Unlock()
+	if m.cli == nil {
+		return false, errors.New("userQuestions.answer 未接线")
+	}
+	if sessionID == "" {
+		return false, errors.New("没有当前会话，回答不了问题")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	return m.cli.UserQuestionsAnswer(ctx, sessionID, callID, answer)
 }
 
 func main() {
@@ -2920,6 +2978,8 @@ func main() {
 		ForkSession:                  m.forkSession,
 		NewSession:                   m.newSession,
 		Send:                         m.sendText,
+		ExecuteCommand:               m.executeCommandLine,
+		AnswerQuestion:               m.answerQuestion,
 		Copy:                         func(text string) { _ = m.copyText(text) },
 		CopyResult:                   m.copyText,
 		OpenExternal:                 m.openExternal,

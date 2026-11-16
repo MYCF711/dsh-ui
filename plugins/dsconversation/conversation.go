@@ -228,9 +228,9 @@ func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.searchField} }
 // 主区有两个座位（互斥，同一帧只有一个活）：
 //
 //	conversation.view  官方 `ChatView.column`（rc.2 终态；`uikernel.OffConvView`）
-//	main.body          dsshell 三栏 / 官方骨架的旧部件兼容桥（今天的产品路径）
+//	main.body          未接 view 名录的老壳回退
 //
-// 座位的选择**由壳决定**（`uikernel.ShellOptions.BridgeLegacy` 一帧一个值），
+// 座位的选择**由壳决定**（`Env.Views` / `ActiveView` 一帧一个值），
 // 插件两边都挂、各自判"这一帧有没有原始帧可画"，不自己猜壳是哪个档。
 // 详见 official_transcript_wiring.go 文件头。
 func (p *Plugin) Panels() []pluginapi.Painter {
@@ -802,6 +802,14 @@ func (p *Plugin) layoutMarkdownWithFiles(canvas *gfx.Canvas, i int, text string,
 
 // afterDraw 是覆画阶段：把排好版的 Markdown 画到占位上。
 func (p *Plugin) afterDraw(canvas *gfx.Canvas, env *pluginapi.Env) {
+	if len(env.Views) > 0 && env.ActiveView != "" && env.ActiveView != pluginapi.ViewChat {
+		// conversation.view 选中 trajectory/stats 时 main.body 的 Draw 根本没跑；
+		// 旧 Box 已随本帧 Begin 失效，不能覆画上一条 chat 的 Markdown。
+		p.bodyReady = false
+		p.turnBoxes = nil
+		p.slots = p.slots[:0]
+		return
+	}
 	// 官方 transcript 的代码块是「布局后覆画」：`main.body` 兼容桥这一帧
 	// 可能承载官方 transcript（判据是"有没有原始帧"），与 `conversation.view`
 	// 座位共用同一个覆画入口。渲染器自己按帧号去重，两个座位都调不会双画。

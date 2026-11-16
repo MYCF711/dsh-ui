@@ -1,65 +1,167 @@
-// account.go —— 账号状态（官方 `account/getState` 的客户端）。
+// account.go —— 官方账号状态、资料、余额与登录动作的 Transport 客户端。
 //
-// # 为什么界面需要它
-//
-// 官方 rc.2 的账号通知入口由**父级**（账号菜单）决定"何时可见"：
-//
-//	active = signedIn && !onboarding（AccountMenu.tsx:60 传给 settings.launcher.notifications）
-//	signedIn = view?.status === 'credential-stored'（src/client/index.ts:44-48）
-//
-// 也就是：**没有账号状态就没有通知**。本仓此前没有这条数据面，所以
-// `plugins/dsnotifications` 的控制器只能停在"未授权"空态（整块不渲染）。
-// 这个文件补的是那条最小数据面：一条 unary 查询，不引流、不引轮询协议。
-//
-// # 契约（宿主侧逐字核对）
-//
-//	方法   account.getState（`OfficialAccountAPI.AccountGetState`）
-//	入参   { }（宿主 p.finish() 只做完结校验，不读任何字段）
-//	结果   **平铺的 AccountView**（不是 {state:…}）：
-//	       handlers_account_official.go:929 `return api.AccountGetState(ctx)`
-//	       → OfficialAccountView{status, links, attempt, source?}
-//
-// `links` / `attempt` 界面这一轮不用（账号面板还没落地），所以**不建模**：
-// 多解码两个我们用不上的字段，等于给"以后"留一个没人验过的形状。
+// 所有请求都只打到宿主 /api；Platform 凭据不进入 GUI。响应形状逐字对应
+// DSH-GO internal/transport/handlers_account_official.go：
+//   - getState/start/cancel/signOut → 平铺 AccountView；
+//   - getProfile/getBalance → {profile|balance: T|null}（本仓成功信封不能是 null）；
+//   - hasRunningAccountTasks → 裸 boolean。
 package apiclient
 
 import "context"
 
-// AccountCredentialStored 是官方 `AccountView.status` 的"已登录"取值。
-//
-// 官方 `status` 是闭集两值：`credential-stored` | `signed-out`
-// （handlers_account_official.go:134 的枚举注释）。界面只认这一个，
-// 其余（含空串）一律按"未登录"——空串是"宿主没给"，不是"登录了"。
+// AccountCredentialStored 是官方 AccountView.status 的“已登录”取值。
 const AccountCredentialStored = "credential-stored"
 
-// AccountView 是官方 `AccountView` 的安全账号投影（本仓只取用得上的两个字段）。
-type AccountView struct {
-	// Status 是 `credential-stored` / `signed-out`；空 = 宿主没给。
-	Status string `json:"status"`
-	// Source 是本仓额外字段（官方 schema additionalProperties:true），
-	// 标明这条状态来自哪种账号提供方（local / official / oidc）。
-	Source string `json:"source,omitempty"`
+// AccountLinks 是账号状态自带的 Platform 目的地。
+type AccountLinks struct {
+	UsageURL string `json:"usageUrl"`
+	TopUpURL string `json:"topUpUrl"`
 }
 
-// SignedIn 按官方判据判断是否已登录：只有 `credential-stored` 算。
-//
-// 单独一个方法而不是让调用方比字符串：判据只有一处，别到处写 `== "credential-stored"`。
+// AccountAttempt 是一次浏览器登录尝试；Phase 原样保留官方状态机值。
+type AccountAttempt struct {
+	ID           string `json:"id"`
+	Phase        string `json:"phase"`
+	AuthorizeURL string `json:"authorizeUrl,omitempty"`
+	UserCode     string `json:"userCode,omitempty"`
+	ExpiresAt    int64  `json:"expiresAt,omitempty"`
+	ErrorCode    string `json:"errorCode,omitempty"`
+}
+
+// AccountView 是官方安全账号投影。
+type AccountView struct {
+	Status  string          `json:"status"`
+	Links   AccountLinks    `json:"links"`
+	Attempt *AccountAttempt `json:"attempt"`
+	Source  string          `json:"source,omitempty"`
+}
+
+// SignedIn 只有 credential-stored 算已登录；未知/空串绝不能冒充真值。
 func (v AccountView) SignedIn() bool { return v.Status == AccountCredentialStored }
 
-// GetAccountState 取账号状态机的当前投影（官方 account/getState）。
-//
-// 宿主三种真实回答，界面必须分别对待（都不许编）：
-//
-//	(status, nil)   宿主有账号状态机：Status 是**真值**
-//	(err = nil, 但不是上面那种)  不会发生——本方法只在成功时返回 view
-//	(not_implemented)  宿主没有账号状态机 → 界面按"未知"处理（隐藏，不画成未登录）
-//
-// 因此调用方要区分"查询失败"与"确定未登录"：失败时**不要**把状态写成
-// `signed-out`，那会把"不知道"说成"没登录"。
+// ActiveSignIn 对应官方 AccountSection 的 active 四相位。
+func (v AccountView) ActiveSignIn() bool {
+	if v.Attempt == nil {
+		return false
+	}
+	switch v.Attempt.Phase {
+	case "initializing", "waiting-browser", "exchanging", "committing":
+		return true
+	default:
+		return false
+	}
+}
+
+// AccountProfileValue 是 ready 资料；指针区分 Platform null 与真实字符串。
+type AccountProfileValue struct {
+	ID        *string `json:"id"`
+	Name      *string `json:"name"`
+	Contact   *string `json:"contact"`
+	AvatarURL *string `json:"avatarUrl,omitempty"`
+}
+
+// AccountProfile 是 {status:"ready",value} | {status:"failed"}。
+type AccountProfile struct {
+	Status string               `json:"status"`
+	Value  *AccountProfileValue `json:"value,omitempty"`
+	Source string               `json:"source,omitempty"`
+}
+
+// AccountWallet 的金额保持字符串，绝不经 float64 损失精度。
+type AccountWallet struct {
+	Currency string `json:"currency"`
+	Balance  string `json:"balance"`
+}
+
+// AccountBalance 含充值钱包与赠送钱包。
+type AccountBalance struct {
+	Status       string          `json:"status"`
+	Value        []AccountWallet `json:"value"`
+	BonusWallets []AccountWallet `json:"bonusWallets"`
+	Source       string          `json:"source,omitempty"`
+}
+
+// AccountClientMetadata 与官方 AccountClientMetadata 三必填字段一致。
+type AccountClientMetadata = NotificationClientMetadata
+
+// AccountSnapshot 是壳发布给账号页/账号菜单的一帧不可变快照。
+// nil View = 状态未知；Profile/Balance 的独立失败位不把查询失败伪装成空资料或 0 余额。
+type AccountSnapshot struct {
+	View          *AccountView
+	Profile       *AccountProfile
+	Balance       *AccountBalance
+	Known         bool
+	Failed        bool
+	ProfileFailed bool
+	BalanceFailed bool
+	LoginVisible  bool
+	LoginFailed   bool
+}
+
+// GetAccountState 取当前账号状态机投影。
 func (c *Client) GetAccountState(ctx context.Context) (*AccountView, error) {
 	var out AccountView
 	if err := c.Call(ctx, "account.getState", struct{}{}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// GetAccountProfile 读取资料；nil 表示宿主明确回 profile:null。
+func (c *Client) GetAccountProfile(ctx context.Context, meta AccountClientMetadata) (*AccountProfile, error) {
+	var out struct {
+		Profile *AccountProfile `json:"profile"`
+	}
+	if err := c.Call(ctx, "account.getProfile", map[string]any{"client": meta}, &out); err != nil {
+		return nil, err
+	}
+	return out.Profile, nil
+}
+
+// GetAccountBalance 读取充值/赠送余额；nil 表示宿主明确回 balance:null。
+func (c *Client) GetAccountBalance(ctx context.Context, meta AccountClientMetadata) (*AccountBalance, error) {
+	var out struct {
+		Balance *AccountBalance `json:"balance"`
+	}
+	if err := c.Call(ctx, "account.getBalance", map[string]any{"client": meta}, &out); err != nil {
+		return nil, err
+	}
+	return out.Balance, nil
+}
+
+// StartAccountSignIn 创建一次登录尝试。
+func (c *Client) StartAccountSignIn(ctx context.Context, meta AccountClientMetadata, callbackOrigin, loginSource string) (*AccountView, error) {
+	var out AccountView
+	params := map[string]any{"client": meta, "callbackOrigin": callbackOrigin, "loginSource": loginSource}
+	if err := c.Call(ctx, "account.startSignIn", params, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CancelAccountSignIn 取消指定尝试；attemptId 必须原样来自 AccountView。
+func (c *Client) CancelAccountSignIn(ctx context.Context, attemptID string) (*AccountView, error) {
+	var out AccountView
+	if err := c.Call(ctx, "account.cancelSignIn", map[string]any{"attemptId": attemptID}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SignOutAccount 移除本地账号授权（不是删除 API key）。
+func (c *Client) SignOutAccount(ctx context.Context, meta AccountClientMetadata) (*AccountView, error) {
+	var out AccountView
+	if err := c.Call(ctx, "account.signOut", map[string]any{"client": meta}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// HasRunningAccountTasks 返回官方裸 boolean，不包 {running:…}。
+func (c *Client) HasRunningAccountTasks(ctx context.Context) (bool, error) {
+	var running bool
+	if err := c.Call(ctx, "account.hasRunningAccountTasks", struct{}{}, &running); err != nil {
+		return false, err
+	}
+	return running, nil
 }

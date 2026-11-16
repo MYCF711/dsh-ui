@@ -2801,6 +2801,14 @@ func main() {
 		SettingsFormSet:   m.settingsFormSet,
 		SettingsFormReset: m.settingsFormReset,
 		SettingsMutate:    m.settingsMutate,
+		// 账号页与 AccountMenu 共享同一份宿主快照和真实动作。
+		AccountSnapshot:        m.wave3.accountDetailsSnapshot,
+		AccountRefresh:         m.accountRefresh,
+		AccountShowLogin:       m.accountShowLogin,
+		AccountStartSignIn:     m.accountStartSignIn,
+		AccountCancelSignIn:    m.accountCancelSignIn,
+		AccountSignOut:         m.accountSignOut,
+		AccountHasRunningTasks: m.accountHasRunningTasks,
 		// 内置插件页的数据面：官方 pluginInventory.list 的缓存。
 		// 与 describe 分开一处（它不是 Host 设置，是 Loader 的只读投影），
 		// 见 plugin_inventory_wiring.go。

@@ -1505,6 +1505,20 @@ type Actions struct {
 	// 官方 `settings.form.set` 只接受单段字段名。
 	SettingsMutate func(ns string, ops []apiclient.SettingsOp, expectedRevision int) (apiclient.SettingsNamespaceView, error)
 
+	// ── 账号页与账号菜单（官方 ui-settings-account）─────────────────────
+	// AccountSnapshot 同步返回壳缓存；View=nil 是未知，不是 signed-out。
+	AccountSnapshot func() apiclient.AccountSnapshot
+	// AccountRefresh 在后台合并重读 state/profile/balance，完成后由壳 Invalidate。
+	AccountRefresh func()
+	// AccountShowLogin 控制官方 SignInDialog；不直接改变宿主登录状态。
+	AccountShowLogin func(visible bool)
+	// 以下四个动作会真实调用宿主，调用方必须在 goroutine 中执行并展示返回错误。
+	AccountStartSignIn  func() error
+	AccountCancelSignIn func(attemptID string) error
+	AccountSignOut      func() error
+	// AccountHasRunningTasks 用于官方登出前确认；失败必须显示 unknown 文案。
+	AccountHasRunningTasks func() (bool, error)
+
 	// PluginInventory 返回壳缓存的官方 `pluginInventory.list` 结果
 	// —— 设置面板「内置插件」页的数据面。
 	//

@@ -736,3 +736,20 @@ INFO 插件已装配 id=ds-decl provides=[] requires="[ui.theme ui.primitives]"
 - `Snapshot.WorkspacesKnown` 区分“registry 未落地”与“真空 registry”：首屏前者显示 `正在加载工作区…`，后者且仅有添加动作时点击 chip 直接打开目录流。
 - `Snapshot.PendingWorkspaceID` 对应官方 pending chip；`Snapshot.DirectoryBusy` 是 native `armed/in-flight`，期间菜单动作禁用，结算后才 re-arm。
 - `workspace.create` 的调用方必须消费返回的 `workspace.workspaceId`。`plugins/dsdirpicker.SetOnPicked` 因而已改为传 `apiclient.WorkspaceView`，不再回显请求 path。
+## 16. 右栏 occurrence（2026-11-16）
+
+官方把 tab **类型**与每次打开的 **occurrence** 分开。本仓对应字段：
+
+- `Painter.Multiple`：对应 `SidebarRightTabDefinition.multiple`。`true` 时每次
+  `Actions.OpenRightTab(kind)` 新建 occurrence；`false` 时复用并选中同 kind 的记录。
+- `Tab.Key`：occurrence 身份（官方 `TabRecord.id`），用于选择、关闭、持久化与页面状态。
+- `Tab.Kind`：类型/keyed 槽派发 key；`Env.ActiveRightTabKind` 供壳派发，`Env.RightTabID`
+  供插件取当前 occurrence。老壳没填 `RightTabID` 时可回退 `ActiveRightTab`。
+- `Actions.SelectRightTab` 仍兼容按类型选择；`OpenRightTab` 才是官方 `openTab` 的新建语义，
+  `CloseRightTab` 先跑资源清理再移除布局。
+- `RightTabTitleProvider` 只能返回自己 occurrence 的实时标题；不属于自己必须返回空串。
+- `RightTabCloseHandler` 按 `(sessionId,tabId,kind)` 分发，返回 error 时壳保留 tab，禁止假关闭。
+
+布局使用 `dsh.sidebar-right.v1.<sessionId>`，浏览器导航使用
+`dsh.sidebar-browser.v1.<sessionId>`，都经既有 `ConfigGet/ConfigSet` 落在宿主 `ui-config.json`。
+恢复记录不等于自动加载网页：插件必须等用户显式恢复动作才创建 `WebPage`。

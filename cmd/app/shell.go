@@ -111,7 +111,7 @@ func shellOptionsFor(m *model, kernel *uikernel.Kernel, width, height float32) u
 	// 与 `env.Views` / `env.RightTabs` 必须是**同一份**（同一个函数、同一个内核），
 	// 否则官方档与 legacy 档会画出两套页签。
 	views := uikernel.ViewTabs(kernel)
-	rightTabs := uikernel.RightTabs(kernel)
+	rightTabs := m.rightTabsFor()
 	opts := uikernel.ShellOptions{
 		// caption 由 L0 的 frame_chrome 扣过一次，这里的 bounds 已是内容区。
 		Windows: false,

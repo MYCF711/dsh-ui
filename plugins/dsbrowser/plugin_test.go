@@ -32,17 +32,18 @@ type fakeHost struct {
 	opened  int
 	openErr error
 	lastOn  func(pluginapi.WebLoad)
+	onLoads []func(pluginapi.WebLoad)
 }
 
 func (h *fakeHost) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, error) {
 	h.opened++
 	h.lastOn = options.OnLoad
+	h.onLoads = append(h.onLoads, options.OnLoad)
 	if h.openErr != nil {
 		return nil, h.openErr
 	}
-	if h.page == nil {
-		h.page = &fakePage{id: 7}
-	}
+	// 每次 Open 都是独立 occurrence 的载具，不能复用同一个 NativeViewID。
+	h.page = &fakePage{id: gfx.NativeViewID(6 + h.opened)}
 	return h.page, nil
 }
 
@@ -105,6 +106,9 @@ func TestPanelsRegisterTheOfficialTwoSeats(t *testing.T) {
 	// 官方 tab 类型没有 order 字段，名录顺序 = 注册顺序；零值是"按装配顺序"。
 	if body.Order != 0 || title.Order != 0 {
 		t.Fatalf("order 应当是 0（官方没有这个字段），得到 %d/%d", body.Order, title.Order)
+	}
+	if !body.Multiple {
+		t.Fatal("官方 definition.tsx:19 multiple:true 必须进入右栏类型注册")
 	}
 	if body.Draw == nil || body.AfterDraw == nil {
 		t.Fatal("体必须同时有 Draw（布局）与 AfterDraw（摆 native view）")

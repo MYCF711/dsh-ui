@@ -61,6 +61,9 @@ type (
 	Painter        = pub.Painter
 	// Tab 是选择器条目（会话 view / 右栏 tab 的共同形状）。
 	Tab = pub.Tab
+	// 右栏 occurrence 的实时标题与关闭清理（官方 sidebar-right 的两个扩展点）。
+	RightTabTitleProvider = pub.RightTabTitleProvider
+	RightTabCloseHandler  = pub.RightTabCloseHandler
 	// WebHost / WebPage / WebOpenOptions 是窗口里的网页宿主（官方右栏浏览器那一层）。
 	// `Env.Web` 已经带上了它；这里补别名是为了让 import internal 路径的插件也能
 	// 在自己的测试里造假载具，而不必去 import 公开包。

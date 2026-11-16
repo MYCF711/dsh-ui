@@ -338,6 +338,68 @@ func TestDrawRightTabsDrawsStripAndSelects(t *testing.T) {
 	}
 }
 
+func TestDrawRightTabsCreateAndCloseButtonsReallyClick(t *testing.T) {
+	tabs := []pluginapi.Tab{{Key: "tab1", Kind: "browser", Label: "浏览器", Multiple: true}}
+	theme := dscore.Dark()
+	tree := &gfx.Tree{}
+	feat := tree.Feature("browser-occurrence-buttons")
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	opened, closed := "", ""
+	config := app.Config{Title: "browser-tabs", Width: 360, Height: 100, Tree: tree, WindowMode: app.WindowFrameless}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
+		env := &pluginapi.Env{Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds}
+		env.Act.OpenRightTab = func(kind string) { opened = kind }
+		env.Act.CloseRightTab = func(key string) { closed = key }
+		canvas.Fill(bounds, theme.BgBase)
+		view.Draw(canvas, bounds, func(f ui.C) {
+			DrawRightTabs(f, env, tabs, "tab1", func(string) {})
+		})
+	}
+	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	session.Resize(360, 100)
+	ready := false
+	for i := 0; i < 20; i++ {
+		if err := session.Driver().Pump(); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(strings.Join(session.Texts(), "\n"), "+") && strings.Contains(strings.Join(session.Texts(), "\n"), "×") {
+			ready = true
+			break
+		}
+	}
+	if !ready {
+		t.Fatal("新建/关闭按钮未出现：", session.Texts())
+	}
+	if err := session.ClickLabel("新建浏览器标签页"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20 && opened == ""; i++ {
+		if err := session.Driver().Pump(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if opened != "browser" {
+		t.Fatal("新建按钮动作 = ", opened, "，want browser")
+	}
+	if err := session.ClickLabel("关闭"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20 && closed == ""; i++ {
+		if err := session.Driver().Pump(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if closed != "tab1" {
+		t.Fatal("关闭按钮动作 = ", closed, "，want tab1")
+	}
+}
+
 func TestDrawViewTabsDrawsChipsAndSelects(t *testing.T) {
 	tabs := []pluginapi.Tab{
 		{Key: pluginapi.ViewChat, Label: "对话"},

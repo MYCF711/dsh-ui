@@ -287,9 +287,32 @@ const (
 	ChatScrollSideExtra float32 = 16
 	// ScrollBodyMarginRight 是宿主滚动口右外边距（ConversationRoot.module.css:485-500）。
 	ScrollBodyMarginRight float32 = 2
-	// ComposerSideClearance 是 composer 侧向净空（ConversationRoot.module.css:473）。
+	// ComposerSideClearance 是 composer 侧向净空（ConversationRoot.module.css:452-453）。
 	ComposerSideClearance float32 = 16
 )
+
+// officialChatContentWidth 实现 ConversationRoot.module.css:448-451 的
+// clamp(680px, column*0.64, 920px)；只负责官方正文宽轴，不读截图。
+func officialChatContentWidth(column float32) float32 {
+	width := column * 0.64
+	if column <= 0 || width < 680 {
+		return 680
+	}
+	if width > 920 {
+		return 920
+	}
+	return width
+}
+
+// userStackMaxWidth 实现 MessageItem.module.css:20 的
+// min(chat-content-width*0.702, 82%)。column 是用户内容栈所在的正文列宽。
+func userStackMaxWidth(column float32) float32 {
+	width := officialChatContentWidth(column) * UserStackWidthRatio
+	if cap := column * UserStackWidthCap; cap > 0 && cap < width {
+		return cap
+	}
+	return width
+}
 
 // ── markdown 块级与代码块（**整节 derived**，结构树 §9 第 1/2 条）─────────
 //

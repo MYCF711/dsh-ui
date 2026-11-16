@@ -236,7 +236,7 @@ func TestCollapseState(t *testing.T) {
 func TestGeometryMatchesOfficialSpec(t *testing.T) {
 	want := map[string]struct{ got, spec float32 }{
 		"sessionRowHeight": {sessionRowHeight, 32}, // .wnFoaW_sessionRow{height:32px}
-		"groupRowHeight":   {groupRowHeight, 34},   // .wnFoaW_projectRow{height:34px}
+		"groupRowHeight":   {groupRowHeight, 32},   // rc.2 Rows.module.css:112-116 .projectRow{height:32px}
 		"rowGap":           {rowGap, 2},            // .GAkraW_flatList>*+*{margin-top:2px}
 		"groupGap":         {groupGap, 4},          // .GAkraW_groupSection+.GAkraW_groupSection{margin-top:4px}
 		"searchHeight":     {searchHeight, 30},     // .GAkraW_searchExpanded{height:30px}
@@ -246,7 +246,7 @@ func TestGeometryMatchesOfficialSpec(t *testing.T) {
 		"slotHeight":       {slotHeight, 20},       // .wnFoaW_slot{height:20px}
 		"titleLineHeight":  {titleLineHeight, 20},  // .wnFoaW_title{line-height:20px}
 		"timeLineHeight":   {timeLineHeight, 16},   // .wnFoaW_time{line-height:16px}
-		"titleMarginLeft":  {titleMarginLeft, 4},   // .wnFoaW_title{margin:0 6px 0 4px}
+		"titleMarginLeft":  {titleMarginLeft, 6},   // Rows.module.css:128-130 + SidebarRoot.module.css:10（rc.2）
 		"titleMarginRight": {titleMarginRight, 6},  // 同上
 	}
 	for name, c := range want {

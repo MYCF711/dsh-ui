@@ -395,6 +395,9 @@ type Env struct {
 	//
 	// key 传空串时按「这个槽上什么都没命中」处理（不画），不是「全画一遍」。
 	DrawKeyed func(f ui.C, slot Slot, key string)
+	// DrawSlot 把一个普通子槽交回壳派发，与 DrawKeyed 共用调用点的布局游标。
+	// dsquestions 用它把 conversation.plan-review.actions 画进 PlanReviewPanel.strip。
+	DrawSlot func(f ui.C, slot Slot)
 	// Geometry 是本帧三栏的几何（壳算好，框架插件照着摆）。
 	// 为什么壳算：它已经知道侧栏插件要的宽度、右栏开合、白名单里有没有这些部件。
 	// 框架插件拿到的是"结果"，不是"猜"。
@@ -734,6 +737,9 @@ type Snapshot struct {
 	// 界面按官方 gate 决定画不画：`billed === 0 && output === 0` 时不画弹窗，
 	// 但读数仍写成 `0 tok`（宿主说 0），**不是**「未知」。
 	TokenUsage *apiclient.TokenUsage
+	// Plan 是官方 plan 投影 {active,pending}；nil = 缺键、null、坏形状、
+	// 查询失败或尚未拉到。dsplan 不得把 nil 当成计划模式已关闭。
+	Plan *apiclient.PlanProjection
 	// Model 是宿主 §12 H4 给的最近一次 request/context 的模型名。
 	// 空串 = 不知道；插件不许拿自己的默认值冒充。
 	Model string
@@ -926,6 +932,20 @@ const (
 	FileDownload = "download"
 )
 
+// TerminalViewState 是官方 TerminalViewState 的壳缓存子集：阶段、环境、shell
+// 名录、终端元数据、可写性与待绘制文本。Screen 是本仓既有的 ANSI 剥离投影，
+// 不冒充 xterm 的完整 VT 屏幕。
+type TerminalViewState struct {
+	Phase       string
+	Info        *apiclient.TerminalInfo
+	Environment *apiclient.TerminalEnvironment
+	Shells      []apiclient.TerminalShell
+	Writable    bool
+	Retained    bool
+	Screen      string
+	Error       string
+}
+
 // StartSessionOptions 是官方 `uiWorkspace.startSession(undefined, options)` 的壳内投影。
 // workspaceId 省略表示当前工作区；AgentPreset 为空时由宿主选择默认 preset。
 // WhenDraftExists 逐字使用官方 replace / append / keep；空值等价 keep。
@@ -1085,6 +1105,13 @@ type Actions struct {
 	// Send 把这段文字发出去。输入框由哪个插件画，文字就由哪个插件给——
 	// 壳不再持有草稿，所以不用 SetDraft 回灌。
 	Send func(text string)
+	// ExecuteCommand 同步执行当前会话的官方 commands.execute；调用方负责 goroutine。
+	// null/undefined 结果返回 unknown command；result.kind=error 返回宿主 text；
+	// Transport 错误原样返回。任何路径都不得伪造执行成功。
+	ExecuteCommand func(line string) error
+	// AnswerQuestion 同步提交当前会话的 userQuestions.answer；调用方负责 goroutine。
+	// 返回的 bool 是宿主的 still-continued 真值，false 不是 Transport 错误。
+	AnswerQuestion func(callID string, answer apiclient.QuestionAnswer) (bool, error)
 	// Cancel 打断当前会话正在跑的 turn（H13 的 session.cancel）。
 	//
 	// nil = 壳没接；插件要自己判，别假设一定有。
@@ -1227,6 +1254,10 @@ type Actions struct {
 	// cotTranslation）——**这时界面不该画译文入口**：画一个点了没反应的东西，
 	// 比不画更让人以为"翻译坏了"。
 	CotTranslationLimits func() (apiclient.CotTranslationLimits, bool)
+	// CotTranslationRefresh 使 limits 缓存失效并重读。设置保存、账号/凭据变化、
+	// 连接重置与插件配置页挂载共用这一条；在飞期间再次触发会在完成后补读，
+	// 对应官方 mount.ts:31-80 的 revision/refresh 链。
+	CotTranslationRefresh func()
 	// CotTranslationTranslate 发起一次翻译。**异步**：返回 jobID（空串 = 没发起，
 	// 比如壳没接或参数明显不合法），终态由 CotTranslationResult(jobID) 交给插件。
 	//
@@ -1512,6 +1543,20 @@ type Actions struct {
 	// 返回的是"到目前为止的全部"（不是增量）——插件画的时候要能整段重绘，
 	// 让它自己维护增量只会多一处可能对不上的状态。
 	TerminalRead func(id string) string
+
+	// TerminalEnsure 按右栏 occurrence 创建或恢复官方用户终端，并启动
+	// environment/shells/list → retain → attach 的真实链。重复调用幂等。
+	TerminalEnsure func(tabID string)
+	// TerminalRetry 在 failed/disconnected 后重新 retain+attach（不替换 Host 身份）。
+	TerminalRetry func(tabID string)
+	// TerminalSnapshot 同步读某 occurrence 的缓存；绝不发 HTTP。
+	TerminalSnapshot func(tabID string) TerminalViewState
+	// TerminalWriteOfficial 写入当前 tab 绑定的 PTY；typed=true 只用于真实人员输入。
+	TerminalWriteOfficial func(tabID, data string, typed bool)
+	// TerminalRenameOfficial / TerminalCloseOfficial 是同步宿主动作，调用方在
+	// goroutine 或壳的 close handler 中使用；错误必须原样返回，不静默成功。
+	TerminalRenameOfficial func(tabID, title string) error
+	TerminalCloseOfficial  func(tabID string) error
 
 	// SetPermission 改当前会话的审批策略（deny/ask/allow/auto）。
 	//

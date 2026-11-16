@@ -26,22 +26,13 @@
 // 客户端已经把这段帧缓存好了（`pluginapi.Snapshot.Frames` 的注释写明它就是
 // `session.history` 的 frames[]）。
 //
-// # 官方四个座位，本包只做了两个（照实登记）
+// # 官方四个可见座位（2026-11-17 全部接真实数据）
 //
-//	conversation.chat.turnTail          ✅ 本包 cards.go（Turn 尾计划卡）
-//	sidebar.right.pane.tab (key plan)   ✅ 本包 preview.go（右栏计划全文）
-//	conversation.input.plan             ❌ HIDE：计划模式 chip 读的是官方 `plan` 投影
-//	                                       （OFF:dsh-plan-mode/src/types.ts:21-24 的
-//	                                       `{active, pending}`），本仓宿主没有这个投影
-//	                                       （`session.values` 只有 title/actionCards/todos/
-//	                                       subagent/… 这几项，见
-//	                                       HOST:internal/transport/handlers_session_official.go:930-987）
-//	conversation.plan-review.actions    ❌ HIDE：官方这条是**待批计划**的「查看全文」
-//	                                       链接，挂在 ui-user-questions 的 plan-review
-//	                                       提问卡里（OFF:user-questions index.ts:390）。
-//	                                       本仓 dsquestions 只认 `ask_user_question`，
-//	                                       `exit_plan_mode` 从来不产生待答问题——没有
-//	                                       那条提问卡，这个链接就无处可挂（画了永不出现）
+//	conversation.chat.turnTail          cards.go：Turn 尾计划卡
+//	sidebar.right.pane.tab (key plan)   preview.go：右栏计划全文/临时审阅
+//	conversation.input.plan             chip.go：Snapshot.Plan + 真 /plan off
+//	conversation.plan-review.actions    review.go：自动一次/手动查看全文；
+//	                                   父卡与批准在 dsquestions/plan_review.go
 package dsplan
 
 import (

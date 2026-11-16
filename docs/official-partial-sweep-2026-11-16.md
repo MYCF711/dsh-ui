@@ -54,6 +54,8 @@
 
 旧“宿主没有 plan 投影”已失效：`DSH-GO/internal/transport/plan_view.go:8-38` 与 `handlers_session_official.go:994-999` 已提供 `{active,pending}`。剩余：① GUI 未提取 plan，且 chip 需要真实 `/plan off`，宿主命令注册表尚无；② `exit_plan_mode` 仍直接 Stop，没有 `intent.kind=plan-review` 待答问题，父提问卡、手动/自动查看全文及临时 review 地址无生产者；③ 本仓只画最新一轮计划卡，官方逐轮；④ 缺 navigation 地址、多实例、plan-review/subagent 地址和 tab title 派发；⑤ 临时预览 loading/failed/expired、相对链接等既有差异仍在。
 
+**2026-11-17 后续更正**：①②已完整闭合（宿主真实 `/plan off`、持久 plan-review、父卡与批准/继续规划、自动/手动全文、临时地址/expired），详见 [official-plan-evidence-rc2.md](official-plan-evidence-rc2.md)。④中的 plan-review 地址与⑤中的 expired 已消除；其余③④⑤差异保留，故账本仍 🟡。
+
 ### #46 `dsh-client-ui-settings-subagent` — 保持 🟡
 
 旧“allowedModels 值到不了界面”不准确：它虽不进 `sections.fields`，但在 `SettingsNamespaceView.Value/Base/User` 原始 JSON 中，宿主也支持对象数组写入与校验。模型选择 UI 因此可做，不是平台限制。

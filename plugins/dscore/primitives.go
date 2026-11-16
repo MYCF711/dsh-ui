@@ -68,18 +68,19 @@ func (p *Primitives) Chip(f ui.C, label string) ui.Box {
 	})
 }
 
-// Bubble 一个用户气泡容器。官方 .bubble：radius xl、specific-bubble 底、
-// font-size/line-height 跟正文令牌走。
+// Bubble 一个用户气泡容器。官方 UserMessageBubble.module.css:1-11：
+// padding:10px 16px、radius xl、specific-bubble 底、14px/22px；
+// 文字行高由调用方正文令牌给。
 func (p *Primitives) Bubble(f ui.C, body func()) ui.Box {
 	t := p.Theme
-	return ui.Column(f).Pad(10).Radius(t.Radii.XL).Background(t.Bubble).Children(body)
+	return ui.Column(f).PadSides(10, 16, 10, 16).Radius(t.Radii.XL).Background(t.Bubble).Children(body)
 }
 
 // SectionHeader 画一个分组头（工作区名 + 条数 + 折叠箭头）。
 //
 // 照官方**项目行** `.wnFoaW_projectRow`（它就是侧栏里那一行可折叠的工作区名）：
 //
-//	.wnFoaW_projectRow{box-sizing:border-box;align-items:center;height:34px}
+//	Rows.module.css:112-116 .projectRow{box-sizing:border-box;align-items:center;height:32px}
 //	.wnFoaW_projectRow,.wnFoaW_sessionRow{border-radius:var(--dsw-radius-md);
 //	  padding:0 8px;gap:6px;color:var(--dsw-alias-label-primary);…}
 //	.wnFoaW_title{font-size:14px;line-height:20px}
@@ -87,7 +88,7 @@ func (p *Primitives) Bubble(f ui.C, body func()) ui.Box {
 //	.wnFoaW_arrow{transition:transform .15s var(--ds-ease-in-out)}
 //	.wnFoaW_arrowOpen{transform:rotate(90deg)}
 //
-// 所以它比会话行**高 2px（34 vs 32）**、字是正文色而不是灰字——
+// rc.2 项目行与会话行同为 32px（Rows.module.css:112-126），字是正文色而不是灰字——
 // 原来那版 26px 的灰字按钮和官方不是一个东西。
 func (p *Primitives) SectionHeader(f ui.C, id gfx.ID, title string, count int, open bool) ui.Box {
 	t := p.Theme
@@ -95,7 +96,7 @@ func (p *Primitives) SectionHeader(f ui.C, id gfx.ID, title string, count int, o
 	if open {
 		arrow = "▾"
 	}
-	return ui.Row(f).FillWidth().Height(34).Radius(t.Radii.MD).PadX(8).
+	return ui.Row(f).FillWidth().Height(32).Radius(t.Radii.MD).PadX(8).
 		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
 		ui.Text(f, arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
 		ui.Text(f, title).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Ellipsis()

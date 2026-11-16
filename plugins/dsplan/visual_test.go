@@ -23,6 +23,9 @@ type actions struct {
 	toggled      int
 	external     []string
 	showRightbar bool
+	commands     chan string
+	commandErr   error
+	invalidated  chan struct{}
 }
 
 func (a *actions) install(env *pluginapi.Env) {
@@ -33,6 +36,20 @@ func (a *actions) install(env *pluginapi.Env) {
 		a.external = append(a.external, destination)
 		return nil
 	}
+	env.Act.ExecuteCommand = func(line string) error {
+		if a.commands != nil {
+			a.commands <- line
+		}
+		return a.commandErr
+	}
+	env.Act.Invalidate = func() {
+		if a.invalidated != nil {
+			select {
+			case a.invalidated <- struct{}{}:
+			default:
+			}
+		}
+	}
 }
 
 // fixture 是一帧的设备齐全的无头环境：真主题、真 Tree、真 Canvas。
@@ -41,7 +58,7 @@ func fixture(t *testing.T, frames []apiclient.Frame, width float32) (*Plugin, *p
 	theme := dscore.Dark()
 	tree := &gfx.Tree{}
 	feat := tree.Feature("dsplan-test")
-	p := &Plugin{theme: theme}
+	p := &Plugin{theme: theme, reviewWindow: "test-window"}
 	act := &actions{}
 	env := &pluginapi.Env{
 		Theme: theme,
@@ -81,6 +98,22 @@ func drawPreviewOnce(t *testing.T, p *Plugin, env *pluginapi.Env, canvas *gfx.Ca
 	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	view.Draw(canvas, gfx.Rect{Width: w, Height: h}, func(f ui.C) { p.drawPreview(f, env) })
 	p.afterDrawPreview(canvas, env)
+}
+
+func drawChipOnce(t *testing.T, p *Plugin, env *pluginapi.Env, canvas *gfx.Canvas) {
+	t.Helper()
+	canvas.Reset()
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, gfx.Rect{Width: 520, Height: 80}, func(f ui.C) { p.drawPlanChip(f, env) })
+}
+
+func drawReviewActionOnce(t *testing.T, p *Plugin, env *pluginapi.Env, canvas *gfx.Canvas) {
+	t.Helper()
+	canvas.Reset()
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, gfx.Rect{Width: 520, Height: 80}, func(f ui.C) { p.drawReviewAction(f, env) })
 }
 
 // click 走一次真实的点击事件通道：BeginEventPass → 画一帧 → EndEventPass。

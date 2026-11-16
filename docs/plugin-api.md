@@ -754,3 +754,13 @@ INFO 插件已装配 id=ds-decl provides=[] requires="[ui.theme ui.primitives]"
 布局使用 `dsh.sidebar-right.v1.<sessionId>`，浏览器导航使用
 `dsh.sidebar-browser.v1.<sessionId>`，都经既有 `ConfigGet/ConfigSet` 落在宿主 `ui-config.json`。
 恢复记录不等于自动加载网页：插件必须等用户显式恢复动作才创建 `WebPage`。
+
+## 17. 计划投影与待答问题（2026-11-17）
+
+- `Snapshot.Plan` 是宿主 `session.projections.plan` 的 `{active,pending}`；nil 只表示未知，
+  不得写成 active=false。`Actions.ExecuteCommand(line)` 同步执行当前会话命令，插件必须后台调用。
+- `Actions.AnswerQuestion(callID, answer)` 走官方 `userQuestions.answer`；批准选项 label
+  逐字回传，不能用界面翻译替代协议值。`ViewSpec.Questions/AwaitingAnswer` 是 durable
+  tool/result.view 的恢复数据，问题字段使用官方 `multiSelect` camelCase。
+- `Env.DrawSlot` 与 `DrawKeyed` 一样保留调用点布局游标，供父容器在准确 DOM 等价位置
+  派发普通子槽；plan-review 父卡因此在 strip 内派发 `conversation.plan-review.actions`。

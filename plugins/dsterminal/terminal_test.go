@@ -1,6 +1,8 @@
 package dsterminal
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
@@ -12,12 +14,19 @@ import (
 // 补换行不是小事：终端是行缓冲的，不带 `\n` 它不会执行——
 // 用户看到的是"按了 F6 但什么都没发生"。
 func TestF6SendsLine(t *testing.T) {
-	var got []struct{ id, data string }
-	p := &Plugin{open: true}
+	var got []struct {
+		id, data string
+		typed    bool
+	}
+	p := &Plugin{open: true, currentTab: "term-1"}
 	p.act = pluginapi.Actions{
-		TerminalOpen:  func() string { return "term-1" },
-		TerminalInput: func(id, data string) { got = append(got, struct{ id, data string }{id, data}) },
-		Notify:        func(string) {},
+		TerminalWriteOfficial: func(id, data string, typed bool) {
+			got = append(got, struct {
+				id, data string
+				typed    bool
+			}{id, data, typed})
+		},
+		Notify: func(string) {},
 	}
 	p.field.SetText("echo hi")
 
@@ -33,6 +42,9 @@ func TestF6SendsLine(t *testing.T) {
 	if got[0].data != "echo hi\n" {
 		t.Fatalf("要带上换行，实际 %q", got[0].data)
 	}
+	if !got[0].typed {
+		t.Fatal("F6 是真实人员输入，官方 typed 必须为 true")
+	}
 	if p.field.Text() != "" {
 		t.Fatalf("发完要清空输入框，实际 %q", p.field.Text())
 	}
@@ -43,11 +55,10 @@ func TestF6SendsLine(t *testing.T) {
 // 不消费的话，空框按 F6 会冒泡成别的键——那比"什么都不做"更让人意外。
 func TestF6EmptyDoesNothing(t *testing.T) {
 	called := false
-	p := &Plugin{open: true}
+	p := &Plugin{open: true, currentTab: "t"}
 	p.act = pluginapi.Actions{
-		TerminalOpen:  func() string { return "t" },
-		TerminalInput: func(string, string) { called = true },
-		Notify:        func(string) {},
+		TerminalWriteOfficial: func(string, string, bool) { called = true },
+		Notify:                func(string) {},
 	}
 	p.field.SetText("   ")
 	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF6}) {
@@ -80,5 +91,26 @@ func TestF5Toggles(t *testing.T) {
 	p.HandleKey(gfx.KeyEvent{Key: gfx.KeyF5})
 	if p.open {
 		t.Fatal("第二次 F5 应当关闭")
+	}
+}
+
+func TestTerminalTabIsMultipleAndCloseWaitsForHost(t *testing.T) {
+	p := &Plugin{}
+	panels := p.Panels()
+	if len(panels) == 0 || !panels[0].Multiple {
+		t.Fatal("官方 terminal tab 必须 multiple:true")
+	}
+	wantErr := fmt.Errorf("close failed")
+	actions := pluginapi.Actions{TerminalCloseOfficial: func(tabID string) error {
+		if tabID != "tab7" {
+			t.Fatalf("关闭错 occurrence：%q", tabID)
+		}
+		return wantErr
+	}}
+	if err := p.CloseRightTab("s1", "tab7", RightTabTerminal, actions); !errors.Is(err, wantErr) {
+		t.Fatalf("Host close 失败必须阻止删 tab：%v", err)
+	}
+	if err := p.CloseRightTab("s1", "tab7", "browser", pluginapi.Actions{}); err != nil {
+		t.Fatalf("其它类型的 close 不归终端插件：%v", err)
 	}
 }

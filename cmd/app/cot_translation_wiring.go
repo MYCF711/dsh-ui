@@ -43,17 +43,43 @@ const cotLimitsTimeout = 8 * time.Second
 // 客户端先超时会把"宿主还在跑模型"报成网络失败，用户看到的原因就是错的。
 const cotTranslateTimeout = 150 * time.Second
 
+// cotTranslationRefresh 是官方 invalidate() 的壳侧等价物：先推进代际，再刷新。
+// 在飞时不叠第二个 HTTP；旧请求回来发现代际已变，会在收尾补读最新值。
+func (m *model) cotTranslationRefresh() {
+	m.mu.Lock()
+	m.cotLimitsRevision++
+	if m.cotLimitsPending || m.cli == nil {
+		m.mu.Unlock()
+		return
+	}
+	m.cotLimitsPending = true
+	m.mu.Unlock()
+	go m.refreshCotTranslationLimits()
+}
+
 // refreshCotTranslationLimits 重新拉一次偏好与上限并发布到缓存。
 func (m *model) refreshCotTranslationLimits() {
 	if m.cli == nil {
 		return
 	}
+	m.mu.Lock()
+	observed := m.cotLimitsRevision
+	m.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), cotLimitsTimeout)
-	defer cancel()
 	limits, err := m.cli.CotTranslationLimits(ctx)
+	cancel()
 
 	m.mu.Lock()
 	m.cotLimitsPending = false
+	if observed != m.cotLimitsRevision {
+		// 在飞期间又收到失效事件：无论这次成功/失败都不能发布旧快照。
+		if m.cli != nil {
+			m.cotLimitsPending = true
+		}
+		m.mu.Unlock()
+		m.refreshCotTranslationLimits()
+		return
+	}
 	if err != nil {
 		// 保留上一次（可能是零值 = 还没成功过），只报状态栏。
 		m.cotLimitsErr = err

@@ -31,9 +31,8 @@ const (
 //
 // 官方对应 `PlanPreview.tsx:27-31` 的四种取值（expired / unavailable / failed /
 // loading）外加 `planFailureLine`（OFF:failure-line.ts:14-20）的两条资源错误。
-// 本仓没有异步资源读取：数据就在 `env.Data.Frames` 里，所以**没有 loading 态**
-// （那一格永远到不了，不画）；`failed`/`expired` 同样到不了（没有可失败的读、
-// 也没有临时预览），常量留着是为了"文案只用官方的"这一条不被破坏。
+// 本仓 durable 数据就在 `env.Data.Frames` 里，所以没有异步 resource 的 loading/failed；
+// 临时 plan-review 正文只在本进程内，地址还在但参数已丢时画真实 previewExpired。
 type previewStatus uint8
 
 const (
@@ -41,6 +40,7 @@ const (
 	previewUnavailable
 	previewNotFound
 	previewInvalidAddress
+	previewExpired
 )
 
 // statusText 把状态映射到官方原文。
@@ -52,6 +52,8 @@ func statusText(status previewStatus) string {
 		return zhNotFound
 	case previewUnavailable:
 		return zhUnavailable
+	case previewExpired:
+		return zhExpired
 	}
 	return ""
 }
@@ -224,6 +226,15 @@ func (p *Plugin) openLink(env *pluginapi.Env, destination string) {
 //	③ 会话里一份都没有 → `unavailable`（官方原文 `计划预览不可用`）
 func (p *Plugin) resolve(session string, plans []Document) (Document, previewStatus) {
 	if p.openAddress != "" {
+		if addressSession, _, reviewAddress := parseReviewPreviewAddress(p.openAddress); reviewAddress {
+			if addressSession != session {
+				return Document{}, previewExpired
+			}
+			if plan, exists := p.temporaryReviews[p.openAddress]; exists {
+				return plan, previewReady
+			}
+			return Document{}, previewExpired
+		}
 		addressSession, callID, ok := parsePlanAddress(p.openAddress)
 		if !ok {
 			return Document{}, previewInvalidAddress

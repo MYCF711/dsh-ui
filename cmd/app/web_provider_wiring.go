@@ -173,6 +173,8 @@ func (m *model) credentialSet(ref, value string) error {
 		return err
 	}
 	go m.refreshCredentialRefs([]string{ref})
+	// 官方 credentials/record-updated 与 reference-updated 都会使 cot limits 失效。
+	m.cotTranslationRefresh()
 	return nil
 }
 

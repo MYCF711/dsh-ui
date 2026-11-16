@@ -84,6 +84,35 @@ type ViewSpec struct {
 	Columns []string    `json:"columns,omitempty"`
 	Rows    [][]string  `json:"rows,omitempty"`
 	Body    string      `json:"body,omitempty"`
+	// Questions 是持久 tool/result.view 里的待答问题；dsquestions 直接消费，
+	// 不再从原始 tool/call 参数反推。AwaitingAnswer=false/缺席都不是待答证据。
+	Questions      []QuestionItem `json:"questions,omitempty"`
+	AwaitingAnswer bool           `json:"awaiting_answer,omitempty"`
+}
+
+// QuestionOption 是官方问题的一个候选答案。
+type QuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// QuestionIntent 是官方 AskUserQuestionIntent 的公共字段子集。
+// plan-review 用 Approve 匹配批准选项的 label，用 CallID 关联计划工具调用。
+type QuestionIntent struct {
+	Kind    string `json:"kind"`
+	Approve string `json:"approve"`
+	CallID  string `json:"callId,omitempty"`
+}
+
+// QuestionItem 是 tool/result.view.questions 的一项（官方 AskUserQuestionItem）。
+type QuestionItem struct {
+	ID          string           `json:"id"`
+	Header      string           `json:"header,omitempty"`
+	Question    string           `json:"question"`
+	Detail      string           `json:"detail,omitempty"`
+	Options     []QuestionOption `json:"options,omitempty"`
+	MultiSelect bool             `json:"multiSelect,omitempty"`
+	Intent      *QuestionIntent  `json:"intent,omitempty"`
 }
 
 // ViewField 是 card 的一行键值。

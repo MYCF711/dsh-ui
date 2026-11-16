@@ -83,11 +83,11 @@ type ForgeWorktree struct {
 	Err string
 }
 
-// ForgeLocalSummary 是 `changes.local` 那张卡的全部数字（来自 `uncommitted` 范围）。
+// ForgeLocalSummary 是 `changes.local` 那张卡的全部数字（来自默认 `branch` 范围）。
 //
-// 官方卡片的数字是 `panel.local`（follow 给的 `ForgeLocalChanges`）；本仓从
-// `localDiff{kind:'uncommitted'}` 现算——同一个范围、同一个 `base`，只是多打一次
-// 方法。`Known == false` 表示还没读到（或读失败）：卡片**不画**，不画成 0 个文件。
+// 官方卡片的数字是 `panel.local`（follow 给的 `ForgeLocalChanges`）；本仓默认视图
+// 与卡片共用一次 `localDiff{kind:'branch'}` 的结果。`Known == false` 表示还没读到
+// （或读失败）：卡片**不画**，不画成 0 个文件。
 type ForgeLocalSummary struct {
 	Known     bool
 	Files     int

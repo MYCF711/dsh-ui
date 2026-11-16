@@ -480,13 +480,15 @@
     "terminal.input": {
       "batch": 1,
       "req": {
+        "sessionId": "string?",
         "id": "string",
-        "data": "string"
+        "data": "string",
+        "typed": "bool?"
       },
       "resp": {
         "ok": "bool"
       },
-      "req_note": "原样写，要换行自己带"
+      "req_note": "原样写，要换行自己带。官方用户终端控制面带 sessionId + typed（OFF:dsh-api-terminal-controller/src/types.ts:120-122）；旧按 id 入口保留兼容。"
     },
     "terminal.output": {
       "batch": 1,
@@ -2006,10 +2008,64 @@
       },
       "req_note": "官方 runHostHalf(agent, pluginId, packageId, mode, requestId, approveFutureVersions)（OFF:dsh-cordis-host-runner/src/types.ts:313-323；zod 入参 OFF:dsh-cordis-host-runner/lib/typert.host.js:146-157）。**本仓只发前 4 个**：requestId / approveFutureVersions 属于模型侧审批路径，本宿主没有 cordis 审批队列，官方面板路径同样传 null / false。mode 由调用方按 OFF:CordisPanel.tsx:248-249 算（currentPackageId 存在且选中包不是它 -> update，否则 run）。宿主：HOST:cmd/dshd/serve_cordis_api.go。",
       "resp_note": "**200 里的判别联合**：{ok:true,pluginId,packageId,pluginRunId,waitingFor,startedHere} | {ok:false,message,stack?}。waitingFor 恒 []（没有 Cordis 服务依赖图）。startedHere=false 表示\"面板只是挂到已活的那次运行\"。失败不是 501：只有\"这台机器没有可用的 node\"才是 501+not_implemented（CordisAPIError）。"
+    },
+    "terminal.create": {
+      "batch": 23,
+      "req": {"agentId": "string", "request": {"id": "string", "shellPath": "string?", "cols": "int", "rows": "int"}},
+      "resp": {"id": "string", "title": "string", "shell": {"path": "string", "args": "string[]", "name": "string"}, "cwd": "string", "cols": "int", "rows": "int", "state": "running|failed|exited", "exitCode": "int|null", "origin": "user|agent", "control": "user|agent", "sandboxMode": "string?"},
+      "req_note": "OFF:dsh-api-terminal-controller/src/index.ts:185-210；caller-generated id，open identity 幂等，closed identity 不复活。宿主 HTTP 同时接受 sessionId。"
+    },
+    "terminal.attach": {
+      "batch": 23,
+      "req": {"agentId": "string", "id": "string"},
+      "resp": {"stream": "snapshot{sequence,screen,info,writable} → output{sequence,data}* → state{info,writable} / ack{sequence,refusal?}"},
+      "req_note": "OFF:src/index.ts:321-333 + src/types.ts:128-132；HTTP 为 NDJSON 一行一帧，无 result 包壳。sequence 是 attach 内连续帧序号，不是 PTY 字节 offset。"
+    },
+    "terminal.list": {
+      "batch": 23,
+      "req": {"sessionId": "string"},
+      "resp": ["WebTerminalInfo"],
+      "req_note": "OFF:src/index.ts:173-183；只列 Session 保留终端，未接线是 501 而非空数组。"
+    },
+    "terminal.close": {
+      "batch": 23,
+      "req": {"agentId": "string", "id": "string"},
+      "resp": null,
+      "req_note": "OFF:src/index.ts:347-370；终止完整进程范围，重复 close 成功，失败保留以供重试。"
+    },
+    "terminal.environment": {
+      "batch": 23,
+      "req": {"agentId": "string"},
+      "resp": {"cwd": "string", "maxInputBytes": "int", "maxBufferedBytes": "int", "maxCols": "int", "maxRows": "int", "scrollback": "int"},
+      "req_note": "OFF:src/types.ts:31-41；六项全来自宿主真实限制。"
+    },
+    "terminal.shells": {
+      "batch": 23,
+      "req": {"agentId": "string"},
+      "resp": [{"path": "string", "args": "string[]", "name": "string", "supported": "bool?（本宿主 additive）"}],
+      "req_note": "OFF:src/index.ts:161-171；默认 shell 第一。create 只选真实可执行项。"
+    },
+    "terminal.rename": {
+      "batch": 23,
+      "req": {"agentId": "string", "id": "string", "title": "string"},
+      "resp": null,
+      "req_note": "OFF:src/index.ts:335-345；trim 后 1–120 字符，watch/attach state 发布新标题。"
+    },
+    "terminal.retain": {
+      "batch": 23,
+      "req": {"sessionId": "string", "id": "string"},
+      "resp": {"stream": "retained 一帧后保持打开直到取消"},
+      "req_note": "OFF:src/index.ts:304-319 + src/retention.ts；窗口持有，不取得输入控制权。"
+    },
+    "terminal.watch": {
+      "batch": 23,
+      "req": {"sessionId": "string"},
+      "resp": {"stream": "WebTerminalInfo[] whole-set，首帧当前集合，变化后再发整份"},
+      "req_note": "OFF:src/index.ts:271-302；creation/removal/任意 published state change 都发新集合，无自然结束。"
     }
   },
   "counts": {
-    "total": 110,
+    "total": 119,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2031,6 +2087,7 @@
     "batch19": 5,
     "batch20": 0,
     "batch21": 14,
-    "batch22": 4
+    "batch22": 4,
+    "batch23": 9
   }
 }

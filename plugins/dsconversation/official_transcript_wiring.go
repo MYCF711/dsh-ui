@@ -13,12 +13,11 @@
 // # 两个座位（同一帧只有一个活）
 //
 //	conversation.view   官方 `ChatView.column`（`uikernel.OffConvView`）—— rc.2 终态
-//	main.body           dsshell 三栏 / 官方骨架的**旧部件兼容桥** —— 今天的产品路径
+//	main.body           未接 view 名录的老壳回退
 //
-// 为什么两个都要挂：官方骨架在旧部件还占着 legacy 槽时会整段换成旧三栏排版
-// （`uikernel.ShellOptions.BridgeLegacy`），那一帧只 dispatch `main.body`；
-// 反过来官方槽全量 dispatch 时 `main.body` 根本没人画。两个座位互斥，
-// **不会双画**（同一个判据见 `uikernel.ShellTier.OfficialSlotsLive`）。
+// 为什么两个都要挂：老装配没有 `Env.Views` / `DrawKeyed` 时仍只 dispatch
+// `main.body`；接入名录后壳只派发当前 key。两个座位互斥，**不会双画**。
+// Msgs-only 也由本文件的 official seat 回退旧消息列表，不需要右栏视口桥。
 //
 // # 数据面（为什么是原始帧，不是 messages）
 //
@@ -98,7 +97,11 @@ func (p *Plugin) drawProductTranscript(f ui.C, env *pluginapi.Env, hostScroll bo
 // 这一帧外层已经有宿主滚动口（骨架的 `.scrollBody[data-conversation-scroll]`），
 // 所以自滚动口降级——两层都滚会让滚动位置打架。
 func (p *Plugin) drawOfficialTranscriptSeat(f ui.C, env *pluginapi.Env) {
-	p.drawProductTranscript(f, env, true)
+	if !p.drawProductTranscript(f, env, true) {
+		// Msgs-only 老宿主也由 conversation.view 直接承载；不再要求
+		// ds-rightbar 在 main.body 里把 chat 推到视口外。
+		p.draw(f, env)
+	}
 }
 
 // drawLegacyTranscriptSeat 是旧三栏 / 兼容桥的 `main.body` 座位。

@@ -16,6 +16,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsrightbar"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
+	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/headless"
@@ -257,13 +258,23 @@ func fg3TestEnv(theme *pluginapi.Theme, tree *gfx.Tree, feat gfx.Scope, canvas *
 			right = available
 		}
 	}
-	return &pluginapi.Env{
+	views := kernel.MustGet(viewapi.ServiceKey).(viewapi.Store)
+	roster := uikernel.ViewTabs(kernel)
+	active, _ := uikernel.ResolveActiveView(roster, views.Active(data.Cur))
+	env := &pluginapi.Env{
 		Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
 		MainWidth: bounds.Width - 280 - right,
 		Geometry: pluginapi.Geometry{
 			Width: bounds.Width, Height: bounds.Height, SidebarWidth: 280,
 			RightWidth: right, MainWidth: bounds.Width - 280 - right,
 		},
+		Views: roster, ActiveView: active.Key,
 		Has: func(slot pluginapi.Slot) bool { return kernel.Has(slot) },
 	}
+	// 与 cmd/app/main.go 一样走 conversation.view 真实 keyed 派发；断言不变，
+	// 不再依赖 ds-rightbar 已删除的 main.body 视口偏移桥。
+	env.DrawKeyed = func(target ui.C, slot pluginapi.Slot, key string) {
+		kernel.DrawSlotKeyed(target, slot, key, env)
+	}
+	return env
 }

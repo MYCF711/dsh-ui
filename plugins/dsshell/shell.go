@@ -780,7 +780,13 @@ func (p *Plugin) drawMain(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Sl
 		// body 是可伸展轨道：composer 的位置由主区几何决定，
 		// 不能依赖空态/消息流占用方自己记得 Grow。
 		ui.Column(f).FillWidth().Grow(1).MinHeight(0).Children(func() {
-			drawSlot(pluginapi.SlotMainBody)
+			// conversation.view 已接管时按 key 只画当前视图；旧三栏不再靠
+			// ds-rightbar 改写 Snapshot/ViewportOffset 来盖住 chat。
+			if len(env.Views) > 0 && env.ActiveView != "" && env.DrawKeyed != nil {
+				env.DrawKeyed(f, pluginapi.SlotConvView, env.ActiveView)
+			} else {
+				drawSlot(pluginapi.SlotMainBody)
+			}
 		})
 		drawSlot(pluginapi.SlotMainComposer)
 	})

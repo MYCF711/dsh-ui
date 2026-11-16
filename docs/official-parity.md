@@ -150,7 +150,7 @@
 | 56 | `dsh-client-ui-subagent` | ✅ IMPLEMENTED | 目录行本体：`plugins/dsagentteam/catalog.go`（disclosure/递归层级/token+时长指标/当前会话对勾/Esc）+ `catalog_metrics.go` + 壳侧逐子会话投影 `cmd/app/wave3_wiring.go`；footer（TeamBoard）仍是既有落点；证据 [official-subagent-evidence-rc2.md](official-subagent-evidence-rc2.md) |
 | 57 | `dsh-client-ui-theme` | ✅ IMPLEMENTED | `dscore` + `cmd/app/theme.go` |
 | 58 | `dsh-client-ui-tool` | ✅ IMPLEMENTED | `plugins/dstool`（7 文件 / 930 行） |
-| 59 | `dsh-client-ui-trajectory` | 🟡 PARTIAL | `plugins/dsrightbar`；`conversation.view`/`order:10` 已接，**Turn 分组折叠、当前窗口搜索/选择/虚拟化、Step Inspect 也已有**（`rightbar.go:228-281`、`wpd1.go:49-131,343-477`），旧“缺分组/折叠”删除。**2026-11-16 剩余差异（G）**：① 只收 role=tool，缺 assistant/user/system/context/compaction/request 完整账本；② assistant calls、递归 subcalls、三套全局折叠；③ duration/actual-time、TTFT/解码段、缩放拖选 timeline；④ request/options/usage/timing/schema/diff 多页 Inspector；⑤ 未接 LoadOlder，仍限当前窗口与最近 80 条；⑥ 旧三栏仍靠视口偏移桥。 |
+| 59 | `dsh-client-ui-trajectory` | ✅ IMPLEMENTED | `plugins/dsrightbar`；**2026-11-16 原六项差异已收口**：原始 Frames 折成 system/user/context/compacted/assistant/tool/subtool 完整账本；assistant calls + PTC 递归 subcalls + Turn/Assistant/Tool 三套折叠；四模式三轨 timeline（duration/actual-time、TTFT/解码、缩放/拖选/平移/Esc）；request/options/usage/timing/schema/diff 多页 Inspector；resident 50 条增页后接真实 `Actions.LoadOlder`，完整路径不再限最近 80 条；删除 `main.body` 视口偏移桥，只走 `conversation.view`/`order:10` 与右栏正式座位。Raw result 无 live watch 时按官方显示 unavailable，不伪造历史缓存。逐条官方 `src/**:line`、实现与测试证据：[official-trajectory-evidence-rc2.md](official-trajectory-evidence-rc2.md)。 |
 | 60 | `dsh-client-ui-user-questions` | ✅ IMPLEMENTED | `plugins/dsquestions`（3 文件 / 423 行） |
 | 61 | `dsh-client-ui-workflow-run` | ✅ IMPLEMENTED | `dsconversation` 的 workflow-run 节点 |
 | 62 | `dsh-client-ui-workspace` | ✅ IMPLEMENTED | `internal/apiclient/fs.go` + `dssidebar` + `plugins/dssidebar/workspace_actions.go`（`workspace.registry`/`rename`/`delete`，#10 contextMenu 入口）+ **`plugins/dssidebar/grouping.go`（按 `registry.SessionIDs` 归属与手动序、「未分组」、registry 空时回退 cwd）+ `drag.go`（拖拽 → `workspace.insertSessionBefore`）**；证据 [official-workspace-order-evidence-rc2.md](official-workspace-order-evidence-rc2.md) |
@@ -174,9 +174,9 @@
 > keyed/list 派发（此前骨架 `has→return`，这两族槽**永不 dispatch**）。逐条证据、落点、与官方的 6 条缺口：
 > [official-view-tabs-evidence-rc2.md](official-view-tabs-evidence-rc2.md)。机制落地时 `#54`/`#59`/`#65`
 > 都还是 🟡；`#65` 的页面本体已于 2026-11-15 落地（[official-attachment-stats-evidence-rc2.md](official-attachment-stats-evidence-rc2.md)），
-> `#54`/`#59` 仍差页面本体。
+> `#59` 已于 2026-11-16 补齐完整账本；`#54` 仍差页面本体。
 
-## 合计：官方 66 个部件 —— ✅ 51 · 🟡 13 · ⬜ 0（不该有） · ❌ 2
+## 合计：官方 66 个部件 —— ✅ 52 · 🟡 12 · ⬜ 0（不该有） · ❌ 2
 
 > 2026-11-16 原 15 条 PARTIAL 的逐条证据与分类：[official-partial-sweep-2026-11-16.md](official-partial-sweep-2026-11-16.md)。
 

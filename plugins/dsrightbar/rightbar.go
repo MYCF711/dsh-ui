@@ -1,12 +1,8 @@
-// Package dsrightbar 是「右栏工具调用轨迹」的移植。
+// Package dsrightbar 是官方 `dsh-client-ui-trajectory` 的 Go+Viva 移植。
 //
-// 官方对应物是 `dsh-client-ui-plan` / `dsh-client-ui-goal` 那一列（任务板 + 树状图）。
-// 我们的宿主侧 P0 还没做 plan/goal，所以这一版只画**真的有的数据**：
-// 当前会话里发生过的工具调用，按发生顺序排成一条竖向时间线——点、线、点，
-// 一眼看出「跑到第几步、哪一步炸了」。
-//
-// 克制的地方：没有工具调用时只画一句提示，**不画一条空线**；
-// 「耗时」「token」这类宿主还没给的数字一律不显示。
+// 有 Snapshot.Frames 时消费原始 Session journal，画 Turn/Step 完整账本、三轨
+// timeline、递归工具树与多页 Inspector；Msgs-only 的老宿主才回退到 A-TRAJ/WP-D1
+// 工具时间线。两条路径都不编造缺失的时间、token、schema 或历史。
 package dsrightbar
 
 import (
@@ -36,14 +32,12 @@ type Plugin struct {
 	views viewapi.Store
 	// fullscreen 是右栏自己的 per-session mode；它不伪造壳的 ShowRightbar。
 	fullscreen map[string]bool
-	// viewData 在 main.body 的 chat 前后两个 painter 之间保存一帧原始快照。
-	// 这是公共 Actions 尚无 SelectConversationView 时的最小本地适配。
-	viewData *pluginapi.Snapshot
-	// viewOffset 保存被覆盖前的 env.ViewportOffset（通常 nil），Order=30 恢复。
-	// v0.6.0 没有 ID→ScrollState 查表，所以"把正文推到视口外"改成给一个偏移覆盖，
-	// 由 dsconversation 自己在虚拟化时采用（见 pluginapi.Env.ViewportOffset）。
-	viewOffset       *float32
-	trajectoryOffset float32
+	// ledgerStates 是完整原始帧账本的 per-session 视图状态；Msgs-only 的旧宿主
+	// 仍走下面的 A-TRAJ/WP-D1 回退，二者不共享折叠身份。
+	ledgerStates         map[string]*ledgerViewState
+	ledgerSession        string
+	ledgerDuration       bool
+	ledgerDurationLoaded bool
 	// turnOpen 记「哪一组 turn 被用户手动收/开过」。
 	//
 	// 只在本机内存里、按会话隔开：切回同一会话还是原样，进程重启就回到默认。
@@ -98,7 +92,8 @@ const RightTabTimeline = "timeline"
 //	sidebar.right.pane.tab（keyed）  本栏 tab 类型的**体**（key = RightTabTimeline）
 //	rightbar（root single）          右栏面板本身：画 dockkit tab 条 + 派发选中那一个体
 //	conversation.view（keyed）       轨迹视图（key = 'trajectory'，与 dstopbar 的页签同一名录）
-//	main.body（旧槽 ×2）             三栏兼容桥：官方座位那帧不派发，桥那帧照旧工作
+//
+// 主区只走官方 conversation.view 座位，不再用 main.body 的视口偏移桥盖住 chat。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		// 右栏 tab 类型 `timeline` 的体。壳投影名录时读它的 Key/Label/Order。
@@ -109,8 +104,6 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		// 官方 `conversation.view` 的 trajectory 条目：名录上的"轨迹"页签就是这条。
 		{ID: "trajectory-seat", Slot: pluginapi.SlotConvView, Key: pluginapi.ViewTrajectory,
 			Label: "轨迹", Order: 10, Draw: p.drawTrajectorySeat},
-		{ID: "view-chat-gate", Slot: pluginapi.SlotMainBody, Order: 10, Draw: p.beginTrajectoryView},
-		{ID: "trajectory-view", Slot: pluginapi.SlotMainBody, Order: 30, Draw: p.drawTrajectoryView},
 	}
 }
 
@@ -178,14 +171,7 @@ func (p *Plugin) drawTimelineBody(f ui.C, env *pluginapi.Env) {
 }
 
 // drawTrajectorySeat 是官方 `conversation.view` 上 key = trajectory 的那块体。
-//
-// 与旧三栏的 `drawTrajectoryView` 是**同一份内容的两条挂法**，互斥：
-//
-//	官方档：壳按 key 只派发选中的那一个 view，本函数直接画，不需要"把 chat 推到视口外"
-//	旧三栏：主区正文由 dsconversation 画，只能靠 beginTrajectoryView 的视口偏移让位
-//
-// 两条都留着是因为档位由壳一帧一个值决定（cmd/app 的 resolve()）；哪一帧活哪一条，
-// 见 conversation.go 的座位注释。
+// 壳按 key 只派发选中的那一个 view；这里直接画，不修改 Snapshot 或 ViewportOffset。
 func (p *Plugin) drawTrajectorySeat(f ui.C, env *pluginapi.Env) {
 	if p.views == nil || p.views.Active(env.Data.Cur) != viewapi.Trajectory {
 		return
@@ -198,6 +184,10 @@ func (p *Plugin) drawTrajectorySeat(f ui.C, env *pluginapi.Env) {
 
 // drawTimeline 同时服务右栏与主区 trajectory；两种容器共享同一组真实工具消息。
 func (p *Plugin) drawTimeline(f ui.C, env *pluginapi.Env, data pluginapi.Snapshot, scrollKey string, chrome bool) {
+	if len(data.Frames) > 0 {
+		p.drawLedger(f, env, data, scrollKey, chrome)
+		return
+	}
 	t := p.theme
 	groups := groupTurns(data.Msgs)
 	total := 0
@@ -412,48 +402,6 @@ func (p *Plugin) chromeButton(f ui.C, env *pluginapi.Env, name, label string, ic
 		Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, name), label).Children(func() {
 		ui.Icon(f, icon).Width(16).Height(16).Color(t.LabelSecondary)
-	})
-}
-
-// beginTrajectoryView 是 main.body 的 Order=10 适配器。公共 Snapshot/Actions 还没有
-// view 字段，因此只在 chat painter 执行期间把原始消息投到视口外，Order=30 立即恢复。
-// 这样 dsconversation 不生成 chat 文本/Markdown 槽位，也不会画空投影的“没有匹配”。
-// composer、rightbar、statusbar 和下一帧仍读原始快照；原消息切片从不被改写。
-func (p *Plugin) beginTrajectoryView(_ ui.C, env *pluginapi.Env) {
-	p.viewData = nil
-	p.viewOffset = nil
-	if p.views == nil || p.views.Active(env.Data.Cur) != viewapi.Trajectory {
-		return
-	}
-	data := env.Data
-	p.viewData = &data
-	p.viewOffset = env.ViewportOffset
-	if len(env.Data.Msgs) == 0 {
-		// 零值只用于通过 chat 的正常列表分支；下面的视口投影保证它不会被读取或实画。
-		env.Data.Msgs = []apiclient.Message{{}}
-	}
-	env.Data.Stream = ""
-	env.Data.Busy = true
-	// 偏移给一个远大于任何内容高度的值：dsconversation 的视口虚拟化于是把每条
-	// 消息都当成"在视口外"，只留 Slot，不生成文本/Markdown 槽位。
-	p.trajectoryOffset = 1e9
-	env.ViewportOffset = &p.trajectoryOffset
-}
-
-// drawTrajectoryView 是 main.body 的 Order=30 真实轨迹 painter。
-func (p *Plugin) drawTrajectoryView(f ui.C, env *pluginapi.Env) {
-	if p.viewData == nil {
-		return
-	}
-	data := *p.viewData
-	p.viewData = nil
-	env.Data = data
-	env.ViewportOffset = p.viewOffset
-	p.viewOffset = nil
-	ui.Column(f).Absolute().Left(0).Top(0).WidthPercent(100).HeightPercent(100).
-		Background(p.theme.BgBase).Clip().
-		Hit(env.Tree.ID(env.Feat, "main-trajectory"), "主区轨迹").Children(func() {
-		p.drawTimeline(f, env, data, "main-trajectory-scroll-", false)
 	})
 }
 

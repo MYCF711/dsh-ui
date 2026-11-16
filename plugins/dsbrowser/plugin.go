@@ -123,6 +123,13 @@ type Plugin struct {
 	// drawn 表示本帧真的画了 tab 体——**不画就不能摆**：native view 一旦声明
 	// 就会出现，右栏收起 / 切到别的 tab 时继续声明等于把网页糊在别的界面上。
 	drawn bool
+
+	// instances 按 (session, tabId) 保存独立 occurrence；上面的 nav/page 等字段
+	// 只是当前激活实例的工作副本。地址框指针保持不动，切换时交换各自草稿。
+	instances      map[string]*browserInstance
+	currentKey     string
+	loadedSessions map[string]bool
+	dirtySessions  map[string]bool
 }
 
 func (*Plugin) ID() string { return "ds-browser" }
@@ -134,6 +141,10 @@ func (*Plugin) Requires() []string { return []string{pluginapi.KeyTheme} }
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.nav = newBrowserNavigation()
+	p.instances = map[string]*browserInstance{}
+	p.loadedSessions = map[string]bool{}
+	p.dirtySessions = map[string]bool{}
+	ctx.Effect(p.dispose)
 	return nil
 }
 
@@ -154,7 +165,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			// 官方 tab 类型没有 `order`（`SidebarRightTabDefinition` 里没这个字段，
 			// tab-registry.ts:106-…），名录顺序 = 注册顺序；Tab.Order 的零值就是
 			// "按装配顺序"，所以这里留 0，不编一个数。
-			Order: 0, Draw: p.drawBody, AfterDraw: p.afterDraw,
+			Order: 0, Multiple: true, Draw: p.drawBody, AfterDraw: p.afterDraw,
 		},
 		{
 			ID: "browser-tab-title", Slot: pluginapi.SlotRightPaneTabTitle, Key: RightTabBrowser,
@@ -176,6 +187,8 @@ const (
 	copyReload             = "刷新"
 	copyGo                 = "前往"
 	copyExternal           = "在系统浏览器中打开"
+	copyRestorePrevious    = "上次打开"
+	copyRestoreAction      = "恢复页面"
 	copyLoadFailed         = "页面加载失败；请刷新重试或在系统浏览器中打开。"
 	copyAddressUnknown     = "页面已跳转；当前载体无法读取新的 URL。"
 )
@@ -201,6 +214,7 @@ func addressFailureCopy(reason addressFailure) string {
 
 // drawBody 画工具条 + 状态行 + 内容区（官方 BrowserBody.tsx 的渲染分支）。
 func (p *Plugin) drawBody(f ui.C, env *pluginapi.Env) {
+	p.activate(env)
 	p.drawn = false
 	p.content = ui.Box{}
 	t := p.theme
@@ -221,7 +235,7 @@ func (p *Plugin) drawBody(f ui.C, env *pluginapi.Env) {
 		}
 		// `.content` / `.viewport`：这块矩形就是网页要填的洞。
 		p.content = ui.Column(f).FillWidth().Grow(1).Shrink(1).Clip()
-		p.content.Children(func() { p.drawContentState(f) })
+		p.content.Children(func() { p.drawContentState(f, env) })
 		// `.limit`（Browser.module.css）：unknown 态在底部那行如实说明，
 		// 文案逐字取自官方 locales.ts:30。
 		if p.unknown() {
@@ -238,9 +252,9 @@ func (p *Plugin) drawToolbar(f ui.C, env *pluginapi.Env) {
 		PadSides(toolbarPadY, toolbarPadX, toolbarPadY, toolbarPadX).
 		Items(ui.Center).Gap(toolbarGap).Children(func() {
 		p.drawToolButton(f, env, "browser-back", copyBack, iconChevronLeft(t.LabelSecondary), t.LabelSecondary,
-			p.nav.canGoBack(), p.goBack)
+			p.nav.canGoBack(), func() { p.goBack(env) })
 		p.drawToolButton(f, env, "browser-forward", copyForward, iconChevronRight(t.LabelSecondary), t.LabelSecondary,
-			p.nav.canGoForward(), p.goForward)
+			p.nav.canGoForward(), func() { p.goForward(env) })
 		_, hasTarget := currentTarget(p.nav.value)
 		p.drawToolButton(f, env, "browser-reload", copyReload, iconRefresh(t.LabelSecondary), t.LabelSecondary,
 			hasTarget, func() { p.reload(env) })
@@ -330,10 +344,33 @@ func (p *Plugin) drawLimitRow(f ui.C) {
 // drawContentState 画内容区里"还没有网页"时的两态（官方 BrowserBody 的
 // `.start` / `.loading` 分支）。网页开好之后这块是空的——真网页由 AfterDraw 的
 // native view 填，Viva 在同一层或更低层画的东西会被它遮住。
-func (p *Plugin) drawContentState(f ui.C) {
+func (p *Plugin) drawContentState(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	if p.page != nil && p.openErr == nil {
 		return
+	}
+	// 官方 .restore：checkpoint 仍在、但本进程尚未请求页面时，显示保存的
+	// title/url 和显式「恢复页面」按钮；不能把它当成普通 start 自动开页。
+	if p.page == nil {
+		if target, ok := currentTarget(p.nav.value); ok {
+			ui.Column(f).FillWidth().FillHeight().Pad(startPad).Gap(10).Items(ui.Center).Children(func() {
+				ui.Row(f).Grow(1).Items(ui.Center).Justify(ui.Center).Children(func() {
+					ui.Text(f, copyRestorePrevious).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
+						Color(t.LabelTertiary)
+				})
+				ui.Paragraph(f, target.Title, 3).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
+					Weight(gfx.WeightMedium).TextCenter().FillWidth()
+				ui.Paragraph(f, target.URL, 4).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
+					Color(t.LabelSecondary).TextCenter().FillWidth()
+				button := ui.Button(f, copyRestoreAction).Small().Background(t.ButtonPrimaryFill).
+					Color(t.ButtonPrimaryFg)
+				if button.Clicked() {
+					p.restore(env)
+				}
+				ui.Row(f).Grow(1)
+			})
+			return
+		}
 	}
 	copy := copyStart
 	if p.nav.value.Navigation.State == navLoading {
@@ -349,6 +386,7 @@ func (p *Plugin) drawContentState(f ui.C) {
 // drawTitle 画 tab 标题：官方 `BrowserTitle` = 地球图标 + 当前主机名，
 // 没有目标时退回 tab 类型名（`entry?.title ?? tab.title`，BrowserTitle.tsx:15-17）。
 func (p *Plugin) drawTitle(f ui.C, env *pluginapi.Env) {
+	p.activate(env)
 	t := p.theme
 	label := browserTypeLabel
 	if target, ok := currentTarget(p.nav.value); ok {
@@ -365,46 +403,84 @@ func (p *Plugin) drawTitle(f ui.C, env *pluginapi.Env) {
 
 // submit 处理地址栏回车 / 「前往」：**先校验再导航**（官方 `BrowserController.loadUrl`）。
 func (p *Plugin) submit(env *pluginapi.Env) {
+	p.activate(env)
 	parsed := parseBrowserAddress(p.address.Text(), "")
 	if !parsed.OK {
 		p.failure = parsed.Reason
 		return
 	}
 	p.failure = ""
-	if p.nav.navigate(parsed.Target) == nil {
+	p.address.SetText(parsed.Target.URL)
+	if current, ok := currentTarget(p.nav.value); ok && sameTarget(current, parsed.Target) {
+		if p.nav.reload() == nil {
+			return
+		}
+	} else if p.nav.navigate(parsed.Target) == nil {
 		return
 	}
 	p.openPage(env, parsed.Target)
 }
 
 // goBack / goForward / reload 都走同一条"应用历史 → 载具"的路。
-func (p *Plugin) goBack() {
+func (p *Plugin) goBack(env *pluginapi.Env) {
+	p.activate(env)
 	request := p.nav.back()
-	if request == nil || p.page == nil {
+	if request == nil {
+		return
+	}
+	p.address.SetText(request.Target.URL)
+	if p.page == nil {
+		p.openPage(env, request.Target)
 		return
 	}
 	p.page.Load(request.Target.URL)
+	p.persistActive(env)
 }
 
-func (p *Plugin) goForward() {
+func (p *Plugin) goForward(env *pluginapi.Env) {
+	p.activate(env)
 	request := p.nav.forward()
-	if request == nil || p.page == nil {
+	if request == nil {
+		return
+	}
+	p.address.SetText(request.Target.URL)
+	if p.page == nil {
+		p.openPage(env, request.Target)
 		return
 	}
 	p.page.Load(request.Target.URL)
+	p.persistActive(env)
 }
 
 func (p *Plugin) reload(env *pluginapi.Env) {
+	p.activate(env)
 	target, ok := currentTarget(p.nav.value)
 	if !ok {
 		return
 	}
 	if p.page == nil {
-		p.openPage(env, target)
+		p.restore(env)
 		return
 	}
 	p.nav.reload()
+	p.address.SetText(target.URL)
 	p.page.Reload()
+	p.persistActive(env)
+}
+
+// restore 只响应用户显式动作；保存的 checkpoint 本身绝不创建网页。
+func (p *Plugin) restore(env *pluginapi.Env) {
+	p.activate(env)
+	target, ok := currentTarget(p.nav.value)
+	if !ok {
+		return
+	}
+	if p.nav.reload() == nil {
+		return
+	}
+	p.failure = ""
+	p.address.SetText(target.URL)
+	p.openPage(env, target)
 }
 
 // openPage 在需要时打开一个真网页，然后导航过去。
@@ -416,18 +492,24 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 		// 这个部署没有窗口级网页宿主（无头驱动 / 非桌面）。
 		// **不假装加载成功**：记下原因，界面画官方那条失败行。
 		p.openErr = pluginapi.ErrWebUnsupported
+		p.persistActive(env)
 		return
 	}
 	if p.page == nil {
-		page, err := env.Web.Open(pluginapi.WebOpenOptions{OnLoad: p.handleLoad})
+		loadEnv := *env // 固定本次 occurrence；壳下一帧会复用并改写原 Env。
+		page, err := env.Web.Open(pluginapi.WebOpenOptions{OnLoad: func(load pluginapi.WebLoad) {
+			p.handleLoad(&loadEnv, load)
+		}})
 		if err != nil {
 			p.openErr = err
+			p.persistActive(env)
 			return
 		}
 		p.openErr = nil
 		p.page = page
 	}
 	p.page.Load(target.URL)
+	p.persistActive(env)
 }
 
 // handleLoad 把载具的加载事件翻成 `nav.frameLoaded(revision)`。
@@ -435,12 +517,29 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 // 官方 `IframeImpl.handleLoaded(revision)` 只认"当前这一代请求"的 load；
 // 这里也一样：事件回来时取**当前**请求的 revision 交给状态机，由它按
 // `navigation.revision !== revision` 自己丢弃过期的（navigation.go 的 frameLoaded）。
-func (p *Plugin) handleLoad(load pluginapi.WebLoad) {
+func (p *Plugin) handleLoad(env *pluginapi.Env, load pluginapi.WebLoad) {
 	if load.Phase != pluginapi.WebLoadDone {
+		return
+	}
+	sessionID, tabID := browserEnvIdentity(env)
+	key := browserInstanceKey(sessionID, tabID)
+	if key != p.currentKey {
+		instance := p.instances[key]
+		if instance == nil || instance.page == nil {
+			return
+		}
+		if request := instance.nav.value.Request; request != nil {
+			instance.nav.frameLoaded(request.Revision)
+			p.saveActive()
+			if err := p.persistSession(env, sessionID); err != nil && env.Act.Notify != nil {
+				env.Act.Notify("保存浏览器状态失败: " + err.Error())
+			}
+		}
 		return
 	}
 	if request := p.nav.value.Request; request != nil {
 		p.nav.frameLoaded(request.Revision)
+		p.persistActive(env)
 	}
 }
 

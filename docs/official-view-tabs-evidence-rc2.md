@@ -101,10 +101,11 @@
 |---|---|---|---|
 | G1 | **guide tab**（`sidebar.right.tab.guide` / `.guide.entry` / `.guide.actions`）没有占用方 | 官方 `defaultSeed` 在「0 或 ≥2 个条目」时上 guide；我们没有 guide 页 | 右栏多条目时退化成「按名录第一条」（`ResolveActiveRightTab` 注释里写明），与官方 `defaultSeed` 不一致 |
 | G2 | `priority` 覆盖机制（`extension` / `builtin` / `fallback`）未建 | 本仓没有第三方 tab 类型来抢同一个 kind | 名录 key 直接用官方 `kind`（不用包名 `id`）；出现第二种实现时必须先补这一层 |
-| G3 | 关闭处理器 / 多实例（`multiple` / `keepMounted` / `registerCloseHandler`） | 与 G2 同源：没有第二个 tab 类型，也没有页签关闭动作 | 芯片上不画关闭按钮（官方 `.tabClose` 在 hover/选中时出现） |
+| G3 | ~~关闭处理器 / 多实例~~ **2026-11-16 已按 #50 收口**：`multiple`、occurrence key/kind、关闭 handler、切走保留 WebPage、布局与浏览器 checkpoint 恢复均已落地 | 实现与证据见 [浏览器多实例与恢复](official-sidebar-browser-occurrences-evidence-rc2.md) | 浏览器可多开；其他类型仍单实例；关闭失败保留 tab |
 | G4 | `conversation.session.header.views.actions`（More 菜单）只有骨架座位，没有占用方 | 页签行放得下时官方也不画 More | 页签多到放不下时会被裁切，而不是折进 More |
 | G5 | 拖 dock / 浮动面板 / 分屏（dockkit 的 pane 体系） | 与右栏 tab 机制相邻但是另一件事 | 右栏仍是一列，不能拆 |
 | G6 | `conversation.view` 在**旧三栏档**只提供名录，不派发 | 旧档主区正文归 `dsconversation` 的 `main.body`（`BridgeLegacy`），两条路互斥 | 旧档下 `trajectory` 靠 `beginTrajectoryView` 的视口偏移让位（既有实现），不是 keyed 派发 |
+| G7 | 芯片关闭按钮的显隐时机仍是常显 | 本轮先完成真实关闭与资源清理，未补 dockkit hover 状态投影 | 官方 `.tabClose` 在 hover/选中时出现；本仓功能一致但视觉时机不同 |
 
 ## 4. 机器断言
 
@@ -120,6 +121,9 @@
 | `…:TestRightTabStripGeometryMatchesOfficialDockkitCSS` | 芯片数值逐条 = 官方 CSS（含 28+10=38） |
 | `…:TestSkeletonDispatchesOnlyActiveView` / `…RightbarDispatchesOnlyActiveTab` | 骨架按名录派发，不再"全画一遍" |
 | `…:TestDrawRightTabsDrawsStripAndSelects` / `…DrawViewTabsDrawsChipsAndSelects` | 芯片真的画出来、真的点得动 |
+| `…:TestDrawRightTabsCreateAndCloseButtonsReallyClick` | 「+ / ×」经真实 Hit 点击，pump 到 `openTab(browser)` / `close(tab1)` 生效 |
+| `cmd/app/right_tab_occurrences_test.go` | 多开、单实例复用、关闭、重开新 id、布局重启恢复、全关空态与重开 |
+| `plugins/dsbrowser/persistence_test.go` | 每 occurrence 独立导航/WebView、晚到 load 隔离、恢复不自动 Open、恢复卡真点击、关闭 forget |
 | `cmd/app/view_tabs_wiring_test.go` | 闸门：名录外的 key 不写；失效偏好解析回名录内 |
 | `plugins/dsrightbar/rightbar_tabs_test.go` | **产品路径**：两枚芯片、只派发选中项、点芯片走 `Actions.SelectRightTab` |
 

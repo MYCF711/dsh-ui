@@ -728,3 +728,28 @@ INFO 插件已装配 id=ds-decl provides=[] requires="[ui.theme ui.primitives]"
 - 它**不参与** `ui-plugins.json` 的白名单：白名单管的是"哪些编译进来的插件装不装"，声明部件由 `ds-decl` 这一个插件统一挂。要关掉它，就在白名单里 `{"id":"ds-decl","enabled":false}`。
 - 声明目录里放一万个 JSON 就是一万块画，谁也不拦你；单帧代价没量过（未验证）。
 - 声明部件之间没有顺序依赖，只有 `order`；`id` 只用于报错和日志，不用于引用。
+
+## 15. 工作区目录流与选择（#16）
+
+- `Actions.OpenDirectoryPicker` 同时供侧栏与首屏 WorkspacePicker 使用；具体后端由启动探针决定，插件不得自行选择 browse/native。
+- `Actions.SelectWorkspace(workspaceID)` 对应官方 `onPick(workspaceId)`。壳只复用经 `session.load` 证实 `Total==0`、cwd 匹配且未归档的成员会话；没有空白会话时如实报 `session.create` 的宿主边界，不得在进程 cwd 建会话后冒充选择成功。
+- `Snapshot.WorkspacesKnown` 区分“registry 未落地”与“真空 registry”：首屏前者显示 `正在加载工作区…`，后者且仅有添加动作时点击 chip 直接打开目录流。
+- `Snapshot.PendingWorkspaceID` 对应官方 pending chip；`Snapshot.DirectoryBusy` 是 native `armed/in-flight`，期间菜单动作禁用，结算后才 re-arm。
+- `workspace.create` 的调用方必须消费返回的 `workspace.workspaceId`。`plugins/dsdirpicker.SetOnPicked` 因而已改为传 `apiclient.WorkspaceView`，不再回显请求 path。
+## 16. 右栏 occurrence（2026-11-16）
+
+官方把 tab **类型**与每次打开的 **occurrence** 分开。本仓对应字段：
+
+- `Painter.Multiple`：对应 `SidebarRightTabDefinition.multiple`。`true` 时每次
+  `Actions.OpenRightTab(kind)` 新建 occurrence；`false` 时复用并选中同 kind 的记录。
+- `Tab.Key`：occurrence 身份（官方 `TabRecord.id`），用于选择、关闭、持久化与页面状态。
+- `Tab.Kind`：类型/keyed 槽派发 key；`Env.ActiveRightTabKind` 供壳派发，`Env.RightTabID`
+  供插件取当前 occurrence。老壳没填 `RightTabID` 时可回退 `ActiveRightTab`。
+- `Actions.SelectRightTab` 仍兼容按类型选择；`OpenRightTab` 才是官方 `openTab` 的新建语义，
+  `CloseRightTab` 先跑资源清理再移除布局。
+- `RightTabTitleProvider` 只能返回自己 occurrence 的实时标题；不属于自己必须返回空串。
+- `RightTabCloseHandler` 按 `(sessionId,tabId,kind)` 分发，返回 error 时壳保留 tab，禁止假关闭。
+
+布局使用 `dsh.sidebar-right.v1.<sessionId>`，浏览器导航使用
+`dsh.sidebar-browser.v1.<sessionId>`，都经既有 `ConfigGet/ConfigSet` 落在宿主 `ui-config.json`。
+恢复记录不等于自动加载网页：插件必须等用户显式恢复动作才创建 `WebPage`。

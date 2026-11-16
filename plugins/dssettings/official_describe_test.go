@@ -235,11 +235,23 @@ func TestBuildPanelReadOnlyDisablesRows(t *testing.T) {
 
 // TestBuildPanelRetryPolicyRowsAreRendered 钉住 retryPolicy 的 8 个 code 候选。
 func TestBuildPanelRetryPolicyRowsAreRendered(t *testing.T) {
-	model := BuildPanel(describeFixture(), fullDesktopFacts())
+	describe := describeFixture()
+	model := BuildPanel(describe, fullDesktopFacts())
 	models, ok := model.Section("models")
 	if !ok {
 		t.Fatal("缺 models 页")
 	}
+	// 官方初始只有关闭的 provider 卡；打开后才渲染 RetryPolicyEditor。
+	for _, row := range models.Rows {
+		if strings.HasPrefix(row.ID, "retry-deepseek-code-") {
+			t.Fatalf("未打开 provider 卡就画出了逐行控件 %q", row.ID)
+		}
+	}
+	edit, err := newRetryEditorState(describe, "deepseek")
+	if err != nil {
+		t.Fatal(err)
+	}
+	models = buildModelsPage(models, describe, nil, nil, edit)
 	byID := map[string]PanelRow{}
 	for _, row := range models.Rows {
 		byID[row.ID] = row

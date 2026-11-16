@@ -129,6 +129,8 @@ type Plugin struct {
 
 	// heroBoxes 保存首屏关键容器的本帧几何，供布局回归测试与截图证据核对。
 	heroBoxes heroBoxes
+	// workspaceMenuOpen 是官方 WorkspacePicker 的 owner-local popover 状态。
+	workspaceMenuOpen bool
 
 	// 消息反馈（👍/👎）的弹窗与 toast 状态，见 feedback.go。
 	// 评分本身**不在这里缓存**：每帧从 Actions.MessageFeedback 读壳的缓存，

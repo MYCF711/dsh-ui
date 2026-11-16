@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -196,6 +197,33 @@ func TestSnapshotCountsMatchMethods(t *testing.T) {
 	}
 	if sum != int(total) {
 		t.Fatalf("各批之和 %d != total %v", sum, total)
+	}
+	// 每一批也要与方法自己的 batch 字段一致；仅校验总和会漏掉 batch19/20 对调。
+	actual := map[int]int{}
+	for name, raw := range doc.Methods {
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			t.Fatalf("方法 %s 无法重编码：%v", name, err)
+		}
+		var method struct {
+			Batch int `json:"batch"`
+		}
+		if err := json.Unmarshal(encoded, &method); err != nil {
+			t.Fatalf("方法 %s batch 不是数字：%v", name, err)
+		}
+		actual[method.Batch]++
+	}
+	for key, value := range doc.Counts {
+		if key == "total" {
+			continue
+		}
+		batch, err := strconv.Atoi(strings.TrimPrefix(key, "batch"))
+		if err != nil {
+			t.Fatalf("counts 键 %q 不是 batchN", key)
+		}
+		if int(value.(float64)) != actual[batch] {
+			t.Fatalf("counts.%s=%v，methods 实际 batch%d=%d", key, value, batch, actual[batch])
+		}
 	}
 	// note 不许再复述会漂的数字：它一旦出现「方法表 N 个」，就是又漂了。
 	var noteDoc struct {

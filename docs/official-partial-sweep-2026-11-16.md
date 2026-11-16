@@ -82,15 +82,15 @@
 
 ### #16 `dsh-client-ui-directory-picker-native` — 保持 🟡
 
-seam、pick/null/error、workspace.create 已接，宿主也有真 IFileOpenDialog；ENV_BOUNDARY 只是人工验收边界，不是产品能力缺失。剩余：① 官方同时注册首屏与侧栏两个 directoryFlow，本仓只有侧栏按钮，首屏 WorkspacePicker/flow 未接；② 每次点击都可启动 pick，没有官方 armed/in-flight 防重入；③ `WorkspaceCreate` 丢弃返回的 workspace，成功只 refreshList，没有官方 `onPick(workspace.workspaceId)` 选择语义。完成这些后仍需桌面人工执行 `DSH_NATIVE_PICKER=1 go test ./internal/native -run TestRealPickerProbe -v` 验收。
+本轮已补首屏 WorkspaceChip/WorkspacePicker、native/browse 防重入与 `WorkspaceCreate → onPick(workspaceId)`；两种后端只复用经 `session.load` 证实 `Total==0`、cwd 匹配且未归档的空白会话。ENV_BOUNDARY 仍只是人工验收边界，不是产品能力缺失。**新确认的 D 阻断**：宿主 `session.create` 只解 `mode`（`DSH-GO/internal/transport/server.go:1211-1227`），空工作区无法按官方 `{workspaceId,sessionId?}` 创建/复用，GUI 明确报错而不在进程 cwd 假建。宿主补齐此契约并完成桌面人工 `DSH_NATIVE_PICKER=1 go test ./internal/native -run TestRealPickerProbe -v` 后才可升 ✅。
 
 ### #38 `dsh-client-ui-settings-account` — 保持 🟡
 
-宿主 profile/balance/start/cancel/signOut/state/runningTasks/watch 已发布，不再记 D。GUI 有账号状态缓存与通知座位，但 `CredentialStored` 写死 false，设置 section 只是静态未知页。缺 identity/profile/avatar、余额/赠送余额、usage/top-up、刷新/失败态、登录/取消/登出、联系、运行任务确认、两类 onboarding、quota notice、Platform page 和真正的 AccountMenu；是整页/整菜单工程。
+宿主 profile/balance/start/cancel/signOut/state/runningTasks/watch 已发布，不再记 D。**2026-11-16 后续实现已闭合主链**：`CredentialStored` 不再写死，账号 section 不再是静态未知页；真实 profile/contact、充值/赠金余额、usage/top-up、打开设置边沿刷新、失败态、登录/取消、运行任务三态确认与登出均经宿主真方法。证据：`internal/apiclient/account_actions_test.go`、`cmd/app/account_settings_test.go`、`plugins/dssettings/official_account_test.go`、`plugins/dsnotifications/account_menu_test.go`；API 快照 102→108，counts 与 methods 一致。**保持 🟡的剩余项**：avatar 图片加载（目前仅官方 skeleton）、contact、addApiKey、两类 onboarding、quota notice、Platform page、完整 AccountMenu，以及 `account.watch` 流（当前仍是 30s 轮询，未冒充 watch 已接）。
 
 ### #41 `dsh-client-ui-settings-models` — 保持 🟡
 
-宿主 provider 目录、discoverModels、modelCatalog、credentials describe/set/unset 已有。GUI 目前只有 defaultModel 与 retryPolicy 行，且 retry 是逐行立即写。缺 provider directory join、账号行、凭据点与密钥写删、baseURL/protocol/models/input/reasoning 编辑、catalog/custom 添加、模型发现测试、删除 Modal、保存/只读/加载/失败/冲突态、动态 provider-card/footer、onboarding 与推送失效刷新；是独立 Models store/page，不是小文案补丁。
+宿主 provider 目录、discoverModels、modelCatalog、credentials describe/set/unset 已有。本轮 GUI 已把独立数据页接上：provider 目录来自 `llm.listProviders` + `llm.listConfigurableProviders` 的真实 join；模型目录按 `session.modelCatalog.groups` 渲染；默认模型候选来自同一目录；retryPolicy 从逐行立即写改为 provider 卡内草稿，Cancel 丢弃、Apply 按开卡 revision 发一次最小 `settings.mutate`，409 保留草稿。保存/只读/加载/失败/冲突态与真实滚动点击已有测试。剩余：账号可用性/登录态、凭据点与密钥写删、baseURL/protocol/models/input/reasoning 编辑、catalog/custom 添加、模型发现测试、删除 Modal、whole-section namespace 编辑、schema 驱动的文本与自定义 code 控件、动态 provider-card/footer、onboarding、失败重试与推送失效刷新。
 
 ### #50 `dsh-client-ui-sidebar-browser` — 保持 🟡
 

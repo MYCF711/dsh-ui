@@ -69,6 +69,10 @@ func (m *model) refreshWorkspaces() {
 			m.workspacesErr = err.Error()
 		} else {
 			m.workspaces = viewToPluginWorkspaces(registry.Workspaces)
+			m.archivedSessions = make(map[string]bool, len(registry.ArchivedSessionIDs))
+			for _, id := range registry.ArchivedSessionIDs {
+				m.archivedSessions[id] = true
+			}
 			m.workspacesKnown = true
 			m.workspacesErr = ""
 		}

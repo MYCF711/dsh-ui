@@ -118,10 +118,26 @@ func tabRoster(k *Kernel, slot pluginapi.Slot) []pluginapi.Tab {
 			continue
 		}
 		seen[p.Key] = len(out)
-		out = append(out, pluginapi.Tab{Key: p.Key, Label: p.Label, Icon: p.Icon, Order: p.Order})
+		out = append(out, pluginapi.Tab{Key: p.Key, Kind: p.Key, Multiple: p.Multiple,
+			Label: p.Label, Icon: p.Icon, Order: p.Order})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Order < out[j].Order })
 	return out
+}
+
+// RightTabKind 取 occurrence 的类型 key，供 keyed 槽派发。
+// 老调用方构造的 Tab 没填 Kind 时回退 Key，保持单实例兼容。
+func RightTabKind(tabs []pluginapi.Tab, active string) string {
+	for _, tab := range tabs {
+		if tab.Key != active {
+			continue
+		}
+		if tab.Kind != "" {
+			return tab.Kind
+		}
+		return tab.Key
+	}
+	return ""
 }
 
 // ResolveActiveView 是官方 `resolveActiveView` 的逐字移植。
@@ -261,14 +277,15 @@ func DrawRightTabs(
 			chip := ui.Row(f).Height(RightTabChipHeight).MinWidth(RightTabChipMinWidth).
 				MaxWidth(RightTabChipMaxWidth).Radius(t.Radii.SM).
 				PadSides(0, RightTabChipPadX, 0, RightTabChipPadX).
-				Items(ui.Center).Hit(id, tab.Label)
+				Items(ui.Center)
 			if isActive {
 				chip = chip.Background(t.MarkdownTag)
 			} else {
 				chip = chip.Hover(ui.Look{}.Background(t.Hover))
 			}
-			box := chip.Children(func() {
-				ui.Row(f).Grow(1).Items(ui.Center).Gap(RightTabChipGap).Children(func() {
+			chip.Children(func() {
+				label := ui.Row(f).Grow(1).Items(ui.Center).Gap(RightTabChipGap).Hit(id, tab.Label)
+				label.Children(func() {
 					if tab.Icon != "" {
 						ui.Text(f, tab.Icon).FontSize(RightTabChipFontSize).Color(t.LabelSecondary)
 					}
@@ -280,10 +297,48 @@ func DrawRightTabs(
 						text.Color(t.LabelSecondary)
 					}
 				})
+				if label.Clicked() && onSelect != nil {
+					onSelect(tab.Key)
+				}
+				if env.Act.CloseRightTab != nil {
+					var closeID gfx.ID
+					if env.Tree != nil {
+						closeID = env.Tree.ID(env.Feat, "right-tab-close-"+tab.Key)
+					}
+					close := ui.Row(f).Width(18).Height(RightTabChipHeight).Shrink(0).
+						Items(ui.Center).Justify(ui.Center).Hit(closeID, "关闭")
+					close.Children(func() {
+						ui.Text(f, "×").FontSize(RightTabChipFontSize).Color(t.LabelSecondary)
+					})
+					if close.Clicked() {
+						env.Act.CloseRightTab(tab.Key)
+					}
+				}
 			})
-			if box.Clicked() && onSelect != nil {
-				onSelect(tab.Key)
+		}
+		// dockkit addTab 的落点。官方这里先打开 guide；本仓 guide 仍未实现，
+		// 所以只对已声明 multiple:true 的类型开放，并走同一个 openTab 动作。
+		for _, tab := range tabs {
+			if !tab.Multiple || env.Act.OpenRightTab == nil {
+				continue
 			}
+			kind := tab.Kind
+			if kind == "" {
+				kind = tab.Key
+			}
+			var addID gfx.ID
+			if env.Tree != nil {
+				addID = env.Tree.ID(env.Feat, "right-tab-add")
+			}
+			add := ui.Row(f).Width(RightTabChipHeight).Height(RightTabChipHeight).Shrink(0).
+				Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM).
+				Hover(ui.Look{}.Background(t.Hover)).
+				Hit(addID, "新建浏览器标签页")
+			add.Children(func() { ui.Text(f, "+").FontSize(RightTabChipFontSize).Color(t.LabelSecondary) })
+			if add.Clicked() {
+				env.Act.OpenRightTab(kind)
+			}
+			break
 		}
 	})
 }

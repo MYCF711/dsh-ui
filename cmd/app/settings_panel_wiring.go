@@ -94,6 +94,7 @@ func (m *model) settingsDescribeSnapshot() *apiclient.SettingsDescribeResult {
 // 每一项都必须**来自真实来源**：宿主没提供的一律零值（= 不注册），
 // 不许为了"界面上多一行"编一个 true。
 func (m *model) settingsHostFacts() pluginapi.SettingsHostFacts {
+	accountSignedIn, _, accountKnown := m.wave3.accountSnapshot()
 	m.mu.Lock()
 	shellServed := m.shellChannelServed
 	shellChannel := m.shellChannel
@@ -118,8 +119,9 @@ func (m *model) settingsHostFacts() pluginapi.SettingsHostFacts {
 		SessionLogServed: false,
 		// build 注入的版本号（brand.go 的 version，`-X main.version=…`）。
 		ClientVersion: version,
-		// 账号默认 Local（W0 架构裁定）：没有 credential-stored 状态。
-		CredentialStored: false,
+		// 账号 section 的唯一判据：宿主 account.getState 的真实状态；
+		// known=false（未读到/能力缺失）绝不能冒充 credential-stored。
+		CredentialStored: accountKnown && accountSignedIn,
 	}
 
 	m.mu.Lock()
@@ -155,6 +157,10 @@ func (m *model) settingsFormSet(ns string, path []string, value any, expectedRev
 	}
 	// 写后重读（官方 §2.3）：下一次 describe 拿到新 revision。
 	go m.refreshSettingsDescribe()
+	if ns == apiclient.SettingsNSModel && len(path) == 1 && path[0] == "defaultModel" {
+		// session.modelCatalog.default 也是默认模型的投影，不能只刷新 describe。
+		m.modelsPageRefresh()
+	}
 	return section, nil
 }
 
@@ -171,18 +177,26 @@ func (m *model) settingsFormReset(ns string, path []string, expectedRevision int
 		return apiclient.SettingsSectionView{}, err
 	}
 	go m.refreshSettingsDescribe()
+	if ns == apiclient.SettingsNSModel && len(path) == 1 && path[0] == "defaultModel" {
+		m.modelsPageRefresh()
+	}
 	return section, nil
 }
 
-// settingsMutate 原子提交一批路径操作（retryPolicy 的嵌套路径走这条）。
+// settingsMutate 原子提交一批路径操作（旧 int 入口仍保留 0=不 fence）。
 func (m *model) settingsMutate(ns string, ops []apiclient.SettingsOp, expectedRevision int) (apiclient.SettingsNamespaceView, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), settingsWriteTimeout)
-	defer cancel()
 	var rev *int
 	if expectedRevision > 0 {
 		rev = &expectedRevision
 	}
-	view, err := m.cli.SettingsMutate(ctx, ns, ops, rev)
+	return m.settingsMutateRevision(ns, ops, rev)
+}
+
+// settingsMutateRevision 保留 revision 0：非 nil 就原样发给宿主。
+func (m *model) settingsMutateRevision(ns string, ops []apiclient.SettingsOp, expectedRevision *int) (apiclient.SettingsNamespaceView, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), settingsWriteTimeout)
+	defer cancel()
+	view, err := m.cli.SettingsMutate(ctx, ns, ops, expectedRevision)
 	if err != nil {
 		return apiclient.SettingsNamespaceView{}, err
 	}

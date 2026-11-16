@@ -40,22 +40,29 @@ const (
 
 // navRequest 是官方 `BrowserTabState['request']`：一次导航请求 + 它的代数。
 type navRequest struct {
-	Revision int
-	Target   browserTarget
+	Revision int           `json:"revision"`
+	Target   browserTarget `json:"target"`
 }
 
 // navStatus 是官方 `BrowserNavigationStatus`（带 revision 的那三档）。
 type navStatus struct {
-	State    navState
-	Revision int
+	State    navState `json:"status"`
+	Revision int      `json:"revision,omitempty"`
 }
 
-// browserTabState 是官方 `BrowserTabState`（BrowserPersistence.ts:22-29）。
+// browserFailure 是官方 BrowserTabState.failure 的可序列化形状。
+type browserFailure struct {
+	Kind   string         `json:"kind"`
+	Reason addressFailure `json:"reason"`
+}
+
+// browserTabState 是官方 `BrowserTabState`（BrowserPersistence.ts:17-24）。
 type browserTabState struct {
-	Entries    []browserTarget
-	Index      int
-	Request    *navRequest
-	Navigation navStatus
+	Entries    []browserTarget `json:"entries"`
+	Index      int             `json:"index"`
+	Request    *navRequest     `json:"request,omitempty"`
+	Navigation navStatus       `json:"navigation"`
+	Failure    *browserFailure `json:"failure,omitempty"`
 }
 
 // browserNavigation 是官方 `BrowserNavigation` 类。

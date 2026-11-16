@@ -84,13 +84,22 @@ type wave3Wiring struct {
 	team *dsagentteam.Store
 
 	mu sync.Mutex
+	// accountOpMu 串行化轮询与登录/登出动作，防止旧轮询覆盖新尝试。
+	accountOpMu sync.Mutex
 
-	// ── 账号态（account.getState 的缓存）──
-	accountKnown    bool
-	accountSignedIn bool
-	accountFailed   bool
-	accountAt       time.Time
-	accountPending  bool
+	// ── 账号态与设置页详情（account.* 的缓存；指针发布后不再原地改）──
+	accountKnown         bool
+	accountSignedIn      bool
+	accountFailed        bool
+	accountAt            time.Time
+	accountPending       bool
+	accountView          *apiclient.AccountView
+	accountProfile       *apiclient.AccountProfile
+	accountBalance       *apiclient.AccountBalance
+	accountProfileFailed bool
+	accountBalanceFailed bool
+	accountLoginVisible  bool
+	accountLoginFailed   bool
 
 	// ── 会话投影（session.projections 的缓存）──
 	projSession      string
@@ -195,6 +204,18 @@ func (w *wave3Wiring) accountSnapshot() (signedIn, failed, known bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.accountSignedIn, w.accountFailed, w.accountKnown
+}
+
+// accountDetailsSnapshot 给设置页与 AccountMenu 的同一份真实账号快照。
+func (w *wave3Wiring) accountDetailsSnapshot() apiclient.AccountSnapshot {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return apiclient.AccountSnapshot{
+		View: w.accountView, Profile: w.accountProfile, Balance: w.accountBalance,
+		Known: w.accountKnown, Failed: w.accountFailed,
+		ProfileFailed: w.accountProfileFailed, BalanceFailed: w.accountBalanceFailed,
+		LoginVisible: w.accountLoginVisible, LoginFailed: w.accountLoginFailed,
+	}
 }
 
 // projectionSnapshot 取某会话的投影缓存。
@@ -312,7 +333,9 @@ func (w *wave3Wiring) refreshDue(m *model, sessionID string) (account, projectio
 	now := time.Now()
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.notices != nil && !w.accountPending && now.Sub(w.accountAt) >= accountPollEvery {
+	// 设置页与通知启动器共享同一份账号态；任一消费者存在都要拉，
+	// 否则 CredentialStored 会因为没有通知插件而永远停在 false。
+	if (w.notices != nil || m.settings != nil) && !w.accountPending && now.Sub(w.accountAt) >= accountPollEvery {
 		w.accountPending = true
 		account = true
 	}
@@ -324,13 +347,17 @@ func (w *wave3Wiring) refreshDue(m *model, sessionID string) (account, projectio
 	return account, projections
 }
 
-// fetchAccount 拉一次账号态（后台 goroutine；只写缓存 + 触发重绘）。
+// fetchAccount 拉 state，并在已登录时继续拉 profile/balance（后台 goroutine）。
+// 三份数据共享一代状态；旧轮询与登录动作由 accountOpMu 串行，不会后盖新状态。
 func (w *wave3Wiring) fetchAccount(m *model) {
+	w.accountOpMu.Lock()
+	defer w.accountOpMu.Unlock()
 	defer func() {
 		w.mu.Lock()
 		w.accountPending = false
 		w.accountAt = time.Now()
 		w.mu.Unlock()
+		m.inv.Invalidate()
 	}()
 	if m.cli == nil {
 		return
@@ -338,32 +365,57 @@ func (w *wave3Wiring) fetchAccount(m *model) {
 	ctx, cancel := context.WithTimeout(context.Background(), wave3FetchTimeout)
 	defer cancel()
 	view, err := m.cli.GetAccountState(ctx)
-
-	w.mu.Lock()
-	switch {
-	case err != nil:
+	if err != nil {
+		w.mu.Lock()
 		if isCapabilityMissing(err) {
-			// 宿主没有账号状态机：**未知**（隐藏），不是"未登录"。
 			w.accountKnown = false
 			w.accountSignedIn = false
 			w.accountFailed = false
+			w.accountView = nil
+			w.accountProfile = nil
+			w.accountBalance = nil
 		} else {
-			// 真失败（连不上 / 500）：保留上一轮的真值，只标 failed。
+			// 真失败保留上一轮真值，只标 stream failed（官方 failed 分支）。
 			w.accountFailed = true
 		}
-	case view == nil:
-		w.accountKnown = false
-		w.accountSignedIn = false
-		w.accountFailed = false
-	default:
-		w.accountKnown = true
-		w.accountSignedIn = view.SignedIn()
-		w.accountFailed = false
+		w.mu.Unlock()
+		return
 	}
-	w.mu.Unlock()
+	w.applyAccountView(view)
+	if view == nil || !view.SignedIn() {
+		return
+	}
 
-	// 与壳里另外二十处一致：Invalidator 是值类型，没法判 nil（装配后才有 waker）。
-	m.inv.Invalidate()
+	meta, metaErr := m.accountClientMetadata()
+	var profile *apiclient.AccountProfile
+	var balance *apiclient.AccountBalance
+	var profileErr, balanceErr error
+	if metaErr == nil {
+		profile, profileErr = m.cli.GetAccountProfile(ctx, meta)
+		balance, balanceErr = m.cli.GetAccountBalance(ctx, meta)
+	}
+	w.mu.Lock()
+	w.accountProfile = profile
+	w.accountBalance = balance
+	w.accountProfileFailed = metaErr != nil || profileErr != nil || profile == nil || profile.Status == "failed"
+	w.accountBalanceFailed = metaErr != nil || balanceErr != nil || balance == nil || balance.Status == "failed"
+	w.mu.Unlock()
+}
+
+// applyAccountView 发布宿主返回的新状态；signed-out 必须清掉上一账号的资料与余额。
+func (w *wave3Wiring) applyAccountView(view *apiclient.AccountView) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.accountView = view
+	w.accountKnown = view != nil
+	w.accountSignedIn = view != nil && view.SignedIn()
+	w.accountFailed = false
+	w.accountProfileFailed = false
+	w.accountBalanceFailed = false
+	if !w.accountSignedIn {
+		w.accountProfile = nil
+		w.accountBalance = nil
+	}
 }
 
 // fetchProjections 拉一次会话投影（后台 goroutine）。

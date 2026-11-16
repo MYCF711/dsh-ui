@@ -123,3 +123,51 @@ func TestListConfigurableProvidersRawArrayWithoutEnvelope(t *testing.T) {
 		t.Fatalf("裸数组解码结果不对：%+v", list)
 	}
 }
+
+func TestListProvidersSendsNoParamsAndDecodesOfficialFields(t *testing.T) {
+	var gotPath string
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, _ = w.Write([]byte(`{"result":[{"id":"deepseek","name":"DeepSeek"},{"id":"openai","name":"OpenAI"}]}`))
+	}))
+	defer srv.Close()
+
+	list, err := New(srv.URL).ListProviders(context.Background())
+	if err != nil {
+		t.Fatalf("应当成功：%v", err)
+	}
+	if gotPath != "/api/llm.listProviders" {
+		t.Fatalf("路径应为 /api/llm.listProviders，得到 %q", gotPath)
+	}
+	if len(body) != 0 {
+		t.Fatalf("官方 parameters: []，实际发了 %v", body)
+	}
+	if len(list) != 2 || list[0].ID != "deepseek" || list[0].Name != "DeepSeek" || list[1].ID != "openai" || list[1].Name != "OpenAI" {
+		t.Fatalf("provider 完整字段解码不对：%+v", list)
+	}
+}
+
+func TestListProvidersNotImplementedIsNotAnEmptyList(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotImplemented)
+		_, _ = w.Write([]byte(`{"error":{"code":"not_implemented","message":"llm.listProviders 未接线","hint":"宿主没有 AttachOfficialLLMProviderAPI","retryable":false}}`))
+	}))
+	defer srv.Close()
+
+	list, err := New(srv.URL).ListProviders(context.Background())
+	if err == nil {
+		t.Fatalf("501 必须报错，不能当成空目录：list=%v", list)
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("应该是 *APIError，得到 %T: %v", err, err)
+	}
+	if apiErr.Code != "not_implemented" || apiErr.Message != "llm.listProviders 未接线" {
+		t.Fatalf("501 原文没有保留：%+v", apiErr)
+	}
+	if list != nil {
+		t.Fatalf("失败时不应返回半条目录：%v", list)
+	}
+}

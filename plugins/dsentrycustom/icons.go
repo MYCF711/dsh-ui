@@ -21,6 +21,8 @@ package dsentrycustom
 //	                         「浏览更多插件」行首。4 条纯描边曲线。
 //	check-outline            OFF:EntryMenuContent.tsx:50  `<IconCheckOutlineRegular size={16}/>`
 //	                         当前条目行尾的对勾。1 条纯描边。
+//	plus-outline             OFF:EntryMenuContent.tsx:66  `<IconPlusOutlineRegular size={16}/>`
+//	                         「创建你的插件」行首。两条纯描边直线，regular 权重 1。
 //
 // 显示尺寸：官方三处传 14 / 16 / 16，但 primitives 菜单行的 CSS 把图标框与 svg 都
 // 夹到 **14×14**（`._itemIcon_70kcw_233{width:14px;height:14px}` +
@@ -48,6 +50,12 @@ var pluginPinwheelPaths = []string{
 
 // check-outline 的那一条 `d` 原文。
 const checkOutlinePath = `M2.25 8.5L5.49732 11.7473C5.90519 12.1552 6.57263 12.1344 6.95426 11.7018L13.75 4`
+
+// plus-outline 的两条 `d` 原文（与官方 Medium 同形，Regular 仅描边权重不同）。
+const (
+	plusOutlineVerticalPath   = `M8 2V14`
+	plusOutlineHorizontalPath = `M2 8H14`
+)
 
 // pinOutlineIcon 造官方 `IconPinOutlineRegular`；color 是**填充层**的颜色
 // （描边色由调用方 `.Color()` 给）。
@@ -83,6 +91,19 @@ func pluginPinwheelIcon() (gfx.Icon, bool) {
 		commands = append(commands, part...)
 	}
 	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}, true
+}
+
+// plusOutlineIcon 造官方 `IconPlusOutlineRegular`（两条纯描边直线）。
+func plusOutlineIcon() (gfx.Icon, bool) {
+	vertical, ok := dsassets.ParsePath(plusOutlineVerticalPath)
+	if !ok {
+		return gfx.Icon{}, false
+	}
+	horizontal, ok := dsassets.ParsePath(plusOutlineHorizontalPath)
+	if !ok {
+		return gfx.Icon{}, false
+	}
+	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: append(vertical, horizontal...)}, true
 }
 
 // checkOutlineIcon 造官方 `IconCheckOutlineRegular`（1 条纯描边曲线）。

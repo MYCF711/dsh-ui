@@ -145,6 +145,9 @@ type draftRestoreRequest struct {
 	session   string
 	text      string
 	overwrite bool
+	// policy 非空时是官方 DraftInitializationOptions.whenDraftExists；
+	// 旧的失败恢复仍走 overwrite 布尔，语义逐字节不变。
+	policy string
 }
 
 // queueDraftOverwrite 排一次"直接写这段文字"（不检查草稿是否为空）。
@@ -152,6 +155,15 @@ type draftRestoreRequest struct {
 func (m *model) queueDraftOverwrite(text string) {
 	m.mu.Lock()
 	m.pendingDraft = &draftRestoreRequest{text: text, overwrite: true}
+	m.mu.Unlock()
+	m.inv.Invalidate()
+}
+
+// queueDraftInitialization 把官方 startSession 的草稿请求排给 UI 线程；session
+// 防止创建后用户又切走时把提示词灌进另一个会话。
+func (m *model) queueDraftInitialization(session, text, policy string) {
+	m.mu.Lock()
+	m.pendingDraft = &draftRestoreRequest{session: session, text: text, policy: policy}
 	m.mu.Unlock()
 	m.inv.Invalidate()
 }
@@ -176,7 +188,11 @@ func (m *model) applyPendingDraft() {
 	cur := m.cur
 	m.mu.Unlock()
 	if req != nil && (req.session == "" || req.session == cur) {
-		m.writeDraft(req.text, req.overwrite)
+		if req.policy == pluginapi.DraftAppend {
+			m.appendDraft(req.text)
+		} else if req.policy != pluginapi.DraftKeep {
+			m.writeDraft(req.text, req.overwrite || req.policy == pluginapi.DraftReplace)
+		}
 	}
 	if smoke != nil {
 		m.writeDraft(*smoke, true)
@@ -211,6 +227,39 @@ func (m *model) writeDraft(text string, overwrite bool) {
 			}
 		}
 	}
+}
+
+// appendDraft 实现官方 appendDraft：已有草稿之后以新段落追加，不覆盖用户文字。
+// 两处 Viva editor 各自读取自己的原文，避免壳旧输入框与 ds-composer 相互覆盖。
+func (m *model) appendDraft(prompt string) {
+	m.draft.SetText(appendDraftParagraph(m.draft.Text(), prompt))
+	if m.kernel == nil {
+		return
+	}
+	for _, plugin := range m.kernel.Plugins() {
+		if plugin.ID() != "ds-composer" {
+			continue
+		}
+		fields, ok := plugin.(pluginapi.Fields)
+		if !ok {
+			continue
+		}
+		for _, field := range fields.Fields() {
+			if field != nil {
+				field.SetText(appendDraftParagraph(field.Text(), prompt))
+			}
+		}
+	}
+}
+
+func appendDraftParagraph(existing, prompt string) string {
+	if existing == "" {
+		return prompt
+	}
+	if prompt == "" {
+		return existing
+	}
+	return strings.TrimRight(existing, "\n") + "\n\n" + prompt
 }
 
 // reconcileOutgoingLocked 只消费本次新到的 durable user event，不扫描历史。

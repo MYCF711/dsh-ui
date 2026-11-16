@@ -36,7 +36,7 @@
 - ❌ `attachment`
 - ✅ `commands`（F2 命令面板；A 类时做的）
 - ✅ `input-trigger`（`plugins/dscomposer/trigger.go`：`@` 文件/会话 + `/` 技能三源注册表、官方 detect（引号路径 + URL 斜杠 carve-out）、按 source 分组菜单、Enter/Tab/↑↓/Esc；数据面见 `internal/apiclient/references.go`）
-- 🟡 `entry-customization`（`plugins/dsentrycustom`：左栏 More 的未固定条目行（行首面板图标 + 行尾「固定」按钮）+ 会话头 More 的折起 view 行（active 带对勾）+ 「浏览更多插件」（`plugins/dssidebar/panelapi` = 官方 `pluginNavigation` 等价物，服务在册才画）。「创建你的插件」等宿主 `session.create` 收 `agentPreset` 才补；右栏 guide 无宿主，按 HIDE 登记）
+- 🟡 `entry-customization`（`plugins/dsentrycustom`：左栏 More 的未固定条目行（行首面板图标 + 行尾「固定」按钮）+ 会话头 More 的折起 view 行（active 带对勾）+ 「浏览更多插件」（`plugins/dssidebar/panelapi` = 官方 `pluginNavigation` 等价物，服务在册才画）。「创建你的插件」已接 cordis preset + 区域 prompt + `whenDraftExists:'append'`（真实建会话、只灌草稿不发送）；右栏 guide 无宿主，按 HIDE 登记）
 - ⬜ `deepseek-model-label-1017`（**N/A**：官方是 1017 那次发布的临时角标，不是产品能力）
 
 ### 插件体系（3）

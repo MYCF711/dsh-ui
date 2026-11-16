@@ -946,12 +946,30 @@ type TerminalViewState struct {
 	Error       string
 }
 
+// StartSessionOptions 是官方 `uiWorkspace.startSession(undefined, options)` 的壳内投影。
+// workspaceId 省略表示当前工作区；AgentPreset 为空时由宿主选择默认 preset。
+// WhenDraftExists 逐字使用官方 replace / append / keep；空值等价 keep。
+type StartSessionOptions struct {
+	AgentPreset     string
+	Prompt          string
+	WhenDraftExists string
+}
+
+const (
+	DraftReplace = "replace"
+	DraftAppend  = "append"
+	DraftKeep    = "keep"
+)
+
 // Actions 是插件能触发的动作。
 //
 // 只放「用户点了会改状态」的入口；读状态走 Snapshot。
 // nil 的动作表示当前不可用，插件要自己判断（别假设一定有）。
 type Actions struct {
 	OpenSession func(id string)
+	// StartSession 新建当前工作区的会话，再按 options 初始化草稿。
+	// nil = 壳没有真实 session.create / 草稿初始化链，调用方必须 HIDE 入口。
+	StartSession func(options StartSessionOptions)
 	// ForkSession **把当前会话整份复制成一个新分支**，并切过去。
 	//
 	// 为什么不收 id：和 CompactSession 一样，永远是"对正在看的这个会话做"。
@@ -1143,12 +1161,8 @@ type Actions struct {
 	// nil = 壳没接（老壳）：插件这时不画入口——画一个点了没反应的东西，
 	// 比不画更让人以为"已经在加载了"。
 	LoadOlder func()
-	// SetDraft 把文字灌进输入框。
-	//
-	// **当前没有任何插件调用它**（壳已接线，但调用点为零）。设计意图本来是
-	// "某个插件想替用户填草稿"，现在那个场景不存在——输入框的文字由画输入框的
-	// 插件自己持有。留着是为了将来真有需求时不必改公共 API，
-	// 但请把它当**空转接口**：不要因为它存在就假设有人在用。
+	// SetDraft 覆盖输入框文字；需要官方 keep/append 语义的会话初始化应使用
+	// StartSession，避免误删用户已有草稿。
 	SetDraft func(text string)
 
 	// ConfigGet 取宿主的 UI 配置（`config.get`，纯 key/value，宿主不解释）。

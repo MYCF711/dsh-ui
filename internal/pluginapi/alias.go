@@ -85,9 +85,10 @@ type (
 	LinkState = pub.LinkState
 	// ApprovalOption 是审批帧里 data.options 的一项（H13）。
 	// 纯别名，不在这里加任何东西——两份定义会漂移。
-	ApprovalOption    = pub.ApprovalOption
-	TerminalViewState = pub.TerminalViewState
-	Actions           = pub.Actions
+	ApprovalOption      = pub.ApprovalOption
+	TerminalViewState   = pub.TerminalViewState
+	Actions             = pub.Actions
+	StartSessionOptions = pub.StartSessionOptions
 	// SettingsHostFacts 是设置面板的宿主事实（决定动态注册哪些 section/item）。
 	SettingsHostFacts = pub.SettingsHostFacts
 	// DesktopUpdatePresentation 是壳对"桌面更新"的事实呈现
@@ -117,6 +118,9 @@ const (
 	EntryRegionSidebar      = pub.EntryRegionSidebar
 	EntryRegionConversation = pub.EntryRegionConversation
 	EntryRegionRightbar     = pub.EntryRegionRightbar
+	DraftReplace            = pub.DraftReplace
+	DraftAppend             = pub.DraftAppend
+	DraftKeep               = pub.DraftKeep
 
 	// context menu 的 target kind（官方 `ContextMenuTargetMap` 的判别键，
 	// OFF:ui-context-menu/src/client/types.ts:29-40 + open-in-app 的 workspace 扩展）。

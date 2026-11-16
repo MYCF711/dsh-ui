@@ -239,12 +239,13 @@ INFO 插件已装配 id=ds-sidebar provides=[] requires="[ui.theme ui.primitives
 | 字段 | 签名 | 壳是否接线 | 说明 |
 |---|---|---|---|
 | `OpenSession` | `func(id string)` | ✅ | 切会话 |
+| `StartSession` | `func(StartSessionOptions)` | ✅ | 官方 `uiWorkspace.startSession` 三字段投影：`agentPreset` / `prompt` / `whenDraftExists`；真实建会话后初始化草稿，不自动发送；nil 时 Creator 整行 HIDE |
 | `NewSession` | `func()` | ✅ | 新建并打开 |
 | `Send` | `func(text string)` | ✅ | 发出去；文字由画输入框的插件给 |
 | `Copy` | `func(text string)` | ✅ | 壳调 `app.SetClipboardText`，成功后状态栏显示「已复制 N 字」 |
 | `Retry` | `func()` | ✅ | 重发最后一条用户消息 |
 | `Notify` | `func(msg string)` | ✅ | 让壳在状态栏说一句话（插件不直接写状态栏，那是别的插件的地盘） |
-| `SetDraft` | `func(text string)` | ❌ 未接线（nil） | 没有插件在用 |
+| `SetDraft` | `func(text string)` | ✅ | 覆盖草稿；需要官方 keep/append 语义时走 `StartSession` |
 | `Approve` | `func(requestID, optionID string)` | ✅ | **审批的正路**：两个 id 原样转发给 `session.approve`。插件不许自己造 id |
 | `Cancel` | `func()` | ✅ | 打断当前会话的 turn（`session.cancel`）；宿主对没有 turn 的调用幂等 |
 | `Allow` | `func()` | ✅ | **旧接口**，只在 `Approve == nil` 时兜底（它没有 id，宿主那边无从对应） |

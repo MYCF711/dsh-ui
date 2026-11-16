@@ -2967,6 +2967,7 @@ func main() {
 		CotTranslationTranslate: m.cotTranslationTranslate,
 		CotTranslationResult:    m.cotTranslationTakeResult,
 		OpenSession:             m.openSession,
+		StartSession:            m.startSession,
 		SelectWorkspace:         m.selectWorkspace,
 		WorkspaceRename:         m.renameWorkspace,
 		WorkspaceDelete:         m.deleteWorkspace,

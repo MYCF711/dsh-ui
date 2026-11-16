@@ -380,6 +380,9 @@ func muxHandler(w http.ResponseWriter, r *http.Request) {
 			if !subbed {
 				continue
 			}
+			if n >= 24 {
+				continue // 假事件有上限：24 条足够走完正常/跳号/审批三条路，不永久推
+			}
 			n++
 			if n == 8 && !gapped && !mockGappedOnce {
 				// H14：服务端**不发 gap 帧**。这里只把 seq 跳过两个号，

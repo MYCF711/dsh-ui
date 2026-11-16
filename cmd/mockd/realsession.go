@@ -26,6 +26,7 @@ import (
 type realSession struct {
 	ID        string
 	Cwd       string
+	Origin    string
 	Path      string // 会话文件路径：list 只解 header，load 时再按它做全量解
 	UpdatedAt time.Time
 	Total     int       // 日志里的消息事件总数（截断前）
@@ -57,6 +58,7 @@ type v4Header struct {
 	ID        string `json:"id"`
 	CreatedAt int64  `json:"createdAt"` // 毫秒
 	Cwd       string `json:"cwd"`
+	Origin    string `json:"origin"`
 }
 
 // v4Event 只解析到能拿消息文本为止。
@@ -155,6 +157,9 @@ func loadRealSessions(root string, tail int) (*realStore, error) {
 			st.bad++
 			return nil
 		}
+		if rs.Origin == "subagent" {
+			return nil // 派生会话不进主列表（官方用 origin+parentSessionId 组 lineage，不过滤普通 fork）
+		}
 		st.byID[rs.ID] = rs
 		return nil
 	})
@@ -216,6 +221,7 @@ func decodeSession(path string, tail int, headerOnly bool) (*realSession, error)
 			}
 			rs.ID = h.ID
 			rs.Cwd = h.Cwd
+			rs.Origin = h.Origin
 			continue // headerOnly 也继续读几行：标题比 cwd 有信息量
 		}
 		var e v4Event

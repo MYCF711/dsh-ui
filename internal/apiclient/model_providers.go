@@ -1,10 +1,9 @@
-// model_providers.go —— 官方 rc.2 `llm.listConfigurableProviders` 的客户端。
+// model_providers.go —— 官方 rc.2 `llm.listProviders` 与
+// `llm.listConfigurableProviders` 的客户端。
 //
-// 为什么界面要这个方法：composer 的模型菜单（`conversation.input.model` 的父容器）
-// 要列"这台宿主配了哪些 provider"。官方由 `ui-model-selection` 走 session 的
-// model directory；本仓宿主当前能给出的**真值**是 provider 目录
-// （`DSH-GO/internal/transport/handlers_llm_provider_official.go`），model 目录
-// 还没接（`session.selectModel` 的 catalog 面未实现到界面侧）。
+// 为什么界面要这两个方法：Models 页既要列宿主已注册的 provider，也要列
+// 可配置 provider。两者都来自宿主真实 provider 目录
+// （`DSH-GO/internal/transport/handlers_llm_provider_official.go`）。
 //
 // 契约（官方 handler 逐字段）：
 //
@@ -22,6 +21,12 @@
 package apiclient
 
 import "context"
+
+// ProviderInfo 是 `llm.listProviders` 返回的已注册 provider 摘要。
+type ProviderInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
 
 // ProviderNativeAuth 是官方 `ProviderNativeAuth`（`{env, oauth}`）。
 //
@@ -49,6 +54,16 @@ type ConfigurableProvider struct {
 	// Error 是这个 provider 自己的失败说明（宿主算不出来时给）。
 	// 非空 = 这一项不可用；界面必须照实显示，不能拿它假装"有 provider"。
 	Error string `json:"error,omitempty"`
+}
+
+// ListProviders 是 `llm.listProviders`，返回宿主已注册 provider 的目录。
+// 官方 parameters: []；未接线返回 501，不能折叠成空目录。
+func (c *Client) ListProviders(ctx context.Context) ([]ProviderInfo, error) {
+	var out []ProviderInfo
+	if err := c.Call(ctx, "llm.listProviders", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ListConfigurableProviders 是 `llm.listConfigurableProviders`。

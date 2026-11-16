@@ -155,13 +155,19 @@ func ApplyReset(ctx context.Context, w SettingsWriter, ns string, path []string,
 	return state
 }
 
-// ApplyMutate 原子提交一批路径操作（`settings.mutate`，retryPolicy 走这条）。
+// ApplyMutate 原子提交一批路径操作（`settings.mutate`）。int 的旧入口保留
+// 0=不 fence；Models 新代码必须走 ApplyMutateRevision，才能区分 revision 0 与未知。
 func ApplyMutate(ctx context.Context, w SettingsWriter, ns string, ops []apiclient.SettingsOp, expectedRevision int) WriteState {
+	return ApplyMutateRevision(ctx, w, ns, ops, revisionPtr(expectedRevision))
+}
+
+// ApplyMutateRevision 是带完整 revision 真值的入口：非 nil 的 0 也必须发给宿主。
+func ApplyMutateRevision(ctx context.Context, w SettingsWriter, ns string, ops []apiclient.SettingsOp, expectedRevision *int) WriteState {
 	state := WriteState{Kind: WriteSaving, NS: ns}
 	if len(ops) > 0 {
 		state.Path = append([]string(nil), ops[0].Path...)
 	}
-	view, err := w.SettingsMutate(ctx, ns, ops, revisionPtr(expectedRevision))
+	view, err := w.SettingsMutate(ctx, ns, ops, expectedRevision)
 	if err != nil {
 		return ClassifyWriteError(ns, state.Path, err)
 	}

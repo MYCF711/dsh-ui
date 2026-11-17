@@ -985,7 +985,17 @@ type TerminalViewState struct {
 	Writable    bool
 	Retained    bool
 	Screen      string
-	Error       string
+	// Issue 是官方 `TerminalViewState.issue` 的投影：终端视图自身的问题分类，
+	// 文案由界面按官方 locale 渲染（不是 Host 抛来的自由文本）。
+	//
+	// 取值逐字对齐官方 `TerminalViewIssue`
+	// （OFF:dsh-api-terminal-controller/src/client/model.ts:19）：
+	// `missingTerminal` / `inputFull` / `attachmentEnded` / `invalidOutput` /
+	// `terminalLimit`；空串 = 没有问题。官方界面用它决定画哪一支
+	// （`terminal.tsx:36-46`：`missingTerminal` 画 `.empty` 空态，其余进错误段）。
+	Issue string
+	// Error 是**自由文本**错误（Host 原始错误），只在没有 Issue 且有真错误时出现。
+	Error string
 }
 
 // StartSessionOptions 是官方 `uiWorkspace.startSession(undefined, options)` 的壳内投影。

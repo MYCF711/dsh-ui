@@ -173,6 +173,14 @@ func (p *Plugin) drawTerminal(f ui.C, env *pluginapi.Env, tabID string) {
 	env.Act.TerminalEnsure(tabID)
 	state := env.Act.TerminalSnapshot(tabID)
 	t := p.theme
+	// 官方 `state.issue === 'missingTerminal'` 是一块**空态**而不是错误行：
+	// `.empty{flex:1;column;center;gap:16px;min-height:0;padding:24px;text-align:center}`
+	// + `.emptyMessage{max-width:28ch;line-height:1.6}` + 主要按钮「新建终端」
+	// （terminal.module.css:7-8、terminal.tsx:36-45）。
+	if state.Issue == terminalIssueMissingTerminal {
+		p.drawMissingTerminal(f, env)
+		return
+	}
 	status, ended, retry, readOnly := terminalStatus(state)
 	// terminal.module.css:5：状态条只在一项状态/动作存在时出现，gap 8、padding 5×12、bg-l2。
 	if status != "" || retry || readOnly || ended {
@@ -219,9 +227,14 @@ func (p *Plugin) drawTerminal(f ui.C, env *pluginapi.Env, tabID string) {
 			p.drawDerivedControls(f, env, tabID, state)
 		})
 	}
+	// 官方 `error = phase==='disconnected' ? undefined
+	//   : issue === undefined ? state.error ?? state.info?.error : t(issue)`
+	// （terminal.tsx:46）：**issue 优先**，它有自己的官方文案，不能把 key 当错误原文。
 	errorText := state.Error
 	if state.Phase == "disconnected" {
 		errorText = ""
+	} else if state.Issue != "" {
+		errorText = terminalIssueText(state.Issue)
 	} else if errorText == "" && state.Info != nil {
 		errorText = state.Info.Error
 	}
@@ -238,9 +251,10 @@ func (p *Plugin) drawTerminal(f ui.C, env *pluginapi.Env, tabID string) {
 func (p *Plugin) drawDerivedControls(f ui.C, env *pluginapi.Env, tabID string, state pluginapi.TerminalViewState) {
 	t := p.theme
 	if p.renaming {
-		// TerminalTitle.module.css:2：name 120px、min 48px、0×4 padding、0.5px border、radius-sm。
+		// TerminalTitle.module.css:2：name 120px、min-width 48px、**max-width 100%**、
+		// 0×4 padding、0.5px border、radius-sm。
 		ui.TextFieldID(f, env.Tree.ID(env.Feat, "terminal-rename"), &p.renameField, "终端名称", "1–120 个字符").
-			Width(terminalRenameWidth).MinWidth(terminalRenameMinWidth).
+			Width(terminalRenameWidth).MinWidth(terminalRenameMinWidth).MaxWidthPercent(100).
 			PadSides(0, terminalRenamePadX, 0, terminalRenamePadX).
 			FontSize(terminalRootFontSize).Background(t.BgLayer1).
 			Border(terminalRenameBorder, t.BorderL3).Radius(t.Radii.SM)

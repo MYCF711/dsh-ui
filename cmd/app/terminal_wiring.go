@@ -27,6 +27,15 @@ type terminalViewState struct {
 	cancel     context.CancelFunc
 }
 
+// 官方 `TerminalViewIssue` 的五档里本仓真会遇到的两种
+// （OFF:dsh-api-terminal-controller/src/client/model.ts:19）。
+// 它们是**分类**而不是文案：界面按官方 locale 渲染（`terminal.tsx:36-46`），
+// 所以这里只放 key，不往 Error 里塞人类的句子，也不让界面把 key 当错误原文打印。
+const (
+	terminalIssueMissingTerminal = "missingTerminal"
+	terminalIssueAttachmentEnded = "attachmentEnded"
+)
+
 type terminalWatchState struct {
 	cancel context.CancelFunc
 	failed bool
@@ -84,6 +93,9 @@ func (m *model) ensureTerminalView(sessionID, tabID string, retry bool) {
 	state.started = true
 	state.public.Phase = "loading"
 	state.public.Error = ""
+	// issue 是**这一轮**的分类：重开一轮时旧的 attachmentEnded/missingTerminal
+	// 不能继续贴在新状态上，否则界面会把已经接上的终端画成空态。
+	state.public.Issue = ""
 	state.public.Writable = false
 	m.mu.Unlock()
 	m.inv.Invalidate()
@@ -312,7 +324,9 @@ func (m *model) runTerminalView(ctx context.Context, sessionID, tabID string, ge
 						state.public.Phase = "closed"
 					} else {
 						state.public.Phase = "disconnected"
-						state.public.Error = "attachmentEnded"
+						// 官方把这一类叫 issue 而不是自由文本
+						// （`model.ts:19` 的 `attachmentEnded`），界面按官方 locale 渲染。
+						state.public.Issue = terminalIssueAttachmentEnded
 					}
 				}
 				m.mu.Unlock()
@@ -454,7 +468,7 @@ func (m *model) runTerminalWatch(ctx context.Context, sessionID string) {
 				state.public.Info = &copy
 			} else {
 				state.public.Phase = "closed"
-				state.public.Error = "missingTerminal"
+				state.public.Issue = terminalIssueMissingTerminal
 				state.public.Writable = false
 				if state.cancel != nil {
 					cancelMissing = append(cancelMissing, state.cancel)

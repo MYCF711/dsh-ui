@@ -52,6 +52,13 @@ func (h *fakeHost) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, er
 // renderBrowser 画一帧右栏 tab 体（右栏宽 360、高 600，与官方右栏档同一量级）。
 func renderBrowser(t *testing.T, p *Plugin, env *pluginapi.Env) *gfx.Canvas {
 	t.Helper()
+	return renderBrowserInteraction(t, p, env, gfx.ID{}, gfx.ID{})
+}
+
+// renderBrowserInteraction 同上，但先记下一次交互状态（悬停/按住/焦点）：
+// 官方的 `:hover` / `:focus-within` 两支靠它判定，测试必须能摆出这两种状态。
+func renderBrowserInteraction(t *testing.T, p *Plugin, env *pluginapi.Env, hovered, focused gfx.ID) *gfx.Canvas {
+	t.Helper()
 	if p.theme == nil {
 		p.theme = dscore.Dark()
 	}
@@ -65,6 +72,7 @@ func renderBrowser(t *testing.T, p *Plugin, env *pluginapi.Env) *gfx.Canvas {
 	env.Theme = p.theme
 	env.Tree = tree
 	env.Feat = feat
+	canvas.SetInteraction(hovered, gfx.ID{}, focused, false)
 	env.Canvas = canvas
 	env.Bounds = gfx.Rect{Width: 360, Height: 600}
 	pageTheme := dscore.VivaTheme(p.theme)

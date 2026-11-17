@@ -91,7 +91,9 @@ func TestOfficialMarketThemeTokens(t *testing.T) {
 	}{
 		{name: "dark", dark: true, module: gfx.RGB24(0x353638), activeBorder: gfx.RGB24(0x81858c),
 			skeleton: gfx.Color{Red: 1, Green: 1, Blue: 1, Alpha: 0.08}},
-		{name: "light", module: gfx.RGB24(0xf9fafb), activeBorder: gfx.RGB24(0x979da6),
+		// 官方浅色 --dsw-static-neutral-bluish-60 = rgb(245,246,247)（design-platform.css:68）
+		// 0xf9fafb 是**暗色**那一档（:154），旧断言抄错了档。
+		{name: "light", module: gfx.RGB24(0xf5f6f7), activeBorder: gfx.RGB24(0x979da6),
 			skeleton: gfx.Color{Alpha: 0.04}},
 	} {
 		theme := dscore.Light()

@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // 这条守卫盯的是**入库的生成物与它的事实来源是否还一致**。
@@ -56,11 +58,19 @@ func TestVersionInfoResourceMatchesBrand(t *testing.T) {
 	}
 
 	out := filepath.Join(t.TempDir(), "fresh.syso")
-	cmd := exec.Command("go", "run", genPackage, "-o", out)
+	// 套 context 超时：go run 会去抢 Go 构建缓存锁，机器被并发任务压满时
+	// 原本没有上界——真卡住会一路顶到 go test 的 10 分钟默认超时，
+	// 报出来是「整包超时」，看不出是这个测试。
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", genPackage, "-o", out)
 	cmd.Dir = "."
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			t.Fatalf("生成器 120s 内没跑完（构建缓存锁被并发任务占住的典型症状）")
+		}
 		t.Fatalf("生成器跑不起来：%v\n%s", err, stderr.String())
 	}
 	fresh, err := os.ReadFile(out)

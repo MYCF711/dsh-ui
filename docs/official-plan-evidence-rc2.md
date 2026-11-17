@@ -69,7 +69,8 @@
    navigation；缺 subagent plan 地址与 `sidebar.right.pane.tab.title` 派发。临时 review 地址本轮已补。
 3. **异步资源态**：本仓同步读帧，没有官方异步 resource 的 loading/failed；临时 expired 已真实实现。
 4. **相对链接**：只认明确 scheme（http/https/mailto），尚未把相对路径解析成工作区文件。
-5. **视觉细节**：Markdown 文件图标、plan/close glyph、部分几何与官方 sprite 仍有差异。
+5. **视觉细节**：2026-11-17 已按 rc.2 CSS 复核卡片、chip、预览与审阅卡（§7）；
+   busy 时 StateDot 已落官方 14px 尺寸，但仍是静态点，未复刻官方 1.5s spinner 动效。
 6. **帧缺 turn 的取舍**：此时只留最后一份；宿主正常 `tool/call` 一直写 turn。
 7. **切会话**：durable 地址属于旧会话时退到本会话最新计划；临时地址跨会话显示 expired。
 
@@ -96,3 +97,29 @@
   `multiSelect` wire、回答后隐藏；父卡批准原文、失败保留、要求修改不代为回答；自动仅一次、
   手动重开、durable/临时地址及 expired；apiclient null/error/bool 与会话隔离。
 - 最终门禁退出码见本轮 `docs/progress.md` 与交付报告；未 commit/push。
+
+## 7. 视觉复刻（2026-11-17 · feat/vc-plan）
+
+> 官方 CSS：`dsh-client-ui-plan/src/client/PlanPreview.module.css:1-43`、
+> `PlanModeControl.module.css:3-82`；审阅父卡：
+> `dsh-client-ui-user-questions/src/client/PlanReviewPanel.module.css:1-109`。
+> 共享 Button 是默认 `size="md"`，不是旧实现自选的 32px 小按钮：
+> `dsh-web-frontend/dist/assets/index-CSAdOBx6.css:1` 的
+> `_button_1ulci_2/_md_1ulci_23/_icon_1ulci_78`。
+
+| 部分 | 旧值 → 官方值 | 本仓 |
+|---|---|---|
+| 计划卡 | 60px、8/10 padding、10 gap、40px icon、13/20 标题、10/16 说明、28px 打开按钮原已一致；补 `CardFill/CardFillHover/CardTileFill` 与 120ms ease、2px focus ring + 3px offset | `plugins/dsplan/cards.go`、`plugins/dscore/dscore.go` |
+| 计划 chip | 无 min-width → **34px**；无 glyph → **14px** plan/close；`BgLayer3` → **business-tertiary**；补 hover 6% 与 2px ring + 2px offset | `plugins/dsplan/chip.go`、`focus.go` |
+| 全文预览 | 桌面仍 **20/24/40**；补整窗 ≤767px 的 **16/18/32** | `plugins/dsplan/preview.go` |
+| 审阅按钮 | **32→36px** 高、**12→14px** 横内距、**13/20→14/22** 字/行、radius **SM→MD**；discuss **gap 6**、icon slot **16** / glyph **14**；disabled **0.6→0.4** | `plugins/dsquestions/plan_review.go` |
+| 审阅卡 | 补 ≤720px footer **8/12/10 + flex-end**、描述 **2 行截断**、warn primary、StateDot **10/14**、overflow clip 与官方 elevation-panel | 同上 |
+| 审阅链接 | 保留 gap 4 / 14/20，补 **14px** 官方 chevron、hover primary 与 2px ring + 3px offset | `plugins/dsplan/review.go` |
+
+图标全部来自官方 sprite `dsh-web-frontend/dist/assets/index-ghOpC9uV.js:129`
+（sha256 `061de8cefa15e1fbb87d301463ad4ebb79259b197ca08e83406f6997c1af8bb8`）：
+`IconPlanOutlineRegular`、`IconCloseCircleFillRegular`、`IconChevronRightOutlineRegular`、
+`IconEditOutlineRegular`；Markdown 卡仍复用既有 `FileTypeMarkdown` 三层原件。
+close 外圈的 SVG `A` 由 `viva icons` 编译，未手画。几何与 sprite 结构反证测试在
+`plugins/dsplan/geometry_test.go`、`plugins/dsquestions/plan_review_geometry_test.go`、
+`plugins/dsassets/plan_test.go`。官方 rc.2 没有“计划项勾选框”DOM/CSS，本轮不新增该结构。

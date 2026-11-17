@@ -1,6 +1,8 @@
 package dsplan
 
 import (
+	"time"
+
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
@@ -62,7 +64,11 @@ const (
 	cardOpenLine   float32 = 18
 	// PlanCard.tsx:51：FileTypeIcon kind="markdown" size={20}。
 	cardIconGlyphSize float32 = 20
+	// focus.css:3：--dsw-focus-ring-width:2px。
+	planFocusRing float32 = 2
 )
+
+var planCardMotion = gfx.Motion{Duration: 120 * time.Millisecond, Easing: gfx.EaseCSS}
 
 // 官方 FileTypeIcon(kind="markdown")：deepseek-500 底板 + neutral-00 折角/MD。
 // 色值分别见 design-platform.css:28,40；三层路径与 markTransform 由 dsassets 复用。
@@ -97,7 +103,10 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, sessio
 	card := ui.Row(f).FillWidth().Height(cardHeight).Items(ui.Center).Gap(cardGap).
 		PadSides(cardPadY, cardPadX, cardPadY, cardPadX).
 		Border(cardBorder, t.BorderL1).Radius(t.Radii.LG).
-		Background(t.BgLayer1).
+		Background(t.CardFill).
+		Hover(ui.Look{}.Background(t.CardFillHover)).
+		DrawOver(func(d *ui.DrawContext) { drawPlanFocusRing(d, planCardFocusOffset, t.Radii.LG, t.Info) }).
+		TransitionWith(planCardMotion).
 		Hit(env.Tree.ID(env.Feat, "plan-card-"+plan.CallID), label)
 	// 先 Hit 再读 Clicked：v0.6.0 的 `.Clicked()` 只在有身份时才可能为真
 	// （cmd/app/hits_static_guard_test.go 守着这条）。
@@ -108,7 +117,7 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, sessio
 		// `.cardIcon`：40×40 圆角 10 的描边块，里面一个 20px 图标位。
 		icon := ui.Column(f).Width(cardIconSize).Height(cardIconSize).
 			Center().Border(cardBorder, t.BorderL1).Radius(cardIconRadius).
-			Background(t.BgLayer2)
+			Background(t.CardTileFill)
 		icon.Children(func() {
 			ui.Icon(f, planMarkdownIcon).Width(cardIconGlyphSize).Height(cardIconGlyphSize)
 		})

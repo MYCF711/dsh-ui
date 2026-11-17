@@ -10,7 +10,7 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
-// 右栏全文的几何：`OFF:PlanPreview.module.css:24-26` 逐条。
+// 右栏全文的几何：`OFF:PlanPreview.module.css:37-43` 逐条（含 ≤767px 响应式）。
 //
 //	.preview  { position:relative; height:100%; overflow:auto; padding:20px 24px 40px }
 //	.document { font-size:14px; line-height:1.75 }
@@ -19,7 +19,12 @@ const (
 	previewPadTop    float32 = 20
 	previewPadX      float32 = 24
 	previewPadBottom float32 = 40
-	previewFont      float32 = 14
+	// PlanPreview.module.css:41-43：整窗宽度不超过 767px 时的官方值。
+	previewCompactViewport float32 = 767
+	previewCompactPadTop   float32 = 16
+	previewCompactPadX     float32 = 18
+	previewCompactPadBot   float32 = 32
+	previewFont            float32 = 14
 	// `.document{line-height:1.75}`：官方给的是倍数不是像素，乘出来是 24.5。
 	previewLineFactor float32 = 1.75
 	messagePad        float32 = 24
@@ -107,11 +112,12 @@ func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
 		return
 	}
 
+	padTop, padX, padBottom := previewInsets(env)
 	width := p.preview.widthSeen
 	if width <= 0 {
 		width = previewFallbackWidth
 		if env.Geometry.RightWidth > 0 {
-			width = env.Geometry.RightWidth - 2*previewPadX
+			width = env.Geometry.RightWidth - 2*padX
 		}
 	}
 	height := p.layoutPreview(env.Canvas, plan.Markdown, width)
@@ -123,11 +129,23 @@ func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
 			// `.document` 的字体/行高在外层（官方 `.document{font-size:14px;line-height:1.75}`
 			// 是容器，正文里面的块级样式由 MarkdownText 自己定）。
 			ui.Column(f).FillWidth().
-				PadSides(previewPadTop, previewPadX, previewPadBottom, previewPadX).Children(func() {
+				PadSides(padTop, padX, padBottom, padX).Children(func() {
 				p.boxes.holder = ui.Column(f).FillWidth().MinHeight(height)
 			})
 		})
 	})
+}
+
+// previewInsets 对应官方 @media(max-width:767px)；媒体查询看整窗，不看右栏宽。
+func previewInsets(env *pluginapi.Env) (top, x, bottom float32) {
+	viewport := env.Bounds.Width
+	if viewport <= 0 {
+		viewport = env.Geometry.Width
+	}
+	if viewport > 0 && viewport <= previewCompactViewport {
+		return previewCompactPadTop, previewCompactPadX, previewCompactPadBot
+	}
+	return previewPadTop, previewPadX, previewPadBottom
 }
 
 // afterDrawPreview 是覆画阶段：把排好版的 Markdown 画到占位上。

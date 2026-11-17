@@ -284,7 +284,16 @@ type Primitives interface {
 	// Divider 一条最轻的分隔线。
 	Divider(f ui.C)
 	// CircleButton 一个 28px 圆形图标按钮（官方 .action 的尺寸），返回是否被点击。
+	//
+	// glyph 是**文字字形**的退路，只在没有对应官方矢量素材时用；有素材就走
+	// CircleIconButton —— 官方界面里图标键一律画 <svg>，从不写字形。
 	CircleButton(f ui.C, id gfx.ID, glyph string, filled bool) bool
+	// CircleIconButton 同 CircleButton 的几何，但画官方矢量图标（15px 边长）。
+	//
+	// 几何：QueueDock.module.css:219-233（28×28、radius 999px、透明底、label-tertiary）；
+	// 图标边长：MessageFeedbackActions.module.css:20-23（`.action svg { width: 15px }`）。
+	// 调用方自己决定图标取哪个官方素材（`dsassets` 里按图标名一一对应）。
+	CircleIconButton(f ui.C, id gfx.ID, icon gfx.Icon, filled bool) bool
 	// Chip 一个只读小标签（官方的 .chip：inline-flex、gap 3px、business-primary 文字）。
 	Chip(f ui.C, label string) ui.Box
 	// Bubble 画一个用户气泡容器（官方 .bubble：radius xl、specific-bubble 底）。

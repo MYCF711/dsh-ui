@@ -173,9 +173,10 @@ func (p *Plugin) drawPillIcon(f ui.C, kind officialGlyph, tint gfx.Color) {
 	if kind == glyphNone {
 		return
 	}
-	// 官方 `.pill{gap:6px}`：图标与文字之间那 6px 由这里给（不在图标里内缩）。
-	ui.Row(f).Width(pillGap).Height(pillHeight)
+	// 官方 `.pill{gap:6px}`：先画 14px 图标，再留图标与文字之间的 6px；
+	// 左侧只有 `.pill{padding-inline:8px}`，不能把 gap 挪到图标前。
 	ui.Icon(f, pillIcon(kind, tint)).Size(StatsPillIconSize, StatsPillIconSize).Color(tint)
+	ui.Row(f).Width(pillGap).Height(pillHeight)
 }
 
 // pillIcon 按种类取官方 sprite（Activity = gauge-outline，Usage = database-outline）。

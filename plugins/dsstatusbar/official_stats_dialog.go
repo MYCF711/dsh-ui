@@ -227,7 +227,9 @@ func (p *Plugin) drawStatsDialog(f ui.C, env *pluginapi.Env, t *pluginapi.Theme)
 	} else {
 		panel = panel.Bottom(env.Bounds.Height - anchor.Y + StatsDialogAnchorGap)
 	}
-	panel = panel.Radius(t.Radii.LG).Background(t.BgLayer3).Shadow(gfx.ShadowLG).
+	// `.panel{background:var(--dsw-specific-menu)}`（stat-dialog.module.css:16），
+	// 不能用 BgLayer3 代替菜单材质。
+	panel = panel.Radius(t.Radii.LG).Background(t.Menu).Shadow(gfx.ShadowLG).
 		Pad(StatsDialogPad)
 	// 弹窗本体吃掉点击：官方点框内不关闭（stat-dialog.ts 只认"外面"）。
 	// 角色用 RoleGroup：viva v0.2.3 没有 RoleDialog，Group 是"成组的非动作区域"。

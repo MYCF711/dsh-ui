@@ -159,7 +159,9 @@ func Dark() *pluginapi.Theme {
 		NavActive:               gfx.RGB24(staticNeutralBluish750),
 		NavHover:                gfx.RGB24(staticNeutralBluish850),
 		Hover:                   ui.RGBA(255, 255, 255, 0.08), // --dsw-alias-interactive-bg-hover = #ffffff14
+		InteractiveActive:       ui.RGBA(255, 255, 255, 0.14), // design-platform.css:390
 		ButtonGhostActiveBorder: gfx.RGB24(staticNeutralBluish600),
+		ButtonContrastFill:      gfx.RGB24(staticNeutralBluish50), // design-platform.css:357
 		// --dsw-alias-markdown-tag（design-platform.css:424）= neutral-bluish-850；
 		// dockkit 选中 tab 的底色，见 pluginapi/theme.go 的 MarkdownTag 注释。
 		MarkdownTag: gfx.RGB24(staticNeutralBluish850),
@@ -169,11 +171,13 @@ func Dark() *pluginapi.Theme {
 		BorderL3: ui.RGBA(255, 255, 255, 0.16), // #ffffff29
 		BorderL4: ui.RGBA(255, 255, 255, 0.20), // #ffffff33
 
-		LabelPrimary:   gfx.RGB24(staticNeutralBluish50),
-		LabelSecondary: gfx.RGB24(staticNeutralBluish300),
-		LabelTertiary:  gfx.RGB24(staticNeutralBluish400),
-		LabelCaption:   gfx.RGB24(staticNeutralBluish600),
-		LabelDimmed:    gfx.RGB24(staticNeutralBluish750),
+		LabelPrimary:         gfx.RGB24(staticNeutralBluish50),
+		LabelSecondary:       gfx.RGB24(staticNeutralBluish300),
+		LabelTertiary:        gfx.RGB24(staticNeutralBluish400),
+		LabelCaption:         gfx.RGB24(staticNeutralBluish600),
+		LabelDimmed:          gfx.RGB24(staticNeutralBluish750),
+		LabelPrimaryInverted: gfx.RGB24(staticNeutralBluish800), // design-platform.css:410
+		LabelOnColor:         gfx.RGB24(staticNeutralBluish00),  // design-platform.css:406
 
 		Link:               gfx.RGB24(staticDeepseek400),
 		BrandPrimary:       gfx.RGB24(staticNeutralBluish50),
@@ -192,8 +196,9 @@ func Dark() *pluginapi.Theme {
 		CodeFunction: gfx.RGB24(0xdcdcaa),
 		CodeVariable: gfx.RGB24(0x9cdcfe),
 
-		Bubble:     gfx.RGB24(staticNeutralBluish850), // --dsw-specific-bubble
-		InputMajor: gfx.RGB24(staticNeutralBluish850), // --dsw-specific-input-major
+		Bubble:          gfx.RGB24(staticNeutralBluish850), // --dsw-specific-bubble
+		InputMajor:      gfx.RGB24(staticNeutralBluish850), // --dsw-specific-input-major
+		FileUploadTrack: ui.RGBA(0, 0, 0, 0.08),            // design-platform.css:462
 
 		Scrollbar:      gfx.RGB24(staticNeutral700),
 		ScrollbarHover: gfx.RGB24(staticNeutral600),
@@ -240,7 +245,9 @@ func Light() *pluginapi.Theme {
 		NavActive:               gfx.RGB24(staticNeutralBluish100),
 		NavHover:                gfx.RGB24(staticNeutralBluish75),
 		Hover:                   ui.RGBA(38, 49, 72, 0.06), // #2631480f
+		InteractiveActive:       ui.RGBA(38, 49, 72, 0.10), // design-platform.css:238
 		ButtonGhostActiveBorder: gfx.RGB24(staticNeutralBluish500),
+		ButtonContrastFill:      gfx.RGB24(staticNeutralBluish700), // design-platform.css:205
 		// --dsw-alias-markdown-tag（design-platform.css:272）= neutral-bluish-75。
 		MarkdownTag: gfx.RGB24(staticNeutralBluish75),
 
@@ -249,11 +256,13 @@ func Light() *pluginapi.Theme {
 		BorderL3: ui.RGBA(0, 0, 0, 0.12), // #0000001f
 		BorderL4: ui.RGBA(0, 0, 0, 0.16), // #00000029
 
-		LabelPrimary:   gfx.RGB24(0x000000),
-		LabelSecondary: gfx.RGB24(staticNeutralBluish700),
-		LabelTertiary:  gfx.RGB24(staticNeutralBluish600),
-		LabelCaption:   gfx.RGB24(staticNeutralBluish400),
-		LabelDimmed:    gfx.RGB24(staticNeutralBluish200),
+		LabelPrimary:         gfx.RGB24(0x000000),
+		LabelSecondary:       gfx.RGB24(staticNeutralBluish700),
+		LabelTertiary:        gfx.RGB24(staticNeutralBluish600),
+		LabelCaption:         gfx.RGB24(staticNeutralBluish400),
+		LabelDimmed:          gfx.RGB24(staticNeutralBluish200),
+		LabelPrimaryInverted: gfx.RGB24(staticNeutralBluish00), // design-platform.css:258
+		LabelOnColor:         gfx.RGB24(staticNeutralBluish00), // design-platform.css:254
 
 		Link:               gfx.RGB24(staticDeepseek500),
 		BrandPrimary:       gfx.RGB24(staticNeutralBluish1000),
@@ -271,8 +280,9 @@ func Light() *pluginapi.Theme {
 		CodeFunction: gfx.RGB24(0x795e26),
 		CodeVariable: gfx.RGB24(0x001080),
 
-		Bubble:     gfx.RGB24(staticDeepseek50), // --dsw-specific-bubble
-		InputMajor: gfx.RGB24(staticNeutralBluish00),
+		Bubble:          gfx.RGB24(staticDeepseek50),      // --dsw-specific-bubble
+		InputMajor:      gfx.RGB24(staticNeutralBluish00), // --dsw-specific-input-major
+		FileUploadTrack: ui.RGBA(0, 0, 0, 0.08),           // design-platform.css:311
 
 		Scrollbar:      gfx.RGB24(staticNeutral200),
 		ScrollbarHover: gfx.RGB24(staticNeutral300),

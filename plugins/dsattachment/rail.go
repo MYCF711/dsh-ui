@@ -107,6 +107,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -173,10 +174,6 @@ const (
 	iconSize    float32 = 28
 	spinnerSize float32 = 20
 	spinnerRing float32 = 2
-	// 图标槽里放扩展名文字时的字号：官方这里是 SVG sprite（FileTypeIcon），
-	// 本仓没有素材，用文字符号顶替（仓规：不许手画 SVG）。28px 槽只放得下 4 个字符。
-	glyphFontSize   float32 = 10
-	glyphMaxLetters         = 4
 )
 
 // 卡内两行文字：`OFF:FileCard.module.css:43-49`（.body padding:8px 0）、
@@ -197,7 +194,7 @@ const (
 	removeTop   float32 = 6
 	removeRight float32 = 6
 	removeSize  float32 = 18
-	// 官方 `IconCloseFillRegular size={12}`（FileCard.tsx:69）。图标没有 Go 素材 → 文字「×」。
+	// 官方 `IconCloseFillRegular size={12}`（FileCard.tsx:69）。
 	removeGlyphSize float32 = 12
 )
 
@@ -216,7 +213,7 @@ const (
 const (
 	arrowSize  float32 = 24
 	arrowInset float32 = 4
-	// 官方 `IconChevronLeft/RightOutlineRegular`；图标没有素材 → 文字「‹」「›」。
+	// 官方 `IconChevronLeft/RightOutlineRegular` 的 sprite 默认 size=14。
 	arrowGlyphSize float32 = 14
 )
 
@@ -834,9 +831,9 @@ func (p *Plugin) drawArrow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, direc
 	if !enabled {
 		return
 	}
-	glyph, label, id, at := "‹", zhScrollLeft, "attachments.scroll-left", arrowInset
+	label, id, at := zhScrollLeft, "attachments.scroll-left", arrowInset
 	if direction > 0 {
-		glyph, label, id = "›", zhScrollRight, "attachments.scroll-right"
+		label, id = zhScrollRight, "attachments.scroll-right"
 	}
 	arrow := ui.Row(f).Absolute().Top((itemHeight-arrowSize)/2).Size(arrowSize, arrowSize).
 		Radius(arrowSize/2).Background(t.InputMajor).Shadow(gfx.ShadowMD).
@@ -849,7 +846,9 @@ func (p *Plugin) drawArrow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, direc
 	}
 	p.boxes.Arrows = append(p.boxes.Arrows, arrow)
 	arrow.Children(func() {
-		ui.Text(f, glyph).FontSize(arrowGlyphSize).Color(t.LabelSecondary)
+		if icon, ok := dsassets.FileChevron(direction < 0); ok {
+			ui.Icon(f, icon).Size(arrowGlyphSize, arrowGlyphSize).Color(t.LabelSecondary)
+		}
 	})
 	if arrow.Clicked() {
 		p.stepPage(direction)
@@ -921,11 +920,8 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, it ite
 	})
 }
 
-// drawIcon 画 28×28 图标槽。
-//
-// 官方：uploading 时是 `.spinner`（20×20、2px 边框、旋转），其余是 `FileTypeIcon`
-// （`OFF:FileCard.tsx:45-49`）。本仓没有图标素材、也没有渲染循环（转不起来），
-// 所以：上传中画静态的 20×20 圈，就绪/失败画扩展名的文字符号（仓规：不许手画 SVG）。
+// drawIcon 画 28×28 图标槽。uploading 仍是静态 spinner（Viva 没有 CSS 旋转
+// 动画）；ready/error 逐字复用官方 FileTypeIcon，不再用扩展名文字顶替。
 func (p *Plugin) drawIcon(f ui.C, t *pluginapi.Theme, it item) {
 	icon := ui.Row(f).Size(iconSize, iconSize).Items(ui.Center).Justify(ui.Center)
 	icon.Children(func() {
@@ -934,11 +930,14 @@ func (p *Plugin) drawIcon(f ui.C, t *pluginapi.Theme, it item) {
 				Border(spinnerRing, t.LabelTertiary)
 			return
 		}
-		glyph := glyphOf(it.Name)
-		if glyph == "" {
+		asset, ok := dsassets.FileType(it.Name)
+		if !ok {
 			return
 		}
-		ui.Text(f, glyph).FontSize(glyphFontSize).Color(t.LabelTertiary)
+		ui.Icon(f, asset.Sheet).Size(iconSize, iconSize)
+		if asset.Mark != nil {
+			ui.Icon(f, *asset.Mark).Absolute().Inset(0).Color(gfx.RGB24(0xffffff))
+		}
 	})
 }
 
@@ -947,13 +946,20 @@ func (p *Plugin) drawIcon(f ui.C, t *pluginapi.Theme, it item) {
 // 官方默认 `opacity:0`、hover 才出现（`:99-112`）。viva 没有 per-box 的 hover 状态，
 // 而"看不见的按钮"等于没有按钮 —— 所以这里始终可见（只改可见性，不改几何）。
 func (p *Plugin) drawRemove(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, it item) {
+	background, foreground := t.ButtonContrastFill, t.LabelPrimaryInverted
+	if it.State == stateError {
+		// FileCard.module.css:136-140：失败态移除按钮常显、error 底、label-on-color。
+		background, foreground = t.Error, t.LabelOnColor
+	}
 	remove := ui.Row(f).Absolute().Top(removeTop).Right(removeRight).
 		Size(removeSize, removeSize).Radius(removeSize/2).
-		Background(t.ButtonPrimaryFill).Items(ui.Center).Justify(ui.Center).
+		Background(background).Items(ui.Center).Justify(ui.Center).
 		Hit(p.hitID(env, "attachments.remove."+it.Key), removeLabel(it.Name))
 	p.boxes.Remove = append(p.boxes.Remove, remove)
 	remove.Children(func() {
-		ui.Text(f, "×").FontSize(removeGlyphSize).Color(t.ButtonPrimaryFg)
+		if icon, ok := dsassets.WorkspaceCloseFill(foreground); ok {
+			ui.Icon(f, icon).Size(removeGlyphSize, removeGlyphSize).Color(foreground)
+		}
 	})
 	if remove.Clicked() {
 		p.remove(it.Key)
@@ -967,10 +973,10 @@ func (p *Plugin) drawRemove(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, it i
 // `.progressBar` 的默认宽度 35%（不清零、也不假装 100%）。
 func (p *Plugin) drawProgress(f ui.C, t *pluginapi.Theme, it item) {
 	// --dsw-specific-file-upload-track 在 pluginapi.Theme 里没有对应字段，
-	// 取最轻的一档描边色（BorderL2）——**不新造颜色**。
+	// 官方 --dsw-specific-file-upload-track：rgba(0,0,0,0.08)（design-platform.css:311,462）。
 	track := ui.Row(f).Absolute().Left(progressInsetX).Right(progressInsetX).
 		Bottom(progressBottom).Height(progressHeight).Radius(progressRadius).
-		Background(t.BorderL2)
+		Background(t.FileUploadTrack)
 	track.Children(func() {
 		width := progressWidthPercent
 		if it.Progress >= 0 {
@@ -1080,16 +1086,6 @@ func metaColor(t *pluginapi.Theme, s state) ui.Color {
 // removeLabel 套官方 `file.remove` 模板（「移除文件 {name}」）。
 func removeLabel(name string) string {
 	return strings.ReplaceAll(zhFileRemove, "{name}", displayName(item{Name: name}))
-}
-
-// glyphOf 是图标槽里的文字符号：扩展名前 4 个字符（官方这里是 SVG sprite）。
-func glyphOf(name string) string {
-	ext := extensionText(name)
-	runes := []rune(ext)
-	if len(runes) > glyphMaxLetters {
-		runes = runes[:glyphMaxLetters]
-	}
-	return string(runes)
 }
 
 // extensionText 等价官方的 `fileExtension(name).toUpperCase().slice(0, 8)`

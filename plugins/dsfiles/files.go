@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -76,6 +77,28 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 // 16 KB 够看清一个源码文件的结构；更大的文件应该在编辑器里开，不是在侧栏预览。
 const maxPreviewBytes = 16 * 1024
 
+// 文件树几何逐项来自 rc.2 ui-sidebar-files：
+// FilesBody.module.css:140-151（body padding 8 0 8 8）；
+// FileTree.module.css:18-42（行 radius-md、padding 5 10、gap 6）；
+// FileTree.tsx:222-224（FileTypeIcon/文件夹 size=16）；
+// FilesBody.module.css:2-12（默认 13px、line-height 1.5）。
+const (
+	fileTreePadTop    float32 = 8
+	fileTreePadRight  float32 = 0
+	fileTreePadBottom float32 = 8
+	fileTreePadLeft   float32 = 8
+	fileRowPadY       float32 = 5
+	fileRowPadX       float32 = 10
+	fileRowGap        float32 = 6
+	fileRowIconSize   float32 = 16
+	fileRowLineHeight float32 = 13 * 1.5
+	fileRowHeight             = fileRowLineHeight + 2*fileRowPadY
+	fileNotePadY      float32 = 3
+	fileNotePadX      float32 = 10
+	fileNoteFontSize  float32 = 12
+	fileBackIconSize  float32 = 14
+)
+
 // Panels 挂两块：侧栏底部是文件列表，主区右下是预览浮层。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
@@ -110,32 +133,36 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 		shown = shown[:maxShown]
 	}
 
-	ui.Column(f).FillWidth().Gap(2).PadY(4).Children(func() {
+	ui.Column(f).FillWidth().Gap(0).
+		PadSides(fileTreePadTop, fileTreePadRight, fileTreePadBottom, fileTreePadLeft).Children(func() {
 		title := "文件"
 		if p.curDir != "" {
-			title = "▸ " + p.curDir
+			title = p.curDir
 		}
-		ui.Text(f, title).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+		// FileTree.module.css:108-113 的 note 档也用于本仓保留的目录提示。
+		ui.Row(f).FillWidth().PadSides(fileNotePadY, fileNotePadX, fileNotePadY, fileNotePadX).Children(func() {
+			ui.Text(f, title).FontSize(fileNoteFontSize).Color(t.LabelTertiary).Ellipsis()
+		})
 		if p.curDir != "" {
-			if back := p.prims.ListRow(f, env.Tree.ID(env.Feat, "files-up"), false, 22, func() {
-				ui.Text(f, "← 上一级").FontSize(12).Color(t.LabelTertiary)
-			}); back.Clicked() {
+			back := p.fileRow(f, false, func() {
+				if icon, ok := dsassets.FileChevron(true); ok {
+					ui.Icon(f, icon).Size(fileBackIconSize, fileBackIconSize).Color(t.LabelTertiary)
+				}
+				ui.Text(f, "上一级").FontSize(t.Fonts.Secondary).LineHeight(fileRowLineHeight).Color(t.LabelTertiary)
+			}).Hit(env.Tree.ID(env.Feat, "files-up"), "")
+			if back.Clicked() {
 				p.curDir = parentDir(p.curDir)
 				p.sel = ""
 			}
 		}
 		for _, e := range shown {
 			e := e
-			label := e.Name
-			if e.IsDir {
-				label = "▸ " + label // 目录用 ▸ 前缀，和文件区分开
-			} else if label == p.sel {
-				label = "• " + label
-			}
 			active := !e.IsDir && e.Name == p.sel
-			row := p.prims.ListRow(f, env.Tree.ID(env.Feat, "file-"+e.Name), active, 22, func() {
-				ui.Text(f, label).FontSize(12).Color(t.LabelSecondary)
-			})
+			row := p.fileRow(f, active, func() {
+				p.drawFileIcon(f, t, e)
+				ui.Text(f, e.Name).FontSize(t.Fonts.Secondary).LineHeight(fileRowLineHeight).
+					Color(t.LabelPrimary).Ellipsis().Grow(1)
+			}).Hit(env.Tree.ID(env.Feat, "file-"+e.Name), "")
 			// 文件行是官方 `file` target 的生产方（#18）：身份是
 			// (会话, 工作区相对路径)，**不是**"当前选中"——菜单打开后用户可能
 			// 已经切走会话或进别的目录（官方 types.ts:30 的 sessionId + path）。
@@ -166,10 +193,50 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 			}
 		}
 		if more > 0 {
-			ui.Text(f, "还有 "+itoa(more)+" 个").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Row(f).FillWidth().PadSides(fileNotePadY, fileNotePadX, fileNotePadY, fileNotePadX).Children(func() {
+				ui.Text(f, "还有 "+itoa(more)+" 个").FontSize(fileNoteFontSize).Color(t.LabelTertiary)
+			})
 		}
 	})
 }
+
+// fileRow 画 FileTree.module.css:18-42 的行：行与行之间 gap=0，
+// hover/current 分别使用 official design-platform.css:238,242（亮）与 :390,394（暗）。
+func (p *Plugin) fileRow(f ui.C, active bool, body func()) ui.Box {
+	t := p.theme
+	row := ui.Row(f).FillWidth().Height(fileRowHeight).Radius(t.Radii.MD).
+		PadSides(fileRowPadY, fileRowPadX, fileRowPadY, fileRowPadX).
+		Items(ui.Center).Gap(fileRowGap)
+	if active {
+		row = row.Background(t.InteractiveActive)
+	} else {
+		row = row.Hover(ui.Look{}.Background(t.Hover))
+	}
+	return row.Children(body)
+}
+
+// drawFileIcon 复用 FileTree.tsx:222-224 的 16px 文件夹与 FileTypeIcon。
+func (p *Plugin) drawFileIcon(f ui.C, t *pluginapi.Theme, entry pluginapi.FSEntry) {
+	ui.Row(f).Size(fileRowIconSize, fileRowIconSize).Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
+		if entry.IsDir {
+			if icon, ok := dsassets.WorkspaceFolder(t.LabelTertiary, false); ok {
+				ui.Icon(f, icon).Size(fileRowIconSize, fileRowIconSize).Color(t.LabelTertiary)
+			}
+			return
+		}
+		asset, ok := dsassets.FileType(entry.Name)
+		if !ok {
+			return
+		}
+		ui.Icon(f, asset.Sheet).Size(fileRowIconSize, fileRowIconSize)
+		if asset.Mark != nil {
+			ui.Icon(f, *asset.Mark).Absolute().Inset(0).Color(fileTypeMarkColor())
+		}
+	})
+}
+
+// fileTypeMarkColor 是 FileTypeIcon 的 --dsw-static-neutral-00 标记色。
+func fileTypeMarkColor() ui.Color { return gfx.RGB24(0xffffff) }
 
 // Open 是**给壳的测试开关用的**公开入口：无头截图没法点鼠标，
 // 所以壳用 `-open-file` 直接调它来验预览。产品路径不走这里（走 drawList 的点击）。
@@ -205,31 +272,61 @@ func (p *Plugin) open(env *pluginapi.Env, cwd, name string) {
 	p.content = body
 }
 
-// drawPreview 在右上角画预览卡片。
-//
-// 用 Absolute + 显式 Width/Height（本仓唯一被真机证明能出现在 overlay 上的写法，
-// 见 dsshortcuts 的注释）；**必须 Column**，Row 会把所有内容挤成一行。
+// 文档预览几何：TextPreview.module.css:42-51（38px header、0 6 0 16、
+// 0.5px border-l3）、:53-55（path margin-right 12）、:71-89（13px mono、
+// line-height 1.6）与 :113-122（正文 8px inset）；浮层 inset/radius 来自
+// FilesBody.module.css:123-134。打开按钮来自 open-in-app
+// OpenTargetButton.module.css:10-44,64-66 与 OpenTargetButton.tsx:72-76,112。
+const (
+	previewOverlayInset   float32 = 8
+	previewHeaderHeight   float32 = 38
+	previewHeaderGap      float32 = 4
+	previewHeaderPadRight float32 = 6
+	previewHeaderPadLeft  float32 = 16
+	previewPathMargin     float32 = 12
+	previewHairline       float32 = 0.5
+	previewBodyPad        float32 = 8
+	previewBodyLineHeight float32 = 13 * 1.6
+	previewOpenHeight     float32 = 24
+	previewOpenBorder     float32 = 0.5
+	previewOpenFontSize   float32 = 11
+	previewOpenLineHeight float32 = 16
+	previewOpenPadY       float32 = 3
+	previewOpenPadX       float32 = 5
+	previewOpenGap        float32 = 4
+	previewOpenIconSize   float32 = 13
+)
+
+// drawPreview 在右上角画预览卡片。浮层宽度保留本仓既有桌面适配值；
+// 卡片内部的几何、字号与操作按钮逐项对齐官方 document preview/open-in-app。
 func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
 	if p.sel == "" {
 		return
 	}
 	t := p.theme
-	ui.Column(f).Absolute().Top(56).Right(24).Width(520).Children(func() {
-		ui.Column(f).Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
-			PadSides(16, 16, 14, 16).Gap(8).Children(func() {
-			// 标题行：文件名 + 「用默认程序打开」。
-			//
-			// 官方 `open-in-app` 的这半句是 "the document preview's
-			// default-application controls for one file"——预览里得能把它交给
-			// 真正的编辑器/查看器，因为侧栏预览只有 20 行、16 KB。
-			//
-			// 三个前置条件缺一不画：**读成功了**（读不出来还去开，开的是同一个坏路径）、
-			// **壳接了 OpenFile**（老壳没有这个动作）、**有选中文件**。
-			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-				ui.Text(f, p.sel).FontSize(14).Color(t.LabelPrimary).Grow(1)
+	ui.Column(f).Absolute().Top(previewOverlayInset).Right(previewOverlayInset).Width(520).Children(func() {
+		ui.Column(f).Radius(t.Radii.LG).Background(t.InputMajor).Border(previewHairline, t.BorderL2).
+			Gap(0).Children(func() {
+			// 标题行：官方 16px 文件类型图标 + path + 默认应用按钮。
+			ui.Row(f).FillWidth().Height(previewHeaderHeight).Items(ui.Center).Gap(previewHeaderGap).
+				PadSides(0, previewHeaderPadRight, 0, previewHeaderPadLeft).Children(func() {
+				p.drawFileIcon(f, t, pluginapi.FSEntry{Name: p.sel})
+				ui.Text(f, p.sel).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary).
+					MarginSides(0, previewPathMargin, 0, 0).Ellipsis().Grow(1)
 				if env.Act.OpenFile != nil && p.err == "" {
-					if ui.Button(f, "用默认程序打开").
-						Small().Clicked() {
+					open := ui.Row(f).Height(previewOpenHeight).Radius(t.Radii.SM).
+						Border(previewOpenBorder, t.BorderL4).Items(ui.Center).Gap(previewOpenGap).
+						PadSides(previewOpenPadY, previewOpenPadX, previewOpenPadY, previewOpenPadX).
+						Hover(ui.Look{}.Background(t.Hover)).
+						Hit(env.Tree.ID(env.Feat, "files-open-external"), "用默认程序打开")
+					open.Children(func() {
+						if icon, ok := dsassets.FileRightUp(t.LabelPrimary); ok {
+							ui.Icon(f, icon).Size(previewOpenIconSize, previewOpenIconSize).Color(t.LabelPrimary)
+						}
+						ui.Text(f, "用默认程序打开").FontSize(previewOpenFontSize).
+							LineHeight(previewOpenLineHeight).Color(t.LabelPrimary)
+					})
+					if open.Clicked() {
 						if dst, err := fileURL(dirPath(env.Data.CWD, p.curDir) + "/" + p.sel); err == nil {
 							// 失败由壳写状态栏（它统一管反馈），插件不重复报。
 							_ = env.Act.OpenFile(dst)
@@ -237,18 +334,22 @@ func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
 					}
 				}
 			})
-			if p.err != "" {
-				ui.Text(f, "读不出来："+p.err).FontSize(12).Color(t.Error)
-			} else {
-				// 正文用等宽、行高 18、最多 20 行——超出的截断（这也是"别卡住界面"）
+			ui.Row(f).FillWidth().Height(previewHairline).Background(t.BorderL3)
+			ui.Column(f).FillWidth().Pad(previewBodyPad).Children(func() {
+				if p.err != "" {
+					ui.Text(f, "读不出来："+p.err).FontSize(12).Color(t.Error)
+					return
+				}
+				// 正文保留既有 20 行上限；视觉使用官方 13px/1.6 等宽正文。
 				lines := strings.Split(p.content, "\n")
 				if len(lines) > 20 {
 					lines = append(lines[:20], "… 还有 "+itoa(len(lines)-20)+" 行")
 				}
 				for _, ln := range lines {
-					ui.Text(f, ln).FontSize(12).Color(t.LabelSecondary)
+					ui.Text(f, ln).Mono().FontSize(t.Fonts.Secondary).
+						LineHeight(previewBodyLineHeight).Color(t.LabelPrimary)
 				}
-			}
+			})
 		})
 	})
 }

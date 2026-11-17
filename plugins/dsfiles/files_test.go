@@ -16,7 +16,7 @@ import (
 
 // renderFiles 用真实 flex 布局画一帧文件列表（不启动窗口）。
 // click 非空时走 canvas 的事件 pass，测到的是 row.Clicked() 的真实分支。
-func renderFiles(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) {
+func renderFiles(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) *gfx.Canvas {
 	t.Helper()
 	if p.theme == nil {
 		p.theme = dscore.Dark()
@@ -46,6 +46,7 @@ func renderFiles(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi
 	view.Draw(canvas, env.Bounds, func(f ui.C) {
 		p.drawList(f, env)
 	})
+	return canvas
 }
 
 func TestDirPath(t *testing.T) {
@@ -178,6 +179,57 @@ func TestListSkipsWhenHostHasNoCache(t *testing.T) {
 // 官方 `open-in-app` 的那半句是 "the document preview's default-application
 // controls for one file"。这里验的是插件造出来的 **file: 链接**是对的——
 // 壳只认显式 file: URL，造错了它会拒绝，而用户看到的是"打开失败"。
+// TestOfficialFileTreeGeometryAndIcons 钉住 rc.2 文件树，而非会话行图元。
+func TestOfficialFileTreeGeometryAndIcons(t *testing.T) {
+	if fileRowPadY != 5 || fileRowPadX != 10 || fileRowGap != 6 || fileRowIconSize != 16 {
+		t.Fatalf("文件行几何被改离 FileTree.module.css:18-42：pad=%v/%v gap=%v icon=%v",
+			fileRowPadY, fileRowPadX, fileRowGap, fileRowIconSize)
+	}
+	if fileRowLineHeight != 19.5 || fileRowHeight != 29.5 {
+		t.Fatalf("文件行 13px/1.5 + 5px 双向内边距应为 29.5：line=%v height=%v", fileRowLineHeight, fileRowHeight)
+	}
+	const cwd = `D:\ws`
+	p := &Plugin{sel: "main.go"}
+	act := pluginapi.Actions{
+		FSList: func(string) []pluginapi.FSEntry {
+			return []pluginapi.FSEntry{{Name: "main.go"}, {Name: "README.md"}, {Name: "sub", IsDir: true}}
+		},
+		FSRead: func(string) (string, error) { return "", nil },
+	}
+	canvas := renderFiles(t, p, pluginapi.Snapshot{CWD: cwd, Cur: "s1"}, act, "")
+	for _, bad := range []string{"▸ sub", "• main.go"} {
+		for _, text := range canvas.Texts() {
+			if text.Value == bad {
+				t.Errorf("仍在用字体 glyph %q 顶替官方图标", bad)
+			}
+		}
+	}
+	foundName := false
+	for _, text := range canvas.Texts() {
+		if text.Value == "main.go" {
+			foundName = true
+			if text.Style.Size != 13 || text.Style.Color != p.theme.LabelPrimary {
+				t.Errorf("文件名样式=%+v，官方是 13px label-primary", text.Style)
+			}
+		}
+	}
+	if !foundName {
+		t.Fatal("文件行没有画出 main.go")
+	}
+	if len(canvas.Triangles()) == 0 {
+		t.Fatal("文件列表没有官方文件夹/FileTypeIcon 矢量图层")
+	}
+	active := false
+	for _, rect := range canvas.Rectangles() {
+		if rect.Bounds.Height == fileRowHeight && rect.Color == p.theme.InteractiveActive {
+			active = true
+		}
+	}
+	if !active {
+		t.Fatal("当前文件行没有使用 --dsw-alias-interactive-bg-active")
+	}
+}
+
 func TestPreviewOpensInDefaultApp(t *testing.T) {
 	var opened []string
 	act := pluginapi.Actions{

@@ -277,7 +277,6 @@ M12.6516 12.6696C12.6516 12.925 12.6516 13.1804 12.6516 13.4359C12.6952 13.4378 
 |---|---|---|
 | [`dsconversation/conversation.go`](../plugins/dsconversation/conversation.go) | `▸` / `▾` | 思考块折叠箭头 |
 | [`dscore/primitives.go`](../plugins/dscore/primitives.go) | `▸` / `▾` | DisclosureRow 折叠箭头 |
-| [`dsfiles/files.go`](../plugins/dsfiles/files.go) | `▸` | 目录前缀 |
 | [`dsrightbar/rightbar.go`](../plugins/dsrightbar/rightbar.go) | `▸` / `▾` | 分组折叠 |
 | [`dscomposer/mention.go`](../plugins/dscomposer/mention.go) | `▸` | 提及列表里的目录标记 |
 

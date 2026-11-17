@@ -222,6 +222,67 @@ func TestSchedulePanelDrawsOfficialListAndDetail(t *testing.T) {
 	fg2Text(t, canvas, "晨报正文")
 }
 
+func TestScheduleResponsiveOfficialGeometry(t *testing.T) {
+	for _, tc := range []struct {
+		width, pad, gutter float32
+	}{
+		{1920, 48, 24},
+		{1182, 47.28, 24},
+		{1100, 44, 20},
+		{800, 32, 20},
+		{767, 20, 20},
+		{760, 20, 20},
+		{400, 20, 16},
+		{0, 24, 24},
+	} {
+		env := &pluginapi.Env{Geometry: pluginapi.Geometry{Width: tc.width}}
+		if got := schedulePagePadX(env); got != tc.pad {
+			t.Errorf("viewport=%v page pad=%v, want %v", tc.width, got, tc.pad)
+		}
+		if got := scheduleDetailGutterFor(env); got != tc.gutter {
+			t.Errorf("viewport=%v detail gutter=%v, want %v", tc.width, got, tc.gutter)
+		}
+	}
+
+	wide := &pluginapi.Env{Bounds: gfx.Rect{Width: 1182}, Geometry: pluginapi.Geometry{Width: 1182}}
+	if width, full := scheduleDetailWidth(wide); full || width != 555.54 {
+		t.Fatalf("1182px detail=(%v,%v), want (555.54,false)：不得再截到自造的 520px", width, full)
+	}
+	narrow := &pluginapi.Env{Bounds: gfx.Rect{Width: 760}, Geometry: pluginapi.Geometry{Width: 760}}
+	if width, full := scheduleDetailWidth(narrow); !full || width != 760 {
+		t.Fatalf("760px detail=(%v,%v), want (760,true)", width, full)
+	}
+}
+
+func TestScheduleOfficialStyleValues(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		got, official float32
+	}{
+		{"search gap", schedSearchGap, 8},
+		{"row padding", schedRowPad, 8},
+		{"row glyph top", schedRowGlyphTop, 2},
+		{"detail bar gap", schedDetailBarGap, 20},
+		{"detail actions gap", schedDetailActionsGap, 8},
+		{"detail icon", schedDetailIconSize, 28},
+		{"tab font", schedTabFont, 13},
+		{"tab line", schedTabLine, 16},
+		{"tab bottom padding", schedTabPadBottom, 13},
+		{"tab underline", schedTabUnderline, 2},
+		{"title to next run", schedDetailHeaderGap, 4},
+		{"next run bottom", schedNextRunBottom, 20},
+		{"instruction min height", schedInstructionMinH, 112},
+		{"instruction line", schedInstructionLine, 24},
+		{"delivery time font", schedDeliveryTimeFont, 14},
+		{"delivery prompt line", schedSavedPromptLine, 22},
+		{"retention line", schedRetentionLine, 20},
+	} {
+		if tc.got != tc.official {
+			t.Errorf("%s=%v, official=%v", tc.name, tc.got, tc.official)
+		}
+	}
+}
+
 // pluginapiGeometryForSchedule 是主区接管时的三栏几何（与 frame_test 同值）。
 func pluginapiGeometryForSchedule() pluginapi.Geometry {
 	return pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902}

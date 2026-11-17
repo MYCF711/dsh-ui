@@ -147,9 +147,9 @@ func (p *Page) drawDocument(f ui.C, env *pluginapi.Env, height float32, version 
 			Color(t.LabelTertiary).PadSides(documentTop, 0, 0, 0)
 		return
 	case documentFailed:
-		ui.Column(f).FillWidth().PadSides(documentTop, 0, 0, 0).Gap(sectionGap).Children(func() {
-			ui.Wrap(f, failureText(view.failure)).FillWidth().FontSize(metaSize).LineHeight(metaLine).
-				Color(t.LabelTertiary)
+		ui.Row(f).FillWidth().PadSides(documentTop, 0, 0, 0).Items(ui.Center).Gap(10).Children(func() {
+			ui.Wrap(f, failureText(view.failure)).FontSize(discoverErrorSize).LineHeight(discoverErrorLine).
+				Color(t.Error)
 			if !view.retryable {
 				return
 			}
@@ -157,13 +157,12 @@ func (p *Page) drawDocument(f ui.C, env *pluginapi.Env, height float32, version 
 			if env != nil && env.Tree != nil {
 				id = env.Tree.ID(env.Feat, "market-detail-retry")
 			}
-			// 重试按钮沿用本仓既有的**文字按钮**约定（28px 高、半径 MD、BgLayer3 底，
-			// 与 `plugins/dssidebar/plugins_page.go:457` 的详情动作按钮同一形状）：
-			// 官方那枚是 primitives 的 Button，随包不发 CSS（见 §4 缺口 5）。
-			button := ui.Row(f).Shrink(0).Height(28).Radius(t.Radii.MD).
-				PadSides(0, 10, 0, 10).Items(ui.Center).Justify(ui.Center).
-				Background(t.BgLayer3).Hit(id, zhRetry).Children(func() {
-				ui.Text(f, zhRetry).FontSize(metaSize).LineHeight(metaLine).Color(t.LabelPrimary)
+			// 官方 DetailDocument 重试是 small outline：28px、0 10px、12/18、radius-sm。
+			button := ui.Row(f).Shrink(0).Height(marketButtonHeight).Radius(t.Radii.SM).
+				PadSides(0, marketButtonPadX, 0, marketButtonPadX).Items(ui.Center).Justify(ui.Center).
+				Border(marketButtonBorder, t.BorderL3).Hit(id, zhRetry).
+				Hover(ui.Look{}.Background(t.Hover)).Children(func() {
+				ui.Text(f, zhRetry).FontSize(marketButtonFont).LineHeight(marketButtonLine).Color(t.LabelPrimary)
 			})
 			if button.Clicked() && env != nil && env.Act.MarketEntryDetailRetry != nil {
 				request := p.documentRequest(version, hasVersion)

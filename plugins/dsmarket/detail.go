@@ -2,6 +2,7 @@ package dsmarket
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -50,10 +51,15 @@ const (
 	titleRowGap float32 = 8
 	// `.notice{padding:10px 12px;border-radius:radius-md;background:warn-tertiary;
 	//   font-size:12px;line-height:18px;color:label-secondary;gap:8px}`（:78-95）。
-	noticePadY float32 = 10
-	noticePadX float32 = 12
-	noticeSize float32 = 12
-	noticeLine float32 = 18
+	noticePadY     float32 = 10
+	noticePadX     float32 = 12
+	noticeSize     float32 = 12
+	noticeLine     float32 = 18
+	noticeGap      float32 = 8
+	noticeIconSize float32 = 14
+	noticeIconTop  float32 = 2
+	// 面包屑图标使用 sprite 默认 14px（DiscoverSection.tsx:239；CSS :267-269 旋转 90°）。
+	crumbIconSize float32 = 14
 	// `.facts{margin:0}`；`.facts div{display:flex;align-items:center;justify-content:space-between;
 	//   gap:16px;min-height:44px;padding:8px 2px;border-bottom:0.5px solid border-l2}`（:314-342）。
 	factMinHeight float32 = 44
@@ -72,14 +78,14 @@ const (
 	// `.tags{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}`（:353-360）。
 	tagsGap float32 = 6
 
-	// Tag 的度量：官方 `Tag` 在 `@deepseek-ai/dsh-client-ui-primitives` 里，而那份包
-	// **随包不发 CSS**（本机 rc.2 的 node_modules 里没有它），所以取本仓已经在用的
-	// 同一份官方度量——`OFF:../dsh-client-ui-plugin-manager/src/client/PluginManagerPage.module.css:332-337`
-	// 的 `.statusTag{height:18px;padding:0 7px;font-size:10px}`（与 `plugins/dssidebar`
-	// 的 `drawPluginTag` 同一个来源）。
-	tagHeight float32 = 18
-	tagPadX   float32 = 7
-	tagFont   float32 = 10
+	// 官方 ui-primitives/src/Tag.module.css:4-13：1px 8px / 11px / 17px / 500。
+	// 内容盒 17 + 上下各 1 = 19px；圆角 999px。
+	tagHeight float32 = 19
+	tagPadY   float32 = 1
+	tagPadX   float32 = 8
+	tagFont   float32 = 11
+	tagLine   float32 = 17
+	tagRadius float32 = 999
 
 	// 页面内距与最大宽度：详情页在官方是 **Plugins 页**里的一个 tab，页面容器就是
 	// `.page`（`OFF:../dsh-client-ui-plugin-manager/src/client/PluginManagerPage.module.css`
@@ -211,9 +217,7 @@ func (p *Page) Draw(f ui.C, env *pluginapi.Env) {
 // （A 块的 Discover tab）还不存在——画一个点了没反应的按钮比不画更糟
 // （同 `plugins/dssidebar/PluginOpenDetail` 返回 false 时不许画入口的理由）。
 //
-// 图标用文字字形 `‹`：官方是 `IconChevronDownOutlineRegular` 旋转 90°
-// （`.crumbIcon{transform:rotate(90deg)}`，:267-269），本仓没有官方 sprite 导出，
-// 按仓规不手绘冒充（与 dssidebar 的 `‹`/`▾` 同一条先例，已在证据文档登记）。
+// 图标复用官方 `IconChevronDownOutlineRegular`，按 `.crumbIcon` 旋转 90°（:267-269）。
 func (p *Page) drawCrumb(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	label := zhBackToList
@@ -228,7 +232,11 @@ func (p *Page) drawCrumb(f ui.C, env *pluginapi.Env) {
 		id = env.Tree.ID(env.Feat, "market-detail-back")
 	}
 	row := ui.Row(f).Shrink(0).Items(ui.Center).Gap(crumbGap).Hit(id, label).Children(func() {
-		ui.Text(f, "‹").FontSize(crumbSize).LineHeight(crumbSize + 4).Color(t.LabelTertiary)
+		if commands, ok := dsassets.ChevronDownOutline(); ok {
+			ui.Icon(f, gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}).
+				Size(crumbIconSize, crumbIconSize).Color(t.LabelTertiary).
+				IconTransform(gfx.IconTransform{Rotate: 90})
+		}
 		ui.Text(f, label).FontSize(crumbSize).LineHeight(crumbSize + 4).Color(t.LabelTertiary)
 	})
 	if row.Clicked() {
@@ -245,6 +253,7 @@ func (p *Page) drawHead(f ui.C, env *pluginapi.Env, version Version, hasVersion 
 	t := p.theme
 	title := p.entry.TitleText()
 	ui.Row(f).FillWidth().Items(ui.Center).Gap(headGap).Children(func() {
+		drawMarketIconFrame(f, t)
 		ui.Column(f).Grow(1).MinWidth(0).Gap(mainGap).Children(func() {
 			ui.Row(f).FillWidth().Items(ui.Center).Gap(titleRowGap).Children(func() {
 				ui.Text(f, title).Shrink(1).FontSize(detailTitleSize).LineHeight(detailTitleLine).
@@ -273,14 +282,12 @@ func (p *Page) drawDescription(f ui.C) {
 
 // drawNotice 画官方 `.notice`：当前 DSH 与这一版不兼容时的提示条。
 //
-// 官方那条左侧有一枚 `IconWarningOutlineRegular`（:329-336 的 JSX）。本仓没有
-// 这枚 sprite 的导出（`plugins/dsassets` 的注册表里没有 warning 三角），按仓规
-// **不手绘冒充**，只画文字——已在证据文档登记。
+// 官方那条左侧有一枚 14px `IconWarningOutlineRegular`（:256），距文字 8px，
+// 图标上偏移 2px，颜色为 state-warn-primary（CSS :91-95）。
 func (p *Page) drawNotice(f ui.C, version Version, hasVersion bool) {
 	if !hasVersion || version.Compatibility.Compatible {
 		return
 	}
-	t := p.theme
 	text := zhExempted
 	if !version.Compatibility.Exempted {
 		text = fillTemplate(zhIncompatible, map[string]string{
@@ -288,9 +295,20 @@ func (p *Page) drawNotice(f ui.C, version Version, hasVersion bool) {
 			"range":   requirementsRange(version.Compatibility.Requirements),
 		})
 	}
-	ui.Wrap(f, text).FillWidth().FontSize(noticeSize).LineHeight(noticeLine).
-		Color(t.LabelSecondary).PadSides(noticePadY, noticePadX, noticePadY, noticePadX).
-		Radius(t.Radii.MD).Background(t.WarnTertiary)
+	drawMarketNotice(f, p.theme, text)
+}
+
+// drawMarketNotice 画详情与索引源对话框共用的官方 `.notice`。
+func drawMarketNotice(f ui.C, t *pluginapi.Theme, text string) {
+	ui.Row(f).FillWidth().Items(ui.Start).Gap(noticeGap).
+		PadSides(noticePadY, noticePadX, noticePadY, noticePadX).
+		Radius(t.Radii.MD).Background(t.WarnTertiary).Children(func() {
+		if icon, ok := dsassets.MarketWarningOutline(t.Warn); ok {
+			ui.Icon(f, icon).Size(noticeIconSize, noticeIconSize).
+				MarginSides(noticeIconTop, 0, 0, 0).Color(t.Warn)
+		}
+		ui.Wrap(f, text).Grow(1).FontSize(noticeSize).LineHeight(noticeLine).Color(t.LabelSecondary)
+	})
 }
 
 // drawVersions 画官方版本列表（`.detailSection` + `.sectionTitle` + `ul.versions`）。
@@ -337,15 +355,8 @@ func (p *Page) drawVersionRow(f ui.C, row VersionRow) {
 
 // drawTag 画官方 `Tag`（胶囊）。
 //
-// 底/字的取色：官方 tone 用的是四套 `--dsw-alias-tag-*` 令牌，本仓 Theme 只有
-// 状态容器色里成功/警告两对，所以：
-//
-//	success → SuccessTertiary 底 + SuccessPrimary 字（官方 success 容器那一对）
-//	warning → WarnTertiary 底 + WarnLabel 字（官方 warning 容器那一对）
-//	info    → BgLayer3 底 + Info 字（没有 info 容器令牌，登记差异）
-//	neutral → BgLayer3 底 + LabelSecondary 字（同上）
-//
-// 不拿纯色降透明度凑：那不是官方那个色（同 dssidebar 的 `drawPluginTag` 注释）。
+// neutral 用 bg-module-platform；success/info 用各自 primary 的 10% tint，
+// warning 用 warn-primary 的 12% tint，逐条来自 Tag.module.css:26-53。
 func (p *Page) drawTag(f ui.C, tag Tag) { drawTagPill(f, p.theme, tag) }
 
 // drawTagPill 是 Tag 的画法（详情页与「发现」tab 的卡片共用一份度量）。
@@ -353,19 +364,22 @@ func drawTagPill(f ui.C, t *pluginapi.Theme, tag Tag) {
 	if t == nil {
 		return
 	}
-	bg, fg := t.BgLayer3, t.LabelSecondary
+	bg, fg := t.BgModulePlatform, t.LabelSecondary
 	switch tag.Tone {
 	case TagSuccess:
-		bg, fg = t.SuccessTertiary, t.SuccessPrimary
+		bg, fg = t.SuccessPrimary, t.SuccessPrimary
+		bg.Alpha *= 0.10 // Tag.module.css:40-43
 	case TagWarning:
-		bg, fg = t.WarnTertiary, t.WarnLabel
+		bg, fg = t.Warn, t.Warn
+		bg.Alpha *= 0.12 // Tag.module.css:50-53
 	case TagInfo:
-		fg = t.Info
+		bg, fg = t.Info, t.Info
+		bg.Alpha *= 0.10 // Tag.module.css:45-48
 	}
-	ui.Row(f).Height(tagHeight).Shrink(0).Radius(tagHeight/2).
-		PadSides(0, tagPadX, 0, tagPadX).Items(ui.Center).Justify(ui.Center).
+	ui.Row(f).Height(tagHeight).Shrink(0).Radius(tagRadius).
+		PadSides(tagPadY, tagPadX, tagPadY, tagPadX).Items(ui.Center).Justify(ui.Center).
 		Background(bg).Children(func() {
-		ui.Text(f, tag.Text).FontSize(tagFont).LineHeight(tagHeight).Color(fg)
+		ui.Text(f, tag.Text).FontSize(tagFont).LineHeight(tagLine).Weight(gfx.WeightMedium).Color(fg)
 	})
 }
 
@@ -459,7 +473,7 @@ func factCodeRow(f ui.C, t *pluginapi.Theme, label, value string) {
 	factRow(f, t, label, func() {
 		ui.Row(f).Shrink(0).Radius(factCodeRadius).
 			PadSides(factCodePadY, factCodePadX, factCodePadY, factCodePadX).
-			Background(t.InlineCode).Children(func() {
+			Background(t.BgModulePlatform).Children(func() {
 			ui.Text(f, value).FontSize(factCodeSize).LineHeight(factCodeSize + 4).Color(t.LabelPrimary)
 		})
 	})
@@ -470,11 +484,7 @@ func factTagsRow(f ui.C, t *pluginapi.Theme, label string, values []string) {
 	factRow(f, t, label, func() {
 		ui.Row(f).Grow(1).Justify(ui.End).Gap(tagsGap).Children(func() {
 			for _, value := range values {
-				ui.Row(f).Height(tagHeight).Shrink(0).Radius(tagHeight/2).
-					PadSides(0, tagPadX, 0, tagPadX).Items(ui.Center).Justify(ui.Center).
-					Background(t.BgLayer3).Children(func() {
-					ui.Text(f, value).FontSize(tagFont).LineHeight(tagHeight).Color(t.LabelSecondary)
-				})
+				drawTagPill(f, t, Tag{Text: value, Tone: TagNeutral})
 			}
 		})
 	})

@@ -206,12 +206,12 @@ func TestDiscoverDrawsToolbarAndCards(t *testing.T) {
 	acts := &discoverActs{indexes: discoverIndexes(), indexesReady: true, listing: discoverListing(), hasListing: true}
 	rig := openDiscoverRig(t, acts)
 	text := discoverDrawnText(rig.pumpUntil(t, "工具栏与卡片", func(text string) bool {
-		return strings.Contains(text, "演示插件") && strings.Contains(text, "刷新")
+		return strings.Contains(text, "演示插件") && strings.Contains(text, "搜索插件")
 	}))
 
 	for _, want := range []string{
 		"演示索引",    // 索引菜单触发器（官方 indexLabel）
-		"刷新",      // 刷新按钮（官方是图标，本仓文字化）
+		"搜索插件",    // 搜索框占位（官方 Input + 14px 搜索图标）
 		"标签",      // 标签过滤按钮（0 个时就是 `filter`）
 		"排序：默认顺序", // 排序按钮（官方 `sortBy`）
 		"全部",      // 分类行第一个胶囊（官方 `allCategories`）
@@ -224,6 +224,25 @@ func TestDiscoverDrawsToolbarAndCards(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("画面上缺 %q：\n%s", want, text)
+		}
+	}
+	// 真实布局必须落下官方尺寸：Input 32、Pill 24、small Button 28。
+	for label, want := range map[string]float32{"搜索插件": 32, "全部": 24, "标签": 28, "刷新": 28} {
+		hit, ok := rig.session.Hit(label)
+		if !ok {
+			t.Fatalf("%q 的命中区不存在", label)
+		}
+		if hit.Bounds.Height != want {
+			t.Fatalf("%q 高度 = %v，官方值 %v", label, hit.Bounds.Height, want)
+		}
+	}
+	// 刷新是官方纯图标按钮：可点命中区必须在，但不该再画文字「刷新」。
+	for _, label := range rig.session.Snapshot().Labels {
+		if label.Value == "刷新" {
+			t.Fatal("官方刷新按钮是纯图标，不该画出文字「刷新」")
+		}
+		if label.Value == "官方" && label.FontSize != 11 {
+			t.Fatalf("Tag 字号 = %v，官方值 11", label.FontSize)
 		}
 	}
 	// 卡片第二行：版本 · 作者 · 日期（官方 entryMetaAuthor）。
@@ -243,7 +262,7 @@ func TestDiscoverDrawsToolbarAndCards(t *testing.T) {
 func TestDiscoverSearchFieldIsRealInput(t *testing.T) {
 	acts := &discoverActs{indexes: discoverIndexes(), indexesReady: true, listing: discoverListing(), hasListing: true}
 	rig := openDiscoverRig(t, acts)
-	rig.pumpUntil(t, "搜索框", func(text string) bool { return strings.Contains(text, "刷新") })
+	rig.pumpUntil(t, "搜索框", func(text string) bool { return strings.Contains(text, "搜索插件") })
 
 	if err := rig.session.ClickLabel("搜索插件"); err != nil {
 		t.Fatalf("点搜索框：%v", err)
@@ -354,7 +373,7 @@ func TestDiscoverEmptyIndexDrawsAddSource(t *testing.T) {
 func TestDiscoverSourcesDialogAddsAndRemoves(t *testing.T) {
 	acts := &discoverActs{indexes: discoverIndexes(), indexesReady: true, listing: discoverListing(), hasListing: true}
 	rig := openDiscoverRig(t, acts)
-	rig.pumpUntil(t, "工具栏", func(text string) bool { return strings.Contains(text, "刷新") })
+	rig.pumpUntil(t, "工具栏", func(text string) bool { return strings.Contains(text, "演示插件") })
 
 	// 工具栏的索引菜单 → 管理索引源…
 	if err := rig.session.ClickLabel("演示索引"); err != nil {

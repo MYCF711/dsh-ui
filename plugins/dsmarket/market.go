@@ -129,6 +129,7 @@ type Repository struct {
 type Entry struct {
 	Name        string
 	Title       string
+	Icon        string // 官方 entry.icon；本仓暂无 URL 图片加载器，缺省画官方默认素材
 	Description string
 	Author      string
 	Homepage    string

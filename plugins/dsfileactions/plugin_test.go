@@ -225,3 +225,70 @@ func TestPainterRefreshesActions(t *testing.T) {
 		t.Fatal("Run 没有调用本帧注入的壳动作")
 	}
 }
+
+// TestFileMenuDisabledWhenStatFails 钉住官方的 **stat 预取**语义
+// （OFF:context-menus.tsx:50-60 的 resolve 开头，以及 :71/:75/:79 的 `disabled: !available`）。
+//
+// 两条不能混：
+//
+//	stat 失败  → 动作**照样列出**、逐条 Disabled（菜单照弹，灰着）
+//	身份不全   → 一个动作都不给（那是"要 stat 什么都不知道"，另一条用例）
+//
+// 第三档是壳没接这条探测（老宿主）：按可用画，不许悄悄全灰。
+func TestFileMenuDisabledWhenStatFails(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		probe        func(sessionID, path string) bool
+		wantDisabled bool
+	}{
+		{name: "stat 成功", probe: func(string, string) bool { return true }, wantDisabled: false},
+		{name: "stat 失败", probe: func(string, string) bool { return false }, wantDisabled: true},
+		{name: "壳没接探测", probe: nil, wantDisabled: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, menus := newPlugin(func(string, string, string, string) {})
+			var asked string
+			if tc.probe != nil {
+				p.act.WorkspaceFileStat = func(sessionID, path string) bool {
+					asked = sessionID + "|" + path
+					return tc.probe(sessionID, path)
+				}
+			}
+			target := pluginapi.ContextMenuTarget{
+				Kind: pluginapi.TargetFile, SessionID: "s1", Path: "docs/a.png",
+			}
+			actions := menus.resolve(pluginapi.TargetFile, target)
+			if len(actions) != 2 {
+				t.Fatalf("动作数 = %d，want 2（stat 失败也必须照样列出，只是置灰）", len(actions))
+			}
+			for _, action := range actions {
+				if action.Disabled != tc.wantDisabled {
+					t.Fatalf("动作 %s 的 Disabled = %v，want %v", action.ID, action.Disabled, tc.wantDisabled)
+				}
+			}
+			if tc.probe != nil && asked != "s1|docs/a.png" {
+				t.Fatalf("stat 问的是 %q，want 打开菜单时捕获的 s1|docs/a.png", asked)
+			}
+		})
+	}
+}
+
+// TestImageMenuNeverDisabled 钉住官方**只有 file 族**做 stat：image 族整段
+// （OFF:context-menus.tsx:86-105）没有任何 disabled 判据，所以哪怕 file 族该灰，
+// image 族也必须可点。
+func TestImageMenuNeverDisabled(t *testing.T) {
+	p, menus := newPlugin(func(string, string, string, string) {})
+	p.act.WorkspaceFileStat = func(string, string) bool { return false }
+	target := pluginapi.ContextMenuTarget{
+		Kind: pluginapi.TargetImage, SessionID: "s1", Path: "img/a.png", Name: "a.png",
+	}
+	actions := menus.resolve(pluginapi.TargetImage, target)
+	if len(actions) != 2 {
+		t.Fatalf("image 动作数 = %d，want 2", len(actions))
+	}
+	for _, action := range actions {
+		if action.Disabled {
+			t.Fatalf("image 动作 %s 被置灰：官方 image 菜单没有 stat/disabled（只有 file 族有）", action.ID)
+		}
+	}
+}

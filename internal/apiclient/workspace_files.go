@@ -102,3 +102,62 @@ func (c *Client) WorkspaceFileReadBytes(ctx context.Context, sessionID, path str
 		AbsolutePath: out.AbsolutePath, Version: out.Version, Bytes: out.Bytes,
 	}, nil
 }
+
+// WorkspaceFileStat 是 `workspaceFiles.stat` 的结果（官方 typert 同名字段）。
+type WorkspaceFileStat struct {
+	// AbsolutePath 是宿主解析出来的绝对路径（官方用它拼 fileMediaUrl；
+	// 本仓只拿它当"文件确实存在且是普通文件"的证据）。
+	AbsolutePath string
+	// Version 是宿主的版本令牌（与 readBytes/changes 同源）。
+	Version string
+	// Bytes 是文件总字节数；nil = 宿主没给（官方 `bytes?` 可选）。
+	Bytes *int64
+}
+
+// WorkspaceFileStatOf 读一个工作区文件的元数据（官方 `workspaceFiles.stat`）。
+//
+// # 为什么 #18 需要它（而不是"直接读字节失败再说"）
+//
+// 官方 file 菜单的 resolve 里**先** stat 一次
+// （OFF:ui-file-actions/src/client/context-menus.tsx:50-60）：
+//
+//	let absolutePath
+//	try { const result = await stat(sessionId, path, signal); absolutePath = result.ok ? result.value.absolutePath : undefined }
+//	catch { /* Failed metadata disables operations that require the source file. */ }
+//	const available = absolutePath !== undefined
+//	…每一条动作都挂 `disabled: !available`
+//
+// 也就是说：**文件没了 / 不是普通文件**时，官方菜单照样列出三条动作、只是置灰；
+// 而不是把菜单藏起来。本仓原来没有这条判据，只能"要么画成可用、要么整张菜单不弹"。
+//
+// 参数形状（HOST:internal/transport/handlers_workspace_official.go:820-843,1212-1231）：
+//
+//	sessionId  会话身份（宿主同一字段的别名还有 workspaceFileScopeId / agentId）
+//	path       工作区内的**相对路径**
+//
+// 没有 `options`：官方 stat 的 typert 签名是 `stat(sessionId, path, signal)`，
+// 宿主对未知字段是 DisallowUnknownFields（`p.finish()`），多塞一个就会 400。
+//
+// 失败：宿主按官方返回 `workspace-file/not-found` / `not-regular-file` 等码，
+// 四字段错误原样上抛——调用方把错误当"不可用"（官方 `available = false`），
+// 不许当成"存在"。
+func (c *Client) WorkspaceFileStatOf(ctx context.Context, sessionID, path string) (*WorkspaceFileStat, error) {
+	var out struct {
+		AbsolutePath string `json:"absolutePath"`
+		Version      string `json:"version"`
+		Bytes        *int64 `json:"bytes,omitempty"`
+	}
+	params := map[string]any{
+		"sessionId": sessionID,
+		"path":      path,
+	}
+	if err := c.Call(ctx, "workspaceFiles.stat", params, &out); err != nil {
+		return nil, err
+	}
+	if out.AbsolutePath == "" {
+		// 官方 AST 里 absolutePath 必填；空串 = 宿主没给解析结果，按"不可用"处理，
+		// 不当成"文件在工作区根"。
+		return nil, fmt.Errorf("workspaceFiles.stat: 宿主没有给出 absolutePath")
+	}
+	return &WorkspaceFileStat{AbsolutePath: out.AbsolutePath, Version: out.Version, Bytes: out.Bytes}, nil
+}

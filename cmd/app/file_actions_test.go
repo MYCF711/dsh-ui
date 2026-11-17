@@ -215,3 +215,73 @@ func TestSaveWorkspaceFileRejectsBadArguments(t *testing.T) {
 		}
 	}
 }
+
+// statHost 起一个只认 `workspaceFiles.stat` 的假宿主；fail=true 时按官方
+// `workspace-file/not-found` 四字段错误答复（宿主 handler 的真形状）。
+//
+// 参数形状同样是契约：**只有 sessionId + path**，官方 typert 签名是
+// `stat(sessionId, path, signal)`，宿主 DisallowUnknownFields —— 多塞 options 就 400。
+func statHost(t *testing.T, fail bool, seen *map[string]any) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/workspaceFiles.stat" {
+			t.Errorf("路径 = %q，want /api/workspaceFiles.stat", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("请求体不是 JSON：%v", err)
+		}
+		if seen != nil {
+			*seen = body
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if fail {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+				"code": "workspace-file/not-found", "message": "文件不存在",
+				"hint": "路径相对会话工作区", "retryable": false,
+			}})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"result": map[string]any{"absolutePath": `D:\ws\docs\a.png`, "version": "v1"},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestWorkspaceFileStatProbe 钉住 #18 的 stat 预取：成功 = 可用、失败 = 不可用，
+// 两个参数原样转发、且**不带 options**（宿主 DisallowUnknownFields）。
+func TestWorkspaceFileStatProbe(t *testing.T) {
+	var seen map[string]any
+	m := &model{cli: apiclient.New(statHost(t, false, &seen).URL)}
+	if !m.workspaceFileStat("sess-1", "docs/a.png") {
+		t.Fatal("stat 成功却报告不可用：动作会被无故置灰")
+	}
+	if seen["sessionId"] != "sess-1" || seen["path"] != "docs/a.png" {
+		t.Fatalf("stat 参数 = %v，want sessionId=sess-1 path=docs/a.png（按会话解析工作区根）", seen)
+	}
+	if _, ok := seen["options"]; ok {
+		t.Error("多发了 options：官方 stat 没有这个参数，宿主会 400")
+	}
+
+	failed := &model{cli: apiclient.New(statHost(t, true, nil).URL)}
+	if failed.workspaceFileStat("sess-1", "docs/a.png") {
+		t.Fatal("stat 失败却报告可用：官方 `available = absolutePath !== undefined` 应为 false")
+	}
+}
+
+// TestWorkspaceFileStatWithoutClientIsUnavailable 钉住"没有 apiclient 就别假装可用"：
+// 没壳 = 探测不出来 = 不可用（动作置灰），不是"默认可用"。
+func TestWorkspaceFileStatWithoutClientIsUnavailable(t *testing.T) {
+	m := &model{}
+	if m.workspaceFileStat("sess-1", "a.txt") {
+		t.Fatal("没有 apiclient 却报告可用")
+	}
+	if m.workspaceFileStat("", "a.txt") || m.workspaceFileStat("sess-1", "") {
+		t.Fatal("缺身份却报告可用：没有 (sessionId, path) 就不知道 stat 什么")
+	}
+}

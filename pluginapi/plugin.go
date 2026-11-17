@@ -1256,6 +1256,26 @@ type Actions struct {
 	// nil = 壳没接 → 插件**不画**下载/另存为（死按钮比没有更坏）。
 	SaveWorkspaceFile func(sessionID, path, name, mode string)
 
+	// WorkspaceFileStat 报告一个工作区文件**现在是否可用**
+	// （官方 file 菜单 resolve 里的 `workspaceFiles.stat` 预取：
+	// OFF:ui-file-actions/src/client/context-menus.tsx:50-60）。
+	//
+	// 语义逐条对齐官方：
+	//
+	//	true   宿主 stat 成功 → 官方 `available = true`（动作不置灰）
+	//	false  宿主 stat 失败（不存在 / 不是普通文件 / 宿主拒答）→ 官方 `disabled: !available`
+	//
+	// **它只决定"置不置灰"，不决定"画不画"**：官方在不可用时照样列出动作，
+	// 只是把每一条标成 disabled。所以调用方不许拿 false 把整张菜单藏起来。
+	//
+	// 同步阻塞：菜单 resolve 与绘制在同一帧（官方那边是 async Promise），
+	// 所以壳必须给一条**有上限**的实现——超时按 false 处理（宁可置灰，
+	// 也不让界面挂在一次 stat 上）。
+	//
+	// nil = 壳没接（老宿主 / 没有 apiclient）→ 插件按"可用"画，
+	// 这条差异登记在 `docs/official-parity.md` #18。
+	WorkspaceFileStat func(sessionID, path string) bool
+
 	// FileReferences 列 `@` 之后的文件候选（宿主 `fileReferences.list`）。
 	//
 	// **同步返回壳缓存**：查询键是会话 + 原文 query；首次问会触发后台拉取，

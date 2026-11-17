@@ -2964,6 +2964,9 @@ func main() {
 		// 插件只给 target 身份（sessionId/path/name）与模式；读字节、开对话框、
 		// 写盘、反馈全在壳里。
 		SaveWorkspaceFile: m.saveWorkspaceFile,
+		// 官方 file 菜单 resolve 的 stat 预取（OFF:context-menus.tsx:50-60）：
+		// 只决定"置不置灰"，不决定画不画。见 file_actions.go 的 workspaceFileStat。
+		WorkspaceFileStat: m.workspaceFileStat,
 		// `@` / `/` 候选：同步读壳缓存，首次问触发后台拉取（见 reference_wiring.go）。
 		FileReferences:             m.fileReferences,
 		SessionReferenceCandidates: m.sessionReferenceCandidates,

@@ -33,6 +33,14 @@ import (
 	"github.com/vivaui/viva/app"
 )
 
+// fileStatTimeout 是一次 `workspaceFiles.stat` 探测的上限（见 workspaceFileStat）。
+//
+// 比 fileSaveTimeout 短：这条探测发生在**菜单 resolve 的那一帧**上（官方是 async，
+// 本仓的 Resolve 是同步签名），卡住就是整帧卡住。本地宿主一次 stat 是毫秒级，
+// 1 秒足够；超时按"不可用"处理，也就是把动作置灰——宁可"可能是灰的"，
+// 也不能让用户点开菜单时界面顿一下。
+const fileStatTimeout = time.Second
+
 // fileSaveTimeout 是一次 readBytes 的上限。
 //
 // 写入本身不受它管（另存对话框由用户决定停留多久）。本地宿主一次读通常是毫秒级，
@@ -120,6 +128,35 @@ func (m *model) saveWorkspaceFile(sessionID, path, name, mode string) {
 		return
 	}
 	m.setStatus(zhFileDownloaded + "：" + target)
+}
+
+// workspaceFileStat 实现 `pluginapi.Actions.WorkspaceFileStat`：一次**有上限**的
+// `workspaceFiles.stat`，把结果压成"能不能用"这一个布尔。
+//
+// 官方 file 菜单的 resolve 就是这条判据
+// （OFF:ui-file-actions/src/client/context-menus.tsx:50-60）：
+//
+//	try { absolutePath = (await stat(sessionId, path)).value.absolutePath } catch { /* 置灰 */ }
+//	const available = absolutePath !== undefined
+//
+// 返回 false 的三种来源都是**官方的同一档**（`available = false`）：
+//
+//	宿主报错（not-found / not-regular-file / 权限）   → 动作置灰，不是隐藏
+//	客户端解析不出 absolutePath（宿主没给）           → 同上
+//	超时 / 没有 apiclient                            → 同上（本仓的额外一档，已登记）
+//
+// 它**不**读字节、也不缓存：菜单每次打开都重新问一次（官方同样每次 resolve 都 stat），
+// 所以"文件刚被删掉"在下一次右键里就反映出来。
+func (m *model) workspaceFileStat(sessionID, path string) bool {
+	if m.cli == nil || sessionID == "" || path == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), fileStatTimeout)
+	defer cancel()
+	if _, err := m.cli.WorkspaceFileStatOf(ctx, sessionID, path); err != nil {
+		return false
+	}
+	return true
 }
 
 // suggestedFileName 定"建议文件名"。

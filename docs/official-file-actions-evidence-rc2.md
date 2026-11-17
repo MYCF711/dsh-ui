@@ -97,7 +97,7 @@ image: { sessionId?: SessionId; url: string; name?: string; mediaType?: string; 
 
 ---
 
-## 3. 数据面：`workspaceFiles.readBytes` 是**真的**
+## 3. 数据面：`workspaceFiles.readBytes` / `workspaceFiles.stat` 都是**真的**
 
 | 环节 | 锚点 |
 |---|---|
@@ -113,36 +113,89 @@ image: { sessionId?: SessionId; url: string; name?: string; mediaType?: string; 
 所以界面**不许**自己拼绝对路径——工作区根只在宿主侧解析。
 
 契约快照：`testdata/api.snapshot.json` 新增 `workspaceFiles.readBytes`（`batch 17`，
-counts.total 76 → 77，与 methods 条数一致）。
+counts.total 76 → 77，与 methods 条数一致）；**2026-11-17 再加 `workspaceFiles.stat`**
+（`batch 24`，counts.total 121 → 122，`snapshot_methods_test.go` 的方法表/计数两条一起守）。
+
+`workspaceFiles.stat` 的形状（本仓 `internal/apiclient.WorkspaceFileStat`）：
+
+| 环节 | 锚点 |
+|---|---|
+| 方法名 | `HOST:internal/transport/handlers_workspace_official.go:81` |
+| handler（**只有** scope/path，无 options） | `HOST:internal/transport/handlers_workspace_official.go:1212-1242` |
+| 参数取值 | `HOST:internal/transport/handlers_workspace_official.go:820-843`（`sessionId` 别名 `workspaceFileScopeId`/`agentId`；`path` 必填、可空串） |
+| 只 stat 普通文件（目录回 `workspace-file/not-regular-file`） | 同上 `:1233-1240` |
+| 本仓客户端 | `internal/apiclient/workspace_files.go`（`WorkspaceFileStatOf` → `WorkspaceFileStat`） |
+
+**为什么它必须存在**：官方 file 菜单在列出动作**之前**先 stat，失败就把三条全标
+`disabled`（`OFF:fa/src/client/context-menus.tsx:50-60` + `:71/:75/:79` 的 `disabled: !available`）。
+少了这条，我们只能在"画成可点、点下去必失败"和"整张菜单不弹"之间二选一，两种都不是官方行为。
 
 ---
 
 ## 4. 与官方的差异（照实登记，不假装搬了）
 
-1. **「复制图片」不画**：官方走 `navigator.clipboard.write([new ClipboardItem({'image/png': …})])`
-   （`OFF:fa/src/client/files.ts:105-138`，非 PNG 还要经 `<canvas>` 转码）。
-   viva v0.6.4 只导出 `app.ClipboardImagePNG`（**读**）与 `app.SetClipboardText`；
-   图片的**写**只存在于测试 Driver（`driver.SetClipboardImage`）。`SetClipboardFiles`
-   是"复制文件"，语义不同，**不许冒充**。
-2. **反馈落在状态栏，不是 toast**：官方成功后 `ctx.contextMenus.notify(...)`，还带一个
-   「在文件夹显示」的后续动作（`OFF:fa/src/client/context-menus.tsx:41-47`）。本仓
-   context menu 服务没有 toast（那里已登记同一条理由），所以"已保存 / 下载完成 / 失败"
-   写在壳的状态栏。官方文案**一字不改**，只在冒号后面补上落点路径——官方靠 toast 里那个
-   reveal 动作回答"存哪了"，本仓没有那个动作，不把落点写出来就没法回答。**「在文件夹显示」没接**：官方走
-   `remote.session.openWorkspacePath({action:'reveal'})`，宿主没有这个方法
-   （`HOST` 全仓 grep 为空）；用 `Actions.OpenFile` 打开目录是另一种语义，不冒充。
-3. **`image` target 只在有 (sessionId, path) 时给动作**：官方可以只靠 `source.url`
-   fetch 原字节（`OFF:fa/src/client/files.ts:41-52` 的 `fetch(source.url)`）。本仓没有
-   浏览器 HTTP 栈，取不到远端图片字节，所以那一档**不给动作**（菜单不弹），
-   而不是画一个点了必失败的项。
-4. **`image` target 今天没有生产方**：消息区的图片是占位瓦片（无像素解码路径，见
-   [official-parity.md](official-parity.md) 第 6 行 #6 的"剩余差异"），拿不到 URL/路径。
-   所以 `image` 贡献**已注册且有测试**，但要等图片生产方（附件缩略图/灯箱）出现才会
-   真弹。这一条是本行仍是 🟡 而不是 ✅ 的直接原因之一。
-5. **没有 `stat` 前置的置灰态**：官方 `resolve` 先 `workspaceFiles.stat`，失败时把动作
-   置灰（`OFF:fa/src/client/context-menus.tsx:54-58`）。本仓的 `Resolve` 是同步的
-   （不能在一次求值里发 HTTP），所以动作总是可点，失败由壳用官方 `menu.saveFailed`
-   文案报出来。差异是"能不能点"，不是"会不会静默成功"。
+1. **「复制图片」不画**（唯一平台阻断项）：官方走
+   `navigator.clipboard.write([new ClipboardItem({'image/png': …})])`
+   （`OFF:fa/src/client/files.ts:65-89`，非 PNG 还要经 `<canvas>` 转码）。
+   viva v0.6.4 的剪贴板**只有读图片**：`app.ClipboardImagePNG()` / `HasClipboardImage()`
+   （`app/clipboard_image.go:22-58`），平台层的图像助手也只有**解码侧**
+   （`internal/platform/clipboard_image.go` 的 `CheckClipboardPNG` / `TrimClipboardPNG`、
+   `clipboard_dib_windows.go` 的 DIB→PNG）。**写图片**在整个 module 里只存在于测试 Driver
+   （`app/driver_system.go:531` `(*Driver).SetClipboardImage`，只在 headless 驱动上）；
+   `app.SetClipboardText/HTML/Files` 都不是图片，`SetClipboardFiles` 是"复制文件"，
+   语义不同，**不许冒充**。
+   能补的条件（唯一一条）：上游 viva 导出生产级"写图片到剪贴板"（Windows 侧要
+   `RegisterClipboardFormat("PNG")` 或 `CF_DIBV5`）。按本仓 Viva 线纪律（`AGENTS.md` §0）
+   顺序应是：隔离 worktree 写最小复现 → 上游 issue → 能小改就提 PR（Windows 优先）→
+   上游明确不做才做带标注的兜底。**不做本地 Win32 shim 冒充**。
+2. **反馈落在状态栏，不是"带后续动作的浮条"**：官方成功后
+   `ctx.contextMenus.notify(text, success, {label, failureLabel, run})`
+   （`OFF:fa/src/client/context-menus.tsx:30-42`）。本仓 context menu 服务**没有** notify
+   （`pluginapi.ContextMenus` 只有 RegisterContribution/HasTarget/Attach/Button），壳里的
+   本地浮条入口 `pluginapi.Actions.Notify` 只收一个字符串、**没有后续动作**这一格，而
+   `dsnotifications` 的卡片其实**能画动作**（`plugins/dsnotifications/card.go:152-160`，
+   动作来自宿主 `notifications` 数据）——缺的是"壳侧发一条带 run 的本地通知"这条通路。
+   所以"已保存 / 下载完成 / 失败"写在壳的状态栏。官方文案**一字不改**，只在冒号后面补
+   落点路径——官方靠浮条里那个 reveal 动作回答"存哪了"，本仓没有那个动作。
+   **「在文件夹显示」今天不接**，但**卡点已换**：宿主其实**已有**
+   `session.openWorkspacePath({action:'reveal'})`
+   （`DSH-GO/cmd/dshd/serve_native_api.go:79-90` 的 `svc.Reveal`、
+   `DSH-GO/internal/transport/handlers_native_official.go:233` 只接受 `reveal` 或缺省），
+   所以缺的是两件本仓的事：①`internal/apiclient` 还没有这个方法（`WorkspaceFileStat` 是
+   本轮新加的第一条 session 侧原生调用，可照同一形状加）；
+   ②**没有可放这个动作的浮条**（上一条）。两条都补上之后才画，绝不拿
+   `Actions.OpenFile` 打开目录冒充"在文件夹里选中这个文件"（语义不同）。
+3. **`image` target 只在有 (sessionId, path) 时给动作**：官方那一族可以只靠
+   `source.url` 取字节——`read` 没有时 `fetch(source.url)`，且只认
+   `http: / https: / blob: / data: / dsh-app:` 五种协议
+   （`OFF:fa/src/client/files.ts:23-36`；跨域 http(s) 还要走桌面壳的
+   `readClipboardImage`）。本仓 UI 侧没有这条 URL→字节链（不是权限问题，是没有那一层），
+   所以只有 URL 的 image target **不给动作**（菜单不弹），而不是画一个点了必失败的项。
+   能补的条件：图片字节能从"URL"取到——要么宿主给一条 `workspaceFiles` 之外的取数
+   方法，要么 `dsh-app:` 这类 URL 在本仓有解析链。今天两条都没有。
+4. **`image` target 今天没有生产方**（本行仍是 🟡 的直接原因之一）：官方的两个生产方都是
+   **渲染出来的图片面**——
+   `OFF:dsh-client-ui-attachment/src/MessageImage.tsx:115-118`（消息里的图片附件：
+   `{kind:'image', value:{url, name, mediaType}}`，**没有 sessionId/path**）与
+   `OFF:dsh-client-ui-chat/src/client/chat/ChatView.tsx:75-79`（markdown 图片：
+   `{kind:'image', value:{sessionId, url, name?, mediaType?, path?}}`）。
+   本仓消息区对 `image` 附件画的是**空 64×64 占位**（`plugins/dsconversation/official_transcript_view.go:357-364`
+   的 `ui.Slot(...).Border(...)`，没有像素），也没有 markdown 图片渲染，所以**没有可绑的
+   图片面**。补它的前提是先让图片真的上屏：viva 侧 `ui.Image(c, gfx.Bitmap)` 是现成的
+   （头像在用：`plugins/dssettings/official_account.go:266`），缺的是"取字节 + 解码"链
+   （宿主附件 URL 或工作区路径 → `[]byte` → `gfx.Bitmap`），属 #6/#19 范围。
+   在没有真图片之前**不造一个"点了必然取不到字节"的 image target**。
+5. ~~没有 `stat` 前置的置灰态~~ **已修（2026-11-17）**：官方 `resolve` 先 stat，
+   失败时**照样列出**三条、逐条 `disabled: !available`
+   （`OFF:fa/src/client/context-menus.tsx:50-60` + `:71/:75/:79`）。本仓现在同一条判据：
+   壳的 `pluginapi.Actions.WorkspaceFileStat`（`cmd/app/file_actions.go` 的
+   `workspaceFileStat`，1 秒上限）→ 插件把它压成 `Disabled`。
+   三档口径都钉住了：stat 成功→可点；stat 失败→**仍然列出、全灰**；壳没接这条探测
+   （老宿主）→ 按可点画（差异登记，不是静默降级）。
+   **剩余差异只有一处且是架构性的**：`Resolve` 是同步签名（官方是 async Promise），
+   所以这次 stat 是**在 UI 线程上同步 HTTP**（带 1 秒上限）。与保存链同一条已知差异：
+   官方的 await 能把 HTTP 留给下一次事件循环，viva 的绘制帧里没有那层，异步反而要把
+   Box 生命周期拖过帧边界。
 6. **`canSaveAs` 恒 true**：官方 Web 侧是 false（浏览器只能 download）；本仓是原生窗口，
    有 `app.SaveFile`（`SaveFileOptions{SuggestedName}`，取消返回 `app.ErrCanceled`），
    所以走的是 Desktop 那一档。

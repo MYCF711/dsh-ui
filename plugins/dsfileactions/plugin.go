@@ -177,18 +177,32 @@ func (p *Plugin) registerMenus(ctx pluginapi.Context) error {
 //
 // 本仓：copyImage 不画（缺口 1），canSaveAs 恒 true（缺口 2）→ 只剩下
 // 「图片：下载 + 另存为」与「非图片：另存为」。
+//
+// # 可用性（`disabled: !available`，官方 :50-60、:71/:75/:79）
+//
+// 官方在列出动作**之前**先 stat 一次，失败就把三条全标 `disabled`（菜单照弹，
+// 动作灰着）；成功才可点。本仓的判据同一条，只是探测走壳的同步入口
+// （`Actions.WorkspaceFileStat`），见 `cmd/app/file_actions.go` 的 workspaceFileStat。
+//
+//	probe 返回 false  → 每一行动作都 Disabled，**仍然列出**（不藏菜单）
+//	probe 为 nil      → 壳没接这条探测，按"可用"画（差异登记在 #18，不是静默降级）
 func (p *Plugin) resolveFile(target pluginapi.ContextMenuTarget) []pluginapi.ContextMenuAction {
 	if p.act.SaveWorkspaceFile == nil || target.SessionID == "" || target.Path == "" {
 		// 缺壳动作、缺会话身份或缺失路径 → 一个动作都不给（菜单不弹）。
-		// 官方在 stat 失败时是把动作置灰（disabled），本仓不画死按钮。
+		// 这是**身份不全**，与官方"stat 失败"不是一回事：没有 (sessionId, path)
+		// 就连"要 stat 什么"都说不出来，画出来只会是三条永远失败的灰项。
 		return nil
+	}
+	available := true
+	if p.act.WorkspaceFileStat != nil {
+		available = p.act.WorkspaceFileStat(target.SessionID, target.Path)
 	}
 	name := fileName(target.Path)
 	var out []pluginapi.ContextMenuAction
 	if strings.HasPrefix(mediaTypeOf(target.Path), "image/") {
-		out = append(out, p.saveAction(target, actionDownload, zhDownload, pluginapi.FileDownload, name))
+		out = append(out, p.saveAction(target, actionDownload, zhDownload, pluginapi.FileDownload, name, available))
 	}
-	out = append(out, p.saveAction(target, actionSaveAs, zhSaveAs, pluginapi.FileSaveAs, name))
+	out = append(out, p.saveAction(target, actionSaveAs, zhSaveAs, pluginapi.FileSaveAs, name, available))
 	return out
 }
 
@@ -196,6 +210,10 @@ func (p *Plugin) resolveFile(target pluginapi.ContextMenuTarget) []pluginapi.Con
 //
 // 官方那段的三项：copyImage、download、canSaveAs 时的 saveAs。本仓少 copyImage；
 // 且没有 (sessionId, path) 就整段不给（缺口 3）。
+//
+// **image 这一族没有 stat、也没有 disabled**（官方 :86-105 全文没有任何
+// `disabled:`/`available`）——所以这里一律 available=true，与 file 族区分开：
+// 图片可能是**流内附件**（没有落盘路径），拿 file 的 stat 去判会把它们误置灰。
 func (p *Plugin) resolveImage(target pluginapi.ContextMenuTarget) []pluginapi.ContextMenuAction {
 	if p.act.SaveWorkspaceFile == nil || target.SessionID == "" || target.Path == "" {
 		return nil
@@ -205,8 +223,8 @@ func (p *Plugin) resolveImage(target pluginapi.ContextMenuTarget) []pluginapi.Co
 		name = fileName(target.Path)
 	}
 	return []pluginapi.ContextMenuAction{
-		p.saveAction(target, actionDownload, zhDownload, pluginapi.FileDownload, name),
-		p.saveAction(target, actionSaveAs, zhSaveAs, pluginapi.FileSaveAs, name),
+		p.saveAction(target, actionDownload, zhDownload, pluginapi.FileDownload, name, true),
+		p.saveAction(target, actionSaveAs, zhSaveAs, pluginapi.FileSaveAs, name, true),
 	}
 }
 
@@ -215,7 +233,7 @@ func (p *Plugin) resolveImage(target pluginapi.ContextMenuTarget) []pluginapi.Co
 // 动作本体全在壳里（读字节 + 开对话框/写下载目录 + 反馈），插件只交出
 // (sessionId, path, name, mode) 四个身份字段——菜单打开后用户可能已经切走会话，
 // 所以这里用的是**捕获的 target**，不读"当前会话"。
-func (p *Plugin) saveAction(target pluginapi.ContextMenuTarget, id, label, mode, name string) pluginapi.ContextMenuAction {
+func (p *Plugin) saveAction(target pluginapi.ContextMenuTarget, id, label, mode, name string, available bool) pluginapi.ContextMenuAction {
 	sessionID, relativePath := target.SessionID, target.Path
 	icon := "file-actions.save"
 	if id == actionDownload {
@@ -225,6 +243,9 @@ func (p *Plugin) saveAction(target pluginapi.ContextMenuTarget, id, label, mode,
 		ID:    id,
 		Label: label,
 		Icon:  icon,
+		// 官方三枚动作各自挂 `disabled: !available`（OFF:context-menus.tsx:71,75,79）；
+		// `Run` 照旧挂着——dscontextmenu 的 disabled 行不会调它（同样照官方）。
+		Disabled: !available,
 		Run: func() {
 			if p.act.SaveWorkspaceFile == nil {
 				return

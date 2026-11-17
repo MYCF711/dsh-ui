@@ -237,7 +237,12 @@ func TestRightTabStripGeometryMatchesOfficialDockkitCSS(t *testing.T) {
 		{".tab{height:28px}", RightTabChipHeight, 28},
 		{".tab{padding:0 10px}", RightTabChipPadX, 10},
 		{".tab{font-size:13px}", RightTabChipFontSize, 13},
+		{".tabTitle{line-height:1.4}", RightTabChipLineHeight, 18.2},
 		{".tabTitle{gap:5px}", RightTabChipGap, 5},
+		{"BrowserTitle globe size=14", RightTabTitleIconSize, 14},
+		{".tabClose{width/height:20px}", RightTabCloseSize, 20},
+		{".tabClose{top/right:4px}", RightTabCloseInset, 4},
+		{"dockkit close/add icon size=14", RightTabControlIconSize, 14},
 		{".slot{width:10px}", RightTabSepWidth, 10},
 		{".slot:before{height:14px}", RightTabSepRuleH, 14},
 		{".slot:before{width:.5px}", RightTabSepRuleW, 0.5},
@@ -253,6 +258,11 @@ func TestRightTabStripGeometryMatchesOfficialDockkitCSS(t *testing.T) {
 	// `.tabStrip` 的外高 = 28 + 10 = 38，与会话侧注释里的 "ui-dockkit .tabStrip 38px" 对齐。
 	if outer := RightTabStripRowHeight + RightTabStripPadTop; outer != 38 {
 		t.Fatalf(".tabStrip 外高 = %v，官方注释写的是 38px", outer)
+	}
+	for name, icon := range map[string]gfx.Icon{"close-fill": rightTabCloseIcon(), "plus-outline": rightTabAddIcon()} {
+		if icon.ViewBox != 16 || icon.Stroke != 1 || len(icon.Commands) != 4 {
+			t.Fatalf("%s 应是官方 16 viewBox / regular stroke 1 / 两条 path：%+v", name, icon)
+		}
 	}
 }
 
@@ -363,19 +373,12 @@ func TestDrawRightTabsCreateAndCloseButtonsReallyClick(t *testing.T) {
 	}
 	defer session.Close()
 	session.Resize(360, 100)
-	ready := false
 	for i := 0; i < 20; i++ {
 		if err := session.Driver().Pump(); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(strings.Join(session.Texts(), "\n"), "+") && strings.Contains(strings.Join(session.Texts(), "\n"), "×") {
-			ready = true
-			break
-		}
 	}
-	if !ready {
-		t.Fatal("新建/关闭按钮未出现：", session.Texts())
-	}
+	// 官方按钮是 SVG，不再用 + / × 字符；ClickLabel 仍必须命中真实 aria 标签并执行动作。
 	if err := session.ClickLabel("新建浏览器标签页"); err != nil {
 		t.Fatal(err)
 	}

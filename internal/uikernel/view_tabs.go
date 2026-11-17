@@ -57,8 +57,17 @@ const (
 	RightTabChipPadX float32 = 10
 	// RightTabChipFontSize 是 `.tab{font-size:var(--dsh-content-font-size-secondary,13px)}`。
 	RightTabChipFontSize float32 = 13
+	// RightTabChipLineHeight 是 `.tabTitle{line-height:1.4}`，即 13×1.4=18.2px。
+	RightTabChipLineHeight float32 = 18.2
 	// RightTabChipGap 是 `.tabTitle{gap:5px}`（图标与文字之间）。
 	RightTabChipGap float32 = 5
+	// RightTabTitleIconSize 是 BrowserTitle 的 IconGlobeOutlineRegular 默认尺寸。
+	RightTabTitleIconSize float32 = 14
+	// RightTabCloseSize / Inset 是 `.tabClose{width:20px;height:20px;top:4px;right:4px}`。
+	RightTabCloseSize  float32 = 20
+	RightTabCloseInset float32 = 4
+	// RightTabControlIconSize 是 dockkit 的 close-fill / plus-outline 显式 size={14}。
+	RightTabControlIconSize float32 = 14
 
 	// RightTabSepWidth 是 `.slot{width:10px}`：两枚芯片之间那条分隔轨。
 	RightTabSepWidth float32 = 10
@@ -115,11 +124,15 @@ func tabRoster(k *Kernel, slot pluginapi.Slot) []pluginapi.Tab {
 			if out[at].Icon == "" {
 				out[at].Icon = p.Icon
 			}
+			if out[at].IconImage.ViewBox == 0 {
+				out[at].IconImage = p.IconImage
+				out[at].IconMarginRight = p.IconMarginRight
+			}
 			continue
 		}
 		seen[p.Key] = len(out)
 		out = append(out, pluginapi.Tab{Key: p.Key, Kind: p.Key, Multiple: p.Multiple,
-			Label: p.Label, Icon: p.Icon, Order: p.Order})
+			Label: p.Label, Icon: p.Icon, IconImage: p.IconImage, IconMarginRight: p.IconMarginRight, Order: p.Order})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Order < out[j].Order })
 	return out
@@ -269,52 +282,64 @@ func DrawRightTabs(
 					ui.Row(f).Width(RightTabSepRuleW).Height(RightTabSepRuleH).Background(t.BorderL4)
 				})
 			}
-			var id gfx.ID
+			var id, closeID gfx.ID
 			if env.Tree != nil {
 				id = env.Tree.ID(env.Feat, "right-tab-"+tab.Key)
+				closeID = env.Tree.ID(env.Feat, "right-tab-close-"+tab.Key)
 			}
 			isActive := tab.Key == active
+			closeHovered := env.Canvas != nil && (env.Canvas.Hovered() == closeID || env.Canvas.Pressed() == closeID ||
+				env.Canvas.Focused() == closeID || env.Canvas.FocusVisible() == closeID)
+			chipHovered := closeHovered || env.Canvas != nil && (env.Canvas.Hovered() == id || env.Canvas.Pressed() == id ||
+				env.Canvas.Focused() == id || env.Canvas.FocusVisible() == id)
 			chip := ui.Row(f).Height(RightTabChipHeight).MinWidth(RightTabChipMinWidth).
 				MaxWidth(RightTabChipMaxWidth).Radius(t.Radii.SM).
 				PadSides(0, RightTabChipPadX, 0, RightTabChipPadX).
-				Items(ui.Center)
+				Items(ui.Center).Hit(id, tab.Label)
 			if isActive {
 				chip = chip.Background(t.MarkdownTag)
 			} else {
 				chip = chip.Hover(ui.Look{}.Background(t.Hover))
 			}
 			chip.Children(func() {
-				label := ui.Row(f).Grow(1).Items(ui.Center).Gap(RightTabChipGap).Hit(id, tab.Label)
+				label := ui.Row(f).Grow(1).Items(ui.Center).Gap(RightTabChipGap)
 				label.Children(func() {
-					if tab.Icon != "" {
+					if tab.IconImage.ViewBox > 0 {
+						ui.Row(f).Shrink(0).PadSides(0, tab.IconMarginRight, 0, 0).Children(func() {
+							ui.Icon(f, tab.IconImage).Size(RightTabTitleIconSize, RightTabTitleIconSize).Color(t.LabelSecondary)
+						})
+					} else if tab.Icon != "" {
 						ui.Text(f, tab.Icon).FontSize(RightTabChipFontSize).Color(t.LabelSecondary)
 					}
 					text := ui.Text(f, tab.Label).FontSize(RightTabChipFontSize).
-						LineHeight(RightTabChipFontSize).MaxLines(1).Ellipsis()
+						LineHeight(RightTabChipLineHeight).MaxLines(1).Ellipsis()
 					if isActive {
 						text.Color(t.LabelPrimary)
 					} else {
 						text.Color(t.LabelSecondary)
 					}
 				})
-				if label.Clicked() && onSelect != nil {
-					onSelect(tab.Key)
-				}
-				if env.Act.CloseRightTab != nil {
-					var closeID gfx.ID
-					if env.Tree != nil {
-						closeID = env.Tree.ID(env.Feat, "right-tab-close-"+tab.Key)
+				// 官方 .tabClose：active / hover / focus-within 才出现，绝对定位 20×20、top/right 4。
+				if env.Act.CloseRightTab != nil && (isActive || chipHovered) {
+					closeColor := t.LabelTertiary
+					if env.Canvas != nil && (env.Canvas.Hovered() == closeID || env.Canvas.Pressed() == closeID) {
+						closeColor = t.LabelPrimary
 					}
-					close := ui.Row(f).Width(18).Height(RightTabChipHeight).Shrink(0).
-						Items(ui.Center).Justify(ui.Center).Hit(closeID, "关闭")
+					close := ui.Row(f).Width(RightTabCloseSize).Height(RightTabCloseSize).Shrink(0).
+						Absolute().Top(RightTabCloseInset).Right(RightTabCloseInset).
+						Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM).
+						Hover(ui.Look{}.Background(t.Hover)).Hit(closeID, "关闭")
 					close.Children(func() {
-						ui.Text(f, "×").FontSize(RightTabChipFontSize).Color(t.LabelSecondary)
+						ui.Icon(f, rightTabCloseIcon()).Size(RightTabControlIconSize, RightTabControlIconSize).Color(closeColor)
 					})
 					if close.Clicked() {
 						env.Act.CloseRightTab(tab.Key)
 					}
 				}
 			})
+			if chip.Clicked() && onSelect != nil {
+				onSelect(tab.Key)
+			}
 		}
 		// dockkit addTab 的落点。官方这里先打开 guide；本仓 guide 仍未实现，
 		// 所以只对已声明 multiple:true 的类型开放，并走同一个 openTab 动作。
@@ -330,11 +355,17 @@ func DrawRightTabs(
 			if env.Tree != nil {
 				addID = env.Tree.ID(env.Feat, "right-tab-add")
 			}
+			addColor := t.LabelSecondary
+			if env.Canvas != nil && (env.Canvas.Hovered() == addID || env.Canvas.Pressed() == addID) {
+				addColor = t.LabelPrimary
+			}
 			add := ui.Row(f).Width(RightTabChipHeight).Height(RightTabChipHeight).Shrink(0).
 				Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM).
 				Hover(ui.Look{}.Background(t.Hover)).
 				Hit(addID, "新建浏览器标签页")
-			add.Children(func() { ui.Text(f, "+").FontSize(RightTabChipFontSize).Color(t.LabelSecondary) })
+			add.Children(func() {
+				ui.Icon(f, rightTabAddIcon()).Size(RightTabControlIconSize, RightTabControlIconSize).Color(addColor)
+			})
 			if add.Clicked() {
 				env.Act.OpenRightTab(kind)
 			}

@@ -152,8 +152,9 @@ func TestOverlayDrawsHunkRows(t *testing.T) {
 	fx.click(t, fx.rowID("deliv-0"), 1180, 700)
 
 	for _, want := range []string{
-		"写过的文件",    // 侧栏旧路径还在（不是被这一条替换掉了）
+		"交付文件",     // 侧栏标题（OFF:locales.ts:26 row.title）
 		"a.go",     // 侧栏只显示文件名
+		"GO",       // 扩展名描述行（OFF:PresentedFileCard.tsx:34 fileExtension）
 		"src/a.go", // 浮层头部用摘要的 display
 		"+2", "-1", // 头部计数（OFF:locales.ts:35-36）
 		"@@ -1,2 +1,3 @@",            // hunk 头（OFF:FileDiff.tsx:165-167）

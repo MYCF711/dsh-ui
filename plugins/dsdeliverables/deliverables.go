@@ -5,7 +5,7 @@
 // # 它凭什么算"交付物"
 //
 // 没有一份"交付物清单"从宿主传下来，也没有 `fs.write` 的调用日志——
-// 所以这里**只认一件事**：工具消息里 `write`/`edit`/`bash` 这类写类工具
+// 所以这里**只认一件事**：工具消息里 `write`/`edit` 这类写类工具
 // 的参数中出现过的路径。**这是痕迹推断，不是权威声明**：
 //
 //   - 只认**参数里有明确路径**的（`filePath` / `path`），不从命令串里做正则挖路径
@@ -13,7 +13,7 @@
 //   - 同一个路径只出现一次（按首次出现排序）
 //   - **不判断文件是否还在**（那要真读盘，而侧栏每帧都读盘会卡）
 //
-// 所以它的标题是「写过的文件」，不是「交付物」——**名字必须跟它的证据强度一致**。
+// 标题用官方 `row.title` =「交付文件」（OFF:locales.ts:26）。
 package dsdeliverables
 
 import (
@@ -24,11 +24,15 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // maxShown 最多列几个。
-const maxShown = 6
+//
+// 官方 COLLAPSED_PRESENTED_COUNT = 4（OFF:Deliverables.tsx:20）。
+const maxShown = 4
 
 // writeTools 是"会写盘"的工具名。
 //
@@ -123,7 +127,63 @@ func WrittenPaths(msgs []apiclient.Message) []string {
 // paths 保留本包原有绘制与测试入口；跨插件复用统一走 WrittenPaths。
 func paths(msgs []apiclient.Message) []string { return WrittenPaths(msgs) }
 
-// draw 画「写过的文件」区。没有就整块不画。
+// ── 卡片几何（逐字来自官方 Deliverables.module.css）──────────────────────────
+//
+// 所有数值都有 `file:line` 出处，不自造。
+const (
+	cardRootGap       float32 = 16  // .root gap（OFF:Deliverables.module.css:2）
+	cardRootMarginTop float32 = 4   // .root margin-top（OFF:Deliverables.module.css:2）
+	cardHeight        float32 = 60  // .file height（OFF:Deliverables.module.css:9）
+	cardPadY          float32 = 8   // .file padding top/bottom（OFF:Deliverables.module.css:9）
+	cardPadX          float32 = 10  // .file padding left/right（OFF:Deliverables.module.css:9）
+	cardGap           float32 = 10  // .file gap（OFF:Deliverables.module.css:9）
+	cardBorder        float32 = 0.5 // .file border-width（OFF:Deliverables.module.css:9）
+	cardIconSize      float32 = 40  // .fileIcon width/height（OFF:Deliverables.module.css:15）
+	cardIconRadius    float32 = 10  // .fileIcon border-radius（OFF:Deliverables.module.css:15）
+	cardIconGlyphSize float32 = 20  // FileTypeIcon size={20}（OFF:PresentedFileCard.tsx:43）
+	cardTitleFont     float32 = 13  // .fileName font-size（OFF:Deliverables.module.css:18）
+	cardTitleLine     float32 = 20  // .fileName line-height（OFF:Deliverables.module.css:18）
+	cardTitleWght     float32 = 500 // .fileName font-weight（OFF:Deliverables.module.css:18）
+	cardDescFont      float32 = 10  // .description font-size（OFF:Deliverables.module.css:19）
+	cardDescLine      float32 = 16  // .description line-height（OFF:Deliverables.module.css:19）
+	cardDetailsGap    float32 = 2   // .details gap（OFF:Deliverables.module.css:17）
+)
+
+// ── 官方中文文案（逐字，OFF:src/client/locales.ts）─────────────────────────────
+const (
+	// OFF:locales.ts:26  'row.title'
+	msgRowTitle = "交付文件"
+	// OFF:locales.ts:19  'presented.all' = '全部 {count} 个文件'
+	msgPresentedAll       = "全部 "
+	msgPresentedAllSuffix = " 个文件"
+	// OFF:locales.ts:25  'presented.file'
+	msgPresentedFile = "文件"
+)
+
+// fileTypeMarkColor 是 FileTypeIcon 的 --dsw-static-neutral-00 标记色。
+func fileTypeMarkColor() ui.Color { return gfx.RGB24(0xffffff) }
+
+// fileExtensionLabel 返回文件扩展名的大写形式（OFF:PresentedFileCard.tsx:34
+// `fileExtension(name).toUpperCase() || t('presented.file')`）。
+// 没有扩展名时回退到官方文案「文件」。
+func fileExtensionLabel(name string) string {
+	ext := filepath.Ext(name)
+	if ext == "" || ext == "." {
+		return msgPresentedFile
+	}
+	return strings.ToUpper(strings.TrimPrefix(ext, "."))
+}
+
+// draw 画「交付文件」区。没有就整块不画。
+//
+// 几何逐字对齐官方 Deliverables.module.css：
+//   - `.root`：gap 16px、margin-top 4px（OFF:Deliverables.module.css:2）
+//   - `.file`：height 60px、padding 8px 10px、gap 10px、border 0.5px、
+//     border-radius lg、background card-fill（OFF:Deliverables.module.css:9）
+//   - `.fileIcon`：40×40、border-radius 10px（OFF:Deliverables.module.css:15）
+//   - `.fileName`：13px / 500 / 20px（OFF:Deliverables.module.css:18）
+//   - `.description`：10px / 400 / 16px（OFF:Deliverables.module.css:19）
+//   - `.toggle`：12px / 18px、padding 1px 11px（OFF:Deliverables.module.css:27）
 func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	files := paths(env.Data.Msgs)
 	if len(files) == 0 {
@@ -137,8 +197,8 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 		shown = shown[:maxShown]
 	}
 
-	ui.Column(f).FillWidth().Gap(2).PadY(4).Children(func() {
-		ui.Text(f, "写过的文件").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+	ui.Column(f).FillWidth().Gap(cardRootGap).PadSides(cardRootMarginTop, 0, 0, 0).Children(func() {
+		ui.Text(f, msgRowTitle).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		for i, path := range shown {
 			path := path
 			// 只显示文件名：侧栏窄，完整路径会被 Ellipsis 截成"…本.jsp"这种没用的东西。
@@ -146,7 +206,11 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 			// **可点**：viva 的点击模型是"先 Hit 给 id，再问 Clicked"。
 			// 点了就在右边的浮层里看内容——这是这块唯一有真实数据源的动作
 			// （`fs.read` 一直在，而"文件的 diff"要宿主提供历史，那是另一件事）。
-			row := ui.Row(f).FillWidth().Items(ui.Center).Gap(6).PadSides(4, 4, 2, 2).
+			row := ui.Row(f).FillWidth().Height(cardHeight).Items(ui.Center).Gap(cardGap).
+				PadSides(cardPadY, cardPadX, cardPadY, cardPadX).
+				Border(cardBorder, t.BorderL1).Radius(t.Radii.LG).
+				Background(t.CardFill).
+				Hover(ui.Look{}.Background(t.CardFillHover)).
 				Hit(env.Tree.ID(env.Feat, "deliv-"+itoa(i)), name)
 			if row.Clicked() {
 				p.preview = path
@@ -154,11 +218,29 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 				p.scrolling = env.Act.FSRead
 			}
 			row.Children(func() {
-				ui.Text(f, name).FontSize(12).Color(t.LabelSecondary).Ellipsis()
+				// `.fileIcon`：40×40 圆角 10 的描边块，里面一个 20px FileTypeIcon。
+				icon := ui.Column(f).Width(cardIconSize).Height(cardIconSize).
+					Center().Border(cardBorder, t.BorderL1).Radius(cardIconRadius).
+					Background(t.CardTileFill)
+				icon.Children(func() {
+					if asset, ok := dsassets.FileType(name); ok {
+						ui.Icon(f, asset.Sheet).Width(cardIconGlyphSize).Height(cardIconGlyphSize)
+						if asset.Mark != nil {
+							ui.Icon(f, *asset.Mark).Absolute().Inset(0).Color(fileTypeMarkColor())
+						}
+					}
+				})
+				// `.fileBody` → `.details`：文件名 + 描述两行。
+				ui.Column(f).Grow(1).Gap(cardDetailsGap).Children(func() {
+					ui.Text(f, name).FontSize(cardTitleFont).LineHeight(cardTitleLine).
+						Weight(cardTitleWght).Color(t.LabelPrimary).Ellipsis()
+					ui.Text(f, fileExtensionLabel(name)).FontSize(cardDescFont).LineHeight(cardDescLine).
+						Color(t.LabelTertiary).Ellipsis()
+				})
 			})
 		}
 		if more > 0 {
-			ui.Text(f, "还有 "+itoa(more)+" 个").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+			ui.Text(f, msgPresentedAll+itoa(more+maxShown)+msgPresentedAllSuffix).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
 		}
 	})
 }

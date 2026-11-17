@@ -287,9 +287,20 @@ func (p *Plugin) drawDerivedControls(f ui.C, env *pluginapi.Env, tabID string, s
 				p.renaming = false
 			}
 		})
-	} else if drawTerminalButton(f, env, "terminal-rename", "重命名", terminalButtonGhost, false) {
-		p.renameField.SetText(state.Info.Title)
-		p.renaming = true
+	} else {
+		// 按钮是**块级 Row**：直接放进这个 Column 会被拉满整行（viva 的块级容器占满
+		// 父宽，`Shrink(0)` 只管主轴、不管交叉轴的宽度），渲染出来是「704px 宽、
+		// 标签居中」的隐形按钮——命中区也跟着变成整行（截图比对时量到的
+		// HIT 重命名 = x8/w704）。官方 Button 是 inline 尺寸（按钮宽度由 label 决定，
+		// ButtonSizeSmall），所以这里包一层 Row，让它按内容宽排。
+		var renameClicked bool
+		ui.Row(f).FillWidth().Children(func() {
+			renameClicked = drawTerminalButton(f, env, "terminal-rename", "重命名", terminalButtonGhost, false)
+		})
+		if renameClicked {
+			p.renameField.SetText(state.Info.Title)
+			p.renaming = true
+		}
 	}
 	if state.Writable {
 		ui.TextFieldID(f, env.Tree.ID(env.Feat, "terminal-input"), &p.field, "命令", "输入后按 F6 执行").

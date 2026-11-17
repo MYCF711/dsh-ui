@@ -258,10 +258,24 @@ func TestCatalogRowDrawsMetricsAndCurrentCheck(t *testing.T) {
 		env.Data.Cur = "child-1"
 		env.Data.Sessions = []apiclient.Session{{ID: "child-2", Title: "第二个子代理的标题"}}
 	})
-	for _, want := range []string{"1.5K tok", "1分05秒", "✓", "第二个子代理的标题"} {
+	for _, want := range []string{"1.5K tok", "1分05秒", "第二个子代理的标题"} {
 		if !canvasHasText(canvas, want) {
-			t.Fatalf("面板上找不到 %q（指标/当前会话对勾/子会话真实标题）", want)
+			t.Fatalf("面板上找不到 %q（指标/子会话真实标题）", want)
 		}
+	}
+	// 当前会话必须画官方 check-outline 矢量，不允许退回文本 ✓。
+	if canvasHasText(canvas, "✓") {
+		t.Fatal("当前会话对勾不应使用文本字符")
+	}
+	foundCheck := false
+	for _, triangle := range canvas.Triangles() {
+		if triangle.Color == p.theme.LabelPrimary {
+			foundCheck = true
+			break
+		}
+	}
+	if !foundCheck {
+		t.Fatal("面板上找不到 label-primary 的官方 check-outline")
 	}
 	// 未展开时不该画孙行。
 	if canvasHasText(canvas, "孙任务") {

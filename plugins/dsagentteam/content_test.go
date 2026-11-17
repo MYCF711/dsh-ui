@@ -75,10 +75,10 @@ func TestStatusAndDotMapping(t *testing.T) {
 		task TeamTask
 		want interface{}
 	}{
-		{"pending 未阻塞 → idle（第三级文字色）", TeamTask{Status: StatusPending, Ready: true}, theme.LabelTertiary},
+		{"pending 未阻塞 → idle（state-idle-primary）", TeamTask{Status: StatusPending, Ready: true}, theme.IdlePrimary},
 		{"pending 被阻塞 → warning", TeamTask{Status: StatusPending, Ready: false}, theme.Warn},
-		{"in_progress → ongoing（品牌色）", TeamTask{Status: StatusInProgress, Ready: true}, theme.BrandPrimary},
-		{"completed → done（成功色）", TeamTask{Status: StatusCompleted, Ready: true}, theme.Success},
+		{"in_progress → ongoing（第三级文字色）", TeamTask{Status: StatusInProgress, Ready: true}, theme.LabelTertiary},
+		{"completed → done（success-primary）", TeamTask{Status: StatusCompleted, Ready: true}, theme.SuccessPrimary},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

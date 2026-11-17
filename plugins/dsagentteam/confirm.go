@@ -74,7 +74,7 @@ func (p *Plugin) drawConfirm(f ui.C, env *pluginapi.Env) {
 		Shadow(gfx.ShadowMD).Pad(dialogPad).Gap(dialogGap).Children(func() {
 		// 标题（Modal 的 title；tone=warning 由黄色圆点表达）。
 		ui.Row(f).FillWidth().Items(ui.Center).Gap(errGap).Children(func() {
-			ui.Row(f).Width(dotSize).Height(dotSize).Radius(dotSize / 2).Background(t.Warn)
+			p.drawDot(f, t, t.Warn)
 			ui.Text(f, zhDisableTitle).FontSize(modalTitleZ).LineHeight(24).Weight(500).
 				Color(t.LabelPrimary).Grow(1)
 		})

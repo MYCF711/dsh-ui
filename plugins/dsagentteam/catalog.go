@@ -70,13 +70,15 @@ const (
 	catalogTriggerFont      = 12
 	catalogTriggerLine      = 18
 	catalogActivitySize     = 14 // .activitySlot{14×14}
+	catalogTriggerIconSize  = 14 // IconUsersOutlineRegular size=14（TSX:770）
 
-	catalogMenuWidth       = 360 // min(360px, 100vw-32px)
-	catalogMenuPad         = 6   // .menu{padding:6px}
-	catalogMenuMaxHeight   = 560 // min(560px, 100dvh-140px)
-	catalogMenuTopOffset   = 5   // top: calc(anchor(bottom) + 5px)
-	catalogMenuWindowInset = 16  // left/right clamp 的 16px
-	catalogMenuRadius      = 12  // MenuSurface 的圆角档（radius md）
+	catalogMenuWidth         = 360 // min(360px, 100vw-32px)
+	catalogMenuPad           = 6   // .menu{padding:6px}
+	catalogMenuMaxHeight     = 560 // min(560px, 100dvh-140px)
+	catalogMenuViewportInset = 140
+	catalogMenuTopOffset     = 5  // top: calc(anchor(bottom) + 5px)
+	catalogMenuWindowInset   = 16 // left/right clamp 的 16px
+	catalogMenuRadius        = 12 // MenuSurface 的圆角档（radius md）
 
 	catalogSectionGap        = 7 // .sectionHeader{gap:7px}
 	catalogSectionPadTop     = 4 // padding:4px 7px 8px
@@ -84,6 +86,7 @@ const (
 	catalogSectionPadBottom  = 8
 	catalogSectionIconW      = 14 // .sectionIcon 14×24
 	catalogSectionIconH      = 24
+	catalogSectionIconSize   = 14 // IconUsersOutlineRegular size=14（TSX:799）
 	catalogSectionTitleLine  = 24 // .sectionTitle 13px/24px
 	catalogSectionTitleSize  = 13
 	catalogSectionProgLead   = 4 // .sectionProgress margin-inline-start:4px
@@ -93,10 +96,24 @@ const (
 	catalogMetricFont        = 10 // .metrics{font-size:10px}
 	catalogMetricTokenLine   = 17 // .metricToken{grid-row:1;line-height:17px}
 	catalogMetricLine        = 15 // .metrics{line-height:15px}
-	catalogCheckSize         = 16 // currentCheck 16（IconCheckOutlineRegular size=16）
+	catalogCheckSize         = 16 // IconCheckOutlineRegular size=16
+	catalogSidebarSize       = 28 // .sidebarButton/.sidebarSpace 28×28
+	catalogSidebarMarginV    = 4  // .sidebarButton/.sidebarSpace margin:4px 0
+	catalogDisclosureIcon    = 12 // .disclosure svg 12×12
 	catalogChildIndent       = 16 // .children{margin-left:16px}
+	catalogChildPadLeft      = 3  // .children{padding-left:3px}
 	catalogSectionEmptyLeft  = 28 // padding:0 7px 8px 28px
 	catalogSectionEmptyRight = 7
+
+	catalogErrorPadV   = 8 // .error{padding:8px 10px}
+	catalogErrorPadH   = 10
+	catalogErrorGap    = 10 // .error{gap:10px}
+	catalogErrorFont   = 11 // .error{font-size:11px;line-height:16px}
+	catalogErrorLine   = 16
+	catalogRefreshGap  = 3 // .refresh{gap:3px;padding:3px 5px}
+	catalogRefreshPad  = 3
+	catalogRefreshPadH = 5
+	catalogRefreshIcon = 14 // IconRefreshOutlineRegular size=14
 
 	catalogRowMinHeight = 40 // .row{min-height:40px}
 	catalogRowGap       = 7  // gap:7px
@@ -104,6 +121,7 @@ const (
 	catalogRowPadLeft   = 9
 	catalogRowPadRight  = 6
 	catalogRowFont      = 12
+	catalogLabelFont    = 13 // .label{font-size:13px}（覆盖 .row 的 12px）
 	catalogRowLine      = 17
 	catalogRowActW      = 14 // .rowActivitySlot 14×17
 	catalogRowActH      = 17
@@ -345,14 +363,14 @@ func (p *Plugin) drawCatalogTriggerBody(f ui.C, env *pluginapi.Env) {
 	row := ui.Row(f).MinHeight(catalogTriggerMinHeight).Items(ui.Center).
 		Gap(catalogTriggerGap).
 		PadSides(catalogTriggerPadV, catalogTriggerPadH, catalogTriggerPadV, catalogTriggerPadH).
-		Radius(t.Radii.SM).
+		Radius(t.Radii.SM).Hover(ui.Look{}.Color(t.LabelPrimary)).
 		// 官方 `aria-label={t(totalCountKey,{count: directCount})}`：命中区 label 就用
 		// 那句计数文案（不是另编一个"目录"）；目录未知时退回树的可访问名。
 		Hit(id, catalogTriggerAria(facts)).Children(func() {
 		// `.activitySlot{width:14px;height:14px}`：users 图标（官方 IconUsersOutlineRegular 14）。
 		ui.Row(f).Size(catalogActivitySize, catalogActivitySize).Items(ui.Center).
 			Justify(ui.Center).Children(func() {
-			ui.Icon(f, usersIcon()).Size(catalogActivitySize-2, catalogActivitySize-2).
+			ui.Icon(f, usersIcon()).Size(catalogTriggerIconSize, catalogTriggerIconSize).
 				Color(t.LabelTertiary)
 		})
 		// `.count`：官方 `{count} 个子智能体`（窄容器 ≤460px 时整段被 CSS 隐藏；
@@ -399,9 +417,19 @@ func (p *Plugin) drawCatalogPanel(f ui.C, env *pluginapi.Env, drawSlot func(plug
 	// 官方几何表里的 header 顶部与行高推导，右缘按 clamp 的结果贴 16px。
 	top := catalogMenuTopFromHeader()
 	right := float32(catalogMenuWindowInset)
+	maxHeight := float32(catalogMenuMaxHeight)
+	if env.Bounds.Height > 0 {
+		viewportMax := env.Bounds.Height - catalogMenuViewportInset
+		if viewportMax < maxHeight {
+			maxHeight = viewportMax
+		}
+	}
+	if maxHeight < 0 {
+		maxHeight = 0
+	}
 
 	panel := ui.Column(f).Absolute().Top(top).Right(right).Width(width).
-		MaxHeight(catalogMenuMaxHeight).Radius(catalogMenuRadius).
+		MaxHeight(maxHeight).Radius(catalogMenuRadius).
 		Background(t.BgLayer1).Border(1, t.BorderL2).Shadow(gfx.ShadowMD).
 		Pad(catalogMenuPad)
 	// 面板本体吃掉点击：官方点菜单里面不会关（只有菜单外的 pointerdown 才关）。
@@ -451,7 +479,7 @@ func (p *Plugin) drawCatalogSectionHeader(f ui.C, t *pluginapi.Theme) {
 		Children(func() {
 			ui.Row(f).Size(catalogSectionIconW, catalogSectionIconH).Items(ui.Center).
 				Justify(ui.Center).Children(func() {
-				ui.Icon(f, usersIcon()).Size(catalogSectionIconW-2, catalogSectionIconW-2).
+				ui.Icon(f, usersIcon()).Size(catalogSectionIconSize, catalogSectionIconSize).
 					Color(t.LabelTertiary)
 			})
 			ui.Text(f, zhCatalogSectionTitle).FontSize(catalogSectionTitleSize).
@@ -474,14 +502,20 @@ func (p *Plugin) catalogProgressLabel() string { return "" }
 
 // drawCatalogError 画官方错误态（`.error` + 重试按钮）。
 func (p *Plugin) drawCatalogError(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, reason string) {
-	ui.Row(f).FillWidth().Items(ui.Start).Gap(catalogSectionGap).
-		PadSides(catalogSectionPadTop, catalogSectionPadH, catalogSectionPadBottom, catalogSectionPadH).
+	ui.Row(f).FillWidth().Items(ui.Center).Justify(ui.Between).Gap(catalogErrorGap).
+		PadSides(catalogErrorPadV, catalogErrorPadH, catalogErrorPadV, catalogErrorPadH).
 		Children(func() {
 			ui.Text(f, zhCatalogLoadError+"："+reason).FillWidth().Grow(1).
-				FontSize(catalogSectionEmptyFont).LineHeight(catalogRowLine).
-				Color(t.Error)
-			if ui.Button(f, zhCatalogRetry).
-				Outline().Small().Clicked() {
+				FontSize(catalogErrorFont).LineHeight(catalogErrorLine).Color(t.Error)
+			refresh := ui.Row(f).Shrink(0).Items(ui.Center).Gap(catalogRefreshGap).
+				PadSides(catalogRefreshPad, catalogRefreshPadH, catalogRefreshPad, catalogRefreshPadH).
+				Radius(t.Radii.SM).Hover(ui.Look{}.Background(t.Hover)).
+				Hit(env.Tree.ID(env.Feat, "subagent-catalog-retry"), zhCatalogRetry)
+			refresh.Children(func() {
+				ui.Icon(f, refreshOutlineIcon()).Size(catalogRefreshIcon, catalogRefreshIcon).Color(t.Error)
+				ui.Text(f, zhCatalogRetry).FontSize(catalogErrorFont).LineHeight(catalogErrorLine).Color(t.Error)
+			})
+			if refresh.Clicked() {
 				// 重试 = 让壳重新拉一次投影（壳自己排程；插件不直接发请求）。
 				if env.Act.Notify != nil {
 					env.Act.Notify(zhCatalogLoadError)
@@ -501,13 +535,13 @@ func (p *Plugin) drawCatalogRows(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 //
 // 这一版落地的四格（与官方同序）：
 //
-//	① disclosure 列（14×17；可展开画 ▾/▸，否则按 reserveDisclosure 留白）
+//	① disclosure 列（14×17；官方 chevron-right/down 12×12，否则留白）
 //	② activity 槽（14×17）—— **保留宽度、不画状态点**：官方三态需要"该子会话
 //	   是否在跑"的真值，本仓宿主没有这个投影；画一个中性点就是把"不知道"说成
 //	   "未运行"（登记在 docs/official-subagent-evidence-rc2.md）
 //	③ content：label（+ 子会话标题作 secondary，来自 session.list 的真实标题）
 //	④ metrics：token 第 1 行、compact 时长第 2 行（title = exact 时长）
-//	   + 尾列：当前会话画 ✓（官方 `currentCheck`）
+//	   + 尾列：28×28；当前会话画官方 check-outline 16px
 //
 // 点击行 = 打开那个子会话（官方 `openChild`）。
 func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, entry CatalogEntry, reserve bool) {
@@ -520,16 +554,18 @@ func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 
 	id := env.Tree.ID(env.Feat, "subagent-catalog-row-"+entry.ID)
 	aria := catalogRowAria(entry, token, compact, exact)
-	row := ui.Row(f).FillWidth().MinHeight(catalogRowMinHeight).Items(ui.Start).
+	row := ui.Row(f).FillWidth().MinWidth(0).MinHeight(catalogRowMinHeight).Items(ui.Start).
 		Gap(catalogRowGap).
 		PadSides(catalogRowPadV, catalogRowPadRight, catalogRowPadV, catalogRowPadLeft).
-		Radius(t.Radii.MD).Hit(id, aria).Children(func() {
+		Radius(t.Radii.MD).Hover(ui.Look{}.Background(t.Hover)).Hit(id, aria).Children(func() {
 		// ① disclosure（官方 `.disclosure` 14×17，svg 12×12 rotate 90°）。
 		switch {
 		case canExpand:
-			glyph := "▸"
+			// 官方 chevron-right 12×12；展开态 rotate(90deg) 的静态等价物是
+			// 同一官方 sprite 的 chevron-down，不再用文本字符 ▸/▾ 代替。
+			glyph := chevronRightIcon()
 			if expanded {
-				glyph = "▾"
+				glyph = chevronDownIcon()
 			}
 			toggleID := env.Tree.ID(env.Feat, "subagent-catalog-branch-"+entry.ID)
 			label := fillTile(zhBranchExpand, "label", entry.catalogLabel())
@@ -537,8 +573,8 @@ func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 				label = fillTile(zhBranchCollapse, "label", entry.catalogLabel())
 			}
 			cell := ui.Row(f).Size(catalogRowActW, catalogRowActH).Items(ui.Center).
-				Justify(ui.Center).Hit(toggleID, label).Children(func() {
-				ui.Text(f, glyph).FontSize(11).LineHeight(catalogRowActH).Color(t.LabelTertiary)
+				Justify(ui.Center).Hover(ui.Look{}.Color(t.LabelPrimary)).Hit(toggleID, label).Children(func() {
+				ui.Icon(f, glyph).Size(catalogDisclosureIcon, catalogDisclosureIcon).Color(t.LabelTertiary)
 			})
 			if cell.Clicked() {
 				p.team.ToggleCatalogBranch(entry.ID)
@@ -551,14 +587,14 @@ func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 		ui.Row(f).Size(catalogRowActW, catalogRowActH)
 		// ③ content：label（当前会话加粗）+ 子会话标题。
 		ui.Column(f).Grow(1).MinWidth(0).Children(func() {
-			label := ui.Text(f, entry.catalogLabel()).FontSize(catalogRowFont).
-				LineHeight(catalogRowLine).Color(t.LabelPrimary).Ellipsis()
+			label := ui.Text(f, entry.catalogLabel()).FontSize(catalogLabelFont).
+				LineHeight(catalogRowLine).Color(t.LabelPrimary)
 			if entry.ID == env.Data.Cur {
 				label.Weight(500)
 			}
 			if title := catalogSessionTitle(env, entry.ID); title != "" && title != entry.catalogLabel() {
 				ui.Text(f, title).FontSize(catalogRowFont).LineHeight(catalogRowLine).
-					Color(t.LabelTertiary).Ellipsis()
+					Color(t.LabelTertiary)
 			}
 		})
 		// ④ metrics：token（第 1 行）+ compact 时长（第 2 行，title = exact）。
@@ -575,14 +611,14 @@ func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 					}
 				})
 		}
-		// 尾列：当前会话画 ✓（官方 `currentCheck`，IconCheckOutlineRegular size=16）。
+		// 尾列统一是官方 .sidebarSpace 28×28 + margin:4px 0；当前会话
+		// 复用 check-outline 16px，颜色是 label-primary，不再用文本 ✓ 代替。
+		tail := ui.Row(f).Size(catalogSidebarSize, catalogSidebarSize).
+			MarginSides(catalogSidebarMarginV, 0, catalogSidebarMarginV, 0)
 		if entry.ID == env.Data.Cur {
-			ui.Row(f).Size(catalogCheckSize, catalogRowActH).Items(ui.Center).
-				Justify(ui.Center).Children(func() {
-				ui.Text(f, "✓").FontSize(12).LineHeight(catalogRowActH).Color(t.LabelSecondary)
+			tail.Items(ui.Center).Justify(ui.Center).Children(func() {
+				ui.Icon(f, checkOutlineIcon()).Size(catalogCheckSize, catalogCheckSize).Color(t.LabelPrimary)
 			})
-		} else {
-			ui.Row(f).Size(catalogCheckSize, catalogRowActH)
 		}
 	})
 	if row.Clicked() {
@@ -593,9 +629,10 @@ func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 		return
 	}
 	// 下一层：官方 `.children`（margin-left:16px; padding-left:3px + 0.5px 竖线）。
-	// 本仓没有 CSS 伪元素，缩进用 margin 表达；**连接线不画**（登记为差异）。
+	// 本仓没有 CSS 伪元素，margin/padding 已对齐；**连接线不画**（登记为差异）。
 	if expanded {
-		ui.Column(f).FillWidth().MarginSides(0, 0, 0, catalogChildIndent).Children(func() {
+		ui.Column(f).FillWidth().MarginSides(0, 0, 0, catalogChildIndent).
+			PadSides(0, 0, 0, catalogChildPadLeft).Children(func() {
 			p.drawCatalogRows(f, env, t, child.Catalog, catalogReserveDisclosure(child.Catalog, view.Children))
 		})
 	}

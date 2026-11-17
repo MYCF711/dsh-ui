@@ -173,7 +173,7 @@ func TestOfficialTierDispatchesGoalQuestionsStatusbar(t *testing.T) {
 	}
 
 	// ⑤ 三块内容都真画出来了，而且只画一次。
-	for _, want := range []string{"目标", "在等你回答", "活动 未知", "总量 12.3k"} {
+	for _, want := range []string{"目标", "确认", "活动 未知", "总量 12.3k"} {
 		if got := countTexts(texts, want); got != 1 {
 			t.Fatalf("文本 %q 出现 %d 次，want 1（texts=%v）", want, got, texts)
 		}

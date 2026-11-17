@@ -161,6 +161,8 @@ type OfficialTranscriptView struct {
 	// OpenSession 是工作流成员行的导航回调（官方注入的 `openSession`）。
 	// nil = 这条渲染路径没有导航能力（官方 `renderButton === false` 分支）。
 	OpenSession func(childID string)
+	// questionReplyCopied 是问题与回答气泡的复制反馈（QuestionReplyView.tsx:54-57）。
+	questionReplyCopied map[string]bool
 }
 
 // pendingCodeBlock 是一条「布局阶段占位、覆画阶段真画」的代码块。
@@ -305,7 +307,7 @@ func (v *OfficialTranscriptView) drawRow(f ui.C, env *pluginapi.Env, e Transcrip
 		case ChatNodeSystemPrompt:
 			v.drawDisclosureRow(f, e, "系统提示", "")
 		case ChatNodeQuestionReply:
-			v.drawQuestionReply(f, e)
+			v.drawQuestionReply(f, env, e)
 		case ChatNodeWorkflowRun:
 			v.drawWorkflowRun(f, env, e)
 		default:
@@ -1060,15 +1062,9 @@ func (v *OfficialTranscriptView) drawTurnTail(f ui.C, e TranscriptEntry) {
 	})
 }
 
-// drawQuestionReply 画 §5.18 已答问题批次。
-func (v *OfficialTranscriptView) drawQuestionReply(f ui.C, e TranscriptEntry) {
-	t := v.Theme
-	ui.Column(f).FillWidth().Gap(4).Children(func() {
-		ui.Text(f, e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
-		if e.Data.Outcome != "" {
-			ui.Text(f, e.Data.Outcome).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		}
-	})
+// drawQuestionReply 画 §5.18 已答问题批次；官方几何在 official_question_reply.go。
+func (v *OfficialTranscriptView) drawQuestionReply(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
+	v.drawOfficialQuestionReply(f, env, e)
 }
 
 // drawWorkflowRun 画 §5.20 工作流运行（官方 `WorkflowRunPanel` 全量几何）。

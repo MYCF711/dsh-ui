@@ -56,25 +56,28 @@ const (
 	// `.card{padding:0 0 10px; border-radius:radius-xl}`。
 	questionCardPadBottom float32 = 10
 	// `.header{padding:20px 16px 0 24px}`。
-	questionHeaderPadTop    float32 = 20
-	questionHeaderPadRight  float32 = 16
-	questionHeaderPadLeft   float32 = 24
-	questionHeaderGap       float32 = 4
-	questionEyebrowFont     float32 = 11
-	questionEyebrowLine     float32 = 16
-	questionTitleFont       float32 = 16
-	questionTitleLine       float32 = 22
-	questionOptionsPadTop   float32 = 4
-	questionOptionsPadX     float32 = 12
-	questionOptionsGap      float32 = 6
-	questionOptionPadTop    float32 = 8
-	questionOptionPadX      float32 = 8
-	questionOptionGap       float32 = 8
-	questionOptionLabelFont float32 = 14
-	questionOptionDescFont  float32 = 12
+	questionHeaderPadTop     float32 = 20
+	questionHeaderPadRight   float32 = 16
+	questionHeaderPadLeft    float32 = 24
+	questionEyebrowGap       float32 = 5
+	questionEyebrowFont      float32 = 11
+	questionEyebrowLine      float32 = 16
+	questionTitleFont        float32 = 16
+	questionTitleLine        float32 = 22
+	questionOptionsMarginTop float32 = 8
+	questionOptionsPadTop    float32 = 4
+	questionOptionsPadX      float32 = 12
+	questionOptionsGap       float32 = 1
+	questionOptionPadTop     float32 = 8
+	questionOptionPadX       float32 = 8
+	questionOptionPadRight   float32 = 12
+	questionOptionGap        float32 = 8
+	questionOptionLabelFont  float32 = 14
+	questionOptionLabelLine  float32 = 24
+	questionOptionDescFont   float32 = 13
+	questionOptionDescLine   float32 = 20
 
-	// 官方 `.eyebrow` 的文案域是 `question` 命名空间；本仓没有 locale 座位，
-	// 用旧座位已经对外说过的同一句话（不新造文案）。
+	// 仅 legacy 座位保留既有等待文案；官方座位的 eyebrow 严格使用 question.header。
 	questionEyebrowText = "在等你回答"
 )
 
@@ -87,8 +90,7 @@ const (
 func (p *Plugin) composerSeatLive() bool { return p.tier.Official() }
 
 // drawOfficial 画官方 `conversation.composer` 座位上的提问卡。
-//
-// 可见性：**只在有待答问题时显示**（`pending(Msgs)` 为空 → 整块不画）。
+// 通用问题与计划审阅共用同一座位；通用卡的绘制在 question_flow.go。
 func (p *Plugin) drawOfficial(f ui.C, env *pluginapi.Env) {
 	if !p.composerSeatLive() {
 		return
@@ -101,74 +103,7 @@ func (p *Plugin) drawOfficial(f ui.C, env *pluginapi.Env) {
 	if len(qs) == 0 {
 		return
 	}
-	q := qs[0]
-	p.cur = q
-	p.act = env.Act
-	t := p.theme
-	if env.Theme != nil {
-		t = env.Theme
-	}
-	send := env.Act.Send
-
-	// `.frame`：座位给了 clearance 16，这里再补 16（官方是 clearance + 16）。
-	ui.Column(f).FillWidth().
-		PadSides(questionFramePadTop, questionFramePadX, questionFramePadBottom, questionFramePadX).
-		Children(func() {
-			// `.card`
-			ui.Column(f).FillWidth().Radius(t.Radii.XL).Background(t.InputMajor).
-				PadSides(0, 0, questionCardPadBottom, 0).Children(func() {
-				// `.header`：eyebrow（在等你回答）+ title（问题本身）
-				ui.Column(f).FillWidth().
-					PadSides(questionHeaderPadTop, questionHeaderPadRight, 0, questionHeaderPadLeft).
-					Gap(questionHeaderGap).Children(func() {
-					ui.Row(f).Items(ui.Center).Gap(6).Children(func() {
-						p.prims.Dot(f, t.LabelTertiary, 5)
-						ui.Text(f, questionEyebrowText).FontSize(questionEyebrowFont).
-							LineHeight(questionEyebrowLine).Color(t.LabelTertiary)
-					})
-					ui.Text(f, q.Question).FontSize(questionTitleFont).
-						LineHeight(questionTitleLine).Color(t.LabelPrimary)
-				})
-				// `.options`：一行一个候选答案（点位 = 同一句 prompt）
-				ui.Column(f).FillWidth().
-					PadSides(questionOptionsPadTop, questionOptionsPadX, 0, questionOptionsPadX).
-					Gap(questionOptionsGap).Children(func() {
-					for i, opt := range q.Options {
-						p.drawOptionRow(f, env, t, i, opt, send)
-					}
-				})
-			})
-		})
-}
-
-// drawOptionRow 画一个候选答案行（两个座位共用同一套命中/发送语义）。
-func (p *Plugin) drawOptionRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, index int, opt Option, send func(string)) {
-	key := ""
-	if index == 0 {
-		key = "F7"
-	} else if index == 1 {
-		key = "F8"
-	}
-	row := ui.Row(f).FillWidth().Items(ui.Center).Gap(questionOptionGap).
-		PadSides(questionOptionPadTop, questionOptionPadX, questionOptionPadTop, questionOptionPadX).
-		Radius(t.Radii.MD).Background(t.BgLayer2).
-		Hit(env.Tree.ID(env.Feat, "opt-"+itoa(index)), opt.Label)
-	if row.Clicked() && send != nil {
-		// 点选项 = 发那句话。不带问题文本：agent 看得见自己问过什么。
-		send(opt.Label)
-	}
-	row.Children(func() {
-		if key != "" {
-			// 能按的键要写出来；第三项之后没有键就不写，也不假装能选。
-			ui.Text(f, key).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		}
-		ui.Column(f).Gap(2).Grow(1).Children(func() {
-			ui.Text(f, opt.Label).FontSize(questionOptionLabelFont).Color(t.LabelPrimary)
-			if opt.Description != "" {
-				ui.Text(f, opt.Description).FontSize(questionOptionDescFont).Color(t.LabelTertiary)
-			}
-		})
-	})
+	p.drawQuestionFlow(f, env, qs)
 }
 
 // itoa 只服务交互 id 的序号（不引 strconv：这一层保持极简依赖）。

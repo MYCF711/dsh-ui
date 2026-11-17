@@ -25,6 +25,7 @@ type Theme struct {
 	BgLayer1         ui.Color // 抬高一层（卡片）
 	BgLayer2         ui.Color // 抬高两层（气泡、输入框）
 	BgLayer3         ui.Color // 抬高三层（选择器）
+	BgOverlay        ui.Color // 浮层（问题选项序号；design-platform.css:191,343）
 	BgModulePlatform ui.Color // 模块台（Tag neutral / 行内代码）
 	BgSkeleton       ui.Color // 骨架屏（design-platform.css:192,344）
 
@@ -175,6 +176,7 @@ func (t *Theme) Palette() map[string]ui.Color {
 		"layer1":         t.BgLayer1,
 		"layer2":         t.BgLayer2,
 		"layer3":         t.BgLayer3,
+		"overlay":        t.BgOverlay,
 		"modulePlatform": t.BgModulePlatform,
 		"skeleton":       t.BgSkeleton,
 		"navActive":      t.NavActive,

@@ -283,7 +283,7 @@ func (v *OfficialTranscriptView) drawRow(f ui.C, env *pluginapi.Env, e Transcrip
 		case ChatNodeTurnTrigger:
 			v.drawTurnTrigger(f, e)
 		case ChatNodeCommandInput:
-			v.drawCommandInput(f, e)
+			v.drawCommandInput(f, env, e)
 		case ChatNodeAssistantStep:
 			v.drawAssistant(f, env, e)
 		case ChatNodeToolCall:
@@ -450,11 +450,29 @@ func triggerTitle(e TranscriptEntry) string {
 	return "记录"
 }
 
-// drawCommandInput 画 §5.5 `/goal` 命令输入（goal 包节点）。
-func (v *OfficialTranscriptView) drawCommandInput(f ui.C, e TranscriptEntry) {
+// drawCommandInput 画 §5.5 `/goal` 命令输入（GoalCommandInputView.module.css:1-33）。
+func (v *OfficialTranscriptView) drawCommandInput(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
 	t := v.Theme
-	ui.Row(f).FillWidth().Items(ui.Center).Gap(6).Children(func() {
-		ui.Text(f, e.Data.Text).FontSize(t.Fonts.Body).Mono().Color(t.LabelSecondary)
+	column := env.MainWidth
+	if column <= 0 {
+		column = env.Bounds.Width
+	}
+	ui.Row(f).FillWidth().Justify(ui.End).Gap(GoalCommandRowGap).Children(func() {
+		ui.Column(f).Items(ui.End).Gap(GoalCommandRowGap).MinWidth(0).
+			MaxWidth(userStackMaxWidth(column)).Children(func() {
+			// `.bubble`：10px 16px、radius-xl、specific-bubble、14/22、label-primary。
+			v.Prims.Bubble(f, func() {
+				if rest, ok := strings.CutPrefix(e.Data.Text, "/goal"); ok {
+					// GoalCommandReference.tsx:10-11 使用 ReferenceChip；label 取 business-primary。
+					ui.Row(f).Items(ui.Center).Gap(GoalCommandChipGap).Children(func() {
+						ui.Text(f, "/goal").FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.Info)
+						ui.Wrap(f, rest).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+					})
+					return
+				}
+				ui.Wrap(f, e.Data.Text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+			})
+		})
 	})
 }
 

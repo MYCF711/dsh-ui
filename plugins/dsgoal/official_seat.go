@@ -54,12 +54,14 @@ const (
 	goalBarPadRight  float32 = 5
 	goalBarPadBottom float32 = 4
 	goalBarPadLeft   float32 = 12
-	// `.dock{… - 4*dock-inset}` 与 `--dsh-composer-dock-inset:8px`。
-	goalDockInset float32 = 8
-	// `.label{font-size:13px; line-height:24px}`。
+	// `.dock{width:calc(100% - 2*clearance - 4*dock-inset)}`，inset=8；
+	// 座位已扣 clearance，因此左右各再留 2*inset=16（GoalBar.module.css:5-17）。
+	goalDockInset  float32 = 8
+	goalDockMargin float32 = 2 * goalDockInset
+	// `.label{font-size:13px; line-height:24px}`；活跃文案见 locales.ts:5。
 	goalLabelFont float32 = 13
 	goalLabelLine float32 = 24
-	goalLabelText         = "目标"
+	goalLabelText         = "进行中的目标"
 	// `.objective{font-size:13px; line-height:20px}`。
 	goalObjectiveFont float32 = 13
 	goalObjectiveLine float32 = 20
@@ -67,6 +69,15 @@ const (
 	// 「本仓没有那枚 symbol」是误判：官方 GoalBar.tsx:137 用的就是
 	// `IconGoalOutlineRegular`，而素材库 `assets/icons/tools/goal.jsx` 与 rc.2
 	// sprite 的 4 段 path **逐字节相同**。符号定义见 icons.go（goalGlyphSize）。
+
+	// `.bar{box-shadow:var(--dsw-elevation-panel)}`；三层原值见
+	// ui-theme/src/styles/gradient-shadow-text.css:33-35，stroke 在 GoalBar:32 重绑 BorderL1。
+	goalPanelStroke     float32 = 0.5
+	goalPanelShadowY    float32 = 3
+	goalPanelShadowBlur float32 = 8
+	goalPanelShadowA    float32 = 0.03
+	goalPanelGlowBlur   float32 = 16
+	goalPanelGlowA      float32 = 0.02
 )
 
 // composerSeatLive 报告**这一帧**官方 composer 座位是不是活的。
@@ -121,16 +132,17 @@ func goalContentWidth(column float32) float32 {
 	return w
 }
 
-// drawOfficial 画官方座位上的目标条。
-//
-// 座位是 `conversation.composer`（chain），对应官方的 `conversation.input.dock[id=goal]`
-// ——后者今天由 composer 占用方转发、本仓占用方还没转发，见文件头。
-//
-// 可见性：**只在有活跃 goal 时显示**（`Act.Goal` 为空 → 整块不画，不留空条）。
+// drawOfficial 画官方座位上的目标条；legacy 与 official 共用同一套 CSS 几何。
 func (p *Plugin) drawOfficial(f ui.C, env *pluginapi.Env) {
 	if !p.composerSeatLive() {
 		return
 	}
+	p.drawGoalBar(f, env)
+}
+
+// drawGoalBar 对照 GoalBar.module.css:5-84 画唯一一张 36px 目标条。
+// 可见性：只在有活跃 goal 时显示；官方 complete 同样不画（GoalBar.tsx:86-87）。
+func (p *Plugin) drawGoalBar(f ui.C, env *pluginapi.Env) {
 	goal := goalText(env)
 	if goal == "" {
 		return
@@ -139,25 +151,39 @@ func (p *Plugin) drawOfficial(f ui.C, env *pluginapi.Env) {
 	if env.Theme != nil {
 		t = env.Theme
 	}
+	// card-max-width=content+32，bar max-width=card-max-width-4*8，因此就是 content。
 	maxW := goalContentWidth(goalColumn(env))
 	// `.dock{margin:0 auto; width:calc(100% - 2*clearance - 4*inset)}`：
-	// 座位已扣掉 2×clearance(16)，这里补 dock 自己的左右 inset。
-	ui.Row(f).FillWidth().MarginSides(0, goalDockInset, 0, goalDockInset).
+	// 座位已扣 2×clearance，这里左右各扣 2×inset，总计官方 4×inset。
+	ui.Row(f).FillWidth().MarginSides(0, goalDockMargin, 0, goalDockMargin).
 		Justify(ui.Center).Children(func() {
 		ui.Row(f).FillWidth().MaxWidth(maxW).Height(goalBarHeight).
 			PadSides(goalBarPadTop, goalBarPadRight, goalBarPadBottom, goalBarPadLeft).
 			Items(ui.Center).Gap(goalBarGap).
-			Radius(t.Radii.MD).Background(t.BgLayer2).Shadow(gfx.ShadowXS).
+			Radius(t.Radii.MD).Background(t.Menu).
+			Draw(func(d *ui.DrawContext) { drawGoalPanelElevation(d, t.Radii.MD, t.BorderL1) }).
 			Children(func() {
-				// `.goalGlyph{color:var(--dsw-alias-label-tertiary);flex:none;display:inline-flex}`：
-				// 官方 sprite `goal-outline`，`<IconGoalOutlineRegular size={14}/>`
-				// （GoalBar.tsx:137）。viewBox 保持官方的 16，缩放交给 Size(14)。
+				// `.goalGlyph{color:label-tertiary}` + GoalBar.tsx:137 的 size=14。
 				ui.Icon(f, goalOutlineIcon()).Size(goalGlyphSize, goalGlyphSize).Color(t.LabelTertiary)
 				ui.Text(f, goalLabelText).FontSize(goalLabelFont).LineHeight(goalLabelLine).
 					Weight(gfx.WeightMedium).Color(t.LabelPrimary)
-				// `.objective`：一行，超出省略（完整内容在别处看）。
+				// `.objective`：13/20、label-primary-dimmed、一行省略。
 				ui.Text(f, goal).FontSize(goalObjectiveFont).LineHeight(goalObjectiveLine).
-					Color(t.LabelSecondary).Grow(1).Ellipsis()
+					Color(t.LabelPrimaryDimmed).Grow(1).Ellipsis()
 			})
 	})
+}
+
+// drawGoalPanelElevation 画官方 elevation-panel，不拿 ShadowXS 的 0/1/2/5% 替代。
+func drawGoalPanelElevation(d *ui.DrawContext, radius float32, stroke gfx.Color) {
+	outer := d.Rect
+	outer.X -= goalPanelStroke
+	outer.Y -= goalPanelStroke
+	outer.Width += 2 * goalPanelStroke
+	outer.Height += 2 * goalPanelStroke
+	d.Canvas.RoundedOutline(outer, radius+goalPanelStroke, goalPanelStroke, d.Fade(stroke))
+	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{OffsetY: goalPanelShadowY, Blur: goalPanelShadowBlur},
+		d.Fade(gfx.Color{Alpha: goalPanelShadowA}))
+	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{Blur: goalPanelGlowBlur},
+		d.Fade(gfx.Color{Alpha: goalPanelGlowA}))
 }

@@ -160,6 +160,47 @@ func TestGoalVisibilityBothStates(t *testing.T) {
 	}
 }
 
+func TestGoalBarMatchesOfficialGeometryAndColors(t *testing.T) {
+	const objective = "先出方案"
+	canvas := officialFrame(t, true, func() string { return objective })
+	theme := dscore.Dark()
+	if goalDockMargin != 16 {
+		t.Errorf("dock 单侧 margin = %v，want 16（4×8 inset 分摊到左右）", goalDockMargin)
+	}
+	var bars int
+	for _, rect := range canvas.Rectangles() {
+		if rect.Color == theme.Menu && rect.Bounds.Height == goalBarHeight {
+			bars++
+			if rect.Bounds.Width != goalContentWidth(902) {
+				t.Errorf("bar 宽 = %v，want %v（card-max-width - 4×8）", rect.Bounds.Width, goalContentWidth(902))
+			}
+		}
+	}
+	if bars != 1 {
+		t.Fatalf("specific-menu 目标条 = %d，want 1", bars)
+	}
+	for _, text := range canvas.Texts() {
+		switch text.Value {
+		case goalLabelText:
+			if text.Style.Size != 13 || text.Style.Color != theme.LabelPrimary || text.Style.Weight != gfx.WeightMedium {
+				t.Errorf("阶段标签样式 = %+v，want 13/500/label-primary", text.Style)
+			}
+		case objective:
+			if text.Style.Size != 13 || text.Style.Color != theme.LabelPrimaryDimmed {
+				t.Errorf("目标正文样式 = %+v，want 13/label-primary-dimmed", text.Style)
+			}
+		}
+	}
+	shadows := canvas.Shadows()
+	if len(shadows) != 2 {
+		t.Fatalf("elevation-panel 柔光 = %d 层，want 2（不是 ShadowXS）", len(shadows))
+	}
+	if shadows[0].Style.OffsetY != 3 || shadows[0].Style.Blur != 8 || shadows[0].Color.Alpha != 0.03 ||
+		shadows[1].Style.OffsetY != 0 || shadows[1].Style.Blur != 16 || shadows[1].Color.Alpha != 0.02 {
+		t.Errorf("elevation-panel = %+v，want 0/3/8/.03 + 0/0/16/.02", shadows)
+	}
+}
+
 // ④ 每帧 dispatch 一次、每帧只画一次：连画两帧，每帧各出现一份。
 func TestGoalDrawsOncePerFrame(t *testing.T) {
 	officialFrame(t, true, func() string { return "同一目标" })

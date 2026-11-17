@@ -195,12 +195,38 @@ func TestRenderAllKindsExceptSubmittedPlan(t *testing.T) {
 	}
 	// 每种 kind 至少一条**文本**断言（覆盖"文本/几何/可见性"里的文本面）。
 	for _, want := range []string{
-		"用户正文", "补充一句", "上下文内容", "定时任务已触发", "/goal 写完报告",
+		"用户正文", "补充一句", "上下文内容", "定时任务已触发", "/goal", " 写完报告",
 		"助手正文", "先想一下", "bash", `{"command":"go test"}`, "ok", "/compact", "压缩完成",
 		"早先的对话", "重试 2/5", "Turn 错误", "boom", "E_BOOM", "输出达到 token 上限",
 		"耗时 4 秒", "42 tokens", "系统提示内容", `{"future":true}`, "选 A", "review",
 	} {
 		mustCanvasText(t, canvas, want)
+	}
+}
+
+func TestGoalCommandInputUsesOfficialBubbleAndChip(t *testing.T) {
+	_, tree := newTranscriptCanvas()
+	_, canvas := renderTranscript(t, []TranscriptEntry{{
+		Key: "goal-command", Kind: ChatNodeCommandInput, Seq: 1, Turn: 1, Visibility: ChatVisibilityVisible,
+		Data: TranscriptData{Text: "/goal 写完报告"},
+	}}, hostViewport(tree))
+	theme := dscore.Dark()
+	var bubbles int
+	for _, rect := range canvas.Rectangles() {
+		if rect.Color == theme.Bubble && rect.Radius == theme.Radii.XL {
+			bubbles++
+		}
+	}
+	if bubbles != 1 {
+		t.Fatalf("命令输入气泡 = %d，want 1（specific-bubble + radius-xl）", bubbles)
+	}
+	command := mustCanvasText(t, canvas, "/goal")
+	if command.Style.Size != theme.Fonts.Body || command.Style.Color != theme.Info || command.Style.Mono {
+		t.Errorf("/goal chip 样式 = %+v，want 14/business-primary/非等宽", command.Style)
+	}
+	objective := mustCanvasText(t, canvas, " 写完报告")
+	if objective.Style.Size != theme.Fonts.Body || objective.Style.Color != theme.LabelPrimary || objective.Style.Mono {
+		t.Errorf("目标正文样式 = %+v，want 14/label-primary/非等宽", objective.Style)
 	}
 }
 

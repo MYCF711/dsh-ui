@@ -165,7 +165,7 @@ var officialChatNodes = []ChatNodeSpec{
 		DOMRoot:        "GoalCommandInputView",
 		Visibility:     ChatVisibilityVisible,
 		Anchor:         "§5.5",
-		Note:           "外部包节点：kind/注册位置/数据形状已取证，组件内部几何未取证（§9 第 4 条）→ 几何 derived",
+		Note:           "GoalCommandInputView.module.css:1-33 已取证：右对齐 6px stack、content×0.702/82% cap、10×16 bubble、14/22、specific-bubble",
 	},
 	{
 		Kind:           ChatNodeAssistantStep,

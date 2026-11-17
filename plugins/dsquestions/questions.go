@@ -48,8 +48,10 @@ type Question struct {
 	ID          string   `json:"id"`
 	Question    string   `json:"question"`
 	Header      string   `json:"header"`
+	Detail      string   `json:"detail"`
 	Options     []Option `json:"options"`
 	MultiSelect bool     `json:"multi_select"`
+	CallID      string   `json:"-"`
 }
 
 type Plugin struct {
@@ -61,8 +63,11 @@ type Plugin struct {
 	act pluginapi.Actions
 	// cur 是当前显示的那条问题（draw 填、HandleKey 读）。
 	cur Question
-	// review 是计划审阅的在飞/失败/本地关闭状态；网络回答不阻塞绘制线程。
+	// review 是计划审阅与通用问题的在飞/失败/本地关闭状态；网络回答不阻塞绘制线程。
 	review planReviewInteraction
+	// flow/custom 是官方通用问题卡的草稿；壳经 Fields 把 custom 交给平台输入法。
+	flow   questionFlowState
+	custom ui.Field
 }
 
 type planReviewInteraction struct {
@@ -139,6 +144,9 @@ func pending(msgs []apiclient.Message) []Question {
 		}
 		if json.Unmarshal([]byte(m.Args), &args) != nil {
 			return nil // 参数不是 JSON：宁可不显示，也不画半截
+		}
+		for i := range args.Questions {
+			args.Questions[i].CallID = m.CallID
 		}
 		return args.Questions
 	}

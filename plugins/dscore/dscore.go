@@ -147,6 +147,7 @@ func Dark() *pluginapi.Theme {
 		BgLayer1:         gfx.RGB24(staticNeutralBluish875),
 		BgLayer2:         gfx.RGB24(staticNeutralBluish850),
 		BgLayer3:         gfx.RGB24(staticNeutralBluish800),
+		BgOverlay:        gfx.RGB24(staticNeutralBluish700),
 		BgModulePlatform: gfx.RGB24(staticNeutralBluish800),
 		BgSkeleton:       ui.RGBA(255, 255, 255, 0.08),
 
@@ -226,6 +227,7 @@ func Light() *pluginapi.Theme {
 		BgLayer1:         gfx.RGB24(staticNeutralBluish00),
 		BgLayer2:         gfx.RGB24(staticNeutralBluish00),
 		BgLayer3:         gfx.RGB24(staticNeutralBluish00),
+		BgOverlay:        gfx.RGB24(staticNeutralBluish150),
 		BgModulePlatform: gfx.RGB24(staticNeutralBluish60),
 		BgSkeleton:       ui.RGBA(0, 0, 0, 0.04),
 

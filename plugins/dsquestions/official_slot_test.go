@@ -118,10 +118,13 @@ func TestQuestionsOfficialSeatDrawsPendingQuestionOnce(t *testing.T) {
 	if counts[uikernel.OffConvComposer] != 1 {
 		t.Fatalf("conversation.composer 派发次数 = %d，want 1", counts[uikernel.OffConvComposer])
 	}
-	for _, want := range []string{questionEyebrowText, "选哪个？", "A", "B"} {
+	for _, want := range []string{"确认", "选哪个？", "A", "B", "1 / 1", "跳过", "提交"} {
 		if got := countText(texts, want); got != 1 {
 			t.Fatalf("文本 %q 出现 %d 次，want 1（texts=%v）", want, got, texts)
 		}
+	}
+	if countText(texts, questionEyebrowText) != 0 {
+		t.Fatalf("官方 eyebrow 必须来自 question.header，不得自造等待文案：%v", texts)
 	}
 	if len(canvas.Rectangles()) == 0 {
 		t.Fatal("官方提问卡没画出任何矩形（卡片/选项行）")

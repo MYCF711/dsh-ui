@@ -267,6 +267,12 @@ func TestReadyCardShowsNameAndByteLabel(t *testing.T) {
 	if !hasText(canvas, "TXT 1.5KB") {
 		t.Fatalf("卡片缺 %q 这一行；实际文字=%v", "TXT 1.5KB", textValues(canvas))
 	}
+	if hasText(canvas, "TXT") {
+		t.Fatal("图标槽仍在用独立扩展名文字顶替官方 FileTypeIcon")
+	}
+	if len(canvas.Triangles()) == 0 {
+		t.Fatal("ready 卡没有画出官方 FileTypeIcon 的矢量图层")
+	}
 	// 尺寸：官方 .card 是 240×64（FileCard.module.css:1-14）。
 	card := p.boxes.Cards[0].Rect()
 	if card.Width != cardWidth || card.Height != cardHeight {
@@ -278,6 +284,15 @@ func TestReadyCardShowsNameAndByteLabel(t *testing.T) {
 	}
 	if size := p.boxes.Remove[0].Rect(); size.Width != removeSize || size.Height != removeSize {
 		t.Fatalf("× 按钮尺寸=%vx%v，官方是 %vx%v", size.Width, size.Height, removeSize, removeSize)
+	}
+	contrastRemove := false
+	for _, rect := range canvas.Rectangles() {
+		if rect.Color == env.Theme.ButtonContrastFill && rect.Bounds.Width == removeSize && rect.Bounds.Height == removeSize {
+			contrastRemove = true
+		}
+	}
+	if !contrastRemove {
+		t.Fatal("普通移除按钮没有使用 --dsw-alias-button-contrast-fill")
 	}
 }
 
@@ -385,6 +400,15 @@ func TestHostErrorTextIsShownVerbatim(t *testing.T) {
 	if state := p.itemSnapshot()[0].State; state != stateError {
 		t.Fatalf("宿主拒绝后应是 error 态，实际 %q", state.key())
 	}
+	errorRemove := false
+	for _, rect := range canvas.Rectangles() {
+		if rect.Color == env.Theme.Error && rect.Bounds.Width == removeSize && rect.Bounds.Height == removeSize {
+			errorRemove = true
+		}
+	}
+	if !errorRemove {
+		t.Fatal("失败卡的移除按钮没有使用 FileCard.module.css:136-140 的 error 底")
+	}
 
 	// 宿主没给文字时回退官方那句通用文案（**不自己编中文**）。
 	silent := &fakeSink{session: "s1", respond: func(string) (*apiclient.Attachment, error) {
@@ -420,6 +444,15 @@ func TestUploadingThenReady(t *testing.T) {
 	}
 	if !hasText(canvas, zhFileUploading) {
 		t.Fatalf("上传中应显示 %q；实际文字=%v", zhFileUploading, textValues(canvas))
+	}
+	trackFound := false
+	for _, rect := range canvas.Rectangles() {
+		if rect.Color == env.Theme.FileUploadTrack && rect.Bounds.Height == progressHeight {
+			trackFound = true
+		}
+	}
+	if !trackFound {
+		t.Fatal("上传中进度轨没有使用 --dsw-specific-file-upload-track")
 	}
 	if hasText(canvas, "TXT 1.5KB") {
 		t.Fatal("还没上传完就显示字节标签，等于假装已就绪")
@@ -681,12 +714,6 @@ func TestExtensionTextMatchesOfficial(t *testing.T) {
 		if got := extensionText(in); got != want {
 			t.Errorf("extensionText(%q)=%q，官方是 %q", in, got, want)
 		}
-	}
-	if got := glyphOf("report.txt"); got != "TXT" {
-		t.Errorf("图标槽文字=%q，应是扩展名（官方那里是 SVG sprite，本仓用文字顶替）", got)
-	}
-	if got := glyphOf("a.verylongextension"); got != "VERY" {
-		t.Errorf("图标槽只放得下 %d 个字符，实际 %q", glyphMaxLetters, got)
 	}
 }
 

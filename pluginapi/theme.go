@@ -41,7 +41,9 @@ type Theme struct {
 	NavActive               ui.Color // 侧栏选中项；也对应 button-ghost-active-fill
 	NavHover                ui.Color // 侧栏悬停项
 	Hover                   ui.Color // 通用悬停叠色（原值是半透明白 / 黑）
+	InteractiveActive       ui.Color // 文件树当前行：--dsw-alias-interactive-bg-active
 	ButtonGhostActiveBorder ui.Color // Pill 选中态 inset 描边
+	ButtonContrastFill      ui.Color // 附件移除按钮：--dsw-alias-button-contrast-fill
 
 	// ── 描边 ──
 	BorderL1 ui.Color // 最轻：分隔线
@@ -50,11 +52,13 @@ type Theme struct {
 	BorderL4 ui.Color // 重
 
 	// ── 文字 ──
-	LabelPrimary   ui.Color // 正文
-	LabelSecondary ui.Color // 次要
-	LabelTertiary  ui.Color // 第三级
-	LabelCaption   ui.Color // 说明 / 状态栏
-	LabelDimmed    ui.Color // 几乎不可见（占位）
+	LabelPrimary         ui.Color // 正文
+	LabelSecondary       ui.Color // 次要
+	LabelTertiary        ui.Color // 第三级
+	LabelCaption         ui.Color // 说明 / 状态栏
+	LabelDimmed          ui.Color // 几乎不可见（占位）
+	LabelPrimaryInverted ui.Color // 对比按钮文字：--dsw-alias-label-primary-inverted
+	LabelOnColor         ui.Color // 状态色上的文字：--dsw-alias-label-on-color
 
 	// ── 品牌与链接 ──
 	Link               ui.Color
@@ -75,8 +79,9 @@ type Theme struct {
 	CodeVariable ui.Color
 
 	// ── 气泡与输入 ──
-	Bubble     ui.Color
-	InputMajor ui.Color
+	Bubble          ui.Color
+	InputMajor      ui.Color
+	FileUploadTrack ui.Color // 附件进度轨：--dsw-specific-file-upload-track
 
 	// MarkdownTag ← --dsw-alias-markdown-tag
 	//

@@ -87,6 +87,30 @@ func TestPreviewHeadlessCapture(t *testing.T) {
 	if card.Width > 600 {
 		t.Errorf("预览卡片宽 %v，超过设计值 520——布局把它撑开了", card.Width)
 	}
+	openFound := false
+	for _, hit := range session.Snapshot().Hits {
+		if hit.Label == "用默认程序打开" {
+			openFound = true
+			if hit.Bounds.Height != previewOpenHeight {
+				t.Errorf("打开按钮高=%v，官方 OpenTargetButton 为 %v", hit.Bounds.Height, previewOpenHeight)
+			}
+		}
+	}
+	if !openFound {
+		t.Fatal("预览头部缺少官方默认应用按钮")
+	}
+	bodyFound := false
+	for _, text := range session.Snapshot().Texts {
+		if text.Value == "package dsopen" {
+			bodyFound = true
+			if !text.Style.Mono || text.Style.Size != 13 {
+				t.Errorf("预览正文样式=%+v，官方是 13px 等宽", text.Style)
+			}
+		}
+	}
+	if !bodyFound {
+		t.Fatal("真实像素帧缺少预览正文")
+	}
 
 	path := filepath.Join(dir, "files-preview.png")
 	if err := session.Screenshot(path); err != nil {

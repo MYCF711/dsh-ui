@@ -103,6 +103,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
@@ -196,7 +197,15 @@ const (
 	removeSize  float32 = 18
 	// 官方 `IconCloseFillRegular size={12}`（FileCard.tsx:69）。
 	removeGlyphSize float32 = 12
+	// 普通态 opacity:0，卡 hover / 自身 focus-visible 时为 1（FileCard.module.css:99-118）。
+	removeOpacityIdle float32 = 0
+	removeOpacityShow float32 = 1
+	// hover / focus-within 时标题右侧让出删除按钮（FileCard.module.css:126-133）。
+	nameActionPadRight float32 = 18
 )
+
+// 官方 transition: opacity 0.2s ease-in-out（FileCard.module.css:101）。
+var removeMotion = gfx.Motion{Duration: 200 * time.Millisecond, Easing: gfx.EaseInOut}
 
 // 进度条：`OFF:FileCard.module.css:142-151`（track 左右各 12、底 5、高 2、圆角 1）、
 // `:153-160`（bar 默认宽度 35%，有进度时按比例）
@@ -215,6 +224,14 @@ const (
 	arrowInset float32 = 4
 	// 官方 `IconChevronLeft/RightOutlineRegular` 的 sprite 默认 size=14。
 	arrowGlyphSize float32 = 14
+	// elevation-panel：0.5px stroke + 0 3px 8px/3% + 0 0 16px/2%
+	// （AttachmentRail.module.css:100-105；ui-theme/gradient-shadow-text.css:33-35）。
+	arrowStroke      float32 = 0.5
+	arrowShadowY     float32 = 3
+	arrowShadowBlur  float32 = 8
+	arrowShadowAlpha float32 = 0.03
+	arrowGlowBlur    float32 = 16
+	arrowGlowAlpha   float32 = 0.02
 )
 
 // ── 数据面注入（照 plugins/dsdirpicker 的 SetSource 写法，不发明新机制）──────
@@ -836,7 +853,10 @@ func (p *Plugin) drawArrow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, direc
 		label, id = zhScrollRight, "attachments.scroll-right"
 	}
 	arrow := ui.Row(f).Absolute().Top((itemHeight-arrowSize)/2).Size(arrowSize, arrowSize).
-		Radius(arrowSize/2).Background(t.InputMajor).Shadow(gfx.ShadowMD).
+		Radius(arrowSize/2).Background(t.InputMajor).
+		// AttachmentRail.module.css:110-114：hover 改 interactive-bg-hover-solid。
+		Hover(ui.Look{}.Background(attachmentHoverSolid(t))).
+		Draw(func(d *ui.DrawContext) { drawAttachmentArrowElevation(d, t) }).
 		Items(ui.Center).Justify(ui.Center).
 		Hit(p.hitID(env, id), label)
 	if direction > 0 {
@@ -853,6 +873,38 @@ func (p *Plugin) drawArrow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, direc
 	if arrow.Clicked() {
 		p.stepPage(direction)
 	}
+}
+
+// drawAttachmentArrowElevation 逐层画官方 elevation-panel，不用 Viva ShadowMD 近似。
+func drawAttachmentArrowElevation(d *ui.DrawContext, t *pluginapi.Theme) {
+	outer := d.Rect
+	outer.X -= arrowStroke
+	outer.Y -= arrowStroke
+	outer.Width += 2 * arrowStroke
+	outer.Height += 2 * arrowStroke
+	d.Canvas.RoundedOutline(outer, arrowSize/2+arrowStroke, arrowStroke, d.Fade(attachmentArrowBorder(t)))
+	d.Canvas.Shadow(d.Rect, arrowSize/2, gfx.ShadowStyle{OffsetY: arrowShadowY, Blur: arrowShadowBlur},
+		d.Fade(gfx.Color{Alpha: arrowShadowAlpha}))
+	d.Canvas.Shadow(d.Rect, arrowSize/2, gfx.ShadowStyle{Blur: arrowGlowBlur},
+		d.Fade(gfx.Color{Alpha: arrowGlowAlpha}))
+}
+
+// attachmentArrowBorder 是 border-l2-darkmode-thin：亮 0.10、暗 0.06
+// （ui-theme/design-platform.css:196,348），不能与暗色 border-l2 的 0.12 混用。
+func attachmentArrowBorder(t *pluginapi.Theme) ui.Color {
+	if t.Dark {
+		return gfx.RGBA(255, 255, 255, 0.06)
+	}
+	return t.BorderL2
+}
+
+// attachmentHoverSolid 是 interactive-bg-hover-solid：亮 bluish-75、暗 bluish-800
+// （ui-theme/design-platform.css:241,393），分别与现有 NavHover/BgLayer3 同值。
+func attachmentHoverSolid(t *pluginapi.Theme) ui.Color {
+	if t.Dark {
+		return t.BgLayer3
+	}
+	return t.NavHover
 }
 
 // stepPage 翻一页（-1 上一页 / +1 下一页），落到 [0, 页数-1]。
@@ -898,9 +950,13 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, it ite
 	if it.State == stateError {
 		border = t.Error // .failed { border-color: var(--dsw-alias-state-error-primary) }（:16-18）
 	}
+	cardID := p.hitID(env, "attachments.card."+it.Key)
+	removeID := p.hitID(env, "attachments.remove."+it.Key)
 	card := ui.Row(f).Width(cardWidth).Height(cardHeight).Items(ui.Center).
 		Gap(cardGap).PadSides(0, cardPadX, 0, cardPadX).
-		Radius(t.Radii.LG).Border(cardBorder, border).Background(t.InputMajor)
+		Radius(t.Radii.LG).Border(cardBorder, border).Background(t.InputMajor).
+		// 普通 div 只承担 hover，不进 Tab 序；删除按钮自己的 Hit 保留按钮语义。
+		HitWith(cardID, "", gfx.HitOptions{Role: gfx.RoleGroup, SkipTab: true})
 	p.boxes.Cards = append(p.boxes.Cards, card)
 
 	card.Children(func() {
@@ -908,12 +964,15 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, it ite
 		// `.body`：flex:1 + column + padding 8px 0
 		body := ui.Column(f).Grow(1).MinWidth(0).PadY(bodyPadY)
 		body.Children(func() {
-			ui.Text(f, displayName(it)).FontSize(nameFontSize).LineHeight(nameLineH).
+			name := ui.Text(f, displayName(it)).FontSize(nameFontSize).LineHeight(nameLineH).
 				Weight(nameWeight).Color(t.LabelPrimary).Ellipsis()
+			if cardNameActionReserve(env, cardID, removeID) {
+				name = name.PadRight(nameActionPadRight)
+			}
 			ui.Text(f, metaText(it)).FontSize(metaFontSize).LineHeight(metaLineH).
 				Color(metaColor(t, it.State)).Ellipsis()
 		})
-		p.drawRemove(f, env, t, it)
+		p.drawRemove(f, env, t, card, it)
 		if it.State == stateUploading {
 			p.drawProgress(f, t, it)
 		}
@@ -942,19 +1001,25 @@ func (p *Plugin) drawIcon(f ui.C, t *pluginapi.Theme, it item) {
 }
 
 // drawRemove 画右侧 ×（官方 `.remove`：absolute、top 6、right 6、18×18、圆形）。
-//
-// 官方默认 `opacity:0`、hover 才出现（`:99-112`）。viva 没有 per-box 的 hover 状态，
-// 而"看不见的按钮"等于没有按钮 —— 所以这里始终可见（只改可见性，不改几何）。
-func (p *Plugin) drawRemove(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, it item) {
+// 普通态 opacity:0，卡 hover / 自身 focus-visible 显示；失败态按 removeFailed 常显。
+// opacity:0 仍保留 Hit，与 CSS 一样可聚焦、可点击（Viva Box.Opacity 的既定语义）。
+func (p *Plugin) drawRemove(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, card ui.Box, it item) {
 	background, foreground := t.ButtonContrastFill, t.LabelPrimaryInverted
 	if it.State == stateError {
 		// FileCard.module.css:136-140：失败态移除按钮常显、error 底、label-on-color。
 		background, foreground = t.Error, t.LabelOnColor
 	}
+	cardID := p.hitID(env, "attachments.card."+it.Key)
+	removeID := p.hitID(env, "attachments.remove."+it.Key)
+	opacity := removeOpacityIdle
+	if removeVisualActive(env, cardID, removeID, it.State) {
+		opacity = removeOpacityShow
+	}
 	remove := ui.Row(f).Absolute().Top(removeTop).Right(removeRight).
-		Size(removeSize, removeSize).Radius(removeSize/2).
+		Size(removeSize, removeSize).Radius(removeSize/2).Opacity(opacity).
 		Background(background).Items(ui.Center).Justify(ui.Center).
-		Hit(p.hitID(env, "attachments.remove."+it.Key), removeLabel(it.Name))
+		StateFrom(card).Hover(ui.Look{}.Opacity(removeOpacityShow)).TransitionWith(removeMotion).
+		Hit(removeID, removeLabel(it.Name))
 	p.boxes.Remove = append(p.boxes.Remove, remove)
 	remove.Children(func() {
 		if icon, ok := dsassets.WorkspaceCloseFill(foreground); ok {
@@ -964,6 +1029,25 @@ func (p *Plugin) drawRemove(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, it i
 	if remove.Clicked() {
 		p.remove(it.Key)
 	}
+}
+
+// removeVisualActive 覆盖卡片与按钮自身的 hover，以及按钮 focus-visible；
+// StateFrom(card) 只跟踪卡片 id，因此按钮自身这两种状态在这里补齐。
+func removeVisualActive(env *pluginapi.Env, cardID, removeID gfx.ID, s state) bool {
+	if s == stateError || env == nil || env.Canvas == nil {
+		return s == stateError
+	}
+	return env.Canvas.Hovered() == cardID || env.Canvas.Hovered() == removeID ||
+		env.Canvas.FocusVisible() == removeID
+}
+
+// cardNameActionReserve 对应 `.card:hover .name` 与 `.card:focus-within .name`。
+func cardNameActionReserve(env *pluginapi.Env, cardID, removeID gfx.ID) bool {
+	if env == nil || env.Canvas == nil {
+		return false
+	}
+	return env.Canvas.Hovered() == cardID || env.Canvas.Hovered() == removeID ||
+		env.Canvas.Focused() == removeID
 }
 
 // drawProgress 画 2px 进度条（官方 `.progressTrack` / `.progressBar`）。

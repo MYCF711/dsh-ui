@@ -163,6 +163,19 @@ func drawOnce(t *testing.T, p *Plugin, env *pluginapi.Env, canvas *gfx.Canvas, w
 	p.afterDraw(canvas, env)
 }
 
+// drawHovering 按运行时口径先摆好 interaction（hovered = 指定的命中 id），
+// 再画一帧——用来验证官方 hover 才显示的控件（`FileCard.module.css:99-118`）。
+// 与 app/painter.go 的做法一致：SetInteraction 在 paint 之前记录指针状态。
+func drawHovering(t *testing.T, p *Plugin, env *pluginapi.Env, canvas *gfx.Canvas, w, h float32, hovered gfx.ID) {
+	t.Helper()
+	canvas.Reset()
+	canvas.SetInteraction(hovered, gfx.ID{}, gfx.ID{}, false)
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, gfx.Rect{Width: w, Height: h}, func(f ui.C) { p.draw(f, env) })
+	p.afterDraw(canvas, env)
+}
+
 // click 走一次真实的点击事件通道：BeginEventPass → 画一帧 → EndEventPass。
 func click(t *testing.T, p *Plugin, env *pluginapi.Env, tree *gfx.Tree, canvas *gfx.Canvas, w, h float32, id gfx.ID) {
 	t.Helper()
@@ -285,14 +298,24 @@ func TestReadyCardShowsNameAndByteLabel(t *testing.T) {
 	if size := p.boxes.Remove[0].Rect(); size.Width != removeSize || size.Height != removeSize {
 		t.Fatalf("× 按钮尺寸=%vx%v，官方是 %vx%v", size.Width, size.Height, removeSize, removeSize)
 	}
-	contrastRemove := false
-	for _, rect := range canvas.Rectangles() {
-		if rect.Color == env.Theme.ButtonContrastFill && rect.Bounds.Width == removeSize && rect.Bounds.Height == removeSize {
-			contrastRemove = true
+	// 官方 `.remove` 普通态 opacity:0，卡 hover / 自身 focus-visible 才显示
+	// （FileCard.module.css:99-118）。所以 idle 帧里不该看见 contrast 圆。
+	contrastShown := func() bool {
+		for _, rect := range canvas.Rectangles() {
+			if rect.Color == env.Theme.ButtonContrastFill &&
+				rect.Bounds.Width == removeSize && rect.Bounds.Height == removeSize {
+				return true
+			}
 		}
+		return false
 	}
-	if !contrastRemove {
-		t.Fatal("普通移除按钮没有使用 --dsw-alias-button-contrast-fill")
+	if contrastShown() {
+		t.Fatal("idle 时 × 应该 opacity:0（官方 FileCard.module.css:99-118），不该画出 contrast 圆")
+	}
+	// 悬停到卡上之后：可见，且底色就是 --dsw-alias-button-contrast-fill。
+	drawHovering(t, p, env, canvas, 1180, 700, p.hitID(env, "attachments.card.att-1"))
+	if !contrastShown() {
+		t.Fatal("卡 hover 之后 × 应可见且用 --dsw-alias-button-contrast-fill")
 	}
 }
 

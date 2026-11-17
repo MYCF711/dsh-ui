@@ -22,6 +22,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
@@ -213,6 +214,17 @@ func TestSkillRowGeometryInPixels(t *testing.T) {
 	if want := hit.Bounds.X + SkillInspectMarginLeft; !near(button.Bounds.X, want) {
 		t.Errorf("inspect 按钮 x=%v，want %v", button.Bounds.X, want)
 	}
+	// `.inspectButton{display:inline-flex;align-self:flex-start}`（CSS:162-163）：
+	// 药丸**贴着文字长**，不是横贯整张卡。`.bodyWrap` 是 column、跨轴默认 Stretch，
+	// 少一个 `Self(Start)` 就会画成一条占满卡宽的长条（实测 900px 全宽）。
+	if button.Bounds.Width > card.Bounds.Width/2 {
+		t.Errorf("inspect 按钮宽 %v，占卡宽 %v 的一半以上——官方 align-self:flex-start 是内容宽的药丸",
+			button.Bounds.Width, card.Bounds.Width)
+	}
+	// 至少装得下：左右内边距 8+8 + 图标 12。
+	if min := SkillInspectPadLeft + SkillInspectPadRight + SkillInspectSize; button.Bounds.Width < min {
+		t.Errorf("inspect 按钮宽 %v，want ≥ %v（padding 8+8 + 图标 12）", button.Bounds.Width, min)
+	}
 }
 
 // HitInspectBottomGap 是 `.inspectButton` 顶边与说明卡底边的官方间距（4px）。
@@ -274,5 +286,71 @@ func TestSkillRowStatesInPixels(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSkillRowInstructionsClipInsideCard 钉住 `.instructions` 真的**滚在自己的视口里**。
+//
+// # 挡的是什么
+//
+// 早期实现只画一个 `ui.Paragraph`（不建滚动视口）：`.instructionsCard{max-height:260px}`
+// 只夹住了**盒子**，正文超出盒子时照样往下画——40 行正文会从卡底（y=288）一路画到 y≈687，
+// 压在消息流上。官方是两段夹住：卡 `overflow:hidden`（`SkillRow.module.css:117`）+
+// pre `overflow:auto`（:140）。
+//
+// # 判据（两条，都不看常量）
+//
+//	① 长正文时卡高必须停在 260（不是被正文撑开）；
+//	② 卡底以下**一个非背景像素都没有**——用真帧的像素数，不是读图元快照
+//	   （文字不在 `Primitives` 里，只有像素能证明"画没画出来"）。
+func TestSkillRowInstructionsClipInsideCard(t *testing.T) {
+	dir := captureDir(t)
+
+	long := make([]string, 0, 40)
+	for i := 0; i < 40; i++ {
+		long = append(long, "line-x-yyyyyyyyyyyyyyyyyyyy")
+	}
+	body := strings.Join(long, "\n")
+	card := dstool.Card{Seq: 92, Tool: SkillToolName, Args: `{"name":"demo"}`,
+		Status: dstool.StatusOK,
+		View:   &apiclient.ViewSpec{Kind: "plain", Body: body}}
+
+	harness := newSkillHarness(t, card)
+	harness.plugin.expand.toggle(92)
+	session := harness.openSession(t, 900, 700)
+	if err := session.Driver().Pump(); err != nil {
+		t.Fatal(err)
+	}
+	capture(t, session, dir, "skill-row-long-body")
+
+	cards, ok := rectOf(session, harness.theme.BorderL1, SkillInstructionsCardRadius, 0)
+	if !ok {
+		t.Fatal("真实像素里找不到说明卡的边框")
+	}
+	// ① 卡高停在官方 max-height（260），不被 40 行正文撑开。
+	if !near(cards.Bounds.Height, SkillInstructionsCardMaxHeight) {
+		t.Errorf("长正文卡高 %v，want %v（官方 max-height）", cards.Bounds.Height, SkillInstructionsCardMaxHeight)
+	}
+
+	// ② 卡底下不许有任何"画出来的东西"。背景色 = 主题 BgBase，与画布一致。
+	img, err := session.Image()
+	if err != nil {
+		t.Fatalf("取像素失败：%v", err)
+	}
+	// 背景值取**画布自己**的那个像素（右下角，卡与行都到不了那儿），
+	// 不把主题色转成 RGBA：少一步换算就少一处可能算错的地方。
+	bounds := img.Bounds()
+	wantR, wantG, wantB, _ := img.At(bounds.Max.X-1, bounds.Max.Y-1).RGBA()
+	top := int(cards.Bounds.Y+cards.Bounds.Height) + 2
+	for y := top; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			if r == wantR && g == wantG && b == wantB {
+				continue
+			}
+			t.Fatalf("卡底（y=%v）之下画出了东西：首处 (%d, %d) = rgb(%d,%d,%d)；"+
+				"官方 `.instructionsCard{overflow:hidden}` + `.instructions{overflow:auto}`",
+				cards.Bounds.Y+cards.Bounds.Height, x, y, r>>8, g>>8, b>>8)
+		}
 	}
 }

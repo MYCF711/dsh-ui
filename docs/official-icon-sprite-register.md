@@ -43,6 +43,14 @@ function M(name, weight) {                          // 组件
 | `plugin-pinwheel-outline` | regular (1) | `0 0 16 16` | **16**（菜单行 CSS 把它夹到 14×14） | `dsh-client-ui-entry-customization/src/client/EntryMenuContent.tsx:62` → `<IconPluginPinwheelOutlineRegular size={16} />`（#17「浏览更多插件」行首） | `index-ghOpC9uV.js` 第 129 行 第 719755 列 | `1d2abb76e6d23882f1bdab5fd08124d2f1fb9e0821544d3b505dbb79e062f485` | **有**：`assets/official/icons/sidebar/plugin-pinwheel.jsx`，sha256 `29e4835f09ea781114691721eaa8fa074223d73c72ca3e2fc3bf73a17bca645d`（4 段 `d` 与 sprite 逐字节相同） |
 | `plus-outline` | regular (1) | `0 0 16 16` | **16**（菜单行 CSS 把它夹到 14×14） | `dsh-client-ui-entry-customization/src/client/EntryMenuContent.tsx:66` → `<IconPlusOutlineRegular size={16} />`（#17「创建你的插件」行首） | `index-ghOpC9uV.js` 第 129 行 第 10417 列 | `792449e19144422e5899b2180eba870e401e31495ad89c52514085d112e8b280` | 否（库内暂无；按 sprite 原文转写，登记在此） |
 | `ellipsis-outline` | regular (1) | `0 0 16 16` | **13** | `ui-conversation/src/client/skeleton/ConversationSession.tsx:37-43` → `<IconEllipsisOutlineRegular size={13}/>`（view tab 行 More 按钮） | `index-ghOpC9uV.js` 第 129 行 第 9854 列 | `fe08b1b020c452a8887c22c846ce995fce5f0e54cb2110f25a356886fc1ad1ad` | 否（库内暂无；按 sprite 原文转写，登记在此） |
+| `skill-outline` | regular (1) | `0 0 17 17` | **14** | `dsh-client-ui-skill/src/client/SkillRow.tsx:78,105` → `<IconSkillOutlineRegular size={14}/>`（SkillRow 的 leading；preparing 态同一枚） | `index-ghOpC9uV.js` 第 129 行，字节 717236（`s.find('"skill-outline":{')`） | `88dd2473512b155d4756633dc8c14f4951b5e6384874556d6742fa0e78b80e7e` | 否（库内暂无；按 sprite 原文转写，登记在此。**混用 fill 与 stroke**：第 3 段是 `fill="currentColor"`，所以 Go 侧叠画两枚，见 `plugins/dsskill/icons.go` 文件头） |
+| `chevron-down-outline` | regular (1) | `0 0 16 16` | **14** | `dsh-client-ui-skill/src/client/SkillRow.tsx:77,83` → `IconChevronDownOutlineRegular`（sprite 默认 size 就是 14）；CSS `SkillRow.module.css:42-43` 的 `.leading svg{width:14px;height:14px}` 也把它钉在 14 | 同上，字节 672557 | `8fabc0c6c62873ed5a14e8117a84c5016a896723f8cd06d75a84344641d6a120` | **有**：`assets/official/icons/composer/chevron-down.jsx:1`（`d` 逐字节相同） |
+| `inspect-outline` | regular (1) | `0 0 16 16` | **12** | `dsh-client-ui-skill/src/client/SkillRow.tsx:165` → `<IconInspectOutlineRegular />`（TSX 未传 size，CSS 也没覆盖 → sprite 默认 12） | 同上，字节 716758 | `3cd41f1c24f29278bb7aac0da984657388e96fd915d6e0e156fa1e112323b798` | 否（库内暂无；按 sprite 原文转写，登记在此） |
+
+> 上表三枚 `skill` 符号的 `svg sha256` 沿用 `plugins/dsskill/icons.go` 文件头的同一口径
+> （那一轮的 recipe 没留存，本机按「`svg` 模板把 `${e}` 换成 1」复算对不上）；**可复算**的证据
+> 是「dist 文件 sha256 `061de8ce…f8bb8` + 上述字节偏移 + path 逐字节比对」，
+> 三条 path 数据已与 sprite 原文逐字节核对一致（2026-11-17）。
 
 ### 1.1 bundle 内联组件转写（不在 sprite 表里）
 
@@ -87,6 +95,9 @@ go 侧：`internal/reficon/reficon.go`（`File/Folder/Session` 三个 Kind + `Ic
 | `plugin-pinwheel-outline` | `plugins/dsentrycustom/icons.go`（`pluginPinwheelIcon`，14px） | `plugins/dsentrycustom/entry_menu.go`（#17「浏览更多插件」行首） |
 | `check-outline`（#17 复用） | `plugins/dsentrycustom/icons.go`（`checkOutlineIcon`） | `plugins/dsentrycustom/entry_menu.go`（#17 会话头 More 里 active view 的行尾对勾） |
 | `plus-outline` | `plugins/dsentrycustom/icons.go`（`plusOutlineIcon`） | `plugins/dsentrycustom/entry_menu.go`（#17「创建你的插件」行首） |
+| `skill-outline` | `plugins/dsskill/icons.go`（`skillGlyphStroke` 描边 3 段 + `skillGlyphFill` 填充 1 段，viewBox 17；`drawSkillGlyph` 用 `ui.Stack` 叠画成一枚） | `plugins/dsskill/skillrow.go` 的 `drawLeading`（`!expandable` 图标态、`expandable` 静止态）与 `drawPreparing`，显示 14 |
+| `chevron-down-outline` | `plugins/dsskill/icons.go`（`chevronDownIcon`，坐标与 `assets/official/icons/composer/chevron-down.jsx:1` 相同） | `plugins/dsskill/skillrow.go` 的 `drawLeading`（**展开态唯一 leading**；可展开静止态作为悬停换图叠在图标上），显示 14 |
+| `inspect-outline` | `plugins/dsskill/icons.go`（`inspectIcon`） | `plugins/dsskill/skillrow.go` 的 `drawInspectButton`（`.inspectButton` 内），显示 12 |
 
 ## 3. 断言（防回退）
 
@@ -99,6 +110,7 @@ go 侧：`internal/reficon/reficon.go`（`File/Folder/Session` 三个 Kind + `Ic
 | `ellipsis-outline`：viewBox=16 / 3 条填充 path / More 按钮 22×22 图标 13px | `plugins/dstopbar/entry_menu_test.go`（`TestTopbarEntryMenuOpensAndDispatches`） |
 | `pin-outline` / `plugin-pinwheel-outline` / `check-outline` / `plus-outline`：viewBox=16 / stroke=1 / pin-outline 是「1 描边 + 1 填充层」/ pinwheel 4 段曲线 / plus 2 条直线 | `plugins/dsentrycustom/entry_menu_test.go`（`TestIconSymbolsMatchRc2Sprite`） |
 | #17 会话头 active 行真的多画一枚对勾（矢量图元数） | 同上（`TestConversationRowsShowEveryFoldedViewWithActiveMark`） |
+| `skill-outline` / `chevron-down-outline` / `inspect-outline`：viewBox 17/17/16/16、stroke 1（skill 填充段 0）、段数 10/18/4/10、首点、Cap/Join 留零、显示尺寸 14/14/12 | `plugins/dsskill/icons_test.go`（`TestSkillIconsMatchRc2Sprite`、`TestSkillIconSizes`） |
 
 ## 4. 边界（不要违反）
 

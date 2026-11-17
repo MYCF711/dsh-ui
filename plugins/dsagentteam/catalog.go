@@ -53,6 +53,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -428,9 +429,19 @@ func (p *Plugin) drawCatalogPanel(f ui.C, env *pluginapi.Env, drawSlot func(plug
 		maxHeight = 0
 	}
 
+	// 阴影 = 官方 `--dsw-elevation-prominent` + `--dsw-alias-border-l1` 描边：
+	// `TeamAction.module.css`（DTS 包 experimental/client-ui-agent-team）
+	// `.VBK9GG_panel{--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);
+	//  box-shadow:var(--dsw-elevation-prominent);border:0}`；同一个面板在本仓对应
+	// 官方 subagent 目录菜单，官方菜单原语 `._list_70kcw_7` 也是
+	// `prominent + border-l1`（`dsh-web-frontend/dist/assets/index-CSAdOBx6.css`）。
+	// 官方 `border:0`：0.5px 分离线在 elevation 的描边层里，不另占布局。
 	panel := ui.Column(f).Absolute().Top(top).Right(right).Width(width).
 		MaxHeight(maxHeight).Radius(catalogMenuRadius).
-		Background(t.BgLayer1).Border(1, t.BorderL2).Shadow(gfx.ShadowMD).
+		Background(t.BgLayer1).
+		Draw(func(d *ui.DrawContext) {
+			dscore.PaintElevation(d, catalogMenuRadius, t.Shadows.Prominent, t.BorderL1)
+		}).
 		Pad(catalogMenuPad)
 	// 面板本体吃掉点击：官方点菜单里面不会关（只有菜单外的 pointerdown 才关）。
 	panel.Hit(env.Tree.ID(env.Feat, "subagent-catalog-menu"), zhCatalogTreeAria)

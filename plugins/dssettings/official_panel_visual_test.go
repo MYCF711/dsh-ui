@@ -96,10 +96,13 @@ type officialHarness struct {
 	feat        gfx.Scope
 	session     *headless.Session
 	invalidator *app.Invalidator
-	writer      *raceSafeWriter
-	describe    *apiclient.SettingsDescribeResult
-	status      string
-	mu          sync.Mutex
+	// canvas 是最近一帧的画布（AfterDraw 画的阴影只有从它上面才量得到）。
+	// 与产品壳一致：AfterDraw 拿到的就是布局用的那块画布。
+	canvas   *gfx.Canvas
+	writer   *raceSafeWriter
+	describe *apiclient.SettingsDescribeResult
+	status   string
+	mu       sync.Mutex
 	// inventory 是「内置插件」页的数据面（nil = 宿主没接这条能力）。
 	inventory *apiclient.PluginInventoryResult
 	// inventoryRefresh 记录「重试」被点了几次（插件页的刷新动作）。
@@ -253,9 +256,18 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			Has: h.kernel.Has,
 		}
 		canvas.Fill(bounds, h.theme.BgBase)
+		h.canvas = canvas
 		view.Draw(canvas, bounds, func(f ui.C) {
 			h.kernel.DrawSlot(f, pluginapi.SlotShellRoot, env)
 		})
+		// 布局已定：按壳的次序跑插件的 AfterDraw（cmd/app/main.go:2178-2182）。
+		// 设置面板自己 `.Clip()`，它的官方 elevation 只能在这个阶段画出来——
+		// 少这一步，测到的就是"没画出来的东西"。
+		for _, painter := range h.kernel.AllPainters() {
+			if painter.AfterDraw != nil {
+				painter.AfterDraw(canvas, env)
+			}
+		}
 	}
 	config.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
 		if h.kernel.HandleKey(ev) {

@@ -34,6 +34,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -282,11 +283,20 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, column float32, drawSlot f
 	// 这里**不加**底 padding：官方 `.GRgSLq_root` 的 4px 是相对**窗口底部**的，
 	// 而壳已经给中栏 12px padding——再加 4 会把卡片整体顶上 4px，
 	// 卡片底距窗口底就从 8px 变成 12px（正好顶在 ≤8px 这条线的外面）。
-	// 卡片自身 border:0，柔和的 elevation 由 Shadow 表达，不能塞一圈占布局的 Border
-	//（否则宽、高和圆角各偏 1–2px）。
+	// 卡片自身 border:0，柔和的 elevation 由官方 `--dsw-elevation-soft` 表达，不能塞
+	// 一圈占布局的 Border（否则宽、高和圆角各偏 1–2px）。官方出处
+	// `InputBar.module.css:69-72`：
+	//
+	//	.GRgSLq_card{--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);
+	//	             box-shadow:var(--dsw-elevation-soft);border:0}
+	//
+	// 原来的 `Shadow(gfx.ShadowXS)` 是 Tailwind 的 `0 1px 2px .05`，与官方的
+	// `0 4px 16px .03 + 0 24px .03` 差在位移、模糊与层数，也没有那圈描边。
 	ui.Row(f).FillWidth().Justify(ui.Center).Children(func() {
 		ui.Column(f).Width(w).Radius(t.Radii.Panel).Background(t.InputMajor).
-			Shadow(gfx.ShadowXS).
+			Draw(func(d *ui.DrawContext) {
+				dscore.PaintElevation(d, t.Radii.Panel, t.Shadows.Soft, t.BorderL2)
+			}).
 			PadSides(cardPadTop, 0, 0, 0).Gap(cardGap).Children(func() {
 			// `.input` 区：附件 rail 在真 Field 上方；覆盖层绝对定位盖在整块输入区上。
 			// 这一列没有 gap：空 rail 不产生节点，卡片高仍是 8+36+12+42。

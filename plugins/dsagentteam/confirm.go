@@ -22,7 +22,7 @@ package dsagentteam
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/gfx"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -70,8 +70,17 @@ func (p *Plugin) drawConfirm(f ui.C, env *pluginapi.Env) {
 	ui.Column(f).Absolute().Left(left).Top(top).Width(width).
 		// 对话本体也吃掉点击：官方点框内不关闭，只有遮罩/ESC 才关。
 		Hit(env.Tree.ID(env.Feat, "team-disable-dialog"), zhDisableTitle).
-		Radius(t.Radii.XL).Background(t.InputMajor).Border(1, t.BorderL2).
-		Shadow(gfx.ShadowMD).Pad(dialogPad).Gap(dialogGap).Children(func() {
+		Radius(t.Radii.XL).Background(t.InputMajor).
+		// 阴影 = 官方 `--dsw-elevation-prominent`，描边走官方默认档：
+		// 对话框原语 `._dialog_1ytzq_33{...box-shadow:var(--dsw-elevation-prominent);
+		// border:0}`（`dsh-web-frontend/dist/assets/index-CSAdOBx6.css`）**没有**重绑
+		// `--dsw-elevation-stroke-color`，所以取默认 `--dsw-alias-border-l4`
+		// （gradient-shadow-text.css:17）。原来的 `Border(1, BorderL2)` 是自造的
+		// 1px 布局描边：官方 `border:0`，0.5px 分离线在 elevation 的描边层里。
+		Draw(func(d *ui.DrawContext) {
+			dscore.PaintElevation(d, t.Radii.XL, t.Shadows.Prominent, t.BorderL4)
+		}).
+		Pad(dialogPad).Gap(dialogGap).Children(func() {
 		// 标题（Modal 的 title；tone=warning 由黄色圆点表达）。
 		ui.Row(f).FillWidth().Items(ui.Center).Gap(errGap).Children(func() {
 			p.drawDot(f, t, t.Warn)

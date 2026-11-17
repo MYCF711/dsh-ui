@@ -57,6 +57,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -290,9 +291,21 @@ func (p *Plugin) drawGuideMenu(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 	// 官方菜单是 primitives `Menu`（portal 到窗口层，宽度 = max-content）。Viva 没有
 	// 门户层，这里把菜单面排在卡片正下方（同一列、贴住卡片下沿）；宽度仍按官方
 	// max-content 语义量出来，量不到（没有 canvas）才铺满卡片那一列。
+	// 阴影 = 官方菜单原语的 `--dsw-elevation-prominent` + `--dsw-alias-border-l1`
+	// 描边：官方 `TerminalGuide.module.css` 的 `.-4GESq_menu` 只有
+	// `pointer-events:auto;flex:none;display:flex`（**没有** box-shadow），菜单面本身
+	// 是 primitives `Menu`——`._list_70kcw_7,._submenu_70kcw_8
+	// {--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);
+	//  box-shadow:var(--dsw-elevation-prominent)}`
+	// （`dsh-web-frontend/dist/assets/index-CSAdOBx6.css`）；同档还有 MenuView 的
+	// `.pc3rQa_menu{border:0;…box-shadow:var(--dsw-elevation-prominent)}`。
+	// 原来的 `Shadow(gfx.ShadowLG)`（Tailwind `0 10px 15px -3px .10` 两层）不是这一档。
 	panel := ui.Column(f).Shrink(0).Pad(guideMenuPad).Gap(guideMenuGap).
 		MarginSides(guideMenuAnchorGap, 0, 0, 0).
-		Background(t.Menu).Radius(t.Radii.MD).Shadow(gfx.ShadowLG)
+		Background(t.Menu).Radius(t.Radii.MD).
+		Draw(func(d *ui.DrawContext) {
+			dscore.PaintElevation(d, t.Radii.MD, t.Shadows.Prominent, t.BorderL1)
+		})
 	if width, ok := guideMenuWidth(env, rows, choices.Selected); ok {
 		panel = panel.Width(width)
 	} else {

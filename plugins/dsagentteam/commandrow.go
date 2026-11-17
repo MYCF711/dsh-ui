@@ -34,7 +34,6 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -167,6 +166,3 @@ func (p *Plugin) drawCommand(f ui.C, env *pluginapi.Env) {
 	t := p.themeFor(env)
 	DrawCommandRow(f, env, t, node, p.team.CommandExpanded(), p.team.ToggleCommandExpanded)
 }
-
-// 编译期确认我们用到的令牌字段存在（改主题结构时这里先红）。
-var _ = gfx.ShadowMD

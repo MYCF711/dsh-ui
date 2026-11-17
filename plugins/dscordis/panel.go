@@ -16,6 +16,7 @@ package dscordis
 import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -212,7 +213,16 @@ func (p *Plugin) drawPanel(f ui.C, env *pluginapi.Env, _ func(pluginapi.Slot)) {
 		// `.panel{max-height:60vh}`（CSS:94）。
 		MaxHeight(panelMaxHeight).
 		Radius(cordisPanelRadius).Background(t.BgLayer1).
-		Border(cordisPanelStroke, t.BorderL1).Shadow(gfx.ShadowMD)
+		// 阴影 = 官方 `--dsw-elevation-prominent` + `--dsw-alias-border-l1` 描边：
+		// `.Fu0XRq_panel{border:0;border-radius:12px;
+		//  --dsw-elevation-stroke-color:var(--dsw-alias-border-l1);
+		//  box-shadow:var(--dsw-elevation-prominent)}`（CordisPanel.module.css:96-98，
+		//  取值核对见 tmp/asar-css/043__CordisPanel）。
+		// 原来那条 `Border(cordisPanelStroke=1, BorderL1)` 是"viva 预设没有描边层"的
+		// 手工代偿——1px 占布局描边 + 零描边阴影；官方是 0.5px **不占布局**的环。
+		Draw(func(d *ui.DrawContext) {
+			dscore.PaintElevation(d, cordisPanelRadius, t.Shadows.Prominent, t.BorderL1)
+		})
 	// 面板本体吃掉点击：官方点面板里面不关（只有面板外的 pointerdown 才关）。
 	panel.Hit(env.Tree.ID(env.Feat, hitPanel), zhPanelTitle)
 	panel.Children(func() {

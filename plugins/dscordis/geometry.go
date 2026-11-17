@@ -52,10 +52,11 @@ const (
 	// cordisPanelAnchorGap 是 `bottom: window.innerHeight - rect.top + 8`（TSX:145）里的 8：
 	// 面板底边落在**触发器上沿上方 8px**（CSS:84-85 的注释说明它为什么是 fixed）。
 	cordisPanelAnchorGap float32 = 8
-	// cordisPanelStroke 是官方"描边"的来历：`.panel{border:0}`（CSS:96）+ 抬升阴影
+	// 官方"描边"的来历：`.panel{border:0}`（CSS:96）+ 抬升阴影里的
 	// `--dsw-elevation-stroke-color: var(--dsw-alias-border-l1)`（CSS:98）。
-	// viva 的 `gfx.ShadowMD` 不带描边层，所以这里显式画 1px border-l1（同色，见 drawPanel）。
-	cordisPanelStroke float32 = 1
+	// 那圈 0.5px 描边现在由 `dscore.PaintElevation(..., Shadows.Prominent, BorderL1)`
+	// 画在 elevation 的描边层里（不占布局），原来这里的手工代偿常量
+	// `cordisPanelStroke = 1` 已随 `Shadow(gfx.ShadowMD)` 一起删掉。
 
 	// ── 面板头部 / 正文：`.header` / `.title` / `.body`（CSS:116-131）─────────
 

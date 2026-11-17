@@ -11,13 +11,17 @@
 // 键位**注册表**是另一个官方包 @deepseek-ai/dsh-client-shortcuts（无 CSS，只有注册、
 // 物理键路由与持久化）。面板消费的是"有哪些键"，两条都不自造。
 //
-// # 为什么 .dialog 的 box-shadow 不逐字抄
+// # .dialog 的 box-shadow 用的是令牌，不再拿预设近似
 //
 // 官方 `.dialog{box-shadow:0 0 1px #0003,0 0 4px #00000005,0 12px 32px #00000014}`
-// （Reference.module.css:63）是**三层自定义阴影**；viva v0.6.4 的 `ui.Box` 只接受
-// `gfx.ShadowXS..ShadowLG` 五档预设（`ui/box.go:299-304`），表达不出自定义层。
-// 这里取语义最近的一档 `gfx.ShadowLG`（`ui/box.go:110` 的注释就是 "for a surface
-// that covers part of the page: sheets and submenus"），它是**预设名**不是新数值。
+// （Reference.module.css:63）是**三层**。逐字换成 rgba 就该看得出：`#0003` = `.2`、
+// `#00000005` = `.02`、`#00000014` = `.08`，三层的偏移/模糊/透明度与
+// `--dsw-shadow-lv3`（ui-theme/gradient-shadow-text.css:8-9）**完全一致**——官方
+// 是把令牌手抄进了这条规则。所以本包直接画 `dscore.Shadows.Lv3`（`PaintShadow`），
+// 一个数都不另写。
+//
+// 原来这里是「取语义最近的一档 `gfx.ShadowLG`」的近似（viva 那五档是 Tailwind 阶梯，
+// `ShadowLG` 只有两层 `0 10px 15px -3px .10`），层数、模糊、透明度都不是官方这一档。
 package dsshortcuts
 
 // 面板外框。官方是 Modal 里的 `.dialog`。

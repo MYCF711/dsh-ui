@@ -373,7 +373,7 @@ func (p *Plugin) drawQuestionFlow(f ui.C, env *pluginapi.Env, qs []Question) {
 			card := ui.Column(f).FillWidth().MaxWidth(questionContentWidth(env)).MaxHeight(questionMaxHeight(env)).
 				Radius(t.Radii.XL).Background(t.InputMajor).
 				PadSides(0, 0, questionCardPadBottom, 0).
-				Draw(func(d *ui.DrawContext) { drawPlanReviewElevation(d, t.Radii.XL, t.BorderL2) })
+				Draw(func(d *ui.DrawContext) { drawPlanReviewElevation(d, t.Radii.XL, t) })
 			card.Children(func() {
 				ui.Column(f).FillWidth().Radius(t.Radii.XL).Clip().Children(func() {
 					p.drawQuestionHeader(f, env, t, q, compact, busy)

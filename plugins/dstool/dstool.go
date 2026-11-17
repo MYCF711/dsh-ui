@@ -196,21 +196,37 @@ func (s *Cards) Render(f ui.C, env *pluginapi.Env, c Card) {
 		summaryWidth -= 64
 	}
 
-	// 标题行：点它展开。结构逐字沿用抽取前的那一段（像素对比见 tmp/tool-*.png）。
-	head := ui.Row(f).WidthPercent(100).PadX(4).PadY(2).Radius(t.Radii.SM).
-		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).
+	// 标题行：点它展开。几何逐个取自官方（`official_tool.go` 的表头有出处）：
+	// 固定 24px 单行、无内边距、无悬停底色，16px leading 盒 + 6px 右边距，
+	// 标题 13px，2×2 圆点分隔（左右各 8px），摘要 13px 占满剩余宽度。
+	//
+	// 官方 `.title` / `.summary` 还写着 `line-height: calc(24px + delta)`；这里
+	// **不**把 24 再写到文本元素上：单行文字在行盒里居中，行高 18 与 24 的字形
+	// 位置完全相同，而写成 24 会让标题的文本盒变成 24 高、状态胶囊（18 高）
+	// 的文本盒仍是 18 高，两个盒的顶端差 3px（中心仍然对齐）。行的 24px 由
+	// row 自己的 Height 承担，视觉与官方一致。
+	// 行本身没有底色/描边，所以 radius 不可见；留 sm(8) 是因为官方工具行的
+	// `.callRow` 就是 `border-radius: var(--dsw-radius-sm)`（ToolCallTree.module.css:1-3）。
+	head := ui.Row(f).WidthPercent(100).Height(toolRowHeight).Radius(t.Radii.SM).
+		Items(ui.Center).Gap(0).
 		Hit(env.Tree.ID(env.Feat, "tool-"+strconv.Itoa(c.Seq)), "").Children(func() {
-		// leading：16px 方框里的展开箭头（官方也是这个位置放 chevron）
-		ui.Row(f).Width(16).Items(ui.Center).Children(func() {
+		// leading：16×16 盒里的 14px 字形（官方 bash 行展开态是 chevron-up，
+		// 收起态是 14px 业务图标、hover 才换成 chevron-down；我们没有那两个
+		// 图标素材，见报告「还差什么」，所以保留文本箭头但按官方箱尺寸画）。
+		ui.Row(f).Width(toolLeadingBox).Height(toolLeadingBox).
+			MarginSides(0, toolLeadingGap, 0, 0).Items(ui.Center).Children(func() {
 			arrow := "▸"
 			if open {
 				arrow = "▾"
 			}
-			ui.Text(f, arrow).FontSize(t.Fonts.Tiny).Color(t.LabelSecondary)
+			ui.Text(f, arrow).FontSize(toolLeadingGlyph).LineHeight(toolLeadingGlyph).
+				Color(t.LabelSecondary)
 		})
-		ui.Text(f, title).Mono().FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
+		ui.Text(f, title).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
 		if summary != "" {
-			ui.Text(f, "·").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			// 官方的分隔不是"·"字符，是 2×2 的圆角方块（ToolRow.module.css:26-33）。
+			ui.Row(f).Width(toolSepSize).Height(toolSepSize).Radius(toolSepRadius).
+				MarginSides(0, toolSepGap, 0, toolSepGap).Background(t.LabelCaption)
 			ui.Text(f, summarize(summary, 120)).FontSize(t.Fonts.Secondary).
 				Color(t.LabelTertiary).MaxWidth(summaryWidth).Ellipsis()
 		}
@@ -226,10 +242,11 @@ func (s *Cards) Render(f ui.C, env *pluginapi.Env, c Card) {
 	if !open {
 		return
 	}
-	// 展开体：官方同样是 callRow 的一部分（radius sm、无边框），
-	// 底色用最浅一层 BgLayer1 把正文托起来，不描边。
-	ui.Column(f).WidthPercent(100).PadX(22).PadY(4).Gap(4).Radius(t.Radii.SM).
-		Background(t.BgLayer1).Children(func() {
+	// 展开体：官方 `.bodyWrap` 只是**一列**（ToolRow.tsx:333 的 `.bodyWrap` /
+	// .module.css:176-179），本身没有内边距也没有底色——每一张卡
+	// （ioCard / ToolDetails）各自带 `margin:4px 0 4px 4px` 与外框。
+	// 旧实现在这里铺 PadX(22) + PadY(4) + BgLayer1，官方没有这一层。
+	ui.Column(f).WidthPercent(100).Gap(0).Children(func() {
 		// 宿主声明的结构化结果优先：它比我们从参数里猜的准。
 		if c.View != nil {
 			s.drawView(f, env, c.View)
@@ -241,20 +258,41 @@ func (s *Cards) Render(f ui.C, env *pluginapi.Env, c Card) {
 			}})
 			return
 		}
-		// 默认画法 = 抽取前的那一种：参数原文 + 摘要。
-		if c.Args != "" {
-			ui.Text(f, c.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
+		// 默认画法 = 抽取前的那一种：参数原文 + 摘要。官方把它放在 ioCard 的
+		// IN/OUT 两段里（ToolRow.tsx:420-440：`.ioSection` 输入、`.ioDivider`、
+		// `.ioSection` 输出），所以这里也用同一张卡，不再裸摆两行文本。
+		if c.Args == "" && c.Summary == "" {
+			return
 		}
-		if c.Summary != "" {
-			ui.Text(f, c.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
-		}
+		drawToolCard(f, t, func(f ui.C) {
+			if c.Args != "" {
+				drawIOSection(f, t, func(f ui.C) {
+					ui.Text(f, c.Args).Mono().FontSize(t.Fonts.Tiny).LineHeight(toolCodeLine).
+						Color(t.LabelSecondary).MaxLines(6)
+				})
+			}
+			if c.Args != "" && c.Summary != "" {
+				drawIODivider(f, t)
+			}
+			if c.Summary != "" {
+				// 失败态的正文用官方 `.ioText[data-error]` 的 error 色（ToolRow.module.css:310-313）。
+				color := t.LabelSecondary
+				if c.Status == StatusError {
+					color = t.Error
+				}
+				drawIOSection(f, t, func(f ui.C) {
+					ui.Text(f, c.Summary).FontSize(t.Fonts.Tiny).LineHeight(toolCodeLine).
+						Color(color).MaxLines(12)
+				})
+			}
+		})
 	})
 }
 
 // Open 实现 Service。
 func (s *Cards) Open(seq int) bool { return s.open[seq] }
 
-// Height 实现 Service：数字与抽取前 `estimateMsgHeight` 的工具分支逐个相同。
+// Height 实现 Service。收起档是官方真值（24px 单行），展开档仍是估算。
 //
 // 为什么不按真实排版量：这个函数在**排版之前**被调用（消息流的视口虚拟化要
 // 先知道每条多高），所以只能估。估小了会把还在视口里的消息判成"在视口外"
@@ -266,7 +304,10 @@ func (s *Cards) Height(seq int, view *apiclient.ViewSpec) float32 {
 		return h
 	}
 	if !s.open[seq] {
-		return 28 // 收起时只有标题一行（官方就是这么一行）
+		// 收起时只有标题一行，官方给的是固定 24px（bash-sample.module.css:96）。
+		// 旧值 28 不是官方值：消息流的槽位按它分配，多出的 4px 是每条工具卡
+		// 与相邻内容之间的死空。
+		return toolRowHeight
 	}
 	if view != nil {
 		// 有结构化显示的工具卡：头 + 若干行

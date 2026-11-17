@@ -26,7 +26,7 @@ func (m *recordingMenus) RegisterContribution(pluginapi.ContextMenuContribution)
 
 func (m *recordingMenus) HasTarget(string) bool { return true }
 
-func (m *recordingMenus) Attach(_ ui.C, _ ui.Box, target pluginapi.ContextMenuTarget) {
+func (m *recordingMenus) Attach(_ ui.C, _ gfx.ID, _ ui.Box, target pluginapi.ContextMenuTarget) {
 	m.attached = append(m.attached, target)
 }
 

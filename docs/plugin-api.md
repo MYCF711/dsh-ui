@@ -764,3 +764,12 @@ INFO 插件已装配 id=ds-decl provides=[] requires="[ui.theme ui.primitives]"
   tool/result.view 的恢复数据，问题字段使用官方 `multiSelect` camelCase。
 - `Env.DrawSlot` 与 `DrawKeyed` 一样保留调用点布局游标，供父容器在准确 DOM 等价位置
   派发普通子槽；plan-review 父卡因此在 strip 内派发 `conversation.plan-review.actions`。
+
+## 18. 右键菜单视觉与素材（2026-11-17）
+
+- `ContextMenuAction.Icon` 是官方 `contextMenu.icon` 的 key；实现从 `dsassets.ContextMenuIcon`
+  取官方 sprite，空串表示官方无图标，未知 key 不得用自造形状补位。
+- `ContextMenus.Attach(c, id, target, obj)` 的 `id` 必须与 `target` 的 `Hit` 身份一致。
+  Viva 的 `ui.Box` 不导出该身份，而自定义官方几何菜单需要它接收右键事件。
+- 菜单面与行样式归 `plugins/dscontextmenu`，数值唯一证据是官方 primitives 的
+  `_70kcw_` / `_1w4el_` CSS；不得回退成 Viva 内建菜单的 32px 行、16px 图标或 ShadowMD。

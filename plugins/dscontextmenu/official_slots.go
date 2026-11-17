@@ -60,7 +60,7 @@ func RegisterOfficialSlots() error {
 				Host:   "ContextMenu.icon",
 				Anchor: "ui-context-menu/src/client/index.ts:40",
 				Note: "keyed/root/inline；owner 是 { icon: ContextMenuIcon }（key + 可选 src）。" +
-					"本仓没有官方 primitives 图标资产，菜单项按文案渲染，不画自造图标。",
+					"本仓由 dsassets.ContextMenuIcon 复用官方 sprite，未知 key 留空、不画自造图标。",
 			},
 			{
 				Name:   SlotContextMenuContent,

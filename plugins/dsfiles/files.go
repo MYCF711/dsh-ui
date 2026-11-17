@@ -169,7 +169,7 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 			// 目录不挂：官方 file target 的 `read` 家族只认普通文件
 			// （HOST:cmd/dshd/serve_workspace_api.go 的 statRegularFile）。
 			if !e.IsDir && p.menus != nil && env.Data.Cur != "" {
-				p.menus.Attach(f, row, pluginapi.ContextMenuTarget{
+				p.menus.Attach(f, env.Tree.ID(env.Feat, "file-"+e.Name), row, pluginapi.ContextMenuTarget{
 					Kind:         pluginapi.TargetFile,
 					SessionID:    env.Data.Cur,
 					Path:         relPath(p.curDir, e.Name),

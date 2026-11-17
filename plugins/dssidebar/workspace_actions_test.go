@@ -26,7 +26,7 @@ func (f *fakeMenus) RegisterContribution(c pluginapi.ContextMenuContribution) (f
 	return func() {}, nil
 }
 func (f *fakeMenus) HasTarget(kind string) bool { return f.has[kind] }
-func (f *fakeMenus) Attach(ui.C, ui.Box, pluginapi.ContextMenuTarget) {
+func (f *fakeMenus) Attach(ui.C, gfx.ID, ui.Box, pluginapi.ContextMenuTarget) {
 	f.attached++
 }
 func (f *fakeMenus) Button(ui.C, gfx.ID, pluginapi.ContextMenuTarget, string) bool {

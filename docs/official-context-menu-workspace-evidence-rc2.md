@@ -36,17 +36,28 @@
 |---|---|
 | 契约 | `pluginapi/context_menu.go`：`ContextMenus` / `ContextMenuContribution` / `ContextMenuAction` / `ContextMenuTarget`；服务键 `ui.contextMenus` |
 | 服务 | `plugins/dscontextmenu/context_menu.go`：按 target kind 注册、同 kind 内 id 去重、order+id 排序、反注册、`HasTarget` |
-| 渲染 | viva v0.6.0 原生 `ui.ContextMenu`（右键 / Shift+F10 / 指针点开）与 `ui.Menu`（省略号按钮锚定菜单）；官方 `MenuOverlay` 的等价物，不另造菜单视觉 |
+| 渲染 | `plugins/dscontextmenu` 的 Overlay（右键 / Shift+F10 / 指针点开 + 省略号按钮锚定菜单）；按官方 primitives CSS 定制，不采用 Viva 内建菜单的 32px 行/16px 图标/ShadowMD 近似值 |
 | 按钮 | `ContextMenus.Button`：只有 `HasTarget(kind)` 才创建 20×20 命中区，对齐官方「无贡献者不渲染」 |
 | 结构账 | `plugins/dscontextmenu/official_slots.go` 用 `RegisterOfficialSlot` 登记 `contextMenu.button`（factory/root）、`contextMenu.icon`（keyed/root）、`contextMenu.content`（keyed/root），父槽 `root`，锚点 `index.ts:37/40/42` |
 | 消费方 | `plugins/dssidebar`：workspace 组头右键 + 行尾省略号（`Rows.tsx:325/330` 的等价座位）；session 行尾省略号（`Rows.tsx:752`） |
 
 ### 1.3 已知差异（不冒充官方）
 
-1. **`contextMenu.icon` 不画图标**：官方图标来自 `dsh-client-ui-primitives`，该包**不在 rc.2 随包导出集**里；本仓没有官方矢量资产，菜单项只按文案渲染，不自画图标。
+1. **`contextMenu.icon` 已复用官方 sprite**：`plugins/dsassets.ContextMenuIcon` 覆盖当前生产项的 `workspace.rename/delete/copy` 与 `file-actions.download/save`；官方映射见 `workspace/src/client/index.ts:317-320`、`file-actions/src/client/index.ts:33-34`。`copy` 的 rect 与 `save` 的 arc 由 `viva icons` 编译，未知 key 不画替代形状。
 2. **`contextMenu.content` 不渲染自定义行**：官方是 React keyed slot（`View.tsx:56` 的 `renderSlot`）；本仓不是 React，业务动作全部走 `ContextMenuContribution` 数据面。
 3. **`notify` Toast 未实现**：改名/删除的失败反馈留在各自对话框里（官方 `WorkspaceDialogs` 也是框内 error），不画一条没有官方几何依据的浮动 Toast。
-4. **省略号按钮的字形**：官方是 `IconEllipsisOutlineRegular`（同一 primitives 包，未随包）；本仓用排版省略号 `⋯`，不是 SVG 图标。
+4. **省略号按钮已复用官方素材**：`plugins/dsassets.ContextMenuButtonIcon` 是 `Button.tsx:49` 的 `IconEllipsisOutlineRegular` 三条填充 path，不再用排版字符 `⋯`。
+
+### 1.4 2026-11-17 视觉复刻数值
+
+官方 `context-menu/src/**` 没有 `*.module.css`；`View.tsx:2,50-57` 把实际绘制交给 primitives `Menu`。本仓从官方 `dsh-web-frontend/dist/assets/index-CSAdOBx6.css:1` 提取 `_70kcw_` 与 `_1w4el_` 原始规则到 `DSH-GO/tmp/GO8-RC2/_vccm/` 核对：
+
+- 菜单面：padding **4**、min/max width **144/360**、viewport margin **12**（`primitives-menu-official.css:2-5`）；圆角 **radius-lg=16**（`menu-material-official.css:1` + `base.css:21`）；材质 **menu-surface-fill**（`menu-material-official.css:5`）。
+- 菜单项：**34px** 高、**6×8** padding、**6** gap、**13/20** 字、**radius-md=12**（`primitives-menu-official.css:19` + `base.css:20`）；图标 **14×14**（同文件 `:30-31`）；禁用 opacity **0.4**（`:29`）。
+- 分隔线：**0.5px / margin 3px 8px / border-l2**（同文件 `:44`）。
+- 阴影：0.5px border-l1 + **0/3/8/.04** + **0/0/20/.05**（`gradient-shadow-text.css:33-37`）。菜单材质的 blur(40px)/saturate(150%) 仍是平台未验项，不拿别的东西冒充。
+
+`TestOfficialMenuGeometryAndStyles` 用真实 Viva 帧逐项钉住上述面/行/分隔线/阴影与矢量图元。
 
 ## 2. #62 `dsh-client-ui-workspace` 的 rename / delete（依赖 #10）
 

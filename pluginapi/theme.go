@@ -42,6 +42,7 @@ type Theme struct {
 	NavActive               ui.Color // 侧栏选中项；也对应 button-ghost-active-fill
 	NavHover                ui.Color // 侧栏悬停项
 	Hover                   ui.Color // 通用悬停叠色（原值是半透明白 / 黑）
+	HoverDanger             ui.Color // 危险菜单行：--dsw-alias-interactive-bg-hover-danger
 	InteractiveActive       ui.Color // 文件树当前行：--dsw-alias-interactive-bg-active
 	ButtonGhostActiveBorder ui.Color // Pill 选中态 inset 描边
 	ButtonContrastFill      ui.Color // 附件移除按钮：--dsw-alias-button-contrast-fill
@@ -61,6 +62,7 @@ type Theme struct {
 	LabelDimmed          ui.Color // 几乎不可见（占位）
 	LabelPrimaryInverted ui.Color // 对比按钮文字：--dsw-alias-label-primary-inverted
 	LabelOnColor         ui.Color // 状态色上的文字：--dsw-alias-label-on-color
+	MenuIcon             ui.Color // 菜单项图标：--dsw-alias-menu-icon
 
 	// ── 品牌与链接 ──
 	Link               ui.Color

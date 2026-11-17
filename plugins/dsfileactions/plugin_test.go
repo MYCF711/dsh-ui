@@ -34,7 +34,7 @@ func (m *fakeMenus) HasTarget(kind string) bool {
 	return false
 }
 
-func (m *fakeMenus) Attach(_ ui.C, _ ui.Box, target pluginapi.ContextMenuTarget) {
+func (m *fakeMenus) Attach(_ ui.C, _ gfx.ID, _ ui.Box, target pluginapi.ContextMenuTarget) {
 	m.attached = append(m.attached, target)
 }
 

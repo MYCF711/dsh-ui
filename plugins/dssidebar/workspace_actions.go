@@ -88,7 +88,7 @@ func (p *Plugin) registerContextMenus(ctx pluginapi.Context) error {
 				return nil
 			}
 			return []pluginapi.ContextMenuAction{{
-				ID: "rename", Label: zhWorkspaceRename,
+				ID: "rename", Label: zhWorkspaceRename, Icon: "workspace.rename",
 				Run: func() { p.requestWorkspaceAction(workspaceActionRename, target) },
 			}}
 		},
@@ -105,7 +105,7 @@ func (p *Plugin) registerContextMenus(ctx pluginapi.Context) error {
 				return nil
 			}
 			return []pluginapi.ContextMenuAction{{
-				ID: "delete", Label: zhWorkspaceDelete, Danger: true, SeparatorBefore: true,
+				ID: "delete", Label: zhWorkspaceDelete, Icon: "workspace.delete", Danger: true, SeparatorBefore: true,
 				Run: func() { p.requestWorkspaceAction(workspaceActionDelete, target) },
 			}}
 		},
@@ -125,7 +125,7 @@ func (p *Plugin) registerContextMenus(ctx pluginapi.Context) error {
 				return nil
 			}
 			return []pluginapi.ContextMenuAction{{
-				ID: "copy", Label: zhSessionCopyID, SeparatorBefore: true,
+				ID: "copy", Label: zhSessionCopyID, Icon: "workspace.copy", SeparatorBefore: true,
 				Run: func() { p.act.Copy(target.ID) },
 			}}
 		},

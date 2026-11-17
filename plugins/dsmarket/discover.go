@@ -25,17 +25,14 @@
 //  1. **安装 / 更新 / 在已安装中查看**（官方 `EntryAction`，:102-135）：走
 //     `pluginManager.installBundle` / `updateBundle`，宿主这两个是结构化 501。
 //     卡片右侧那一列留空，不拿别的动作冒充。
-//  2. **图标图**（官方 `.image` 加载 `entry.icon` 的 URL / data URL）：本仓没有图片
-//     加载器，也没有官方 `PluginArtworkDefault` 精灵图 → 48px 框里画**标题首字**
-//     （derived 兜底，与 `plugins/dssidebar` 的插件卡、`docs/official-parity.md`
-//     登记的同一处差异一致）。
+//  2. **远程图标图**（官方 `.image` 加载 `entry.icon` 的 URL / data URL）：本仓没有
+//     图片加载器，所以缺省与有 URL 时都先画官方 `PluginArtworkDefault` 原始 path +
+//     渐变；48px 框内为 36px（DiscoverSection.tsx:27-28,44-51）。
 //  3. **详情页相对图片**：宿主没有 `GET /api/plugin-market/detail-file`
 //     （C 块已登记，见 docs/official-plugin-market-detail-evidence-rc2.md §4）。
 //
-// 另外两处**文字化**（官方是图标按钮，本仓没有那几枚 sprite）：
-//
-//	刷新 → 文字「刷新」；移除索引源 → 文字「移除」；索引菜单/排序按钮的箭头用
-//	仓库已有的 `dsassets.ChevronDownOutline`（唯一有导出的那枚）。
+// 刷新、搜索、过滤、移除、添加、警告、返回与默认插件图全部复用官方 sprite/path；
+// 不保留文字字形或首字兜底。
 package dsmarket
 
 import (
@@ -51,54 +48,85 @@ import (
 // ── 官方几何（DiscoverSection.module.css，行号逐条标注）────────────────────
 
 const (
-	// `.section{display:flex;flex-direction:column;gap:16px}`（:3-7）。
+	// `.section{display:flex;flex-direction:column;gap:16px}`（:4-8）。
 	discoverSectionGap float32 = 16
-	// `.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}`（:9-14）。
+	// `.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}`（:10-15）。
 	discoverToolbarGap float32 = 8
-	// `.marketButton{max-width:240px;margin-left:-8px;font-weight:500}`（:16-20）。
+	// `.marketButton{max-width:240px;margin-left:-8px;font-weight:500}`（:17-21）。
 	discoverMarketMax  float32 = 240
 	discoverMarketPull float32 = -8
-	// `.search{flex:1;min-width:120px}`（:22-25）。
+	// `.search{flex:1;min-width:120px}`（:29-32）。
 	discoverSearchMin float32 = 120
-	// `.categories{display:flex;flex-wrap:wrap;align-items:center;gap:6px}`（:27-31）。
+	// `.categories{display:flex;flex-wrap:wrap;align-items:center;gap:6px}`（:34-39）。
 	discoverCategoriesGap float32 = 6
-	// `.muted{margin:0;font-size:13px;line-height:20px}`（:33-41）。
+	// `.muted{margin:0;font-size:13px;line-height:20px}`（:41-47）。
 	discoverMutedSize float32 = 13
 	discoverMutedLine float32 = 20
-	// `.error{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:13px;line-height:20px}`（:53-59）。
+	// `.error{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:13px;line-height:20px}`（:62-70）。
 	discoverErrorSize float32 = 13
 	discoverErrorLine float32 = 20
-	// `.failure{display:flex;align-items:center;gap:10px}`（:61-65）。
+	// `.failure{display:flex;align-items:center;gap:10px}`（:72-76）。
 	discoverFailureGap float32 = 10
-	// `.cards{display:flex;flex-direction:column;gap:2px}`（:83-89）。
+	// `.cards{display:flex;flex-direction:column;gap:2px}`（:97-104）。
 	discoverCardsGap float32 = 2
 	// `.card{display:flex;align-items:center;gap:14px;margin:0 -8px;padding:8px;
-	//   border-radius:radius-xl}`（:91-99）。
+	//   border-radius:radius-xl}`（:106-114）。
 	discoverCardGap  float32 = 14
 	discoverCardPull float32 = -8
 	discoverCardPad  float32 = 8
-	// `.icon{width:48px;height:48px;border:0.5px solid border-l3;border-radius:radius-lg}`（:105-115）。
+	// `.icon{width:48px;height:48px;border:0.5px solid border-l3;border-radius:radius-lg}`（:122-132）。
 	discoverIconSize   float32 = 48
 	discoverIconBorder float32 = 0.5
-	// `.description{-webkit-line-clamp:1;font-size:13px;line-height:18px}`（:156-164）。
+	// 框内官方 PluginArtworkDefault 为 36px（DiscoverSection.tsx:27-28）。
+	marketArtworkSize float32 = 36
+	// `.description{-webkit-line-clamp:1;font-size:13px;line-height:18px}`（:188-196）。
 	discoverDescSize float32 = 13
 	discoverDescLine float32 = 18
-	// `.empty{padding:64px 0;gap:8px}`（:184-191）；`.emptyTitle{font-size:14px;line-height:20px}`（:193-199）。
+	// `.empty{padding:64px 0;gap:8px}`（:216-223）；`.emptyTitle{font-size:14px;line-height:20px;margin-top:8px}`（:225-230）。
 	discoverEmptyPad  float32 = 64
 	discoverEmptyGap  float32 = 8
 	discoverEmptySize float32 = 14
 	discoverEmptyLine float32 = 20
-	// `.dialogBody{display:flex;flex-direction:column;gap:12px}`（:404-408）。
+	// `.dialogBody{display:flex;flex-direction:column;gap:12px}`（:364-369）。
 	discoverDialogGap float32 = 12
-	// `.dialog{width:min(480px, calc(100vw - 32px))}`（:402）。
+	// `.dialog{width:min(480px, calc(100vw - 32px))}`（:360-362）。
 	discoverDialogWidth float32 = 480
-	// `.sourceRow{gap:8px;padding:8px 0;border-bottom:0.5px solid border-l2}`（:415-421）。
+	// `.sourceRow{gap:8px;padding:8px 0;border-bottom:0.5px solid border-l2}`（:379-393）。
 	discoverSourceGap float32 = 8
-	// `.notice{padding:10px 12px;border-radius:radius-md;font-size:12px;line-height:18px}`（:67-81）。
-	discoverNoticePadY float32 = 10
-	discoverNoticePadX float32 = 12
+	// `.notice{padding:10px 12px;border-radius:radius-md;font-size:12px;line-height:18px}`（:78-89）。
 	discoverNoticeSize float32 = 12
 	discoverNoticeLine float32 = 18
+
+	// ui-primitives/src/Input.module.css:1-9,16-23,26-34。
+	marketInputHeight float32 = 32
+	marketInputPadX   float32 = 8
+	marketInputGap    float32 = 6
+	marketInputIcon   float32 = 16
+	marketInputGlyph  float32 = 14
+	marketInputFont   float32 = 14
+	marketInputLine   float32 = 22
+	marketInputBorder float32 = 0.5
+	// ui-primitives/src/Pill.module.css:1-14,26-30。
+	marketPillHeight float32 = 24
+	marketPillPadX   float32 = 8
+	marketPillFont   float32 = 12
+	marketPillLine   float32 = 18
+	marketPillRadius float32 = 999
+	// ui-primitives/src/Button.module.css:28-34,56-61,80-86。
+	marketButtonHeight float32 = 28
+	marketButtonPadX   float32 = 10
+	marketButtonGap    float32 = 4
+	marketButtonFont   float32 = 12
+	marketButtonLine   float32 = 18
+	marketButtonIcon   float32 = 16
+	marketButtonBorder float32 = 0.5
+	// `.emptyTitle{margin-top:8px}` / `.empty > button{margin-top:8px}`（:225-234）。
+	discoverEmptyExtraGap float32 = 8
+	// `.skeletonBar{height:12px;margin:4px 0}` 与 144/60%、280/85%（:421-429）。
+	marketSkeletonBarHeight float32 = 12
+	marketSkeletonBarMargin float32 = 4
+	marketSkeletonTitleMax  float32 = 144
+	marketSkeletonDescMax   float32 = 280
 	// Tab 体自己的内距：官方 `.page{padding:0 clamp(24px,4vw,48px) 48px}` 在 Plugins 页那
 	// 一层，本仓 plugins 页把这一层交给**本 tab** 自己（见 Page.Draw 的同一条约定），
 	// 所以这里复用 detail.go 的 `pagePadX` / `pageBottomPad` / `pageMaxWidth`，不另抄一份。
@@ -303,25 +331,29 @@ func (d *Discover) drawList(f ui.C, env *pluginapi.Env) {
 	d.drawSourcesDialog(f, env)
 }
 
-// drawLoading 画官方骨架（`ListSkeleton`，:409-417）：四行 48px 框 + 两条横条。
-//
-// 官方骨架是 aria-busy 的无字占位；本仓没有无障碍树，所以同时画上官方那句
-// `loading`（"正在读取索引"）——一帧里至少能看出"在读"，而不是一片空白。
+// drawLoading 画官方无字骨架（ListSkeleton，:398-412）：四行 48px 框 +
+// 12px 横条，横条上下 margin 4，宽度 min(144,60%) / min(280,85%)。
 func (d *Discover) drawLoading(f ui.C) {
 	t := d.theme
-	ui.Text(f, zhLoading).FillWidth().FontSize(discoverMutedSize).LineHeight(discoverMutedLine).
-		Color(t.LabelTertiary)
-	for i := 0; i < 4; i++ {
-		ui.Row(f).FillWidth().Items(ui.Center).Gap(discoverCardGap).
-			PadSides(discoverCardPad, discoverCardPad, discoverCardPad, discoverCardPad).Children(func() {
-			ui.Row(f).Width(discoverIconSize).Height(discoverIconSize).Shrink(0).
-				Radius(t.Radii.LG).Background(t.BgLayer3)
-			ui.Column(f).Grow(1).MinWidth(0).Gap(6).Children(func() {
-				ui.Row(f).Height(12).Radius(t.Radii.XS).Background(t.BgLayer3)
-				ui.Row(f).Height(12).Radius(t.Radii.XS).Background(t.BgLayer3)
+	ui.Column(f).FillWidth().Gap(discoverCardsGap).Children(func() {
+		for i := 0; i < 4; i++ {
+			ui.Row(f).FillWidth().Items(ui.Center).Gap(discoverCardGap).
+				MarginSides(0, discoverCardPull, 0, discoverCardPull).
+				PadSides(discoverCardPad, discoverCardPad, discoverCardPad, discoverCardPad).
+				Radius(t.Radii.XL).Children(func() {
+				ui.Row(f).Width(discoverIconSize).Height(discoverIconSize).Shrink(0).
+					Radius(t.Radii.LG).Background(t.BgSkeleton)
+				ui.Column(f).Grow(1).MinWidth(0).Children(func() {
+					ui.Row(f).WidthPercent(0.60).MaxWidth(marketSkeletonTitleMax).
+						Height(marketSkeletonBarHeight).MarginSides(marketSkeletonBarMargin, 0, marketSkeletonBarMargin, 0).
+						Radius(t.Radii.XS).Background(t.BgSkeleton)
+					ui.Row(f).WidthPercent(0.85).MaxWidth(marketSkeletonDescMax).
+						Height(marketSkeletonBarHeight).MarginSides(marketSkeletonBarMargin, 0, marketSkeletonBarMargin, 0).
+						Radius(t.Radii.XS).Background(t.BgSkeleton)
+				})
 			})
-		})
-	}
+		}
+	})
 }
 
 // drawSourcesFailure 画"无法读取索引源" + 重试（官方 `state.status === 'error'`，:602-612）。
@@ -331,7 +363,9 @@ func (d *Discover) drawSourcesFailure(f ui.C, env *pluginapi.Env) {
 		ui.Text(f, zhSourcesFailed).FontSize(discoverErrorSize).LineHeight(discoverErrorLine).
 			Color(t.Error)
 		if env.Act.MarketIndexesReload != nil {
-			if ui.Button(f, zhRetry).Outline().Clicked() {
+			button := d.smallButton(f, marketButtonOutline).Hit(d.id(env, "market-indexes-retry"), zhRetry)
+			button.Children(func() { marketButtonLabel(f, t, zhRetry, marketButtonOutline) })
+			if button.Clicked() {
 				env.Act.MarketIndexesReload()
 			}
 		}
@@ -343,12 +377,20 @@ func (d *Discover) drawEmpty(f ui.C, env *pluginapi.Env) {
 	t := d.theme
 	ui.Column(f).FillWidth().Items(ui.Center).Gap(discoverEmptyGap).
 		PadSides(discoverEmptyPad, 0, discoverEmptyPad, 0).Children(func() {
-		ui.Text(f, zhEmptyTitle).FontSize(discoverEmptySize).LineHeight(discoverEmptyLine).
+		drawMarketArtwork(f, discoverIconSize)
+		ui.Text(f, zhEmptyTitle).MarginSides(discoverEmptyExtraGap, 0, 0, 0).
+			FontSize(discoverEmptySize).LineHeight(discoverEmptyLine).
 			Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 		ui.Wrap(f, zhEmptyDescription).FontSize(discoverMutedSize).LineHeight(discoverMutedLine).
 			Color(t.LabelTertiary).TextCenter()
 		if env.Act.MarketSetIndexes != nil {
-			if ui.Button(f, zhAddFirstSource).Clicked() {
+			button := d.smallButton(f, marketButtonPrimary).
+				Hit(d.id(env, "market-add-first-source"), zhAddFirstSource).MarginSides(discoverEmptyExtraGap, 0, 0, 0)
+			button.Children(func() {
+				drawMarketPlusButtonIcon(f, t.ButtonPrimaryFg)
+				marketButtonLabel(f, t, zhAddFirstSource, marketButtonPrimary)
+			})
+			if button.Clicked() {
 				d.editing = true
 			}
 		}
@@ -359,12 +401,24 @@ func (d *Discover) drawEmpty(f ui.C, env *pluginapi.Env) {
 func (d *Discover) drawToolbar(f ui.C, env *pluginapi.Env) {
 	ui.Row(f).FillWidth().Items(ui.Center).Gap(discoverToolbarGap).Children(func() {
 		d.drawMarketMenu(f, env)
-		search := ui.TextFieldID(f, d.id(env, "market-search"), &d.search, zhSearch, zhSearch)
-		search.MinWidth(discoverSearchMin).Grow(1)
-		if search.Changed() {
-			d.query = WithText(d.query, d.search.Text())
-			d.searchNow(env)
-		}
+		t := d.theme
+		ui.Row(f).Grow(1).MinWidth(discoverSearchMin).Height(marketInputHeight).
+			Radius(t.Radii.MD).Border(marketInputBorder, t.BorderL4).Background(t.BgLayer1).
+			Items(ui.Center).Children(func() {
+			search := ui.TextFieldBase(f, &d.search, zhSearch, zhSearch).
+				Grow(1).Height(marketInputHeight).FontSize(marketInputFont).LineHeight(marketInputLine).
+				Color(t.LabelPrimary).
+				PadSides(0, marketInputPadX, 0, marketInputPadX+marketInputIcon+marketInputGap)
+			if icon, ok := dsassets.WorkspaceSearch(t.LabelTertiary); ok {
+				ui.Icon(f, icon).Absolute().Left(marketInputPadX+(marketInputIcon-marketInputGlyph)/2).
+					Top((marketInputHeight-marketInputGlyph)/2).
+					Size(marketInputGlyph, marketInputGlyph).Color(t.LabelTertiary)
+			}
+			if search.Changed() {
+				d.query = WithText(d.query, d.search.Text())
+				d.searchNow(env)
+			}
+		})
 		labels := d.labelDeclarations()
 		if len(labels) > 0 {
 			d.drawFilterMenu(f, env, labels)
@@ -378,9 +432,10 @@ func (d *Discover) drawToolbar(f ui.C, env *pluginapi.Env) {
 func (d *Discover) drawMarketMenu(f ui.C, env *pluginapi.Env) {
 	t := d.theme
 	label := d.marketLabel()
-	box := ui.Row(f).Shrink(0).MaxWidth(discoverMarketMax).MarginSides(0, 0, 0, discoverMarketPull).
-		Items(ui.Center).Gap(4).Hit(d.id(env, "market-menu"), label).Children(func() {
-		ui.Text(f, label).Shrink(1).FontSize(t.Fonts.Body).LineHeight(22).
+	box := d.smallButton(f, marketButtonGhost).
+		Hit(d.id(env, "market-menu"), label).MaxWidth(discoverMarketMax).MarginSides(0, 0, 0, discoverMarketPull)
+	box.Children(func() {
+		ui.Text(f, label).Shrink(1).FontSize(marketButtonFont).LineHeight(marketButtonLine).
 			Weight(gfx.WeightMedium).Color(t.LabelPrimary).Ellipsis()
 		d.drawChevron(f, t)
 	})
@@ -409,8 +464,10 @@ func (d *Discover) drawMarketMenu(f ui.C, env *pluginapi.Env) {
 func (d *Discover) drawFilterMenu(f ui.C, env *pluginapi.Env, labels []Declaration) {
 	t := d.theme
 	label := FilterMenuLabel(len(d.query.Labels))
-	box := ui.Row(f).Shrink(0).Items(ui.Center).Gap(4).Hit(d.id(env, "market-filter"), label).Children(func() {
-		ui.Text(f, label).FontSize(t.Fonts.Secondary).LineHeight(20).Color(t.LabelSecondary)
+	box := d.smallButton(f, marketButtonGhost).Hit(d.id(env, "market-filter"), label)
+	box.Children(func() {
+		drawMarketSlidersIcon(f, t.LabelPrimary, 13)
+		marketButtonLabel(f, t, label, marketButtonGhost)
 	})
 	if box.Clicked() {
 		d.menuFilter = !d.menuFilter
@@ -432,8 +489,9 @@ func (d *Discover) drawFilterMenu(f ui.C, env *pluginapi.Env, labels []Declarati
 func (d *Discover) drawSortMenu(f ui.C, env *pluginapi.Env, sortKeys []Declaration) {
 	t := d.theme
 	label := SortMenuLabel(d.query, sortKeys)
-	box := ui.Row(f).Shrink(0).Items(ui.Center).Gap(4).Hit(d.id(env, "market-sort"), label).Children(func() {
-		ui.Text(f, label).FontSize(t.Fonts.Secondary).LineHeight(20).Color(t.LabelSecondary)
+	box := d.smallButton(f, marketButtonGhost).Hit(d.id(env, "market-sort"), label)
+	box.Children(func() {
+		marketButtonLabel(f, t, label, marketButtonGhost)
 		d.drawChevron(f, t)
 	})
 	if box.Clicked() {
@@ -495,14 +553,22 @@ func (d *Discover) chooseSortItems(items *ui.MenuItems, sortKeys []Declaration) 
 
 // drawRefresh 画刷新按钮（官方 `Button` + 刷新图标，:557-563）。
 //
-// 官方是纯图标按钮（aria-label `refresh`）；本仓没有那枚 sprite，用官方文案
-// 「刷新」当文字按钮（登记为 derived）。
+// 官方是纯图标 small ghost 按钮（aria-label `refresh`），图标 14px，
+// 外层 icon 槽 16px（Button.module.css:78-84）。
 func (d *Discover) drawRefresh(f ui.C, env *pluginapi.Env) {
 	if env.Act.MarketRefresh == nil {
 		return
 	}
 	busy := d.listing.Status == pluginapi.MarketListingLoading
-	button := ui.Button(f, zhRefresh).Ghost().Disabled(busy)
+	button := d.smallButton(f, marketButtonGhost).Hit(d.id(env, "market-refresh"), zhRefresh).Disabled(busy)
+	if busy {
+		button = button.Opacity(0.4) // Button.module.css:18-21
+	}
+	button.Children(func() {
+		if icon, ok := dsassets.MarketRefreshOutline(d.theme.LabelPrimary); ok {
+			drawMarketButtonIcon(f, icon, 14, d.theme.LabelPrimary)
+		}
+	})
 	if button.Clicked() && !busy {
 		env.Act.MarketRefresh()
 	}
@@ -531,20 +597,21 @@ func (d *Discover) drawCategories(f ui.C, env *pluginapi.Env) {
 
 // drawPill 画一枚可点的分类胶囊（官方 `Pill`：`.categories` 下的圆角小按钮）。
 //
-// 官方 `Pill` 在 `ui-primitives` 里，那份包**随包不发 CSS**（本机 rc.2 的
-// node_modules 里没有它），所以取本仓已在用的同一份官方度量（Tag 的 18px 高/
-// 7px 内距/10px 字号，见 detail.go 的 tagHeight 注释），选中态用
-// `--dsw-alias-markdown-tag` 那一档底（与 dockkit 的选中 tab 同一来源）。
+// 官方 ui-primitives/src/Pill.module.css:1-14：24px 高、0 8px、12/18、999px。
+// 选中态是 ghost-active-fill + 1px inset border（同文件 :26-30）。
 func (d *Discover) drawPill(f ui.C, env *pluginapi.Env, key, label string, active bool) bool {
 	t := d.theme
-	bg := t.BgLayer3
-	fg := t.LabelSecondary
+	bg, fg := t.BgLayer2, t.LabelSecondary
+	box := ui.Row(f).Height(marketPillHeight).Shrink(0).Radius(marketPillRadius).Items(ui.Center).
+		PadSides(0, marketPillPadX, 0, marketPillPadX).Background(bg).Hit(d.id(env, key), label)
 	if active {
-		bg, fg = t.MarkdownTag, t.LabelPrimary
+		bg, fg = t.NavActive, t.LabelPrimary
+		box = box.Background(bg).Border(1, t.ButtonGhostActiveBorder)
+	} else {
+		box = box.Hover(ui.Look{}.Background(t.Hover))
 	}
-	box := ui.Row(f).Height(tagHeight).Shrink(0).Radius(tagHeight/2).Items(ui.Center).
-		PadSides(0, tagPadX, 0, tagPadX).Background(bg).Hit(d.id(env, key), label).Children(func() {
-		ui.Text(f, label).FontSize(tagFont).LineHeight(tagHeight).Color(fg)
+	box.Children(func() {
+		ui.Text(f, label).FontSize(marketPillFont).LineHeight(marketPillLine).Color(fg)
 	})
 	return box.Clicked()
 }
@@ -556,7 +623,9 @@ func (d *Discover) drawListing(f ui.C, env *pluginapi.Env) {
 		ui.Row(f).FillWidth().Items(ui.Center).Gap(discoverFailureGap).Children(func() {
 			ui.Text(f, zhReadFailed).FontSize(discoverErrorSize).LineHeight(discoverErrorLine).Color(t.Error)
 			if env.Act.MarketRetry != nil {
-				if ui.Button(f, zhRetry).Outline().Clicked() {
+				button := d.smallButton(f, marketButtonOutline).Hit(d.id(env, "market-listing-retry"), zhRetry)
+				button.Children(func() { marketButtonLabel(f, t, zhRetry, marketButtonOutline) })
+				if button.Clicked() {
 					env.Act.MarketRetry()
 				}
 			}
@@ -586,9 +655,14 @@ func (d *Discover) drawListing(f ui.C, env *pluginapi.Env) {
 		}
 	})
 	if value.NextOffset != nil && env.Act.MarketMore != nil {
-		busy := d.listing.Status == pluginapi.MarketListingMore
-		more := ui.Button(f, zhShowMore).Outline().Disabled(!busy && d.listing.Status != pluginapi.MarketListingReady)
-		if more.Clicked() && !busy {
+		disabled := d.listing.Status != pluginapi.MarketListingReady
+		more := d.smallButton(f, marketButtonOutline).
+			Hit(d.id(env, "market-more"), zhShowMore).Self(ui.Center).Disabled(disabled)
+		if disabled {
+			more = more.Opacity(0.4)
+		}
+		more.Children(func() { marketButtonLabel(f, t, zhShowMore, marketButtonOutline) })
+		if more.Clicked() && !disabled {
 			env.Act.MarketMore()
 		}
 	}
@@ -615,12 +689,8 @@ func (d *Discover) drawCard(f ui.C, env *pluginapi.Env, entry Entry) {
 		MarginSides(0, discoverCardPull, 0, discoverCardPull).
 		PadSides(discoverCardPad, discoverCardPad, discoverCardPad, discoverCardPad).
 		Radius(t.Radii.XL).Children(func() {
-		// `.icon`：48px 框 + 0.5px 描边 + 标题首字（derived，见文件头第 2 条）。
-		ui.Row(f).Width(discoverIconSize).Height(discoverIconSize).Shrink(0).
-			Radius(t.Radii.LG).Border(discoverIconBorder, t.BorderL3).
-			Items(ui.Center).Justify(ui.Center).Children(func() {
-			ui.Text(f, firstRune(entry.TitleText())).FontSize(18).LineHeight(22).Color(t.LabelSecondary)
-		})
+		// `.icon`：48px 框 + 0.5px 描边，框内是 36px 官方默认插件图。
+		drawMarketIconFrame(f, t)
 		ui.Column(f).Grow(1).MinWidth(0).Gap(mainGap).Children(func() {
 			ui.Row(f).FillWidth().Items(ui.Center).Gap(titleRowGap).Children(func() {
 				title := ui.Text(f, entry.TitleText()).Shrink(1).FontSize(strongSize).
@@ -645,24 +715,95 @@ func (d *Discover) drawCard(f ui.C, env *pluginapi.Env, entry Entry) {
 	})
 }
 
-// firstRune 取标题的第一个字符（derived 图标兜底用）。
-func firstRune(value string) string {
-	for _, r := range value {
-		return string(r)
-	}
-	return ""
-}
-
-// drawChevron 画笔画的官方 `IconChevronDownOutline`（仓库里有这枚的导出）。
+// drawChevron 画官方 `IconChevronDownOutline`，glyph 12px，外层 icon 槽 16px。
 func (d *Discover) drawChevron(f ui.C, t *pluginapi.Theme) {
 	commands, ok := dsassets.ChevronDownOutline()
 	if !ok || len(commands) == 0 {
-		// 没有导出时退回文字字形（与 dssidebar 的 `▾` 同一先例），不手画。
-		ui.Text(f, "▾").FontSize(10).LineHeight(12).Color(t.LabelTertiary)
 		return
 	}
-	ui.Icon(f, gfx.Icon{ViewBox: 12, Stroke: 1, Cap: gfx.CapRound, Join: gfx.JoinRound, Commands: commands}).
-		Size(12, 12).Color(t.LabelTertiary)
+	icon := gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}
+	drawMarketButtonIcon(f, icon, 12, t.LabelPrimary)
+}
+
+// ── 官方 small Button / 图标素材 ───────────────────────────────────────
+
+type marketButtonKind uint8
+
+const (
+	marketButtonGhost marketButtonKind = iota
+	marketButtonOutline
+	marketButtonPrimary
+)
+
+// smallButton 是 primitives 的 size="sm"：28px 高、0 10px、4px gap、radius-sm。
+func (d *Discover) smallButton(f ui.C, kind marketButtonKind) ui.Box {
+	t := d.theme
+	box := ui.Row(f).Shrink(0).Height(marketButtonHeight).Items(ui.Center).Justify(ui.Center).
+		Gap(marketButtonGap).PadSides(0, marketButtonPadX, 0, marketButtonPadX).
+		Radius(t.Radii.SM)
+	switch kind {
+	case marketButtonPrimary:
+		box = box.Background(t.ButtonPrimaryFill)
+	case marketButtonOutline:
+		box = box.Border(marketButtonBorder, t.BorderL3).Hover(ui.Look{}.Background(t.Hover))
+	default:
+		box = box.Hover(ui.Look{}.Background(t.Hover))
+	}
+	return box
+}
+
+func marketButtonLabel(f ui.C, t *pluginapi.Theme, label string, kind marketButtonKind) {
+	color := t.LabelPrimary
+	if kind == marketButtonPrimary {
+		color = t.ButtonPrimaryFg
+	}
+	ui.Text(f, label).FontSize(marketButtonFont).LineHeight(marketButtonLine).Color(color)
+}
+
+// drawMarketButtonIcon 画 Button.module.css:78-84 的 16×16 icon 槽。
+func drawMarketButtonIcon(f ui.C, icon gfx.Icon, glyphSize float32, color gfx.Color) {
+	ui.Row(f).Width(marketButtonIcon).Height(marketButtonIcon).Shrink(0).
+		Items(ui.Center).Justify(ui.Center).Children(func() {
+		ui.Icon(f, icon).Size(glyphSize, glyphSize).Color(color)
+	})
+}
+
+func drawMarketPlusButtonIcon(f ui.C, color gfx.Color) {
+	if icon, ok := dsassets.MarketPlusOutline(color); ok {
+		drawMarketButtonIcon(f, icon, 13, color)
+	}
+}
+
+// drawMarketSlidersIcon 复用官方两条 path + 两枚圆环，不用文字代替过滤图标。
+func drawMarketSlidersIcon(f ui.C, color gfx.Color, size float32) {
+	icon, rings, ok := dsassets.WorkspaceSlidersTwo(color)
+	if !ok {
+		return
+	}
+	inset := (marketButtonIcon - size) / 2
+	scale := size / 16
+	ui.Row(f).Width(marketButtonIcon).Height(marketButtonIcon).Shrink(0).Children(func() {
+		ui.Icon(f, icon).Absolute().Left(inset).Top(inset).Size(size, size).Color(color)
+		for _, ring := range rings {
+			d := 2 * ring.Radius * scale
+			ui.Row(f).Absolute().Left(inset+(ring.CX-ring.Radius)*scale).Top(inset+(ring.CY-ring.Radius)*scale).
+				Width(d).Height(d).Radius(gfx.RadiusFull).Border(ring.Stroke*scale, color)
+		}
+	})
+}
+
+func drawMarketArtwork(f ui.C, size float32) {
+	if icon, ok := dsassets.MarketPluginArtworkDefault(); ok {
+		ui.Icon(f, icon).Size(size, size).Color(gfx.Color{Alpha: 1})
+	}
+}
+
+func drawMarketIconFrame(f ui.C, t *pluginapi.Theme) {
+	ui.Row(f).Width(discoverIconSize).Height(discoverIconSize).Shrink(0).
+		Radius(t.Radii.LG).Border(discoverIconBorder, t.BorderL3).
+		Items(ui.Center).Justify(ui.Center).Children(func() {
+		drawMarketArtwork(f, marketArtworkSize)
+	})
 }
 
 // ── 索引源对话框（官方 SourcesDialog，:318-350）──────────────────────────
@@ -690,10 +831,7 @@ func (d *Discover) drawSourcesDialog(f ui.C, env *pluginapi.Env) {
 				ui.Text(f, sourceFailureText(d.sourceFailure)).FillWidth().
 					FontSize(discoverErrorSize).LineHeight(discoverErrorLine).Color(t.Error)
 			}
-			ui.Wrap(f, zhSourcesTrust).FillWidth().FontSize(discoverNoticeSize).
-				LineHeight(discoverNoticeLine).Color(t.LabelSecondary).
-				PadSides(discoverNoticePadY, discoverNoticePadX, discoverNoticePadY, discoverNoticePadX).
-				Radius(t.Radii.MD).Background(t.WarnTertiary)
+			drawMarketNotice(f, t, zhSourcesTrust)
 		})
 	}, nil)
 }
@@ -715,13 +853,17 @@ func (d *Discover) drawSourceRow(f ui.C, env *pluginapi.Env, index apiclient.Mar
 			}
 		})
 		if env.Act.MarketSetIndexes != nil {
-			// 官方这一枚的可访问名是 `removeSourceNamed`（"移除 {url}"，locales.ts:24），
-			// 可见文字是 `removeSource`（"移除"）。本仓没有无障碍树，但命中区标签
-			// 可以照官方的**具名**写法，测试也就能点到"哪一个"源。
+			// 官方这一枚是 13px trash 图标，aria-label 为 removeSourceNamed。
 			named := fillTemplate(zhRemoveSourceNamed, map[string]string{"url": index.URL})
-			button := ui.Row(f).Shrink(0).Items(ui.Center).Disabled(d.saving).
-				Hit(d.id(env, "market-source-remove-"+index.URL), named).Children(func() {
-				ui.Text(f, zhRemoveSource).FontSize(strongSize).LineHeight(strongLine).Color(t.Error)
+			button := d.smallButton(f, marketButtonGhost).
+				Hit(d.id(env, "market-source-remove-"+index.URL), named).Disabled(d.saving)
+			if d.saving {
+				button = button.Opacity(0.4)
+			}
+			button.Children(func() {
+				if icon, ok := dsassets.MarketTrashOutline(t.LabelPrimary); ok {
+					drawMarketButtonIcon(f, icon, 13, t.LabelPrimary)
+				}
 			})
 			if button.Clicked() && !d.saving {
 				env.Act.MarketSetIndexes(d.sourceURLsExcept(index.URL))
@@ -732,14 +874,26 @@ func (d *Discover) drawSourceRow(f ui.C, env *pluginapi.Env, index apiclient.Mar
 
 // drawSourceForm 画新增索引源的输入框与「添加」（官方 `.sourceForm`）。
 func (d *Discover) drawSourceForm(f ui.C, env *pluginapi.Env) {
+	t := d.theme
 	ui.Row(f).FillWidth().Items(ui.Center).Gap(discoverToolbarGap).Children(func() {
-		field := ui.TextFieldID(f, d.id(env, "market-source-url"), &d.draft, zhSourceURL, zhSourcePlaceholder)
-		field.Grow(1).MinWidth(0)
+		ui.Row(f).Grow(1).MinWidth(0).Height(marketInputHeight).Radius(t.Radii.MD).
+			Border(marketInputBorder, t.BorderL4).Background(t.BgLayer1).Items(ui.Center).Children(func() {
+			ui.TextFieldBase(f, &d.draft, zhSourceURL, zhSourcePlaceholder).
+				Grow(1).Height(marketInputHeight).FontSize(marketInputFont).LineHeight(marketInputLine).
+				Color(t.LabelPrimary).PadSides(0, marketInputPadX, 0, marketInputPadX)
+		})
 		if env.Act.MarketSetIndexes == nil {
 			return
 		}
 		disabled := d.saving || strings.TrimSpace(d.draft.Text()) == ""
-		add := ui.Button(f, zhAddSource).Disabled(disabled)
+		add := d.smallButton(f, marketButtonPrimary).Hit(d.id(env, "market-source-add"), zhAddSource).Disabled(disabled)
+		if disabled {
+			add = add.Opacity(0.4)
+		}
+		add.Children(func() {
+			drawMarketPlusButtonIcon(f, t.ButtonPrimaryFg)
+			marketButtonLabel(f, t, zhAddSource, marketButtonPrimary)
+		})
 		if add.Clicked() && !disabled {
 			urls := d.sourceURLsExcept("")
 			urls = append(urls, strings.TrimSpace(d.draft.Text()))

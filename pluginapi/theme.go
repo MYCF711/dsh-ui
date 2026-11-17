@@ -20,11 +20,13 @@ type Theme struct {
 	Dark bool
 
 	// ── 底色 ──
-	BgBase      ui.Color // 主区背景
-	SidebarFill ui.Color // 左栏背景
-	BgLayer1    ui.Color // 抬高一层（卡片）
-	BgLayer2    ui.Color // 抬高两层（气泡、输入框）
-	BgLayer3    ui.Color // 抬高三层（选择器、模块台）
+	BgBase           ui.Color // 主区背景
+	SidebarFill      ui.Color // 左栏背景
+	BgLayer1         ui.Color // 抬高一层（卡片）
+	BgLayer2         ui.Color // 抬高两层（气泡、输入框）
+	BgLayer3         ui.Color // 抬高三层（选择器）
+	BgModulePlatform ui.Color // 模块台（Tag neutral / 行内代码）
+	BgSkeleton       ui.Color // 骨架屏（design-platform.css:192,344）
 
 	// 计划卡与计划模式 chip 的独立语义令牌。
 	// 分别对应 --dsw-alias-card-fill / -card-fill-hover / -card-tile-fill /
@@ -35,9 +37,10 @@ type Theme struct {
 	BusinessTertiary ui.Color
 
 	// ── 交互态 ──
-	NavActive ui.Color // 侧栏选中项
-	NavHover  ui.Color // 侧栏悬停项
-	Hover     ui.Color // 通用悬停叠色（原值是半透明白 / 黑）
+	NavActive               ui.Color // 侧栏选中项；也对应 button-ghost-active-fill
+	NavHover                ui.Color // 侧栏悬停项
+	Hover                   ui.Color // 通用悬停叠色（原值是半透明白 / 黑）
+	ButtonGhostActiveBorder ui.Color // Pill 选中态 inset 描边
 
 	// ── 描边 ──
 	BorderL1 ui.Color // 最轻：分隔线
@@ -167,24 +170,26 @@ func (t *Theme) Palette() map[string]ui.Color {
 		return nil
 	}
 	return map[string]ui.Color{
-		"bg":        t.BgBase,
-		"sidebar":   t.SidebarFill,
-		"layer1":    t.BgLayer1,
-		"layer2":    t.BgLayer2,
-		"layer3":    t.BgLayer3,
-		"navActive": t.NavActive,
-		"navHover":  t.NavHover,
-		"border1":   t.BorderL1,
-		"border2":   t.BorderL2,
-		"primary":   t.LabelPrimary,
-		"secondary": t.LabelSecondary,
-		"tertiary":  t.LabelTertiary,
-		"caption":   t.LabelCaption,
-		"link":      t.Link,
-		"bubble":    t.Bubble,
-		"input":     t.InputMajor,
-		"success":   t.Success,
-		"error":     t.Error,
-		"warn":      t.Warn,
+		"bg":             t.BgBase,
+		"sidebar":        t.SidebarFill,
+		"layer1":         t.BgLayer1,
+		"layer2":         t.BgLayer2,
+		"layer3":         t.BgLayer3,
+		"modulePlatform": t.BgModulePlatform,
+		"skeleton":       t.BgSkeleton,
+		"navActive":      t.NavActive,
+		"navHover":       t.NavHover,
+		"border1":        t.BorderL1,
+		"border2":        t.BorderL2,
+		"primary":        t.LabelPrimary,
+		"secondary":      t.LabelSecondary,
+		"tertiary":       t.LabelTertiary,
+		"caption":        t.LabelCaption,
+		"link":           t.Link,
+		"bubble":         t.Bubble,
+		"input":          t.InputMajor,
+		"success":        t.Success,
+		"error":          t.Error,
+		"warn":           t.Warn,
 	}
 }

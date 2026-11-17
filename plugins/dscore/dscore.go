@@ -142,20 +142,23 @@ func Dark() *pluginapi.Theme {
 		Name: "ds-dark",
 		Dark: true,
 
-		BgBase:      gfx.RGB24(staticNeutralBluish950),
-		SidebarFill: gfx.RGB24(staticNeutralBluish900),
-		BgLayer1:    gfx.RGB24(staticNeutralBluish875),
-		BgLayer2:    gfx.RGB24(staticNeutralBluish850),
-		BgLayer3:    gfx.RGB24(staticNeutralBluish800),
+		BgBase:           gfx.RGB24(staticNeutralBluish950),
+		SidebarFill:      gfx.RGB24(staticNeutralBluish900),
+		BgLayer1:         gfx.RGB24(staticNeutralBluish875),
+		BgLayer2:         gfx.RGB24(staticNeutralBluish850),
+		BgLayer3:         gfx.RGB24(staticNeutralBluish800),
+		BgModulePlatform: gfx.RGB24(staticNeutralBluish800),
+		BgSkeleton:       ui.RGBA(255, 255, 255, 0.08),
 
 		CardFill:         gfx.RGB24(staticNeutral850),
 		CardFillHover:    gfx.RGB24(staticNeutral800),
 		CardTileFill:     ui.RGBA(255, 255, 255, 0.05),
 		BusinessTertiary: gfx.RGB24(staticDeepseek800),
 
-		NavActive: gfx.RGB24(staticNeutralBluish750),
-		NavHover:  gfx.RGB24(staticNeutralBluish850),
-		Hover:     ui.RGBA(255, 255, 255, 0.08), // --dsw-alias-interactive-bg-hover = #ffffff14
+		NavActive:               gfx.RGB24(staticNeutralBluish750),
+		NavHover:                gfx.RGB24(staticNeutralBluish850),
+		Hover:                   ui.RGBA(255, 255, 255, 0.08), // --dsw-alias-interactive-bg-hover = #ffffff14
+		ButtonGhostActiveBorder: gfx.RGB24(staticNeutralBluish600),
 		// --dsw-alias-markdown-tag（design-platform.css:424）= neutral-bluish-850；
 		// dockkit 选中 tab 的底色，见 pluginapi/theme.go 的 MarkdownTag 注释。
 		MarkdownTag: gfx.RGB24(staticNeutralBluish850),
@@ -218,20 +221,23 @@ func Light() *pluginapi.Theme {
 		Name: "ds-light",
 		Dark: false,
 
-		BgBase:      gfx.RGB24(staticNeutralBluish00),
-		SidebarFill: gfx.RGB24(staticNeutralBluish50),
-		BgLayer1:    gfx.RGB24(staticNeutralBluish00),
-		BgLayer2:    gfx.RGB24(staticNeutralBluish00),
-		BgLayer3:    gfx.RGB24(staticNeutralBluish00),
+		BgBase:           gfx.RGB24(staticNeutralBluish00),
+		SidebarFill:      gfx.RGB24(staticNeutralBluish50),
+		BgLayer1:         gfx.RGB24(staticNeutralBluish00),
+		BgLayer2:         gfx.RGB24(staticNeutralBluish00),
+		BgLayer3:         gfx.RGB24(staticNeutralBluish00),
+		BgModulePlatform: gfx.RGB24(staticNeutralBluish60),
+		BgSkeleton:       ui.RGBA(0, 0, 0, 0.04),
 
 		CardFill:         gfx.RGB24(staticNeutral50),
 		CardFillHover:    gfx.RGB24(staticNeutral100),
 		CardTileFill:     ui.RGBA(255, 255, 255, 0.5),
 		BusinessTertiary: gfx.RGB24(staticDeepseek100),
 
-		NavActive: gfx.RGB24(staticNeutralBluish100),
-		NavHover:  gfx.RGB24(staticNeutralBluish75),
-		Hover:     ui.RGBA(38, 49, 72, 0.06), // #2631480f
+		NavActive:               gfx.RGB24(staticNeutralBluish100),
+		NavHover:                gfx.RGB24(staticNeutralBluish75),
+		Hover:                   ui.RGBA(38, 49, 72, 0.06), // #2631480f
+		ButtonGhostActiveBorder: gfx.RGB24(staticNeutralBluish500),
 		// --dsw-alias-markdown-tag（design-platform.css:272）= neutral-bluish-75。
 		MarkdownTag: gfx.RGB24(staticNeutralBluish75),
 

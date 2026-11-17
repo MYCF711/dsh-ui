@@ -142,6 +142,7 @@ func EntryFromAPI(entry apiclient.MarketEntry, metadata apiclient.MarketIndexMet
 	out := Entry{
 		Name:           entry.Name,
 		Title:          entry.Title.Pick(),
+		Icon:           entry.Icon,
 		Description:    entry.Description.Pick(),
 		Author:         entry.Author,
 		Homepage:       entry.Homepage,

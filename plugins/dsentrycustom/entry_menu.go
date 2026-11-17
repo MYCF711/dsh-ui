@@ -48,22 +48,36 @@
 //
 //  1. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 本仓还没有
 //     宿主（guide 面未落地，`docs/official-parity.md` 的 #53），注册了也没有派发方。
-//  2. **左栏行尾的对勾不画、固定按钮不做"悬停才出现"**：
-//     官方 `.pinAnchor{opacity:0}` 只在行 hover 时显形，`.sidebarEntry .activeMark`
-//     正好相反（rest 1、hover 0），见 OFF:EntryMenu.module.css:20-31（编译态同一条串里
-//     还有 `html[data-input-modality='keyboard'] … :focus-within` 那一半）。
-//     本包按**非 hover 态**画：固定按钮恒显、对勾不画。
-//     注意：旧注释写的"viva 没有本帧是否悬停的读口"**已不成立**——viva v0.6.4 有
-//     `Canvas.Hovered()`（`ui/style.go:307` 的 `target(...canvas.Hovered()==source)`）
-//     与声明式的 `Box.StateFrom(row)` + `Hover(ui.Look{}.Opacity(...))`（`ui/style.go:29-40`
-//     文档例：pencil 出现在它所在行 hover 时）。三态**可补**，属绘制行为变更，本轮只做
-//     几何/配色数值对齐，不在此处顺手改行为；已在 `docs/official-parity.md` #17 登记为待补。
+//  2. **键盘模态那半边（`html[data-input-modality='keyboard'] … :focus-within`）不画**：
+//     它挂在同一串 CSS 里（OFF:EntryMenu.module.css:29,31），但本仓没有"全局输入模态"
+//     这一位，而且它是 `:focus-within`（行内任一后代有焦点），与 viva 的
+//     `FocusVisible()==id` 不是同一个判据，不冒充。
+//
+// # 悬停三态（2026-11-17 本轮补上，值全取官方）
+//
+// `@media (hover:hover)` 那一块（OFF:EntryMenu.module.css:20-32）定义了**行内三件
+// 东西随行悬停一起变**：
+//
+//	行     `.sidebarEntry:hover > div:first-child > button`
+//	       → `background:var(--dsw-alias-interactive-bg-hover)`（:21）
+//	pin    `.pinAnchor{opacity:0}`（:26）→ `:hover .pinAnchor{opacity:1}`（:28）
+//	       外加 `.pinButton:hover:not(:disabled){color:label-primary;background:transparent}`（:22-25）
+//	对勾   `.activeMark{opacity:0}`（:12）→ `.sidebarEntry .activeMark{opacity:1}`（:27）
+//	       → `.sidebarEntry:hover .activeMark{opacity:0}`（:30）
+//
+// 注意对勾是**反的**：静止时画（rest 1 由 :27 给，覆盖 :12 的 0），行一悬停就隐去。
+// 所以左栏行尾**任何时刻都只有一枚** 22×22 的按钮位（pin 或对勾），两枚不并排。
+//
+// 实现用 viva 的声明式跟随：`Box.Opacity(...)` 给静止值，`Hover(ui.Look{}.Opacity(...))`
+// 给悬停值，`StateFrom(row)` 让它们跟**这一行**的悬停（`ui/style.go:29-40` 的文档例
+// 就是"铅笔在它所在行悬停时出现"）。行自己的悬停背景沿用同一机制（原本就有）。
 package dsentrycustom
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar/panelapi"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -118,6 +132,27 @@ const (
 	// （OFF:EntryMenu.module.css:6）：28 = 22（`.pinButton` 宽）+ 6（`.pinAnchor` right），
 	// 条目名在这个位置收住，绝对定位的按钮盖在让出的这一条上。
 	sidebarNamePadRight float32 = 28
+	// sidebarActiveMarkRight / sidebarActiveMarkBox 是 `.sidebarEntry .activeMark`
+	// 的绝对定位与尺寸（OFF:EntryMenu.module.css:7-14、:3）。
+	//
+	//	.sidebarEntry .activeMark{position:absolute;right:9px;top:50%;
+	//	  transform:translateY(-50%);opacity:0;pointer-events:none}
+	//	.activeMark{flex:none;margin-left:auto}
+	//
+	// 9px 与 6px 是**两条不同的规则**：`.pinAnchor{right:6px}` 是 22 宽按钮的左缘
+	// 落在 right:6 处（左缘 = 6+22 = 28），`.activeMark{right:9}` 是 14 宽对勾的右缘
+	// 落在 right:9 处（左缘 = 9+14 = 23）。两条都从行右边量，不共用 28。
+	sidebarActiveMarkRight float32 = 9
+	// sidebarActiveMarkBox 是对勾本身边长：官方传 `size={16}`（EntryMenuContent.tsx:49），
+	// 但 primitives 那条 `._itemIcon svg,._check{width:14px;height:14px}` 把它夹到 14，
+	// 与行首面板图标同一个落点（见 entryGlyphSize）。
+	sidebarActiveMarkBox float32 = 14
+	// sidebarEntryHoverOpacity 是官方 `@media (hover:hover)` 里两处 opacity 的原值
+	// （OFF:EntryMenu.module.css:27,29 的显形与 :12,31 的隐去），一侧恒为 1、另一侧恒为 0。
+	sidebarEntryHoverOpacity float32 = 1
+	// sidebarEntryRestOpacity 是非悬停态的原值（`.activeMark{opacity:0}` :12）。
+	sidebarEntryRestOpacity float32 = 0
+
 	// entryGlyphSize / entryGlyphHeight 是面板图标在菜单行里**画出来的**尺寸。
 	//
 	// 官方那一格是 `renderFactorySlot('sidebar.panel.icon', { size: 16 })`
@@ -214,21 +249,39 @@ func (p *Plugin) drawConversationRows(f ui.C, env *pluginapi.Env) {
 	p.drawFooterRows(f, env, props, len(props.Entries))
 }
 
-// drawSidebarEntryRow 画左栏的一条未固定条目：`[图标][标题][固定按钮]`。
+// drawSidebarEntryRow 画左栏的一条未固定条目：`[图标][标题][固定按钮|对勾]`。
+//
+// 行尾那一格是**二选一**（官方同一块 CSS 里对勾与固定按钮互斥）：
+//
+//	静止    固定按钮 opacity 0（`.pinAnchor{opacity:0}` :26）、对勾 opacity 1（:27）
+//	行悬停  固定按钮 opacity 1（`:hover .pinAnchor` :28）、对勾 opacity 0（:30）
 func (p *Plugin) drawSidebarEntryRow(f ui.C, env *pluginapi.Env, props *pluginapi.EntryMenuProps, entry pluginapi.EntryMenuEntry) {
 	t := p.theme
+	// 这一行的两个命中身份：行本身与行尾固定按钮。官方的 `.sidebarEntry:hover` 是
+	// **祖先级**判据（指针落在固定按钮上时外层同样 `:hover`），所以两个都要比。
+	rowID := env.Tree.ID(env.Feat, "entry-open-"+entry.ID)
+	pinID := env.Tree.ID(env.Feat, "entry-pin-"+entry.ID)
+	rowHovered, pinHovered := sidebarEntryHovered(env, rowID, pinID)
+	hovered := rowHovered || pinHovered
 	// 外层这一圈就是官方 `div.sidebarEntry{position:relative}`（OFF:EntryMenuContent.tsx:41）：
-	// 它不参与额外几何，只给绝对定位的 `.pinAnchor` 当参照物。
+	// 它不参与额外几何，只给绝对定位的 `.pinAnchor` / `.activeMark` 当参照物。
 	ui.Row(f).FillWidth().Items(ui.Center).Children(func() {
 		row := ui.Row(f).Grow(1).MinHeight(entryRowMinHeight).
 			PadSides(entryRowPadY, entryRowPadX, entryRowPadY, entryRowPadX).
-			Gap(entryRowGap).Radius(t.Radii.MD).Items(ui.Center).
+			Gap(entryRowGap).Radius(t.Radii.MD).Items(ui.Center)
+		if pinHovered {
+			// 官方那条祖先级规则（`.sidebarEntry:hover>div:first-child>button`，:21）：
+			// 指针落在固定按钮上时**整行底色也亮**。声明式 Hover 只看自己，
+			// 所以这一档写成静止值；行自己悬停仍由下面的 `Hover` 负责。
+			row = row.Background(t.Hover)
+		}
+		row = row.
+			// `._item_70kcw_173:hover:not(:disabled):not([aria-disabled=true]){background:interactive-bg-hover}`
+			// （同样覆盖 `:focus-visible`）——行背景跟的是 `.item` **自己的** hover。
 			Hover(ui.Look{}.Background(t.Hover)).
-			Hit(env.Tree.ID(env.Feat, "entry-open-"+entry.ID), entry.Label)
+			Hit(rowID, entry.Label)
 		row.Children(func() {
-			// 官方 `icon` 槽在 sidebar 区域**恒存在**：
-			// `icon={region === 'sidebar' ? (<span class={css.entryIcon} aria-hidden="true">
-			//   {renderFactorySlot('sidebar.panel.icon', {id, size:16, active})}</span>) : undefined}`
+			// 官方 `icon` 槽在 sidebar 区域**恒存在**：`icon={region === 'sidebar' ? () : undefined}`
 			// （OFF:EntryMenuContent.tsx:42-46）。所以即使这一条没有字形，那一格也占位
 			// （primitives 的 `.itemIcon` 14×14 与行内 gap 6 都照常算），标签不会左移。
 			ui.Row(f).Size(entryIconBox, entryIconBox).Shrink(0).
@@ -252,6 +305,18 @@ func (p *Plugin) drawSidebarEntryRow(f ui.C, env *pluginapi.Env, props *pluginap
 			// 这样绝对定位的固定按钮不会压到字上。
 			ui.Text(f, entry.Label).FontSize(entryFontSize).LineHeight(entryLineHeight).
 				Grow(1).MaxLines(0).PadSides(0, sidebarNamePadRight, 0, 0).Color(t.LabelPrimary)
+			// 官方 `.activeMark` 在**两个区域都画**（EntryMenuContent.tsx:48-50：它在
+			// `.entryName` 里，与 region 无关），只是规则不同：
+			//   会话头 → `.activeMark{flex:none;margin-left:auto}`（:3），行内流位、恒可见
+			//   左栏   → `.sidebarEntry .activeMark{position:absolute;right:9px;top:50%;
+			//            transform:translateY(-50%)}`（:7-14）+ 悬停才隐（:27,:30）
+			if entry.Active {
+				if props.Region == pluginapi.EntryRegionSidebar {
+					drawSidebarActiveMark(f, t, hovered)
+				} else {
+					drawInlineActiveMark(f, t)
+				}
+			}
 		})
 		if row.Clicked() {
 			p.dismiss(props)
@@ -262,8 +327,68 @@ func (p *Plugin) drawSidebarEntryRow(f ui.C, env *pluginapi.Env, props *pluginap
 		// 固定按钮画在行之后、绝对定位：viva 的绝对元素"painted after the in-flow
 		// children … wins pointer hits over them"（`viva/ui/absolute.go:11`），
 		// 与官方 DOM 里 `.pinAnchor` 盖在 MenuItemButton 上完全同序。
-		p.drawPinButton(f, env, props, entry)
+		p.drawPinButton(f, env, props, entry, pinID, hovered, pinHovered)
 	})
+}
+
+// drawInlineActiveMark 画 `.activeMark{flex:none;margin-left:auto}`（OFF:EntryMenu.module.css:3）：
+// 流内行尾一格、`margin-left:auto` 把它推到最右——在 viva 里就是"前面那格 Grow(1)"。
+//
+// 会话头那一侧没有 `.sidebarEntry` 祖先，所以 :12 的 `opacity:0` 与 :30 的悬停隐去
+// 都**不适用**：恒可见（这是官方会话头的真实样子，不是我们简化）。
+func drawInlineActiveMark(f ui.C, t *pluginapi.Theme) {
+	if icon, ok := checkOutlineIcon(); ok {
+		ui.Icon(f, icon).Size(entryIconBox, entryIconBox).Shrink(0).Color(t.LabelPrimary)
+	}
+}
+
+// drawSidebarActiveMark 画左栏行尾的对勾（官方 `.sidebarEntry .activeMark`，
+// OFF:EntryMenu.module.css:7-14）。
+//
+// 几何：`right:9px` 从**行右边**量、宽 14（官方传 `size={16}`，被
+// `._itemIcon svg,._check_70kcw_265{width:14px;height:14px}` 夹到 14）；
+// 竖直靠 `top:50%` + `translateY(-50%)` 居中——viva 用 `Top(0).Bottom(0)` 拉伸再
+// `Items(ui.Center)` 居中，落点相同。
+//
+// 显隐：静止 1（:27 覆盖 :12 的 0）→ 行悬停 0（:30）。`pointer-events:none`（:13）
+// 在 viva 里天然成立——这枚盒子没有挂 Hit，不参与命中。
+//
+// 9 与 6 是两条独立规则：pin 右缘在 6（宽 22，左缘 28），对勾右缘在 9（宽 14，
+// 左缘 23）；两者靠 opacity 互斥，同一时刻只有一枚可见。
+func drawSidebarActiveMark(f ui.C, t *pluginapi.Theme, hovered bool) {
+	opacity := sidebarEntryHoverOpacity // 静止 = 1
+	if hovered {
+		opacity = sidebarEntryRestOpacity // 行悬停 = 0
+	}
+	mark := ui.Row(f).Absolute().Right(sidebarActiveMarkRight).Top(0).Bottom(0).
+		Items(ui.Center).Opacity(opacity)
+	mark.Children(func() {
+		if icon, ok := checkOutlineIcon(); ok {
+			ui.Icon(f, icon).Size(sidebarActiveMarkBox, sidebarActiveMarkBox).Color(t.LabelPrimary)
+		}
+	})
+}
+
+// sidebarEntryHovered 报告这一行里**谁**被悬停：行本身、行尾固定按钮，或都没有。
+//
+// CSS 的 `:hover` 沿祖先链传播：指针落在固定按钮上时外层 `.sidebarEntry` 也是
+// `:hover`（所以 `.pinAnchor` 悬停时不会自己消失，整行底色也照样亮）。viva 的
+// `Canvas.Hovered()` 只给**最上面那一个**命中身份（`gfx/canvas.go:1962`），
+// 所以两个 id 分开比、由调用方合并。
+//
+// 与 `dsattachment` 的 `removeVisualActive`（`plugins/dsattachment/rail.go:1035-1041`）
+// 同一条写法：声明式 `StateFrom` 只能跟一个来源，这里需要"任一即真"。
+// `env.Canvas` 为 nil（无头/最小装配）时按未悬停处理——宁可少画一次显形，
+// 也不让绘制路径 panic。
+func sidebarEntryHovered(env *pluginapi.Env, rowID, pinID gfx.ID) (row, pin bool) {
+	if env == nil || env.Canvas == nil {
+		return false, false
+	}
+	hovered := env.Canvas.Hovered()
+	if hovered.IsZero() {
+		return false, false
+	}
+	return hovered == rowID, hovered == pinID
 }
 
 // drawConversationEntryRow 画会话头的一条折起来的 view：`[标题][对勾]`。
@@ -278,11 +403,7 @@ func (p *Plugin) drawConversationEntryRow(f ui.C, env *pluginapi.Env, props *plu
 		ui.Text(f, entry.Label).FontSize(entryFontSize).LineHeight(entryLineHeight).
 			Grow(1).MaxLines(0).Color(t.LabelPrimary)
 		if entry.Active {
-			// 官方 `.activeMark{flex:none;margin-left:auto}`：当前 view 落在 More 里时
-			// 行尾一枚对勾（会话头这一侧没有 hover 规则，恒可见）。
-			if icon, ok := checkOutlineIcon(); ok {
-				ui.Icon(f, icon).Size(entryIconBox, entryIconBox).Shrink(0).Color(t.LabelPrimary)
-			}
+			drawInlineActiveMark(f, t)
 		}
 	})
 	if row.Clicked() {
@@ -297,38 +418,54 @@ func (p *Plugin) drawConversationEntryRow(f ui.C, env *pluginapi.Env, props *plu
 //
 // 不画的判据与宿主同一条：`SetPinned == nil`（没接线）时不画——画一个点了不改任何
 // 状态的按钮比不画更坏（`dssidebar` 对行尾取消固定按钮用的是同一条判据）。
-func (p *Plugin) drawPinButton(f ui.C, env *pluginapi.Env, props *pluginapi.EntryMenuProps, entry pluginapi.EntryMenuEntry) {
+func (p *Plugin) drawPinButton(f ui.C, env *pluginapi.Env, props *pluginapi.EntryMenuProps,
+	entry pluginapi.EntryMenuEntry, pinID gfx.ID, hovered, pinHovered bool) {
 	t := p.theme
 	if props.SetPinned == nil {
 		return
 	}
-	// 几何/配色全取官方 `.pinButton`（OFF:EntryMenu.module.css:16）+ primitives Button 基类：
-	//   width/height 22、padding 0、color --dsw-alias-label-tertiary（本仓 LabelTertiary）；
-	//   `.pinButton` 不覆盖圆角 → 吃 Button 基类 `._button_1ulci_2{border-radius:var(--dsw-radius-md)}`，
-	//   所以是 Radii.MD，不是 SM。
-	// hover 态官方是 `.pinButton:hover:not(:disabled){color:label-primary;background:0 0}`
-	// （OFF:EntryMenu.module.css:22-25）：**背景保持透明**，只有图标色变成 label-primary。
-	// 所以这里不挂 Hover 背景（旧值 `Background(t.Hover)` 与官方相反），改由图标自己跟 hover 换色。
-	// `.pinAnchor{position:absolute;right:6px;top:0;bottom:0;display:flex;align-items:center}`
-	// （OFF:EntryMenu.module.css:15）：不占流内位置，竖直方向 top/bottom 双端锚定即拉满行高，
-	// 水平方向只给右边缘 → 按自身 22 宽坐在距右 6px 处。
-	anchor := ui.Row(f).Absolute().Right(sidebarPinRight).Top(0).Bottom(0).Items(ui.Center)
+	// `.pinAnchor{position:absolute;right:6px;top:0;bottom:0;display:flex;align-items:center}`（:15）
+	// + `@media (hover:hover){.pinAnchor{opacity:0}}`（:26）与
+	// `.sidebarEntry:hover .pinAnchor{opacity:1}`（:28）：
+	// 不占流内位置，竖直拉满行高再居中；**静止完全透明、行不悬停就不显形**。
+	// viva 的 Opacity 语义与 CSS 一致：透明元素仍然可点（`ui/style.go:207-219`），
+	// 所以 x 轴上这一格在静止态也接得住点击——与官方 `.pinAnchor` 同一条行为。
+	opacity := sidebarEntryRestOpacity // :26
+	if hovered {
+		opacity = sidebarEntryHoverOpacity // :28
+	}
+	anchor := ui.Row(f).Absolute().Right(sidebarPinRight).Top(0).Bottom(0).
+		Items(ui.Center).Opacity(opacity)
+	// `.pinButton:hover:not(:disabled){color:label-primary;background:0 0}`（:22-25）：
+	// 只有**按钮自己**被悬停才换色（行悬停不换）。这一格的颜色要同时喂给描边和
+	// 填充层——官方那枚图标的尾 path 是 `fill="currentColor"`（sprite 原文），
+	// 所以两处必须同一个值，否则悬停后描边变亮、填充层还留在旧色上。
+	pinColor := t.LabelTertiary
+	if pinHovered {
+		pinColor = t.LabelPrimary
+	}
 	anchor.Children(func() {
 		// 几何/配色全取官方 `.pinButton`（OFF:EntryMenu.module.css:16）+ primitives Button 基类：
 		//   width/height 22、padding 0、color --dsw-alias-label-tertiary（本仓 LabelTertiary）；
 		//   `.pinButton` 不覆盖圆角 → 吃 Button 基类 `._button_1ulci_2{border-radius:var(--dsw-radius-md)}`，
 		//   所以是 Radii.MD，不是 SM。
-		// hover 态官方是 `.pinButton:hover:not(:disabled){color:label-primary;background:0 0}`
-		// （OFF:EntryMenu.module.css:22-25）：**背景保持透明**，只有图标色变成 label-primary。
-		// 所以这里不挂 Hover 背景（旧值 `Background(t.Hover)` 与官方相反），改由图标自己跟 hover 换色。
 		button := ui.Row(f).Size(sidebarPinBox, sidebarPinBox).Shrink(0).
 			Radius(t.Radii.MD).Items(ui.Center).Justify(ui.Center).
-			Hit(env.Tree.ID(env.Feat, "entry-pin-"+entry.ID), zhPinPrefix+entry.Label+zhPinSuffix)
+			Hit(pinID, zhPinPrefix+entry.Label+zhPinSuffix).
+			// 官方两层文案是**分开**的（OFF:EntryMenuContent.tsx:54-55）：
+			//   Tooltip  label={t('pinTooltip')}       → 可见的 "固定到左侧栏"
+			//   Button   aria-label={t('pin',{name})}  → 无障碍名 "将{name}固定到侧边栏"
+			// viva 的 `ui.Tooltip` 同时充当可见浮条与无障碍描述（`viva/ui/tooltip.go:12-26`），
+			// 但两件事本仓各走各的：Hit 的 label 给无障碍名，Tooltip 给可见文案。
+			// `side="bottom"` → `TooltipOn(ui.TooltipBottom)`；官方 `delayMs={500}` 与
+			// `align="end"`/`portal` 是时序与呈现位置，viva 的工具条延迟由主题给、
+			// 不按元素配，这一处不匹配不构成"少了部件"。
+			Tooltip(zhPinTooltip).TooltipOn(ui.TooltipBottom)
 		button.Children(func() {
-			if icon, ok := pinOutlineIcon(t.LabelTertiary); ok {
-				ui.Icon(f, icon).Size(entryIconBox, entryIconBox).
-					Color(t.LabelTertiary).
-					Hover(ui.Look{}.Color(t.LabelPrimary))
+			// `pinOutlineIcon` 收的就是"这一帧的颜色"：描边由 `.Color()` 画、填充层
+			// （sprite 里的 `fill="currentColor"`）由工厂参数画，两者是**同一枚令牌**。
+			if icon, ok := pinOutlineIcon(pinColor); ok {
+				ui.Icon(f, icon).Size(entryIconBox, entryIconBox).Color(pinColor)
 			}
 		})
 		if button.Clicked() {

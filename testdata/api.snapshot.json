@@ -2047,10 +2047,24 @@
       "resp": "boolean",
       "req_note": "官方 userQuestions.answer；类型与 transport.OfficialQuestionAnswer 对齐。宿主 handlers_agent_official.go:1512-1565。",
       "resp_note": "裸 boolean 是 still-continued 真值；false 表示问题已经关闭，是合法业务结果，不是 Transport 错误。"
+    },
+    "workspaceFiles.stat": {
+      "batch": 24,
+      "req": {
+        "sessionId": "string",
+        "path": "string"
+      },
+      "resp": {
+        "absolutePath": "string",
+        "version": "string",
+        "bytes": 0
+      },
+      "req_note": "官方 rc.2 workspaceFiles.stat（HOST:internal/transport/handlers_workspace_official.go:1212-1231；生产接线 HOST:cmd/dshd/serve_workspace_api.go:570 一侧的 FilesStat）。两个都是**位置参数**：sessionId（宿主别名 workspaceFileScopeId|agentId）按会话解析工作区根，path 是**工作区内的相对路径**。**没有 options**：官方 typert 签名是 stat(sessionId, path, signal)，宿主的 officialParams.finish() 是 DisallowUnknownFields，多塞一个字段就 400。宿主只 stat 普通文件（目录回 workspace-file/not-regular-file）。",
+      "resp_note": "absolutePath 是宿主解析出来的绝对路径，version 与 readBytes/changes 同源；bytes 可选（官方 `bytes?`）。客户端 #18 只用「成功/失败」这一位：官方 file 菜单 resolve 拿它算 available，失败时把三条动作全标 disabled（OFF:ui-file-actions/src/client/context-menus.tsx:50-60,71,75,79）。"
     }
   },
   "counts": {
-    "total": 121,
+    "total": 122,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2072,7 +2086,8 @@
     "batch19": 5,
     "batch21": 14,
     "batch22": 4,
-    "batch23": 11
+    "batch23": 11,
+    "batch24": 1
   },
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,

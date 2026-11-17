@@ -97,7 +97,25 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
    无占用方，右栏是 dockkit tab 条 + 面板体），所以这一处 More **按 HIDE 登记**，
    不自造一枚"更多工具"卡片挂在别处。
 6. ~~左栏行的图标色用 `LabelDimmed`~~ **已修（2026-11-17）**：本仓**有**这一档令牌——`pluginapi.Theme.MenuIcon`（`pluginapi/theme.go:65`，注释即 `--dsw-alias-menu-icon`），`plugins/dscore` 明暗两套都给了值（`:184` / `:273`），`dscontextmenu` 早就在用。原「没有令牌」的判断不成立，三处菜单图标色已改为 `t.MenuIcon`。
-7. **左栏行尾的对勾不画、固定按钮不做「悬停才显形」**：官方 `.pinAnchor{opacity:0}` 与 `.sidebarEntry .activeMark{opacity:1}` 在 `@media (hover:hover)` 里对翻（`EntryMenu.module.css:20-31`）。原登记理由「viva 的 `Box` 没有本帧是否悬停的读口」**不成立**：viva v0.6.4 有 `Canvas.Hovered()`（`ui/style.go:307`）与 `Box.StateFrom(row)` + `Hover(ui.Look{}.Opacity(...))`（`ui/style.go:29-40`，文档例正是「pencil 在所在行 hover 时出现」）。本仓按**非 hover 态**画（固定按钮恒显、对勾不画）；三态属绘制行为变更，与 `docs/official-parity.md` #17 的待补项是同一件事。会话头那一侧没有 hover 规则，对勾恒画。
+7. ~~左栏行尾的对勾不画、固定按钮不做「悬停才显形」~~ **已修（2026-11-17）**：官方那一块是 `@media (hover:hover)` 里的一对**反向**规则（`EntryMenu.module.css:20-31`），现在逐条实现且有绘制级断言：
+
+| 官方规则（行悬停态） | 数值 | 实现 |
+|---|---|---|
+| `.pinAnchor{opacity:0}`（:26） | 0 | `drawPinButton` 的 `anchor.Opacity(0)` |
+| `.sidebarEntry:hover .pinAnchor{opacity:1}`（:28） | 1 | 同上，行或按钮被悬停时 |
+| `.sidebarEntry .activeMark{opacity:1}`（:27，覆盖 :12 的 0） | 1 | `drawSidebarActiveMark` 静止值 |
+| `.sidebarEntry:hover .activeMark{opacity:0}`（:30） | 0 | 同上，行或按钮被悬停时 |
+| `.sidebarEntry .activeMark{position:absolute;right:9px;top:50%;transform:translateY(-50%)}`（:7-14） | right 9 / 14×14 | `.Absolute().Right(9).Top(0).Bottom(0)` + `Items(Center)` |
+| `.pinButton:hover:not(:disabled){color:label-primary;background:0 0}`（:22-25） | label-primary / 透明 | `pinOutlineIcon(pinColor)` + `.Color(pinColor)`；**不铺底色** |
+| `.sidebarEntry:hover>div:first-child>button{background:interactive-bg-hover}`（:21） | interactive-bg-hover | 指针在按钮上时整行底色同样点亮 |
+| `Tooltip label={t('pinTooltip')} side="bottom"`（`EntryMenuContent.tsx:54`，文案 `locales.ts:14`） | 固定到左侧栏 | 按钮 `.Tooltip(zhPinTooltip).TooltipOn(ui.TooltipBottom)`（viva `ui/tooltip.go:12-45`） |
+| `Button aria-label={t('pin',{name})}`（`EntryMenuContent.tsx:55`，文案 `locales.ts:15`） | 将{name}固定到侧边栏 | `Hit(pinID, zhPinPrefix+label+zhPinSuffix)` 的 label 就是无障碍名 |
+
+两处判据写法（都由 `Canvas.Hovered()` 驱动，`gfx/canvas.go:1962` 只给最上面那一个命中身份）：
+`:hover` 沿祖先链传播 ⇒ `Hovered()` 是**行**或**行尾按钮**任一即成立；`StateFrom` 只能跟一个来源，所以这一处与 `dsattachment` 的 `removeVisualActive`（`plugins/dsattachment/rail.go:1035-1041`）同法。
+`pin-outline` 的尾 path 在 sprite 里是 `fill="currentColor"`，所以描边与填充层必须**同一个颜色变量**，否则悬停后只有描边变亮。会话头那一侧没有 `.sidebarEntry` 祖先，对勾恒画（`:12`/`:30` 都不适用），断言见 `TestConversationActiveMarkIgnoresHover`。
+
+断言：`TestSidebarHoverSwapsPinAndActiveMark`（三态对翻）、`TestPinButtonHoverChangesIconColor`（换色 + 不铺底色 + 整行底色仍亮）、`TestSidebarActiveMarkGeometry`（right 9 / 居中）、`TestPinButtonKeepsOfficialTwoLineCopy`（可见浮条 + 无障碍名两层）、`TestConversationActiveMarkIgnoresHover`。
 8. ~~固定按钮占位而非覆盖~~ **已修（2026-11-17）**：官方就是**绝对定位覆盖**——`.pinAnchor{position:absolute;right:6px;top:0;bottom:0}`，条目名靠 `.entryName{padding-right:28px}`（不是 38px）让位。本仓已改为 `ui.Row().Absolute().Right(6).Top(0).Bottom(0)` + 标签 `PadSides(0,28,0,0)`；viva 的绝对元素「painted after the in-flow children … wins pointer hits over them」（`viva/ui/absolute.go:11`），与官方 DOM 同序同几何。
 
 ## 5. #17 本体：落地了什么、HIDE 了什么（2026-11-15）
@@ -126,7 +144,11 @@ HIDE 两项（都不自造）：
 
 1. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 没有宿主
    （guide 面未落地，账本 #53），注册了也没有派发方。
-2. **左栏行尾对勾不画**：见 §4 第 7 条（viva 没有 hover 读口）。
+2. **键盘模态那半边（`html[data-input-modality='keyboard'] … :focus-within`）不画**：
+   它挂在同一串 CSS 里（`EntryMenu.module.css:29,31`），但①本仓没有"全局输入模态"这一位
+   （官方是 `document.documentElement.dataset` 上的一个属性），②它是 `:focus-within`
+   （行内**任一后代**有焦点），而 viva 只有 `FocusVisible()==id`（单个身份），
+   两者不是同一个判据，不冒充。补的前提：viva 给出"行内焦点"或输入模态位。
 
 ## 6. 断言（防回退）
 

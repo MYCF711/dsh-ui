@@ -48,6 +48,7 @@ type Plugin struct {
 	searchHeight    float32
 	viewportState   *ui.ScrollState // 仅当前 paint，AfterDraw 读取
 	searchBox       ui.Box          // 仅当前 paint，AfterDraw 读取
+	panelBox        ui.Box          // 仅当前 paint，AfterDraw 里按它的 Rect 画官方阴影
 
 	// openSettings 是设置浮层的**真实打开动作**（`ui.settings.open`）。
 	//

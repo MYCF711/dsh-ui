@@ -18,6 +18,7 @@ package dsentrycustom
 // 与 `plugins/dssidebar/entry_menu_test.go` 同一套夹具写法；读状态一律"泵到条件成立"。
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
@@ -397,9 +398,15 @@ func TestSidebarRowsGeometry(t *testing.T) {
 		t.Fatalf("固定按钮 %v×%v，want %v×%v（官方 `.pinButton{width:22px;height:22px}`）",
 			pin.Bounds.Width, pin.Bounds.Height, sidebarPinBox, sidebarPinBox)
 	}
-	if pin.Bounds.X < row.Bounds.X+row.Bounds.Width {
-		t.Fatalf("固定按钮压在条目行里（pin.x=%v row.right=%v）：官方它是行尾独立一格",
-			pin.Bounds.X, row.Bounds.X+row.Bounds.Width)
+	// 官方 `.pinAnchor{position:absolute;right:6px;top:0;bottom:0}`（OFF:EntryMenu.module.css:15）：
+	// 固定按钮**绝对定位盖在行内**、右边缘距行右 6px——不是"行外独立一格"。
+	// （旧断言 `pin.x < row.right` 判的是相反的 DOM，已按官方改写；见 docs 的差异登记。）
+	if inset := row.Bounds.X + row.Bounds.Width - (pin.Bounds.X + pin.Bounds.Width); inset < sidebarPinRight-0.5 || inset > sidebarPinRight+0.5 {
+		t.Fatalf("固定按钮右边缘距行右 %v，want %v（官方 `.pinAnchor{right:6px}`）", inset, sidebarPinRight)
+	}
+	if pin.Bounds.Y < row.Bounds.Y-0.5 || pin.Bounds.Y+pin.Bounds.Height > row.Bounds.Y+row.Bounds.Height+0.5 {
+		t.Fatalf("固定按钮没竖直落在行内（pin %v..%v，row %v..%v）：官方 `.pinAnchor{top:0;bottom:0}` 拉满行高再居中",
+			pin.Bounds.Y, pin.Bounds.Y+pin.Bounds.Height, row.Bounds.Y, row.Bounds.Y+row.Bounds.Height)
 	}
 	browse := f.mustHit("entry-browse-plugins")
 	if browse.Bounds.Y < pin.Bounds.Y+pin.Bounds.Height {
@@ -410,5 +417,42 @@ func TestSidebarRowsGeometry(t *testing.T) {
 	if create.Bounds.Y < browse.Bounds.Y+browse.Bounds.Height {
 		t.Fatalf("Creator 没有排在浏览行下面（create.y=%v browse.bottom=%v）",
 			create.Bounds.Y, browse.Bounds.Y+browse.Bounds.Height)
+	}
+}
+
+// TestSidebarLongLabelWrapsClearOfPin：长条目名换行，且右边缘停在固定按钮左侧。
+//
+// 两条官方规则一起验：`.entryTitle{overflow-wrap:anywhere;white-space:normal}`
+// （OFF:EntryMenu.module.css:2，条目名可以换行、不是 ellipsis）与
+// `.sidebarEntry .entryName{padding-right:28px}`（同文件 :6，给绝对定位的
+// `.pinAnchor` 让出 28 = 22 + 6 的宽度）。让位没生效时，行会被 Grow(1) 拉到
+// 行右内边（pin 右侧），文字就会压到固定按钮上。
+func TestSidebarLongLabelWrapsClearOfPin(t *testing.T) {
+	const long = "一个名字很长很长很长很长很长很长很长的面板条目"
+	entries := []pluginapi.EntryMenuEntry{{ID: "long", Label: long, Glyph: "▦"}}
+	f := newEntryFixture(t, pluginapi.EntryRegionSidebar, entries, &fakeNavigation{})
+	defer f.close()
+
+	row := f.mustHit("entry-open-long")
+	pin := f.mustHit("entry-pin-long")
+	// 换行后每一行是一个独立文字图元：取所有"是这条条目名的真子串"的行，
+	// 它们才是这条标签画出来的内容（字形 "▦" 与浏览/创建两行都不在 long 里）。
+	var lines []gfx.Text
+	for _, text := range f.session.Snapshot().Texts {
+		if text.Value != "" && text.Value != long && strings.Contains(long, text.Value) {
+			lines = append(lines, text)
+		}
+	}
+	if len(lines) < 2 {
+		t.Fatalf("长条目名只画出 %d 行：官方 `.entryTitle{white-space:normal}` 应换行，不是单行溢出", len(lines))
+	}
+	for _, line := range lines {
+		if right := line.Bounds.X + line.Bounds.Width; right > pin.Bounds.X {
+			t.Fatalf("条目名某一行右边缘 %v 压到固定按钮左边缘 %v：`.entryName{padding-right:28px}` 的让位没生效",
+				right, pin.Bounds.X)
+		}
+	}
+	if row.Bounds.Height <= entryRowMinHeight {
+		t.Fatalf("长条目名换行了但行高没长（%v ≤ min-height %v）", row.Bounds.Height, entryRowMinHeight)
 	}
 }

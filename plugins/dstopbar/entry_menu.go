@@ -34,9 +34,9 @@ package dstopbar
 //	名录只有一个 view                       → 不画按钮（官方 showTabs 同一判据）
 //	固定态服务没接线                        → 照画按钮，只是没有"取消固定"的动作
 //
-// 一处登记在案的差异：More 按钮与最后一个 tab 的间距用本包既有的 `tabsGap`（20）。
-// 官方 `.viewsMore` 与 `.viewTabs` 是两个兄弟容器（间距由 `.tabs` 的 flex 排布决定，
-// 没有可引用的单一数值），本仓一行 Row 里只能给它一个 gap。
+// More 按钮与 viewTabs 的间距使用官方 `.tabs` 的列间距 `tabsColumnGap`（20）。
+// 官方 `.viewsMore` 与 `.viewTabs` 是 `.tabs` 的两个兄弟容器；本仓同样拆成
+// 外层 tabs Row 与内层 viewTabs Row，各自使用官方列间距。
 
 import (
 	"math"

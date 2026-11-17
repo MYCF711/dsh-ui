@@ -3,6 +3,7 @@ package dscommands
 import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -51,11 +52,22 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// 官方 bottom:calc(100% + 4px) 以输入区顶边为基准；Viva 的 Bottom 从父盒底边
 	// 向上量，因此要加回输入区高度。Left(0)+Right(0) 对应官方左右 inset，
 	// 不再保留旧的固定 360px / 右上 56,24 自造几何。
+	// 阴影是官方 `--dsw-elevation-prominent`，不是 Viva 的 ShadowMD：
+	// 官方 PopupSelectView.module.css:28-29 写的是
+	//
+	//	--dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+	//	box-shadow: var(--dsw-elevation-prominent);
+	//
+	// 而 `gfx.ShadowMD` 是 Tailwind 的 `0 4px 6px -1px .10 + 0 2px 4px -2px .10`
+	// （viva@v0.6.4/gfx/canvas.go:123），没有发丝描边、位移/模糊/透明度也都不对。
+	// 它画在 afterDraw 里，原因见那里。
+	panelRadius := t.Radii.MD
 	panel := ui.Column(f).Absolute().Left(0).Right(0).
 		Bottom(inputHeight + commandPanelAnchorGap).
 		MaxHeight(commandPanelMaxHeight).Clip().
-		Radius(t.Radii.MD).Background(t.BgLayer3).
-		Shadow(gfx.ShadowMD).Pad(commandPanelPad).Gap(0)
+		Radius(panelRadius).Background(t.BgLayer3).
+		Pad(commandPanelPad).Gap(0)
+	p.panelBox = panel
 	panel.Children(func() {
 		search := ui.TextFieldBase(f, &p.search, commandSearchAria, commandSearchPlaceholder).
 			FillWidth().
@@ -116,7 +128,7 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 
 // afterDraw 在当前 paint 仍有效时读取布局结果，只把数值带到下一帧。
 // 这是官方「内容撑高 + max-height」与 Viva「ScrollArea preferred height=0」之间的桥。
-func (p *Plugin) afterDraw(_ *gfx.Canvas, _ *pluginapi.Env) {
+func (p *Plugin) afterDraw(canvas *gfx.Canvas, _ *pluginapi.Env) {
 	if !p.shown {
 		return
 	}
@@ -125,5 +137,16 @@ func (p *Plugin) afterDraw(_ *gfx.Canvas, _ *pluginapi.Env) {
 	}
 	if p.searchBox.Rect().Height > 0 {
 		p.searchHeight = p.searchBox.Rect().Height
+	}
+	// 官方 elevation 只能在这里画：面板自己 `.Clip()`（官方
+	// `.popup{overflow:hidden}`，PopupSelectView.module.css:22），而 Viva 对带
+	// Clip 的元素是**先裁再跑 Draw 钩子**（ui/paint.go:50-52 推 Clip、:132 才
+	// 调钩子），阴影记进 canvas 时带着那道裁剪（gfx/canvas.go:1169 的
+	// clipSnapshot），画出来是空的——这正是原来 `Shadow(gfx.ShadowMD)` 在这块
+	// 面板上一直等于没画的原因。AfterDraw 是布局完成后的覆画阶段
+	// （pluginapi/plugin.go:286-292），那时裁剪栈已清空。
+	if rect := p.panelBox.Rect(); rect.Width > 0 && p.theme != nil {
+		dscore.PaintElevationOverlay(canvas, rect, p.theme.Radii.MD,
+			p.theme.Shadows.Prominent, p.theme.BorderL1)
 	}
 }

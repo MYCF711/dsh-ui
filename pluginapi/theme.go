@@ -146,6 +146,63 @@ type Theme struct {
 
 	Radii Radii
 	Fonts Fonts
+	// Shadows 是官方的阴影令牌：`--dsw-shadow-lv*` 四档 + `--dsw-elevation-*`
+	// 三件套。为什么必须进令牌：这 7 档官方是**显式声明**的，而 viva 只有
+	// Tailwind 的 4 个预设（`gfx.ShadowXS..LG`，`gfx/canvas.go:117-129`），
+	// 拿预设冒充的结果是每张浮层的阴影都不等于官方那一档。
+	Shadows Shadows
+}
+
+// ShadowLayer 是一层 CSS `box-shadow`，颜色被拆出去：影子是「表面矩形」位移
+// OffsetX/OffsetY、四边外扩 Spread、再按 Blur 羽化的结果，按 Alpha 的黑叠上去。
+//
+// 对照官方写法：`0 4px 12px 0 rgba(0,0,0,0.02)` → {OffsetY:4, Blur:12, Alpha:0.02}。
+//
+// Blur 为 0 的层画不出东西（`gfx.Canvas.Shadow` 在 `canvas.go:1158` 直接 return），
+// 官方只用这种层表达 `0 0 0 0.5px` 的发丝描边——那一条由 `Elevation.Stroke`
+// 单独承担，别塞进图层数组里当隐形层。
+type ShadowLayer struct {
+	OffsetX float32
+	OffsetY float32
+	Blur    float32
+	Spread  float32
+	Alpha   float32
+}
+
+// Elevation 是官方 `--dsw-elevation-*` 三件套：一圈发丝描边 + 柔光层。
+//
+// 官方把描边也写在 box-shadow 里（`--dsw-elevation-stroke: 0 0 0 0.5px <色>`），
+// 那么写是为了不占布局；viva 的 Shadow 在 Blur=0 时不画，所以这里把描边单独
+// 拆成 Stroke 字段，由 dscore.PaintElevation 用 RoundedOutline 描那一圈。
+//
+// 描边**颜色**不在令牌里：官方让组件各自重绑 `--dsw-elevation-stroke-color`
+// （默认 `--dsw-alias-border-l4`，菜单面重绑最浅的 l1、浮窗重绑 l2），
+// 所以颜色由调用方按官方那一处传进来，见 dscore.PaintElevation。
+type Elevation struct {
+	// Stroke 是描边宽度（px）。官方三档都是 0.5，见 gradient-shadow-text.css:33。
+	Stroke float32
+	// Glows 是描边之外的柔光层，**按官方 CSS 的书写顺序**。
+	//
+	// 定长 [2] 而不是切片：官方三档都是**恰好两层**（gradient-shadow-text.css:35,37,39），
+	// 而且 `Theme` 必须保持可比较——`cmd/app` 的「换主题不换对象」与
+	// 「不认识的模式什么都不做」两条断言直接比 `*Theme` 的值（`cmd/app/theme_test.go:57-61`），
+	// 一旦有切片就编译不过。层数变化是官方改动信号，改类型比 silently 多个空层好。
+	Glows [2]ShadowLayer
+}
+
+// Shadows 是官方阴影令牌全集，取值在 `plugins/dscore/shadow.go`（逐条带 file:line）。
+//
+// 每档的层数是**定长**的，与官方逐条对齐（gradient-shadow-text.css:5-9,34-39）：
+// lv1 / lv1-blur 各 1 层、lv2 两层、lv3 三层、三件套各两层柔光 + 一条描边。
+type Shadows struct {
+	Lv1     [1]ShadowLayer // --dsw-shadow-lv1
+	Lv1Blur [1]ShadowLayer // --dsw-shadow-lv1-blur
+	Lv2     [2]ShadowLayer // --dsw-shadow-lv2
+	Lv3     [3]ShadowLayer // --dsw-shadow-lv3
+
+	Panel     Elevation // --dsw-elevation-panel
+	Prominent Elevation // --dsw-elevation-prominent
+	Soft      Elevation // --dsw-elevation-soft
 }
 
 // Radii 是圆角，对应官方 `--dsw-radius-*`。

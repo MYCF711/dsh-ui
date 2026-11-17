@@ -74,8 +74,9 @@
 //   - **per-call 过程行**：官方 `tool.call.toolview` 是 keyed 槽（key=`propose_action`），
 //     由 tool-call 节点在**每个调用处**渲染；本骨架的座位是会话级的，所以这里只画
 //     **最近一次** `propose_action` 调用的一行。
-//   - **官方 sprite 图标**（`IconAppsAddOutlineRegular size={14}`）：本仓无该 sprite
-//     素材，按仓规不手画 SVG，只保留 14×14 槽宽。
+//   - **DisclosureRow 的运行 shimmer / 悬停 chevron 置换**：本仓复用官方
+//     `apps-add-outline` sprite 与 16px leading / 14px glyph 几何；运行 shimmer 和
+//     悬停时把 apps-add 换成 chevron 的动效未搬（ProposeRow.tsx:35 + DisclosureRow.tsx:77-91）。
 //   - **「查看调用」按钮**（OFF:ProposeRow.tsx:40，`inspect`）：需要壳提供"在轨迹视图
 //     里定位这次调用"的能力，`pluginapi.Actions` 没有这一格，所以不画（不画假按钮）。
 //   - **grapheme 切分**：官方用 `Intl.Segmenter` 按字素算宽度（OFF:Card.tsx:52-61）；
@@ -97,6 +98,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -164,11 +166,19 @@ const (
 	cardTextFontSize  float32 = 13
 	cardTextLineH     float32 = 22.1
 
+	// 共享 small Button：28 高、0×10、12/18、radius-sm、disabled opacity .4
+	// （ui-primitives/src/Button.module.css:18-34）。两个按钮都是 ghost
+	// （Card.tsx:64,147），hover/active 色在同文件 :41-53。
+	smallButtonHeight          float32 = 28
+	smallButtonPadX            float32 = 10
+	smallButtonFontSize        float32 = 12
+	smallButtonLineH           float32 = 18
+	smallButtonDisabledOpacity float32 = 0.4
+
 	// `.toggle{ margin:8px 0 0; padding-inline:0; height:auto; min-height:24px;
-	// font-size:12px }`（Card.module.css:5）。
+	// font-size:12px }`（Card.module.css:5）；small Button 的行高仍是 18。
 	toggleMarginTop float32 = 8
 	toggleMinHeight float32 = 24
-	toggleFontSize  float32 = 12
 
 	// `.status{ margin:12px 0 0; font-size:12px; line-height:1.6 }`（Card.module.css:6）
 	// → 行高 12×1.6=19.2。
@@ -181,13 +191,20 @@ const (
 	footerGap       float32 = 12
 	footerMarginTop float32 = 12
 
+	// DisclosureRow 默认密度（delta=0）：行高 24、leading 16、右间距 6、
+	// 标题 13/24（ui-primitives/src/DisclosureRow.module.css:30-39,52-74,104-109）。
+	rowHeight             float32 = 24
+	rowLeadingSize        float32 = 16
+	rowLeadingMarginRight float32 = 6
+	rowTitleFontSize      float32 = 13
+	rowTitleLineH         float32 = 24
 	// 过程行 `.summary{ margin-left:8px; gap:8px; font-size:12px }`
 	// （ProposeRow.module.css:2）。
 	rowSummaryMarginLeft float32 = 8
 	rowSummaryGap        float32 = 8
 	rowSummaryFontSize   float32 = 12
-	// 图标槽宽：官方 `IconAppsAddOutlineRegular size={14}`（ProposeRow.tsx:35）。
-	// 素材库里没有这份 sprite → 只留槽宽，不手画。
+	// leading 内的官方 `IconAppsAddOutlineRegular size={14}`（ProposeRow.tsx:35；
+	// DisclosureRow.module.css:71-74）。素材复用 dsassets.SidebarAppsAdd。
 	rowIconSize float32 = 14
 
 	// `.reason{ margin:8px 0; padding:12px; border-radius:var(--dsw-radius-lg);
@@ -642,6 +659,27 @@ func (p *Plugin) drawKindCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, bo
 	card.Children(func() { body.Draw(f, env, props) })
 }
 
+// smallGhostButton 画官方 Button variant="ghost" size="sm"。ButtonBase 让我们
+// 使用官方的 12/18 常规字重、透明底、hover/active 令牌和 disabled opacity .4，
+// 不继承 Viva 默认 primary/14px/500/dim .5 的另一套外观。
+func (p *Plugin) smallGhostButton(f ui.C, t *pluginapi.Theme,
+	label string, height, padX float32, disabled bool) ui.Box {
+	active := ui.RGBA(38, 49, 72, 0.10) // design-platform.css:238（light）
+	if t.Dark {
+		active = ui.RGBA(255, 255, 255, 0.14) // design-platform.css:390（dark）
+	}
+	button := ui.ButtonBase(f, label).Height(height).PadX(padX).Radius(t.Radii.SM).
+		Items(ui.Center).Justify(ui.Center).Self(ui.Start).
+		Hover(ui.Look{}.Background(t.Hover)).Pressed(ui.Look{}.Background(active)).Disabled(disabled)
+	if disabled {
+		button = button.Opacity(smallButtonDisabledOpacity)
+	}
+	button.Children(func() {
+		ui.Text(f, label).FontSize(smallButtonFontSize).LineHeight(smallButtonLineH).Color(t.LabelPrimary)
+	})
+	return button
+}
+
 // drawBrief 画 brief 与它的折叠开关（官方 FoldedText，OFF:Card.tsx:43-67）。
 func (p *Plugin) drawBrief(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, brief string, expanded bool) {
 	preview, omitted := foldBrief(brief)
@@ -659,9 +697,12 @@ func (p *Plugin) drawBrief(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, brief
 	if expanded {
 		label = zhCollapseBrief
 	}
-	toggle := ui.Text(f, label).MarginTop(toggleMarginTop).
-		MinHeight(toggleMinHeight).FontSize(toggleFontSize).Color(t.LabelSecondary).
-		Hit(p.hitID(env, "brief-toggle"), label)
+	// `.toggle` 覆盖 small Button 的 padding-inline=0、height:auto/min-height=24；
+	// 两个中文标签都只有一行，因此实际高度就是 24，字号/行高仍为 12/18。
+	toggle := p.smallGhostButton(f, t, label, toggleMinHeight, 0, false).
+		MarginTop(toggleMarginTop).HitWith(p.hitID(env, "brief-toggle"), label, gfx.HitOptions{
+		Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand,
+	})
 	p.cardBoxes.Toggle = toggle
 	if toggle.Clicked() {
 		p.mu.Lock()
@@ -717,9 +758,12 @@ func (p *Plugin) drawFooter(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, acti
 		Gap(footerGap).MarginTop(footerMarginTop)
 	p.cardBoxes.Footer = footer
 	footer.Children(func() {
-		button := ui.Button(f, zhDismiss).Hit(p.hitID(env, "dismiss"), zhDismiss).Disabled(acting)
+		button := p.smallGhostButton(f, t, zhDismiss, smallButtonHeight, smallButtonPadX, acting).
+			HitWith(p.hitID(env, "dismiss"), zhDismiss, gfx.HitOptions{
+				Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand, Disabled: acting,
+			})
 		p.cardBoxes.Dismiss = button
-		if button.Clicked() {
+		if !acting && button.Clicked() {
 			p.actCard(verbDismiss)
 		}
 	})
@@ -749,25 +793,39 @@ func (p *Plugin) drawProposeRow(f ui.C, env *pluginapi.Env) {
 
 	wrapper := ui.Column(f).FillWidth()
 	wrapper.Children(func() {
-		row := ui.Row(f).FillWidth().Items(ui.Center).Gap(rowSummaryGap)
 		expandable := call.Reason != ""
+		row := ui.Row(f).FillWidth().Items(ui.Center).Height(rowHeight).Gap(0).Color(t.LabelTertiary)
 		if expandable {
-			row = row.Hit(p.hitID(env, "propose-row"), zhRowTitle)
+			row = row.HitWith(p.hitID(env, "propose-row"), zhRowTitle, gfx.HitOptions{
+				Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand, Expanded: expanded, Expandable: true,
+			})
+		} else {
+			// 普通 div 也有 hover 色；RoleGroup 只提供悬停事实，不新增按钮/Tab 停靠。
+			row = row.HitWith(p.hitID(env, "propose-row"), zhRowTitle,
+				gfx.HitOptions{Role: gfx.RoleGroup, SkipTab: true})
 		}
+		row = row.Hover(ui.Look{}.Color(t.LabelSecondary))
 		p.rowBoxes.Row = row
 		row.Children(func() {
-			// 图标：官方 `IconAppsAddOutlineRegular size={14}`，本仓无 sprite → 只留槽宽。
-			p.rowBoxes.Icon = ui.Row(f).Size(rowIconSize, rowIconSize)
-			// 行首标题（官方 DisclosureRow 的 `title={t('row.title')}`，:35）。
+			// `.leading` 是 16×16、margin-right:6；内部 sprite 是 14×14。
+			leading := ui.Row(f).Size(rowLeadingSize, rowLeadingSize).
+				MarginRight(rowLeadingMarginRight).Items(ui.Center).Justify(ui.Center)
+			p.rowBoxes.Icon = leading
+			leading.Children(func() { drawProposeIcon(f, row, t) })
+			// 行首标题：DisclosureRow `.title` 是 13/24、tertiary，hover 变 secondary。
 			p.rowBoxes.Title = ui.Text(f, zhRowTitle).
-				FontSize(rowSummaryFontSize).Color(t.LabelTertiary)
+				FontSize(rowTitleFontSize).LineHeight(rowTitleLineH).Color(t.LabelTertiary).
+				StateFrom(row).Hover(ui.Look{}.Color(t.LabelSecondary))
 			summary := ui.Row(f).Items(ui.Center).Gap(rowSummaryGap).MarginLeft(rowSummaryMarginLeft).Grow(1)
 			summary.Children(func() {
-				// 先状态、后卡片标题（OFF:ProposeRow.tsx:38：`<span>{state}</span><span>{title}</span>`）。
+				// `.summary{color:inherit}`：状态与卡片标题都继承行的 tertiary/secondary，
+				// 不是一个 secondary、一个 primary（ProposeRow.module.css:2）。
 				p.rowBoxes.State = ui.Text(f, proposeStateText(call.State)).
-					FontSize(rowSummaryFontSize).Color(t.LabelSecondary)
+					FontSize(rowSummaryFontSize).Color(t.LabelTertiary).
+					StateFrom(row).Hover(ui.Look{}.Color(t.LabelSecondary))
 				p.rowBoxes.CardTitle = ui.Text(f, call.Title).
-					FontSize(rowSummaryFontSize).Color(t.LabelPrimary).Grow(1).Ellipsis()
+					FontSize(rowSummaryFontSize).Color(t.LabelTertiary).Grow(1).Ellipsis().
+					StateFrom(row).Hover(ui.Look{}.Color(t.LabelSecondary))
 			})
 		})
 		if expandable && row.Clicked() {
@@ -788,6 +846,26 @@ func (p *Plugin) drawProposeRow(f ui.C, env *pluginapi.Env) {
 		// 没有这一格 → 不画假按钮（`zhRowInspect` / `inspectPadY` / `inspectFontSize`
 		// 三个官方值保留为证据，见包注释「没搬」）。
 	})
+}
+
+// drawProposeIcon 复用 rc.2 官方 apps-add-outline sprite：一条 path + 三枚
+// 圆角矩形，原始几何由 dsassets.SidebarAppsAdd 提供；这里只做 16→14 的等比缩放。
+func drawProposeIcon(f ui.C, row ui.Box, t *pluginapi.Theme) {
+	icon, rects, ok := dsassets.SidebarAppsAdd(t.LabelTertiary)
+	if !ok {
+		return
+	}
+	ui.Icon(f, icon).Size(rowIconSize, rowIconSize).Color(t.LabelTertiary).
+		StateFrom(row).Hover(ui.Look{}.Color(t.LabelSecondary))
+	scale := rowIconSize / 16
+	inset := (rowLeadingSize - rowIconSize) / 2
+	for _, rect := range rects {
+		ui.Row(f).Absolute().
+			Left(inset+rect.X*scale).Top(inset+rect.Y*scale).
+			Width(rect.Width*scale).Height(rect.Height*scale).
+			Radius(rect.Radius*scale).Border(rect.Stroke*scale, t.LabelTertiary).
+			StateFrom(row).Hover(ui.Look{}.Border(t.LabelSecondary))
+	}
 }
 
 // ── 过程行的数据：从 journal 原始帧折叠 ─────────────────────────────────────

@@ -11,6 +11,7 @@ package dsactioncards
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
@@ -103,6 +104,12 @@ func rectOf(box ui.Box) gfx.Rect {
 		return gfx.Rect{}
 	}
 	return box.Rect()
+}
+
+// nearFloat 只吸收 float32 布局/颜色乘法的末位误差，不放宽到任何可见像素。
+func nearFloat(a, b float32) bool {
+	d := a - b
+	return d >= -0.0001 && d <= 0.0001
 }
 
 func (p *Plugin) snapCard() cardSnap {
@@ -307,6 +314,110 @@ func TestCardGeometryMatchesOfficial(t *testing.T) {
 	}
 }
 
+// ── 3b. 两个 ghost/small 按钮与 pending 态 = 官方 primitives ─────────────
+
+func TestSmallGhostButtonsAndPendingMatchOfficial(t *testing.T) {
+	src := &fakeSource{view: cardView()}
+	p, env, _, canvas := fixture(t, src)
+	if err := p.Refresh(context.Background(), "s1"); err != nil {
+		t.Fatalf("Refresh 失败：%v", err)
+	}
+	got := drawCardOnce(t, p, env, canvas, 800, 600)
+	// Button.module.css:28-34：small = 28 高、0×10、12/18、radius-sm。
+	if got.Dismiss.Height != 28 {
+		t.Fatalf("dismiss 高=%v，want 28（Button.module.css:28-34）", got.Dismiss.Height)
+	}
+	dismiss := textOf(t, canvas, zhDismiss)
+	if dismiss.Style.Size != 12 || dismiss.Bounds.Height != 18 || dismiss.Style.Weight != gfx.WeightRegular {
+		t.Fatalf("dismiss 字号/行高/字重=%v/%v/%v，want 12/18/regular",
+			dismiss.Style.Size, dismiss.Bounds.Height, dismiss.Style.Weight)
+	}
+	if dismiss.Style.Color != p.theme.LabelPrimary {
+		t.Fatalf("ghost 文字色=%+v，want label-primary %+v", dismiss.Style.Color, p.theme.LabelPrimary)
+	}
+	if pad := got.Dismiss.Width - dismiss.Bounds.Width; pad != 20 {
+		t.Fatalf("dismiss 左右总内距=%v，want 2×10=20", pad)
+	}
+	for _, rect := range canvas.Rectangles() {
+		if rect.Bounds == got.Dismiss && rect.Color == p.theme.ButtonPrimaryFill {
+			t.Fatalf("ghost 静止态误画 primary 底：%+v", rect)
+		}
+	}
+
+	// pending 对应 Button:disabled opacity:.4（Button.module.css:18-21）。
+	p.mu.Lock()
+	p.acting = true
+	p.mu.Unlock()
+	got = drawCardOnce(t, p, env, canvas, 800, 600)
+	dismiss = textOf(t, canvas, zhDismiss)
+	if want := p.theme.LabelPrimary.Alpha * smallButtonDisabledOpacity; !nearFloat(dismiss.Style.Color.Alpha, want) {
+		t.Fatalf("pending 文字 alpha=%v，want primary×0.4=%v", dismiss.Style.Color.Alpha, want)
+	}
+	foundDisabled := false
+	for _, hit := range canvas.Hits() {
+		if hit.Label == zhDismiss && hit.Disabled {
+			foundDisabled = true
+		}
+	}
+	if !foundDisabled {
+		t.Fatal("pending 的 dismiss 必须是 disabled 命中区")
+	}
+}
+
+func TestFoldToggleUsesOfficialSmallButtonGeometry(t *testing.T) {
+	view := cardView()
+	proposal := view.Proposals["call-1"]
+	proposal.Brief = strings.Repeat("a", foldWidth+1)
+	view.Proposals["call-1"] = proposal
+	p, env, _, canvas := fixture(t, &fakeSource{view: view})
+	if err := p.Refresh(context.Background(), "s1"); err != nil {
+		t.Fatalf("Refresh 失败：%v", err)
+	}
+	got := drawCardOnce(t, p, env, canvas, 800, 600)
+	// Card.module.css:5 覆盖 small Button：min-height 24、padding-inline 0；
+	// 未覆盖的 small 字号/行高仍是 12/18。
+	if got.Toggle.Height != 24 {
+		t.Fatalf("toggle 高=%v，want 24（Card.module.css:5）", got.Toggle.Height)
+	}
+	toggle := textOf(t, canvas, zhExpandBrief)
+	if toggle.Style.Size != 12 || toggle.Bounds.Height != 18 {
+		t.Fatalf("toggle 字号/行高=%v/%v，want 12/18", toggle.Style.Size, toggle.Bounds.Height)
+	}
+	if toggle.Style.Color != p.theme.LabelPrimary {
+		t.Fatalf("toggle ghost 文字色=%+v，want label-primary", toggle.Style.Color)
+	}
+	if got.Toggle.Width != toggle.Bounds.Width {
+		t.Fatalf("toggle padding-inline 应为 0：box=%v text=%v", got.Toggle.Width, toggle.Bounds.Width)
+	}
+}
+
+// ── 3c. 决定状态行：官方两种命名 phase 共用 12/19.2 secondary ─────────────
+
+func TestNamedDecisionStatusGeometryMatchesOfficial(t *testing.T) {
+	for phase, label := range map[string]string{"dismissed": zhDismissed, "replaced": zhReplaced} {
+		t.Run(phase, func(t *testing.T) {
+			view := cardView()
+			view.Decisions["call-1"] = apiclient.ActionCardDecision{CallID: "call-1", Action: "create-package", Phase: phase}
+			p, env, _, canvas := fixture(t, &fakeSource{view: view})
+			if err := p.Refresh(context.Background(), "s1"); err != nil {
+				t.Fatalf("Refresh 失败：%v", err)
+			}
+			got := drawCardOnce(t, p, env, canvas, 800, 600)
+			status := textOf(t, canvas, label)
+			if status.Style.Size != 12 || status.Bounds.Height != statusLineH || status.Style.Color != p.theme.LabelSecondary {
+				t.Fatalf("status 样式 size=%v line=%v color=%+v，want 12/19.2 secondary",
+					status.Style.Size, status.Bounds.Height, status.Style.Color)
+			}
+			if len(got.Statuss) != 1 || !nearFloat(got.Statuss[0].Y-got.Brief.Y-got.Brief.Height, statusMarginTop) {
+				t.Fatalf("status margin-top 应为 12：%+v", got.Statuss)
+			}
+			if hasText(canvas, zhDismiss) {
+				t.Fatal("已有 decision 时不应再画 dismiss（Card.tsx:146）")
+			}
+		})
+	}
+}
+
 // ── 4. 文案逐字（官方 zh 字典原文）──────────────────────────────────────
 
 func TestCopyIsVerbatimFromOfficialLocale(t *testing.T) {
@@ -501,6 +612,42 @@ func TestProposeRowFoldsStatesFromFrames(t *testing.T) {
 			textOf(t, canvas, zhRowTitle) // row.title
 			textOf(t, canvas, tc.want)
 		})
+	}
+}
+
+func TestProposeRowDisclosureGeometryAndOfficialIcon(t *testing.T) {
+	frames := []apiclient.Frame{
+		toolCallFrame(1, "call-9", `{"title":"新建一个包"}`),
+		toolResultFrame(2, "call-9", false, "", ""),
+	}
+	p, env, _, canvas := fixture(t, &fakeSource{view: cardView()})
+	env.Data.Frames = frames
+	got := drawRowOnce(t, p, env, canvas, 800, 600)
+
+	// DisclosureRow.module.css:30-39,52-74,104-109（delta=0）。
+	if got.Row.Height != 24 {
+		t.Fatalf("过程行高=%v，want 24", got.Row.Height)
+	}
+	if got.Icon.Width != 16 || got.Icon.Height != 16 {
+		t.Fatalf("leading=%+v，want 16×16", got.Icon)
+	}
+	if gap := got.Title.X - (got.Icon.X + got.Icon.Width); gap != 6 {
+		t.Fatalf("leading 右距=%v，want 6", gap)
+	}
+	title := textOf(t, canvas, zhRowTitle)
+	if title.Style.Size != 13 || title.Bounds.Height != 24 || title.Style.Color != p.theme.LabelTertiary {
+		t.Fatalf("行标题=%v/%v/%+v，want 13/24/tertiary", title.Style.Size, title.Bounds.Height, title.Style.Color)
+	}
+	state := textOf(t, canvas, zhRowOK)
+	cardTitle := textOf(t, canvas, "新建一个包")
+	for _, text := range []gfx.Text{state, cardTitle} {
+		if text.Style.Size != 12 || text.Style.Color != p.theme.LabelTertiary {
+			t.Fatalf("summary %q 字号/颜色=%v/%+v，want 12/tertiary", text.Value, text.Style.Size, text.Style.Color)
+		}
+	}
+	// 旧实现这里只有空白槽；官方 path + 三枚 rounded rect 会产生真实矢量图元。
+	if len(canvas.Triangles()) == 0 {
+		t.Fatal("apps-add 官方 sprite 没有画出来（只有空 leading 槽）")
 	}
 }
 

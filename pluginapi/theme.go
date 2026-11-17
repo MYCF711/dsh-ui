@@ -28,6 +28,14 @@ type Theme struct {
 	BgModulePlatform ui.Color // 模块台（Tag neutral / 行内代码）
 	BgSkeleton       ui.Color // 骨架屏（design-platform.css:192,344）
 
+	// 计划卡与计划模式 chip 的独立语义令牌。
+	// 分别对应 --dsw-alias-card-fill / -card-fill-hover / -card-tile-fill /
+	// -state-business-tertiary，不能用 BgLayer 的最近档位冒充。
+	CardFill         ui.Color
+	CardFillHover    ui.Color
+	CardTileFill     ui.Color
+	BusinessTertiary ui.Color
+
 	// ── 交互态 ──
 	NavActive               ui.Color // 侧栏选中项；也对应 button-ghost-active-fill
 	NavHover                ui.Color // 侧栏悬停项
@@ -48,10 +56,11 @@ type Theme struct {
 	LabelDimmed    ui.Color // 几乎不可见（占位）
 
 	// ── 品牌与链接 ──
-	Link              ui.Color
-	BrandPrimary      ui.Color
-	ButtonPrimaryFill ui.Color
-	ButtonPrimaryFg   ui.Color
+	Link               ui.Color
+	BrandPrimary       ui.Color
+	ButtonPrimaryFill  ui.Color
+	ButtonPrimaryHover ui.Color
+	ButtonPrimaryFg    ui.Color
 
 	// ── 代码 ──
 	CodeBlock    ui.Color // 代码块底

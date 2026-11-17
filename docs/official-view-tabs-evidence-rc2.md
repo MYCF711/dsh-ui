@@ -105,7 +105,7 @@
 | G4 | `conversation.session.header.views.actions`（More 菜单）只有骨架座位，没有占用方 | 页签行放得下时官方也不画 More | 页签多到放不下时会被裁切，而不是折进 More |
 | G5 | 拖 dock / 浮动面板 / 分屏（dockkit 的 pane 体系） | 与右栏 tab 机制相邻但是另一件事 | 右栏仍是一列，不能拆 |
 | G6 | `conversation.view` 在**旧三栏档**只提供名录，不派发 | 旧档主区正文归 `dsconversation` 的 `main.body`（`BridgeLegacy`），两条路互斥 | 旧档下 `trajectory` 靠 `beginTrajectoryView` 的视口偏移让位（既有实现），不是 keyed 派发 |
-| G7 | 芯片关闭按钮的显隐时机仍是常显 | 本轮先完成真实关闭与资源清理，未补 dockkit hover 状态投影 | 官方 `.tabClose` 在 hover/选中时出现；本仓功能一致但视觉时机不同 |
+| G7 | ~~芯片关闭按钮常显、字符与尺寸不符~~ **2026-11-17 已收口**：active/hover/focus 才显示；20×20、top/right 4；close-fill 与 addTab 的 plus-outline 均为官方 14px sprite | dockkit `.tabClose` / `.addTab`（`index-CSAdOBx6.css:1`）与 sprite（`index-ghOpC9uV.js:129`） | 关闭真实动作与资源清理不变，视觉时机和图元已对齐 |
 
 ## 4. 机器断言
 
@@ -121,7 +121,7 @@
 | `…:TestRightTabStripGeometryMatchesOfficialDockkitCSS` | 芯片数值逐条 = 官方 CSS（含 28+10=38） |
 | `…:TestSkeletonDispatchesOnlyActiveView` / `…RightbarDispatchesOnlyActiveTab` | 骨架按名录派发，不再"全画一遍" |
 | `…:TestDrawRightTabsDrawsStripAndSelects` / `…DrawViewTabsDrawsChipsAndSelects` | 芯片真的画出来、真的点得动 |
-| `…:TestDrawRightTabsCreateAndCloseButtonsReallyClick` | 「+ / ×」经真实 Hit 点击，pump 到 `openTab(browser)` / `close(tab1)` 生效 |
+| `…:TestDrawRightTabsCreateAndCloseButtonsReallyClick` | 官方 add/close SVG 按钮经真实 Hit 标签点击，pump 到 `openTab(browser)` / `close(tab1)` 生效 |
 | `cmd/app/right_tab_occurrences_test.go` | 多开、单实例复用、关闭、重开新 id、布局重启恢复、全关空态与重开 |
 | `plugins/dsbrowser/persistence_test.go` | 每 occurrence 独立导航/WebView、晚到 load 隔离、恢复不自动 Open、恢复卡真点击、关闭 forget |
 | `cmd/app/view_tabs_wiring_test.go` | 闸门：名录外的 key 不写；失效偏好解析回名录内 |

@@ -4,21 +4,26 @@ import (
 	"sync"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
-// 官方 PlanModeControl.module.css:3-24,78-82：28px 高、0/8 padding、
-// radius-sm、13/20 字体；错误行 12/18。business-primary 在本主题就是 Info；
-// tertiary 没有独立令牌，沿用同档 BgLayer3（与 Hero 预览徽标同一映射）。
+// 官方 PlanModeControl.module.css:3-24,46-55,78-82：28px 高、min-width:34px、
+// 0/8 padding、14px glyph、radius-sm、13/20 字体；错误行 12/18。
+// business-primary=Info；tertiary 使用同名主题令牌，不再借 BgLayer3。
 const (
-	planChipWrapGap float32 = 6
-	planChipHeight  float32 = 28
-	planChipGap     float32 = 4
-	planChipPadX    float32 = 8
-	planChipFont    float32 = 13
-	planChipLine    float32 = 20
-	planChipErrFont float32 = 12
-	planChipErrLine float32 = 18
+	planChipWrapGap  float32 = 6
+	planChipHeight   float32 = 28
+	planChipMinWidth float32 = 34
+	planChipGap      float32 = 4
+	planChipPadX     float32 = 8
+	planChipGlyph    float32 = 14
+	planChipFont     float32 = 13
+	planChipLine     float32 = 20
+	planChipErrFont  float32 = 12
+	planChipErrLine  float32 = 18
+	planChipHoverMix float32 = 0.06
 )
 
 type planChipState struct {
@@ -46,16 +51,26 @@ func (p *Plugin) drawPlanChip(f ui.C, env *pluginapi.Env) {
 	locked := env.Data.Busy || leaving
 	t := p.theme
 	ui.Row(f).Items(ui.Center).Gap(planChipWrapGap).Children(func() {
-		chip := ui.Row(f).Height(planChipHeight).Items(ui.Center).Gap(planChipGap).
+		chip := ui.Row(f).Height(planChipHeight).MinWidth(planChipMinWidth).Items(ui.Center).Gap(planChipGap).
 			PadSides(0, planChipPadX, 0, planChipPadX).Radius(t.Radii.SM).
-			Background(t.BgLayer3).
+			Background(t.BusinessTertiary).
+			DrawOver(func(d *ui.DrawContext) { drawPlanFocusRing(d, planChipFocusOffset, t.Radii.SM, t.Info) }).
 			Hit(env.Tree.ID(env.Feat, "plan-mode-off"), zhChipTitle)
 		if locked {
 			chip = chip.Opacity(0.6)
-		} else if chip.Clicked() {
-			p.exitPlanMode(env)
+		} else {
+			chip = chip.Hover(ui.Look{}.Background(mixPlanColor(t.BusinessTertiary, t.Info, planChipHoverMix)))
+			if chip.Clicked() {
+				p.exitPlanMode(env)
+			}
 		}
 		chip.Children(func() {
+			state := chip.State()
+			if !locked && (state.Hovered || state.FocusVisible) {
+				ui.Icon(f, dsassets.PlanModeCloseCircle(t.Info)).Width(planChipGlyph).Height(planChipGlyph)
+			} else if icon, ok := dsassets.PlanModeOutline(t.Info); ok {
+				ui.Icon(f, icon).Width(planChipGlyph).Height(planChipGlyph).Color(t.Info)
+			}
 			ui.Text(f, zhChipLabel).FontSize(planChipFont).LineHeight(planChipLine).
 				Weight(500).Color(t.Info)
 		})
@@ -64,6 +79,14 @@ func (p *Plugin) drawPlanChip(f ui.C, env *pluginapi.Env) {
 				Color(t.Error)
 		}
 	})
+}
+
+// mixPlanColor 是官方 color-mix(in srgb, a, b t) 的逐通道等价计算。
+func mixPlanColor(a, b gfx.Color, t float32) gfx.Color {
+	return gfx.Color{
+		Red: a.Red*(1-t) + b.Red*t, Green: a.Green*(1-t) + b.Green*t,
+		Blue: a.Blue*(1-t) + b.Blue*t, Alpha: a.Alpha*(1-t) + b.Alpha*t,
+	}
 }
 
 func (p *Plugin) chipSnapshot() (bool, string) {

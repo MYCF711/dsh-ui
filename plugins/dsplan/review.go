@@ -6,6 +6,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/planreview"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -64,12 +65,18 @@ func (p *Plugin) drawReviewAction(f ui.C, env *pluginapi.Env) {
 		p.openedReviews[openedKey] = true
 	}
 	link := ui.Row(f).Items(ui.Center).Gap(4).
+		DrawOver(func(d *ui.DrawContext) { drawPlanFocusRing(d, planCardFocusOffset, 0, p.theme.Info) }).
 		Hit(env.Tree.ID(env.Feat, "plan-review-open-"+review.RequestKey), zhOpen)
 	if link.Clicked() {
 		p.openReview(env, review)
 	}
 	link.Children(func() {
-		ui.Text(f, zhFull).FontSize(14).LineHeight(20).Color(p.theme.LabelSecondary)
+		ui.Text(f, zhFull).FontSize(14).LineHeight(20).Color(p.theme.LabelSecondary).
+			StateFrom(link).Hover(ui.Look{}.Color(p.theme.LabelPrimary))
+		if icon, ok := dsassets.PlanReviewChevron(); ok {
+			ui.Icon(f, icon).Width(14).Height(14).Color(p.theme.LabelSecondary).
+				StateFrom(link).Hover(ui.Look{}.Color(p.theme.LabelPrimary))
+		}
 	})
 }
 

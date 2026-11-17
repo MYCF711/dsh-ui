@@ -74,6 +74,8 @@ const (
 	staticNeutralBluish950  = 0x151517
 	staticNeutralBluish1000 = 0x0f1115
 
+	staticNeutral50  = 0xfafafa
+	staticNeutral100 = 0xf5f5f5
 	staticNeutral200 = 0xe5e5e5
 	staticNeutral300 = 0xd4d4d4
 	staticNeutral400 = 0xa2a4a6
@@ -81,12 +83,14 @@ const (
 	staticNeutral600 = 0x545557
 	staticNeutral700 = 0x3c3c3d
 	staticNeutral800 = 0x292929
+	staticNeutral850 = 0x212123
 
 	staticDeepseek100 = 0xe4edfd
 	staticDeepseek200 = 0xd3e2ff
 	staticDeepseek400 = 0x7aaaff
 	staticDeepseek450 = 0x5686fe
 	staticDeepseek500 = 0x4176e6
+	staticDeepseek800 = 0x34415b
 	staticDeepseek50  = 0xedf3fe
 
 	staticGreen500 = 0x22c55e
@@ -144,6 +148,11 @@ func Dark() *pluginapi.Theme {
 		BgLayer2:    gfx.RGB24(staticNeutralBluish850),
 		BgLayer3:    gfx.RGB24(staticNeutralBluish800),
 
+		CardFill:         gfx.RGB24(staticNeutral850),
+		CardFillHover:    gfx.RGB24(staticNeutral800),
+		CardTileFill:     ui.RGBA(255, 255, 255, 0.05),
+		BusinessTertiary: gfx.RGB24(staticDeepseek800),
+
 		NavActive: gfx.RGB24(staticNeutralBluish750),
 		NavHover:  gfx.RGB24(staticNeutralBluish850),
 		Hover:     ui.RGBA(255, 255, 255, 0.08), // --dsw-alias-interactive-bg-hover = #ffffff14
@@ -162,10 +171,11 @@ func Dark() *pluginapi.Theme {
 		LabelCaption:   gfx.RGB24(staticNeutralBluish600),
 		LabelDimmed:    gfx.RGB24(staticNeutralBluish750),
 
-		Link:              gfx.RGB24(staticDeepseek400),
-		BrandPrimary:      gfx.RGB24(staticNeutralBluish50),
-		ButtonPrimaryFill: gfx.RGB24(staticNeutralBluish50),
-		ButtonPrimaryFg:   gfx.RGB24(staticNeutralBluish1000),
+		Link:               gfx.RGB24(staticDeepseek400),
+		BrandPrimary:       gfx.RGB24(staticNeutralBluish50),
+		ButtonPrimaryFill:  gfx.RGB24(staticNeutralBluish50),
+		ButtonPrimaryHover: gfx.RGB24(staticNeutralBluish100),
+		ButtonPrimaryFg:    gfx.RGB24(staticNeutralBluish1000),
 
 		CodeBlock:  gfx.RGB24(staticNeutralBluish900),
 		CodeBanner: gfx.RGB24(staticNeutralBluish850),
@@ -214,6 +224,11 @@ func Light() *pluginapi.Theme {
 		BgLayer2:    gfx.RGB24(staticNeutralBluish00),
 		BgLayer3:    gfx.RGB24(staticNeutralBluish00),
 
+		CardFill:         gfx.RGB24(staticNeutral50),
+		CardFillHover:    gfx.RGB24(staticNeutral100),
+		CardTileFill:     ui.RGBA(255, 255, 255, 0.5),
+		BusinessTertiary: gfx.RGB24(staticDeepseek100),
+
 		NavActive: gfx.RGB24(staticNeutralBluish100),
 		NavHover:  gfx.RGB24(staticNeutralBluish75),
 		Hover:     ui.RGBA(38, 49, 72, 0.06), // #2631480f
@@ -231,10 +246,11 @@ func Light() *pluginapi.Theme {
 		LabelCaption:   gfx.RGB24(staticNeutralBluish400),
 		LabelDimmed:    gfx.RGB24(staticNeutralBluish200),
 
-		Link:              gfx.RGB24(staticDeepseek500),
-		BrandPrimary:      gfx.RGB24(staticNeutralBluish1000),
-		ButtonPrimaryFill: gfx.RGB24(staticNeutralBluish1000),
-		ButtonPrimaryFg:   gfx.RGB24(staticNeutralBluish00),
+		Link:               gfx.RGB24(staticDeepseek500),
+		BrandPrimary:       gfx.RGB24(staticNeutralBluish1000),
+		ButtonPrimaryFill:  gfx.RGB24(staticNeutralBluish1000),
+		ButtonPrimaryHover: gfx.RGB24(staticNeutralBluish750),
+		ButtonPrimaryFg:    gfx.RGB24(staticNeutralBluish00),
 
 		CodeBlock:    gfx.RGB24(staticNeutralBluish50),
 		CodeBanner:   gfx.RGB24(staticNeutralBluish50),

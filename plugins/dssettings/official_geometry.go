@@ -260,6 +260,7 @@ const (
 	ModelsRowCardPadX    float32 = 14
 	ModelsRowCardGap     float32 = 12
 	ModelsRowHeadGap     float32 = 10
+	ModelsRowActionsGap  float32 = 4 // ModelsSection.module.css:126-131 / :255-259
 	ModelsRowNameSize    float32 = 14
 	ModelsRowNameLine    float32 = 22
 	ModelsRowTagSize     float32 = 11
@@ -271,7 +272,7 @@ const (
 	ModelsEditorPadX     float32 = 16
 	ModelsEditorGap      float32 = 14
 	ModelsFieldGap       float32 = 6
-	ModelsInputMinHeight float32 = 36
+	ModelsInputMinHeight float32 = 32 // ModelsSection.module.css:808-820
 	ModelsButtonHeight   float32 = 36
 	ModelsButtonPadX     float32 = 14
 	ModelsRowButtonH     float32 = 28
@@ -326,6 +327,8 @@ const (
 	PluginsSearchPadL     float32 = 36
 	PluginsSearchPadR     float32 = 34
 	PluginsSearchFontSize float32 = 13
+	// PluginInventorySettingsTab.tsx:465 未传 size，sprite 默认 16。
+	PluginsSearchIconSize float32 = 16
 
 	// PluginsCardsGap 是卡片网格间距（`.cards{gap:10px}`，:89-96）。
 	PluginsCardsGap float32 = 10
@@ -461,6 +464,64 @@ const (
 	// 里，颜色是 `background:currentColor`（= `.indicator` 的 brand 色）。
 	// **不是叉、不是感叹号**——照官方原样画一个实心圆点。
 	UpdateErrorDotSize float32 = 6
+)
+
+// ── general：外观 cube / 字号 stepper / Switch ───────────────────────
+const (
+	// AppearanceRow.module.css:4-46。
+	AppearanceGroupGap       float32 = 8
+	AppearanceCubeGap        float32 = 8
+	AppearanceCubeMinWidth   float32 = 180
+	AppearanceCubePadY       float32 = 20
+	AppearanceCubePadX       float32 = 32
+	AppearanceCubeIconSize   float32 = 16
+	AppearanceCubeBorder     float32 = 0.5
+	AppearanceCubeTextGap    float32 = 4
+	AppearanceCubeHeight     float32 = 82 // 20×2 + 16 + 4 + 22
+	AppearanceRowHeight      float32 = 144
+	AppearanceCubeFontSize   float32 = 14
+	AppearanceCubeLineHeight float32 = 22
+
+	// FontSizeRow.module.css:54-147；箭头 TSX 在 FontSizeRow.tsx:69-93。
+	StepperControlGap    float32 = 8
+	StepperMinWidth      float32 = 72
+	StepperValueMinWidth float32 = 18
+	StepperArrowWidth    float32 = 17
+	StepperArrowHeight   float32 = 12
+	StepperArrowGap      float32 = 2
+	StepperArrowRight    float32 = 8
+	StepperArrowTop      float32 = 5
+	StepperArrowIcon     float32 = 9
+	StepperUnitFontSize  float32 = 14
+	StepperUnitLine      float32 = 22
+
+	// 官方 primitives Switch：36×20、2px padding、16px thumb；dist CSS
+	// index-CSAdOBx6.css:1 的 _switch_1ik0f_5/_thumb_1ik0f_33。
+	SwitchWidth     float32 = 36
+	SwitchHeight    float32 = 20
+	SwitchThumbSize float32 = 16
+	SwitchPad       float32 = 2
+)
+
+// ── models / account / agent-presets 卡片补充几何 ────────────────────
+const (
+	ModelsCardBorder        float32 = 0.5 // ModelsSection.module.css:55
+	ModelsRowButtonFontSize float32 = 12  // :207-214
+	ModelsRowButtonLine     float32 = 18
+
+	AccountSectionPadY        float32 = 8   // AccountSection.module.css:1-9
+	AccountCardBorder         float32 = 0.5 // :11-17
+	AccountIdentityMinHeight  float32 = 44  // :27-33
+	AccountLinkMinWidth       float32 = 58  // :90-105
+	AccountLinkPadX           float32 = 14
+	AccountLinkFontSize       float32 = 14
+	AccountLinkLineHeight     float32 = 22
+	AccountSignInMinWidth     float32 = 72 // :198-201
+	AccountSignedOutMinHeight float32 = 60 // :168-177
+	AccountSignedOutPadY      float32 = 12
+	AccountSignedOutCopyGap   float32 = 4 // :179-185
+
+	AgentPresetCardNameWeight float32 = 600 // AgentPresetSection.module.css:223-227
 )
 
 // ── 窄窗口（官方 <768px 全屏 + 横向 rail）───────────────────────────
@@ -631,7 +692,7 @@ var OfficialSettingsGeometry = []GeoRow{
 	{Node: "PluginInventorySettingsTab.cardIdentity", Prop: "padding-inline", Official: 6, Impl: PluginsCardChipPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:213-228"},
 	{Node: "PluginInventorySettingsTab.cardIdentity", Prop: "padding-block", Official: 1, Impl: PluginsCardChipPadY, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:213-228"},
 	{Node: "PluginInventorySettingsTab.cardTrailing", Prop: "gap", Official: 8, Impl: PluginsCardTrailingGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:230-236"},
-	{Node: "PluginInventorySettingsTab.chevron", Prop: "size", Official: 12, Impl: PluginsChevronSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:428-431"},
+	{Node: "PluginInventorySettingsTab.chevron", Prop: "size", Official: 12, Impl: PluginsChevronSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.tsx:164"},
 	{Node: "PluginInventorySettingsTab.group", Prop: "gap", Official: 10, Impl: PluginsGroupGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:245-249"},
 	{Node: "PluginInventorySettingsTab.groupTitleRow", Prop: "gap", Official: 8, Impl: PluginsGroupTitleRowGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:253-258"},
 	{Node: "PluginInventorySettingsTab.groupTitleRow", Prop: "min-height", Official: 36, Impl: PluginsGroupTitleRowMin, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-plugin-inventory/src/client/PluginInventorySettingsTab.module.css:253-258"},
@@ -710,6 +771,29 @@ var OfficialSettingsGeometry = []GeoRow{
 	{Node: "AgentPresetSection.cardFoot", Prop: "padding-inline", Official: 10, Impl: AgentPresetCardFootPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:271-279"},
 	{Node: "AgentPresetSection.cardFoot", Prop: "gap", Official: 2, Impl: AgentPresetCardFootGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:271-279"},
 	{Node: "AgentPresetSection.error", Prop: "font-size", Official: 12, Impl: AgentPresetErrorFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:384-388"},
+	{Node: "AgentPresetSection.cardName", Prop: "font-weight", Official: 600, Impl: AgentPresetCardNameWeight, Unit: UnitRatio, Status: GeoAligned, Anchor: "ui-agent-preset/src/client/AgentPresetSection.module.css:223-227"},
+
+	// ── general 控件与 models/account 卡片 ──
+	{Node: "AppearanceRow.cubeRow", Prop: "gap", Official: 8, Impl: AppearanceCubeGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/AppearanceRow.module.css:19-24"},
+	{Node: "AppearanceRow.themeCube", Prop: "flex-basis", Official: 180, Impl: AppearanceCubeMinWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/AppearanceRow.module.css:29-46"},
+	{Node: "AppearanceRow.themeCube", Prop: "padding-block", Official: 20, Impl: AppearanceCubePadY, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/AppearanceRow.module.css:29-46"},
+	{Node: "AppearanceRow.themeCube", Prop: "padding-inline", Official: 32, Impl: AppearanceCubePadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/AppearanceRow.module.css:29-46"},
+	{Node: "AppearanceRow.themeCube", Prop: "gap", Official: 4, Impl: AppearanceCubeTextGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/AppearanceRow.module.css:29-46"},
+	{Node: "AppearanceRow.themeCube", Prop: "border-width", Official: 0.5, Impl: AppearanceCubeBorder, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/AppearanceRow.module.css:38"},
+	{Node: "FontSizeRow.stepper", Prop: "min-width", Official: 72, Impl: StepperMinWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/FontSizeRow.module.css:60-69"},
+	{Node: "FontSizeRow.control", Prop: "gap", Official: 8, Impl: StepperControlGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/FontSizeRow.module.css:54-58"},
+	{Node: "FontSizeRow.arrow", Prop: "width", Official: 17, Impl: StepperArrowWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/FontSizeRow.module.css:116-128"},
+	{Node: "FontSizeRow.arrow", Prop: "height", Official: 12, Impl: StepperArrowHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/FontSizeRow.module.css:116-128"},
+	{Node: "FontSizeRow.arrowIcon", Prop: "size", Official: 9, Impl: StepperArrowIcon, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-theme/src/client/FontSizeRow.tsx:69-79"},
+	{Node: "ModelsSection.rowCard", Prop: "border-width", Official: 0.5, Impl: ModelsCardBorder, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:54-62"},
+	{Node: "ModelsSection.rowActions", Prop: "font-size", Official: 12, Impl: ModelsRowButtonFontSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:207-214"},
+	{Node: "ModelsSection.rowActions", Prop: "line-height", Official: 18, Impl: ModelsRowButtonLine, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:207-214"},
+	{Node: "AccountSection.section", Prop: "padding-block", Official: 8, Impl: AccountSectionPadY, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:1-9"},
+	{Node: "AccountSection.card", Prop: "border-width", Official: 0.5, Impl: AccountCardBorder, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:11-17"},
+	{Node: "AccountSection.identity", Prop: "min-height", Official: 44, Impl: AccountIdentityMinHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:27-33"},
+	{Node: "AccountSection.linkButton", Prop: "min-width", Official: 58, Impl: AccountLinkMinWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:90-105"},
+	{Node: "AccountSection.signedOutContent", Prop: "min-height", Official: 60, Impl: AccountSignedOutMinHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:168-177"},
+	{Node: "AccountSection.signedOutCopy", Prop: "gap", Official: 4, Impl: AccountSignedOutCopyGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:179-185"},
 }
 
 // GeoCount 返回表里 aligned / derived / deviation 三种状态的行数。

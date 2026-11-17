@@ -23,22 +23,15 @@
 //
 // # 图标
 //
-// 官方用的是 sprite 图标（`IconChevronDownOutlineRegular` / `IconSearchOutlineRegular`）。
-// 本仓没有那张 sprite 的导出，按仓规**不许手绘冒充官方图标**；这里用文字字形
-// （`▾`/`▸`/`⌕`），与 `dssidebar` 的搜索框、`dssettings` 的 `›`/`×` 同一套做法。
-// 官方 chevron 的 `rotate(-90deg)`（收起态）在这里等价成换一个字形。
+// 官方 sprite 图标（`IconChevronDownOutlineRegular` / `IconSearchOutlineRegular`）
+// 经 official_icons_draw.go 逐命令复用 assets/official 中的 JSX path；
+// 收起/展开只使用官方 CSS 的 -90/180 度旋转，不再以文字字形替代。
 package dssettings
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
-)
-
-// 文字字形：官方 sprite 图标的等价物（见文件头「图标」一段）。
-const (
-	glyphChevronDown      = "▾"
-	glyphChevronCollapsed = "▸"
-	glyphSearch           = "⌕"
 )
 
 // drawPluginsPage 画「内置插件」右页。
@@ -70,9 +63,9 @@ func (p *Plugin) drawPluginsPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 
 		// 清单本体进滚动容器：宿主真有几十条插件时，其余条目必须够得着
 		// （官方整页是窗口滚动；本仓面板是固定高浮层，所以滚的是内容区）。
-		scroll := ui.Scroll(f).FillWidth().Grow(1).MinHeight(0)
+		scroll := ui.Scroll(f).FillWidth().Grow(1).MinHeight(0).PadTop(2)
 		scroll.Children(func() {
-			ui.Column(f).Width(contentWidth).Gap(PluginsCatalogGap).Children(func() {
+			ui.Column(f).Width(contentWidth).Gap(PluginsSectionGap).Children(func() {
 				p.drawPluginsStatus(f, env, t, plugins, contentWidth)
 				if plugins.TabMissing != "" {
 					// 没有真实现的 tab：明说缺什么，不画一页空壳。
@@ -83,16 +76,18 @@ func (p *Plugin) drawPluginsPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 				if plugins.State != PluginsReady {
 					return
 				}
-				p.drawPluginsSearch(f, env, t, contentWidth)
-				for _, group := range plugins.Groups {
-					p.drawPluginsGroup(f, env, t, group, contentWidth)
-				}
-				if plugins.PresetGap != "" {
-					// 自检行：宿主给了 agentPresets 而本页没画那一段时明说，
-					// 不静默少一段（当前宿主不产出，正常路径永远看不到它）。
-					ui.Text(f, plugins.PresetGap).FontSize(PluginsBrokenFontSize).
-						LineHeight(PluginsBrokenLn).Color(t.Warn)
-				}
+				ui.Column(f).Width(contentWidth).Gap(PluginsCatalogGap).Children(func() {
+					p.drawPluginsSearch(f, env, t, contentWidth)
+					for _, group := range plugins.Groups {
+						p.drawPluginsGroup(f, env, t, group, contentWidth)
+					}
+					if plugins.PresetGap != "" {
+						// 自检行：宿主给了 agentPresets 而本页没画那一段时明说，
+						// 不静默少一段（当前宿主不产出，正常路径永远看不到它）。
+						ui.Text(f, plugins.PresetGap).FontSize(PluginsBrokenFontSize).
+							LineHeight(PluginsBrokenLn).Color(t.Warn)
+					}
+				})
 			})
 		})
 	})
@@ -107,7 +102,7 @@ func (p *Plugin) drawPluginsTabs(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 		for _, tab := range plugins.Tabs {
 			tab := tab
 			active := tab.ID == plugins.ActiveTab
-			cell := ui.Column(f).Shrink(0).
+			cell := ui.Column(f).Shrink(0).Height(PluginsTabLn+PluginsTabPadTop+PluginsTabPadBt).
 				PadSides(PluginsTabPadTop, PluginsTabPadX, PluginsTabPadBt, PluginsTabPadX).
 				Hit(env.Tree.ID(env.Feat, "settings-plugins-tab-"+tab.ID), tab.Label).
 				Hover(ui.Look{}.Background(t.Hover))
@@ -118,9 +113,9 @@ func (p *Plugin) drawPluginsTabs(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 				}
 				ui.Text(f, tab.Label).FontSize(PluginsTabFontSize).LineHeight(PluginsTabLn).Color(color)
 				if active {
-					// 官方选中态 `::after`（2px，贴底）。
-					ui.Row(f).FillWidth().Height(PluginsTabUnderline).Radius(PluginsTabUnderline).
-						Background(t.LabelPrimary)
+					// 官方选中态 `::after` 绝对定位，不参与 36px tab 高度计算。
+					ui.Row(f).Absolute().Left(0).Right(0).Bottom(0).
+						Height(PluginsTabUnderline).Radius(PluginsTabUnderline).Background(t.LabelPrimary)
 				}
 			})
 			if cell.Clicked() {
@@ -131,12 +126,15 @@ func (p *Plugin) drawPluginsTabs(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 		}
 	})
 	// 官方 `.tabs{border-bottom:0.5px solid border-l2}`。
-	ui.Row(f).Width(width).Height(PluginsRetryBorderWidth).Background(t.BorderL2)
+	ui.Row(f).Width(width).Height(PluginsRetryBorderWidth).MarginTop(-PluginsSectionOuterGap).Background(t.BorderL2)
 }
 
 // drawPluginsStatus 画状态区：未知/失败原因、重试按钮、空清单/无命中文案。
 func (p *Plugin) drawPluginsStatus(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, plugins *PluginsPanel, width float32) {
-	if plugins.Note != "" {
+	drawNote := func() {
+		if plugins.Note == "" {
+			return
+		}
 		color := t.LabelTertiary
 		if plugins.State == PluginsError || plugins.State == PluginsUnknown {
 			color = t.Error
@@ -145,20 +143,24 @@ func (p *Plugin) drawPluginsStatus(f ui.C, env *pluginapi.Env, t *pluginapi.Them
 			Color(color).FillWidth()
 	}
 	if !plugins.ShowRetry {
+		drawNote()
 		return
 	}
-	// 官方 `.failure button`（:37-45）：0.5px 描边、radius-sm、padding 4 10。
-	row := ui.Row(f).Height(PluginsStatusLn+2*PluginsRetryPadY).
-		PadSides(PluginsRetryPadY, PluginsRetryPadX, PluginsRetryPadY, PluginsRetryPadX).
-		Radius(t.Radii.SM).Border(PluginsRetryBorderWidth, t.BorderL3).Items(ui.Center).
-		Hit(env.Tree.ID(env.Feat, "settings-plugins-retry"), zhPluginsRetry).
-		Hover(ui.Look{}.Background(t.Hover))
-	row.Children(func() {
-		ui.Text(f, zhPluginsRetry).FontSize(PluginsStatusFontSize).Color(t.LabelPrimary)
+	ui.Row(f).Width(width).Gap(10).Items(ui.Center).Children(func() {
+		drawNote()
+		// 官方 `.failure button`（:37-45）：0.5px 描边、radius-sm、padding 4 10。
+		row := ui.Row(f).Shrink(0).Height(PluginsStatusLn+2*PluginsRetryPadY).
+			PadSides(PluginsRetryPadY, PluginsRetryPadX, PluginsRetryPadY, PluginsRetryPadX).
+			Radius(t.Radii.SM).Border(PluginsRetryBorderWidth, t.BorderL3).Items(ui.Center).
+			Hit(env.Tree.ID(env.Feat, "settings-plugins-retry"), zhPluginsRetry).
+			Hover(ui.Look{}.Background(t.Hover))
+		row.Children(func() {
+			ui.Text(f, zhPluginsRetry).FontSize(PluginsStatusFontSize).Color(t.LabelPrimary)
+		})
+		if row.Clicked() && env.Act.PluginInventoryRefresh != nil {
+			env.Act.PluginInventoryRefresh()
+		}
 	})
-	if row.Clicked() && env.Act.PluginInventoryRefresh != nil {
-		env.Act.PluginInventoryRefresh()
-	}
 }
 
 // drawPluginsSearch 画搜索框（官方 `.search`：height 36、圆角 md、0.5px 描边、
@@ -168,13 +170,13 @@ func (p *Plugin) drawPluginsSearch(f ui.C, env *pluginapi.Env, t *pluginapi.Them
 	ui.Row(f).Width(width).Height(PluginsSearchHeight).Radius(t.Radii.MD).
 		Border(PluginsRetryBorderWidth, t.BorderL4).Background(t.BgLayer1).
 		Items(ui.Center).Children(func() {
-		ui.Row(f).Width(PluginsSearchIconLeft + PluginsSearchFontSize).Height(PluginsSearchHeight).
-			Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
-			ui.Text(f, glyphSearch).FontSize(PluginsSearchFontSize).Color(t.LabelTertiary)
-		})
 		ui.TextFieldID(f, env.Tree.ID(env.Feat, "settings-plugins-search"), &o.pluginsSearchField,
 			zhPluginsSearch, zhPluginsSearch).
-			Grow(1).Height(PluginsSearchHeight).FontSize(PluginsSearchFontSize)
+			Grow(1).Height(PluginsSearchHeight).FontSize(PluginsSearchFontSize).
+			PadSides(0, PluginsSearchPadR, 0, PluginsSearchPadL)
+		ui.Icon(f, searchOutlineIcon()).Absolute().Left(PluginsSearchIconLeft).
+			Top((PluginsSearchHeight-PluginsSearchIconSize)/2).
+			Size(PluginsSearchIconSize, PluginsSearchIconSize).Color(t.LabelTertiary)
 	})
 }
 
@@ -183,18 +185,19 @@ func (p *Plugin) drawPluginsGroup(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 	o := p.ensureOfficial()
 	// 段与段之间有 0.5px 分隔 + 14 上边距（官方 `.group + .group`）。
 	if group.Key != "global" {
-		ui.Divider(f)
+		ui.Row(f).FillWidth().Height(PluginsRetryBorderWidth).MarginTop(PluginsGroupDividerPadTop).Background(t.BorderL2)
 	}
 	ui.Column(f).Width(width).Gap(PluginsGroupGap).Children(func() {
 		head := ui.Row(f).FillWidth().MinHeight(PluginsGroupTitleRowMin).Gap(PluginsGroupTitleRowGap).
 			Items(ui.Center).Hit(env.Tree.ID(env.Feat, "settings-plugins-group-"+group.Key), group.Title).
 			Hover(ui.Look{}.Background(t.Hover))
 		head.Children(func() {
-			glyph := glyphChevronCollapsed
+			rotate := float32(-90)
 			if group.Open {
-				glyph = glyphChevronDown
+				rotate = 0
 			}
-			ui.Text(f, glyph).FontSize(PluginsChevronSize).Color(t.LabelTertiary)
+			ui.Icon(f, chevronOutlineIcon()).Size(PluginsChevronSize, PluginsChevronSize).
+				IconTransform(gfx.IconTransform{Rotate: rotate}).Color(t.LabelTertiary)
 			ui.Text(f, group.Title).FontSize(PluginsGroupTitle).LineHeight(PluginsGroupTitleLn).
 				Weight(400).Color(t.LabelPrimary)
 		})
@@ -283,16 +286,22 @@ func (p *Plugin) drawPluginCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 					if card.Tag {
 						p.drawPluginTag(f, t, card)
 					}
-					glyph := glyphChevronCollapsed
+					rotate := float32(0)
 					if card.Expanded {
-						glyph = glyphChevronDown
+						rotate = 180
 					}
-					ui.Text(f, glyph).FontSize(PluginsChevronSize).Color(t.LabelTertiary)
+					ui.Icon(f, chevronOutlineIcon()).Size(PluginsChevronSize, PluginsChevronSize).
+						IconTransform(gfx.IconTransform{Rotate: rotate}).Color(t.LabelTertiary)
 				})
 			})
 			if card.Desc != "" {
-				ui.Text(f, card.Desc).FontSize(PluginsCardDescFontSize).
-					LineHeight(PluginsCardDescLn).Color(t.LabelTertiary).FillWidth()
+				if card.Expanded {
+					ui.Text(f, card.Desc).FontSize(PluginsCardDescFontSize).
+						LineHeight(PluginsCardDescLn).Color(t.LabelTertiary).FillWidth()
+				} else {
+					ui.Paragraph(f, card.Desc, 2).FontSize(PluginsCardDescFontSize).
+						LineHeight(PluginsCardDescLn).Color(t.LabelTertiary).FillWidth()
+				}
 			}
 			if card.EntryChip != "" {
 				ui.Row(f).FillWidth().MarginSides(PluginsCardMetaPadTop, 0, 0, 0).Children(func() {

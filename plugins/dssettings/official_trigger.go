@@ -89,8 +89,10 @@ func (p *Plugin) drawSettingsTrigger(f ui.C, env *pluginapi.Env) {
 		// `.trigger:hover{background:var(--dsw-alias-interactive-bg-hover)}`。
 		Hover(ui.Look{}.Background(t.Hover))
 	row.Children(func() {
-		// 宽态图标 16（`chrome.tsx:22-29` 的 `wide ? 16 : 18`）。
-		ui.Icon(f, settingsTriggerIcon()).Size(TriggerIconSize, TriggerIconSize).Color(t.LabelPrimary)
+		// 宽态图标 16（`chrome.tsx:22-29`）；官方 Medium 描边为 1.3。
+		icon := settingsTriggerIcon()
+		icon.Stroke = officialMediumStroke
+		ui.Icon(f, icon).Size(TriggerIconSize, TriggerIconSize).Color(t.LabelPrimary)
 		// `.triggerLabel{white-space:nowrap;overflow:hidden}`：单行省略。
 		ui.Text(f, zhSettingsTrigger).FontSize(TriggerFontSize).LineHeight(TriggerLineHeight).
 			Color(t.LabelPrimary).Ellipsis()

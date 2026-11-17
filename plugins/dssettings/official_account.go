@@ -209,7 +209,13 @@ func accountExternal(env *pluginapi.Env, destination string) {
 }
 
 func accountButton(f ui.C, env *pluginapi.Env, id, label string, primary, disabled bool, action func()) {
-	button := ui.Button(f, label).Height(36).Hit(env.Tree.ID(env.Feat, id), label).Disabled(disabled)
+	minWidth := AccountLinkMinWidth
+	if id == "account-sign-in" {
+		minWidth = AccountSignInMinWidth
+	}
+	button := ui.Button(f, label).Height(36).MinWidth(minWidth).PadX(AccountLinkPadX).
+		FontSize(AccountLinkFontSize).LineHeight(AccountLinkLineHeight).
+		Hit(env.Tree.ID(env.Feat, id), label).Disabled(disabled)
 	if !primary {
 		button = button.Outline()
 	}
@@ -220,18 +226,22 @@ func accountButton(f ui.C, env *pluginapi.Env, id, label string, primary, disabl
 
 func (p *Plugin) drawAccountPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a AreaRect, snapshot apiclient.AccountSnapshot) {
 	ui.Column(f).Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
-		PadSides(OptionsPadTop, OptionsPadRight, OptionsPadBottom, OptionsPadLeft).
+		PadSides(OptionsPadTop+AccountSectionPadY, OptionsPadRight, OptionsPadBottom+AccountSectionPadY, OptionsPadLeft).
 		Gap(accountPageGap).Children(func() {
 		if !accountSignedIn(snapshot) && !accountAttemptActive(snapshot) {
-			ui.Column(f).FillWidth().Height(120).Justify(ui.Center).Items(ui.Center).Gap(20).Children(func() {
-				ui.Text(f, "当前未登录 DeepSeek Harness 账号").FontSize(accountNameSize).LineHeight(accountTextLine).Color(t.LabelPrimary)
-				description := "登录 DeepSeek Harness 账号获取专属 API Key"
-				if snapshot.Failed || snapshot.LoginFailed {
-					description = "操作未完成，请重试。"
-				} else if snapshot.View == nil {
-					description = "加载中…"
-				}
-				ui.Text(f, description).FontSize(12).LineHeight(18).Color(t.LabelTertiary)
+			ui.Column(f).FillWidth().MinHeight(AccountSignedOutMinHeight).
+				PadSides(AccountSignedOutPadY, 0, AccountSignedOutPadY, 0).
+				Justify(ui.Center).Items(ui.Center).Gap(20).Children(func() {
+				ui.Column(f).FillWidth().Items(ui.Center).Gap(AccountSignedOutCopyGap).Children(func() {
+					ui.Text(f, "当前未登录 DeepSeek Harness 账号").FontSize(accountNameSize).LineHeight(accountTextLine).Color(t.LabelPrimary)
+					description := "登录 DeepSeek Harness 账号获取专属 API Key"
+					if snapshot.Failed || snapshot.LoginFailed {
+						description = "操作未完成，请重试。"
+					} else if snapshot.View == nil {
+						description = "加载中…"
+					}
+					ui.Text(f, description).FontSize(12).LineHeight(18).Color(t.LabelTertiary)
+				})
 				accountButton(f, env, "account-sign-in", "登录", true, snapshot.View == nil || p.accountBusySnapshot() || env.Act.AccountStartSignIn == nil, func() {
 					p.runAccountAction(env, env.Act.AccountStartSignIn)
 				})
@@ -241,10 +251,13 @@ func (p *Plugin) drawAccountPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 
 		// identity card：官方 avatar/name/status/accountInfo。
 		ui.Row(f).FillWidth().PadSides(accountCardPadY, accountCardPadX, accountCardPadY, accountCardPadX).
-			Radius(t.Radii.XL).Background(t.BgLayer3).Border(1, t.BorderL2).Items(ui.Center).Gap(16).Children(func() {
-			ui.Row(f).Items(ui.Center).Gap(10).Grow(1).MinWidth(0).Children(func() {
-				// 头像图片加载器尚未接入：保留官方 32px skeleton，不画姓名首字冒充头像。
-				ui.Row(f).Size(accountAvatar, accountAvatar).Radius(accountAvatar / 2).Background(t.BgLayer2)
+			Radius(t.Radii.XL).Background(t.BgLayer2).Border(AccountCardBorder, t.BorderL4).Items(ui.Center).Gap(16).Children(func() {
+			ui.Row(f).Items(ui.Center).Gap(10).Grow(1).MinWidth(0).MinHeight(AccountIdentityMinHeight).Children(func() {
+				// 图片加载器尚未接入时使用官方 AccountAvatar 的 UserOutlineMedium fallback。
+				ui.Row(f).Size(accountAvatar, accountAvatar).Radius(accountAvatar / 2).
+					Items(ui.Center).Justify(ui.Center).Background(t.BorderL1).Children(func() {
+					ui.Icon(f, userOutlineIcon()).Size(NavCellIconSize, NavCellIconSize).Color(t.LabelTertiary)
+				})
 				ui.Column(f).Grow(1).MinWidth(0).Children(func() {
 					ui.Text(f, accountName(snapshot)).FontSize(accountNameSize).Weight(500).Color(t.LabelPrimary).Ellipsis()
 					ui.Text(f, accountStatus(snapshot)).FontSize(accountTextSize).LineHeight(accountTextLine).Color(t.LabelTertiary).Ellipsis()
@@ -252,9 +265,14 @@ func (p *Plugin) drawAccountPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 			})
 			if accountSignedIn(snapshot) && snapshot.View.Links.UsageURL != "" && env.Act.OpenExternal != nil {
 				if parsed, err := url.Parse(snapshot.View.Links.UsageURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-					accountButton(f, env, "account-info", "更多账号信息", false, false, func() {
-						accountExternal(env, parsed.Scheme+"://"+parsed.Host+"/")
+					link := ui.Row(f).Gap(2).Items(ui.Center).
+						Hit(env.Tree.ID(env.Feat, "account-info"), "更多账号信息").Children(func() {
+						ui.Text(f, "更多账号信息").FontSize(accountTextSize).LineHeight(accountTextLine).Color(t.LabelPrimary)
+						ui.Icon(f, rightUpOutlineIcon(t.LabelPrimary)).Size(12, 12).Color(t.LabelPrimary)
 					})
+					if link.Clicked() {
+						accountExternal(env, parsed.Scheme+"://"+parsed.Host+"/")
+					}
 				}
 			}
 		})
@@ -275,18 +293,14 @@ func (p *Plugin) drawAccountPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 
 		// balanceCard：充值余额、可选赠金余额、usage/top-up。
 		ui.Column(f).FillWidth().PadSides(accountCardPadY, accountCardPadX, accountCardPadY, accountCardPadX).
-			Radius(t.Radii.XL).Background(t.BgLayer3).Border(1, t.BorderL2).Gap(accountRowGap).Children(func() {
+			Radius(t.Radii.XL).Background(t.BgLayer2).Border(AccountCardBorder, t.BorderL4).Gap(accountRowGap).Children(func() {
 			drawAccountBalanceRow(f, t, "充值余额", snapshot.Balance == nil, snapshot.BalanceFailed, snapshot.Balance)
 			if accountSignedIn(snapshot) && accountBonusVisible(snapshot) {
-				if p.prims != nil {
-					p.prims.Divider(f)
-				}
+				ui.Row(f).FillWidth().Height(0.5).Background(t.BorderL2)
 				drawAccountBonusRow(f, t, snapshot)
 			}
-			if p.prims != nil {
-				p.prims.Divider(f)
-			}
-			ui.Row(f).FillWidth().MinHeight(accountRowHeight).PadSides(6, 0, 6, 0).Items(ui.Center).Children(func() {
+			ui.Row(f).FillWidth().Height(0.5).Background(t.BorderL2)
+			ui.Row(f).FillWidth().MinHeight(accountRowHeight).PadSides(6, 0, 6, 0).Items(ui.Center).Gap(10).Children(func() {
 				ui.Text(f, "更多").FontSize(accountTextSize).Color(t.LabelTertiary).Grow(1)
 				if snapshot.View != nil && snapshot.View.Links.UsageURL != "" && env.Act.OpenExternal != nil {
 					accountButton(f, env, "account-usage", "查询用量", false, false, func() { accountExternal(env, snapshot.View.Links.UsageURL) })

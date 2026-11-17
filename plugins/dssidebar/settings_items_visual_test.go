@@ -247,6 +247,31 @@ func (h *settingsItemHarness) waitMutate(want int) bool {
 	return h.spy.count() >= want
 }
 
+// waitDraftClear 有界等待草稿清空，与 waitMutate 同风格：
+// 保存成功之后 staged.clear() 还要经过一次状态更新才可见，单次 pump 在负载下
+// 不够（CI 上偶发：drafts 里仍是刚提交的那一项）。
+func (h *settingsItemHarness) waitDraftClear() (map[string]settingsItemDraft, bool) {
+	for i := 0; i < 400; i++ {
+		if drafts, _, _ := h.p.ensureSettingsItemForm().snapshot(); len(drafts) == 0 {
+			return drafts, true
+		}
+		h.pump()
+	}
+	drafts, _, _ := h.p.ensureSettingsItemForm().snapshot()
+	return drafts, false
+}
+
+// waitText 有界等待某段文字出现，与 waitMutate 同风格：请求发出之后，
+// 失败响应还要经过一次状态更新 + 重绘才落到画布上，单次 pump 在负载下不够
+// （CI 上偶发：texts 里已是设置页但还没有 saveFailed）。
+// 断言强度不变——400 次 pump 之后仍没出现就还是失败。
+func (h *settingsItemHarness) waitText(want string) bool {
+	for i := 0; i < 400 && !h.hasText(want); i++ {
+		h.pump()
+	}
+	return h.hasText(want)
+}
+
 // capture 在断言通过后落盘（SETTINGS_ITEMS_CAPTURE_DIR 非空时保留）。
 func (h *settingsItemHarness) capture(name string) {
 	dir := os.Getenv("SETTINGS_ITEMS_CAPTURE_DIR")
@@ -402,10 +427,8 @@ func TestSettingsItemSaveSendsMutateWithBaseline(t *testing.T) {
 		t.Fatalf("expectedRevision=%d，want 3（section.revision 做乐观锁）", call.expectedRe)
 	}
 	// 成功后草稿清空（官方 `staged.clear()`）。
-	h.pump()
-	drafts, _, _ = h.p.ensureSettingsItemForm().snapshot()
-	if len(drafts) != 0 {
-		t.Fatalf("保存成功后草稿必须清空，实际 %v", drafts)
+	if leftovers, cleared := h.waitDraftClear(); !cleared {
+		t.Fatalf("保存成功后草稿必须清空，实际 %v", leftovers)
 	}
 }
 
@@ -426,8 +449,7 @@ func TestSettingsItemWriteFailureDrawsSaveFailed(t *testing.T) {
 	if !h.waitMutate(before + 1) {
 		t.Fatal("点「保存」没发出请求")
 	}
-	h.pump()
-	if !h.hasText(zhFormSaveFailed) {
+	if !h.waitText(zhFormSaveFailed) {
 		t.Fatalf("写失败必须画官方 saveFailed；texts=%q", h.session.Texts())
 	}
 }

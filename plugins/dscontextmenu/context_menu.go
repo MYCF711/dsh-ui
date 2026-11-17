@@ -2,29 +2,16 @@ package dscontextmenu
 
 // context_menu.go —— 官方 `dsh-client-ui-context-menu` 的 Go+Viva 等价实现。
 //
-// # 官方结构（rc.2 随包 src/**）
+// 视觉来源（rc.2；context-menu/src 本身没有 module.css，Menu 来自 primitives 的
+// 打包 CSS `_70kcw_` / `_1w4el_`）：
+//   - `_list_70kcw_7`：padding 4、min 144 / max 360、elevation-prominent。
+//   - `_surface_1w4el_1`：radius-lg=16、menu-surface-fill、backdrop material。
+//   - `_item_70kcw_173`：min-height 34、6×8 padding、6 gap、13/20、radius-md。
+//   - `_itemIcon_70kcw_233`：14×14；`_separator_70kcw_157`：0.5px、3×8 margin。
 //
-//	OFF:ui-context-menu/src/client/index.ts:98-134
-//	  contextMenus 服务：active / registeredKinds / register / open / resolve / close / notify
-//	OFF:ui-context-menu/src/client/index.ts:135-145
-//	  `contextMenu.button` 工厂槽：目标 kind 没有贡献者时**整枚按钮不渲染**
-//	OFF:ui-context-menu/src/client/index.ts:170-181
-//	  `shell.overlay` 上的 MenuOverlay：一个共享菜单 + 通知 Toast
-//	OFF:ui-context-menu/src/client/registry.ts:30-47
-//	  按 target kind 注册、同 target 内 id 去重、order 升序、卸载即撤回
-//
-// # 本仓等价边界（写清，别当成同形）
-//
-//   - 渲染：viva v0.6.0 自带 `ui.ContextMenu`（右键 / Shift+F10 / 指针点开）
-//     与 `ui.Menu`（行尾省略号按钮的锚定菜单），都由 components 画 shadcn 菜单。
-//     官方是 React Menu portal；本仓不另造一套菜单视觉。
-//   - 服务：本文件实现注册表与两个消费入口（Attach / Button）。业务不接触
-//     viva 的 MenuItems，只注册 `ContextMenuContribution`。
-//   - 未做：`contextMenu.content` 的自定义 React 行（本仓没有 React；该槽只登记
-//     结构证据）与 `contextMenu.icon` 的业务矢量图标（官方 primitives 不在
-//     rc.2 随包导出集里，本仓没有对应图标资产，菜单项按文案渲染，不自画图标）。
-//   - 未做 `notify` 的 Toast：失败反馈由消费方自己的对话框/状态栏承担；不画一个
-//     没有官方几何依据的浮动条。
+// Viva 内建菜单使用 32px 行、16px 图标、9px 分隔线和 ShadowMD，不能表达上述
+// 官方值，因此本插件用 Overlay 画同一套交互（右键 / Shift+F10 / 锚点按钮），
+// 不再把内建 shadcn 菜单的近似几何冒充官方。
 
 import (
 	"fmt"
@@ -32,9 +19,45 @@ import (
 	"sync"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
+
+const (
+	menuPadding          float32 = 4   // primitives-menu-official.css:2
+	menuMinWidth         float32 = 144 // :3
+	menuMaxWidth         float32 = 360 // :3
+	menuViewportMargin   float32 = 12  // :5,55
+	menuAnchorGap        float32 = 4   // :5
+	menuRadius           float32 = 16  // menu-material-official.css:1；base.css:21 radius-lg
+	menuItemHeight       float32 = 34  // primitives-menu-official.css:19
+	menuItemPadY         float32 = 6   // :19
+	menuItemPadX         float32 = 8   // :19
+	menuItemGap          float32 = 6   // :19
+	menuItemFont         float32 = 13  // :19
+	menuItemLine         float32 = 20  // :19
+	menuItemRadius       float32 = 12  // :19；base.css:20 radius-md
+	menuItemIcon         float32 = 14  // primitives-menu-official.css:30-31
+	menuDisabledOpacity  float32 = 0.4 // :29
+	menuSeparatorHeight  float32 = 0.5 // :44
+	menuSeparatorMarginY float32 = 3   // :44
+	menuSeparatorMarginX float32 = 8   // :44
+	menuButtonIcon       float32 = 16  // Button.tsx:49；sprite 默认 size=16
+	menuShadowOffsetY    float32 = 3   // gradient-shadow-text.css:36-37
+	menuShadowBlur       float32 = 8   // :36-37
+	menuShadowAlpha      float32 = 0.04
+	menuGlowBlur         float32 = 20 // :36-37
+	menuGlowAlpha        float32 = 0.05
+	menuStroke           float32 = 0.5 // :33,36-37
+)
+
+type popupState struct {
+	open       bool
+	point      ui.Rect
+	fromAnchor bool
+	focused    bool
+}
 
 // Plugin 是 context menu 服务插件。它没有自己的常驻可见面：菜单由消费方
 // 在目标元素上声明（Attach/Button），这正是官方「纯 UI 基础设施」的形状。
@@ -43,7 +66,8 @@ type Plugin struct {
 
 	mu       sync.RWMutex
 	byKind   map[string][]pluginapi.ContextMenuContribution
-	buttons  map[string]*bool
+	buttons  map[string]*popupState
+	contexts map[gfx.ID]*popupState
 	disposed bool
 }
 
@@ -62,7 +86,8 @@ func (*Plugin) Requires() []string {
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.byKind = map[string][]pluginapi.ContextMenuContribution{}
-	p.buttons = map[string]*bool{}
+	p.buttons = map[string]*popupState{}
+	p.contexts = map[gfx.ID]*popupState{}
 	if err := RegisterOfficialSlots(); err != nil {
 		return err
 	}
@@ -125,75 +150,285 @@ func (p *Plugin) HasTarget(kind string) bool {
 }
 
 // Attach 实现 pluginapi.ContextMenus：给一个已有身份的元素挂右键菜单。
-func (p *Plugin) Attach(c ui.C, target ui.Box, obj pluginapi.ContextMenuTarget) {
-	if c == nil || obj.Kind == "" || !p.HasTarget(obj.Kind) {
+func (p *Plugin) Attach(c ui.C, id gfx.ID, target ui.Box, obj pluginapi.ContextMenuTarget) {
+	if c == nil || id.IsZero() || obj.Kind == "" || !p.HasTarget(obj.Kind) {
 		return
 	}
-	ui.ContextMenu(c, target, func(items *ui.MenuItems) {
-		p.declare(items, obj)
-	})
+	state := p.contextState(id)
+	if canvas := c.Canvas(); canvas != nil {
+		if event, ok := canvas.PointerOn(id); ok && event.Kind == gfx.PointerDown && event.Button == gfx.PointerButtonSecondary {
+			p.closeMenus()
+			state.open, state.point, state.fromAnchor, state.focused = true, ui.Rect{X: event.X, Y: event.Y}, false, false
+			canvas.Consume()
+		}
+	}
+	if target.Shortcut(gfx.ModifierShift, "f10") {
+		p.closeMenus()
+		state.open, state.fromAnchor, state.focused = true, true, false
+	}
+	p.drawMenu(c, id, target, obj, state)
 }
 
 // Button 实现 pluginapi.ContextMenus：官方 `contextMenu.button` 的等价物。
-//
-// 官方语义（index.ts:37-40）：**只有目标 kind 有已注册贡献者时才渲染**。
-// 这里通过 HasTarget 保证；没有贡献者时连命中区都不创建（空槽不占位）。
+// 只有目标 kind 有已注册贡献者时才渲染（index.ts:37-40）。
 func (p *Plugin) Button(c ui.C, id gfx.ID, obj pluginapi.ContextMenuTarget, label string) bool {
 	if c == nil || p.theme == nil || obj.Kind == "" || !p.HasTarget(obj.Kind) {
 		return false
 	}
-	key := buttonKey(obj)
-	p.mu.Lock()
-	open := p.buttons[key]
-	if open == nil {
-		open = new(bool)
-		p.buttons[key] = open
-	}
-	p.mu.Unlock()
-
+	state := p.buttonState(buttonKey(obj))
 	box := ui.Row(c).Width(20).Height(20).Radius(p.theme.Radii.SM).
 		Items(ui.Center).Justify(ui.Center).
 		Hover(ui.Look{}.Background(p.theme.Hover)).
-		HitWith(id, label, gfx.HitOptions{Role: gfx.RoleButton})
+		HitWith(id, label, gfx.HitOptions{Role: gfx.RoleButton, Expandable: true, Expanded: state.open})
 	box.Children(func() {
-		ui.Text(c, "⋯").FontSize(14).Color(p.theme.LabelSecondary)
+		if icon, ok := dsassets.ContextMenuButtonIcon(p.theme.LabelSecondary); ok {
+			ui.Icon(c, icon).Size(menuButtonIcon, menuButtonIcon).Color(p.theme.LabelSecondary)
+		}
 	})
 	if box.Clicked() {
-		*open = !*open
+		opening := !state.open
+		if opening {
+			p.closeMenus()
+		}
+		state.open = opening
+		state.fromAnchor = true
+		state.focused = false
 	}
-	ui.Menu(c, box, open, func(items *ui.MenuItems) {
-		p.declare(items, obj)
-	})
+	p.drawMenu(c, id, box, obj, state)
 	return true
 }
 
-// declare 把当前 target 的所有贡献摊成 viva 菜单行。
-func (p *Plugin) declare(items *ui.MenuItems, obj pluginapi.ContextMenuTarget) {
-	if items == nil {
+func (p *Plugin) contextState(id gfx.ID) *popupState {
+	if p.contexts == nil {
+		p.contexts = map[gfx.ID]*popupState{}
+	}
+	state := p.contexts[id]
+	if state == nil {
+		state = &popupState{}
+		p.contexts[id] = state
+	}
+	return state
+}
+
+func (p *Plugin) buttonState(key string) *popupState {
+	if p.buttons == nil {
+		p.buttons = map[string]*popupState{}
+	}
+	state := p.buttons[key]
+	if state == nil {
+		state = &popupState{}
+		p.buttons[key] = state
+	}
+	return state
+}
+
+func (p *Plugin) closeMenus() {
+	for _, state := range p.buttons {
+		state.open = false
+	}
+	for _, state := range p.contexts {
+		state.open = false
+	}
+}
+
+// drawMenu 画官方共享 MenuOverlay 的一个实例。
+func (p *Plugin) drawMenu(c ui.C, id gfx.ID, anchor ui.Box, obj pluginapi.ContextMenuTarget, state *popupState) {
+	if !state.open || p.theme == nil {
 		return
 	}
-	for i, action := range p.resolve(obj) {
-		if action.SeparatorBefore && i > 0 {
-			items.Separator()
+	actions := p.resolve(obj)
+	if len(actions) == 0 {
+		state.open = false
+		return
+	}
+	width, height := p.menuSize(c, actions)
+	bounds := c.Bounds()
+	if width <= 0 || height <= 0 {
+		state.open = false
+		return
+	}
+	rowIDs := make([]gfx.ID, len(actions))
+	layer := ui.Overlay(c, ui.OverlaySpec{Band: ui.LayerDrag, Bounds: bounds})
+	layer.Children(func() {
+		dismissID := ui.ID(c.Key("context-menu-dismiss"))
+		scrim := ui.Row(c).FillWidth().FillHeight().HitWith(dismissID, "关闭菜单", gfx.HitOptions{
+			Role: gfx.RoleButton, SkipFocus: true, Backdrop: true, PassSecondary: true,
+		})
+		if scrim.Clicked() {
+			state.open = false
 		}
-		// viva 的菜单行由 Scope 身份驱动（MenuItems.Item 内部分配），不是 Box.Hit；
-		// 写成链式调用，静态守卫才不会把菜单项误判成"没有命中区的 Box"。
-		if p.menuItem(items, action).Clicked() && action.Run != nil {
+	})
+	// Overlay 本身就是 Viva Popup：BelowBox 在布局后读取锚点矩形，不能在声明
+	// 阶段读 anchor.Rect()（那时仍是零值）。右键档则直接落在指针点。
+	menu := ui.Overlay(c, ui.OverlaySpec{Band: ui.LayerDrag, Bounds: bounds}).
+		Width(width).Height(height).Radius(menuRadius).Background(p.theme.Menu).
+		Draw(func(d *ui.DrawContext) {
+			d.Canvas.PushFocusScope(id)
+			d.Canvas.TrapFocus(id)
+			d.Canvas.ReturnFocus(id)
+			drawProminentElevation(d, menuRadius, p.theme.BorderL1)
+		}).
+		DrawOver(func(d *ui.DrawContext) { d.Canvas.PopFocusScope() })
+	if state.fromAnchor {
+		menu = menu.BelowBox(anchor, menuAnchorGap, ui.Start)
+	} else {
+		menu = menu.At(state.point.X, state.point.Y)
+	}
+	menu = menu.Within(bounds.Inset(gfx.All(menuViewportMargin)))
+	menu.Children(func() {
+		ui.Scroll(c).FillWidth().FillHeight().Children(func() {
+			ui.Column(c).FillWidth().Pad(menuPadding).Gap(0).Children(func() {
+				for i, action := range actions {
+					if action.SeparatorBefore && i > 0 {
+						drawSeparator(c, p.theme)
+					}
+					rowID := ui.ID(c.Key("context-menu-row-" + action.ID))
+					rowIDs[i] = rowID
+					p.drawItem(c, rowID, action, state)
+				}
+			})
+		})
+	})
+	if menu.Shortcut(0, "escape") {
+		state.open = false
+	}
+	for _, key := range []string{"up", "down", "home", "end"} {
+		if menu.Shortcut(0, key) {
+			p.moveFocus(c, key, actions, rowIDs)
+		}
+	}
+	if !state.focused {
+		if first := nextEnabled(actions, -1, 1); first >= 0 && c.Canvas() != nil {
+			c.Canvas().RequestFocus(rowIDs[first])
+		}
+		state.focused = true
+	}
+}
+
+func (p *Plugin) drawItem(c ui.C, id gfx.ID, action pluginapi.ContextMenuAction, state *popupState) {
+	t := p.theme
+	foreground, hover := t.LabelPrimary, t.Hover
+	if action.Danger {
+		foreground, hover = t.Error, t.HoverDanger
+	}
+	row := ui.Row(c).FillWidth().Height(menuItemHeight).
+		PadSides(menuItemPadY, menuItemPadX, menuItemPadY, menuItemPadX).
+		Gap(menuItemGap).Radius(menuItemRadius).Items(ui.Center).
+		HitWith(id, action.Label, gfx.HitOptions{Role: gfx.RoleMenuItem, Disabled: action.Disabled})
+	if action.Disabled {
+		row = row.Opacity(menuDisabledOpacity)
+	} else {
+		row = row.Hover(ui.Look{}.Background(hover))
+	}
+	row.Children(func() {
+		if action.Icon != "" {
+			ui.Row(c).Size(menuItemIcon, menuItemIcon).Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
+				iconColor := t.MenuIcon
+				if action.Danger {
+					iconColor = t.Error
+				}
+				if icon, ok := dsassets.ContextMenuIcon(action.Icon, iconColor); ok {
+					ui.Icon(c, icon).Size(menuItemIcon, menuItemIcon).Color(iconColor)
+				}
+			})
+		}
+		ui.Text(c, action.Label).FontSize(menuItemFont).LineHeight(menuItemLine).
+			Color(foreground).Grow(1).Ellipsis()
+	})
+	if row.Clicked() && !action.Disabled {
+		state.open = false
+		if action.Run != nil {
 			action.Run()
 		}
 	}
 }
 
-// menuItem 声明一条菜单行并套上官方视觉状态（destructive / disabled）。
-func (p *Plugin) menuItem(items *ui.MenuItems, action pluginapi.ContextMenuAction) ui.MenuItem {
-	item := items.Item(action.Label)
-	if action.Danger {
-		item = item.Destructive()
+func drawSeparator(c ui.C, t *pluginapi.Theme) {
+	ui.Row(c).FillWidth().PadSides(menuSeparatorMarginY, menuSeparatorMarginX,
+		menuSeparatorMarginY, menuSeparatorMarginX).Children(func() {
+		ui.Row(c).FillWidth().Height(menuSeparatorHeight).Background(t.BorderL2)
+	})
+}
+
+func drawProminentElevation(d *ui.DrawContext, radius float32, stroke gfx.Color) {
+	outer := d.Rect
+	outer.X -= menuStroke
+	outer.Y -= menuStroke
+	outer.Width += 2 * menuStroke
+	outer.Height += 2 * menuStroke
+	d.Canvas.RoundedOutline(outer, radius+menuStroke, menuStroke, d.Fade(stroke))
+	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{OffsetY: menuShadowOffsetY, Blur: menuShadowBlur},
+		d.Fade(gfx.Color{Alpha: menuShadowAlpha}))
+	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{Blur: menuGlowBlur}, d.Fade(gfx.Color{Alpha: menuGlowAlpha}))
+}
+
+func (p *Plugin) menuSize(c ui.C, actions []pluginapi.ContextMenuAction) (width, height float32) {
+	availableW := c.Bounds().Width - 2*menuViewportMargin
+	availableH := c.Bounds().Height - 2*menuViewportMargin
+	width, height = menuMinWidth, 2*menuPadding
+	for i, action := range actions {
+		if action.SeparatorBefore && i > 0 {
+			height += menuSeparatorHeight + 2*menuSeparatorMarginY
+		}
+		height += menuItemHeight
+		rowWidth := 2 * menuItemPadX
+		if action.Icon != "" {
+			rowWidth += menuItemIcon + menuItemGap
+		}
+		if c.Canvas() != nil {
+			rowWidth += c.Canvas().TextWidth(action.Label, menuItemFont)
+		}
+		width = max(width, rowWidth)
 	}
-	if action.Disabled {
-		item = item.Disabled(true)
+	if availableW < menuMinWidth {
+		width = availableW
 	}
-	return item
+	width = min(max(width, min(menuMinWidth, availableW)), min(menuMaxWidth, availableW))
+	height = min(height, availableH)
+	return width, height
+}
+
+func (p *Plugin) moveFocus(c ui.C, key string, actions []pluginapi.ContextMenuAction, ids []gfx.ID) {
+	if c.Canvas() == nil || len(actions) == 0 {
+		return
+	}
+	current := -1
+	focused := c.Canvas().Focused()
+	for i, id := range ids {
+		if id == focused {
+			current = i
+			break
+		}
+	}
+	next := current
+	switch key {
+	case "home":
+		next = nextEnabled(actions, -1, 1)
+	case "end":
+		next = nextEnabled(actions, len(actions), -1)
+	case "down":
+		next = nextEnabled(actions, current, 1)
+		if next < 0 {
+			next = nextEnabled(actions, -1, 1)
+		}
+	case "up":
+		next = nextEnabled(actions, current, -1)
+		if next < 0 {
+			next = nextEnabled(actions, len(actions), -1)
+		}
+	}
+	if next >= 0 {
+		c.Canvas().RequestFocus(ids[next])
+	}
+}
+
+func nextEnabled(actions []pluginapi.ContextMenuAction, from, step int) int {
+	for i := from + step; i >= 0 && i < len(actions); i += step {
+		if !actions[i].Disabled {
+			return i
+		}
+	}
+	return -1
 }
 
 // resolve 按 order 收集某 target 的全部动作。

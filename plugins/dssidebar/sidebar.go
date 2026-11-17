@@ -417,7 +417,7 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 							}
 							// 官方 Rows.tsx:325 的 getTriggerProps：整行右键；
 							// Rows.tsx:330 的 contextMenu.button：行尾省略号。
-							p.menus.Attach(f, header, target)
+							p.menus.Attach(f, gid, header, target)
 							ui.Row(f).Absolute().Top(7).Right(8).Children(func() {
 								p.menus.Button(f, env.Tree.ID(env.Feat, "ws-menu-"+target.ID), target,
 									"工作区“"+label+"”的操作")

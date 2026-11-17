@@ -13,8 +13,8 @@ package pluginapi
 //   - `contextMenu.button` 工厂：在行尾画省略号按钮，**只有该 target kind 有
 //     已注册贡献者时才出现**（index.ts:37-40 的注释原文）。
 //
-// 本仓是 Go+Viva：右键/锚点菜单由 viva 的 `ui.ContextMenu` / `ui.Menu` 渲染，
-// 贡献仍走同一套「按 target kind 注册、按 order 排序、按 id 去重」的注册表。
+// 本仓是 Go+Viva：右键/锚点菜单由 dscontextmenu 按官方 primitives CSS 用 Overlay
+// 渲染；贡献仍走同一套「按 target kind 注册、按 order 排序、按 id 去重」的注册表。
 // 这样 `contextMenu.button` 的语义（空 kind 不画按钮）由服务本身保证，而不是
 // 每个消费方各自猜一遍。
 
@@ -104,6 +104,9 @@ type ContextMenuAction struct {
 	Danger bool
 	// Disabled 置灰且不可选择（官方 `disabled`）。
 	Disabled bool
+	// Icon 是官方 `contextMenu.icon` 的 key（如 workspace.rename）。
+	// 空 = 官方这一条本来没有图标，不用自造图形补位。
+	Icon string
 	// SeparatorBefore 在本条前插一条分隔线（官方 `separatorBefore`）。
 	SeparatorBefore bool
 	// Run 执行动作。返回后菜单关闭。nil = 只读展示项。
@@ -130,9 +133,9 @@ type ContextMenus interface {
 	// HasTarget 报告某 target kind 是否有贡献者。`contextMenu.button` 用它决定
 	// 画不画（官方「没有贡献者就没有按钮」）。
 	HasTarget(kind string) bool
-	// Attach 把右键菜单绑到一个已有身份的元素上。target 必须是本帧画出来的、
-	// 带 Hit 身份的盒子（官方 getTriggerProps 的等价物）。
-	Attach(c ui.C, target ui.Box, obj ContextMenuTarget)
+	// Attach 把右键菜单绑到一个已有身份的元素上。id 必须与 target 的 Hit 身份
+	// 一致（Viva 的 Box 不导出该身份）；target 必须是本帧画出来的盒子。
+	Attach(c ui.C, id gfx.ID, target ui.Box, obj ContextMenuTarget)
 	// Button 画官方 `contextMenu.button` 的等价物：20×20 省略号按钮，
 	// 只有 HasTarget(obj.Kind) 才画。id 是调用方用 env.Tree.ID 造的身份。
 	// 返回 true = 本帧画了按钮。

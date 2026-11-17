@@ -217,9 +217,14 @@ func (p *Plugin) resolveImage(target pluginapi.ContextMenuTarget) []pluginapi.Co
 // 所以这里用的是**捕获的 target**，不读"当前会话"。
 func (p *Plugin) saveAction(target pluginapi.ContextMenuTarget, id, label, mode, name string) pluginapi.ContextMenuAction {
 	sessionID, relativePath := target.SessionID, target.Path
+	icon := "file-actions.save"
+	if id == actionDownload {
+		icon = "file-actions.download"
+	}
 	return pluginapi.ContextMenuAction{
 		ID:    id,
 		Label: label,
+		Icon:  icon,
 		Run: func() {
 			if p.act.SaveWorkspaceFile == nil {
 				return

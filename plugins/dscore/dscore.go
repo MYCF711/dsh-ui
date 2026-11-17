@@ -160,6 +160,7 @@ func Dark() *pluginapi.Theme {
 		NavActive:               gfx.RGB24(staticNeutralBluish750),
 		NavHover:                gfx.RGB24(staticNeutralBluish850),
 		Hover:                   ui.RGBA(255, 255, 255, 0.08), // --dsw-alias-interactive-bg-hover = #ffffff14
+		HoverDanger:             ui.RGBA(242, 90, 90, 0.15),   // design-platform.css:392
 		InteractiveActive:       ui.RGBA(255, 255, 255, 0.14), // design-platform.css:390
 		ButtonGhostActiveBorder: gfx.RGB24(staticNeutralBluish600),
 		ButtonContrastFill:      gfx.RGB24(staticNeutralBluish50), // design-platform.css:357
@@ -180,6 +181,7 @@ func Dark() *pluginapi.Theme {
 		LabelDimmed:          gfx.RGB24(staticNeutralBluish750),
 		LabelPrimaryInverted: gfx.RGB24(staticNeutralBluish800), // design-platform.css:410
 		LabelOnColor:         gfx.RGB24(staticNeutralBluish00),  // design-platform.css:406
+		MenuIcon:             gfx.RGB24(staticNeutralBluish100), // design-platform.css:415 → label-primary-dimmed
 
 		Link:               gfx.RGB24(staticDeepseek400),
 		BrandPrimary:       gfx.RGB24(staticNeutralBluish50),
@@ -247,8 +249,9 @@ func Light() *pluginapi.Theme {
 
 		NavActive:               gfx.RGB24(staticNeutralBluish100),
 		NavHover:                gfx.RGB24(staticNeutralBluish75),
-		Hover:                   ui.RGBA(38, 49, 72, 0.06), // #2631480f
-		InteractiveActive:       ui.RGBA(38, 49, 72, 0.10), // design-platform.css:238
+		Hover:                   ui.RGBA(38, 49, 72, 0.06),  // #2631480f
+		HoverDanger:             ui.RGBA(236, 19, 19, 0.05), // design-platform.css:240
+		InteractiveActive:       ui.RGBA(38, 49, 72, 0.10),  // design-platform.css:238
 		ButtonGhostActiveBorder: gfx.RGB24(staticNeutralBluish500),
 		ButtonContrastFill:      gfx.RGB24(staticNeutralBluish700), // design-platform.css:205
 		// --dsw-alias-markdown-tag（design-platform.css:272）= neutral-bluish-75。
@@ -265,8 +268,9 @@ func Light() *pluginapi.Theme {
 		LabelTertiary:        gfx.RGB24(staticNeutralBluish600),
 		LabelCaption:         gfx.RGB24(staticNeutralBluish400),
 		LabelDimmed:          gfx.RGB24(staticNeutralBluish200),
-		LabelPrimaryInverted: gfx.RGB24(staticNeutralBluish00), // design-platform.css:258
-		LabelOnColor:         gfx.RGB24(staticNeutralBluish00), // design-platform.css:254
+		LabelPrimaryInverted: gfx.RGB24(staticNeutralBluish00),  // design-platform.css:258
+		LabelOnColor:         gfx.RGB24(staticNeutralBluish00),  // design-platform.css:254
+		MenuIcon:             gfx.RGB24(staticNeutralBluish800), // design-platform.css:263
 
 		Link:               gfx.RGB24(staticDeepseek500),
 		BrandPrimary:       gfx.RGB24(staticNeutralBluish1000),

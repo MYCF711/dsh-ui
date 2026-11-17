@@ -5,14 +5,19 @@
 //
 //	OFF = DSH-GO/tmp/GO8-RC2/official-rc2/dsh/node_modules/@deepseek-ai/dsh-client-ui-plugin-recommendations
 //	OFF:src/client/Card.tsx        159 行：正文（header / 标题+描述 / 状态 / footer 两个按钮）
-//	OFF:src/client/Card.module.css  12 行：全部几何值
-//	OFF:src/client/locales.ts:2-28  zh 字典 27 条（本包**只许**用这 27 条原文）
-//	OFF:src/client/mount.ts:40-44   describe = `remote.pluginRecommendations.describe`
-//	OFF:src/client/mount.ts:53-58   openDetails = `pluginNavigation.openBundle(packageName)`
+//	OFF:src/client/Card.module.css  13 行：全部几何值
+//	                                （1 header / 2 badge / 3 body / 4 details / 5-6 details 的
+//	                                 hover 与 focus-visible / 7 title / 8 description /
+//	                                 9 placeholder / 10 footer / 11 scope / 12 actions / 13 status）
+//	OFF:src/client/locales.ts:2-28  zh 字典 25 条（25 个键在 :3-27；本包**只许**用这 25 条原文）
+//	OFF:src/client/mount.ts:37-40   describe = `remote.pluginRecommendations.describe`
+//	OFF:src/client/mount.ts:41      openDetails = `pluginNavigation.openBundle(packageName)`
+//	OFF:src/client/mount.ts:19      inject: ['locale', 'remote', 'actionCards', 'pluginNavigation']
 //
 // 座位由**动作卡框架**提供（`dsh-client-ui-action-cards` 的 turnTail 槽）；本包不占槽，
 // 只通过 `pluginapi.KeyActionCardBodies` 把正文登记进框架的注册表
-// （官方 `ctx.actionCards.register({action:'enable_official_plugin', …})`，OFF:mount.ts:60-63）。
+// （官方 `ctx.actionCards.register({action:'enable_official_plugin', …})`，
+// OFF:src/client/mount.ts:45-48）。
 //
 // # 数据面证据（宿主是真的，不是注释）
 //
@@ -34,18 +39,21 @@
 //
 // # 没搬 / 对不上的地方（照实登记，不假装搬了）
 //
-//  1. **骨架条（`.placeholder`）不画**：官方在描述到达前画一条 `--dsw-alias-bg-skeleton`
-//     的灰条占位。本仓主题没有这个令牌的对等物，画一条自选灰条就是**自造颜色**，
-//     所以加载态只是"描述还没有"，标题仍然在（官方在描述到达前也不显示文字内容）。
-//     代价：描述到达时卡片会长高一行，官方靠骨架条避免这个跳动。
-//  2. **整块点击区 vs 标题点击**：官方 `.details` 是 `width:calc(100% + 16px)` 的整块
-//     按钮（含标题+描述）。本仓把**标题那一行**做成可点（Hit id `details`），描述
-//     不可点：viva 的 Box 没有"块级按钮 + hover 背景"的等价物，硬画一块可点区域
-//     会让 hover 态无从验证。可点面积是官方的子集，没有多出官方没有的动作。
+//  1. **focus-visible 的 2px 内描边不画**：官方 `.details:focus-visible` 是
+//     `box-shadow: inset 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))`
+//     （Card.module.css:6，宽度出处 focus.css:16 的 `--dsw-focus-ring-width:2px`）。
+//     viva 的 `ui.Look.Ring` 画在元素**外侧**（ui/style.go:92-96「around the outside」），
+//     画出来会溢出 `.details` 的 -8px 外扩，形状和官方的 inset 描边不是一回事，所以不画；
+//     focus-visible 的**底色**（与 hover 同一条 `--dsw-alias-interactive-bg-hover`，:5-6）
+//     已经照官方画了，见 `Focus(...)`。
+//  2. **`.header` / `.footer` 的 `flex-wrap: wrap` 没有对等物**（Card.module.css:1/10）：
+//     viva 的 `ui.Row` 不换行。两侧文案与按钮按官方的**同一行**摆；窗口极窄时官方会折行，
+//     本仓不会（与 dscreationreco 登记的同一条限制，见 plugins/dscreationreco/plugin.go）。
 //  3. **`useId` 的 aria-describedby 关联**：viva 没有 ARIA 关系表，标题上的
 //     `aria-label` 语义由 Hit 的 label 承担（读屏念出「查看详情：<标题>」）。
-//  4. **hover 背景 / focus ring**：官方 `.details:hover` 与 `:focus-visible` 是 CSS 态；
-//     本仓按钮态由 viva 的 Box 默认行为给，不另编颜色（与 dsactioncards 同一先例）。
+//  4. **`transition: background-color 120ms ease`**（:4）不画：viva 的
+//     `Hover`/`Focus` 状态切换本身有一帧插值，官方写的时长没有对等开关，不另编。
+
 package dspluginreco
 
 import (
@@ -62,16 +70,16 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
-// Action 是官方推荐卡的 kind 名（OFF:mount.ts:60 的 `action:`；
+// Action 是官方推荐卡的 kind 名（OFF:src/client/mount.ts:46 的 `action:`；
 // 宿主侧同一常量 HOST:internal/recommendations/service.go:34）。
 const Action = "enable_official_plugin"
 
 // ServiceID 是本插件的装配 id（壳与测试按它查表）。
 const ServiceID = "ds-pluginreco"
 
-// ── 文案：只有这 27 条，逐字来自 OFF:locales.ts:2-28 的 zh 字典 ──────────────
+// ── 文案：只有这 25 条，逐字来自 OFF:src/client/locales.ts:2-28 的 zh 字典 ─────
 //
-// **不许新写中文**：界面上一旦出现这 27 条以外的字样，就不是官方那张卡了。
+// **不许新写中文**：界面上一旦出现这 25 条以外的字样，就不是官方那张卡了。
 const (
 	zhHeading       = "推荐插件"                         // heading
 	zhOfficialBadge = "官方"                           // official
@@ -100,42 +108,66 @@ const (
 	zhTransport     = "无法确认操作结果，请刷新后重试。"             // transport
 )
 
-// ── 几何：全部来自 OFF:Card.module.css ──────────────────────────────────────
+// ── 几何：全部来自 OFF:Card.module.css（13 行，逐行对着写）─────────────────
 const (
-	// `.header{ padding:10px 20px; font-size:12px; line-height:1.5 }`（Card.module.css:1）。
+	// `.header{ display:flex; align-items:center; justify-content:space-between; gap:12px;
+	// padding:10px 20px; background:var(--dsw-alias-bg-module-platform); font-size:12px;
+	// line-height:1.5; color:var(--dsw-alias-label-secondary) }`（Card.module.css:1）。
 	recoHeaderPadY  float32 = 10
 	recoHeaderPadX  float32 = 20
+	recoHeaderGap   float32 = 12
 	recoHeaderFont  float32 = 12
 	recoHeaderLineH float32 = 18 // 12 × 1.5
+	// `.badge{ font-size:12px }`（:2）——与 header 同字号，无底色、无边框，只是同行右侧一格字。
 	// `.body{ padding:20px }`（:3）。
 	recoBodyPad float32 = 20
-	// `.title{ font-size:16px; font-weight:500; line-height:1.5 }`（:5）。
+	// `.details{ display:block; box-sizing:border-box; width:calc(100% + 16px); margin:-8px;
+	// padding:8px; border:0; border-radius:var(--dsw-radius-sm); background:transparent; … }`（:4）。
+	//
+	// 三个值怎么落到 viva 上：`FillWidth()` 在交叉轴上取的是"父内容宽 − 左右外边距"，
+	// 因此 `FillWidth + MarginSides(-8,…,-8)` 得到的正是 `calc(100% + 16px)`，
+	// 左边距 -8 让它左缘落在 body 内容框外 8px（同 dsagentteam 的 `.taskRow` 先例，
+	// plugins/dsagentteam/board.go:44/143）。圆角 `--dsw-radius-sm` = 8px（base.css:19）。
+	recoDetailsBleed float32 = 8
+	recoDetailsPad   float32 = 8
+	// `.title{ display:block; font-size:16px; font-weight:500; line-height:1.5 }`（:7）。
 	recoTitleFont   float32 = 16
 	recoTitleLineH  float32 = 24
 	recoTitleWeight float32 = 500
-	// `.description{ margin:8px 0 0; font-size:13px; line-height:1.7 }`（:6）。
+	// `.description{ display:block; margin:8px 0 0; font-size:13px; line-height:1.7 }`（:8）。
 	recoDescMarginTop float32 = 8
 	recoDescFont      float32 = 13
 	recoDescLineH     float32 = 22.1 // 13 × 1.7
-	// `.status{ margin:16px 0 0; padding-top:12px; border-top:0.5px solid …; font-size:12px;
-	// line-height:1.6 }`（:10）。
+	// `.placeholder{ display:inline-block; width:50%; height:0.8em; vertical-align:middle;
+	// border-radius:var(--dsw-radius-xs); background:var(--dsw-alias-bg-skeleton) }`（:9）。
+	//
+	// `height:0.8em` 的 em 取 `.description` 的字号 13px → 10.4px；
+	// `--dsw-radius-xs` = 4px（base.css:18）；`--dsw-alias-bg-skeleton` 在
+	// design-platform.css:192（浅 rgba(0,0,0,.04)）/ :344（深 rgba(255,255,255,.08)），
+	// 本仓对等令牌是 `Theme.BgSkeleton`（plugins/dscore/dscore.go:153/243）。
+	// `vertical-align:middle` 落成"在 22.1px 的行盒里居中"。
+	recoPlaceholderPercent float32 = 50
+	recoPlaceholderHeight  float32 = 10.4
+	// `.status{ margin:16px 0 0; padding-top:12px; border-top:0.5px solid var(--dsw-alias-border-l1);
+	// font-size:12px; line-height:1.6 }`（:13）。
 	recoStatusMarginTop float32 = 16
 	recoStatusPadTop    float32 = 12
 	recoStatusBorder    float32 = 0.5
 	recoStatusFont      float32 = 12
 	recoStatusLineH     float32 = 19.2 // 12 × 1.6
-	// `.footer{ gap:12px; margin-top:16px; padding-top:16px; border-top:0.5px solid … }`（:8）。
+	// `.footer{ display:flex; align-items:center; justify-content:space-between; gap:12px;
+	// margin-top:16px; padding-top:16px; border-top:0.5px solid var(--dsw-alias-border-l1);
+	// flex-wrap:wrap }`（:10）。
 	recoFooterMarginTop float32 = 16
 	recoFooterPadTop    float32 = 16
 	recoFooterBorder    float32 = 0.5
 	recoFooterGap       float32 = 12
-	// `.actions{ gap:8px }`（:9）。
-	recoActionGap float32 = 8
-	// `.scope{ font-size:12px; line-height:1.5 }`（:9）。
+	// `.scope{ font-size:12px; line-height:1.5 }`（:11）。
 	recoScopeFont  float32 = 12
 	recoScopeLineH float32 = 18 // 12 × 1.5
-	// `.details{ margin:-8px; padding:8px }`（:4）——标题块的外扩量，决定它和内边距的关系。
-	recoDetailsPad float32 = 8
+	// `.actions{ display:flex; align-items:center; gap:8px; margin-left:auto }`（:12）。
+	// `margin-left:auto` 就是 footer 的 `justify-content:space-between` 把 actions 推到右端。
+	recoActionGap float32 = 8
 )
 
 // recoLookupTimeout 是一次 describe 的上限。
@@ -144,10 +176,10 @@ const (
 // "加载中"（按钮全 disabled）——那比显示"无法读取插件信息"更糟。
 const recoLookupTimeout = 15 * time.Second
 
-// 官方 OPEN_PHASES（OFF:Card.tsx:57）：这两个 phase 仍然给「启用 / 暂不需要」。
+// 官方 OPEN_PHASES（OFF:src/client/Card.tsx:45）：这两个 phase 仍然给「启用 / 暂不需要」。
 var openPhases = map[string]bool{"failed": true, "unconfirmed": true}
 
-// 官方 REASON_KEYS（OFF:Card.tsx:59-62）：有专属文案的拒绝理由。
+// 官方 REASON_KEYS（OFF:src/client/Card.tsx:47）：有专属文案的拒绝理由。
 var reasonText = map[string]string{
 	apiclient.PluginRecommendationReasonUnknown:      zhUnknown,
 	apiclient.PluginRecommendationReasonUnavailable:  zhUnavailable,
@@ -198,7 +230,7 @@ func currentOpenDetails() func(string) {
 // lookup 是一张卡的目录查询状态（键是 sessionId + callId）。
 type lookup struct {
 	// phase 是**发起这次查询时的决定 phase**：phase 变了要重查（官方 useEffect 的依赖里
-	// 就有 `phase`，OFF:Card.tsx:92-95）——启用之后 `enabled` 必须是宿主的新真值。
+	// 就有 `phase`，OFF:src/client/Card.tsx:98）——启用之后 `enabled` 必须是宿主的新真值。
 	phase string
 	done  bool
 	// inFlight 只用于"这一帧别重复发"；done 之后由 phase 判重。
@@ -216,7 +248,7 @@ type Plugin struct {
 
 	mu sync.Mutex
 	// catalog 是"这个插件名 → 目录文案"的插件生命周期缓存（官方 `catalog` store，
-	// OFF:mount.ts:47-50）：同一插件的后一张卡立刻有文案，不用等自己的查询回来。
+	// OFF:src/client/mount.ts:36）：同一插件的后一张卡立刻有文案，不用等自己的查询回来。
 	catalog map[string]apiclient.PluginRecommendationDetails
 	// lookups 是每张卡的查询状态。
 	lookups map[string]*lookup
@@ -249,7 +281,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 // Action 实现 pluginapi.ActionCardBody：这个正文画哪一种卡。
 func (*Plugin) Action() string { return Action }
 
-// Draw 实现 pluginapi.ActionCardBody：画官方 PluginCardBody（OFF:Card.tsx:96-159）。
+// Draw 实现 pluginapi.ActionCardBody：画官方 PluginCardBody（OFF:src/client/Card.tsx:99-159）。
 func (p *Plugin) Draw(f ui.C, env *pluginapi.Env, props pluginapi.ActionCardBodyProps) {
 	// 主题在 Register 里注入；env.Theme 是同一份（无头测试直接构造 Plugin 时用它兜底）。
 	if p.theme == nil && env != nil {
@@ -263,7 +295,7 @@ func (p *Plugin) Draw(f ui.C, env *pluginapi.Env, props pluginapi.ActionCardBody
 	name, hasName := detailsName(props.Details)
 
 	// 官方：details 里没有 name → 只画 summary（标题 + brief），不给任何动作
-	// （OFF:Card.tsx:118-120 `if (name === undefined) return <div …>{summary}</div>`）。
+	// （OFF:src/client/Card.tsx:99 `if (name === undefined) return <div …>{summary}</div>`）。
 	if !hasName {
 		body := ui.Column(f).FillWidth().PadSides(recoBodyPad, recoBodyPad, recoBodyPad, recoBodyPad)
 		body.Children(func() {
@@ -296,7 +328,7 @@ func (p *Plugin) Draw(f ui.C, env *pluginapi.Env, props pluginapi.ActionCardBody
 	p.ensureLookup(env, props, name)
 	state := p.stateOf(props)
 
-	// ── 计算这一帧要画什么（逐条对齐 OFF:Card.tsx:104-130）──────────────────
+	// ── 计算这一帧要画什么（逐条对齐 OFF:src/client/Card.tsx:104-113）────────
 	available := state.current != nil && state.current.Available()
 	var currentEnabled bool
 	if available {
@@ -316,7 +348,7 @@ func (p *Plugin) Draw(f ui.C, env *pluginapi.Env, props pluginapi.ActionCardBody
 			statusKey = zhAlreadyOn
 		}
 	case phase == "enabled":
-		// `restart-required` 细化「已启用」（`data.application`，OFF:Card.tsx:66-68）。
+		// `restart-required` 细化「已启用」（`data.application`，OFF:src/client/Card.tsx:57）。
 		if data.application == "restart-required" {
 			statusKey = zhRestartNeeded
 		} else {
@@ -376,37 +408,58 @@ func (p *Plugin) Draw(f ui.C, env *pluginapi.Env, props pluginapi.ActionCardBody
 		title = state.current.Title
 	}
 
-	// ── header：通栏（官方 `.header`）────────────────────────────────────────
-	header := ui.Row(f).FillWidth().Items(ui.Center).Justify(ui.Between).
+	// ── header：通栏（官方 `.header`，Card.module.css:1）─────────────────────
+	header := ui.Row(f).FillWidth().Items(ui.Center).Justify(ui.Between).Gap(recoHeaderGap).
 		PadSides(recoHeaderPadY, recoHeaderPadX, recoHeaderPadY, recoHeaderPadX).
-		Background(t.BgLayer3)
+		Background(t.BgModulePlatform)
 	header.Children(func() {
 		ui.Text(f, zhHeading).FontSize(recoHeaderFont).LineHeight(recoHeaderLineH).Color(t.LabelSecondary)
-		// 官方 `.badge` 没有额外底色/边框，只是同一行右侧的一格字。
+		// 官方 `.badge`（:2）没有额外底色/边框，只是同一行右侧的一格字。
 		ui.Text(f, zhOfficialBadge).FontSize(recoHeaderFont).LineHeight(recoHeaderLineH).Color(t.LabelSecondary)
 	})
 
 	body := ui.Column(f).FillWidth().PadSides(recoBodyPad, recoBodyPad, recoBodyPad, recoBodyPad)
 	body.Children(func() {
-		// ── 标题 + 描述（官方 `.details` 按钮的内容）────────────────────────
-		details := ui.Column(f).FillWidth().Pad(recoDetailsPad)
-		details.Children(func() {
-			hitID := gfx.ID{}
+		// ── 标题 + 描述（官方 `.details`，:4-8）：**整块**是一个按钮，含标题与描述 ──
+		//
+		// 几何：`width:calc(100% + 16px); margin:-8px; padding:8px` → 四边各外扩 8px，
+		// 于是标题文字的左缘落在 body 内容框左缘（而不是再内缩 8px），hover 面比内容宽 16px。
+		details := ui.Column(f).FillWidth().
+			MarginSides(-recoDetailsBleed, -recoDetailsBleed, -recoDetailsBleed, -recoDetailsBleed).
+			Pad(recoDetailsPad).Radius(t.Radii.SM).
+			Hover(ui.Look{}.Background(t.Hover)).
+			// `:focus-visible` 的底色与 hover 同一条令牌（:5-6）；2px 内描边见文件头「没搬」1。
+			Focus(ui.Look{}.Background(t.Hover))
+		// 没有插件页就没有可点入口（不画点了没反应的按钮）。
+		open := currentOpenDetails()
+		if open != nil {
+			var hitID gfx.ID
 			if env != nil && env.Tree != nil {
 				hitID = env.Tree.ID(env.Feat, "reco-details-"+props.CallID)
 			}
-			titleBox := ui.Text(f, title).FontSize(recoTitleFont).LineHeight(recoTitleLineH).
-				Weight(recoTitleWeight).Color(t.LabelPrimary)
-			if open := currentOpenDetails(); open != nil {
-				titleBox = titleBox.Hit(hitID, detailsLabel(title))
-				if titleBox.Clicked() {
-					open(name)
-				}
+			details = details.Hit(hitID, detailsLabel(title))
+			if details.Clicked() {
+				open(name)
 			}
-			// 描述：只有拿到 available 才画（官方在没有目录文案时也不画）。
-			if available {
+		}
+		details.Children(func() {
+			ui.Text(f, title).FontSize(recoTitleFont).LineHeight(recoTitleLineH).
+				Weight(recoTitleWeight).Color(t.LabelPrimary)
+			// 描述区：官方 `(loading || available !== undefined)` 才画这一块（Card.tsx:134）。
+			// 文案没到之前画 `.placeholder` 骨架条（:9），到货后换成正文——两者占同一块高度，
+			// 所以卡片不会因为描述到达而跳高。
+			switch {
+			case available:
 				ui.Text(f, state.current.Description).MarginTop(recoDescMarginTop).
 					FontSize(recoDescFont).LineHeight(recoDescLineH).Color(t.LabelSecondary)
+			case state.loading:
+				// 行盒高度 = `.description` 的 line-height（22.1），骨架条在其中垂直居中。
+				line := ui.Row(f).FillWidth().MarginTop(recoDescMarginTop).
+					Height(recoDescLineH).Items(ui.Center)
+				line.Children(func() {
+					ui.Row(f).WidthPercent(recoPlaceholderPercent).Height(recoPlaceholderHeight).
+						Radius(t.Radii.XS).Background(t.BgSkeleton)
+				})
 			}
 		})
 
@@ -423,21 +476,22 @@ func (p *Plugin) Draw(f ui.C, env *pluginapi.Env, props pluginapi.ActionCardBody
 				FontSize(recoStatusFont).LineHeight(recoStatusLineH).Color(t.LabelSecondary)
 		}
 
-		// ── footer：左侧 scope 文案，右侧三个按钮（官方 `.footer`）────────────
+		// ── footer：左侧 scope 文案，右侧三个按钮（官方 `.footer`，:10）────────
 		if !offered {
 			return
 		}
-		// 官方 `.footer` 也有 `border-top`：同样用分隔线盒。
+		// 官方 `.footer` 的 `border-top:0.5px`：同样用分隔线盒（`flex-wrap` 见文件头「没搬」2）。
 		ui.Divider(f).FillWidth().Height(recoFooterBorder).MarginTop(recoFooterMarginTop).
 			Background(t.BorderL1)
 		footer := ui.Row(f).FillWidth().Items(ui.Center).Justify(ui.Between).
 			Gap(recoFooterGap).PadTop(recoFooterPadTop)
 		footer.Children(func() {
 			ui.Text(f, zhScope).FontSize(recoScopeFont).LineHeight(recoScopeLineH).Color(t.LabelSecondary)
+			// `.actions{gap:8px; margin-left:auto}`（:12）：右对齐由 footer 的 space-between 给出。
 			actions := ui.Row(f).Items(ui.Center).Gap(recoActionGap)
 			actions.Children(func() {
 				busy := props.Acting || state.loading
-				// 1) 重试查询（官方只在 lookupProblem 时给，:145-149）。
+				// 1) 重试查询（官方只在 lookupProblem 时给，:145-148）。
 				if lookupProblem != "" {
 					btn := ui.Button(f, zhRetryLookup).
 						Hit(p.hitID(env, "reco-retry-lookup-"+props.CallID), zhRetryLookup).
@@ -447,13 +501,13 @@ func (p *Plugin) Draw(f ui.C, env *pluginapi.Env, props pluginapi.ActionCardBody
 						p.invalidate(env)
 					}
 				}
-				// 2) 暂不需要（官方 ghost，:150-152）。
+				// 2) 暂不需要（官方 ghost，:149-151）。
 				dismiss := ui.Button(f, zhDismiss).
 					Hit(p.hitID(env, "reco-dismiss-"+props.CallID), zhDismiss).Disabled(busy)
 				if dismiss.Clicked() {
 					props.Act("dismiss", nil)
 				}
-				// 3) 启用 / 重试启用（官方 primary；phase 已有值就是 `retry`，:153-155）。
+				// 3) 启用 / 重试启用（官方 primary；phase 已有值就是 `retry`，:152-154）。
 				if enableShown {
 					label := zhEnable
 					if props.Acting {
@@ -480,7 +534,7 @@ type cardState struct {
 	current *apiclient.PluginRecommendationDetails
 }
 
-// stateOf 把查询状态投影成官方那三档（OFF:Card.tsx:104-107）。
+// stateOf 把查询状态投影成官方那三档（OFF:src/client/Card.tsx:104-107）。
 func (p *Plugin) stateOf(props pluginapi.ActionCardBodyProps) cardState {
 	name, _ := detailsName(props.Details)
 	key := lookupKey(props)
@@ -555,7 +609,7 @@ func (p *Plugin) ensureLookup(env *pluginapi.Env, props pluginapi.ActionCardBody
 		st.done = true
 		if err != nil || details == nil {
 			// 失败与丢包在界面上是同一档（官方 `setLookup(null)`）：都画「无法读取插件信息」，
-			// 但**宿主原文不进卡片**——这张卡的文案只有官方的 27 条。
+			// 但**宿主原文不进卡片**——这张卡的文案只有官方的 25 条。
 			st.lost = true
 		} else {
 			st.lost = false
@@ -614,7 +668,7 @@ func lookupKey(props pluginapi.ActionCardBodyProps) string {
 }
 
 // detailsSchema 是官方 `detailsSchema = z.object({ name: z.string() })`
-// （OFF:Card.tsx:43）：只多认一个字段，多余的不管。
+// （OFF:src/client/Card.tsx:39）：只多认一个字段，多余的不管。
 func detailsName(details map[string]json.RawMessage) (string, bool) {
 	if details == nil {
 		return "", false
@@ -633,7 +687,7 @@ func detailsName(details map[string]json.RawMessage) (string, bool) {
 	return name, true
 }
 
-// cardData 是官方 `dataSchema`（OFF:Card.tsx:45-46）的投影。
+// cardData 是官方 `dataSchema`（OFF:src/client/Card.tsx:41-42）的投影。
 type cardData struct {
 	application string
 	errorCode   string
@@ -654,7 +708,7 @@ func cardDataOf(raw map[string]json.RawMessage) cardData {
 	return out
 }
 
-// statusOf 是官方 `statusKey` 的 Go 版（OFF:Card.tsx:70-79）里"phase 直接对应文案"那一档。
+// statusOf 是官方 `statusKey` 的 Go 版（OFF:src/client/Card.tsx:54-60）里"phase 直接对应文案"那一档。
 //
 // `enabled` 单独处理（它要看 data.application），所以不在这张表里。
 func statusOf(phase string) (string, bool) {

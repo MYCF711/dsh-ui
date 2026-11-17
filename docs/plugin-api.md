@@ -733,7 +733,7 @@ INFO 插件已装配 id=ds-decl provides=[] requires="[ui.theme ui.primitives]"
 ## 15. 工作区目录流与选择（#16）
 
 - `Actions.OpenDirectoryPicker` 同时供侧栏与首屏 WorkspacePicker 使用；具体后端由启动探针决定，插件不得自行选择 browse/native。
-- `Actions.SelectWorkspace(workspaceID)` 对应官方 `onPick(workspaceId)`。壳只复用经 `session.load` 证实 `Total==0`、cwd 匹配且未归档的成员会话；没有空白会话时如实报 `session.create` 的宿主边界，不得在进程 cwd 建会话后冒充选择成功。
+- `Actions.SelectWorkspace(workspaceID)` 对应官方 `onPick(workspaceId)`。壳先复用经 `session.load` 证实 `Total==0`、cwd 匹配且未归档的成员会话；没有可复用的就发官方 `session.create { workspaceId }`（`internal/apiclient/session_create.go`，四字段见 `types.ts:268-284`），建完读回会话 cwd 核对——宿主只解旧 `mode` 时会如实报错，绝不在进程 cwd 建会话后冒充选择成功。目录选择器那侧若宿主没有工作区注册表（`workspace.create` 回 501 `not_implemented`），回落到官方 `session.create { cwd }`（会话自己拥有该目录）。
 - `Snapshot.WorkspacesKnown` 区分“registry 未落地”与“真空 registry”：首屏前者显示 `正在加载工作区…`，后者且仅有添加动作时点击 chip 直接打开目录流。
 - `Snapshot.PendingWorkspaceID` 对应官方 pending chip；`Snapshot.DirectoryBusy` 是 native `armed/in-flight`，期间菜单动作禁用，结算后才 re-arm。
 - `workspace.create` 的调用方必须消费返回的 `workspace.workspaceId`。`plugins/dsdirpicker.SetOnPicked` 因而已改为传 `apiclient.WorkspaceView`，不再回显请求 path。

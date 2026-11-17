@@ -301,11 +301,21 @@ func SetSource(src DirSource) {
 // SetOnPicked 由壳注入「选定了某个目录」的回调。
 //
 // 只在 `workspace.create` **成功之后**才会被调；失败留在对话框里显示宿主原文。
+// 唯一的例外是 `ErrPickedHandled`（见下）：那时壳自己处理了选定，没有 workspace 可给，
+// 对话框照常关闭但不回调。
 func SetOnPicked(fn func(workspace apiclient.WorkspaceView)) {
 	injectMu.Lock()
 	picked = fn
 	injectMu.Unlock()
 }
+
+// ErrPickedHandled 是 `DirSource.Register` 的**非失败**返回值：壳已经把"选定这个目录"
+// 做完了（宿主没有工作区注册表时，它按官方 `session.create { cwd }` 让会话拥有该目录）。
+//
+// 为什么用哨兵而不是加一个回调：`Register` 的契约是"给出 WorkspaceView"，而现在这条
+// 路径**故意没有** WorkspaceView（把请求路径冒充成 workspaceId 才是错的）。哨兵让
+// 对话框能区分"失败，显示宿主原文"和"已处理，正常关闭"这两件事。
+var ErrPickedHandled = errors.New("选定已由壳处理")
 
 // currentSource 取当前注入的数据源（每帧都重新问，壳中途注入/收回都立刻生效）。
 func currentSource() DirSource {
@@ -590,15 +600,24 @@ func (p *Plugin) confirmOpen() {
 		workspace, err := src.Register(ctx, target)
 		p.mu.Lock()
 		stale := gen != p.gen
-		if !stale && err == nil && workspace.WorkspaceID == "" {
+		// ErrPickedHandled = 壳已经自己把"选定这个目录"做完了（宿主没有工作区
+		// 注册表时它按官方 `session.create { cwd }` 让会话拥有该目录）。
+		// 那不是失败：卡片正常关闭，不写错误行、不回调 picked（没有 workspace 可给）。
+		handled := !stale && errors.Is(err, ErrPickedHandled)
+		if !stale && !handled && err == nil && workspace.WorkspaceID == "" {
 			// 官方 onPick 只接受 workspaceId；空 id 是宿主违约，不能关闭卡片假成功。
 			err = errNoWorkspaceSelection
 		}
-		if !stale && err != nil {
+		if !stale && !handled && err != nil {
 			p.errText = failureText(err) // 失败：卡片留着，宿主原文挂在 .error
 		}
 		p.mu.Unlock()
 		if stale {
+			return
+		}
+		if handled {
+			p.Close()
+			p.invalidate()
 			return
 		}
 		if err != nil {

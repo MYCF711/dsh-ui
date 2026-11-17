@@ -104,7 +104,7 @@
       "resp": {
         "sessionId": "string"
       },
-      "req_note": "宿主**只解 mode**；cwd/title 客户端会发，宿主目前不读 → 别用它做'在某个目录新建会话'"
+      "req_note": "宿主只在已发布线上解 mode；官方四字段（workspaceId/cwd/sessionId/agentPreset，types.ts:268-284）由宿主 PR #63 提供。客户端已按官方四字段发（workspaceId 与 cwd 互斥组合），官方没有的 title 已删"
     },
     "session.delete": {
       "batch": 2,

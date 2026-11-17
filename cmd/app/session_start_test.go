@@ -16,6 +16,8 @@ import (
 func TestStartSessionCreatesCordisAndAppendsDraftWithoutSending(t *testing.T) {
 	var mu sync.Mutex
 	var createMode string
+	var createAgentPreset string
+	var createHadTitle, createHadCwd bool
 	var promptCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/config.get" {
@@ -30,6 +32,9 @@ func TestStartSessionCreatesCordisAndAppendsDraftWithoutSending(t *testing.T) {
 		case "/api/session.create":
 			mu.Lock()
 			createMode, _ = body["mode"].(string)
+			createAgentPreset, _ = body["agentPreset"].(string)
+			_, createHadTitle = body["title"]
+			_, createHadCwd = body["cwd"]
 			mu.Unlock()
 			_, _ = w.Write([]byte(`{"result":{"sessionId":"creator-session"}}`))
 		case "/api/session.prompt", "/api/session.promptParts":
@@ -85,8 +90,20 @@ func TestStartSessionCreatesCordisAndAppendsDraftWithoutSending(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
+	// 官方字段（types.ts:268-277）：Creator 点名的 preset 必须落在 agentPreset 上；
+	// mode 是旧名字，同一份值也照发（老宿主只解它，见 apiclient/session_create.go）。
+	if createAgentPreset != "cordis" {
+		t.Fatalf("session.create.agentPreset = %q，want cordis", createAgentPreset)
+	}
 	if createMode != "cordis" {
 		t.Fatalf("session.create.mode = %q，want cordis", createMode)
+	}
+	// 官方没有 title；cwd 只有"没有工作区时会话自己拥有目录"时才发，Creator 这条不发。
+	if createHadTitle {
+		t.Fatal("session.create 不该再发 title（官方 SessionCreateRequest 没有这个字段）")
+	}
+	if createHadCwd {
+		t.Fatal("Creator 这条不该发 cwd（官方只有 workspaceId/cwd 二选一的目录语义）")
 	}
 	if promptCalls != 0 {
 		t.Fatalf("Creator 只初始化草稿，却自动发了 %d 次 prompt", promptCalls)

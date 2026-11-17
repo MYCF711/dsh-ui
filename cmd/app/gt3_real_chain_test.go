@@ -259,7 +259,7 @@ func TestRealChainFramesRenderRealText(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	sessionID, err := client.Create(ctx, "", "", "gt3-real-chain")
+	sessionID, err := client.SessionCreateID(ctx, apiclient.SessionCreateRequest{})
 	if err != nil {
 		t.Fatalf("session.create 失败: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestRealChainEpochRebuildKeepsEveryFrame(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	sessionID, err := client.Create(ctx, "", "", "gt3-real-epoch")
+	sessionID, err := client.SessionCreateID(ctx, apiclient.SessionCreateRequest{})
 	if err != nil {
 		t.Fatalf("session.create 失败: %v", err)
 	}
@@ -432,7 +432,7 @@ func TestRealChainWSIncrementalKeepsSingleRow(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	sessionID, err := client.Create(ctx, "", "", "gt3-real-ws")
+	sessionID, err := client.SessionCreateID(ctx, apiclient.SessionCreateRequest{})
 	if err != nil {
 		t.Fatalf("session.create 失败: %v", err)
 	}

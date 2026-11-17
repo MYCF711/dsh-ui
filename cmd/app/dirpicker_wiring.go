@@ -71,7 +71,13 @@ import (
 //
 // 它把三个宿主方法原样转出去，**不做任何加工**：不做路径猜测、不缓存、
 // 失败了就把宿主错误原文交回去（对话框负责显示原文，见 `browse.go` 的错误行）。
-type dirSource struct{ cli *apiclient.Client }
+// 唯一的例外是「宿主根本没有工作区注册表」：那时没有 workspaceId 可发，
+// 回落成官方 `session.create { cwd }`（见 `Register` 与 `adoptPickedDirectory`）。
+type dirSource struct {
+	cli *apiclient.Client
+	// pickDirectory 是那个回落动作（壳注入；nil = 没有回落能力，只可能出现在测试壳里）。
+	pickDirectory func(path string)
+}
 
 func (s dirSource) List(ctx context.Context, path string) (*apiclient.DirectoryListing, error) {
 	return s.cli.DirectoryList(ctx, path)
@@ -82,7 +88,18 @@ func (s dirSource) Create(ctx context.Context, parent, name string) (string, err
 }
 
 func (s dirSource) Register(ctx context.Context, path string) (apiclient.WorkspaceView, error) {
-	return s.cli.WorkspaceCreate(ctx, path)
+	workspace, err := s.cli.WorkspaceCreate(ctx, path)
+	if err == nil {
+		return workspace, nil
+	}
+	if apiclient.WorkspaceRegistryUnsupported(err) && s.pickDirectory != nil {
+		// 宿主没有工作区注册表：没有 workspaceId 可发，按官方 `session.create { cwd }`
+		// 让会话自己拥有这个目录（`types.ts:271-273`）。壳已经把"选定"这件事做完了，
+		// 对话框正常关闭——不显示错误行，也不把请求路径冒充成 workspaceId。
+		s.pickDirectory(path)
+		return apiclient.WorkspaceView{}, dsdirpicker.ErrPickedHandled
+	}
+	return apiclient.WorkspaceView{}, err
 }
 
 // dirPickerMode 是本次启动的 `directoryPicker` 组合（零值 = 一套都不可用）。
@@ -160,7 +177,7 @@ func wireDirPicker(m *model) {
 	switch kind {
 	case apiclient.DirectoryPickerKindBrowse:
 		m.dirPicker.mode = dirPickerBrowse
-		dsdirpicker.SetSource(dirSource{cli: m.cli})
+		dsdirpicker.SetSource(dirSource{cli: m.cli, pickDirectory: m.adoptPickedDirectory})
 	case apiclient.DirectoryPickerKindNative:
 		// native 组合没有应用内对话框：**不注入对话本源**，否则 dsdirpicker 会
 		// 画出一个 list 一定被宿主拒（501）的浏览器。
@@ -271,6 +288,11 @@ func (m *model) pickNativeDirectory() {
 	}
 	workspace, err := m.cli.WorkspaceCreate(ctx, path)
 	if err != nil {
+		if apiclient.WorkspaceRegistryUnsupported(err) {
+			// 与 browse 同一个回落：宿主没有工作区注册表时，会话自己拥有该目录。
+			m.adoptPickedDirectory(path)
+			return
+		}
 		m.setStatus("打开目录失败: " + err.Error())
 		return
 	}

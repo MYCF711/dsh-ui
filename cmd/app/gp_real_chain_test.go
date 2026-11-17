@@ -255,7 +255,7 @@ func TestRealChainGPLoadOlderPagesBack(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	sessionID, err := client.Create(ctx, "", "", "gp-paging")
+	sessionID, err := client.SessionCreateID(ctx, apiclient.SessionCreateRequest{})
 	if err != nil {
 		t.Fatalf("session.create 失败: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestRealChainGPApprovalInComposer(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	sessionID, err := client.Create(ctx, "", "", "gp-approval")
+	sessionID, err := client.SessionCreateID(ctx, apiclient.SessionCreateRequest{})
 	if err != nil {
 		t.Fatalf("session.create 失败: %v", err)
 	}

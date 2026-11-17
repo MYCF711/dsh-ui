@@ -215,6 +215,24 @@ func (c *Client) WorkspaceCreate(ctx context.Context, path string) (WorkspaceVie
 	return out.Workspace, nil
 }
 
+// WorkspaceRegistryUnsupported 报告这次失败是不是"宿主根本没有工作区注册表"。
+//
+// 判据是**协议事实**，不是中文文本：宿主没接 `workspace.create` 时回
+// HTTP 501 + 四字段 `code = "not_implemented"`（`HOST:internal/transport/
+// handlers_workspace_official.go` 的 `officialNotImplemented` →
+// `officialWorkspaceFaultStatus` 对 `not_implemented`/`workspace/unsupported`
+// 都映射成这个码）。调用方据此决定要不要退回"会话自己拥有该目录"的官方 `{cwd}`。
+//
+// 其余失败（bad_request / not_found / 权限 …）**不**算这一类：那是这次路径的问题，
+// 退回 `{cwd}` 只会把真实错误掩掉。
+func WorkspaceRegistryUnsupported(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.Code == "not_implemented"
+}
+
 // ── 组合探测（二选一的唯一判据） ──────────────────────────────────────────
 
 // ProbeDirectoryPicker 问出宿主本次启动的组合：browse 还是 native。

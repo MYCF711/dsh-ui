@@ -218,7 +218,7 @@ func TestRealChainHHSmallGaps(t *testing.T) {
 
 	// ── ① 真会话（真宿主里的真 session）。
 	createCtx, createCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	sessionID, err := client.Create(createCtx, host.home, "allow", "hh-smallgaps")
+	sessionID, err := client.SessionCreateID(createCtx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "allow"})
 	createCancel()
 	if err != nil {
 		t.Fatalf("session.create 失败：%v", err)

@@ -193,7 +193,7 @@ func TestRealChainHJUsageDialog(t *testing.T) {
 	client, _ := connectRealGUI(t, host)
 
 	createCtx, createCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	sessionID, err := client.Create(createCtx, host.home, "workspace-write", "hj-usage")
+	sessionID, err := client.SessionCreateID(createCtx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	createCancel()
 	if err != nil {
 		t.Fatalf("session.create 失败：%v", err)
@@ -390,7 +390,7 @@ func TestRealChainHJUsageDialog(t *testing.T) {
 
 	// ── ⑥ 空会话：宿主给"键在 + 四桶全 0" → 读数 `0 tok`，但没有可点入口。
 	emptyCtx, emptyCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	emptyID, err := client.Create(emptyCtx, host.home, "workspace-write", "hj-usage-empty")
+	emptyID, err := client.SessionCreateID(emptyCtx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	emptyCancel()
 	if err != nil {
 		t.Fatalf("空会话 session.create 失败：%v", err)
@@ -438,7 +438,7 @@ func TestRealChainHJUsageDialog(t *testing.T) {
 	// ── ⑤' 逐字相等的**判据会话**：一轮纯文本（没有工具步）→ 每个 step 都记到首
 	// token，`decodeTokens` 覆盖全部 provider 样本，两个投影必须**逐字相等**。
 	textCtx, textCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	textID, err := client.Create(textCtx, host.home, "workspace-write", "hj-usage-text")
+	textID, err := client.SessionCreateID(textCtx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	textCancel()
 	if err != nil {
 		t.Fatalf("纯文本会话 session.create 失败：%v", err)

@@ -92,7 +92,7 @@ func TestRealChainGXModelSlot(t *testing.T) {
 	client, _ := connectRealGUI(t, host)
 
 	createCtx, createCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	sessionID, err := client.Create(createCtx, host.home, "workspace-write", "gx-model-slot")
+	sessionID, err := client.SessionCreateID(createCtx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	createCancel()
 	if err != nil {
 		t.Fatalf("session.create 失败：%v", err)

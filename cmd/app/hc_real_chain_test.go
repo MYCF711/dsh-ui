@@ -82,7 +82,7 @@ func TestRealChainHCConsumeProjections(t *testing.T) {
 	client, _ := connectRealGUI(t, host)
 
 	createCtx, createCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	sessionID, err := client.Create(createCtx, host.home, "workspace-write", "hc-projections")
+	sessionID, err := client.SessionCreateID(createCtx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	createCancel()
 	if err != nil {
 		t.Fatalf("session.create 失败：%v", err)
@@ -229,7 +229,7 @@ func TestRealChainHCConsumeProjections(t *testing.T) {
 
 	// ── ⑤⑥ 两态：空会话（没 prompt、没开 Team）必须「未知」+ 开关不渲染，且不编 0。
 	emptyCtx, emptyCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	emptySessionID, err := client.Create(emptyCtx, host.home, "workspace-write", "hc-empty")
+	emptySessionID, err := client.SessionCreateID(emptyCtx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	emptyCancel()
 	if err != nil {
 		t.Fatalf("空会话 session.create 失败：%v", err)

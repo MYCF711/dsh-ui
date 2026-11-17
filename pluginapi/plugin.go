@@ -240,9 +240,11 @@ type Painter struct {
 	// Icon 是芯片前的字形；官方 tab 类型可以带图标，没有就是纯文字。
 	Icon string
 	// IconImage 是官方 SVG 转写后的矢量图标；IconMarginRight 对应标题图标的 CSS 右 margin。
+	// IconSize 是官方标题图标的显示边长；0 沿用 dockkit 的 14px 默认档。
 	// 与 Icon 二选一，优先画 IconImage，不把手造字符当成官方图标。
 	IconImage       gfx.Icon
 	IconMarginRight float32
+	IconSize        float32
 	// Multiple 对应官方 SidebarRightTabDefinition.multiple：每次 openTab(kind)
 	// 都创建一个独立 occurrence，而不是在同 pane 里复用同 kind 的 tab。
 	// 只对 sidebar.right.pane.tab 有意义；conversation.view 留 false。
@@ -332,9 +334,10 @@ type Tab struct {
 	Label string
 	// Icon 是可选的字形，没有就是纯文字。
 	Icon string
-	// IconImage / IconMarginRight 是注册 Painter 投影过来的官方矢量标题图标与右 margin。
+	// IconImage / IconMarginRight / IconSize 是注册 Painter 投影过来的官方标题图标几何。
 	IconImage       gfx.Icon
 	IconMarginRight float32
+	IconSize        float32
 	// Order 是注册顺序（官方 `order`；小的在前）。
 	Order int
 }

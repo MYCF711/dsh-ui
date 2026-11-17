@@ -518,8 +518,19 @@ const (
 	AccountLinkLineHeight     float32 = 22
 	AccountSignInMinWidth     float32 = 72 // :198-201
 	AccountSignedOutMinHeight float32 = 60 // :168-177
-	AccountSignedOutPadY      float32 = 12
-	AccountSignedOutCopyGap   float32 = 4 // :179-185
+	// AccountAvatarIconSize 是 `.avatar` 里兜底图标的边长：官方 AccountAvatar.tsx:18
+	// 的 `IconUserOutlineMedium size={16}`——**不是** 头像方框的 32
+	// （AccountSection.module.css:40-41）。
+	AccountAvatarIconSize float32 = 16
+	// AccountUnavailableLinkGap 是 `.unavailableLink` 的
+	// `text-underline-offset: 3px`（AccountSection.module.css:123-129）：
+	// 文字与下划线之间的净距。
+	AccountUnavailableLinkGap float32 = 3
+	// AccountUnavailableLinkStroke 是那条下划线的粗细（0.5px 级，与官方
+	// 其余 border 用同一档；见 :77-79 的 `.divider{border-top:.5px}`）。
+	AccountUnavailableLinkStroke float32 = 0.5
+	AccountSignedOutPadY         float32 = 12
+	AccountSignedOutCopyGap      float32 = 4 // :179-185
 
 	AgentPresetCardNameWeight float32 = 600 // AgentPresetSection.module.css:223-227
 )
@@ -793,6 +804,9 @@ var OfficialSettingsGeometry = []GeoRow{
 	{Node: "AccountSection.identity", Prop: "min-height", Official: 44, Impl: AccountIdentityMinHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:27-33"},
 	{Node: "AccountSection.linkButton", Prop: "min-width", Official: 58, Impl: AccountLinkMinWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:90-105"},
 	{Node: "AccountSection.signedOutContent", Prop: "min-height", Official: 60, Impl: AccountSignedOutMinHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:168-177"},
+	{Node: "AccountAvatar.icon", Prop: "size", Official: 16, Impl: AccountAvatarIconSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountAvatar.tsx:18"},
+	{Node: "AccountAvatar.image", Prop: "width", Official: 32, Impl: accountAvatar, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountAvatar.module.css:1 + AccountSection.module.css:40-41"},
+	{Node: "AccountSection.unavailableLink", Prop: "text-underline-offset", Official: 3, Impl: AccountUnavailableLinkGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:123-129"},
 	{Node: "AccountSection.signedOutCopy", Prop: "gap", Official: 4, Impl: AccountSignedOutCopyGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-account/src/client/AccountSection.module.css:179-185"},
 }
 

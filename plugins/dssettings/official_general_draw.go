@@ -43,7 +43,23 @@ func (p *Plugin) drawAppearanceRow(f ui.C, t *pluginapi.Theme, row PanelRow, id 
 
 // drawFontStepper 按 FontSizeRow.module.css:54-128 画 72×36 stepper、
 // 居中数值、右侧 17×12 双 chevron 与外部 px 单位。
-func drawFontStepper(f ui.C, t *pluginapi.Theme, value string) {
+//
+// 两个 chevron 是**真控件**：官方 FontSizeRow.tsx:69-79 的上下箭头各带自己的
+// onClick（`setFontSize(role, px ± 1)` 由 `isFontSize` 卡在 FONT_SIZE_SPECS 区间内），
+// 所以这里也各挂一个命中区，而不是把整条行当"点一下循环下一项"。
+// `readable` 为 false（纯绘制 / 值未知）时不挂命中区，也绝不把点击咽下去。
+type fontStepperStep int
+
+const (
+	fontStepperNone fontStepperStep = 0
+	// fontStepperUp 是上方 chevron（rotate 180 的那枚，官方先画）。
+	fontStepperUp fontStepperStep = 1
+	// fontStepperDown 是下方 chevron。
+	fontStepperDown fontStepperStep = -1
+)
+
+func drawFontStepper(f ui.C, t *pluginapi.Theme, rowID gfx.ID, title, value string, readable bool) fontStepperStep {
+	step := fontStepperNone
 	ui.Row(f).Height(SelectorHeight).Gap(StepperControlGap).Items(ui.Center).Children(func() {
 		ui.Row(f).Width(StepperMinWidth).Height(SelectorHeight).Radius(t.Radii.MD).
 			Background(t.BgLayer3).Children(func() {
@@ -53,17 +69,32 @@ func drawFontStepper(f ui.C, t *pluginapi.Theme, value string) {
 			})
 			ui.Column(f).Absolute().Right(StepperArrowRight).Top(StepperArrowTop).
 				Width(StepperArrowWidth).Gap(StepperArrowGap).Children(func() {
-				for _, rotate := range []float32{180, 0} {
-					ui.Row(f).Width(StepperArrowWidth).Height(StepperArrowHeight).Radius(t.Radii.XS).
-						Items(ui.Center).Justify(ui.Center).Children(func() {
+				for _, entry := range []struct {
+					rotate float32
+					step   fontStepperStep
+				}{{180, fontStepperUp}, {0, fontStepperDown}} {
+					arrow := ui.Row(f).Width(StepperArrowWidth).Height(StepperArrowHeight).Radius(t.Radii.XS).
+						Items(ui.Center).Justify(ui.Center)
+					if readable {
+						label := "增大"
+						if entry.step == fontStepperDown {
+							label = "减小"
+						}
+						arrow = arrow.Hit(rowID, title+" "+label)
+					}
+					arrow.Children(func() {
 						ui.Icon(f, chevronOutlineIcon()).Size(StepperArrowIcon, StepperArrowIcon).
-							IconTransform(gfx.IconTransform{Rotate: rotate}).Color(t.LabelPrimary)
+							IconTransform(gfx.IconTransform{Rotate: entry.rotate}).Color(t.LabelPrimary)
 					})
+					if readable && arrow.Clicked() {
+						step = entry.step
+					}
 				}
 			})
 		})
 		ui.Text(f, "px").FontSize(StepperUnitFontSize).LineHeight(StepperUnitLine).Color(t.LabelSecondary)
 	})
+	return step
 }
 
 // settingsModuleFill 是官方 bg-module-platform：浅色 neutral-bluish-60

@@ -75,9 +75,10 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
 | 行 | `_item_70kcw_173`：`display:flex;align-items:center;gap:6px;width:100%;min-height:34px;padding:6px 8px;border-radius:--dsw-radius-md;font-size:13px;line-height:20px;color:label-primary`；`:hover` = `interactive-bg-hover` | `entryRowMinHeight/…Gap/…PadX/…PadY` + `entryFontSize/…LineHeight`，`Hover(ui.Look{}.Background(t.Hover))` |
 | 行首图标 | `_itemIcon_70kcw_233{width:14px;height:14px}` + `_itemIcon svg{width:14px;height:14px}`（属性 size=16 被 CSS 夹到 14） | 图标框 14×14，字形/图标一律 `.Size(14,14)` |
 | active 对勾 | `_check_70kcw_265{flex:none;color:label-primary}` + `.activeMark{flex:none;margin-left:auto}` | 会话头行尾 `check-outline` 14，`LabelPrimary` |
-| 分离线 | `_separator_70kcw_157{height:.5px;margin:3px 8px;background:border-l2}` | `PadSides(3,8,3,8)` 里一条 1px（半像素在整像素对齐下会被抹掉） |
-| 左栏行 | `.sidebarEntry .entryName{padding-right:28px}` / `.pinAnchor{right:6px;top:0;bottom:0}` / `.pinButton{width:22px;height:22px;padding:0;color:label-tertiary}`（`EntryMenu.module.css:5-16`） | 行内「按钮 + 22×22 固定按钮 + 右 6」，28 = 22+6 与官方留白对齐 |
+| 分离线 | `_separator_70kcw_157{height:.5px;margin:3px 8px;background:border-l2}` | `PadSides(3,8,3,8)` 里一条 **0.5px**（`entrySeparatorHeight`，与 `dscontextmenu` 同值） |
+| 左栏行 | `.sidebarEntry .entryName{padding-right:28px}` / `.pinAnchor{position:absolute;right:6px;top:0;bottom:0}` / `.pinButton{width:22px;height:22px;padding:0;color:label-tertiary}`（`EntryMenu.module.css:5-16`）+ 圆角吃 primitives `._button_1ulci_2{border-radius:var(--dsw-radius-md)}` | 条目名 `PadSides(0,28,0,0)`；固定按钮 `Absolute().Right(6).Top(0).Bottom(0)` **盖在行内**（不是行外一格），22×22、`Radii.MD`；hover 只把图标色换成 `LabelPrimary`、背景保持透明 |
 | 左栏行首图标 | `renderFactorySlot('sidebar.panel.icon', { size: 16, active })`（`EntryMenuContent.tsx:43-45`） | 面板字形（`EntryMenuEntry.Glyph`），与面板行**同一个**字形 |
+| 条目名 | `.entryTitle{min-width:0;overflow-wrap:anywhere;white-space:normal}` / `.entryName{gap:8px;display:flex;align-items:center}`（`EntryMenu.module.css:1-2`） | `.MaxLines(0)` 换行（viva 的 `Text` 默认单行，需显式开段），**不挂** `Ellipsis`；`.entryName` 的 gap 8 在扁平结构里由 `margin-left:auto` 等价吸收 |
 
 ## 4. 登记在案的差异（都不是"差不多就行"，每条都写清原因）
 
@@ -95,9 +96,9 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
 5. **右栏 guide 的 More 卡片没有宿主**：本仓还没有 guide 面（`sidebar.right.tab.guide`
    无占用方，右栏是 dockkit tab 条 + 面板体），所以这一处 More **按 HIDE 登记**，
    不自造一枚"更多工具"卡片挂在别处。
-6. **左栏行的图标色用 `LabelDimmed`**：官方 `.itemIcon{color:var(--dsw-alias-menu-icon)}`（亮色 `--dsw-static-neutral-bluish-800` / 暗色 `label-primary-dimmed`）。本仓主题没有这一档令牌，取最接近的 `LabelDimmed`（亮色 = `neutral-bluish-750`），差一格的灰阶**登记在此、不新造令牌**。
-7. **左栏行尾的对勾不画**：官方 `.sidebarEntry .activeMark{opacity:0}`，只在行 hover 时对勾出现、固定按钮隐去（`EntryMenu.module.css:20-31`）。viva 的 `Box` 没有"本帧是否悬停"的读口，本仓按**非 hover 态**画（固定按钮恒显、对勾不画）。会话头那一侧没有 hover 规则，对勾恒画。
-8. **固定按钮占位而非覆盖**：官方 `.pinAnchor` 绝对定位在行右端（行 `padding-right:38px`）；本仓是同一行里 `[行(flex:1)] [按钮 22×22 + 右 6]`，与 `dssidebar` 的面板行尾按钮同一条处理。
+6. ~~左栏行的图标色用 `LabelDimmed`~~ **已修（2026-11-17）**：本仓**有**这一档令牌——`pluginapi.Theme.MenuIcon`（`pluginapi/theme.go:65`，注释即 `--dsw-alias-menu-icon`），`plugins/dscore` 明暗两套都给了值（`:184` / `:273`），`dscontextmenu` 早就在用。原「没有令牌」的判断不成立，三处菜单图标色已改为 `t.MenuIcon`。
+7. **左栏行尾的对勾不画、固定按钮不做「悬停才显形」**：官方 `.pinAnchor{opacity:0}` 与 `.sidebarEntry .activeMark{opacity:1}` 在 `@media (hover:hover)` 里对翻（`EntryMenu.module.css:20-31`）。原登记理由「viva 的 `Box` 没有本帧是否悬停的读口」**不成立**：viva v0.6.4 有 `Canvas.Hovered()`（`ui/style.go:307`）与 `Box.StateFrom(row)` + `Hover(ui.Look{}.Opacity(...))`（`ui/style.go:29-40`，文档例正是「pencil 在所在行 hover 时出现」）。本仓按**非 hover 态**画（固定按钮恒显、对勾不画）；三态属绘制行为变更，与 `docs/official-parity.md` #17 的待补项是同一件事。会话头那一侧没有 hover 规则，对勾恒画。
+8. ~~固定按钮占位而非覆盖~~ **已修（2026-11-17）**：官方就是**绝对定位覆盖**——`.pinAnchor{position:absolute;right:6px;top:0;bottom:0}`，条目名靠 `.entryName{padding-right:28px}`（不是 38px）让位。本仓已改为 `ui.Row().Absolute().Right(6).Top(0).Bottom(0)` + 标签 `PadSides(0,28,0,0)`；viva 的绝对元素「painted after the in-flow children … wins pointer hits over them」（`viva/ui/absolute.go:11`），与官方 DOM 同序同几何。
 
 ## 5. #17 本体：落地了什么、HIDE 了什么（2026-11-15）
 

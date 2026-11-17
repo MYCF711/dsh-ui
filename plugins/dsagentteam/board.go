@@ -55,26 +55,29 @@ const (
 	descOwnerGap   = 6
 	errGap         = 7
 	errPadV        = 8
-	dotSize        = 6
+	dotSize        = 10 // StateDot 非 ongoing 外框 10×10；::after inset:20%
+	dotCoreSize    = 6  // 10 × (1 − 2×20%) = 6
+	dotOngoingSize = 14 // StateDot ongoing 的 spinner 14×14
 )
 
 // dotColor 是官方 `StateDot` 四值映射（结构树 §2.1）：
 //
-//	pending → idle（中性） / in_progress → ongoing（品牌色） / completed → done（成功色）
+//	pending → idle（state-idle-primary） / in_progress → ongoing（label-tertiary）
+//	completed → done（state-success-primary）
 //	被依赖阻塞的 pending → warning（覆盖上一条） / failure → error
 //
-// 颜色取自本仓令牌；官方 StateDot 的具体色值是 primitives 包的令牌，这里用同义令牌。
+// 颜色取自本仓同名令牌（design-platform.css:290,442；index-CSAdOBx6.css:1）。
 func dotColor(t *pluginapi.Theme, task TeamTask) ui.Color {
 	if task.blocked() {
 		return t.Warn
 	}
 	switch task.Status {
 	case StatusInProgress:
-		return t.BrandPrimary
-	case StatusCompleted:
-		return t.Success
-	default:
 		return t.LabelTertiary
+	case StatusCompleted:
+		return t.SuccessPrimary
+	default:
+		return t.IdlePrimary
 	}
 }
 
@@ -91,7 +94,7 @@ func (p *Plugin) drawBoard(f ui.C, env *pluginapi.Env) {
 		return
 	}
 
-	board := ui.Column(f).FillWidth().PadSides(boardPadV, boardPadH, boardPadV, boardPadH)
+	board := ui.Column(f).FillWidth().MinWidth(0).PadSides(boardPadV, boardPadH, boardPadV, boardPadH)
 	if view.Members > 0 {
 		// 有成员目录时与上方留 4px，**不画分割线**（官方 README）。
 		board = board.MarginSides(boardMemberGap, 0, 0, 0)
@@ -104,7 +107,7 @@ func (p *Plugin) drawBoard(f ui.C, env *pluginapi.Env) {
 				ui.Text(f, zhTasks).FontSize(titleSize).LineHeight(titleLine).Weight(500).
 					Color(t.LabelPrimary)
 				ui.Text(f, progressLabel(tasks)).FontSize(titleSize).LineHeight(progressLine).
-					Color(t.LabelTertiary).MarginSides(0, 0, 0, progressLead).Grow(1)
+					Weight(400).Color(t.LabelTertiary).MarginSides(0, 0, 0, progressLead)
 			})
 		}
 		if failure != "" {
@@ -131,11 +134,15 @@ func (p *Plugin) drawTaskRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, tas
 	expanded := p.team.ExpandedTaskID() == task.ID
 	rowID := env.Tree.ID(env.Feat, "team-task-"+task.ID)
 
-	ui.Column(f).FillWidth().Children(func() {
-		row := ui.Row(f).Items(ui.Center).Gap(rowGap).
+	ui.Column(f).FillWidth().MinWidth(0).Children(func() {
+		rowAlign := ui.Center
+		if expanded {
+			rowAlign = ui.Start // .task[data-expanded='true'] .taskRow{align-items:flex-start}
+		}
+		row := ui.Row(f).Items(rowAlign).Gap(rowGap).
 			FillWidth().MarginSides(0, -rowBleed, 0, -rowBleed).
 			PadSides(rowPadV, rowPadH, rowPadV, rowPadH).
-			Radius(t.Radii.MD)
+			Radius(t.Radii.MD).Hover(ui.Look{}.Background(t.Hover))
 		// 整行是命中区（官方 `<button className=.taskRow>`）。
 		if row.Hit(rowID, task.Subject).Clicked() {
 			p.team.ToggleExpanded(task.ID)
@@ -148,7 +155,7 @@ func (p *Plugin) drawTaskRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, tas
 			}
 			ui.Row(f).Width(glyphW).Height(glyphH).Center().
 				Hit(env.Tree.ID(env.Feat, "team-task-glyph-"+task.ID), glyphLabel).Children(func() {
-				p.drawDot(f, t, dotColor(t, task))
+				p.drawTaskDot(f, t, task)
 			})
 			// .subject：13/17，未展开时单行省略；展开时整段可换行。
 			subject := ui.Text(f, task.Subject).FontSize(rowSize).LineHeight(rowLine).
@@ -156,10 +163,14 @@ func (p *Plugin) drawTaskRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, tas
 			if !expanded {
 				subject.Ellipsis()
 			}
-			// .chevron 28×17（展开时官方 rotate(180deg)；viva 没有 transform，
-			// 这里展开态不旋转——可见差异登记在报告里）。
+			// .chevron 28×17；官方展开态 rotate(180deg)，用同一 sprite 的
+			// chevron-up-outline 表达完全相同的静态方向，不手画箭头。
+			chevron := chevronDownIcon()
+			if expanded {
+				chevron = chevronUpIcon()
+			}
 			ui.Row(f).Width(chevronW).Height(glyphH).Center().Children(func() {
-				ui.Icon(f, chevronDownIcon()).Size(14, 14).Color(t.LabelTertiary)
+				ui.Icon(f, chevron).Size(14, 14).Color(t.LabelTertiary)
 			})
 		})
 		if expanded {
@@ -183,8 +194,23 @@ func (p *Plugin) drawTaskRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, tas
 	})
 }
 
-// drawDot 画官方 StateDot 的等价物（6px 实心圆）。
+// drawTaskDot 画 StateDot：ongoing 是 14px spinner，其余是 10px 外框 + 6px 内核。
+// 官方证据：index-ghOpC9uV.js:129（n = size ?? (ongoing ? 14 : 10)）与
+// index-CSAdOBx6.css:1（dot::after inset:20%；spinner 两圆 r=9.5、stroke=2）。
+func (p *Plugin) drawTaskDot(f ui.C, t *pluginapi.Theme, task TeamTask) {
+	if task.Status == StatusInProgress {
+		ui.Icon(f, stateDotOngoingIcon(t.LabelTertiary)).
+			Size(dotOngoingSize, dotOngoingSize).Color(t.LabelTertiary)
+		return
+	}
+	p.drawDot(f, t, dotColor(t, task))
+}
+
+// drawDot 画官方 StateDot 的非 ongoing 分支：10px 外框，::after inset:20%
+// 留下 6px 实心圆；不是把整个命中/布局盒缩成 6px。
 func (p *Plugin) drawDot(f ui.C, t *pluginapi.Theme, color ui.Color) {
 	_ = t
-	ui.Row(f).Width(dotSize).Height(dotSize).Radius(dotSize / 2).Background(color)
+	ui.Row(f).Width(dotSize).Height(dotSize).Center().Children(func() {
+		ui.Slot(f).Size(dotCoreSize, dotCoreSize).Radius(dotCoreSize / 2).Background(color)
+	})
 }

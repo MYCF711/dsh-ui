@@ -92,10 +92,11 @@ type Theme struct {
 	ScrollbarHover ui.Color
 
 	// ── 状态色 ──
-	Success ui.Color
-	Error   ui.Color
-	Warn    ui.Color
-	Info    ui.Color
+	Success     ui.Color
+	Error       ui.Color
+	Warn        ui.Color
+	Info        ui.Color
+	IdlePrimary ui.Color // ← --dsw-alias-state-idle-primary（StateDot idle）
 
 	// ── 状态**容器**色（官方 `--dsw-alias-state-*` 里成对的那几档）──
 	//

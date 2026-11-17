@@ -141,14 +141,18 @@ func DrawCommandRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, node *Comman
 		})
 		if open {
 			// `<pre>`：官方 max-height 260、margin 4 0 4 4、padding 12 16、radius lg、
-			// 0.5px 描边、代码块底色、等宽、pre-wrap。
+			// 0.5px 描边、代码块底色、等宽、pre-wrap；正文 label-primary，失败态 error。
+			bodyColor := t.LabelPrimary
+			if failed {
+				bodyColor = t.Error
+			}
 			ui.Column(f).FillWidth().MaxHeight(bodyMaxHeight).
 				MarginSides(bodyMarginTop, 0, bodyMarginTop, bodyMarginLeft).
 				PadSides(bodyPadV, bodyPadH, bodyPadV, bodyPadH).
 				Radius(t.Radii.LG).Background(t.CodeBlock).Border(0.5, t.BorderL1).
 				Children(func() {
 					ui.Text(f, node.Outcome.Text).FillWidth().FontSize(t.Fonts.Code).
-						LineHeight(t.Fonts.CodeLine).Mono().Color(t.LabelSecondary)
+						LineHeight(t.Fonts.CodeLine).Mono().Color(bodyColor)
 				})
 		}
 	})

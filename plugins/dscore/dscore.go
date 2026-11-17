@@ -198,10 +198,11 @@ func Dark() *pluginapi.Theme {
 		Scrollbar:      gfx.RGB24(staticNeutral700),
 		ScrollbarHover: gfx.RGB24(staticNeutral600),
 
-		Success: gfx.RGB24(staticGreen500),
-		Error:   gfx.RGB24(staticRed400),
-		Warn:    gfx.RGB24(staticAmber500),
-		Info:    gfx.RGB24(staticDeepseek400),
+		Success:     gfx.RGB24(staticGreen500),
+		Error:       gfx.RGB24(staticRed400),
+		Warn:        gfx.RGB24(staticAmber500),
+		Info:        gfx.RGB24(staticDeepseek400),
+		IdlePrimary: gfx.RGB24(staticNeutral600),
 
 		// 暗色：tertiary = 900 档（官方 design-platform.css 的暗色别名解析）。
 		SuccessTertiary: gfx.RGB24(staticGreen900),
@@ -276,10 +277,11 @@ func Light() *pluginapi.Theme {
 		Scrollbar:      gfx.RGB24(staticNeutral200),
 		ScrollbarHover: gfx.RGB24(staticNeutral300),
 
-		Success: gfx.RGB24(staticGreen500),
-		Error:   gfx.RGB24(staticRed600),
-		Warn:    gfx.RGB24(staticAmber500),
-		Info:    gfx.RGB24(staticDeepseek500),
+		Success:     gfx.RGB24(staticGreen500),
+		Error:       gfx.RGB24(staticRed600),
+		Warn:        gfx.RGB24(staticAmber500),
+		Info:        gfx.RGB24(staticDeepseek500),
+		IdlePrimary: gfx.RGB24(staticNeutral300),
 
 		// 亮色：tertiary = 100 档。
 		SuccessTertiary: gfx.RGB24(staticGreen100),

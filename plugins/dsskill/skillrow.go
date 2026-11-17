@@ -549,6 +549,9 @@ func (p *Plugin) drawInstructionsCard(f ui.C, card ui.Box, env *pluginapi.Env, t
 	// .instructionsCard{display:flex;flex-direction:column;max-height:260px;
 	//   margin:4px 0 4px 4px;overflow:hidden;border:0.5px solid border-l1;
 	//   border-radius:radius-lg;background:markdown-code-block}
+	//
+	// `overflow:hidden`（:117）在 viva 里是 `Clip()`：把滚动视口之外的一切
+	// （含圆角外的正文）夹在卡内，见 `drawInstructionsCard` 的 `ui.Scroll`。
 	box := ui.Column(f).FillWidth().
 		MarginTop(SkillInstructionsCardMarginTop).
 		MarginBottom(SkillInstructionsCardMarginBottom).
@@ -556,6 +559,7 @@ func (p *Plugin) drawInstructionsCard(f ui.C, card ui.Box, env *pluginapi.Env, t
 		Border(SkillInstructionsCardBorderWidth, t.BorderL1).
 		Radius(SkillInstructionsCardRadius).
 		Background(t.CodeBlock).
+		Clip().
 		MaxHeight(SkillInstructionsCardMaxHeight)
 	box.Children(func() {
 		// .instructionsHeader{flex:none;padding:8px 12px;
@@ -580,26 +584,54 @@ func (p *Plugin) drawInstructionsCard(f ui.C, card ui.Box, env *pluginapi.Env, t
 		// .instructions{min-height:0;margin:0;padding:10px 12px 12px;overflow:auto;
 		//   white-space:pre-wrap;overflow-wrap:anywhere;
 		//   font:--dsw-font-markdown-code-block-small;color:label-secondary}
+		//
+		// `overflow:auto` 必须真的做一个滚动视口，不能只画一个 `ui.Paragraph`：
+		// 卡的 `max-height:260px` 只夹住**盒子**，正文超出盒子时若不滚就**画到卡外**
+		// （实拍证据：40 行正文在卡底 y=288 之下一直画到 y≈687）。
+		// 官方是靠 `overflow:hidden`（卡）+ `overflow:auto`（pre）两段夹住：
+		//
+		//	SkillRow.module.css:117  .instructionsCard{overflow:hidden}
+		//	SkillRow.module.css:140  .instructions{overflow:auto}
+		//	SkillRow.module.css:141  .instructions{white-space:pre-wrap}
+		//
+		// viva 对应 `ui.Scroll`：**`MaxHeight` 必须写在自己身上**（否则滚动区只按
+		// 内边距占高，正文被自己的裁剪框切掉），封顶后才「按内容长高、到顶才滚」，
+		// 与官方同形（同 `plugins/dscordis/panel.go` 的用法）。
+		// 内边距 10/12/12 留在滚动区**自己**身上（官方 padding 也在滚动元素上，
+		// 于是随内容一起滚）。
 		instructionsColor := t.LabelSecondary
 		if model.State == SkillStateError {
 			instructionsColor = t.Error // .instructions[data-error]
 		}
-		ui.Paragraph(f, output, 0).
+		ui.Scroll(f).FillWidth().MinHeight(SkillInstructionsMinHeight).
+			MaxHeight(SkillInstructionsBodyMaxHeight).Clip().
 			PadSides(SkillInstructionsPadTop, SkillInstructionsPadRight,
 				SkillInstructionsPadBottom, SkillInstructionsPadLeft).
-			Mono().
-			FontSize(SkillInstructionsFontSize).
-			LineHeight(SkillInstructionsLineHeight).
-			Color(instructionsColor)
+			Children(func() {
+				ui.Paragraph(f, output, 0).
+					FillWidth().
+					Mono().
+					FontSize(SkillInstructionsFontSize).
+					LineHeight(SkillInstructionsLineHeight).
+					Color(instructionsColor)
+			})
 	})
-	// 高度估算：header(8+16+8) + 0.5 分隔 + 正文(10 + 行数×19 + 12)，整体被 260 夹住。
+	// 高度估算：header(8+16+8) + 0.5 分隔 + 正文(10 + 行数×16 + 12，封顶 226.5)
+	//          + 卡上下边框 0.5×2，整体再被 260 夹住。
+	//
+	// 正文那一项用的是**行高 16**（官方 `-code-block-small` 令牌，见
+	// `official_skill.go` 的 `SkillInstructionsLineHeight`），不是 19。
 	header := SkillInstructionsHeaderPadTop + SkillInstructionsHeaderLineHeight +
 		SkillInstructionsHeaderPadBottom + SkillInstructionsHeaderBorderBottom
 	innerWidth := skillContentWidth(env) - SkillInstructionsCardMarginLeft -
 		SkillInstructionsPadLeft - SkillInstructionsPadRight
 	body := SkillInstructionsPadTop + SkillInstructionsPadBottom +
 		float32(skillLineCount(output, innerWidth))*SkillInstructionsLineHeight
-	cardHeight := header + body
+	// 正文超过滚动视口就封顶——超出的部分在卡内滚动，不撑高卡片。
+	if body > SkillInstructionsBodyMaxHeight {
+		body = SkillInstructionsBodyMaxHeight
+	}
+	cardHeight := header + body + 2*SkillInstructionsCardBorderWidth
 	if cardHeight > SkillInstructionsCardMaxHeight {
 		cardHeight = SkillInstructionsCardMaxHeight
 	}
@@ -616,8 +648,13 @@ func (p *Plugin) drawInspectButton(f ui.C, card ui.Box, t *pluginapi.Theme, seq 
 	//   border-radius:999px;corner-shape:round;background:bg-base;color:label-secondary;
 	//   font-size:11px;line-height:16px;cursor:pointer;opacity:0;
 	//   transition:opacity 100ms ease}
+	//
+	// `align-self:flex-start`（:163）在 viva 里是 `Self(ui.Start)`：`.bodyWrap` 是
+	// column，子节点默认是 `Stretch`（`ui/frame.go` 的 `Align` 注释：Stretch 是跨轴默认），
+	// 不给 self 就画成一条**横贯整张卡**的药丸——官方是贴着文字与内边距的小胶囊。
 	label := SkillText(p.lang, KeyRowInspect)
 	button := ui.Row(f).Items(ui.Center).Gap(SkillInspectGap).
+		Self(ui.Start).
 		MarginSides(SkillInspectMarginTop, SkillInspectMarginRight,
 			SkillInspectMarginBottom, SkillInspectMarginLeft).
 		PadSides(SkillInspectPadTop, SkillInspectPadRight,

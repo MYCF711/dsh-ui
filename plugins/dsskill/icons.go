@@ -13,6 +13,31 @@
 //	chevron-down-outline   11631    0 0 16 16   14               8fabc0c6c62873ed5a14e8117a84c5016a896723f8cd06d75a84344641d6a120
 //	inspect-outline        55832    0 0 16 16   12               3cd41f1c24f29278bb7aac0da984657388e96fd915d6e0e156fa1e112323b798
 //
+// # 复核（2026-11-17，同一 rc.2 dist，可复算）
+//
+// bundle 本体：`sha256sum index-ghOpC9uV.js` = `061de8ce…f8bb8`、`1093231` B（与上表同源）。
+// 三个符号的取法（`python` 里对同一份 dist 求 `s.find('"<symbol>":{')`，再截取同一项的
+// `svg:` 模板字面量），**偏移与 sprite 原文逐字节核对**：
+//
+//	skill-outline        byte 717236  viewBox 0 0 17 17  size 16  4 段 path（3 描边 + 1 填充）
+//	chevron-down-outline byte 672557  viewBox 0 0 16 16  size 14  1 段 path
+//	inspect-outline      byte 716758  viewBox 0 0 16 16  size 12  3 段 path
+//
+// 上表那三列 `列` / `svg sha256` 是早前一轮的口径（其 recipe 没有留存，本机按
+// 「`svg` 模板把 `${e}` 换成 1」复算**对不上**），所以这里并列写出可复算的字节偏移；
+// **path 数据本身**已按 sprite 原文逐字节复核过，与官方完全一致。
+//
+// # 素材库同物（`assets/official/icons/**`）
+//
+//	chevron-down-outline  **有** —— `assets/official/icons/composer/chevron-down.jsx:1`
+//	                      的 `d` 与 sprite 原文**逐字节相同**（`M4 6L7.29289 9.29289C7.68342
+//	                      9.68342 8.31658 9.68342 8.70711 9.29289L12 6`），视图框同为 16；
+//	                      本文件直接引用该素材的坐标，不另画。
+//	skill-outline         **无** —— 素材库里没有这个符号（`grep -rln 'M4.57788' assets/official/icons`
+//	                      零命中），只能按 sprite 原文转写并登记在
+//	                      `docs/official-icon-sprite-register.md`。
+//	inspect-outline       **无** —— 同上（`grep -rln '4.67398' assets/official/icons` 零命中）。
+//
 // sprite 的 `<svg>` 只写 `fill="none" stroke-width="${weight}"`，
 // `weight` 由 weight 名字决定（`regular` → **1**）。没有 `linecap` / `linejoin`，
 // 所以 Cap/Join 就是 svg 的默认（butt / miter）——**不要**改成 Round。
@@ -111,6 +136,10 @@ func skillGlyphFill() gfx.Icon {
 // chevronDownIcon 是官方 sprite `chevron-down-outline`（viewBox `0 0 16 16`，regular 描边 1）。
 //
 // 单段 path：`M4 6L7.29289 9.29289C7.68342 9.68342 8.31658 9.68342 8.70711 9.29289L12 6`。
+//
+// **素材库有同物**：`assets/official/icons/composer/chevron-down.jsx:1` 的 `d` 与 sprite
+// 原文逐字节相同（该文件即官方 `<path d="…" stroke="currentColor"/>`），所以这枚图标
+// 是「复用官方素材」而不是转写——坐标以那个 asset 为准。
 func chevronDownIcon() gfx.Icon {
 	return gfx.Icon{
 		ViewBox: 16,

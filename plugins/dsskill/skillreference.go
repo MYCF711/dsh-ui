@@ -41,18 +41,40 @@ type ReferenceChipAppearance string
 // AppearanceSkill 是官方 `appearance="skill"`。
 const AppearanceSkill ReferenceChipAppearance = "skill"
 
-// ── 官方 `appearance="skill"` 的声明（derived，见文件头边界）──────────
+// ── `appearance="skill"` 的声明（**无官方依据**，见下）────────────────
 //
-// 下面这几个数值**不是**从官方 CSS 抄的（`ReferenceChip` 的样式表在
-// primitives 包里，不在本包的解包范围内），而是从本仓已有令牌 + 官方
-// 语义形状推出来的。报告 §5 逐条登记为 derived。
+// # 这三个数没有官方出处，不要再给它们编引用
+//
+// 官方 `ReferenceChip` 来自 `@deepseek-ai/dsh-client-ui-primitives`，而该包
+// **没有随 rc.2 解出来**：`tmp/GO8-RC2/official-rc2/dsh/node_modules/@deepseek-ai/`
+// 里没有它（`ls | grep primitives` 零命中），`tmp/official/_all-client-packages.txt`
+// 的 62 个客户端包里也没有它。`dsh-client-ui-skill` 的 `lib/client.js` 只写了
+// `appearance: "skill"`，组件本体是运行时从 primitives 取的（同一 bundle 里没有内联副本）。
+//
+// 所以下面三个值**只是本仓的 derived 取值**（沿用本仓既有 chip 手感：
+// `plugins/dscore/primitives.go` 的 `Chip` = 高 20 / 左右 6 / 12px 字），
+// 报告里登记为「primitives 面的 chip 几何未复刻」。**不要**把它们写成
+// "官方 `.chip` 是 20px / `padding-inline:6px`"——官方 CSS 里查不到这两条，
+// 那样的引用是假的（本文件早前的注释就是错的，已改）。
+//
+// # 一条被**否决**的间接证据
+//
+// `dsh-client-ui-conversation/lib/client.js` 里有一份**同名但不同组件**的
+// `ReferenceChip`（CSS tag `@deepseek-ai/dsh-client-ui-conversation/ReferenceChip.module.css`，
+// 类 `chip/marker/icon/label/invalid`）。它的签名是 `{label, appearance, invalid}`，
+// 而 ui-skill 传的是 `title={raw}` / `onActivate`，两者不是同一个组件；
+// 它的 `.chip` 只有 `max-width:240px;color:state-business-primary;align-items:baseline;
+// gap:3px;display:inline-flex`（无高度、无内边距、无圆角、无底色）。**不采用**：
+// 把另一个组件的 CSS 冒充成本组件的就是自造。真要复刻，等 primitives 解出来再按原件改。
 const (
-	// SkillChipHeight 是 chip 的高度（官方 `.chip` 是 20px，见
-	// `plugins/dscore/primitives.go` 的 `Chip`：`Height(20)`）。
+	// SkillChipHeight 是 chip 的高度（**derived**）：
+	// 沿用本仓 `plugins/dscore/primitives.go` 的 `Chip`（`Height(20)`），
+	// 与官方 `--dsh-content-font-size-caption` 档的正文行高同量级。
 	SkillChipHeight float32 = 20
-	// SkillChipPadX 是左右内边距（同上，官方 `.chip{padding-inline:6px}`）。
+	// SkillChipPadX 是左右内边距（**derived**）：同上，`Chip` 的 `PadX(6)`。
 	SkillChipPadX float32 = 6
-	// SkillChipFontSize 是字号（官方 `.chip` 用 `--dsh-content-font-size-caption`）。
+	// SkillChipFontSize 是字号（**derived**）：本仓 caption 档 12px
+	// （`pluginapi.Fonts.Caption = 14-2`，见 `plugins/dscore/dscore.go` 的 `fonts()`）。
 	SkillChipFontSize float32 = 12
 )
 

@@ -176,7 +176,10 @@ func TestOfficialSkillGeometryCoversEveryCssValue(t *testing.T) {
 // 这些数字不是"看着差不多"：`instructionsCard.max-height` 是 260 不是 240、
 // `instructionsHeader.line-height` 是 16 不是 18、`inspectButton` 的
 // `border-radius` 是 999（药丸）不是 8、`instructions` 的 `line-height`
-// 是 19（不是 16）——写错一个，展开体就会差一行。
+// 是 **16**（`font:var(--dsw-font-markdown-code-block-small)` → 主题令牌
+// `gradient-shadow-text.css:178` = `calc(16px + delta)`）——写错一个，
+// 展开体就会差一行。19 是**另一个**令牌 `--dsw-font-markdown-code-block`
+// （同文件 :170）的行高，早前那一版就是把它抄进来了。
 func TestOfficialSkillGeometryExactValues(t *testing.T) {
 	cases := []struct {
 		node, prop string
@@ -209,7 +212,7 @@ func TestOfficialSkillGeometryExactValues(t *testing.T) {
 		{"SkillRow.instructions", "padding-right", 12},
 		{"SkillRow.instructions", "padding-bottom", 12},
 		{"SkillRow.instructions", "font-size", 11},
-		{"SkillRow.instructions", "line-height", 19},
+		{"SkillRow.instructions", "line-height", 16},
 		{"SkillRow.inspectButton", "gap", 4},
 		{"SkillRow.inspectButton", "margin-top", 4},
 		{"SkillRow.inspectButton", "margin-bottom", 2},
@@ -591,5 +594,35 @@ func TestSkillTextFallback(t *testing.T) {
 		if got := SkillText(c.lang, c.key); got != c.want {
 			t.Errorf("SkillText(%q, %q) = %q，want %q", c.lang, c.key, got, c.want)
 		}
+	}
+}
+
+// TestSkillInstructionsBodyViewport 钉住 `.instructions` 的滚动视口算术。
+//
+// 官方把「卡 260」这条总高由 flex 分配给 header 与正文（`SkillRow.module.css:113-121`），
+// 本仓立即模式没有"剩余高度"可问，只能自己减；减错一格，正文要么露到卡外，
+// 要么白丢一整行。
+//
+//	260（max-height，:115）
+//	− 32（header 8+16+8，:125,130）
+//	− 0.5（header 下分隔，:126）
+//	− 1（卡上下边框 0.5×2，:118）
+//	= 226.5
+func TestSkillInstructionsBodyViewport(t *testing.T) {
+	header := SkillInstructionsHeaderPadTop + SkillInstructionsHeaderLineHeight +
+		SkillInstructionsHeaderPadBottom + SkillInstructionsHeaderBorderBottom
+	want := SkillInstructionsCardMaxHeight - header - 2*SkillInstructionsCardBorderWidth
+	if !near(SkillInstructionsBodyMaxHeight, want) {
+		t.Errorf("正文视口 %v，want %v", SkillInstructionsBodyMaxHeight, want)
+	}
+	if want != 226.5 {
+		t.Errorf("正文视口 = %v，want 226.5（官方 260 − 32 − 0.5 − 1）", want)
+	}
+	// 三块加起来正好是 260：多一格会露头，少一格会白丢一行。
+	total := header + SkillInstructionsBodyMaxHeight + 2*SkillInstructionsCardBorderWidth
+	if !near(total, SkillInstructionsCardMaxHeight) {
+		t.Errorf("header %v + 正文视口 %v + 边框 %v = %v，want %v",
+			header, SkillInstructionsBodyMaxHeight, 2*SkillInstructionsCardBorderWidth,
+			total, SkillInstructionsCardMaxHeight)
 	}
 }

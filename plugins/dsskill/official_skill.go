@@ -217,10 +217,38 @@ const (
 	SkillInstructionsPadBottom float32 = 12
 	SkillInstructionsPadLeft   float32 = 12
 	// `.instructions{font:var(--dsw-font-markdown-code-block-small)}`（:143）。
-	// 官方令牌 = `var(--dsh-code-font-size,11px) / calc(19px + var(--dsh-code-font-delta))`。
+	// 官方令牌 = `var(--dsh-code-font-size,11px) / calc(16px + var(--dsh-code-font-delta))`。
 	SkillInstructionsFontSize float32 = 11
-	// `.instructions{line-height:calc(19px + var(--dsh-code-font-delta))}`。
-	SkillInstructionsLineHeight float32 = 19
+	// `.instructions{font:…-small}` 的行高 = `calc(16px + var(--dsh-code-font-delta))`。
+	//
+	// **是 16，不是 19**。19 属于**另一个**令牌 `--dsw-font-markdown-code-block`
+	// （`@deepseek-ai/dsh-client-ui-theme/src/styles/gradient-shadow-text.css:170,173`）；
+	// 官方这里用的是 `-small` 那一档：
+	//
+	//	gradient-shadow-text.css:178  --dsw-font-markdown-code-block-small:
+	//	    var(--dsh-code-font-size, 11px) / calc(16px + var(--dsh-code-font-delta)) …
+	//	gradient-shadow-text.css:181  --dsw-font-markdown-code-block-small-line-height:
+	//	    calc(16px + var(--dsh-code-font-delta))
+	//
+	// `SkillRow.module.css:143` 只写了 `font: var(--dsw-font-markdown-code-block-small)`，
+	// 具体像素在主题令牌里，所以要连令牌一起读才知道是 16。
+	SkillInstructionsLineHeight float32 = 16
+
+	// `.instructions` 在 `.instructionsCard` 里能占的最大高度（官方 `.instructions{overflow:auto}`
+	// 的滚动视口，`SkillRow.module.css:140`）。
+	//
+	// 260（:115 `.instructionsCard{max-height:260px}`）
+	// − header 32（8+16+8，:125,130）
+	// − header 下分隔 0.5（:126 border-bottom）
+	// − 卡上下边框 0.5×2（:118 border）
+	// = 226.5
+	//
+	// 官方靠 flex 分配剩余高度，本仓立即模式只能自己算——**超出的部分由这个视口滚动**，
+	// 不再溢出卡片（见 `skillrow.go` 的 `drawInstructionsCard`）。
+	SkillInstructionsBodyMaxHeight = SkillInstructionsCardMaxHeight -
+		(SkillInstructionsHeaderPadTop + SkillInstructionsHeaderLineHeight +
+			SkillInstructionsHeaderPadBottom + SkillInstructionsHeaderBorderBottom +
+			2*SkillInstructionsCardBorderWidth)
 
 	// `.instructions::-webkit-scrollbar-thumb{border:2px solid transparent}`（:152）。
 	SkillScrollbarThumbBorder float32 = 2
@@ -324,7 +352,10 @@ var officialSkillGeometry = []SkillGeoRow{
 	{Node: "SkillRow.instructionsHeader", Prop: "font-size", Official: 11, Impl: SkillInstructionsHeaderFontSize, Unit: SkillUnitPx, Status: SkillAligned, Anchor: "SkillRow.module.css:128"},
 	{Node: "SkillRow.instructionsHeader", Prop: "font-weight", Official: 500, Impl: SkillInstructionsHeaderWeight, Unit: SkillUnitWeight, Status: SkillAligned, Anchor: "SkillRow.module.css:129"},
 	{Node: "SkillRow.instructionsHeader", Prop: "line-height", Official: 16, Impl: SkillInstructionsHeaderLineHeight, Unit: SkillUnitPx, Status: SkillAligned, Anchor: "SkillRow.module.css:130"},
-	{Node: "SkillRow.instructionsHeader", Prop: "letter-spacing", Official: 0.04, Impl: SkillInstructionsHeaderLetterSpacing, Unit: SkillUnitEm, Status: SkillAligned, Anchor: "SkillRow.module.css:133"},
+	// letter-spacing 这一行是**本包唯一登记为 derived 的数值行**，原因写在 Formula 里：
+	// 官方 0.04em 在本仓**画不出来**（viva 没有 letter-spacing 原语），
+	// 所以 `Impl` 保留官方取值作为"要复刻的量"，但渲染实际按 0 处理。
+	{Node: "SkillRow.instructionsHeader", Prop: "letter-spacing", Official: 0.04, Impl: SkillInstructionsHeaderLetterSpacing, Unit: SkillUnitEm, Status: SkillDerived, Anchor: "SkillRow.module.css:133", Formula: "letter-spacing:0.04em（11px 字号下 ≈0.44px/字）；viva 0.6.4 的 Text/Box 没有 letter-spacing 原语（`ui/box.go` 无该方法），实现按 0 渲染，差值登记在报告「缺口」"},
 
 	// ── .instructions（:136-149）───────────────────────────────────
 	{Node: "SkillRow.instructions", Prop: "min-height", Official: 0, Impl: SkillInstructionsMinHeight, Unit: SkillUnitPx, Status: SkillAligned, Anchor: "SkillRow.module.css:137"},
@@ -333,8 +364,8 @@ var officialSkillGeometry = []SkillGeoRow{
 	{Node: "SkillRow.instructions", Prop: "padding-right", Official: 12, Impl: SkillInstructionsPadRight, Unit: SkillUnitPx, Status: SkillAligned, Anchor: "SkillRow.module.css:139"},
 	{Node: "SkillRow.instructions", Prop: "padding-bottom", Official: 12, Impl: SkillInstructionsPadBottom, Unit: SkillUnitPx, Status: SkillAligned, Anchor: "SkillRow.module.css:139"},
 	{Node: "SkillRow.instructions", Prop: "padding-left", Official: 12, Impl: SkillInstructionsPadLeft, Unit: SkillUnitPx, Status: SkillAligned, Anchor: "SkillRow.module.css:139"},
-	{Node: "SkillRow.instructions", Prop: "font-size", Official: 11, Impl: SkillInstructionsFontSize, Unit: SkillUnitPx, Status: SkillDerived, Anchor: "SkillRow.module.css:143", Formula: "font:var(--dsw-font-markdown-code-block-small) → var(--dsh-code-font-size,11px) / calc(19px + var(--dsh-code-font-delta)) = 11px/19px"},
-	{Node: "SkillRow.instructions", Prop: "line-height", Official: 19, Impl: SkillInstructionsLineHeight, Unit: SkillUnitPx, Status: SkillDerived, Anchor: "SkillRow.module.css:143", Formula: "calc(19px + var(--dsh-code-font-delta, 0px))；实现取 delta=0"},
+	{Node: "SkillRow.instructions", Prop: "font-size", Official: 11, Impl: SkillInstructionsFontSize, Unit: SkillUnitPx, Status: SkillDerived, Anchor: "SkillRow.module.css:143", Formula: "font:var(--dsw-font-markdown-code-block-small) → var(--dsh-code-font-size,11px) / calc(16px + var(--dsh-code-font-delta)) = 11px/16px（gradient-shadow-text.css:178）"},
+	{Node: "SkillRow.instructions", Prop: "line-height", Official: 16, Impl: SkillInstructionsLineHeight, Unit: SkillUnitPx, Status: SkillDerived, Anchor: "SkillRow.module.css:143", Formula: "font:var(--dsw-font-markdown-code-block-small) → var(--dsh-code-font-size,11px) / calc(16px + var(--dsh-code-font-delta)) = 11px/16px（gradient-shadow-text.css:178,181）；实现取 delta=0"},
 
 	// ── .instructions 滚动条（:151-159）────────────────────────────
 	{Node: "SkillRow.instructions::-webkit-scrollbar-thumb", Prop: "border-width", Official: 2, Impl: SkillScrollbarThumbBorder, Unit: SkillUnitPx, Status: SkillAligned, Anchor: "SkillRow.module.css:152"},
@@ -357,7 +388,15 @@ var officialSkillGeometry = []SkillGeoRow{
 	{Node: "SkillRow.inspectButton", Prop: "line-height", Official: 16, Impl: SkillInspectLineHeight, Unit: SkillUnitPx, Status: SkillAligned, Anchor: "SkillRow.module.css:174"},
 	{Node: "SkillRow.inspectButton", Prop: "opacity", Official: 0, Impl: SkillInspectOpacity, Unit: SkillUnitRatio, Status: SkillAligned, Anchor: "SkillRow.module.css:176"},
 	{Node: "SkillRow.inspectButton", Prop: "transition-duration", Official: 100, Impl: SkillInspectTransitionMs, Unit: SkillUnitMs, Status: SkillAligned, Anchor: "SkillRow.module.css:177"},
-	{Node: "SkillRow.inspectButton:focus-visible", Prop: "opacity", Official: 1, Impl: SkillInspectFocusOpacity, Unit: SkillUnitRatio, Status: SkillAligned, Anchor: "SkillRow.module.css:181"},
+	// `:focus-visible` 是本仓**做不到**的那一条，原因不是"忘了写"，是 viva 的
+	// 状态来源机制（下面 Formula 里给了 `ui/style.go` 的行号）：
+	// 官方让按钮在**两个并列条件**下显形——`.card:hover`（:186）与
+	// `.inspectButton:focus-visible`（:181）；viva 的 `StateFrom` 把 hover/pressed/focus
+	// 三个 look 的来源**绑成同一个元素**，而官方 `.card:hover` 要求来源是**卡**，
+	// 于是 `:focus-visible`（来源必须是按钮自己）无法同时成立。实测：Tab 走到按钮上
+	// 边框仍不出现；卡片 hover 那一半由 `skillrow_visual_test.go` 的
+	// `TestSkillRowGeometryInPixels` ⑥ 钉住。
+	{Node: "SkillRow.inspectButton:focus-visible", Prop: "opacity", Official: 1, Impl: SkillInspectFocusOpacity, Unit: SkillUnitRatio, Status: SkillDerived, Anchor: "SkillRow.module.css:181", Formula: "官方 :focus-visible{opacity:1}；viva 0.6.4 的 `Box.StateFrom` 让一个元素只跟一个状态来源（ui/style.go:298-303 的 `source`同时用于 FocusVisible/Hovered/Pressed），而本按钮必须跟 `.card:hover`（CSS:186），所以焦点态画不出来；实现按 0 渲染"},
 	{Node: "SkillRow.card:hover .inspectButton", Prop: "opacity", Official: 1, Impl: SkillCardHoverInspectOpacity, Unit: SkillUnitRatio, Status: SkillAligned, Anchor: "SkillRow.module.css:186"},
 	{Node: "SkillRow.inspectButton (hover:none)", Prop: "opacity", Official: 1, Impl: SkillInspectNoHoverOpacity, Unit: SkillUnitRatio, Status: SkillAligned, Anchor: "SkillRow.module.css:214"},
 

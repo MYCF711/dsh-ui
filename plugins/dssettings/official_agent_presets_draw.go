@@ -83,6 +83,10 @@ const (
 	AgentPresetTagLn       float32 = 18
 	AgentPresetTagPadY     float32 = 1
 	AgentPresetTagPadX     float32 = 8
+	// brokenBadge 是另一枚官方徽章：11/17、padding 1px 8px、radius 999（:91-100）。
+	AgentPresetBrokenFontSize float32 = 11
+	AgentPresetBrokenLn       float32 = 17
+	AgentPresetBrokenRadius   float32 = 999
 	// AgentPresetErrorFontSize 是 `.error{font-size:12px}`（:384-388）。
 	AgentPresetErrorFontSize float32 = 12
 )
@@ -194,22 +198,27 @@ func (p *Plugin) drawAgentPresetCard(f ui.C, env *pluginapi.Env, t *pluginapi.Th
 				identity := ui.Row(f).Grow(1).Gap(AgentPresetCardIdentityGap).Items(ui.Center)
 				identity.Children(func() {
 					ui.Text(f, card.Name).FontSize(AgentPresetCardNameFontSize).
-						LineHeight(AgentPresetCardNameLn).Weight(400).Color(t.LabelPrimary).Ellipsis()
+						LineHeight(AgentPresetCardNameLn).Weight(AgentPresetCardNameWeight).Color(t.LabelPrimary).Ellipsis()
 					if card.Broken != "" {
-						p.drawAgentPresetTag(f, t, zhAgentPresetBroken, t.Error)
+						ui.Row(f).Shrink(0).Height(AgentPresetBrokenLn+2*AgentPresetTagPadY).
+							PadSides(AgentPresetTagPadY, AgentPresetTagPadX, AgentPresetTagPadY, AgentPresetTagPadX).
+							Radius(AgentPresetBrokenRadius).Background(t.Error).Items(ui.Center).Children(func() {
+							ui.Text(f, zhAgentPresetBroken).FontSize(AgentPresetBrokenFontSize).
+								LineHeight(AgentPresetBrokenLn).Color(t.BgLayer3)
+						})
 					}
 					if card.InUse {
 						p.drawAgentPresetTag(f, t, zhAgentPresetInUse, t.LabelSecondary)
 					}
 				})
 				ui.Text(f, card.ID).Mono().FontSize(AgentPresetCardIDFontSize).
-					LineHeight(AgentPresetCardIDLn).Color(t.LabelTertiary).Shrink(0).Ellipsis()
+					LineHeight(AgentPresetCardIDLn).Color(t.LabelTertiary).Shrink(0).MaxWidth(width * 0.35).Ellipsis()
 			})
 			desc := card.Description
 			if desc == "" {
 				desc = zhAgentPresetNoDesc
 			}
-			ui.Text(f, desc).FontSize(AgentPresetCardDescFontSize).
+			ui.Paragraph(f, desc, 4).FontSize(AgentPresetCardDescFontSize).
 				LineHeight(AgentPresetCardDescLn).Color(t.LabelSecondary).FillWidth()
 			if card.Broken != "" {
 				ui.Text(f, card.Broken).FontSize(AgentPresetErrorFontSize).

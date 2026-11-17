@@ -516,10 +516,14 @@ func (p *Plugin) drawPanelHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 		PadSides(HeaderPadTop, HeaderPadRight, HeaderPadBottom, HeaderPadLeft).
 		Gap(HeaderGap).Items(ui.Center).Children(func() {
 		ui.Row(f).Grow(1)
-		if p.prims != nil {
-			if p.prims.CircleButton(f, env.Tree.ID(env.Feat, "settings-close"), "×", false) {
-				p.CloseOfficial()
-			}
+		close := ui.Row(f).Size(CloseSize, CloseSize).Radius(t.Radii.SM).
+			Items(ui.Center).Justify(ui.Center).
+			Hover(ui.Look{}.Background(t.Hover)).
+			Hit(env.Tree.ID(env.Feat, "settings-close"), "关闭").Children(func() {
+			ui.Icon(f, closeOutlineIcon()).Size(CloseIconSize, CloseIconSize).Color(t.LabelPrimary)
+		})
+		if close.Clicked() {
+			p.CloseOfficial()
 		}
 	})
 }
@@ -535,12 +539,12 @@ func (p *Plugin) drawPanelNav(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, a 
 			if active {
 				bg = t.NavActive
 			}
-			if ui.Column(f).Height(NavCellHeight).Radius(t.Radii.MD).
+			if ui.Row(f).Height(NavCellHeight).Radius(t.Radii.MD).
 				PadSides(NavCellPadTop, NavCellPadRight, NavCellPadBottom, NavCellPadLeft).
 				Gap(NavCellGap).Items(ui.Center).Background(bg).Hover(ui.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "settings-nav-"+section.ID), section.Title).
 				Children(func() {
-					ui.Text(f, IconGlyph(section.Icon)).FontSize(NavCellIconSize).Color(t.LabelSecondary)
+					drawSectionIcon(f, section.Icon, t.LabelPrimary)
 					ui.Text(f, section.Title).FontSize(NavCellFontSize).LineHeight(NavCellLineHeight).
 						Color(t.LabelPrimary).Grow(1).Ellipsis()
 				}).Clicked() {
@@ -593,9 +597,9 @@ func (p *Plugin) drawPanelOptions(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 			}
 			p.drawOfficialRow(f, env, t, row)
 			if i < len(section.Rows)-1 {
-				if p.prims != nil {
-					p.prims.Divider(f)
-				}
+				// border-bottom:0.5px 属于上一行自身；负 margin 让分隔线
+				// 覆盖在上一行底部，不额外撑高通用行。
+				ui.Row(f).FillWidth().Height(0.5).MarginTop(-0.5).Background(t.BorderL2)
 			}
 		}
 	})
@@ -610,6 +614,8 @@ func OfficialRowHeight(kind ItemKind) float32 {
 		return ShortcutRowMinHeight
 	case ItemSwitch:
 		return DevToolsTitleLineHeight + RowTextGap + RowDescLineHeight + 2*RowPadY
+	case ItemCubes:
+		return AppearanceRowHeight
 	default:
 		return RowTitleLineHeight + RowTextGap + RowDescLineHeight + 2*RowPadY
 	}
@@ -617,15 +623,40 @@ func OfficialRowHeight(kind ItemKind) float32 {
 
 // drawOfficialRow 画一行（选择器 / 开关 / stepper / cube / 按钮 / 版本）。
 func (p *Plugin) drawOfficialRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow) {
-	height := OfficialRowHeight(row.Kind)
 	id := env.Tree.ID(env.Feat, "settings-row-"+row.ID)
+	if row.Kind == ItemCubes {
+		p.drawAppearanceRow(f, t, row, id)
+		return
+	}
+	if row.Kind == ItemVersion {
+		ui.Row(f).FillWidth().Height(OfficialRowHeight(row.Kind)).
+			PadSides(VersionRowPadY, 0, VersionRowPadY, 0).Items(ui.Center).Children(func() {
+			ui.Text(f, "当前版本："+row.Display()).FontSize(VersionRowFontSize).
+				LineHeight(VersionRowLineHeight).Color(t.LabelPrimary)
+		})
+		return
+	}
+
+	height := OfficialRowHeight(row.Kind)
+	rowGap := RowGap
+	titleLine := RowTitleLineHeight
+	descColor := t.LabelTertiary
+	if row.Kind == ItemSwitch {
+		rowGap = DevToolsRowGap
+		titleLine = DevToolsTitleLineHeight
+		descColor = t.LabelSecondary
+	}
 	body := func() {
-		ui.Column(f).Grow(1).Gap(RowTextGap).Children(func() {
-			ui.Text(f, row.Title).FontSize(RowTitleFontSize).LineHeight(RowTitleLineHeight).
+		text := ui.Column(f).Grow(1).MinWidth(0).Gap(RowTextGap)
+		if row.Kind != ItemSwitch {
+			text = text.PadRight(RowTextPadRight)
+		}
+		text.Children(func() {
+			ui.Text(f, row.Title).FontSize(RowTitleFontSize).LineHeight(titleLine).
 				Color(t.LabelPrimary).Ellipsis()
 			if row.Desc != "" {
 				ui.Text(f, row.Desc).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
-					Color(t.LabelTertiary).Ellipsis()
+					Color(descColor).Ellipsis()
 			}
 			if row.Reason != "" {
 				ui.Text(f, row.Reason).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
@@ -635,7 +666,7 @@ func (p *Plugin) drawOfficialRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 		p.drawRowControl(f, t, row)
 	}
 	box := ui.Row(f).FillWidth().Height(height).
-		PadSides(RowPadY, 0, RowPadY, 0).Gap(RowGap).Items(ui.Center).
+		PadSides(RowPadY, 0, RowPadY, 0).Gap(rowGap).Items(ui.Center).
 		Hit(id, row.Title).Children(body)
 	if row.Writable() {
 		if box.Clicked() {
@@ -650,16 +681,29 @@ func (p *Plugin) drawRowControl(f ui.C, t *pluginapi.Theme, row PanelRow) {
 	case ItemSwitch:
 		on := row.Known && row.Selected == "true"
 		bg := t.BorderL3
+		justify := ui.Start
+		thumb := t.BgLayer2
 		if on {
 			bg = t.BrandPrimary
+			justify = ui.End
+			thumb = t.ButtonPrimaryFg
 		}
-		ui.Row(f).Width(36).Height(20).Radius(10).Background(bg).PadSides(2, 2, 2, 2).
-			Justify(ui.End).Children(func() {
-			ui.Row(f).Width(16).Height(16).Radius(8).Background(t.BgLayer2)
+		control := ui.Row(f).Width(SwitchWidth).Height(SwitchHeight).Radius(SwitchHeight/2).
+			Background(bg).PadSides(SwitchPad, SwitchPad, SwitchPad, SwitchPad).
+			Justify(justify).Children(func() {
+			ui.Row(f).Width(SwitchThumbSize).Height(SwitchThumbSize).
+				Radius(SwitchThumbSize / 2).Background(thumb)
 		})
+		if row.Disabled {
+			control.Opacity(0.5)
+		}
 	case ItemStepper:
+		if row.ID == "font-size" {
+			drawFontStepper(f, t, row.Display())
+			break
+		}
 		ui.Row(f).Height(SelectorHeight).Radius(t.Radii.MD).PadX(SelectorPadX).
-			Gap(SelectorGap).Items(ui.Center).Background(t.BgLayer3).Children(func() {
+			Gap(SelectorGap).Items(ui.Center).Background(settingsModuleFill(t)).Children(func() {
 			ui.Text(f, "−").FontSize(RowTitleFontSize).Color(t.LabelSecondary)
 			ui.Text(f, row.Display()).FontSize(RowTitleFontSize).Color(t.LabelPrimary)
 			ui.Text(f, "+").FontSize(RowTitleFontSize).Color(t.LabelSecondary)
@@ -681,8 +725,8 @@ func (p *Plugin) drawRowControl(f ui.C, t *pluginapi.Theme, row PanelRow) {
 	case ItemButton:
 		ui.Row(f).Height(ShortcutButtonHeight).MinWidth(ShortcutButtonMinWidth).
 			MaxWidth(ShortcutButtonMaxWidth).Radius(t.Radii.MD).PadX(ShortcutButtonPadX).
-			Items(ui.Center).Justify(ui.Center).Background(t.BgLayer3).Children(func() {
-			ui.Text(f, "编辑快捷键").FontSize(ShortcutDescFontSize).Color(t.LabelPrimary)
+			Items(ui.Center).Justify(ui.Center).Background(settingsModuleFill(t)).Children(func() {
+			ui.Text(f, "编辑快捷键").FontSize(RowTitleFontSize).LineHeight(RowTitleLineHeight).Color(t.LabelPrimary)
 		})
 	case ItemVersion:
 		// 官方：`当前版本：` + build 版本（缺失时整行不渲染，见 BuildPanel）。
@@ -690,9 +734,9 @@ func (p *Plugin) drawRowControl(f ui.C, t *pluginapi.Theme, row PanelRow) {
 			LineHeight(VersionRowLineHeight).Color(t.LabelPrimary)
 	default: // ItemSelector
 		ui.Row(f).Height(SelectorHeight).Radius(t.Radii.MD).PadX(SelectorPadX).
-			Gap(SelectorGap).Items(ui.Center).Background(t.BgLayer3).Children(func() {
-			ui.Text(f, row.Display()).FontSize(RowTitleFontSize).Color(t.LabelPrimary)
-			ui.Text(f, "›").FontSize(SelectorChevron).Color(t.LabelTertiary)
+			Gap(SelectorGap).Items(ui.Center).Background(settingsModuleFill(t)).Children(func() {
+			ui.Text(f, row.Display()).FontSize(RowTitleFontSize).LineHeight(RowTitleLineHeight).Color(t.LabelPrimary)
+			ui.Icon(f, chevronOutlineIcon()).Size(SelectorChevron, SelectorChevron).Color(t.LabelTertiary)
 		})
 	}
 }

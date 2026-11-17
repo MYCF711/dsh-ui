@@ -15,13 +15,17 @@ func (p *Plugin) drawModelsPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 	if page == nil {
 		return
 	}
+	contentWidth := a.Width - OptionsPadLeft - OptionsPadRight
+	if contentWidth > ModelsSectionMaxWidth {
+		contentWidth = ModelsSectionMaxWidth
+	}
 	ui.Column(f).Absolute().Left(a.X).Top(a.Y).Width(a.Width).Height(a.Height).
 		PadSides(OptionsPadTop, OptionsPadRight, OptionsPadBottom, OptionsPadLeft).
 		Gap(ModelsSectionGap).Children(func() {
 		ui.Text(f, section.Title).FontSize(ModelsTitleFontSize).LineHeight(ModelsTitleLine).
-			Weight(NavTitleWeight).Color(t.LabelPrimary).Ellipsis()
+			Weight(NavTitleWeight).Color(t.LabelPrimary).Width(contentWidth).Ellipsis()
 		ui.Text(f, modelsIntro).FontSize(ModelsIntroFontSize).LineHeight(ModelsIntroLine).
-			Color(t.LabelTertiary).FillWidth()
+			Color(t.LabelTertiary).Width(contentWidth)
 		if section.Note != "" {
 			ui.Text(f, section.Note).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
 				Color(t.Warn).FillWidth()
@@ -34,16 +38,14 @@ func (p *Plugin) drawModelsPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 			color := t.LabelSecondary
 			if write.Failure() {
 				color = t.Error
+			} else if write.Success() {
+				color = t.Success
 			}
 			ui.Text(f, write.Render()).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
 				Color(color).FillWidth()
 		}
 
-		contentWidth := a.Width - OptionsPadLeft - OptionsPadRight
-		if contentWidth > ModelsSectionMaxWidth {
-			contentWidth = ModelsSectionMaxWidth
-		}
-		scroll := ui.Scroll(f).FillWidth().Grow(1).MinHeight(0)
+		scroll := ui.Scroll(f).Width(contentWidth).Grow(1).MinHeight(0).MarginTop(ModelsRowsMarginTop)
 		scroll.Children(func() {
 			ui.Column(f).Width(contentWidth).Gap(ModelsRowsGap).Children(func() {
 				for _, group := range section.Groups {
@@ -55,27 +57,94 @@ func (p *Plugin) drawModelsPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 }
 
 func (p *Plugin) drawModelsGroup(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, group PanelGroup, write WriteState) {
-	if group.Title != "" {
+	provider := len(group.Rows) > 0 && strings.HasPrefix(group.Rows[0].ID, "provider-edit-")
+	if group.Title != "" && !provider {
 		ui.Text(f, group.Title).FontSize(ModelsRowNameSize).LineHeight(ModelsRowNameLine).
 			Weight(NavTitleWeight).Color(t.LabelPrimary).Ellipsis()
 	}
 	ui.Column(f).FillWidth().PadSides(ModelsRowCardPadY, ModelsRowCardPadX, ModelsRowCardPadY, ModelsRowCardPadX).
-		Gap(ModelsRowCardGap).Radius(t.Radii.MD).Background(t.BgLayer1).Children(func() {
+		Gap(ModelsRowCardGap).Radius(t.Radii.XL).Border(ModelsCardBorder, t.BorderL4).
+		Background(t.BgLayer2).Children(func() {
+		if provider {
+			headRow := group.Rows[0]
+			ui.Row(f).FillWidth().Gap(ModelsRowHeadGap).Items(ui.Center).Children(func() {
+				ui.Text(f, group.Title).FontSize(ModelsRowNameSize).LineHeight(ModelsRowNameLine).
+					Weight(NavTitleWeight).Color(t.LabelPrimary).Ellipsis()
+				if headRow.Desc != "" {
+					ui.Text(f, headRow.Desc).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
+						Color(t.LabelTertiary).Grow(1).Ellipsis()
+				} else {
+					ui.Row(f).Grow(1)
+				}
+				p.drawModelsActionRow(f, env, t, headRow)
+			})
+			if len(group.Rows) > 1 {
+				ui.Column(f).FillWidth().PadSides(ModelsEditorPadY, ModelsEditorPadX, ModelsEditorPadY, ModelsEditorPadX).
+					Gap(ModelsEditorGap).Radius(t.Radii.LG).Background(settingsModuleFill(t)).Children(func() {
+					for i := 1; i < len(group.Rows); i++ {
+						row := group.Rows[i]
+						if strings.HasSuffix(row.ID, "-cancel") && i+1 < len(group.Rows) {
+							ui.Row(f).FillWidth().Gap(ModelsRowActionsGap).Justify(ui.End).Children(func() {
+								p.drawModelRow(f, env, t, row, write)
+								p.drawModelRow(f, env, t, group.Rows[i+1], write)
+							})
+							i++
+							continue
+						}
+						p.drawModelRow(f, env, t, row, write)
+					}
+				})
+			}
+			return
+		}
 		for _, row := range group.Rows {
-			row := row
-			if write.Kind == WriteSaving && strings.HasPrefix(row.ID, "retry-") {
-				row.Disabled = true
-				row.Reason = "保存中…"
-			}
-			switch {
-			case strings.HasPrefix(row.ID, "provider-edit-"),
-				strings.HasSuffix(row.ID, "-cancel"), strings.HasSuffix(row.ID, "-apply"):
-				p.drawModelsActionRow(f, env, t, row)
-			case strings.HasPrefix(row.ID, "catalog-model-"):
-				p.drawCatalogModelRow(f, t, row)
-			default:
-				p.drawOfficialRow(f, env, t, row)
-			}
+			p.drawModelRow(f, env, t, row, write)
+		}
+	})
+}
+
+func (p *Plugin) drawModelRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow, write WriteState) {
+	if write.Kind == WriteSaving && strings.HasPrefix(row.ID, "retry-") {
+		row.Disabled = true
+		row.Reason = "保存中…"
+	}
+	switch {
+	case strings.HasPrefix(row.ID, "provider-edit-"),
+		strings.HasSuffix(row.ID, "-cancel"), strings.HasSuffix(row.ID, "-apply"):
+		p.drawModelsActionRow(f, env, t, row)
+	case strings.HasPrefix(row.ID, "catalog-model-"):
+		p.drawCatalogModelRow(f, t, row)
+	case row.NS == apiclient.SettingsNSLLM && (row.Kind == ItemStepper || row.Kind == ItemSelector):
+		p.drawModelEditorField(f, env, t, row)
+	default:
+		p.drawOfficialRow(f, env, t, row)
+	}
+}
+
+// drawModelEditorField 按 ModelsSection.module.css:268-278,808-827 画
+// 12/18/500 fieldLabel + 32px 高输入控件，而不是 general 的 76px 左右行。
+func (p *Plugin) drawModelEditorField(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow) {
+	ui.Column(f).FillWidth().Gap(ModelsFieldGap).Children(func() {
+		ui.Text(f, row.Title).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
+			Weight(500).Color(t.LabelSecondary)
+		control := ui.Row(f).FillWidth().Height(ModelsInputMinHeight).Radius(t.Radii.MD).
+			PadX(10).Border(ModelsCardBorder, t.BorderL4).Background(t.BgLayer1).
+			Items(ui.Center).Gap(8).Hit(env.Tree.ID(env.Feat, "settings-row-"+row.ID), row.Title).
+			Children(func() {
+				ui.Text(f, row.Display()).FontSize(RowTitleFontSize).LineHeight(RowTitleLineHeight).
+					Color(t.LabelPrimary).Grow(1).Ellipsis()
+				if row.Kind == ItemSelector {
+					ui.Icon(f, chevronOutlineIcon()).Size(12, 12).Color(t.LabelTertiary)
+				}
+			})
+		if row.Disabled {
+			control.Opacity(0.5)
+		}
+		if row.Writable() && control.Clicked() {
+			p.activateRow(row)
+		}
+		if row.Reason != "" {
+			ui.Text(f, row.Reason).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).Color(t.Warn)
 		}
 	})
 }
@@ -83,21 +152,40 @@ func (p *Plugin) drawModelsGroup(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 func (p *Plugin) drawModelsActionRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow) {
 	color := t.LabelPrimary
 	if strings.HasSuffix(row.ID, "-apply") {
-		color = t.BrandPrimary
+		color = t.ButtonPrimaryFg
 	}
-	body := ui.Row(f).FillWidth().Height(ModelsRowButtonH).Gap(ModelsRowHeadGap).Items(ui.Center).
-		PadSides(0, ModelsRowButtonPadX, 0, ModelsRowButtonPadX).
+	height := ModelsRowButtonH
+	padX := ModelsRowButtonPadX
+	fontSize := ModelsRowButtonFontSize
+	lineHeight := ModelsRowButtonLine
+	radius := t.Radii.SM
+	footer := strings.HasSuffix(row.ID, "-cancel") || strings.HasSuffix(row.ID, "-apply")
+	if footer {
+		height = ModelsButtonHeight
+		padX = ModelsButtonPadX
+		fontSize = ModelsRowNameSize
+		lineHeight = ModelsRowNameLine
+		radius = t.Radii.MD
+	}
+	body := ui.Row(f).Shrink(0).Height(height).Gap(ModelsRowHeadGap).Items(ui.Center).
+		PadSides(0, padX, 0, padX).Radius(radius).
 		Hit(env.Tree.ID(env.Feat, "settings-row-"+row.ID), row.Title)
+	if strings.HasPrefix(row.ID, "provider-edit-") || footer && !strings.HasSuffix(row.ID, "-apply") {
+		body = body.Border(ModelsCardBorder, t.BorderL3)
+	}
+	if strings.HasSuffix(row.ID, "-apply") {
+		body = body.Background(t.ButtonPrimaryFill)
+	}
 	if row.Writable() {
 		body = body.Hover(ui.Look{}.Background(t.Hover))
 	}
 	body.Children(func() {
-		ui.Text(f, row.Title).FontSize(ModelsRowNameSize).LineHeight(ModelsRowNameLine).Color(color)
-		if row.Desc != "" {
+		ui.Text(f, row.Title).FontSize(fontSize).LineHeight(lineHeight).Color(color)
+		if row.Desc != "" && !strings.HasPrefix(row.ID, "provider-edit-") {
 			ui.Text(f, row.Desc).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
 				Color(t.LabelTertiary).Grow(1).Ellipsis()
 		}
-		if row.Reason != "" {
+		if row.Reason != "" && !strings.HasPrefix(row.ID, "provider-edit-") {
 			ui.Text(f, row.Reason).FontSize(RowDescFontSize).LineHeight(RowDescLineHeight).
 				Color(t.Warn).Grow(1).Ellipsis()
 		}

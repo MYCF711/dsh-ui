@@ -1,12 +1,15 @@
-// Package dsbrand 是**品牌面**的独立部件：官方鲸鱼 logo 的矢量路径 + viewBox。
+// Package dsbrand 是**品牌面**的独立部件：官方鲸鱼 logo 的矢量路径 + viewBox，
+// 以及品牌名的官方 wordmark 矢量（`brand_wordmark.go`）。
 //
 // 为什么值得单独一个包：官方把它做成 `@deepseek-ai/dsh-client-ui-brand-official`，
 // 这说明**品牌是可插拔的**——白标版本应该能换掉 logo 而不动会话渲染代码。
 // 之前它是 `dsconversation` 里的一个内部函数（`fishIcon`），谁要用都得 import
 // 那个庞大的会话包。
 //
-// 数据来源：安装态 asar 里 `@deepseek-ai/dsh-client-ui-primitives` 的
-// FISH_LOGO_PATH / FISH_LOGO_VIEWBOX（`D:/DeepSeek Harness/Desktop/resources/app.asar`）。
+// 数据来源：`@deepseek-ai/dsh-client-ui-primitives` 的 FISH_LOGO_PATH /
+// FISH_LOGO_VIEWBOX（该包在 npm 无独立目录，内容打进了
+// `dsh-web-frontend/dist/assets/index-ghOpC9uV.js`）。品牌名与徽标的几何、
+// 以及**两个不同的标记尺寸**（首屏 34 / 侧栏 24）的出处见 brand_wordmark.go 头部。
 //
 // 本包同时提供 `ui.brand` 能力：第三方插件注册自己的 `Brand` 就能整体替换，
 // 没有的话消费方用包级默认 `Default()`。
@@ -24,15 +27,16 @@ const ServiceKey = "ui.brand"
 type Brand struct {
 	// Icon 是 logo 矢量（含 viewBox）。
 	Icon gfx.Icon
-	// Width 是官方指定的显示宽度（HeroFish 原文：`width: 34`）。
+	// Width 是官方指定的显示宽度（EmptyHero.tsx:104：`width={34}`）。
 	Width float32
 }
 
 // Default 返回内置的官方品牌（DeepSeek 鲸鱼）。
 //
-// 高度按 viewBox 等比算：34 * 17.04 / 23.16 = 25.02，与官方 HeroFish 一致。
+// 这里给的是**首屏**尺寸（34）；侧栏品牌标记是另一个值（SidebarMarkSize = 24，
+// SidebarRoot.tsx:297），两者不可互借——见 brand_wordmark.go 的常量表。
 func Default() Brand {
-	return Brand{Icon: FishIcon(), Width: 34}
+	return Brand{Icon: FishIcon(), Width: HeroMarkWidth}
 }
 
 // Service 是 `ui.brand` 能力的形状。

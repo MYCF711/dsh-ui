@@ -7,25 +7,28 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/entrypins"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsassets"
+	"github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 // FG-2 容器数值逐项来自官方 SidebarRoot / WorkspaceBrowser CSS。
-// Windows titlebar 下 logoRow 为 40；brandName 的字号/行高是 18/24。
+//
+// 品牌名**不是文字**：官方 `sidebar.brand.name` 的官方占用方是
+// `<BrandWordmark includeMark={false} />`（brand-official/src/client/Brand.tsx:17-19），
+// 也就是 9 条字形 + 7 条徽标字形的矢量（见 dsbrand.brand_wordmark.go 的出处）。
+// 所以我们画 icon，而不是 `ui.Text("deepseek")`——照旧的写法是把品牌名当文字排，
+// 字宽、字重、字距全都只能猜，而官方是画好的路径。
 const (
 	logoRowHeight          = 40
 	brandIdentityHeight    = 24
-	brandMarkSize          = 24
-	brandNameWidth         = 156 // BrandWordmark(includeMark=false)，viewBox 156×24
-	brandNameHeight        = 24
-	brandNameFontSize      = 18
-	brandNameLineHeight    = 24
-	brandGap               = 5  // SidebarRoot.module.css:279-285
-	brandPaddingLeft       = 8  // SidebarRoot.module.css:64-66（Windows 展开态）
-	brandMarkOffsetX       = 1  // SidebarRoot.module.css:72-74
-	brandBadgeWidth        = 46 // 官方 wordmark badge clip rect
-	brandBadgeHeight       = 14
+	brandMarkSize          = dsbrand.SidebarMarkSize // 24：SidebarRoot.tsx:297
+	brandNameHeight        = 24                      // BrandWordmark 的 size（Brand.tsx:18 不传 size）
+	brandNameViewBoxW      = dsbrand.BrandNameViewBoxW
+	brandNameViewBoxH      = dsbrand.BrandNameViewBoxH
+	brandGap               = 5 // SidebarRoot.module.css:279-285 `.brandIdentity{gap:5px}`
+	brandPaddingLeft       = 8 // SidebarRoot.module.css:64-66（Windows 展开态）
+	brandMarkOffsetX       = 1 // SidebarRoot.module.css:72-74
 	newSessionHeight       = 38
 	newSessionMarginTop    = 6  // SidebarRoot.module.css:84-86（Windows）
 	newSessionMarginInline = 4  // SidebarRoot.module.css:430：paint-inset 3 + 1
@@ -107,14 +110,22 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 				p.frameBoxes.BrandMark = ui.Icon(f, fishIcon()).Width(brandMarkSize).
 					Height(brandMarkSize*fishAspect(fishViewBoxW, fishViewBoxH)).
 					MarginSides(0, 0, 0, brandMarkOffsetX).Color(t.LabelPrimary)
-				p.frameBoxes.BrandName = ui.Row(f).Width(brandNameWidth).Height(brandNameHeight).
-					Gap(6).Items(ui.Center).Children(func() {
-					ui.Text(f, "deepseek").FontSize(brandNameFontSize).LineHeight(brandNameLineHeight).
-						Color(t.LabelPrimary).Grow(1).Ellipsis()
-					ui.Row(f).Width(brandBadgeWidth).Height(brandBadgeHeight).Radius(t.Radii.XS).
-						Background(t.LabelPrimary).Items(ui.Center).Justify(ui.Center).Children(func() {
-						ui.Text(f, "HARNESS").FontSize(9).LineHeight(brandBadgeHeight).
-							Weight(gfx.WeightMedium).Color(t.ButtonPrimaryFg)
+				// 品牌名 = 官方 BrandWordmark 的 `includeMark={false}` 部分：
+				// 9 条字形（LabelPrimary）+ 徽标板（52×14、圆角 2、LabelPrimary）
+				// + 板内 7 条反色字形（ButtonPrimaryFg）。
+				// 官方对应结构：Brand.tsx:17-19 + BrandWordmark 的
+				// `<rect x="129.348" y="5.5" width="52" height="14" rx="2">`
+				// 与 `clipPath#dsh-wordmark-badge-clip` translate(132.348 5.5) 46×14。
+				p.frameBoxes.BrandName = ui.Row(f).Height(brandNameHeight).
+					Items(ui.Center).Children(func() {
+					ui.Icon(f, dsbrand.BrandNameIcon()).Width(brandNameViewBoxW).
+						Height(brandNameViewBoxH).Color(t.LabelPrimary)
+					ui.Row(f).Height(dsbrand.BadgePlateH).
+						MarginLeft(dsbrand.BadgePlateX - dsbrand.BrandNameViewBoxW - dsbrand.BadgeInset).
+						Radius(dsbrand.BadgeRadius).Background(t.LabelPrimary).
+						Items(ui.Center).Children(func() {
+						ui.Icon(f, dsbrand.BrandBadgeInkIcon()).Size(dsbrand.BadgeClipW, dsbrand.BadgePlateH).
+							Color(t.ButtonPrimaryFg)
 					})
 				})
 			})

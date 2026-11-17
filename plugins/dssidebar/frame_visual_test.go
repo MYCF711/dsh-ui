@@ -10,6 +10,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsshell"
 	"github.com/vivaui/viva/app"
@@ -75,10 +76,34 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 		if snapshot.Width != width || snapshot.Height != height {
 			t.Fatalf("场景尺寸=%dx%d，want %dx%d", snapshot.Width, snapshot.Height, width, height)
 		}
-		for _, text := range []string{"deepseek", "HARNESS", "新会话", "插件", "自动化任务", "工作区"} {
+		// 品牌名（deepseek / HARNESS）已按官方做成矢量，不是文字
+		// （brand-official/src/client/Brand.tsx:17-19 的 `<BrandWordmark includeMark={false} />`），
+		// 所以它们从「必须有文字」的清单里移出，改由下面两条**反向**断言守住：
+		// 它们一旦重新变成文字，说明有人把矢量实现回退了。
+		for _, text := range []string{"新会话", "插件", "自动化任务", "工作区"} {
 			if !session.HasText(text) {
 				t.Errorf("%dx%d 缺少真实绘制文字 %q；texts=%q", width, height, text, session.Texts())
 			}
+		}
+		for _, text := range []string{"deepseek", "HARNESS"} {
+			if session.HasText(text) {
+				t.Errorf("%dx%d 品牌名不该是文字 %q（官方是 BrandWordmark 矢量）；texts=%q", width, height, text, session.Texts())
+			}
+		}
+		// 品牌行确实画了矢量：鱼标 + wordmark 字形 + 徽标字形都是纯填充路径。
+		if len(dsbrand.BrandNameIcon().Commands) == 0 || len(dsbrand.BrandBadgeInkIcon().Commands) == 0 {
+			t.Fatalf("%dx%d 品牌 wordmark 矢量是空的", width, height)
+		}
+		// 矢量在 app.Snapshot 里是 TrianglePrimitive（driver.go:988-989），不是 canvas。
+		// 数一数以字面的确被光栅化成三角形——空的话就是品牌行整块没画出来。
+		triangles := 0
+		for _, prim := range session.Snapshot().Primitives {
+			if prim.Kind == app.TrianglePrimitive {
+				triangles++
+			}
+		}
+		if triangles == 0 {
+			t.Errorf("%dx%d 品牌行没有画出任何矢量（鱼标 + wordmark 应产生三角形）", width, height)
 		}
 		for _, text := range []string{"主题鱼", "上下文压缩", "更多"} {
 			if session.HasText(text) {

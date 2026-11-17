@@ -6,6 +6,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/ui"
 )
 
 // 这个包以前一个测试都没有，而它是**所有插件共用的那一层**：
@@ -146,4 +147,66 @@ func contrastRatio(a, b gfx.Color) float64 {
 		la, lb = lb, la
 	}
 	return (la + 0.05) / (lb + 0.05)
+}
+
+// TestOfficialTokenValues 把取值钉在官方 CSS 的**具体那一行**上。
+//
+// 这个包的值不是我们定的，是从
+// `dsh-client-ui-theme/src/styles/design-platform.css` 抄的。抄错一个颜色不会崩、
+// 不会报错，只会让整块界面偏色；而"浅色主题抄成深色那一套"这种错**看截图看不出来**
+// （两边都"挺白的"）。2026-11-17 这轮审计就在浅色一侧抓到四处：bg-module-platform、
+// label-primary、markdown-inline-code、bg-document-selection。
+//
+// 改值前先把官方那一行查出来，连同 file:line 一起改；上表的 source 就是查的地点。
+func TestOfficialTokenValues(t *testing.T) {
+	dark, light := Dark(), Light()
+	for _, tc := range []struct {
+		name      string
+		got, want gfx.Color
+		source    string
+	}{
+		{"Light.BgModulePlatform", light.BgModulePlatform, gfx.RGB24(0xf5f6f7),
+			"design-platform.css:189 → --dsw-static-neutral-bluish-60 亮值 rgb(245,246,247)（:68）"},
+		{"Dark.BgModulePlatform", dark.BgModulePlatform, gfx.RGB24(0x353638),
+			"design-platform.css:341 → --dsw-static-neutral-bluish-800 rgb(53,54,56)（:72）"},
+		{"Light.LabelPrimary", light.LabelPrimary, gfx.RGB24(0x0f1115),
+			"design-platform.css:259 → --dsw-static-neutral-bluish-1000 rgb(15,17,21)（:57）"},
+		{"Dark.LabelPrimary", dark.LabelPrimary, gfx.RGB24(0xf9fafb),
+			"design-platform.css:411 → --dsw-static-neutral-bluish-50 rgb(249,250,251)（:65）"},
+		{"Light.InlineCode", light.InlineCode, gfx.RGB24(0xfafafa),
+			"design-platform.css:270 → --dsw-static-neutral-50 rgb(250,250,250)（:49）"},
+		{"Dark.InlineCode", dark.InlineCode, gfx.RGB24(0x292929),
+			"design-platform.css:422 → --dsw-static-neutral-800 rgb(41,41,41)（:53）"},
+		{"Light.Selection", light.Selection, ui.RGBA(59, 130, 246, 0.40),
+			"design-platform.css:179 → color-mix(--dsw-static-blue-500 40%, transparent)"},
+		{"Dark.Selection", dark.Selection, ui.RGBA(59, 130, 246, 0.40),
+			"design-platform.css:331 → color-mix(--dsw-static-blue-500 40%, transparent)"},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %+v，官方值 %+v（%s）", tc.name, tc.got, tc.want, tc.source)
+		}
+	}
+
+	// 圆角六档：base.css:18-23，一个不能差。
+	if want := (pluginapi.Radii{XS: 4, SM: 8, MD: 12, LG: 16, XL: 20, Panel: 28}); light.Radii != want {
+		t.Errorf("Radii = %+v，官方 base.css:18-23 是 %+v", light.Radii, want)
+	}
+
+	// 字号取官方四档（默认正文 14 时）：
+	// --dsw-font-s-14 14/22、-xs-13 13/20、-xxs-12 12/18、-xxxs-11 11/14
+	// （gradient-shadow-text.css:220,234,248,262）。
+	f := light.Fonts
+	for _, c := range []struct {
+		name      string
+		got, want float32
+	}{
+		{"Body", f.Body, 14}, {"BodyLine", f.BodyLine, 22},
+		{"Secondary", f.Secondary, 13}, {"SecondaryLine", f.SecondaryLine, 20},
+		{"Caption", f.Caption, 12}, {"CaptionLine", f.CaptionLine, 18},
+		{"Tiny", f.Tiny, 11},
+	} {
+		if c.got != c.want {
+			t.Errorf("Fonts.%s = %v，官方 %v（gradient-shadow-text.css:220-267）", c.name, c.got, c.want)
+		}
+	}
 }

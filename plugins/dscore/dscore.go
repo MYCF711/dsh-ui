@@ -54,25 +54,29 @@ func (p *Plugin) Theme() *pluginapi.Theme { return p.theme }
 
 // 官方色板里的原始值。名字与 --dsw-static-* 一一对应，别改名。
 const (
-	staticNeutralBluish00   = 0xffffff // 纯白
-	staticNeutralBluish50   = 0xf9fafb
-	staticNeutralBluish60   = 0xf9fafb
-	staticNeutralBluish75   = 0xf1f3f5
-	staticNeutralBluish100  = 0xebeef2
-	staticNeutralBluish150  = 0xe9ecf2
-	staticNeutralBluish200  = 0xe1e5ee
-	staticNeutralBluish300  = 0xcfd3d6
-	staticNeutralBluish400  = 0xadb2b8
-	staticNeutralBluish500  = 0x979da6
-	staticNeutralBluish600  = 0x81858c
-	staticNeutralBluish700  = 0x61666b
-	staticNeutralBluish750  = 0x43454a
-	staticNeutralBluish800  = 0x353638
-	staticNeutralBluish850  = 0x2c2c2e
-	staticNeutralBluish875  = 0x232324
-	staticNeutralBluish900  = 0x1b1b1c
-	staticNeutralBluish950  = 0x151517
-	staticNeutralBluish1000 = 0x0f1115
+	staticNeutralBluish00 = 0xffffff // 纯白
+	staticNeutralBluish50 = 0xf9fafb
+	// --dsw-static-neutral-bluish-60 是**唯一亮暗不同值**的静态档：
+	// 亮 rgb(245,246,247)（design-platform.css:68）、暗 rgb(249,250,251)（:154）。
+	// 一个常量装不下两套值——原来只写 0xf9fafb（暗值），浅色主题就跟着用了暗色。
+	// 暗色的 --dsw-alias-bg-module-platform 走 bluish-800（:341），不需要 60 档。
+	staticNeutralBluish60Light = 0xf5f6f7 // design-platform.css:68
+	staticNeutralBluish75      = 0xf1f3f5
+	staticNeutralBluish100     = 0xebeef2
+	staticNeutralBluish150     = 0xe9ecf2
+	staticNeutralBluish200     = 0xe1e5ee
+	staticNeutralBluish300     = 0xcfd3d6
+	staticNeutralBluish400     = 0xadb2b8
+	staticNeutralBluish500     = 0x979da6
+	staticNeutralBluish600     = 0x81858c
+	staticNeutralBluish700     = 0x61666b
+	staticNeutralBluish750     = 0x43454a
+	staticNeutralBluish800     = 0x353638
+	staticNeutralBluish850     = 0x2c2c2e
+	staticNeutralBluish875     = 0x232324
+	staticNeutralBluish900     = 0x1b1b1c
+	staticNeutralBluish950     = 0x151517
+	staticNeutralBluish1000    = 0x0f1115
 
 	staticNeutral50  = 0xfafafa
 	staticNeutral100 = 0xf5f5f5
@@ -240,14 +244,15 @@ func Light() *pluginapi.Theme {
 		Name: "ds-light",
 		Dark: false,
 
-		BgBase:           gfx.RGB24(staticNeutralBluish00),
-		SidebarFill:      gfx.RGB24(staticNeutralBluish50),
-		BgLayer1:         gfx.RGB24(staticNeutralBluish00),
-		BgLayer2:         gfx.RGB24(staticNeutralBluish00),
-		Menu:             ui.RGBA(252, 253, 254, 0.70), // design-platform.css:316,318
-		BgLayer3:         gfx.RGB24(staticNeutralBluish00),
-		BgOverlay:        gfx.RGB24(staticNeutralBluish150),
-		BgModulePlatform: gfx.RGB24(staticNeutralBluish60),
+		BgBase:      gfx.RGB24(staticNeutralBluish00),
+		SidebarFill: gfx.RGB24(staticNeutralBluish50),
+		BgLayer1:    gfx.RGB24(staticNeutralBluish00),
+		BgLayer2:    gfx.RGB24(staticNeutralBluish00),
+		Menu:        ui.RGBA(252, 253, 254, 0.70), // design-platform.css:316,318
+		BgLayer3:    gfx.RGB24(staticNeutralBluish00),
+		BgOverlay:   gfx.RGB24(staticNeutralBluish150),
+		// --dsw-alias-bg-module-platform（design-platform.css:189）= bluish-60 的**亮**值。
+		BgModulePlatform: gfx.RGB24(staticNeutralBluish60Light),
 		BgSkeleton:       ui.RGBA(0, 0, 0, 0.04),
 
 		CardFill:         gfx.RGB24(staticNeutral50),
@@ -270,7 +275,9 @@ func Light() *pluginapi.Theme {
 		BorderL3: ui.RGBA(0, 0, 0, 0.12), // #0000001f
 		BorderL4: ui.RGBA(0, 0, 0, 0.16), // #00000029
 
-		LabelPrimary:         gfx.RGB24(0x000000),
+		// --dsw-alias-label-primary（design-platform.css:259）= neutral-bluish-1000
+		// rgb(15,17,21)（:57），**不是**纯黑 #000000——两套主题的唯一一级文字色。
+		LabelPrimary:         gfx.RGB24(staticNeutralBluish1000),
 		LabelPrimaryDimmed:   gfx.RGB24(staticNeutralBluish950), // design-platform.css:256
 		LabelSecondary:       gfx.RGB24(staticNeutralBluish700),
 		LabelTertiary:        gfx.RGB24(staticNeutralBluish600),
@@ -286,9 +293,11 @@ func Light() *pluginapi.Theme {
 		ButtonPrimaryHover: gfx.RGB24(staticNeutralBluish750),
 		ButtonPrimaryFg:    gfx.RGB24(staticNeutralBluish00),
 
-		CodeBlock:    gfx.RGB24(staticNeutralBluish50),
-		CodeBanner:   gfx.RGB24(staticNeutralBluish50),
-		InlineCode:   gfx.RGB24(staticNeutralBluish50),
+		CodeBlock:  gfx.RGB24(staticNeutralBluish50),
+		CodeBanner: gfx.RGB24(staticNeutralBluish50),
+		// --dsw-alias-markdown-inline-code（design-platform.css:270）= neutral-50
+		// rgb(250,250,250)（:49），不是 code-block 的 bluish-50。
+		InlineCode:   gfx.RGB24(staticNeutral50),
 		CodeComment:  gfx.RGB24(0x6a9955),
 		CodeString:   gfx.RGB24(0xa31515),
 		CodeNumber:   gfx.RGB24(0x098658),
@@ -323,7 +332,9 @@ func Light() *pluginapi.Theme {
 		FileDiffDeletedGutter: gfx.RGB24(0xfdece9), // rgb(253, 236, 233)
 		FileDiffDeletedMarker: gfx.RGB24(0xba2723), // rgb(186, 39, 35)
 
-		Selection: ui.RGBA(59, 130, 246, 0.30),
+		// --dsw-alias-bg-document-selection = color-mix(blue-500 40%, transparent)
+		// （design-platform.css:179 亮 / :331 暗，两套都是 40%）。
+		Selection: ui.RGBA(59, 130, 246, 0.40),
 
 		Radii: radii,
 		Fonts: fonts(),

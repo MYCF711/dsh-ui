@@ -33,7 +33,11 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/vivaui/viva/components"
+	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -313,11 +317,19 @@ func (p *Plugin) cotRetry(key string) {
 	}
 }
 
-// drawCotToolbar 画译文工具栏（按钮 + pending 状态 + 失败文案与重试）。
+// drawCotToolbar 画译文工具栏（按钮 + pending spinner + 失败文案与重试）。
 //
-// 几何与官方同一克制：一行 28 高、按钮 ghost/small、失败文案 13px。
-// 文案逐字来自 OFF:src/client/locales.ts:17-18（中文那一份）。
-func (p *Plugin) drawCotToolbar(f ui.C, env *pluginapi.Env, key string, entry *cotEntry) {
+// 几何逐条取官方 `Translation.module.css:1-13`：
+//
+//	`.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-height:28px;margin-bottom:4px}`
+//	`.toolbar > .viewToggle{margin-inline-start:-10px;color:label-tertiary}`
+//	`.failure{color:label-primary;font-size:13px}`
+//	pending 出的是 `IconLoadingOutlineRegular size=14` 的转圈图标 + `aria-label=translating`，
+//	不是一行文字（`OFF:TranslationBody.tsx:53-55`）。本仓用 Viva 的 `ui.Spinner` 画同一个
+//	意思——它没有官方那个 14px 图标的几何，这一点登记在账本行。
+//
+// 文案逐字来自 OFF:src/client/locales.ts（中文那一份）。
+func (p *Plugin) drawCotToolbar(f ui.C, env *pluginapi.Env, key string, entry *cotEntry, unavailable bool) {
 	t := p.theme
 	// failed 时官方强制显示原文（`showOriginal = original || state.failed`），
 	// 所以按钮文案按"显示的是原文"算，且此时按钮不可用（官方 `disabled={state.failed}`）。
@@ -326,37 +338,64 @@ func (p *Plugin) drawCotToolbar(f ui.C, env *pluginapi.Env, key string, entry *c
 	if !showOriginal {
 		label = cotLabelShowOriginal
 	}
-	ui.Row(f).WidthPercent(100).MinHeight(28).Items(ui.Center).Gap(6).Children(func() {
-		if ui.Button(f, label).Ghost().Small().Disabled(entry.failed).Clicked() {
-			entry.original = !showOriginal
-		}
+	ui.Row(f).WidthPercent(100).MinHeight(28).Items(ui.Center).Gap(4).
+		PadSides(0, 0, 4, 0).Children(func() {
+		ui.Row(f).Shrink(0).Children(func() {
+			// `.toolbar > .viewToggle{margin-inline-start:-10px}`：把 sm Button 的
+			// 10px 内边距抵掉，让按钮文字与正文左缘对齐。
+			ui.Row(f).PadLeft(-cotToolbarToggleInset).Children(func() {
+				if ui.Button(f, label).Ghost().Small().Disabled(entry.failed).Clicked() {
+					entry.original = !showOriginal
+				}
+			})
+		})
 		if entry.pending && !entry.failed {
-			ui.Text(f, cotLabelTranslating).FontSize(t.Fonts.Secondary).Color(t.LabelCaption)
+			// 官方是 `IconLoadingOutlineRegular` 14px + `aria-label=translating`。
+			ui.Spinner(f)
 		}
 		if entry.failed {
-			ui.Text(f, cotLabelFailed).FontSize(t.Fonts.Secondary).Color(t.LabelPrimary)
+			ui.Text(f, cotLabelFailed).FontSize(cotFailFontSize).Color(t.LabelPrimary)
 			if ui.Button(f, cotLabelRetry).Ghost().Small().
 				Hit(env.Tree.ID(env.Feat, "cot-retry-"+key), cotLabelRetry).Clicked() {
 				p.cotRetry(key)
 			}
 		}
+		if unavailable {
+			ui.Text(f, cotLabelProviderUnavailable).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
+		}
 	})
 }
 
-// 官方中文文案（OFF:src/client/locales.ts:38-39），不改写。
+// cotToolbarToggleInset 是官方 `.viewToggle{margin-inline-start:-10px}`
+// （`OFF:Translation.module.css:5`）。
+const cotToolbarToggleInset float32 = 10
+
+// cotFailFontSize 是官方 `.failure{font-size:var(--dsh-content-font-size-secondary,13px)}`
+// （`OFF:Translation.module.css:10`）。
+const cotFailFontSize float32 = 13
+
+// 官方中文文案（OFF:src/client/locales.ts），不改写。
 const (
 	cotLabelShowTranslation = "查看译文"
 	cotLabelShowOriginal    = "查看原文"
 	cotLabelRetry           = "重试"
 	cotLabelFailed          = "翻译暂不可用，已显示原文"
 	cotLabelTranslating     = "正在翻译思考内容"
+	// cotLabelProviderUnavailable 是官方 `providerUnavailable`
+	// （`OFF:locales.ts:31` 中文逐字）：偏好里的 provider 不在可用清单里。
+	cotLabelProviderUnavailable = "此服务暂不可用，请配置 DeepSeek 账号或官方 API 服务，或选择可用的翻译服务"
 )
 
 // drawCotBody 画正文：默认显示译文，用户点了「查看原文」或翻译失败时显示原文。
 //
-// 与展开态原文同一个画法（FontSize Caption + LabelTertiary + ui.Wrap），
-// 不另造 Markdown——理由见文件头第 2 条差异。
-func (p *Plugin) drawCotBody(f ui.C, entry *cotEntry, original string) {
+// **正文走官方那条 Markdown 工厂**：官方 `TranslationBody.tsx:60` 是
+// `renderFactorySlot('conversation.chat.reasoning.content', {text, running})`，
+// 而这个工厂的默认实现就是 `MarkdownText variant="compact"`
+// （`OFF:dsh-client-ui-chat/src/client/chat/ReasoningContent.tsx:14-17`）——
+// 所以译文/原文都要 Markdown 排版（带代码块工具条），不是纯文本折行。
+// 本仓没有工厂槽，等价物是"排版后覆画"的 `mdSlot`（`conversation.go` 里助手正文
+// 用的是同一套）；这里把正文排成一条 reasoning 专用的 slot，由 afterDraw 画。
+func (p *Plugin) drawCotBody(f ui.C, env *pluginapi.Env, key string, entry *cotEntry, original string, _ bool) {
 	t := p.theme
 	showOriginal := entry == nil || entry.failed || entry.original
 	text := original
@@ -364,14 +403,98 @@ func (p *Plugin) drawCotBody(f ui.C, entry *cotEntry, original string) {
 		// 没翻完的段在 cotDisplayText 里自动退回原文，所以这里不会出现空正文。
 		text = cotDisplayText(entry.fragments, entry.cache)
 	}
-	ui.Wrap(f, text).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+	width := env.MainWidth - cotBodyWidthInset
+	if width < cotBodyMinWidth {
+		width = cotBodyMinWidth
+	}
+	// 下标只从 key 散列一次：同一个 key 必须命中同一格 Markdown 缓存，
+	// 否则每帧都会重新 Parse+Layout（实测写成两处调用时正文一个字都画不出来）。
+	slot := reasoningSlotSeq(key)
+	height := p.layoutReasoningMarkdown(env.Canvas, slot, text, width)
+	p.slots = append(p.slots, mdSlot{
+		idx: slot,
+		key: key + "\x00reasoning",
+		box: ui.Slot(f).Height(height),
+	})
+	_ = t
 }
+
+// convReasoningSlotBase 是思考正文在 Markdown 缓存里占的下标区起点。
+//
+// 助手正文用 0..len(Msgs)-1；思考正文用 1000 起的**稳定散列**下标，两者不撞，
+// 也不随消息数变化把彼此挤掉（p.docs/p.views 是按下标增长的切片，见
+// `layoutMarkdownWithFiles`）。
+const convReasoningSlotBase = 1000
+
+// reasoningSlotSeq 把一条思考的 key 映射成 [base, base+1024) 里的稳定下标。
+//
+// 用 FNV-1a 而不是 len：key 含会话 id 与消息下标，散列后同一段思考永远同一格，
+// 换会话/换顺序不会互相踩。碰撞概率在这里无所谓——撞了只是共用一份排版缓存，
+// 而两张卡同帧不会同时展开同一段思考。
+func reasoningSlotSeq(key string) int {
+	const offset, prime = 2166136261, 16777619
+	hash := uint32(offset)
+	for i := 0; i < len(key); i++ {
+		hash ^= uint32(key[i])
+		hash *= prime
+	}
+	return convReasoningSlotBase + int(hash%1024)
+}
+
+// layoutReasoningMarkdown 排版一段思考正文并返回它的高度（"槽位"同一次排完）。
+//
+// 与 `layoutMarkdownWithFiles` 的差别只有三点，都是官方的：
+//   - 字号用 `variant="compact"`（`ReasoningContent.tsx:16`）：正文小一号
+//     （theme.Fonts.Secondary）、行高同一档；
+//   - 不做文件链接改写（思考里没有"落盘路径"上下文）；
+//   - 流式状态交给 Markdown 自己（`streaming={running}`）。
+func (p *Plugin) layoutReasoningMarkdown(canvas *gfx.Canvas, slot int, text string, width float32) float32 {
+	if p.codeBlocks == nil {
+		p.codeBlocks = map[int][]messageCode{}
+	}
+	if p.fileLinks == nil {
+		p.fileLinks = map[int]map[string]string{}
+	}
+	for len(p.docs) <= slot {
+		p.docs = append(p.docs, markdown.Document{})
+		p.views = append(p.views, components.MarkdownView{})
+		p.texts = append(p.texts, "")
+		p.rendered = append(p.rendered, "")
+		p.linkKeys = append(p.linkKeys, "")
+		p.widths = append(p.widths, -1)
+		p.heights = append(p.heights, 0)
+	}
+	// 切片增长时 **texts 等缓存键的零值恰好等于空串 / -1**，而空正文也真是 ""：
+	// 只比 `p.texts[slot] != text` 会让"第一帧正文就是空"的槽位永远不排版
+	// （实测：span 有了、Markdown 高度 0、一个字都不画）。所以空正文也要排一次。
+	if p.texts[slot] != text || p.widths[slot] != width || p.heights[slot] == 0 {
+		p.texts[slot] = text
+		p.rendered[slot] = text
+		p.linkKeys[slot] = ""
+		p.widths[slot] = width
+		p.docs[slot].Parse(text)
+		p.views[slot].Layout(canvas, components.MarkdownStyle{
+			Size: p.theme.Fonts.Secondary, Highlight: mdlite.Highlight,
+		}, &p.docs[slot], width)
+	}
+	p.rebuildCodeBlocks(canvas, slot, width)
+	p.heights[slot] = p.views[slot].Height() + p.markdownExtraHeight(slot)
+	return p.heights[slot]
+}
+
+// cotBodyWidthInset 是思考正文的可用宽度扣除：展开态盒子的左右内边距
+// （`Pad(8)` = 8px×2）再留一点余量给 Markdown 自己的边距。
+const cotBodyWidthInset float32 = 20
+
+// cotBodyMinWidth 是排版的最小宽度（窄窗口下不许排成 0 宽）。
+const cotBodyMinWidth float32 = 120
 
 // cotToolbarAvailable 判断这一帧能不能画译文入口。
 //
-// 判据是"宿主真的能翻"：壳接了 limits，且清单里至少有 provider，
-// 且偏好里的 provider 在清单内（不在就说明宿主把它列成不可用——官方那时画
-// providerUnavailable，本仓没有设置页，就直接不画入口）。
+// 判据是"宿主真的能翻"：壳接了 limits，且清单里至少有 provider。
+// **偏好里的 provider 不在清单内也要画**：官方那时照样挂座位，只是会多一句
+// `providerUnavailable`（`OFF:TranslationSettings.tsx:58-60`）——这是设置里
+// 可选的服务问题，不是"这个功能没有"，藏掉入口只会让人找不到原因。
 func cotToolbarAvailable(act pluginapi.Actions) (apiclient.CotTranslationLimits, bool) {
 	if act.CotTranslationLimits == nil || act.CotTranslationTranslate == nil || act.CotTranslationResult == nil {
 		return apiclient.CotTranslationLimits{}, false
@@ -380,10 +503,20 @@ func cotToolbarAvailable(act pluginapi.Actions) (apiclient.CotTranslationLimits,
 	if !ok || len(limits.AvailableProviders) == 0 {
 		return apiclient.CotTranslationLimits{}, false
 	}
+	return limits, true
+}
+
+// cotProviderUnavailable 是"当前 provider 不在可用清单里"（官方 `providerUnavailable`，
+// `OFF:locales.ts:31` 中文逐字）。只有宿主确实报了清单（Loaded）才判——
+// 还没读到时把 provider 说成不可用就是编。
+func cotProviderUnavailable(limits apiclient.CotTranslationLimits) bool {
+	if len(limits.AvailableProviders) == 0 {
+		return false
+	}
 	for _, provider := range limits.AvailableProviders {
 		if provider == limits.Preferences.Provider {
-			return limits, true
+			return false
 		}
 	}
-	return apiclient.CotTranslationLimits{}, false
+	return true
 }

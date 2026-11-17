@@ -675,10 +675,16 @@ func (p *Plugin) drawThinking(f ui.C, env *pluginapi.Env, msg apiclient.Message,
 		Children(func() {
 			var entry *cotEntry
 			if limits, ok := cotToolbarAvailable(env.Act); ok {
+				// provider 不可用（宿主清单里没有偏好那个服务）时**照样推进与画入口**：
+				// 官方同一个座位只多一句 providerUnavailable（OFF:TranslationSettings.tsx:58-60），
+				// 不把设置项缺失伪装成功能缺失。真翻不动时走的还是 failed + 重试那条路。
 				entry = p.cotAdvance(env.Act, env.Data.Cur, key, cotSourceText(msg), running, limits)
-				p.drawCotToolbar(f, env, key, entry)
+				p.drawCotToolbar(f, env, key, entry, cotProviderUnavailable(limits))
 			}
-			p.drawCotBody(f, entry, reasoningBodyText(msg))
+			// 官方 `renderFactorySlot('conversation.chat.reasoning.content',{text,running})`
+			// （OFF:TranslationBody.tsx:60）：正文是 Markdown（compact 字号），
+			// 不是纯文本折行。running 交给 Markdown 自己处理流式。
+			p.drawCotBody(f, env, key, entry, reasoningBodyText(msg), running)
 		})
 }
 

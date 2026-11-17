@@ -340,12 +340,20 @@ func TestCotToolbarAvailableRequiresRealCapability(t *testing.T) {
 	}
 	fake.loaded = true
 
-	// 偏好里的 provider 不在宿主清单里（宿主把它列为不可用）：不画入口。
+	// 偏好里的 provider 不在宿主清单里：入口照样在（官方 providerUnavailable 只加一句话），
+	// 但 cotProviderUnavailable 必须判出来——这是官方的"服务暂不可用"提示。
 	fake.limits.Preferences.Provider = apiclient.CotTranslationProviderBing
-	if _, ok := cotToolbarAvailable(fake.actions()); ok {
-		t.Fatal("provider 不在 availableProviders 里时不许说可用")
+	limits, ok := cotToolbarAvailable(fake.actions())
+	if !ok {
+		t.Fatal("provider 不可用时入口不该消失（官方同一个座位 + providerUnavailable 文案）")
+	}
+	if !cotProviderUnavailable(limits) {
+		t.Fatal("provider 不在 availableProviders 里时必须判成不可用")
 	}
 	fake.limits.Preferences.Provider = apiclient.CotTranslationProviderOfficial
+	if limits, ok := cotToolbarAvailable(fake.actions()); !ok || cotProviderUnavailable(limits) {
+		t.Fatal("provider 在清单里时不该判成不可用")
+	}
 
 	// 空清单 = 一个都翻不了。
 	fake.limits.AvailableProviders = nil

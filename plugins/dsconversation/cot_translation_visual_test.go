@@ -59,6 +59,9 @@ type cotHarness struct {
 	session     *headless.Session
 	invalidator *app.Invalidator
 	act         pluginapi.Actions
+	// canvas 是最近一帧的绘制画布（Paint 里写）：要重排 Markdown 的测试用它，
+	// 因为 gfx.Canvas 只有壳会造。
+	canvas *gfx.Canvas
 }
 
 func openCotHarness(t *testing.T, width, height int, data pluginapi.Snapshot, act pluginapi.Actions) *cotHarness {
@@ -74,6 +77,7 @@ func openCotHarness(t *testing.T, width, height int, data pluginapi.Snapshot, ac
 		Title: "cot-headless", Width: width, Height: height, Tree: tree,
 		WindowMode: app.WindowFrameless, Invalidator: &invalidator,
 	}
+	var lastCanvas *gfx.Canvas
 	config.Paint = func(canvas *gfx.Canvas, current ui.Size) {
 		bounds := gfx.Rect{Width: current.Width, Height: current.Height}
 		canvas.Fill(bounds, theme.BgBase)
@@ -81,6 +85,7 @@ func openCotHarness(t *testing.T, width, height int, data pluginapi.Snapshot, ac
 			Theme: theme, Data: data, Tree: tree, Feat: feat, Canvas: canvas, Act: act,
 			Bounds: bounds, MainWidth: current.Width,
 		}
+		lastCanvas = canvas
 		view.Draw(canvas, bounds, func(f ui.C) { p.draw(f, env) })
 		p.afterDraw(canvas, env)
 	}
@@ -89,7 +94,7 @@ func openCotHarness(t *testing.T, width, height int, data pluginapi.Snapshot, ac
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &cotHarness{t: t, p: p, data: data, tree: tree, feat: feat, session: session, invalidator: &invalidator, act: act}
+	h := &cotHarness{t: t, p: p, data: data, tree: tree, feat: feat, session: session, invalidator: &invalidator, act: act, canvas: lastCanvas}
 	h.pump()
 	h.pump()
 	return h
@@ -351,11 +356,15 @@ func TestCotTranslationAbsentWithoutHost(t *testing.T) {
 	}
 }
 
-// TestCotTranslationHiddenWhenProviderUnavailable 钉住"provider 不可用就不画"。
+// TestCotTranslationShowsEntryWhenProviderUnavailable 钉住官方那条语义：
+// **provider 不在可用清单里时入口照样在**，只是多一句 `providerUnavailable`
+// （`OFF:TranslationSettings.tsx:58-60`）。
 //
-// 宿主 limits 里 availableProviders 只有 deepseek-official，而偏好是 bing
-// （官方那时画 providerUnavailable + 禁用保存）；本仓没有设置页，就不画入口。
-func TestCotTranslationHiddenWhenProviderUnavailable(t *testing.T) {
+// 旧版本这里断言的是"不画入口"——那是把设置项缺失误当成功能缺失，
+// 用户会看到一个整块消失、也没有原因的思考块。现版本把"推进状态机"交给
+// 宿主真值：provider 不可用时请求照发（宿主会拒），界面得到 failed + 重试，
+// 与官方"选不到可用服务 → 翻译失败"同一条路；这里只钉入口与文案。
+func TestCotTranslationShowsEntryWhenProviderUnavailable(t *testing.T) {
 	translator := newCotAutoTranslator()
 	act := translator.actions()
 	act.CotTranslationLimits = func() (apiclient.CotTranslationLimits, bool) {
@@ -374,12 +383,69 @@ func TestCotTranslationHiddenWhenProviderUnavailable(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		h.pump()
 	}
-	for _, label := range []string{cotLabelShowTranslation, cotLabelShowOriginal} {
-		if h.session.HasText(label) {
-			t.Fatalf("provider 不在可用清单里却画了译文入口（%s）：%q", label, h.session.Texts())
+	// 入口照常画（官方同一个座位），并且带上官方那句不可用说明。
+	// 默认视图是译文，所以按钮文案是「查看原文」（`showOriginal` 为假 → t('original')）。
+	if !h.session.HasText(cotLabelShowOriginal) {
+		t.Fatalf("provider 不可用时入口不该消失（官方 providerUnavailable 只是加一句话）：%q", h.session.Texts())
+	}
+	if !h.session.HasText(cotLabelProviderUnavailable) {
+		t.Fatalf("provider 不可用没画官方那句说明：%q", h.session.Texts())
+	}
+}
+
+// TestCotTranslationPendingDrawsSpinner 钉住官方 pending 形状：
+// 是一个**转圈图标**（`OFF:TranslationBody.tsx:53-55`，
+// `IconLoadingOutlineRegular size=14` + `aria-label=translating`），不是一行文字。
+//
+// 本仓用 Viva 的 `ui.Spinner`（16px、八根辐条、逐帧转）；这里判"画布上出现了
+// spinner 的辐条图元"（见 hasSpinnerPrimitive），不判任何文案——
+// 旧版本画的是「正在翻译思考内容」一行字，那样也会通过文案判据。
+func TestCotTranslationPendingDrawsSpinner(t *testing.T) {
+	translator := &heldCotTranslator{}
+	act := translator.actions()
+	h := openCotHarness(t, 1182, 832, cotShotData(), act)
+	defer h.close()
+	h.expandThinking(1)
+	for i := 0; i < 5; i++ {
+		h.pump()
+	}
+	// pending 期间官方不画翻译文案，只画 spinner。
+	if h.session.HasText(cotLabelFailed) {
+		t.Fatalf("还在翻译却画了失败文案：%q", h.session.Texts())
+	}
+	if !hasSpinnerPrimitive(h.session.Snapshot()) {
+		t.Fatalf("pending 没有画 spinner 图元（官方 IconLoadingOutlineRegular 14px）")
+	}
+}
+
+// heldCotTranslator 是"请求永不完成"的 translator：用来停在 pending 态。
+type heldCotTranslator struct{ cotAutoTranslator }
+
+func (a *heldCotTranslator) actions() pluginapi.Actions {
+	return pluginapi.Actions{
+		CotTranslationLimits: a.cotAutoTranslator.actions().CotTranslationLimits,
+		CotTranslationTranslate: func(sessionID, text, targetLanguage, provider string) string {
+			a.calls = append(a.calls, cotCall{sessionID: sessionID, text: text,
+				targetLanguage: targetLanguage, provider: provider})
+			return fmt.Sprintf("held-%d", len(a.calls))
+		},
+		CotTranslationResult: func(string) (pluginapi.CotTranslationResult, bool) { return pluginapi.CotTranslationResult{}, false },
+	}
+}
+
+// hasSpinnerPrimitive 判断这一帧有没有小尺寸的矩形图元（spinner 的辐条）。
+//
+// Viva 的 spinner 由 `PaintSpinner` 画成 8 根 2×4 / 4×2 的小矩形（16px 图标内），
+// 所以判据是"存在边长 ≤ 6px 的矩形图元"——本界面别处没有这种小方块。
+func hasSpinnerPrimitive(snapshot app.Snapshot) bool {
+	for _, primitive := range snapshot.Primitives {
+		if primitive.Kind != app.RectanglePrimitive {
+			continue
+		}
+		if primitive.Bounds.Width <= 6 && primitive.Bounds.Height <= 6 &&
+			primitive.Bounds.Width >= 1 && primitive.Bounds.Height >= 1 {
+			return true
 		}
 	}
-	if len(translator.calls) != 0 {
-		t.Fatalf("不该发请求，实际 %d 个", len(translator.calls))
-	}
+	return false
 }

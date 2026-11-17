@@ -68,7 +68,10 @@ const (
 	// DiffFile.tsx:195 的动态 number 宽是 `max(2,digits)ch + 12px`。
 	changesNumberPadR  float32 = 6
 	changesNumberExtra float32 = 12
-	changesSignEm      float32 = 1.4
+	// 行号列的 `1ch`：等宽字体下 ch 约为字号的 0.5 倍（官方 CSS 用 `ch` 单位，
+	// 本仓没有测量接口，按等宽字体的比例折算；字号取主题的 `Fonts.Code`）。
+	changesNumberChEm float32 = 0.5
+	changesSignEm     float32 = 1.4
 	// `.line{min-height:22px;line-height:22px}` / `.text{padding:0 16px 0 6px}`。
 	changesLineH    float32 = 22
 	changesTextPadR float32 = 16
@@ -444,8 +447,19 @@ func (p *Plugin) drawFileCard(f ui.C, env *pluginapi.Env, session string, file a
 }
 
 // drawHunks 画一个文件的全部 hunk（含 hunk 头与"未变更行"折叠提示）。
+//
+// 每行是官方的四轨 `.line`：旧行号 · 新行号 · 符号 · 正文
+// （`OFF:src/client/ChangesTab.module.css:604`，单侧文件 :915/:916）。
+// 行号由 hunk 坐标现算，与官方 `hunkRows()` 同一口径
+// （`OFF:src/client/diff-rows.ts:53-68`）：上下文两边都数、删行只数旧侧、
+// 加行只数新侧、`\ No newline at end of file` 不是一行。
 func (p *Plugin) drawHunks(f ui.C, env *pluginapi.Env, file apiclient.ForgeDiffFile) {
 	t := p.themeOf(env)
+	// 行号列宽是**整份 diff** 共用的（官方 `maxDiffLineNo` 一次算出
+	// `--forge-number-width`，见 changesDiffLineNo）。这里按本文件算是个近似：
+	// 官方取的是全 diff 的最大行号，而面板里每张文件卡各自渲染。
+	numbers := changesNumberW(file, t.Fonts.Code)
+	singleSide := changesSingleSide(file)
 	drawn := 0
 	prevNewEnd := 0
 	for _, hunk := range file.Hunks {
@@ -461,42 +475,172 @@ func (p *Plugin) drawHunks(f ui.C, env *pluginapi.Env, file apiclient.ForgeDiffF
 				Color(t.CodeComment).PadSides(0, changesTextPadR, 0, changesTextPadL)
 		})
 		drawn++
+		oldNo, newNo := hunk.OldStart, hunk.NewStart
 		for _, line := range hunk.Lines {
 			if drawn >= changesMaxLinesPerFile {
 				return
 			}
-			p.drawDiffLine(f, t, line)
+			row := changesDiffRowOf(line, oldNo, newNo)
+			if row.old != nil {
+				oldNo++
+			}
+			if row.new != nil {
+				newNo++
+			}
+			p.drawDiffRow(f, t, numbers, singleSide, row)
 			drawn++
 		}
 		prevNewEnd = hunk.NewStart + hunk.NewLines
 	}
 }
 
-// drawDiffLine 画一行 patch 形式的内容（首字符是 ` ` / `+` / `-` / `\`）。
-//
-// 官方给增删行铺 `--dsw-alias-file-diff-*-bg`；本仓主题**没有**这三档令牌
-// （`pluginapi/theme.go` 里没有任何 diff 色），所以这里只染符号与文字
-// （+ 绿、− 红、上下文次要色），不铺底。这条差异登记在账本行。
-func (p *Plugin) drawDiffLine(f ui.C, t *pluginapi.Theme, line string) {
+// changesRow 是画出来的一行：两侧行号（各有/皆无）加正文。对应官方
+// `DiffRow`（`OFF:src/client/diff-rows.ts:9-13`）。
+type changesRow struct {
+	old  *int
+	new  *int
+	sign string
+	text string
+}
+
+// changesDiffRowOf 把一行 patch 文本连同当前两侧行号折成 changesRow。
+// 行号引用的推进由调用方做（官方 `oldNo++` / `newNo++` 也在 `hunkRows()` 里）。
+func changesDiffRowOf(line string, oldNo, newNo int) changesRow {
 	sign := " "
-	body := line
-	color := t.LabelSecondary
+	text := line
+	old, next := &oldNo, &newNo
 	if line != "" {
 		switch line[0] {
 		case '+':
-			sign, body, color = "+", line[1:], t.Success
+			sign, text, old = "+", line[1:], nil
 		case '-':
-			sign, body, color = "−", line[1:], t.Error
+			sign, text, next = "−", line[1:], nil
 		case '\\':
-			sign, body, color = " ", line, t.LabelTertiary
+			// `\ No newline at end of file` 不是一行：两侧都不给行号。
+			sign, text, old, next = " ", line, nil, nil
 		case ' ':
-			body = line[1:]
+			text = line[1:]
 		}
 	}
-	ui.Row(f).FillWidth().Height(changesLineH).Children(func() {
-		ui.Text(f, sign).FontSize(t.Fonts.Code).LineHeight(changesLineH).Color(color).Width(14)
-		ui.Text(f, body).FontSize(t.Fonts.Code).LineHeight(changesLineH).Color(color).
+	return changesRow{old: old, new: next, sign: sign, text: text}
+}
+
+// changesSingleSide 是官方 `singleSide`（`OFF:src/client/DiffFile.tsx:190`）：
+// 新增文件只有新侧、删除文件只有旧侧，其余两侧都画。
+func changesSingleSide(file apiclient.ForgeDiffFile) string {
+	switch file.Status {
+	case apiclient.ForgeFileAdded:
+		return "R"
+	case apiclient.ForgeFileDeleted:
+		return "L"
+	}
+	return ""
+}
+
+// changesNumberW 是官方 `--forge-number-width`（`OFF:src/client/DiffFile.tsx:194-195`）：
+// `calc(max(2, 最大行号的位数)ch + 12px)`。ch 折算见 changesNumberChEm；
+// `code` 是主题的等宽字号（`.line` 继承代码字体）。数字列右侧 `padding-right:6px`
+// （`.number{padding-right:6px}`，ChangesTab.module.css:648）另算，不在这一格里。
+func changesNumberW(file apiclient.ForgeDiffFile, code float32) float32 {
+	digits := 2
+	for _, hunk := range file.Hunks {
+		if w := changesDigitsOf(hunk.OldStart + hunk.OldLines - 1); w > digits {
+			digits = w
+		}
+		if w := changesDigitsOf(hunk.NewStart + hunk.NewLines - 1); w > digits {
+			digits = w
+		}
+	}
+	return float32(digits)*code*changesNumberChEm + changesNumberExtra
+}
+
+// changesDigitsOf 数一个非负整数的十进制位数（0 也算 1 位）。
+func changesDigitsOf(n int) int {
+	if n < 0 {
+		n = -n
+	}
+	digits := 1
+	for n >= 10 {
+		n /= 10
+		digits++
+	}
+	return digits
+}
+
+// drawDiffRow 画官方的四轨 `.line`：旧行号 · 新行号 · 符号 · 正文。
+//
+// 配色逐条取官方 `ChangesTab.module.css`：
+//
+//	.add { background: --dsw-alias-file-diff-added-bg }          :675-679
+//	.del { background: --dsw-alias-file-diff-deleted-bg }        :681-685
+//	.add .number,.del .number { background: *-gutter; color: *-marker }  :682-687
+//	.add .sign,.del .sign { color: *-marker }                    :690-692
+//	.context .text { color: --dsw-alias-label-secondary }        :694-696
+//
+// 六档令牌在 `pluginapi.Theme.FileDiff*`（值来自 design-platform.css 亮 281-286 / 暗 433-438）。
+func (p *Plugin) drawDiffRow(f ui.C, t *pluginapi.Theme, numberW float32, singleSide string, row changesRow) {
+	textColor := t.LabelSecondary
+	numberColor := t.LabelTertiary
+	background := ui.Color{} // 零值 = 不铺底（上下文行官方也只有文字色）
+	isAdd, isDel := row.sign == "+", row.sign == "−"
+	switch {
+	case isAdd:
+		textColor, numberColor = t.FileDiffAddedMarker, t.FileDiffAddedMarker
+		background = t.FileDiffAddedBg
+	case isDel:
+		textColor, numberColor = t.FileDiffDeletedMarker, t.FileDiffDeletedMarker
+		background = t.FileDiffDeletedBg
+	case row.old == nil && row.new == nil:
+		textColor = t.LabelTertiary // `\ No newline at end of file`
+	}
+	gutter := ui.Color{}
+	switch {
+	case isAdd:
+		gutter = t.FileDiffAddedGutter
+	case isDel:
+		gutter = t.FileDiffDeletedGutter
+	}
+	line := ui.Row(f).FillWidth().Height(changesLineH)
+	if isAdd || isDel {
+		line = line.Background(background)
+	}
+	line.Children(func() {
+		// 单侧文件的列序：官方的 `.code[data-single-side]` 收掉**另一侧**那一轨
+		// （`ChangesTab.module.css:915`），剩下的仍是"旧 · 新 · 符号 · 正文"，
+		// 所以这里只判"画哪两轨里的哪一轨"，不换顺序。
+		if singleSide != "R" {
+			p.drawLineNo(f, t, numberW, row.old, numberColor, gutter)
+		}
+		if singleSide != "L" {
+			p.drawLineNo(f, t, numberW, row.new, numberColor, gutter)
+		}
+		ui.Text(f, row.sign).FontSize(t.Fonts.Code).LineHeight(changesLineH).Color(numberColor).
+			Width(changesSignEm * t.Fonts.Code)
+		ui.Text(f, row.text).FontSize(t.Fonts.Code).LineHeight(changesLineH).Color(textColor).
 			PadSides(0, changesTextPadR, 0, changesTextPadL).Ellipsis()
+	})
+}
+
+// drawLineNo 画一格行号（`.number{padding-right:6px;color:label-tertiary;text-align:right}`，
+// `OFF:src/client/ChangesTab.module.css:648-655`）。
+//
+// 这一侧没有行号就画同样宽的空格：官方也是空 span（`DiffFile.tsx:403`），
+// 这样正文列不会因为行号有无而左右跳。右对齐靠 `Justify(ui.End)`（Viva 的内容对齐）。
+// 增删行的号码格再铺一层 gutter 底（`.add .number{background:*-gutter}`），
+// 而 gutter 是**零值**时（上下文行）不铺。
+func (p *Plugin) drawLineNo(f ui.C, t *pluginapi.Theme, width float32, no *int, color, gutter ui.Color) {
+	label := ""
+	if no == nil {
+		color = t.LabelTertiary
+	} else {
+		label = itoa(*no)
+	}
+	cell := ui.Row(f).Width(width).Height(changesLineH).PadRight(changesNumberPadR).Justify(ui.End)
+	if gutter != (ui.Color{}) {
+		cell = cell.Background(gutter)
+	}
+	cell.Children(func() {
+		ui.Text(f, label).FontSize(t.Fonts.Code).LineHeight(changesLineH).Color(color)
 	})
 }
 

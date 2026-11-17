@@ -2002,7 +2002,8 @@ func newConfig(m *model) app.Config {
 			Data: pluginapi.Snapshot{
 				Sessions: sessions, Workspaces: workspaces, WorkspacesKnown: workspacesKnown,
 				PendingWorkspaceID: workspaceSelectionPending, DirectoryBusy: directoryBusy,
-				Cur: cur, Status: status,
+				DirectoryPickerAddBlocked: directoryAddBlockedReason(m.dirPickerAction() != nil, directoryBusy),
+				Cur:                       cur, Status: status,
 				Msgs: msgs, Frames: frames, JournalEpoch: framesEpoch,
 				// 向前分页五态：**只在"确实开过会话"时才有意义**；
 				// 零值（Baseline/HasMore 全 false、无错）界面不画那一行。
@@ -2043,7 +2044,9 @@ func newConfig(m *model) app.Config {
 				// Known=false，面板画「读取中…」，不画「还没有定义任何插件」。
 				// frames 就是上面那份当前会话原始帧：两条 cordis 事件帧落在这里
 				// （宿主 `emitFrameAt` 写归属会话 journal），壳据此触发后台重读。
-				Cordis: m.cordisFor(frames),
+				// cur/framesEpoch 一并传：seq 只在同一个 (会话, 世代) 内可比，
+				// 水位按该二元组分域记（见 cmd/app/cordis_wiring.go 的 journalWatermark）。
+				Cordis: m.cordisFor(cur, framesEpoch, frames),
 				// whole-log `sessionStats` 投影（状态栏「活动」的唯一来源）。
 				// nil = 还没拉到 / 老宿主没有这个键 → 写「未知」，不拿 Msgs 凑。
 				SessionStats: m.wave3.sessionStatsSnapshot(cur),
@@ -2197,6 +2200,17 @@ func newConfig(m *model) app.Config {
 			// shell.overlay 里的画重新执行。实测：F1 把插件状态切成 shown=true，
 			// 但之后一帧都没再画，面板永远不出现（key 16 handled=true 却看不见东西）。
 			m.inv.Invalidate()
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
+		return gfx.EventResult{}
+	}
+
+	// OnShortcut 收**带修饰键的可打印键**（`viva@app/app.go:130-142`），在原生
+	// 文本处理之前到达——这是官方 `workspace.add`（`Ctrl+O`）唯一能落地的入口：
+	// viva 的 `OnKey` 只送具名键，字母在那一层是 `KeyUnknown` + `Text`
+	// （`viva@gfx/input.go:141-144`）。放在 OnKey 之后接线，语义上互不影响。
+	cfg.OnShortcut = func(ev gfx.KeyEvent) gfx.EventResult {
+		if m.handleDirectoryAddShortcut(ev) {
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		return gfx.EventResult{}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/plugins/dsdirpicker"
+	"github.com/vivaui/viva/gfx"
 )
 
 // dirPickerHost 是假宿主：按 kind 回答 directoryPicker 三个动词 + workspace.create。
@@ -360,5 +361,104 @@ func waitNativePickerIdle(t *testing.T, m *model) {
 			t.Fatal("原生目录流结算后没有 re-arm")
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// ── 官方 `workspace.add`（Ctrl+O）────────────────────────────────────────────
+//
+// 官方注册在 `ui-workspace/src/client/shortcuts.ts:85-89`：
+//
+//	register('workspace.add', …, 'KeyO', ['primary'], ['primary','alt'],
+//	         () => reason === null ? {status:'handled', run} : {status:'blocked', reason})
+//
+// 这一组钉三件事：① 键位真的能被识别（Ctrl+O）；② 两条禁用理由**逐字**是官方
+// 那两句、且顺序是 noPicker 先；③ 不该吃的时候一律放行（不抢别的 chord）。
+
+// TestDirectoryAddBlockedReasonMatchesOfficial 钉住两条理由的字面量与顺序。
+//
+// 字面量来自 `ui-workspace/src/client/locales.ts:16-17`（zh 段），
+// 顺序来自 `shortcuts.ts:68-70` 的 `addReason()`。
+func TestDirectoryAddBlockedReasonMatchesOfficial(t *testing.T) {
+	if got := directoryAddBlockedReason(false, false); got != "目录选择器不可用" {
+		t.Fatalf("无选择器时 reason = %q，want %q（英文 shortcut.noPicker）", got, "目录选择器不可用")
+	}
+	// 没有选择器且 busy：官方先判 noPicker，不能报"正在选择"。
+	if got := directoryAddBlockedReason(false, true); got != "目录选择器不可用" {
+		t.Fatalf("无选择器且 busy 时 reason = %q，want %q（noPicker 优先）", got, "目录选择器不可用")
+	}
+	if got := directoryAddBlockedReason(true, true); got != "正在选择或添加工作区" {
+		t.Fatalf("busy 时 reason = %q，want %q（英文 shortcut.directoryBusy）", got, "正在选择或添加工作区")
+	}
+	if got := directoryAddBlockedReason(true, false); got != "" {
+		t.Fatalf("可用且不忙时 reason = %q，want 空串（handled）", got)
+	}
+}
+
+// TestDirectoryAddShortcutRecognisesChord 钉住 Ctrl+O 真的被认出来，
+// 并且**只在** Ctrl+o 这个和弦上成立。
+func TestDirectoryAddShortcutRecognisesChord(t *testing.T) {
+	host := &dirPickerHost{kind: "native"}
+	m := newDirPickerModel(t, host.serve(t))
+	wireDirPicker(m)
+	m.dirPicker.onPicked = func(apiclient.WorkspaceView) {}
+
+	// 不带 Ctrl 的 "o"：放行（普通打字不该开门）。
+	if m.handleDirectoryAddShortcut(gfx.KeyEvent{Key: gfx.KeyUnknown, Text: "o"}) {
+		t.Fatal("裸字母 o 不该被当成 Ctrl+O")
+	}
+	// 别的 chord：放行。
+	if m.handleDirectoryAddShortcut(gfx.KeyEvent{Key: gfx.KeyUnknown, Text: "k", Modifiers: gfx.ModifierControl}) {
+		t.Fatal("Ctrl+K 不该被 workspace.add 吃掉")
+	}
+	// 具名键 + Ctrl：放行（那是 OnKey 那层的事）。
+	if m.handleDirectoryAddShortcut(gfx.KeyEvent{Key: gfx.KeyF1, Modifiers: gfx.ModifierControl}) {
+		t.Fatal("Ctrl+F1 不该被 workspace.add 吃掉")
+	}
+	// Ctrl+O（大写 O 也认，Shift 态下 Text 可能大写）：吃下并打开流程。
+	// 注意 native 组合下这会起 goroutine 真打 pick，所以下面只断言"被吃下"。
+	m.dirPicker.mode = dirPickerUnavailable // 先置不可用 → 只写状态栏，不弹框
+	if !m.handleDirectoryAddShortcut(gfx.KeyEvent{Key: gfx.KeyUnknown, Text: "O", Modifiers: gfx.ModifierControl}) {
+		t.Fatal("Ctrl+O 必须被识别（官方 workspace.add 的键位）")
+	}
+}
+
+// TestDirectoryAddShortcutBlockedWhenNoPicker：洞没人占时**不打开**，并把
+// noPicker 那句写进状态栏（官方 `{status:'blocked', reason}` 的等价物）。
+func TestDirectoryAddShortcutBlockedWhenNoPicker(t *testing.T) {
+	// 真·探不到组合：宿主对 directoryPicker.list 回一条**不是**官方组合拒绝的 404
+	// （mockd / 老宿主那种）。这与 `TestWireDirPickerUnavailableHidesEntry` 同形，
+	// 但那一条用的是内联 server，这里要的是"驱动 Ctrl+O 的那一眼"。
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"code":"unsupported","message":"未知 method: directoryPicker.list"}}`))
+	}))
+	t.Cleanup(srv.Close)
+	m := newDirPickerModel(t, srv)
+	wireDirPicker(m)
+	if m.dirPickerAction() != nil {
+		t.Fatal("探不到组合时入口必须隐藏（dirPickerAction 应为 nil）")
+	}
+	m.handleDirectoryAddShortcut(gfx.KeyEvent{Key: gfx.KeyUnknown, Text: "o", Modifiers: gfx.ModifierControl})
+	if got := m.status; got != "目录选择器不可用" {
+		t.Fatalf("状态栏 = %q，want %q（挡住时必须把理由显示出来，不许静默）", got, "目录选择器不可用")
+	}
+}
+
+// TestDirectoryAddShortcutBlockedWhenBusy：在飞时挡住，理由逐字是官方的 busy 那句。
+func TestDirectoryAddShortcutBlockedWhenBusy(t *testing.T) {
+	host := &dirPickerHost{kind: "native"}
+	m := newDirPickerModel(t, host.serve(t))
+	wireDirPicker(m)
+	m.dirPicker.onPicked = func(apiclient.WorkspaceView) {}
+	m.mu.Lock()
+	m.dirPicker.nativeBusy = true
+	m.mu.Unlock()
+
+	if m.handleDirectoryAddShortcut(gfx.KeyEvent{Key: gfx.KeyUnknown, Text: "o", Modifiers: gfx.ModifierControl}) != true {
+		t.Fatal("busy 时按键仍应被吃掉（handled + blocked），不是放行")
+	}
+	if got := m.status; got != "正在选择或添加工作区" {
+		t.Fatalf("状态栏 = %q，want %q", got, "正在选择或添加工作区")
 	}
 }

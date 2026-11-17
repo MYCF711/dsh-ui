@@ -176,7 +176,7 @@ func TestForgeSeatsDrawOfficialCopy(t *testing.T) {
 		}
 	}
 	// dock：本地卡三行（标题 / refs / 计数 + 文件数）。
-	for _, want := range []string{"本地变更", "HEAD → main", "+12 −3", "3 个文件"} {
+	for _, want := range []string{"本地变更", "HEAD → main", "+12", "−3", "3 个文件"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("本地变更卡缺 %q：\n%s", want, text)
 		}

@@ -31,7 +31,10 @@
 - 页面几何全部出自 `OFF:src/client/TaskManagerPage.module.css`（960px 内容列、
   28px 标题上边距、24px 下边距、28px 筛选 chip / 14px 圆角、36px 搜索框 / 12px
   圆角、详情 47% 宽 + 左侧 0.5px l4 线、44px 详情顶条、24px gutter）。
-  本仓常量在 `plugins/dssidebar/schedule_page.go:99-127`，每个值注释了出处。
+  本仓常量在 `plugins/dssidebar/schedule_page.go:101-171`，每个值注释了出处。
+  2026-11-17 视觉复核进一步落实 `clamp(24px,4vw,48px)` / 48px 页底、960px 内容列、
+  详情全高右栏与 47%→100% 响应式、24→20→16 gutter、tab 13/16/500 + 2px 下划线、
+  28px 图标操作、112px 指令框、48px 规则行与记录 14/22 + 13/22（同一 CSS `:38-1443`）。
 
 ## 1. 数据形状：官方 catalog 条目 → 宿主 → 本仓客户端
 
@@ -58,7 +61,7 @@ weekly / cron / rrule）。宿主 `HOST:internal/transport/handlers_schedule_off
 | 契约快照 | `testdata/api.snapshot.json`（batch11：4 个方法，total 57→61） | 参数/结果逐字段，带宿主 `file:line` |
 | 壳数据面 | `cmd/app/schedule_catalog.go:50-278` | catalog/history 缓存、首次问触发拉取、动作后重拉、动作失败交插件画官方文案 |
 | 壳动作 | `cmd/app/main.go:2490-2498` | 8 条 `Actions` 注入 |
-| 页面 | `plugins/dssidebar/schedule_page.go:135-560` | 官方列表/筛选/搜索/详情（规则+记录）/三条动作 |
+| 页面 | `plugins/dssidebar/schedule_page.go:182-752` | 官方列表/筛选/搜索/详情（规则+记录）/三条动作 |
 | 侧栏入口 | `plugins/dssidebar/frame.go:74`（路由已在册） | 点「自动化任务」打开并**主动拉一次目录**（Transport 无 `schedule/changed` 推送） |
 | 侧栏摘要（旧） | `plugins/dsschedule/schedule.go` | 仍走宿主扩展面 `schedule.list`，不动 |
 
@@ -81,8 +84,10 @@ weekly / cron / rrule）。宿主 `HOST:internal/transport/handlers_schedule_off
   分页 `before`/`nextBefore`、limit 越界本地拦截。
 - `plugins/dssidebar/schedule_page_test.go`：状态筛选、搜索三字段（标题/内容/会话 id）、
   下次运行取 `deliveryFloorEndsAt` 与 `scheduledAt` 更晚者、频率文案 8 种、
-  空态文案按筛选/搜索、绝对/相对时间形状、**无头渲染**（画标题/筛选/行；
-  点行出详情规则；点「任务运行记录」出记录）。
+  空态文案按筛选/搜索、绝对/相对时间形状、响应式 page padding/detail gutter/47%→100%、
+  官方样式常量、**无头渲染**（画标题/筛选/行；点行出详情规则；点「任务运行记录」出记录）。
+- `plugins/dsassets/schedule_test.go`：play/pause/close 的 16 viewBox + 1 stroke 与
+  ellipsis 的三枚填充 path 全部真实解析，禁止退回文字 glyph。
 - 门禁：build / vet / gofmt / `go test ./...` / `parity-count --check` 全过（见交付报告）。
 
 ## 4. 与官方不同 / 没做（逐条，不藏）
@@ -96,9 +101,9 @@ weekly / cron / rrule）。宿主 `HOST:internal/transport/handlers_schedule_off
    本仓只读展示（名称/内容/运行时间/关联会话）。原因同上：编辑时间需要
    `DatePicker/ClockPicker`；编辑名称/内容需要表单提交 + `expectedUpdatedAt` 冲突
    处置（`host.conflict` / `host.reapply` 两段 UI 也没做）。
-3. **⋯ 菜单没做**。官方把「立即执行 / 删除」收进 `detail.more` 菜单；本仓没有
-   通用 Menu 组件（`pluginapi.Primitives` 只有 ListRow/Badge/Dot/Divider/…）。
-   三个动作以官方同名文字按钮直排在详情顶条（位置差异，文案无差异）。
+3. **⋯ 菜单已接，动画未复刻**。暂停/恢复/更多/关闭已是官方 28×28 图标按钮，
+   「立即执行 / 删除」收进 Viva `ui.Menu`；菜单行沿用框架图元，官方 CSS anchor
+   positioning、进出动效与跨 iframe blur 行为未逐帧复刻。
 4. **删除确认用两次点击**，不是官方 Modal（`TaskDetail.tsx:462-476`）。
    与侧栏删除会话同一条先例：本仓没有可复用的对话框组件不动手造；
    官方确认文案（标题/描述/确认/取消）在详情里原样摊开。
@@ -114,3 +119,6 @@ weekly / cron / rrule）。宿主 `HOST:internal/transport/handlers_schedule_off
 8. **没有 `schedule/changed` 推送**：Transport 没有这个事件，所以目录只在
    打开面板 / 动作后 / 手动重试时刷新（官方由 Host 推送）。极少数情况下列表会
    比宿主晚一拍——这是传输层缺口，界面已用"动作后必重拉"兜住自己发起的那部分。
+9. **视觉验收边界**：空态 110px `ScheduleEmptyIllustration` 与记录时间线 hairline
+   尚未接；本轮以真实 Viva 无头渲染、响应式几何与 sprite 解析断言验收，未做 OS
+   真窗口逐像素对拍。

@@ -207,8 +207,8 @@ func TestConversationTabsReallyClickAndRememberSession(t *testing.T) {
 		}
 		tabTop := boxes.Tabs.Rect().Y - (boxes.TitleRow.Rect().Y + boxes.TitleRow.Rect().Height)
 		tabGap := boxes.TrajectoryTab.Rect().X - (boxes.ChatTab.Rect().X + boxes.ChatTab.Rect().Width)
-		if tabTop != 10 || tabGap != 20 {
-			t.Fatalf("%dx%d tabs 间距：top=%v/10 gap=%v/20", width, height, tabTop, tabGap)
+		if tabTop != 10 || tabGap != 32 {
+			t.Fatalf("%dx%d tabs 间距：top=%v/10 gap=%v/32", width, height, tabTop, tabGap)
 		}
 		name := "frame-header-" + viewName + "-" + strconv.Itoa(width) + "x" + strconv.Itoa(height) + ".png"
 		path := filepath.Join(captureDir, name)
@@ -226,7 +226,7 @@ func TestConversationTabsReallyClickAndRememberSession(t *testing.T) {
 		if err != nil || info.Size() == 0 {
 			t.Fatalf("截图未落盘：path=%s info=%v err=%v", path, info, err)
 		}
-		t.Logf("FG3_CAPTURE path=%s size=%dx%d bytes=%d view=%s header=76 title=30 tabs=25 corner=28 top=10 gap=20", path, width, height, info.Size(), viewName)
+		t.Logf("FG3_CAPTURE path=%s size=%dx%d bytes=%d view=%s header=76 title=30 tabs=25 corner=28 top=10 gap=32", path, width, height, info.Size(), viewName)
 	}
 	capture(1182, 832, "chat")
 	if err := session.ClickLabel("轨迹"); err != nil {

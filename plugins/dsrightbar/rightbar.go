@@ -11,6 +11,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -23,7 +24,12 @@ import (
 // 并在顶上如实写出「更早的还有多少条」——截断必须让人看得见。
 const maxEntries = 80
 
-const shellColumnInset = 12
+const (
+	// SidebarRight.tsx:398-399：视口小于 768px 时自动全屏。
+	rightbarAutoFullscreenWidth = 768
+	// SidebarRight.module.css:150-153：两枚 chrome 图标本体都是 15×15。
+	rightbarChromeIconSize = 15
+)
 
 // Plugin 实现 pluginapi.Plugin / Panels。
 type Plugin struct {
@@ -110,17 +116,17 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 // draw 画整条右栏：PanelChrome + 分隔线 + 时间线（可滚）。
 func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	t := p.theme
-	full := p.fullscreen[env.Data.Cur]
+	full := p.fullscreen[env.Data.Cur] || env.Bounds.Width < rightbarAutoFullscreenWidth
 	root := ui.Column(f).WidthPercent(100).FillHeight()
 	if full {
 		h := env.Bounds.Height - env.Geometry.BottomHeight
 		if h <= 0 {
 			h = env.Bounds.Height
 		}
-		// 官方 fullscreen 是 100vw、锚定右缘。相对本槽内容轨道回退壳的 12px inset，
-		// 不读取或修改 cmd/app，也不猜全局窗口坐标。
-		root = ui.Column(f).Absolute().Top(-shellColumnInset).Right(-shellColumnInset).
-			Width(env.Bounds.Width).Height(h).Background(t.BgBase).Clip().Pad(shellColumnInset).
+		// SidebarRight.module.css:31-48,82-84：panel 锚定上/右/下 0，fullscreen 100vw；
+		// 壳列没有额外 padding，因此这里不再用 ±12 补偿。
+		root = ui.Column(f).Absolute().Top(0).Right(0).
+			Width(env.Bounds.Width).Height(h).Background(t.BgBase).Clip().
 			Hit(env.Tree.ID(env.Feat, "rightbar-fullscreen"), "右栏全屏面板")
 	}
 	root.Children(func() {
@@ -382,7 +388,7 @@ func clipGroups(groups []turnGroup, max int) ([]turnGroup, int) {
 }
 
 func (p *Plugin) drawFullscreenButton(f ui.C, env *pluginapi.Env) {
-	full := p.fullscreen[env.Data.Cur]
+	full := p.fullscreen[env.Data.Cur] || env.Bounds.Width < rightbarAutoFullscreenWidth
 	label, icon := "右栏全屏", rightbarFullscreenIcon
 	if full {
 		label, icon = "退出全屏", rightbarRestoreIcon
@@ -401,39 +407,14 @@ func (p *Plugin) chromeButton(f ui.C, env *pluginapi.Env, name, label string, ic
 	return ui.Row(f).Width(28).Height(28).Radius(t.Radii.SM).
 		Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, name), label).Children(func() {
-		ui.Icon(f, icon).Width(16).Height(16).Color(t.LabelSecondary)
+		ui.Icon(f, icon).Width(rightbarChromeIconSize).Height(rightbarChromeIconSize).Color(t.LabelSecondary)
 	})
 }
 
-var rightbarCollapseIcon = gfx.Icon{
-	ViewBox: 24, Stroke: 2, Cap: gfx.CapRound, Join: gfx.JoinRound,
-	Commands: []gfx.PathCommand{
-		gfx.MoveTo(5, 3), gfx.LineTo(19, 3), gfx.QuadTo(21, 3, 21, 5),
-		gfx.LineTo(21, 19), gfx.QuadTo(21, 21, 19, 21), gfx.LineTo(5, 21),
-		gfx.QuadTo(3, 21, 3, 19), gfx.LineTo(3, 5), gfx.QuadTo(3, 3, 5, 3), gfx.ClosePath(),
-		gfx.MoveTo(15, 3), gfx.LineTo(15, 21),
-	},
-}
-
-var rightbarFullscreenIcon = gfx.Icon{
-	ViewBox: 16, Stroke: 1, Cap: gfx.CapRound, Join: gfx.JoinRound,
-	Commands: []gfx.PathCommand{
-		gfx.MoveTo(6, 2), gfx.LineTo(2, 2), gfx.LineTo(2, 6),
-		gfx.MoveTo(10, 2), gfx.LineTo(14, 2), gfx.LineTo(14, 6),
-		gfx.MoveTo(6, 14), gfx.LineTo(2, 14), gfx.LineTo(2, 10),
-		gfx.MoveTo(10, 14), gfx.LineTo(14, 14), gfx.LineTo(14, 10),
-	},
-}
-
-var rightbarRestoreIcon = gfx.Icon{
-	ViewBox: 16, Stroke: 1, Cap: gfx.CapRound, Join: gfx.JoinRound,
-	Commands: []gfx.PathCommand{
-		gfx.MoveTo(2, 6), gfx.LineTo(6, 6), gfx.LineTo(6, 2),
-		gfx.MoveTo(14, 6), gfx.LineTo(10, 6), gfx.LineTo(10, 2),
-		gfx.MoveTo(2, 10), gfx.LineTo(6, 10), gfx.LineTo(6, 14),
-		gfx.MoveTo(14, 10), gfx.LineTo(10, 10), gfx.LineTo(10, 14),
-	},
-}
+// 三枚图标均来自官方原件；dsassets 同时保存路径出处并测试镜像/变换结果。
+var rightbarCollapseIcon, _ = dsassets.RightbarPanelLeft()
+var rightbarFullscreenIcon, _ = dsassets.RightbarFullscreen()
+var rightbarRestoreIcon, _ = dsassets.RightbarExitFullscreen()
 
 // drawEntry 画时间线上的一条：左边「点 + 竖线」，右边两行文字。
 //

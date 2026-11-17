@@ -23,9 +23,15 @@ import (
 const (
 	ledgerHistoryPage = 50
 	ledgerOverscan    = 100.0
-	ledgerTurnHeight  = 28.0
-	ledgerGroupHeight = 24.0
-	ledgerCellHeight  = 50.0
+	// TrajectoryTable.module.css:129-161：表头/内容行均 30px；:753-757：折叠摘要 20px。
+	ledgerTurnHeight    = 30.0
+	ledgerCellHeight    = 30.0
+	ledgerSummaryHeight = 20.0
+	// TrajectoryGroupHeader.module.css:3-10：Step 分组头 36px、左右 20px。
+	ledgerGroupHeight = 36.0
+	ledgerGroupPadX   = 20.0
+	// TrajectoryTable.module.css:153-161：行间 border-spacing 为 0，不叠自造 2px gap。
+	ledgerRowGap = 0.0
 )
 
 type ledgerRange struct {
@@ -183,7 +189,7 @@ func ledgerTimelineMode(actualDuration, actualTime bool) string {
 func (p *Plugin) drawLedgerToolbar(f ui.C, env *pluginapi.Env, s *ledgerViewState, model *ledgerModel, scope, query string) {
 	t := p.theme
 	field := p.trajectoryField(scope)
-	ui.Row(f).WidthPercent(100).MinHeight(30).Gap(4).Items(ui.Center).Children(func() {
+	ui.Row(f).WidthPercent(100).MinHeight(32).Gap(8).PadSides(4, 6, 0, 6).Items(ui.Center).Children(func() {
 		drawLedgerAction(f, env, "ledger-duration", "时长", func() {
 			p.setLedgerDuration(env, !p.ledgerDuration)
 			s.selection, s.viewport = nil, nil
@@ -203,11 +209,11 @@ func (p *Plugin) drawLedgerToolbar(f ui.C, env *pluginapi.Env, s *ledgerViewStat
 			toggleLedgerTools(s, toolIDs)
 		}, allLedgerToolsCollapsed(s, toolIDs))
 	})
-	ui.Row(f).WidthPercent(100).MinHeight(30).Gap(6).Items(ui.Center).Children(func() {
+	ui.Row(f).WidthPercent(100).MinHeight(32).Gap(4).PadSides(0, 6, 4, 6).Items(ui.Center).Children(func() {
 		ui.TextFieldID(f, env.Tree.ID(env.Feat, "trajectory-search-"+scope+env.Data.Cur), field, "搜索轨迹", "搜索").
-			Grow(1).FontSize(t.Fonts.Caption)
+			Grow(1).Height(22).FontSize(12)
 		if query != "" {
-			ui.Text(f, itoa(len(ledgerMatchSet(model, query)))+" 命中").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+			ui.Text(f, itoa(len(ledgerMatchSet(model, query)))+" 命中").FontSize(12).Color(t.LabelCaption)
 		}
 		if field.Text() != "" {
 			drawLedgerAction(f, env, "ledger-clear-search", "清除轨迹搜索", func() { field.SetText("") }, false)
@@ -221,12 +227,28 @@ func (p *Plugin) drawLedgerToolbar(f ui.C, env *pluginapi.Env, s *ledgerViewStat
 // drawLedgerAction 是官方 toolbar 的小按钮；active 只改底色，不把开关状态伪装成动作结果。
 func drawLedgerAction(f ui.C, env *pluginapi.Env, name, label string, fn func(), active bool) {
 	t := env.Theme
-	box := ui.Row(f).MinHeight(24).Radius(t.Radii.SM).PadX(6).Items(ui.Center).
+	// TrajectoryToolbar.module.css:33-46：20px 高、左右 7px、12px 字。
+	box := ui.Row(f).MinHeight(20).Radius(t.Radii.SM).PadX(7).Items(ui.Center).
 		Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, name), label)
 	if active {
 		box = box.Background(t.BgLayer2)
 	}
-	box.Children(func() { ui.Text(f, label).FontSize(t.Fonts.Tiny).Color(t.LabelSecondary) })
+	box.Children(func() { ui.Text(f, label).FontSize(12).Color(t.LabelTertiary) })
+	if box.Clicked() {
+		fn()
+	}
+}
+
+func drawLedgerDetailTab(f ui.C, env *pluginapi.Env, name, label string, fn func(), active bool) {
+	t := env.Theme
+	box := ui.Row(f).MinHeight(34).PadX(9).Items(ui.Center).
+		Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, name), label)
+	box.Children(func() {
+		text := ui.Text(f, label).FontSize(13).Color(t.LabelTertiary)
+		if active {
+			text.Color(t.Link)
+		}
+	})
 	if box.Clicked() {
 		fn()
 	}
@@ -361,7 +383,12 @@ func (p *Plugin) drawLedgerTimeline(f ui.C, env *pluginapi.Env, s *ledgerViewSta
 	if width <= 0 {
 		width = 400
 	}
-	s.timelineRect = gfx.Rect{X: f.Bounds().X, Y: f.Bounds().Y, Width: width, Height: 50}
+	// TrajectoryTimeline.module.css:14-20：44px 标签轨 + 50px 高 plot。
+	trackWidth := width - 44
+	if trackWidth < 1 {
+		trackWidth = 1
+	}
+	s.timelineRect = gfx.Rect{X: f.Bounds().X + 44, Y: f.Bounds().Y, Width: trackWidth, Height: 50}
 	domain := s.timelineFull
 	if s.viewport != nil {
 		domain = *s.viewport
@@ -385,25 +412,29 @@ func (p *Plugin) drawLedgerTimeline(f ui.C, env *pluginapi.Env, s *ledgerViewSta
 	if query != "" {
 		matches = ledgerMatchSet(&ledgerModel{Records: spansLedgerRecords(tl.Spans)}, query)
 	}
-	ui.Column(f).WidthPercent(100).Height(50).Clip().Children(func() {
-		ui.Row(f).WidthPercent(100).Height(12).Gap(8).Children(func() {
-			ui.Text(f, "输入").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			ui.Text(f, "助手").FontSize(t.Fonts.Tiny).Color(t.LabelCaption).PadX(8)
-			ui.Text(f, "工具").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			ui.Spacer(f)
-			if len(tl.Spans) == 0 {
-				ui.Text(f, "无计时数据").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+	ui.Row(f).WidthPercent(100).Height(50).Clip().Children(func() {
+		ui.Column(f).Width(44).Height(50).Background(t.BgLayer2).Children(func() {
+			// :31-51：右 3px，三条标签分别 top 7/21/35，10px/1。
+			for i, label := range []string{"输入", "助手", "工具"} {
+				ui.Row(f).Absolute().Right(3).Top(float32(7 + i*14)).Height(8).
+					Items(ui.Center).Justify(ui.End).Children(func() {
+					ui.Text(f, label).FontSize(10).LineHeight(8).Color(t.LabelCaption)
+				})
 			}
 		})
 		trackID := env.Tree.ID(env.Feat, "ledger-timeline-track")
-		ui.Row(f).WidthPercent(100).Height(38).Background(t.BgLayer1).Clip().Hit(trackID, "时间线概览；水平拖动可聚焦事件").Children(func() {
+		ui.Row(f).Grow(1).Height(50).Background(t.BgLayer2).Clip().Items(ui.Center).Justify(ui.Center).
+			Hit(trackID, "时间线概览；水平拖动可聚焦事件").Children(func() {
+			if len(tl.Spans) == 0 {
+				ui.Text(f, "无计时数据").FontSize(13).Color(t.LabelCaption)
+			}
 			p.handleLedgerTimelinePointer(env, s, tl, domain, trackID, "")
 			for _, span := range tl.Spans {
 				if span.End < domain.Start || span.Start > domain.End {
 					continue
 				}
-				left := float32((span.Start - domain.Start) / (domain.End - domain.Start) * float64(width))
-				spanWidth := float32((span.End - span.Start) / (domain.End - domain.Start) * float64(width))
+				left := float32((span.Start - domain.Start) / (domain.End - domain.Start) * float64(trackWidth))
+				spanWidth := float32((span.End - span.Start) / (domain.End - domain.Start) * float64(trackWidth))
 				minimumWidth := float32(2)
 				if tl.Mode == "time" {
 					minimumWidth = 8
@@ -415,11 +446,11 @@ func (p *Plugin) drawLedgerTimeline(f ui.C, env *pluginapi.Env, s *ledgerViewSta
 					spanWidth += left
 					left = 0
 				}
-				if spanWidth < 1 || left >= width {
+				if spanWidth < 1 || left >= trackWidth {
 					continue
 				}
-				if left+spanWidth > width {
-					spanWidth = width - left
+				if left+spanWidth > trackWidth {
+					spanWidth = trackWidth - left
 				}
 				color := ledgerKindColor(t, span.Record.Kind)
 				if query != "" && !matches[span.Record.ID] {
@@ -427,16 +458,17 @@ func (p *Plugin) drawLedgerTimeline(f ui.C, env *pluginapi.Env, s *ledgerViewSta
 				}
 				selected := s.selection != nil && span.Start <= s.selection.End && span.End >= s.selection.Start
 				id := env.Tree.ID(env.Feat, "ledger-timeline-"+span.Record.ID)
-				box := ui.Row(f).Absolute().Left(left).Top(float32(span.Lane*12+2)).Width(spanWidth).Height(10).
-					Background(color).Radius(2).Clip().Hit(id, ledgerTimelineLabel(span.Record))
+				// :120-127,155-169：lanes top 7、lane 间距 14、span 高 8、radius 1。
+				box := ui.Row(f).Absolute().Left(left).Top(float32(7+span.Lane*14)).Width(spanWidth).Height(8).
+					Background(color).Radius(1).Clip().Hit(id, ledgerTimelineLabel(span.Record))
 				if selected || s.selectedRecord == span.Record.ID {
-					box = box.Background(t.Info)
+					box = box.Background(t.Link)
 				}
 				if portion, ok := ledgerTTFTPortion(span.Record); ok {
 					firstWidth := spanWidth * portion
 					box.Children(func() {
-						ui.Row(f).Absolute().Left(0).Top(0).Width(firstWidth).Height(10).Background(t.Warn)
-						ui.Row(f).Absolute().Left(firstWidth).Top(0).Width(spanWidth - firstWidth).Height(10).Background(t.Info)
+						ui.Row(f).Absolute().Left(0).Top(0).Width(firstWidth).Height(8).Background(t.WarnLabel)
+						ui.Row(f).Absolute().Left(firstWidth).Top(0).Width(spanWidth - firstWidth).Height(8).Background(t.Info)
 					})
 				}
 				p.handleLedgerTimelinePointer(env, s, tl, domain, id, span.Record.ID)
@@ -454,13 +486,16 @@ func spansLedgerRecords(spans []*ledgerSpan) []*ledgerRecord {
 }
 
 func ledgerKindColor(t *pluginapi.Theme, kind ledgerKind) ui.Color {
+	// TrajectoryTable.module.css:180-239 与 TrajectoryTimeline.module.css:181-232。
 	switch kind {
 	case ledgerMessage, ledgerCompacted:
 		return t.Info
 	case ledgerTool, ledgerSubtool:
-		return t.Success
+		return t.WarnLabel
 	case ledgerUser:
-		return t.LabelSecondary
+		return t.Link
+	case ledgerContext:
+		return t.SuccessPrimary
 	default:
 		return t.LabelCaption
 	}
@@ -702,7 +737,7 @@ func collapseLedgerRows(rows []ledgerUIRow, s *ledgerViewState) []ledgerUIRow {
 			turnCollapsed = append(turnCollapsed, r)
 			if j == first {
 				turnCollapsed = append(turnCollapsed, ledgerUIRow{Kind: ledgerRowSummary, SummaryTurn: turn.Turn,
-					Text: fmt.Sprintf("已收起轮次 · %d 个步骤 · %d 个工具调用", content-1, toolCount), Height: ledgerGroupHeight})
+					Text: fmt.Sprintf("已收起轮次 · %d 个步骤 · %d 个工具调用", content-1, toolCount), Height: ledgerSummaryHeight})
 			}
 		}
 		for i+1 < len(rows) && rows[i+1].Kind != ledgerRowTurn {
@@ -747,7 +782,7 @@ func collapseLedgerRows(rows []ledgerUIRow, s *ledgerViewState) []ledgerUIRow {
 			if tool {
 				label = "已收起子调用"
 			}
-			out = append(out, ledgerUIRow{Kind: ledgerRowSummary, SummaryID: id, Text: fmt.Sprintf("%s · %d 项", label, skipped), Height: ledgerGroupHeight})
+			out = append(out, ledgerUIRow{Kind: ledgerRowSummary, SummaryID: id, Text: fmt.Sprintf("%s · %d 项", label, skipped), Height: ledgerSummaryHeight})
 		}
 	}
 	return out
@@ -842,7 +877,7 @@ func (p *Plugin) drawLedgerHistory(f ui.C, env *pluginapi.Env, data pluginapi.Sn
 }
 
 func (p *Plugin) drawLedgerRows(f ui.C, env *pluginapi.Env, data pluginapi.Snapshot, s *ledgerViewState, rows []ledgerUIRow, scope string) {
-	area := ui.Scroll(f.Key("ledger-rows-" + scope + data.Cur)).WidthPercent(100).Grow(1).MinHeight(80).Gap(2).Clip()
+	area := ui.Scroll(f.Key("ledger-rows-" + scope + data.Cur)).WidthPercent(100).Grow(1).MinHeight(80).Gap(ledgerRowGap).Clip()
 	state := area.ScrollState()
 	viewport, offset := state.Viewport, state.Offset
 	if viewport <= 0 {
@@ -852,7 +887,7 @@ func (p *Plugin) drawLedgerRows(f ui.C, env *pluginapi.Env, data pluginapi.Snaps
 		}
 	}
 	area.Children(func() {
-		ui.Column(f).WidthPercent(100).Gap(2).Children(func() {
+		ui.Column(f).WidthPercent(100).Gap(ledgerRowGap).Children(func() {
 			top := float32(0)
 			for i := range rows {
 				row := rows[i]
@@ -861,7 +896,7 @@ func (p *Plugin) drawLedgerRows(f ui.C, env *pluginapi.Env, data pluginapi.Snaps
 				} else {
 					p.drawLedgerRow(f, env, data, s, row, scope)
 				}
-				top += row.Height + 2
+				top += row.Height + ledgerRowGap
 			}
 		})
 	})
@@ -880,18 +915,18 @@ func (p *Plugin) drawLedgerRow(f ui.C, env *pluginapi.Env, data pluginapi.Snapsh
 		if !open {
 			label = "展开" + title
 		}
-		box := ui.Row(f).WidthPercent(100).MinHeight(ledgerTurnHeight).Gap(6).Items(ui.Center).
+		box := ui.Row(f).WidthPercent(100).MinHeight(ledgerTurnHeight).Gap(6).PadX(8).Items(ui.Center).
 			Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, scope+"ledger-turn-"+itoa(row.Turn.Turn)), label)
 		box.Children(func() {
-			ui.Text(f, ledgerArrow(open)).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
-			ui.Text(f, title).FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
+			ui.Text(f, ledgerArrow(open)).FontSize(12).Color(t.LabelCaption)
+			ui.Text(f, title).FontSize(12).Weight(500).Color(t.LabelTertiary)
 		})
 		if box.Clicked() {
 			s.collapsedTurns[row.Turn.Turn] = !s.collapsedTurns[row.Turn.Turn]
 		}
 	case ledgerRowGroup:
-		ui.Row(f).WidthPercent(100).MinHeight(ledgerGroupHeight).Items(ui.Center).Gap(4).Children(func() {
-			ui.Text(f, ledgerGroupLabel(row.Group)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
+		ui.Row(f).WidthPercent(100).MinHeight(ledgerGroupHeight).Items(ui.Center).PadX(ledgerGroupPadX).Gap(24).Children(func() {
+			ui.Text(f, ledgerGroupLabel(row.Group)).FontSize(13).Color(t.LabelPrimary)
 			ui.Spacer(f)
 			if row.Request != nil {
 				r := row.Request
@@ -919,9 +954,9 @@ func (p *Plugin) drawLedgerRow(f ui.C, env *pluginapi.Env, data pluginapi.Snapsh
 		p.drawLedgerRecord(f, env, s, row.Record, scope, row.Dimmed)
 	case ledgerRowSummary:
 		label := row.Text
-		box := ui.Row(f).WidthPercent(100).MinHeight(ledgerGroupHeight).Items(ui.Center).PadX(20).
+		box := ui.Row(f).WidthPercent(100).MinHeight(ledgerSummaryHeight).Items(ui.Center).PadX(8).
 			Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, scope+"ledger-summary-"+row.SummaryID+itoa(row.SummaryTurn)), label)
-		box.Children(func() { ui.Text(f, label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption) })
+		box.Children(func() { ui.Text(f, label).FontSize(12).LineHeight(16).Color(t.LabelSecondary) })
 		if box.Clicked() {
 			if row.SummaryTurn != 0 {
 				s.collapsedTurns[row.SummaryTurn] = false
@@ -970,40 +1005,38 @@ func (p *Plugin) drawLedgerRecord(f ui.C, env *pluginapi.Env, s *ledgerViewState
 	t := p.theme
 	selected := s.selectedRecord == r.ID
 	label := ledgerRecordLabel(r)
-	box := ui.Row(f).WidthPercent(100).MinHeight(ledgerCellHeight).Gap(5).PadY(3).Radius(t.Radii.SM).
-		Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, scope+"ledger-record-"+r.ID), label)
+	// TrajectoryTable.module.css:153-161,458-496：30px 单行、左 20/右 8、12px 文本。
+	box := ui.Row(f).WidthPercent(100).MinHeight(ledgerCellHeight).Gap(4).PadSides(0, 8, 0, 20).
+		Items(ui.Center).Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, scope+"ledger-record-"+r.ID), label)
 	if selected {
 		box = box.Background(t.BgLayer2)
 	}
-	textColor := t.LabelSecondary
+	textColor := t.LabelPrimary
 	if dimmed {
 		textColor = t.LabelDimmed
 	}
 	box.Children(func() {
-		ui.Text(f, "#"+itoa(r.Index)).Width(32).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-		ui.Text(f, ledgerKindLabel(r.Kind)).Width(42).FontSize(t.Fonts.Tiny).Color(ledgerKindColor(t, r.Kind))
-		ui.Column(f).Grow(1).Gap(1).Children(func() {
-			ui.Row(f).WidthPercent(100).Gap(4).Items(ui.Center).Children(func() {
-				ui.Text(f, ledgerRecordText(r)).FontSize(t.Fonts.Caption).Color(textColor).Ellipsis().Grow(1)
-				if r.IsError {
-					p.prims.Badge(f, "失败", t.Error)
-				}
-			})
-			ui.Row(f).WidthPercent(100).Gap(5).Items(ui.Center).Children(func() {
-				if r.Preview != "" && r.Preview != r.Text {
-					ui.Text(f, oneLine(r.Preview, 60)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Ellipsis().Grow(1)
-				} else if r.Output != "" && (r.Kind == ledgerTool || r.Kind == ledgerSubtool) {
-					ui.Text(f, oneLine(r.Output, 60)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption).Ellipsis().Grow(1)
-				} else {
-					ui.Spacer(f)
-				}
-				if r.DurationMS != nil {
-					ui.Text(f, formatLedgerMS(*r.DurationMS)).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-				} else {
-					ui.Text(f, "—").FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-				}
-			})
-		})
+		ui.Text(f, "#"+itoa(r.Index)).Width(24).FontSize(12).Color(t.LabelTertiary)
+		ui.Text(f, ledgerKindLabel(r.Kind)).Width(44).FontSize(10).LineHeight(16).Weight(650).Color(ledgerKindColor(t, r.Kind))
+		ui.Text(f, ledgerRecordText(r)).FontSize(12).LineHeight(18).Color(textColor).Ellipsis().Grow(1)
+		preview := r.Preview
+		if preview == r.Text {
+			preview = ""
+		}
+		if preview == "" && (r.Kind == ledgerTool || r.Kind == ledgerSubtool) {
+			preview = r.Output
+		}
+		if preview != "" {
+			ui.Text(f, oneLine(preview, 60)).FontSize(12).LineHeight(18).Color(t.LabelSecondary).Ellipsis().Grow(1)
+		}
+		if r.IsError {
+			p.prims.Badge(f, "失败", t.Error)
+		}
+		if r.DurationMS != nil {
+			ui.Text(f, formatLedgerMS(*r.DurationMS)).Width(71).FontSize(12).Color(t.LabelTertiary)
+		} else {
+			ui.Text(f, "—").Width(71).FontSize(12).Color(t.LabelTertiary)
+		}
 	})
 	if box.Clicked() {
 		if r.Kind == ledgerMessage && ledgerDoubleClick(s, "assistant:"+r.ID) && ledgerHasAssistantCalls(r) {
@@ -1151,17 +1184,22 @@ func (p *Plugin) drawLedgerDetails(f ui.C, env *pluginapi.Env, s *ledgerViewStat
 		s.tabs[key] = active
 	}
 	ui.Column(f).Width(width).FillHeight().Background(t.BgLayer1).Clip().Children(func() {
-		ui.Row(f).WidthPercent(100).MinHeight(32).Items(ui.Center).Gap(4).PadX(4).Children(func() {
-			ui.Text(f, "事件详情").FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
+		// TrajectoryTable.module.css:756-769：详情头 42px，左 12/右 8。
+		ui.Row(f).WidthPercent(100).MinHeight(42).Items(ui.Center).Gap(8).PadSides(0, 8, 0, 12).Children(func() {
+			ui.Text(f, "事件详情").FontSize(13).Color(t.LabelSecondary)
 			ui.Spacer(f)
-			drawLedgerAction(f, env, "ledger-close-details", "关闭详情", func() {
+			close := ui.Row(f).Width(28).Height(28).Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM).
+				Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, "ledger-close-details"), "关闭详情")
+			close.Children(func() { ui.Text(f, "×").FontSize(18).LineHeight(18).Color(t.LabelSecondary) })
+			if close.Clicked() {
 				s.selectedRecord, s.selectedRequest = "", ""
-			}, false)
+			}
 		})
-		ui.Row(f).WidthPercent(100).MinHeight(28).Gap(2).Items(ui.Center).Children(func() {
+		// :986-1017：tabs 34px、左右 8、gap 1；每页左右 9、13px 字。
+		ui.Row(f).WidthPercent(100).MinHeight(34).Gap(1).PadX(8).Items(ui.Center).Children(func() {
 			for _, tab := range tabs {
 				tab := tab
-				drawLedgerAction(f, env, "ledger-tab-"+key+"-"+tab.ID, tab.Label, func() {
+				drawLedgerDetailTab(f, env, "ledger-tab-"+key+"-"+tab.ID, tab.Label, func() {
 					s.tabs[key] = tab.ID
 					s.recentTabs = append(s.recentTabs, tab.ID)
 					if len(s.recentTabs) > 16 {
@@ -1173,13 +1211,15 @@ func (p *Plugin) drawLedgerDetails(f ui.C, env *pluginapi.Env, s *ledgerViewStat
 		p.drawLedgerResizeHandle(f, env, s, width)
 		area := ui.Scroll(f.Key("ledger-details-" + key)).WidthPercent(100).Grow(1).Clip()
 		area.Children(func() {
-			ui.Column(f).WidthPercent(100).Pad(6).Gap(6).Children(func() {
+			// :1047-1062,1463-1473：正文左右 14、上 8/下 12；载荷 12/19。
+			ui.Column(f).WidthPercent(100).PadSides(8, 14, 12, 14).Gap(6).Children(func() {
 				if env.Act.Copy != nil {
 					drawLedgerAction(f, env, "ledger-copy-detail", "复制", func() { env.Act.Copy(ledgerDetailText(record, request, active, model)) }, false)
 				}
-				ui.Wrap(f, ledgerDetailText(record, request, active, model)).Mono().FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
+				ui.Wrap(f, ledgerDetailText(record, request, active, model)).Mono().FontSize(12).LineHeight(19).Color(t.LabelSecondary)
 			})
 		})
+		ui.Row(f).Absolute().Left(0).Top(0).Width(0.5).HeightPercent(100).Background(t.BorderL2)
 	})
 }
 
@@ -1626,7 +1666,8 @@ func maxLedger(a, b int64) int64 {
 
 func (p *Plugin) drawLedgerResizeHandle(f ui.C, env *pluginapi.Env, s *ledgerViewState, width float32) {
 	id := env.Tree.ID(env.Feat, "ledger-details-resize")
-	ui.Row(f).WidthPercent(100).Height(4).Background(p.theme.BorderL2).
+	// TrajectoryTable.module.css:779-789：左侧 -4px 起的 8px 垂直命中带，不画横条。
+	ui.Row(f).Absolute().Left(-4).Top(0).Width(8).HeightPercent(100).
 		HitWith(id, "调整事件详情宽度", gfx.HitOptions{Cursor: gfx.PointerCursorResizeHorizontal})
 	c := env.Canvas
 	if c == nil {

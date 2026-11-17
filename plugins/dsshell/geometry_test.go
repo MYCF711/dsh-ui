@@ -11,7 +11,7 @@ import (
 
 // TestShellGeometryAndRealSlots 不只测宽度求解：把真实 flex 树布局出来，
 // 逐容器检查主区、右栏、composer 与底部整行的矩形。
-// 三栏外框来自官方 computeColumns；slot 保留现有跨插件 12px inset 契约。
+// 三栏外框来自官方 computeColumns；主区保留 12px inset，右栏按官方 panel 为 0。
 func TestShellGeometryAndRealSlots(t *testing.T) {
 	cases := []struct {
 		name              string
@@ -74,7 +74,7 @@ func TestShellGeometryAndRealSlots(t *testing.T) {
 
 			assertRect(t, "main.header", boxes[pluginapi.SlotMainHeader].Rect(), gfx.Rect{X: 280 + columnPad, Y: columnPad, Width: tc.mainWidth - 2*columnPad, Height: 40})
 			assertRect(t, "main.body", boxes[pluginapi.SlotMainBody].Rect(), gfx.Rect{X: 280 + columnPad, Y: columnPad + 40 + 8, Width: tc.mainWidth - 2*columnPad})
-			assertRect(t, "rightbar", boxes[pluginapi.SlotRightbar].Rect(), gfx.Rect{X: tc.rightX + columnPad, Y: columnPad, Width: tc.rightWidth - 2*columnPad, Height: tc.height - 24 - 2*columnPad})
+			assertRect(t, "rightbar", boxes[pluginapi.SlotRightbar].Rect(), gfx.Rect{X: tc.rightX, Y: 0, Width: tc.rightWidth, Height: tc.height - 24})
 			assertRect(t, "main.composer", boxes[pluginapi.SlotMainComposer].Rect(), gfx.Rect{X: 280 + columnPad, Y: tc.height - 24 - columnPad - 80, Width: tc.mainWidth - 2*columnPad, Height: 80})
 			assertRect(t, "shell.bottom", boxes[pluginapi.SlotShellBottom].Rect(), gfx.Rect{Y: tc.height - 24, Width: tc.width, Height: 24})
 

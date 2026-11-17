@@ -129,7 +129,11 @@ func newTestPlugin(remote Remote) *Plugin {
 // render 画一帧，返回画布（判据取 Rectangles/Texts/Hits）。
 func render(t *testing.T, p *Plugin) *gfx.Canvas {
 	t.Helper()
-	theme := dscore.Dark()
+	return renderWithTheme(t, p, dscore.Dark())
+}
+
+func renderWithTheme(t *testing.T, p *Plugin, theme *pluginapi.Theme) *gfx.Canvas {
+	t.Helper()
 	tree := &gfx.Tree{}
 	feat := tree.Feature("notice-test")
 	canvas := &gfx.Canvas{}

@@ -2,6 +2,8 @@ package dsplan
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -58,18 +60,13 @@ const (
 	cardOpenPadX   float32 = 8
 	cardOpenFont   float32 = 12
 	cardOpenLine   float32 = 18
+	// PlanCard.tsx:51：FileTypeIcon kind="markdown" size={20}。
+	cardIconGlyphSize float32 = 20
 )
 
-// glyphMarkdown 是 40×40 图标槽里的**文字代用品**。
-//
-// 官方那一格是 `FileTypeIcon kind="markdown" size={20}`（OFF:PlanCard.tsx:60）的
-// SVG sprite；本仓没有那份素材，按仓规**不手画 SVG**，用文字顶替——与
-// `plugins/dsattachment/rail.go:169-172` 完全同一条先例（那里也是 FileTypeIcon
-// 的位置放扩展名文字）。20px 的图标换成 10px 的两字母，占位与官方同高。
-const (
-	glyphMarkdown = "MD"
-	glyphFontSize = 10
-)
+// 官方 FileTypeIcon(kind="markdown")：deepseek-500 底板 + neutral-00 折角/MD。
+// 色值分别见 design-platform.css:28,40；三层路径与 markTransform 由 dsassets 复用。
+var planMarkdownIcon, _ = dsassets.FileTypeMarkdown(gfx.RGB24(0x4176e6), gfx.RGB24(0xffffff))
 
 // drawCards 画 Turn 尾的计划卡（官方 `PlanCards`，OFF:PlanCard.tsx:43-62）。
 //
@@ -113,7 +110,7 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, sessio
 			Center().Border(cardBorder, t.BorderL1).Radius(cardIconRadius).
 			Background(t.BgLayer2)
 		icon.Children(func() {
-			ui.Text(f, glyphMarkdown).FontSize(glyphFontSize).Color(t.LabelTertiary)
+			ui.Icon(f, planMarkdownIcon).Width(cardIconGlyphSize).Height(cardIconGlyphSize)
 		})
 		// `.cardDetails`：标题 + 说明两行，flex:1、min-width:0（用 Ellipsis 表达）。
 		ui.Column(f).Grow(1).Gap(cardDetailsGap).Children(func() {

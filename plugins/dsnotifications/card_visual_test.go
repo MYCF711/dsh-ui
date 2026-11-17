@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 )
 
@@ -164,9 +165,12 @@ func TestStackDepthScale(t *testing.T) {
 		t.Fatal("找不到前景卡")
 	}
 	wantPeek := float32(float64(StackMaxWidth) * depthScale(1))
-	peek, ok := findByRadius(canvas.Rectangles(), DepthOffset/2)
+	peek, ok := findByRadius(canvas.Rectangles(), CardRadius)
 	if !ok {
-		t.Fatal("找不到第二层的可见边（半径 2 的矩形）")
+		t.Fatal("找不到第二层的可见边（官方卡片半径 16 的矩形）")
+	}
+	if !near(peek.Radius, CardRadius) {
+		t.Fatalf("非前景卡也必须保持官方 border-radius:16px，实际 %.1f", peek.Radius)
 	}
 	if !near(peek.Bounds.Width, wantPeek) {
 		t.Fatalf("第二层宽应为 280×252/260=%.1f，得到 %.1f", wantPeek, peek.Bounds.Width)
@@ -218,5 +222,70 @@ func TestBodyTextWrapped(t *testing.T) {
 	}
 	if body.Bounds.Width > card.Width-CardPadding*2+0.5 {
 		t.Fatalf("正文宽 %.1f 超过内容宽度 %.1f", body.Bounds.Width, card.Width-CardPadding*2)
+	}
+}
+
+// TestActionsMarginTopIs12：官方 .actions 是 .copy 的兄弟，margin-top:12px；
+// .copy 的 2px gap 只能作用于标题与正文之间，不能再叠到动作区前。
+func TestActionsMarginTopIs12(t *testing.T) {
+	canvas := render(t, activePlugin(t, geometryNotice()))
+	body, ok := textByValue(canvas, "1000 tokens 已加入你的账户")
+	if !ok {
+		t.Fatal("找不到正文")
+	}
+	action, ok := hitByLabel(canvas, "查看")
+	if !ok {
+		t.Fatal("找不到动作按钮")
+	}
+	got := action.Bounds.Y - (body.Bounds.Y + body.Bounds.Height)
+	if !near(got, ActionsTopMargin) {
+		t.Fatalf("正文到动作区应为 margin-top:12px，实际 %.1f", got)
+	}
+}
+
+// TestCardPanelElevation：官方 elevation-panel 是 0.5px 描边 +
+// 0 3px 8px/3% 与 0 0 16px/2% 两层阴影，不是 Viva 的 ShadowXS 预设。
+func TestCardPanelElevation(t *testing.T) {
+	canvas := render(t, activePlugin(t, geometryNotice()))
+	var shadows []gfx.Shadow
+	for _, shadow := range canvas.Shadows() {
+		if near(shadow.Radius, CardRadius) {
+			shadows = append(shadows, shadow)
+		}
+	}
+	if len(shadows) != 2 {
+		t.Fatalf("前景卡应有官方两层柔光，实际 %d 层：%+v", len(shadows), shadows)
+	}
+	first, second := shadows[0], shadows[1]
+	if !near(first.Style.OffsetY, 3) || !near(first.Style.Blur, 8) || !near(first.Color.Alpha, 0.03) {
+		t.Fatalf("第一层应为 0 3px 8px rgba(0,0,0,.03)，实际 %+v alpha=%.2f", first.Style, first.Color.Alpha)
+	}
+	if !near(second.Style.OffsetY, 0) || !near(second.Style.Blur, 16) || !near(second.Color.Alpha, 0.02) {
+		t.Fatalf("第二层应为 0 0 16px rgba(0,0,0,.02)，实际 %+v alpha=%.2f", second.Style, second.Color.Alpha)
+	}
+}
+
+// TestNoticeBellUsesBrandColor：官方 .icon color 同时驱动描边与 20% 填充；
+// 不能只把品牌色交给填充层，让 Viva 默认 Foreground 染描边。
+func TestNoticeBellUsesBrandColor(t *testing.T) {
+	theme := dscore.Dark()
+	brand := gfx.Color{Red: 1, Alpha: 1}
+	theme.BrandPrimary = brand
+	canvas := renderWithTheme(t, activePlugin(t, geometryNotice()), theme)
+	var stroke, fill bool
+	for _, triangle := range canvas.Triangles() {
+		color := triangle.Color
+		if !near(color.Red, 1) || !near(color.Green, 0) || !near(color.Blue, 0) {
+			continue
+		}
+		if near(color.Alpha, 1) {
+			stroke = true
+		}
+		if near(color.Alpha, 0.2) {
+			fill = true
+		}
+	}
+	if !stroke || !fill {
+		t.Fatalf("官方铃图标应有品牌色描边与 20%% 填充：stroke=%v fill=%v", stroke, fill)
 	}
 }

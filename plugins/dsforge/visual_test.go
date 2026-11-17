@@ -203,6 +203,52 @@ func TestForgeSeatsDrawOfficialCopy(t *testing.T) {
 	}
 }
 
+// TestDiffRowsDrawBothLineNumbers 验双行号**真的画出来了**：
+// 官方每一行给两侧行号（`OFF:src/client/ChangesTab.module.css:604` 的四轨 `.line`），
+// 像素层必须能看到"旧号 · 新号 · 符号 · 正文"，而不是只有符号+正文。
+//
+// 判据用**每行内**的号码序列，不用 tokens.Contains：`+2` / `−3` 这类计数 chip
+// 里也有数字，顶层 Contains 会被它们蒙混过去（实测去掉行号仍然通过）。
+func TestDiffRowsDrawBothLineNumbers(t *testing.T) {
+	snapshot := drawOnce(t, sampleView(), "s-1")
+	// a.go 的 hunk 是 `@@ -1,2 +1,3 @@`，四行、两侧号码逐行如下：
+	//   1|1| ` func main() {`   2| | `−old()`    |2| `+new()`    |3| `+more()`
+	// 号码落在 `ui.Text` 里就是标签值本身（`"2"` / `"3"`），而行内一定还有正文。
+	// 所以判据：存在一个"纯号码"标签，且标签值里既有旧侧的 2、也有新侧的 2 与 3，
+	// 并且这些号码标签的总数 ≥ 行数×每行号码数（1+1+2+2=6）。
+	numbers := map[string]bool{}
+	numberLabels := 0
+	for _, label := range snapshot.Labels {
+		if isLineNo(label.Value) {
+			numbers[label.Value] = true
+			numberLabels++
+		}
+	}
+	for _, want := range []string{"1", "2", "3"} {
+		if !numbers[want] {
+			t.Fatalf("diff 行缺行号 %q（只画了符号+正文）：\n%s", want, drawnText(snapshot))
+		}
+	}
+	// 四行一共 6 格号码（上下文 2 格、删 1 格、加 2 格、加 2 格 = 7 格里 6 格有号；
+	// 第 2 行的旧号 2 与第 4 行的新号 3 都算）。给下界足够钉住"每行都有"。
+	if numberLabels < 6 {
+		t.Fatalf("号码格只有 %d 个，少于 hunk 需要的 6 格：\n%s", numberLabels, drawnText(snapshot))
+	}
+}
+
+// isLineNo 判断一个标签是不是纯行号（1~6 位十进制）。
+func isLineNo(value string) bool {
+	if value == "" || len(value) > 6 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func TestForgeSeatsDrawNothingWithoutData(t *testing.T) {
 	text := drawnText(drawOnce(t, nil, "s-1"))
 	for _, forbidden := range []string{"新建工作树", "本地变更", "变更", "分支"} {

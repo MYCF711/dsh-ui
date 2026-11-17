@@ -219,6 +219,14 @@ func Dark() *pluginapi.Theme {
 		WarnTertiary:    gfx.RGB24(staticAmber900),
 		WarnLabel:       gfx.RGB24(staticAmber600),
 
+		// 文件对比六档（design-platform.css:433-438，暗色）。
+		FileDiffAddedBg:       gfx.RGB24(0x1f3124), // rgb(31, 49, 36)
+		FileDiffAddedGutter:   gfx.RGB24(0x132016), // rgb(19, 32, 22)
+		FileDiffAddedMarker:   gfx.RGB24(0x41c977), // rgb(65, 201, 119)
+		FileDiffDeletedBg:     gfx.RGB24(0x3c1f1b), // rgb(60, 31, 27)
+		FileDiffDeletedGutter: gfx.RGB24(0x28130e), // rgb(40, 19, 14)
+		FileDiffDeletedMarker: gfx.RGB24(0xfa423e), // rgb(250, 66, 62)
+
 		Selection: ui.RGBA(59, 130, 246, 0.40), // --dsw-alias-bg-document-selection
 
 		Radii: radii,
@@ -306,6 +314,14 @@ func Light() *pluginapi.Theme {
 		SuccessPrimary:  gfx.RGB24(staticGreen500),
 		WarnTertiary:    gfx.RGB24(staticAmber100),
 		WarnLabel:       gfx.RGB24(staticAmber600),
+
+		// 文件对比六档（design-platform.css:281-286，亮色）。
+		FileDiffAddedBg:       gfx.RGB24(0xe6f4e7), // rgb(230, 244, 231)
+		FileDiffAddedGutter:   gfx.RGB24(0xedf7ed), // rgb(237, 247, 237)
+		FileDiffAddedMarker:   gfx.RGB24(0x01a241), // rgb(1, 162, 65)
+		FileDiffDeletedBg:     gfx.RGB24(0xfce6e2), // rgb(252, 230, 226)
+		FileDiffDeletedGutter: gfx.RGB24(0xfdece9), // rgb(253, 236, 233)
+		FileDiffDeletedMarker: gfx.RGB24(0xba2723), // rgb(186, 39, 35)
 
 		Selection: ui.RGBA(59, 130, 246, 0.30),
 

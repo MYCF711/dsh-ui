@@ -127,6 +127,20 @@ type Theme struct {
 	WarnTertiary    ui.Color // ← --dsw-alias-state-warn-tertiary
 	WarnLabel       ui.Color // ← --dsw-alias-state-warn-label
 
+	// ── 文件对比（diff）底色 ──
+	//
+	// 官方 `--dsw-alias-file-diff-*` 六档，取
+	// `dsh-client-ui-theme/src/styles/design-platform.css`（亮 281-286 / 暗 433-438）：
+	// 逐行铺底（`.add` / `.del`，ChangesTab.module.css:675-688）与行号槽
+	// （`.add .number` / `.add .sign` 取 marker 色）。**不是** `--dsw-alias-code-diff-*`
+	// （那是行内代码 diff 的 alpha 底），两者官方就是分开的。
+	FileDiffAddedBg       ui.Color // ← --dsw-alias-file-diff-added-bg
+	FileDiffAddedGutter   ui.Color // ← --dsw-alias-file-diff-added-gutter
+	FileDiffAddedMarker   ui.Color // ← --dsw-alias-file-diff-added-marker
+	FileDiffDeletedBg     ui.Color // ← --dsw-alias-file-diff-deleted-bg
+	FileDiffDeletedGutter ui.Color // ← --dsw-alias-file-diff-deleted-gutter
+	FileDiffDeletedMarker ui.Color // ← --dsw-alias-file-diff-deleted-marker
+
 	// ── 文本选区 ──
 	Selection ui.Color
 

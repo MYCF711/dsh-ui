@@ -232,6 +232,103 @@ func TestFormatters(t *testing.T) {
 	}
 }
 
+// ── 双行号（官方 `.line` 四轨）────────────────────────────────────────
+//
+// 官方每一行给**两侧**行号：上下文两边都数、删行只数旧侧、加行只数新侧，
+// `\ No newline at end of file` 不算一行（`OFF:src/client/diff-rows.ts:53-68`
+// 的 `hunkRows()`）。这里逐条钉住这个口径。
+func TestDiffRowNumbersMatchOfficialHunkRows(t *testing.T) {
+	// hunk 从旧 10 / 新 10 起：context、删、删、加、context。
+	lines := []string{" keep", "-old1", "-old2", "+new1", " tail"}
+	oldNo, newNo := 10, 10
+	type want struct {
+		old, new *int
+		sign     string
+	}
+	n := func(v int) *int { return &v }
+	wants := []want{
+		{old: n(10), new: n(10), sign: " "},
+		{old: n(11), new: nil, sign: "−"},
+		{old: n(12), new: nil, sign: "−"},
+		{old: nil, new: n(11), sign: "+"},
+		{old: n(13), new: n(12), sign: " "},
+	}
+	for i, line := range lines {
+		row := changesDiffRowOf(line, oldNo, newNo)
+		if row.old != nil {
+			oldNo++
+		}
+		if row.new != nil {
+			newNo++
+		}
+		if row.sign != wants[i].sign {
+			t.Fatalf("第 %d 行符号 = %q，要 %q", i, row.sign, wants[i].sign)
+		}
+		if !sameLineNo(row.old, wants[i].old) || !sameLineNo(row.new, wants[i].new) {
+			t.Fatalf("第 %d 行行号 = (old=%s,new=%s)，要 (old=%s,new=%s)",
+				i, lineNoText(row.old), lineNoText(row.new), lineNoText(wants[i].old), lineNoText(wants[i].new))
+		}
+	}
+	// `\ No newline at end of file`：两侧都不给号，也**不推进**任何一侧。
+	row := changesDiffRowOf(`\ No newline at end of file`, 7, 9)
+	if row.old != nil || row.new != nil {
+		t.Fatalf("no-newline 标记不该带行号，实得 (old=%s,new=%s)", lineNoText(row.old), lineNoText(row.new))
+	}
+}
+
+// sameLineNo 比较两个可选行号（nil 只等于 nil）。
+func sameLineNo(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+// lineNoText 让失败信息里的 nil 看得见。
+func lineNoText(v *int) string {
+	if v == nil {
+		return "nil"
+	}
+	return itoa(*v)
+}
+
+// TestNumberColumnMatchesOfficialWidth 钉住 `--forge-number-width`
+// （`OFF:src/client/DiffFile.tsx:194-195`：`max(2, 最大行号位数)ch + 12px`）。
+func TestNumberColumnMatchesOfficialWidth(t *testing.T) {
+	file := apiclient.ForgeDiffFile{Hunks: []apiclient.ForgeHunk{
+		{OldStart: 1, OldLines: 9, NewStart: 1, NewLines: 9},
+	}}
+	// 行号最大 9 → 1 位，但官方下限是 2 位。
+	if got, want := changesNumberW(file, 12), float32(2)*12*changesNumberChEm+changesNumberExtra; got != want {
+		t.Fatalf("两位下限时列宽 = %v，要 %v", got, want)
+	}
+	// 行号到 128 → 3 位。
+	file.Hunks[0] = apiclient.ForgeHunk{OldStart: 100, OldLines: 29, NewStart: 100, NewLines: 29}
+	if got, want := changesNumberW(file, 12), float32(3)*12*changesNumberChEm+changesNumberExtra; got != want {
+		t.Fatalf("三位时列宽 = %v，要 %v", got, want)
+	}
+	// 空 hunk 也取官方下限 2 位（不是 0/负数）。
+	if got, want := changesNumberW(apiclient.ForgeDiffFile{}, 12), float32(2)*12*changesNumberChEm+changesNumberExtra; got != want {
+		t.Fatalf("无 hunk 时列宽 = %v，要 %v", got, want)
+	}
+}
+
+// TestSingleSideMatchesOfficialStatus 钉住 `singleSide`
+// （`OFF:src/client/DiffFile.tsx:190`：新增只有新侧、删除只有旧侧）。
+func TestSingleSideMatchesOfficialStatus(t *testing.T) {
+	cases := map[string]string{
+		apiclient.ForgeFileAdded:    "R",
+		apiclient.ForgeFileDeleted:  "L",
+		apiclient.ForgeFileModified: "",
+		apiclient.ForgeFileRenamed:  "",
+	}
+	for status, want := range cases {
+		if got := changesSingleSide(apiclient.ForgeDiffFile{Status: status}); got != want {
+			t.Fatalf("status=%q 的单侧 = %q，要 %q", status, got, want)
+		}
+	}
+}
+
 // ── 测试替身（只够本文件用，不引壳）────────────────────────────────────
 
 type testContext struct{ theme *pluginapi.Theme }

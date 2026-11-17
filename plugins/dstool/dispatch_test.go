@@ -125,11 +125,16 @@ func TestHeadDerivation(t *testing.T) {
 }
 
 // TestHeight 钉住消息流视口虚拟化用的高度估计。
-// 数字与抽取前逐字相同——变了会让"滚出去的内容不画、滚回来又缺失"。
+// 变了会让"滚出去的内容不画、滚回来又缺失"，所以每一档都要有出处：
+//
+//	收起 24px        官方标题行的固定行高
+//	                 （bash-sample.module.css:96 `height:calc(24px + delta)`，
+//	                 旧值 28 不是官方值，见 official_tool.go 表头）
+//	展开 70 / 50+20n 纯估算，官方没有对应数值（"宁大勿小"，见 Height 的注释）
 func TestHeight(t *testing.T) {
 	s := New(nil)
-	if got := s.Height(7, nil); got != 28 {
-		t.Fatalf("收起时高度 = %v，期望 28", got)
+	if got := s.Height(7, nil); got != 24 {
+		t.Fatalf("收起时高度 = %v，期望 24（官方 24px 单行）", got)
 	}
 	s.open[7] = true
 	if got := s.Height(7, nil); got != 70 {

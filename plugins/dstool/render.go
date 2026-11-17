@@ -1,6 +1,7 @@
 package dstool
 
 import (
+	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -13,6 +14,11 @@ import (
 //
 // 收起时和别的工具一样只有一行——那是消息流里最密的地方，
 // 一次会话几十条 bash，全展开等于没有消息流。
+//
+// 展开体用官方的 **IN/OUT 卡**（ToolRow.module.css:247-255 的 `.ioCard`，
+// bash-sample.module.css:24-35 明写它也是 bash 的兜底画法）：4px 左缩进、
+// 0.5px border-l1、radius 16、代码块底，每段 12px/16px 内边距；
+// 命令与输出之间是官方 `.ioDivider`（0.5px border-l2，ToolRow.module.css:297-301）。
 func bashRenderer() Renderer {
 	return Renderer{
 		Tool: "bash",
@@ -27,26 +33,46 @@ func bashRenderer() Renderer {
 		},
 		Body: func(b *BodyCtx) {
 			t := b.Env.Theme
-			if cmd := command(b.Card.Args); cmd != "" {
-				ui.Text(b.Frame, cmd).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
-			}
+			cmd := command(b.Card.Args)
 			code, rest := splitExit(b.Card.Summary)
-			switch {
-			case code != "":
-				ui.Row(b.Frame).WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
-					color := t.Success
-					if badExit(code) {
-						color = t.Error
-					}
-					b.Badge(code, color)
-					if rest != "" {
-						ui.Text(b.Frame, rest).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(6)
-					}
-				})
-			case rest != "":
-				// 拆不出退出码：原样显示摘要，不硬造一个"exit 0"。
-				ui.Text(b.Frame, rest).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
+			if cmd == "" && code == "" && rest == "" {
+				return
 			}
+			drawToolCard(b.Frame, t, func(f ui.C) {
+				if cmd != "" {
+					// `.ioText`：代码块字档 11/16（gradient-shadow-text.css:178-182），
+					// 颜色 label-secondary（ToolRow.module.css:303-308）。
+					drawIOSection(f, t, func(f ui.C) {
+						ui.Text(f, cmd).Mono().FontSize(t.Fonts.Tiny).LineHeight(toolCodeLine).
+							Color(t.LabelSecondary).MaxLines(6)
+					})
+				}
+				if cmd != "" && (code != "" || rest != "") {
+					drawIODivider(f, t)
+				}
+				switch {
+				case code != "":
+					drawIOSection(f, t, func(f ui.C) {
+						ui.Row(f).WidthPercent(100).Gap(8).Items(ui.Center).Children(func() {
+							color := t.Success
+							if badExit(code) {
+								color = t.Error
+							}
+							b.Badge(code, color)
+							if rest != "" {
+								ui.Text(f, rest).FontSize(t.Fonts.Tiny).LineHeight(toolCodeLine).
+									Color(t.LabelSecondary).MaxLines(6)
+							}
+						})
+					})
+				case rest != "":
+					// 拆不出退出码：原样显示摘要，不硬造一个"exit 0"。
+					drawIOSection(f, t, func(f ui.C) {
+						ui.Text(f, rest).FontSize(t.Fonts.Tiny).LineHeight(toolCodeLine).
+							Color(t.LabelSecondary).MaxLines(12)
+					})
+				}
+			})
 		},
 	}
 }
@@ -99,48 +125,61 @@ func fileRenderer(spec fileSpec) Renderer {
 			return title, summary
 		},
 		Body: func(b *BodyCtx) {
-			t := b.Env.Theme
-			cw := contentWidth(b.Env)
+			env := b.Env
+			t := env.Theme
 			args := parseArgs(b.Card.Args)
-			shown := 0
-			for _, key := range spec.keys {
-				value := args[key]
-				if value == "" {
-					continue
-				}
-				shown++
-				label := argLabel(key)
-				ui.Row(b.Frame).WidthPercent(100).Gap(8).Children(func() {
-					ui.Text(b.Frame, label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-					// MaxWidth 是 Ellipsis 的边界：不给的话长路径会画到窗口外
-					// （和 drawCard 同一个坑，实测过）。
-					ui.Text(b.Frame, value).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelSecondary).
-						MaxWidth(cw - 120).Ellipsis()
+			if len(args) == 0 && b.Card.Args == "" && b.Card.Summary == "" {
+				return
+			}
+			// 官方参数面板：`ToolDetails.root` 外壳 + `.item` 的 10px/14px 内边距
+			// + `.field` 的 5.5em/12px 栅格（ToolDetails.module.css:1-9,19-23,133-141）。
+			drawToolCard(b.Frame, t, func(f ui.C) {
+				drawDetailsItem(f, t, func(f ui.C) {
+					shown := 0
+					ui.Column(f).FillWidth().Gap(toolFieldRowGap).Children(func() {
+						for _, key := range spec.keys {
+							value := args[key]
+							if value == "" {
+								continue
+							}
+							shown++
+							drawField(f, env, argLabel(key), value)
+						}
+					})
+					if shown == 0 && b.Card.Args != "" {
+						// 参数不是 JSON（或没有认得的键）：退回原文，别把内容吞掉。
+						ui.Text(f, b.Card.Args).Mono().FontSize(t.Fonts.Tiny).
+							LineHeight(toolCodeLine).Color(t.LabelCaption).MaxLines(6)
+					}
+					if spec.tool == "edit" {
+						drawEditDiff(f, env, args)
+					}
+					if b.Card.Summary != "" {
+						// 官方 `.subtitle`：12px、label-tertiary、margin-top 3px
+						// （ToolDetails.module.css:176-181）。
+						ui.Text(f, b.Card.Summary).FontSize(toolSubtitleSize).
+							LineHeight(toolFieldLine).Color(t.LabelTertiary).
+							MarginSides(toolSubtitleGap, 0, 0, 0).MaxLines(12)
+					}
 				})
-			}
-			if shown == 0 && b.Card.Args != "" {
-				// 参数不是 JSON（或没有认得的键）：退回原文，别把内容吞掉。
-				ui.Text(b.Frame, b.Card.Args).Mono().FontSize(t.Fonts.Tiny).Color(t.LabelCaption).MaxLines(6)
-			}
-			if spec.tool == "edit" {
-				drawEditDiff(b, args)
-			}
-			if b.Card.Summary != "" {
-				ui.Text(b.Frame, b.Card.Summary).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).MaxLines(12)
-			}
+			})
 		},
 	}
 }
 
 // drawEditDiff 只展示参数里真实存在的旧/新内容，不计算或编造宿主未提供的
 // unified diff、行号、增删统计。两个键同时缺失或只来一个时都整段隐藏。
-func drawEditDiff(b *BodyCtx, args map[string]string) {
+//
+// 几何取官方参数面板的两条：标签是 `.field dt`（13/20、label-caption，
+// ToolDetails.module.css:143-145），内容是面板里的代码档（`.code` font-size:13px，
+// ToolDetails.module.css:229-233）。
+func drawEditDiff(f ui.C, env *pluginapi.Env, args map[string]string) {
 	oldValue, hasOld := presentArg(args, "old_string", "oldString")
 	newValue, hasNew := presentArg(args, "new_string", "newString")
 	if !hasOld || !hasNew {
 		return
 	}
-	t := b.Env.Theme
+	t := env.Theme
 	for _, field := range []struct {
 		label string
 		value string
@@ -149,9 +188,11 @@ func drawEditDiff(b *BodyCtx, args map[string]string) {
 		{label: "旧内容", value: oldValue, color: t.LabelTertiary},
 		{label: "新内容", value: newValue, color: t.LabelSecondary},
 	} {
-		ui.Column(b.Frame).WidthPercent(100).Gap(2).Children(func() {
-			ui.Text(b.Frame, field.label).FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-			ui.Text(b.Frame, field.value).Mono().FontSize(t.Fonts.Tiny).Color(field.color).MaxLines(6)
+		ui.Column(f).FillWidth().Gap(2).MarginSides(toolFieldRowGap, 0, 0, 0).Children(func() {
+			ui.Text(f, field.label).FontSize(t.Fonts.Secondary).LineHeight(toolFieldLine).
+				Color(t.LabelCaption)
+			ui.Text(f, field.value).Mono().FontSize(t.Fonts.Code).LineHeight(toolFieldLine).
+				Color(field.color).MaxLines(6)
 		})
 	}
 }

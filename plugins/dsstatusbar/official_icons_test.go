@@ -81,6 +81,15 @@ func TestOfficialPillDrawsGaugeAndDatabaseIcons(t *testing.T) {
 	if n := iconTrianglesIn(canvas, iconRect); n == 0 {
 		t.Fatalf("活动胶囊左侧 14px 里没有图元——gauge 图标没画（rect=%+v）", iconRect)
 	}
+	// `.pill{gap:6px}` 在图标与文字之间，不是左 padding 与图标之间。
+	// 图标后的 6px 必须留白；旧实现把 gap 放到图标前，会在这里画出 gauge。
+	gapRect := gfx.Rect{
+		X: rect.X + pillPadX + StatsPillIconSize, Y: rect.Y,
+		Width: pillGap, Height: pillHeight,
+	}
+	if n := iconTrianglesIn(canvas, gapRect); n != 0 {
+		t.Fatalf("图标后的官方 6px gap 里有 %d 个图元——gap 被画到了图标前（rect=%+v）", n, gapRect)
+	}
 }
 
 // 用量胶囊是 PlainPill（没有官方 tokenUsage 投影前不可点），但**图标照画**：

@@ -31,6 +31,7 @@ package dsopen
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -55,8 +56,17 @@ const (
 	cornerWidth       = 28
 	cornerNegativePad = 16
 	utilitiesGap      = 8
-	buttonWidth       = 56
-	buttonHeight      = 24
+
+	// OpenTargetButton.module.css:10-44,64-66 的 compact 单动作分支：
+	// 24px 高、0.5px 描边、radius-sm、透明底、main padding 3×5；
+	// OpenTargetButton.tsx:108-112 只画 13px IconRightUpOutlineRegular，
+	// compact 不画文字。只有一个可用动作时没有 chevron（:97,146-156）。
+	buttonHeight   = 24
+	buttonPadY     = 3
+	buttonPadX     = 5
+	buttonBorder   = 0.5
+	buttonIconSize = 13
+	buttonWidth    = buttonIconSize + 2*buttonPadX + 2*buttonBorder
 )
 
 type Plugin struct {
@@ -104,8 +114,10 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 		Top(columnPad+headerPadTop+(titleRowHeight-buttonHeight)/2).
 		Right(utilitiesRight(env)).
 		Width(buttonWidth).Height(buttonHeight).
-		Items(ui.Center).Gap(6).PadSides(8, 8, 4, 4).
-		Radius(t.Radii.MD).Background(t.InputMajor).
+		Items(ui.Center).Justify(ui.Center).
+		PadSides(buttonPadY, buttonPadX, buttonPadY, buttonPadX).
+		Radius(t.Radii.SM).Border(buttonBorder, t.BorderL4).
+		Hover(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, "open-in-app"), "在工作目录里打开")
 	if box.Clicked() {
 		// 失败走壳的既有状态栏（`openFile` 写一句"打开文件/目录失败: …"）——
@@ -113,7 +125,9 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 		_ = env.Act.OpenFile(destination)
 	}
 	box.Children(func() {
-		ui.Text(f, "打开").FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
+		if icon, ok := dsassets.FileRightUp(t.LabelPrimary); ok {
+			ui.Icon(f, icon).Size(buttonIconSize, buttonIconSize).Color(t.LabelPrimary)
+		}
 	})
 }
 

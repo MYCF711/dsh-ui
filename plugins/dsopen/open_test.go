@@ -22,7 +22,7 @@ import (
 
 // renderOpen 画一帧会话头部，返回这一帧画出来的矩形。
 // click 非空时走 canvas 的事件 pass，测到的是 box.Clicked() 的真实分支。
-func renderOpen(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) []gfx.Rectangle {
+func renderOpenCanvas(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) *gfx.Canvas {
 	t.Helper()
 	if p.theme == nil {
 		p.theme = dscore.Dark()
@@ -48,7 +48,12 @@ func renderOpen(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.
 		// 槽位给的是一个列（真实壳就是中栏列）：本插件只借它定位，不占它的流。
 		ui.Column(f).Width(902).Height(76).Children(func() { p.draw(f, env) })
 	})
-	return canvas.Rectangles()
+	return canvas
+}
+
+func renderOpen(t *testing.T, p *Plugin, data pluginapi.Snapshot, act pluginapi.Actions, click string) []gfx.Rectangle {
+	t.Helper()
+	return renderOpenCanvas(t, p, data, act, click).Rectangles()
 }
 
 func noErr(string) error { return nil }
@@ -84,16 +89,24 @@ func TestDrawsOnlyForAnAbsoluteCWDWithARealOpenAction(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rects := renderOpen(t, &Plugin{}, pluginapi.Snapshot{Cur: "s", CWD: tc.cwd}, tc.act, "")
-			if len(rects) != tc.want {
-				t.Fatalf("CWD=%q 时应画 %d 个矩形，实际 %d 个：%+v", tc.cwd, tc.want, len(rects), rects)
+			canvas := renderOpenCanvas(t, &Plugin{}, pluginapi.Snapshot{Cur: "s", CWD: tc.cwd}, tc.act, "")
+			hits := canvas.Hits()
+			if len(hits) != tc.want {
+				t.Fatalf("CWD=%q 时应画 %d 个按钮，实际 %d 个：%+v", tc.cwd, tc.want, len(hits), hits)
 			}
-			if len(rects) == 0 {
+			primitives := len(canvas.Rectangles()) + len(canvas.Triangles())
+			if tc.want == 0 {
+				if primitives != 0 {
+					t.Fatalf("不应画按钮时仍有 %d 个实画图元", primitives)
+				}
 				return
 			}
-			got := rects[0].Bounds
-			if got.Width != 56 || got.Height != 24 {
-				t.Errorf("按钮尺寸 %vx%v，want 56x24——高度必须是真实像素，不能塌成 0", got.Width, got.Height)
+			got := hits[0].Bounds
+			if got.Width != 24 || got.Height != 24 {
+				t.Errorf("按钮尺寸 %vx%v，want 24x24——高度必须是真实像素，不能塌成 0", got.Width, got.Height)
+			}
+			if primitives == 0 {
+				t.Fatal("按钮只有命中区，没有任何实画图元")
 			}
 		})
 	}
@@ -155,18 +168,50 @@ func (e injectedOpenError) Error() string { return string(e) }
 // TestNoActionNoButton 单独留一条：没有打开动作时连布局都不该发生。
 func TestNoActionNoButton(t *testing.T) {
 	p := &Plugin{}
-	rects := renderOpen(t, p, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`}, pluginapi.Actions{}, "")
-	if len(rects) != 0 {
-		t.Fatalf("壳没接可用的打开动作时不该画按钮，画了 %d 个矩形：%+v", len(rects), rects)
+	canvas := renderOpenCanvas(t, p, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`}, pluginapi.Actions{}, "")
+	if hits := canvas.Hits(); len(hits) != 0 {
+		t.Fatalf("壳没接可用的打开动作时不该画按钮，画了 %d 个命中区：%+v", len(hits), hits)
+	}
+	if primitives := len(canvas.Rectangles()) + len(canvas.Triangles()); primitives != 0 {
+		t.Fatalf("壳没接可用的打开动作时不该有实画图元，画了 %d 个", primitives)
 	}
 }
 
-// TestButtonTextIsDrawn 守"按钮上真有一个字"：只有底色没有文案的按钮，
-// 截图里看着像一块脏像素——这一条同时钉住文案本身（回归时一眼能看出改了字）。
-func TestButtonTextIsDrawn(t *testing.T) {
-	rects := renderOpen(t, &Plugin{}, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`},
+// TestButtonCompactGeometryAndIcon 钉住官方 compact 单动作分支：
+// 24×24、radius-sm=8、0.5px BorderL4、透明底、13px right-up 官方矢量图标；
+// compact 不画「打开」文字，也不在没有菜单时画 chevron。
+func TestButtonCompactGeometryAndIcon(t *testing.T) {
+	canvas := renderOpenCanvas(t, &Plugin{}, pluginapi.Snapshot{Cur: "s", CWD: `D:\ws`},
 		pluginapi.Actions{OpenFile: noErr}, "")
-	if len(rects) != 1 {
-		t.Fatalf("应当正好画一个按钮矩形，得到 %d 个：%+v", len(rects), rects)
+	hits := canvas.Hits()
+	if len(hits) != 1 || hits[0].Bounds.Width != 24 || hits[0].Bounds.Height != 24 {
+		t.Fatalf("compact 命中区 = %+v，want 一个 24×24 按钮", hits)
+	}
+	if rects := canvas.Rectangles(); len(rects) != 0 {
+		t.Fatalf("官方 compact 默认态是透明底，不应画填充矩形：%+v", rects)
+	}
+	if dscore.Dark().Radii.SM != 8 {
+		t.Fatalf("radius-sm = %v，want 8", dscore.Dark().Radii.SM)
+	}
+	if buttonPadY != 3 || buttonPadX != 5 || buttonBorder != 0.5 || buttonIconSize != 13 {
+		t.Errorf("compact 常量不符官方 CSS：pad=%v×%v border=%v icon=%v",
+			buttonPadY, buttonPadX, buttonBorder, buttonIconSize)
+	}
+	var borderDrawn, iconDrawn bool
+	for _, triangle := range canvas.Triangles() {
+		switch triangle.Color {
+		case dscore.Dark().BorderL4:
+			borderDrawn = true
+		case dscore.Dark().LabelPrimary:
+			iconDrawn = true
+		}
+	}
+	if !borderDrawn || !iconDrawn {
+		t.Fatalf("实画矢量缺项：BorderL4=%v right-up=%v", borderDrawn, iconDrawn)
+	}
+	for _, text := range canvas.Texts() {
+		if text.Value == "打开" {
+			t.Fatal("官方 compact 分支不画文字标签")
+		}
 	}
 }

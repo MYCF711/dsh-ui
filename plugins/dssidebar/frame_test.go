@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsbrand"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -36,8 +37,8 @@ func TestFG2OfficialGeometryConstants(t *testing.T) {
 		"brandIdentity":   {brandIdentityHeight, 24},
 		"brandMark":       {brandMarkSize, 24},
 		"brandName":       {brandNameHeight, 24},
-		"brandNameFont":   {brandNameFontSize, 18},
-		"brandNameLine":   {brandNameLineHeight, 24},
+		"brandNameVBW":    {brandNameViewBoxW, 156},
+		"brandNameVBH":    {brandNameViewBoxH, 24},
 		"brandGap":        {brandGap, 5},
 		"newSession":      {newSessionHeight, 38},
 		"newSessionTop":   {newSessionMarginTop, 6},
@@ -82,13 +83,31 @@ func TestFG2BrandNewSessionAndNavigationGeometry(t *testing.T) {
 	if got := boxes.BrandName.Rect().X - (boxes.BrandMark.Rect().X + boxes.BrandMark.Rect().Width); got != 5 {
 		t.Errorf("鱼标与 wordmark 间距=%v，want 5", got)
 	}
-	deepseek := fg2Text(t, canvas, "deepseek")
-	if deepseek.Style.Size != 18 || deepseek.Bounds.Height != 24 {
-		t.Errorf("deepseek 字体/行高=%v/%v，want 18/24", deepseek.Style.Size, deepseek.Bounds.Height)
+	// 品牌名是官方 BrandWordmark 矢量，不是文字：官方 `sidebar.brand.name` 的占用方是
+	// `<BrandWordmark includeMark={false} />`（brand-official/src/client/Brand.tsx:17-19）。
+	//
+	// 所以这里断「画的是那两个矢量」而不是断字号：
+	//   · 画面里**不再有** "deepseek" / "HARNESS" 这两段文字（旧实现是排出来的）；
+	//   · 两个图标各自非空（Triangles 非空），且尺寸等于官方 viewBox；
+	//   · 品牌名组的高度仍是官方 24。
+	if fg2HasText(canvas, "deepseek") || fg2HasText(canvas, "HARNESS") {
+		t.Errorf("品牌名不该是文字：画出 deepseek/HARNESS 说明仍在排版而不是画官方 wordmark；文字=%v", canvas.Texts())
 	}
-	fg2Text(t, canvas, "HARNESS")
-	if len(canvas.Triangles()) == 0 {
-		t.Error("品牌行没有画出官方鱼标矢量")
+	if n := len(dsbrand.BrandNameIcon().Commands); n == 0 {
+		t.Fatal("BrandNameIcon() 是空的——侧栏品牌名会是空白")
+	}
+	if n := len(dsbrand.BrandBadgeInkIcon().Commands); n == 0 {
+		t.Fatal("BrandBadgeInkIcon() 是空的——徽标里会是空板")
+	}
+	if icon := dsbrand.BrandNameIcon(); icon.ViewBox != 156 || icon.ViewHeight != 24 {
+		t.Errorf("品牌名 viewBox=%vx%v，官方 156x24", icon.ViewBox, icon.ViewHeight)
+	}
+	if icon := dsbrand.BrandBadgeInkIcon(); icon.ViewBox != 46 || icon.ViewHeight != 14 {
+		t.Errorf("徽标文字 viewBox=%vx%v，官方裁切区 46x14", icon.ViewBox, icon.ViewHeight)
+	}
+	// 鱼标 + 品牌名的字形 + 徽标字形 = 三块矢量，都在品牌行里被画出来。
+	if tri := len(canvas.Triangles()); tri == 0 {
+		t.Error("品牌行没有画出任何矢量（鱼标与 wordmark 都是纯填充路径）")
 	}
 
 	newRect := boxes.NewSession.Rect()

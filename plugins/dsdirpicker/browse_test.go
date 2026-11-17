@@ -130,6 +130,11 @@ type frame struct {
 	FooterInner      gfx.Rect
 	CreateDialogW    float32
 	CreateInputH     float32
+	CrumbBar         gfx.Rect
+	Title            gfx.Rect
+	CrumbEditZone    gfx.Rect
+	Content          gfx.Rect
+	LoadingPill      gfx.Rect
 }
 
 // rectOf 抄一个 Box 的矩形；这一帧没画这个节点就是零值（Box.Valid 会告诉我们）。
@@ -152,6 +157,11 @@ func (p *Plugin) snap() frame {
 		FooterInner:   rectOf(p.boxes.FooterInner),
 		CreateDialogW: rectOf(p.boxes.CreateDialog).Width,
 		CreateInputH:  rectOf(p.boxes.CreateInput).Height,
+		CrumbBar:      rectOf(p.boxes.CrumbBar),
+		Title:         rectOf(p.boxes.Title),
+		CrumbEditZone: rectOf(p.boxes.CrumbEditZone),
+		Content:       rectOf(p.boxes.Content),
+		LoadingPill:   rectOf(p.boxes.LoadingPill),
 	}
 	for _, row := range p.boxes.Rows {
 		out.Rows = append(out.Rows, rectOf(row))
@@ -251,9 +261,14 @@ func TestOfficialGeometryConstants(t *testing.T) {
 		"crumbBarPullLeft":  {crumbBarPullLeft, -9},
 		"crumbBarPadX":      {crumbBarPadX, 8},
 		"crumbBarGap":       {crumbBarGap, 4},
+		"crumbBarBorder":    {crumbBarBorder, 1},
 		"crumbMaxWidth":     {crumbMaxWidth, 160},
 		"crumbFontSize":     {crumbFontSize, 13},
 		"crumbLineH":        {crumbLineH, 20},
+		// :150-156 / TSX:875（铅笔编辑区 + 14px glyph）
+		"crumbEditZoneMinWidth": {crumbEditZoneMinWidth, 34},
+		"crumbEditZoneHeight":   {crumbEditZoneHeight, 22},
+		"crumbEditGlyphSize":    {crumbEditGlyphSize, 14},
 		// :205-215 / :83-94 / :221-232 / :234-238
 		"contentPadTop":    {contentPadTop, 16},
 		"contentPadRight":  {contentPadRight, 16},
@@ -274,18 +289,40 @@ func TestOfficialGeometryConstants(t *testing.T) {
 		// :310-327 / :348-358 / :398-400
 		"statusFontSize":       {statusFontSize, 12},
 		"statusLineH":          {statusLineH, 18},
+		"statusPadRight":       {statusPadRight, 120},
+		"loadingFloatRight":    {loadingFloatRight, 16},
+		"loadingFloatBottom":   {loadingFloatBottom, 8},
+		"loadingFloatPadX":     {loadingFloatPadX, 8},
+		"loadingFloatPadY":     {loadingFloatPadY, 2},
 		"footerPadV":           {footerPadV, 16},
 		"footerPadH":           {footerPadH, 24},
 		"footerGap":            {footerGap, 8},
 		"footerActionMinWidth": {footerActionMinWidth, 72},
-		// :403-455
+		// :364-392 / TSX:991（显示隐藏文件开关 + 尾随 14px check）
+		"showHiddenToggleGap": {showHiddenToggleGap, 4},
+		"showHiddenFontSize":  {showHiddenFontSize, 13},
+		"showHiddenLineH":     {showHiddenLineH, 20},
+		"showHiddenWeight":    {showHiddenWeight, 500},
+		"footerCheckSize":     {footerCheckSize, 14},
+		// :403-455（新建子对话框）
 		"createDialogMaxWidth": {createDialogMaxWidth, 380},
 		"createBodyPadTop":     {createBodyPadTop, 22},
 		"createBodyPadX":       {createBodyPadX, 24},
 		"createBodyPadBottom":  {createBodyPadBottom, 20},
 		"createBodyGap":        {createBodyGap, 12},
 		"createInputHeight":    {createInputHeight, 44},
+		"createInputPadY":      {createInputPadY, 7},
+		"createInputPadX":      {createInputPadX, 14},
+		"createInputFontSize":  {createInputFontSize, 14},
+		"createInputLineH":     {createInputLineH, 22},
 		"createActionsGap":     {createActionsGap, 8},
+		// Modal 卡片：gradient-shadow-text.css:33/:36-37（elevation-prominent）
+		"modalElevationStroke":  {modalElevationStroke, 0.5},
+		"modalElevationShadowY": {modalElevationShadowY, 3},
+		"modalElevationShadowB": {modalElevationShadowB, 8},
+		"modalElevationShadowA": {modalElevationShadowA, 0.04},
+		"modalElevationGlowB":   {modalElevationGlowB, 20},
+		"modalElevationGlowA":   {modalElevationGlowA, 0.05},
 	}
 	for name, tc := range cases {
 		if tc.got != tc.want {
@@ -339,13 +376,89 @@ func TestDialogGeometryMatchesOfficial(t *testing.T) {
 	if title.Style.Size != 16 || title.Style.Weight != 510 {
 		t.Errorf("标题字号/字重=%v/%v，want 16/510", title.Style.Size, title.Style.Weight)
 	}
-	if title.Bounds.Height != 28 {
-		t.Errorf("标题框高=%v，want 28（min-height:28px，:38）", title.Bounds.Height)
+	// `.title{display:flex;align-items:flex-end;min-height:28px;line-height:24px}`（:37-41）：
+	// 容器 28 高、24px 行盒**贴底**（flex-end 不是说文字盒自己 28 高）。
+	if title.Bounds.Height != titleLineH {
+		t.Errorf("标题行盒高=%v，want %v（line-height:24px，:41）", title.Bounds.Height, titleLineH)
+	}
+	if got.Title.Height != titleMinHeight {
+		t.Errorf("标题容器高=%v，want %v（min-height:28px，:38）", got.Title.Height, titleMinHeight)
+	}
+	if d := got.Title.Y + got.Title.Height - (title.Bounds.Y + title.Bounds.Height); d != 0 {
+		t.Errorf("标题文字距容器底边=%v，want 0（align-items:flex-end，:37）", d)
 	}
 	name := textOf(t, canvas, "projects")
 	if name.Style.Size != 13 || name.Style.Weight != 500 || name.Bounds.Height != 20 {
 		t.Errorf("行名字号/字重/行高=%v/%v/%v，want 13/500/20",
 			name.Style.Size, name.Style.Weight, name.Bounds.Height)
+	}
+}
+
+// TestCrumbEditZoneGeometry 量铅笔编辑区：`.crumbEditZone{flex:1 0 34px;
+// min-width:34px;height:22px;justify-content:flex-end}`（module.css:150-156）。
+//
+// 它贴着 `.crumbBar` 的 padding box 右缘（bar 有 1px 透明描边 + 左右各 8px padding，
+// :56-59），所以右缘 = bar 右 - 9。
+func TestCrumbEditZoneGeometry(t *testing.T) {
+	src := &fakeSource{levels: map[string]*apiclient.DirectoryListing{"": homeListing()}}
+	p, env, _, canvas := fixture(t, src)
+	if !p.Open() {
+		t.Fatal("有 source 时 Open 应该打开对话框")
+	}
+	got := drawOnce(t, p, env, canvas, 1200, 800)
+
+	zone := got.CrumbEditZone
+	if zone.Height != crumbEditZoneHeight {
+		t.Errorf("编辑区高=%v，want %v（module.css:156）", zone.Height, crumbEditZoneHeight)
+	}
+	if zone.Width < crumbEditZoneMinWidth {
+		t.Errorf("编辑区宽=%v，want >= %v（module.css:154-155）", zone.Width, crumbEditZoneMinWidth)
+	}
+	wantRight := got.CrumbBar.X + got.CrumbBar.Width - crumbBarBorder - crumbBarPadX
+	if d := wantRight - (zone.X + zone.Width); d != 0 {
+		t.Errorf("编辑区右缘差 %v px，want 贴住 bar 的 padding box 右缘（-1 描边 -8 padding）", d)
+	}
+}
+
+// TestLoadingPillFloatsOverContent 钉住「加载中」的官方形状：
+// `.status.loadingFloat{position:absolute;right:16px;bottom:8px;padding:2px 8px}`
+// （module.css:338-344）——它是**浮在内容区右下角**的药丸，不占行高，所以
+// 两列的几何在两个状态下必须逐像素相同（module.css:329-334 的注释原文）。
+func TestLoadingPillFloatsOverContent(t *testing.T) {
+	src := &fakeSource{levels: map[string]*apiclient.DirectoryListing{"": homeListing()}}
+	p, env, _, canvas := fixture(t, src)
+	p.Open()
+	idle := drawOnce(t, p, env, canvas, 1200, 800)
+
+	p.mu.Lock()
+	p.loading = true
+	p.mu.Unlock()
+	busy := drawOnce(t, p, env, canvas, 1200, 800)
+
+	pill := busy.LoadingPill
+	if pill.Width == 0 || pill.Height == 0 {
+		t.Fatalf("加载中时没有药丸几何：%+v（文字=%v）", pill, textValues(canvas))
+	}
+	// 高度 = 18 行高 + 上下各 2px padding（:342）。
+	if want := statusLineH + 2*loadingFloatPadY; pill.Height != want {
+		t.Errorf("药丸高=%v，want %v（12/18 文字 + padding 2）", pill.Height, want)
+	}
+	if d := busy.Content.X + busy.Content.Width - (pill.X + pill.Width); d != loadingFloatRight {
+		t.Errorf("药丸右缘距内容区=%v，want %v（:340 right:16px）", d, loadingFloatRight)
+	}
+	if d := busy.Content.Y + busy.Content.Height - (pill.Y + pill.Height); d != loadingFloatBottom {
+		t.Errorf("药丸下缘距内容区=%v，want %v（:341 bottom:8px）", d, loadingFloatBottom)
+	}
+	// 不撑高：内容区与首行都在原位（官方「扫描不许把列顶下去」）。
+	if idle.Content.Height != busy.Content.Height {
+		t.Errorf("加载中把内容区从 %v 撑到 %v（绝对定位药丸不该占位）",
+			idle.Content.Height, busy.Content.Height)
+	}
+	if len(idle.Rows) == 0 || len(busy.Rows) == 0 {
+		t.Fatalf("两帧都应有行：idle=%d busy=%d", len(idle.Rows), len(busy.Rows))
+	}
+	if idle.Rows[0] != busy.Rows[0] {
+		t.Errorf("首行几何被加载态改变：idle=%+v busy=%+v", idle.Rows[0], busy.Rows[0])
 	}
 }
 

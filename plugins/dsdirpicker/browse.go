@@ -42,16 +42,36 @@
 //   - 请求中显示「加载中…」；`truncated` 为真显示「文件夹过多，仅显示开头部分。」
 //   - 宿主错误**原文**显示在 `.error` 位置，不编文案
 //
+// # 图标：全部官方原件，不手画
+//
+// 逐字来自 `OFF:DirectoryBrowser.tsx` 的 `size=` 与官方 sprite 的 path 数据，
+// 本文件只消费 `plugins/dsassets` 已登记的原件：
+//
+//	行首 folder-close / folder-open  16（TSX:256-257）→ dsassets.WorkspaceFolder
+//	行尾 chevron-right-outline       12（TSX:259）     → dsassets.PlanReviewChevron
+//	面包屑 chevron-right-outline     12（TSX:827）     → 同上
+//	面包屑铅笔 edit-outline          14（TSX:875）     → dsassets.PlanReviewEdit
+//	显示隐藏文件的 check-outline     14（TSX:991）     → dsassets.CheckOutline
+//
 // # 没搬的官方细节（照实登记，不假装搬了）
 //
-//   - 路径编辑区（pencil + `.pathInput`，`:839-923`）与它的 250ms 防抖、草稿前缀
-//     过滤：那是另一整套状态机（`:142-218`、`:673-686`），不在本次范围。
+//   - 路径编辑**行为**（input 的 250ms 防抖、草稿前缀过滤、Escape/失焦观察器：
+//     `:142-218`、`:673-686`、`:839-923`）：那是另一整套状态机。**外观照画**——
+//     `.crumbEditZone` 的 34px 槽、22px 高与 14px 铅笔都在，取官方**禁用态**
+//     （`label-caption`，module.css:179-185），不伪造一个点了没反应的输入框。
 //   - `SLOW_SCAN_DELAY_MS=300`（`:91`）的"慢扫描才显示加载中"门：本仓没有定时器
 //     链路，请求一出就显示「加载中…」——宁可早显示，也不假装有门。
 //   - `PARENT_LEG_WAIT_MS=200`（`:100`）的两腿同时落地：本仓每次导航只发一个
 //     请求（不做"目标 + 父层"双腿），所以没有闪烁问题也就没有这个窗口。
-//   - 图标（folder / chevron / plus / check / pencil 都是 sprite SVG）：按仓规
-//     **不手画 SVG**，只保留官方那两处槽宽（行首 16、行尾 12）。
+//   - hover 三态（`.row:hover` / `.crumb:hover` / `.crumbEditZone:hover`，:70-74、
+//     :135-139、:173-177）：官方绑 `--dsw-alias-interactive-bg-hover` +
+//     `label-primary`，本仓主题没有钉住该 token 的字段，不拿近似色冒充。
+//   - 「新建文件夹」按钮的 14px plus 图标（TSX:967 `icon={<IconPlusOutlineRegular
+//     size={14}/>}`）：`ui.Button` 是文字控件（viva `ui/frame.go:636`），没有
+//     leading icon 槽，所以只画官方 outline 按钮本体。
+//   - `.dialog.dialog` 对 `--dsh-scrollbar-thumb` 的重绑（module.css:14-15，l2 档）：
+//     viva 的滚动条色取自主题的**一档** `Scrollbar`（l1 档，dscore.go:207/:295），
+//     没有按框重绑的接口。
 package dsdirpicker
 
 import (
@@ -63,6 +83,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -113,6 +134,15 @@ const (
 	crumbBarPullLeft  float32 = -9
 	crumbBarPadX      float32 = 8
 	crumbBarGap       float32 = 4
+	// `border:1px solid transparent`（:59）+ `box-sizing:border-box`（:56）：这 1px
+	// 描边计入 24px 的 min-height；编辑/悬停态（:65-74）才把它点亮成 border-l2。
+	crumbBarBorder float32 = 1
+
+	// 面包屑的铅笔编辑区：`.crumbEditZone{flex:1 0 34px;min-width:34px;height:22px;
+	// justify-content:flex-end}`（:150-156）、铅笔 size=14（TSX:875）。
+	crumbEditZoneMinWidth float32 = 34
+	crumbEditZoneHeight   float32 = 22
+	crumbEditGlyphSize    float32 = 14
 
 	// 面包屑：`.crumb{max-width:160px;font-size:13px;line-height:20px;font-weight:500}`（:114-127）。
 	crumbMaxWidth float32 = 160
@@ -152,6 +182,17 @@ const (
 	// 状态/错误行：`.status,.error{font-size:12px;line-height:18px;padding:4px}`（:310-327）。
 	statusFontSize float32 = 12
 	statusLineH    float32 = 18
+	// 同一个规则里的 `padding-right:120px`（:316）：给浮动的「加载中」药丸预留
+	// 最宽本地化足迹，窄卡片上换行的文字不会钻到药丸底下（:313-316 的原注释）。
+	statusPadRight float32 = 120
+
+	// 「加载中…」药丸：`.loadingFloat{position:absolute;right:16px;bottom:8px;
+	// padding:2px 8px;background:bg-layer-2}`（:338-344）。**绝对定位压在内容区
+	// 右下角、不占行高**——扫描不许把两列的高度顶掉（:329-334 的原注释）。
+	loadingFloatRight  float32 = 16
+	loadingFloatBottom float32 = 8
+	loadingFloatPadX   float32 = 8
+	loadingFloatPadY   float32 = 2
 
 	// footer：`.footerBar{padding:16px 24px;gap:8px}`（:348-358）。
 	footerPadV float32 = 16
@@ -159,6 +200,13 @@ const (
 	footerGap  float32 = 8
 	// 取消/打开的最小宽：`.footerAction{min-width:72px}`（:398-400）。
 	footerActionMinWidth float32 = 72
+	// 显示隐藏文件开关：`.showHiddenToggle{gap:4px;font-size:13px;line-height:20px;
+	// font-weight:500}`（:364-377）；它后面那枚 check size=14（TSX:991）。
+	showHiddenToggleGap float32 = 4
+	showHiddenFontSize  float32 = 13
+	showHiddenLineH     float32 = 20
+	showHiddenWeight    float32 = 500
+	footerCheckSize     float32 = 14
 
 	// 新建文件夹子对话框：`.createDialog{width:min(380px,100%)}`（:403-407）。
 	createDialogMaxWidth float32 = 380
@@ -174,11 +222,41 @@ const (
 	// `.createIn{font-size:14px;line-height:22px}`（:424-429）。
 	createInFontSize float32 = 14
 	createInLineH    float32 = 22
-	// `.createInput{height:44px;border:0.5px solid …;border-radius:--dsw-radius-lg}`（:431-443）。
-	createInputHeight float32 = 44
+	// `.createInput{height:44px;padding:7px 14px;border:0.5px solid …;border-radius:--dsw-radius-lg;
+	// font-size:14px;line-height:22px}`（:431-443）。
+	createInputHeight   float32 = 44
+	createInputPadY     float32 = 7
+	createInputPadX     float32 = 14
+	createInputFontSize float32 = 14
+	createInputLineH    float32 = 22
 	// `.createActions{justify-content:flex-end;gap:8px;margin-top:8px}`（:449-455）。
 	createActionsGap       float32 = 8
 	createActionsMarginTop float32 = 8
+
+	// ── Modal 卡片本体（两层对话框共用）───────────────────────────────────────
+	//
+	// `.dialog.dialog` 只覆盖 width/height/padding/gap（:5-16），卡片本体是官方
+	// primitives 的 Modal：
+	//
+	//	._dialog_1ytzq_33{border:0;border-radius:var(--dsw-radius-panel);
+	//	  background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-prominent)}
+	//	  （dsh-web-frontend/dist/assets/index-CSAdOBx6.css，字节偏移 32831）
+	//
+	// 所以卡片是 **radius-panel（28）而不是 XL（20）**，且**没有 border**：
+	// 那 0.5px 的分离线画在 box-shadow 里（`--dsw-elevation-stroke`，不占布局）。
+	//
+	//	--dsw-elevation-prominent: var(--dsw-elevation-stroke),
+	//	  0 3px 8px 0 rgba(0,0,0,.04), 0 0 20px 0 rgba(0,0,0,.05)
+	//	--dsw-elevation-stroke:    0 0 0 0.5px var(--dsw-elevation-stroke-color)
+	//	  （dsh-client-ui-theme/src/styles/gradient-shadow-text.css:36-37、:33）
+	//	--dsw-elevation-stroke-color: var(--dsw-alias-border-l4)（:17；深色仅菜单面
+	//	  重绑成 l3，Modal 不是菜单面）
+	modalElevationStroke  float32 = 0.5
+	modalElevationShadowY float32 = 3
+	modalElevationShadowB float32 = 8
+	modalElevationShadowA float32 = 0.04
+	modalElevationGlowB   float32 = 20
+	modalElevationGlowA   float32 = 0.05
 )
 
 // reqTimeout 是一次宿主数据调用的上限。
@@ -288,19 +366,21 @@ type Plugin struct {
 
 // pickerBoxes 是最近一帧的关键矩形。
 type pickerBoxes struct {
-	Dialog       ui.Box
-	Header       ui.Box
-	Title        ui.Box
-	CrumbBar     ui.Box
-	Content      ui.Box
-	LeftColumn   ui.Box
-	RightColumn  ui.Box
-	Divider      ui.Box
-	Footer       ui.Box
-	FooterInner  ui.Box
-	CreateDialog ui.Box
-	CreateInput  ui.Box
-	Rows         []ui.Box
+	Dialog        ui.Box
+	Header        ui.Box
+	Title         ui.Box
+	CrumbBar      ui.Box
+	CrumbEditZone ui.Box
+	Content       ui.Box
+	LeftColumn    ui.Box
+	RightColumn   ui.Box
+	Divider       ui.Box
+	Footer        ui.Box
+	FooterInner   ui.Box
+	LoadingPill   ui.Box
+	CreateDialog  ui.Box
+	CreateInput   ui.Box
+	Rows          []ui.Box
 }
 
 // ID 实现 pluginapi.Plugin。
@@ -758,8 +838,13 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// 遮罩的底色官方在 primitives 的 Modal 里，本仓 dump 没有那份 CSS，
 	// 所以**不画遮罩**（不自造一个半透明压色），只把卡片摆中间。
 	ui.Column(f).FillWidth().FillHeight().Center().Children(func() {
+		// 卡片本体 = 官方 Modal 的 `._dialog_1ytzq_33`：radius-panel、bg-layer-2、
+		// border:0，分离线由 elevation-prominent 的 0.5px shadow 环承担
+		// （见本文件 modalElevation* 常量上的出处）。
 		card := ui.Column(f).Width(cardWidth).Height(cardHeight).
-			Background(t.BgLayer2).Radius(t.Radii.XL).Clip()
+			Radius(t.Radii.Panel).
+			Draw(func(d *ui.DrawContext) { drawModalElevation(d, t.Radii.Panel, t.BorderL4) }).
+			Background(t.BgLayer2).Clip()
 		p.boxes.Dialog = card
 		card.Children(func() {
 			crumbSource := level
@@ -784,18 +869,26 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, crum
 		PadSides(headerPadTop, headerPadRight, headerPadBottom, headerPadLeft).Gap(headerGap)
 	p.boxes.Header = header
 	header.Children(func() {
-		p.boxes.Title = ui.Text(f, zhTitle).MinHeight(titleMinHeight).
-			FontSize(titleFontSize).LineHeight(titleLineH).Weight(titleWeight).Color(t.LabelPrimary)
+		// `.title{display:flex;align-items:flex-end;min-height:28px;font-size:16px;
+		// line-height:24px}`（:35-44）：**容器**是 28 高的 flex、文字（24px 行盒）
+		// 贴**底边**——不是把 28 套在文字自己身上（那样文字会居中，比官方高 2px）。
+		title := ui.Row(f).FillWidth().MinHeight(titleMinHeight).Items(ui.End)
+		p.boxes.Title = title
+		title.Children(func() {
+			ui.Text(f, zhTitle).FontSize(titleFontSize).LineHeight(titleLineH).
+				Weight(titleWeight).Color(t.LabelPrimary)
+		})
 		bar := ui.Row(f).FillWidth().MinHeight(crumbBarMinHeight).Gap(crumbBarGap).
-			MarginLeft(crumbBarPullLeft).PadX(crumbBarPadX).Radius(t.Radii.SM)
+			MarginLeft(crumbBarPullLeft).PadX(crumbBarPadX).
+			Border(crumbBarBorder, gfx.Color{}).Radius(t.Radii.SM).Items(ui.Center)
 		p.boxes.CrumbBar = bar
 		bar.Children(func() {
 			for i, crumb := range displayCrumbs(crumbSource, zhHome) {
 				if i > 0 {
-					// 官方每个 crumbSeat 前有 12px chevron 图标；不手画 SVG，
-					// 用同一个字号的 › 占位（几何 12px 那档、颜色 tertiary）。
-					ui.Text(f, "›").FontSize(rowChevronSize).LineHeight(crumbLineH).
-						Color(t.LabelTertiary)
+					// `.crumbChevron`（:141-144）：官方 IconChevronRightOutlineRegular
+					// size=12（TSX:827），色 label-tertiary。
+					ui.Icon(f, chevronRightIcon()).
+						Size(rowChevronSize, rowChevronSize).Color(t.LabelTertiary)
 				}
 				label := crumb.Name
 				if label == "" {
@@ -808,6 +901,17 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, crum
 					p.navigate(crumb.Path)
 				}
 			}
+			// 铅笔编辑区（`.crumbEditZone`：flex 1 / min-width 34 / height 22 /
+			// justify-content:flex-end，:150-156）。官方点它把整条 bar 切成路径
+			// 编辑态；本版没有路径编辑器，所以按官方**禁用态**画：铅笔取
+			// `label-caption`（:179-185），不给它 Hit——不伪造一个点了没反应的输入框。
+			zone := ui.Row(f).Grow(1).MinWidth(crumbEditZoneMinWidth).Height(crumbEditZoneHeight).
+				Justify(ui.End).Items(ui.Center)
+			p.boxes.CrumbEditZone = zone
+			zone.Children(func() {
+				ui.Icon(f, editOutlineIcon(t.LabelCaption)).
+					Size(crumbEditGlyphSize, crumbEditGlyphSize).Color(t.LabelCaption)
+			})
 		})
 	})
 }
@@ -834,19 +938,28 @@ func (p *Plugin) drawContent(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 				}
 			}
 		})
-		// 「加载中…」：官方是浮动药丸且只在慢扫描(300ms)后出现（OFF:DirectoryBrowser.module.css:329-344，
-		// 本仓没有那条定时器链路，见包注释「没搬的细节」），这里直接占一行。
+		// 「加载中…」：官方是 `.status.loadingFloat`（TSX:953 的 clsx）——**绝对定位**
+		// 在内容区右下角（right 16 / bottom 8，note :338-344），压在列之上、不占行高
+		// （扫描不许把两列顶下去，:329-334）。字号仍是 `.status` 的 12/18、色 label-secondary。
+		// 官方那条 `slowScan` 300ms 门本版没有定时器链路（见包注释）。
 		if loading {
-			ui.Text(f, zhLoading).Pad(rowPad).
-				FontSize(statusFontSize).LineHeight(statusLineH).Color(t.LabelSecondary)
+			pill := ui.Row(f).Absolute().Right(loadingFloatRight).Bottom(loadingFloatBottom).
+				PadSides(loadingFloatPadY, loadingFloatPadX, loadingFloatPadY, loadingFloatPadX).
+				Items(ui.Center).Background(t.BgLayer2)
+			p.boxes.LoadingPill = pill
+			pill.Children(func() {
+				ui.Text(f, zhLoading).
+					FontSize(statusFontSize).LineHeight(statusLineH).Color(t.LabelSecondary)
+			})
 		}
+		// `.status`/`.error` 的右留白 120px（:310-319）——见 statusPadRight 注释。
 		if listingTruncated(level) || listingTruncated(child) {
-			ui.Text(f, zhTruncated).Pad(rowPad).
+			ui.Text(f, zhTruncated).PadSides(rowPad, statusPadRight, rowPad, rowPad).
 				FontSize(statusFontSize).LineHeight(statusLineH).Color(t.LabelSecondary)
 		}
 		if errText != "" {
 			// **宿主原文**，不加工（官方 .error 的 role="alert"）。
-			ui.Text(f, errText).Pad(rowPad).
+			ui.Text(f, errText).PadSides(rowPad, statusPadRight, rowPad, rowPad).
 				FontSize(statusFontSize).LineHeight(statusLineH).Color(t.Error)
 		}
 	})
@@ -860,7 +973,10 @@ func (p *Plugin) drawColumn(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 		if listing == nil {
 			return
 		}
-		scroll := ui.Scroll(f).FillWidth().Grow(1)
+		// `.column{overflow-y:auto}` 且滚动条是**主题化、占边**的那种（:228-231 的原注释
+		// "the themed scrollbar occupies the column's edge"），所以每列自己一条滚动条；
+		// 上面那 8px `padding-right` 就是留给它的（Thumb 颜色档位见包注释的登记差异）。
+		scroll := ui.Scroll(f).FillWidth().Grow(1).Scrollbars()
 		scroll.Children(func() {
 			for _, entry := range visibleEntries(listing.Entries, showHidden) {
 				p.drawRow(f, env, t, entry, selected, rightPane)
@@ -877,18 +993,36 @@ func (p *Plugin) drawRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 	row := ui.Row(f).FillWidth().Height(rowHeight).Gap(rowGap).Pad(rowPad).
 		Items(ui.Center).Radius(t.Radii.SM)
 	if isSelected {
-		row = row.Background(t.NavActive) // 官方 .rowSelected 用 --dsw-alias-interactive-bg-active
+		// `.rowSelected{background:var(--dsw-alias-interactive-bg-active)}`（:273-275）
+		// = 主题的 InteractiveActive（dscore.go:164/:254 明确映射这条 token）。
+		row = row.Background(t.InteractiveActive)
 	}
 	row = row.Hit(p.hitID(env, "row-"+entry.Path), entry.Name)
 	p.boxes.Rows = append(p.boxes.Rows, row)
 	row.Children(func() {
-		// 行首 folder 图标 16px（选中时是 open 变体）与行尾 chevron 12px 都是
-		// sprite SVG：按仓规不手画，只保留槽宽，别让行名贴到边。
-		ui.Row(f).Size(rowIconSize, rowIconSize)
+		// 行首 16px folder 图标：官方 `IconFolderCloseRegular` / 选中换
+		// `IconFolderOpenRegular`（TSX:256-257），色 label-secondary、选中换
+		// `--dsw-alias-button-info-fill`（:283-291）。素材是官方原件
+		// （assets/official/icons/workspace/folder-{close,open}.jsx），不手画。
+		iconColor, open := t.LabelSecondary, false
+		if isSelected {
+			// `--dsw-alias-button-info-fill` 在本仓主题里就是 Info（与发送键同一映射，
+			// 见 plugins/dscomposer/composer.go:515 的出处）。
+			iconColor, open = t.Info, true
+		}
+		if icon, ok := dsassets.WorkspaceFolder(iconColor, open); ok {
+			ui.Icon(f, icon).Size(rowIconSize, rowIconSize).Color(iconColor)
+		} else {
+			// 素材解析不出来时只留槽宽：不拿近似形状冒充官方图标。
+			ui.Row(f).Size(rowIconSize, rowIconSize)
+		}
 		ui.Text(f, entry.Name).Grow(1).Ellipsis().
 			FontSize(rowNameFontSize).LineHeight(rowNameLineH).Weight(rowNameWeight).
 			Color(t.LabelPrimary)
-		ui.Row(f).Size(rowChevronSize, rowChevronSize)
+		// 行尾 12px chevron（TSX:259 `IconChevronRightOutlineRegular size={12}`，
+		// `.rowChevron{color:label-tertiary}` :305-308）。
+		ui.Icon(f, chevronRightIcon()).
+			Size(rowChevronSize, rowChevronSize).Color(t.LabelTertiary)
 	})
 	if !row.Clicked() {
 		return
@@ -920,14 +1054,27 @@ func (p *Plugin) drawFooter(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 				Disabled(level == nil || loading || creating).Clicked() {
 				p.openCreate()
 			}
-			toggle := ui.Text(f, zhShowHidden).FontSize(rowNameFontSize).LineHeight(crumbLineH).
-				Weight(crumbWeight).Color(t.LabelSecondary).
-				Hit(p.hitID(env, "toggle-hidden"), zhShowHidden)
+			// `.showHiddenToggle{display:inline-flex;align-items:center;gap:4px;
+			// font-size:13px;line-height:20px;font-weight:500;color:label-secondary}`（:364-377）：
+			// 标签与 check 在**同一条** inline-flex 里、间距 4px（不是 footer 的 8px）。
+			toggleColor := t.LabelSecondary
 			if showHidden {
-				// 官方在标签**后面**放一枚 check（Menu 的 selected 语汇），标签本身不换字。
-				ui.Text(f, "✓").FontSize(rowNameFontSize).LineHeight(crumbLineH).
-					Color(t.LabelPrimary)
+				// `.showHiddenToggleActive{color:label-primary}`（:390-392）：按下态整条
+				// 切到 label-primary，不只是那枚 check。
+				toggleColor = t.LabelPrimary
 			}
+			toggle := ui.Row(f).Items(ui.Center).Gap(showHiddenToggleGap).
+				Hit(p.hitID(env, "toggle-hidden"), zhShowHidden)
+			toggle.Children(func() {
+				ui.Text(f, zhShowHidden).FontSize(showHiddenFontSize).LineHeight(showHiddenLineH).
+					Weight(showHiddenWeight).Color(toggleColor)
+				if showHidden {
+					// 官方在标签**后面**放一枚 14px check（Menu 的 selected 语汇，标签本身
+					// 不换字）：`{showHidden && <IconCheckOutlineRegular size={14} />}`（TSX:991）。
+					ui.Icon(f, checkOutlineIcon()).
+						Size(footerCheckSize, footerCheckSize).Color(t.LabelPrimary)
+				}
+			})
 			if toggle.Clicked() {
 				p.mu.Lock()
 				p.showHidden = !p.showHidden
@@ -959,14 +1106,18 @@ func (p *Plugin) drawFooter(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 func (p *Plugin) drawCreateDialog(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 	parentWidth float32, targetName string, creating bool, createErr string) {
 	ui.Column(f).Absolute().Inset(0).Center().Children(func() {
-		// `.createDialog.createDialog{width:min(380px,100%)}`（:403-407）：
-		// 100% 是**父卡片**的宽，不是视口宽。
+		// `.createDialog.createDialog{width:min(380px,100%);padding:0;gap:0}`（:403-407）：
+		// 100% 是**父卡片**的宽，不是视口宽。卡片本体仍是官方 Modal 的
+		// `._dialog_1ytzq_33`（radius-panel、bg-layer-2、**border:0**、elevation-prominent），
+		// 所以这里不加自带描边，那 0.5px 分离线由 elevation 的 shadow 环承担。
 		width := min(createDialogMaxWidth, parentWidth)
 		if width <= 0 {
 			width = createDialogMaxWidth
 		}
-		card := ui.Column(f).Width(width).Background(t.BgLayer2).
-			Radius(t.Radii.XL).Border(hairlineWidth, t.BorderL4).Clip()
+		card := ui.Column(f).Width(width).
+			Radius(t.Radii.Panel).
+			Draw(func(d *ui.DrawContext) { drawModalElevation(d, t.Radii.Panel, t.BorderL4) }).
+			Background(t.BgLayer2).Clip()
 		p.boxes.CreateDialog = card
 		card.Children(func() {
 			body := ui.Column(f).FillWidth().Gap(createBodyGap).
@@ -976,11 +1127,16 @@ func (p *Plugin) drawCreateDialog(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 					LineHeight(createTitleLineH).Weight(createTitleWeight).Color(t.LabelPrimary)
 				ui.Text(f, createInText(targetName)).FontSize(createInFontSize).
 					LineHeight(createInLineH).Color(t.LabelPrimary)
+				// `.createInput{padding:7px 14px;font-size:14px;line-height:22px;
+				// border:0.5px solid border-l4;border-radius:--dsw-radius-lg}`（:431-443）。
 				input := ui.TextField(f, &p.createName, zhFolderName, zhUntitledFolder).
-					Height(createInputHeight).Radius(t.Radii.LG).Border(hairlineWidth, t.BorderL4)
+					Height(createInputHeight).Radius(t.Radii.LG).Border(hairlineWidth, t.BorderL4).
+					PadSides(createInputPadY, createInputPadX, createInputPadY, createInputPadX).
+					FontSize(createInputFontSize).LineHeight(createInputLineH)
 				p.boxes.CreateInput = input
 				if createErr != "" {
-					ui.Text(f, createErr).Pad(rowPad).
+					// 子对话框里的错误行也是官方 `.error`（padding 4 + 右留白 120，:310-319）。
+					ui.Text(f, createErr).PadSides(rowPad, statusPadRight, rowPad, rowPad).
 						FontSize(statusFontSize).LineHeight(statusLineH).Color(t.Error)
 				}
 				actions := ui.Row(f).FillWidth().Justify(ui.End).Items(ui.Center).
@@ -1017,4 +1173,64 @@ func (p *Plugin) hitID(env *pluginapi.Env, name string) gfx.ID {
 		return gfx.ID{}
 	}
 	return env.Tree.ID(env.Feat, name)
+}
+
+// ── 官方图标：只消费 `plugins/dsassets` 已登记的原件，不在这里抄坐标 ────────────
+//
+// 官方 sprite 的两档 stroke 是 `{regular:1, medium:1.3}`
+// （dsh-web-frontend/dist/assets/index-ghOpC9uV.js:第 736193 字节处的
+// `p7={regular:1,medium:1.3}`），本文件用的全部是 **Regular** 档 = stroke 1，
+// 与 `dsassets.regularStroke` 同值。
+
+// chevronRightIcon 是 `IconChevronRightOutlineRegular`（sprite `chevron-right-outline`，
+// 面包屑 TSX:827 / 行尾 TSX:259，两处都 size=12）。
+func chevronRightIcon() gfx.Icon {
+	icon, ok := dsassets.PlanReviewChevron()
+	if !ok {
+		// 官方原件全是 M/L/C/Z，正常不会走到这里；返回空图标也不自造替代形状。
+		return gfx.Icon{}
+	}
+	return icon
+}
+
+// editOutlineIcon 是 `IconEditOutlineRegular`（sprite `edit-outline`，TSX:875 size=14）：
+// 一页填充 + 一条描边斜线，两层的颜色都跟着 fill 走。
+func editOutlineIcon(fill gfx.Color) gfx.Icon {
+	icon, ok := dsassets.PlanReviewEdit(fill)
+	if !ok {
+		return gfx.Icon{}
+	}
+	return icon
+}
+
+// checkOutlineIcon 是 `IconCheckOutlineRegular`（sprite `check-outline`，TSX:991 size=14）。
+func checkOutlineIcon() gfx.Icon {
+	commands, ok := dsassets.CheckOutline()
+	if !ok {
+		return gfx.Icon{}
+	}
+	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}
+}
+
+// drawModalElevation 逐层画官方 `--dsw-elevation-prominent`，不拿 Viva 的
+// `ShadowXS/SM` 那套 shadcn 档位近似：
+//
+//	0 0 0 0.5px <stroke>, 0 3px 8px 0 rgba(0,0,0,.04), 0 0 20px 0 rgba(0,0,0,.05)
+//
+// 出处见本文件 modalElevation* 常量（gradient-shadow-text.css:33/:36-37/:17）。
+// 为什么没有用 `Box.Border`：官方把这条 0.5px 描边画在 **box-shadow 里**
+// （`border:0`），它**不占布局**；用 Border 会把卡片内容挤小 1px。
+func drawModalElevation(d *ui.DrawContext, radius float32, stroke gfx.Color) {
+	outer := d.Rect
+	outer.X -= modalElevationStroke
+	outer.Y -= modalElevationStroke
+	outer.Width += 2 * modalElevationStroke
+	outer.Height += 2 * modalElevationStroke
+	d.Canvas.RoundedOutline(outer, radius+modalElevationStroke, modalElevationStroke, d.Fade(stroke))
+	d.Canvas.Shadow(d.Rect, radius,
+		gfx.ShadowStyle{OffsetY: modalElevationShadowY, Blur: modalElevationShadowB},
+		d.Fade(gfx.Color{Alpha: modalElevationShadowA}))
+	d.Canvas.Shadow(d.Rect, radius,
+		gfx.ShadowStyle{Blur: modalElevationGlowB},
+		d.Fade(gfx.Color{Alpha: modalElevationGlowA}))
 }

@@ -12,7 +12,15 @@
 //	OFF:src/client/Card.tsx:68-90   PageCardBody 的状态推导（offer / infoOpen / installed / busy）
 //	OFF:src/client/Card.tsx:90-101  run()：placement 只在 create/dismiss 传；refused/unconfirmed 取 reason 文案
 //	OFF:src/client/Card.tsx:102-159 header / info 说明 / body / initialContent / 两套控件（offer vs placement）
-//	OFF:src/client/Card.module.css   16 行：全部几何值（本包每个常量都对着这里的一行）
+//	OFF:src/client/Card.module.css    28 行：全部几何值（本包每个常量都对着这里的一行；
+//	                                  :1-16 是 header / info / body / 两套控件，:17-28 是
+//	                                  `.controls .footer` / `.locationRow` / `.locationLabel` /
+//	                                  `.locationButton` / `.locationMenu` / `.locationOption` /
+//	                                  `.customLocation` + textarea 与它的焦点、占位态）
+//	OFF:web/dist/assets/index-CSAdOBx6.css  primitives 的 `_button_1ulci_2` 块：按钮原语
+//	                                  （`._sm_1ulci_28` = 28 高 / 12 字号 / 18 行高 / 0 10 内边距 /
+//	                                  radius-sm）。官方 `dsh-client-ui-primitives` 不随包发 src，
+//	                                  这份 CSS 是它唯一的可核原件——本包两处按钮字号由此而来。
 //	OFF:src/client/locales.ts:44-78  zh 字典 58 条（本包**只许**用这 58 条原文）
 //	OFF:src/client/locales.ts:44-78  heading/location/creationInfo…逐条照抄，见下方常量注释
 //	OFF:src/client/info-store.ts:6-8  `infoDismissed` 是**跨会话持久**偏好（官方 localStorage）
@@ -72,9 +80,11 @@
 //     超长不会静默截断——宿主 `parseLocation` 对 `customLocation` 的判据是
 //     trim 后 1..1000（HOST:internal/creation/service.go），超了回
 //     `refused{invalid-location}`，卡片按官方文案 '请选择位置，或填写不超过 1,000 字的位置说明' 显示。
-//  3. **info 按钮的图标不是官方那一枚**：官方是 `IconWarningTriangleOutlineRegular`，
-//     本仓没有可复用的素材（见 icons.go 的说明），用**同为官方素材**的
-//     `IconInfoOutlineRegular` 顶替；同时官方那个 `Tooltip` 在 info 展开时是 disabled，
+//  3. **info 按钮的图标已是官方那一枚**。旧实现用 `IconInfoOutlineRegular` 顶替，
+//     理由是「rc.2 解包树里只有使用处、没有 path 数据」——**那条结论是错的**：
+//     sprite 里带完整 SVG 正文（`"warning-triangle-outline":{size:16,svg:…}`）。
+//     现在 `icons.go` 存的就是官方原文（viewBox=16、stroke=1），按官方 `size={14}`
+//     缩到 14px 显示。仍不同的是官方那个 `Tooltip` 在 info 展开时 `disabled`，
 //     这里按同一判据**条件挂载** `ui.Tooltip`（disabled 时干脆不挂）。
 //  4. **菜单没有"当前项高亮"**：官方 `Menu selectedId={value}`（Card.tsx:52），viva 的
 //     `ui.Menu` 只有 `Chosen` 单选圆点 / `Checked` 勾选，那会多画一个官方没有的标记 →
@@ -89,6 +99,11 @@
 //     文案（**不把宿主错误原文塞进这张卡**：那 58 条以外的字样不是官方卡）。
 //  7. **grapheme 切分**：官方用 `Intl.Segmenter` 按字素算宽度，Go 侧按 rune 算
 //     （与 dsactioncards 同一处差异），只影响折叠出现的位置，不改写原文。
+//  8. **菜单项内部的三条官方声明由 viva 的 MenuItems 决定**，本包只能给到宽度：
+//     `.locationMenu{ max-width: calc(100vw - 24px) }`（:22）、`.locationOption{ gap:2px;
+//     line-height:1.5 }`（:23）、`.locationOption > span + span{ font-size:12px }`（:24）。
+//     `WidthRange(264,264)` 已按 :22 的 width 给；三条 max-width / 行距 / 第二行字号
+//     在 `ui.MenuItems` 里没有对应参数（它自己排版行与说明行），所以不改、只登记。
 package dscreationreco
 
 import (
@@ -187,8 +202,17 @@ const (
 	createdHeaderLineH     float32 = 18
 	createdHeaderGapColumn float32 = 12
 	// `.heading{ gap:4px }`（:2）、`.infoButton{ width:28px; padding:0 }`（:3）。
+	//
+	// `.infoButton` 的高度来自官方原语：它是 `<Button variant="ghost" size="sm">`
+	// （OFF:Card.tsx:107），而 `size="sm"` 的量法是
+	// `._sm_1ulci_28{height:28px; font-size:12px; line-height:18px; padding:0 10px;
+	// border-radius:var(--dsw-radius-sm)}`（OFF:web/dist/assets/index-CSAdOBx6.css 的
+	// primitives `_button_1ulci_2` 块）→ **28×28 方形**。viva 的 `ButtonBase`
+	// 没有自带的 sm 高度，不写这一条就只剩图标那 14px 高，整个 header 会矮 10px
+	// （官方 header = 12+28 = 40；漏了就 12+18 = 30）。
 	createdHeadingGap  float32 = 4
 	createdInfoButtonW float32 = 28
+	createdInfoButtonH float32 = 28
 	createdInfoIcon    float32 = 14
 	// `.info{ margin:12px 20px 0; padding:12px; font-size:13px; line-height:1.7 }`（:4）
 	// → 行高 13×1.7=22.1；`.info p + p{margin-top:4px}`、`.info strong{font-weight:500}`（:6-7）。
@@ -228,14 +252,28 @@ const (
 	createdControlsMarginTop float32 = 16
 	createdControlsPadTop    float32 = 16
 	createdControlsGap       float32 = 12
-	// `.locationRow{ gap:8px }`（:19）、`.locationLabel{ font-size:12px; line-height:1.6 }`（:20）。
+	// `.locationRow{ gap:8px }`（:19）、`.locationLabel{ font-size:12px; line-height:1.6 }`（:20）、
+	// `.locationButton{ gap:8px; font-size:13px }`（:21）、`.locationMenu{ width:264px }`（:22）。
 	createdLocationRowGap     float32 = 8
 	createdLocationLabelFont  float32 = 12
 	createdLocationLabelLineH float32 = 19.2
 	createdLocationChevron    float32 = 14
 	createdLocationMenuWidth  float32 = 264
-	// `.customLocation{ gap:6px }`、`textarea{ min-height:72px; padding:8px 10px; font-size:13px; line-height:1.7 }`
-	// （:23-25）。
+	// 官方 `.locationButton{ font-size:13px }`（:21）：`size="sm"` 的原语字号是 12，
+	// 这个包把它**抬到 13**。viva 的 `Small()` 按主题 FontSizeM 画字（本仓 = 14），
+	// 所以两档都对不上，必须逐处给 13——`ui.Box.FontSize` 对控件就是"换掉这一处的
+	// 主题字号"（viva `ui/control_theme.go:30-31` 的 ownTheme）。
+	createdLocationButtonFont float32 = 13
+	// 官方原语 `._sm_1ulci_28{ height:28px; font-size:12px; line-height:18px; padding:0 10px;
+	// border-radius:var(--dsw-radius-sm) }`（OFF:web/dist/assets/index-CSAdOBx6.css 的
+	// primitives `_button_1ulci_2` 块）：卡片里其余按钮（暂不需要 / 创建 / 重新创建 /
+	// 取消创建 / 撤销 / 恢复）全是 `size="sm"`。viva 的 `Small()` 自带 28 高、10 内边距、
+	// 8 圆角（Radii.SM = 官方 `--dsw-radius-sm: 8px`，base.css:19），**只有字号是主题的 14**
+	// （本仓主题 FontSizeM=14）——逐处给 12 才和官方一致。同一组数字本仓
+	// dsmarket/discover.go:116-120 已采用（那边是手画按钮，这里是 viva 按钮）。
+	createdSmallButtonFont float32 = 12
+	// `.customLocation{ gap:6px }`（:25）、`textarea{ min-height:72px; padding:8px 10px;
+	// font-size:13px; line-height:1.7 }`（:26）。
 	createdCustomGap    float32 = 6
 	createdCustomHeight float32 = 72
 	createdCustomFont   float32 = 13
@@ -255,17 +293,18 @@ const (
 	createdToggleFont      float32 = 12
 )
 
-// 以下三个官方值**没有对应的绘制参数**，留着是为了让后来的人不必再翻一遍 CSS：
+// 以下两个官方值**没有对应的绘制参数**，留着是为了让后来的人不必再翻一遍 CSS：
 //
 //	createdHeaderGapRow = 8        官方 `.header{gap:8px 12px}` 的**行间距**——viva 的
 //	                               `ui.Row` 不换行，这一档在绘制里用不到（列间距 12 用了）；
-//	createdLocationButtonFont = 13 官方 `.locationButton{font-size:13px}`——viva 的
-//	                               `ui.Button` 字号由主题给，无法逐处覆盖；
 //	createdLocationOptionHintSz = 12 官方 `.locationOption > span + span{font-size:12px}`
 //	                               ——菜单第二行由 `ui.MenuItems.Description` 自己排版。
+//
+// （原先这里还挂着 `createdLocationButtonFont = 13` 并写着"viva 的 ui.Button 字号由主题给，
+// 无法逐处覆盖"——**那句是错的**：`ui.Box.FontSize` 对控件就是换掉主题字号，
+// 见 viva `ui/control_theme.go:30-31`；该值现已真的用在位置按钮上。）
 const (
 	createdHeaderGapRow         float32 = 8
-	createdLocationButtonFont   float32 = 13
 	createdLocationOptionHintSz float32 = 12
 )
 
@@ -606,10 +645,11 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, s sc
 	})
 }
 
-// drawInfoButton 画说明块的开关（官方 :104-112）：ghost 按钮、28 宽、14px 图标。
+// drawInfoButton 画说明块的开关（官方 :104-112）：ghost 按钮、28×28、14px 图标。
 func (p *Plugin) drawInfoButton(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, infoOpen bool) {
 	button := ui.ButtonBase(f, zhCreationInfo).
-		Width(createdInfoButtonW).Items(ui.Center).Justify(ui.Center).
+		Width(createdInfoButtonW).Height(createdInfoButtonH).
+		Items(ui.Center).Justify(ui.Center).
 		Hover(ui.Look{}.Background(t.Hover)).
 		Hit(p.hitID(env, "creation-info"), zhCreationInfo)
 	// 官方 `Tooltip disabled={infoOpen}`：说明块开着的时候不再重复那一句提示。
@@ -617,7 +657,9 @@ func (p *Plugin) drawInfoButton(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 		button = button.Tooltip(zhCreationInfo).TooltipOn(ui.TooltipTop)
 	}
 	button.Children(func() {
-		ui.Icon(f, infoIcon()).Size(createdInfoIcon, createdInfoIcon).Color(t.LabelSecondary)
+		// 官方是 `IconWarningTriangleOutlineRegular size={14}`（OFF:Card.tsx:112）：
+		// viewBox=16 的官方原文缩到 14px 显示，见 icons.go。
+		ui.Icon(f, warningIcon()).Size(createdInfoIcon, createdInfoIcon).Color(t.LabelSecondary)
 	})
 	if !button.Clicked() {
 		return
@@ -630,11 +672,20 @@ func (p *Plugin) drawInfoButton(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 	}
 }
 
+// noticeFill 是说明块的底色：官方 `.info{ background: var(--dsw-alias-bg-module-platform) }`（:4）。
+//
+// **不是 `--dsw-alias-bg-layer-3`**（旧实现用的就是这个，属于量错了档）：亮色下
+// layer-3 = `--dsw-static-neutral-bluish-00`(#ffffff)、module-platform =
+// `--dsw-static-neutral-bluish-60`(#f9fafb)（OFF:dsh-client-ui-theme/src/styles/design-platform.css:183/189）；
+// 暗色下两者同为 bluish-800(#353638)（同文件 :335/:341）——所以这一档只有亮色看得出来，
+// 暗色下"看不出差别"不能当成取对了。
+func noticeFill(t *pluginapi.Theme) ui.Color { return t.BgModulePlatform }
+
 // drawInfo 画说明块（官方 :115-122）：三句话 + 可选的一句 sourceRetained。
 func (p *Plugin) drawInfo(f ui.C, t *pluginapi.Theme, s screen) {
 	info := ui.Column(f).FillWidth().
 		MarginSides(createdInfoMarginTop, createdHeaderPadX, 0, createdHeaderPadX).
-		Pad(createdInfoPad).Radius(t.Radii.MD).Background(t.BgLayer3)
+		Pad(createdInfoPad).Radius(t.Radii.MD).Background(noticeFill(t))
 	info.Children(func() {
 		ui.Text(f, zhCreationMethod).FillWidth().FontSize(createdInfoFont).
 			LineHeight(createdInfoLineH).Color(t.LabelPrimary)
@@ -749,7 +800,8 @@ func (p *Plugin) drawLocationPicker(f ui.C, env *pluginapi.Env, t *pluginapi.The
 	// viva 的 `Hit(id, label)` 里那个 label **同时是可见文字**（实测：写全串会把按钮
 	// 文字改掉），所以这里用可见文字当无障碍名，`添加到` 由左边那格文字承担。
 	anchor := ui.Row(f).Items(ui.Center).Gap(createdLocationRowGap).Children(func() {
-		button := ui.Button(f, label).Outline().Small().
+		// 官方 `.locationButton{ font-size:13px }`（:21）：sm 原语是 12，这个包抬到 13。
+		button := ui.Button(f, label).Outline().Small().FontSize(createdLocationButtonFont).
 			Disabled(s.busy).
 			Hit(p.hitID(env, "creation-location"), label)
 		if !s.busy && button.Clicked() {
@@ -822,7 +874,7 @@ func (p *Plugin) drawOfferActions(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 			Gap(createdActionsGap).MarginTop(createdFooterMarginTop)
 	}
 	footer.Children(func() {
-		dismiss := ui.Button(f, zhDismiss).Ghost().Small().Disabled(s.busy).
+		dismiss := ui.Button(f, zhDismiss).Ghost().Small().FontSize(createdSmallButtonFont).Disabled(s.busy).
 			Hit(p.hitID(env, "creation-dismiss"), zhDismiss)
 		if !s.busy && dismiss.Clicked() {
 			p.runOffer(env, "dismiss", s)
@@ -836,7 +888,7 @@ func (p *Plugin) drawOfferActions(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 		}
 		// 官方 :146-147：`disabled={busy || (location === 'custom' && customLocation.trim() === '')}`。
 		disabled := s.busy || (s.location == choiceCustom && strings.TrimSpace(s.customLocation) == "")
-		create := ui.Button(f, label).Small().Background(t.ButtonPrimaryFill).
+		create := ui.Button(f, label).Small().FontSize(createdSmallButtonFont).Background(t.ButtonPrimaryFill).
 			Color(t.ButtonPrimaryFg).Disabled(disabled).
 			Hit(p.hitID(env, "creation-create"), label)
 		// `Disabled` 在 viva 里只画灰态，命中区仍可能报点击 → 这一侧再判一次
@@ -872,7 +924,7 @@ func (p *Plugin) drawPlacement(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, s
 				if p.pending == "cancel" {
 					label = zhCancelling
 				}
-				cancel := ui.Button(f, label).Ghost().Small().Disabled(s.busy).
+				cancel := ui.Button(f, label).Ghost().Small().FontSize(createdSmallButtonFont).Disabled(s.busy).
 					Hit(p.hitID(env, "creation-cancel"), label)
 				if !s.busy && cancel.Clicked() {
 					p.runVerb(verbCancel, s)
@@ -880,7 +932,7 @@ func (p *Plugin) drawPlacement(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, s
 			}
 			// 官方 :156：已安装/已保留给「撤销」。
 			if s.installed {
-				undo := ui.Button(f, zhUndo).Ghost().Small().Disabled(s.busy).
+				undo := ui.Button(f, zhUndo).Ghost().Small().FontSize(createdSmallButtonFont).Disabled(s.busy).
 					Hit(p.hitID(env, "creation-undo"), zhUndo)
 				if !s.busy && undo.Clicked() {
 					p.runVerb(verbUndo, s)
@@ -892,7 +944,7 @@ func (p *Plugin) drawPlacement(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, s
 				if p.pending == "restore" {
 					label = zhRestoring
 				}
-				restore := ui.Button(f, label).Small().Background(t.ButtonPrimaryFill).
+				restore := ui.Button(f, label).Small().FontSize(createdSmallButtonFont).Background(t.ButtonPrimaryFill).
 					Color(t.ButtonPrimaryFg).Disabled(s.busy).
 					Hit(p.hitID(env, "creation-restore"), label)
 				if !s.busy && restore.Clicked() {

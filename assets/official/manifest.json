@@ -3,7 +3,7 @@
   "asar_sha256": "5fa8a6b21bceb8f3e99e30efa2270efd0cc773a11e42aa0488f804a64b34e637",
   "official_version": "0.2.2-rc.1",
   "repository_rev": "3925e84f1524dd101e020d74b1d5bb422d25cf4d",
-  "entry_count": 58,
+  "entry_count": 59,
   "entries": [
     {
       "path": "brand/deepseek-harness.svg",
@@ -816,6 +816,20 @@
       "source_sha256": "c7e9821660f7e0f0524cc7cb1a375a5171eebbe68e167b80d290bd2ea391286d",
       "bytes": 680,
       "sha256": "5fa644a78f8019df6fcac32a572b967b49e15fcab8ef330ed04cf6aea42682ef"
+    },
+    {
+      "path": "icons/tools/warning-triangle.jsx",
+      "source": "/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-ghOpC9uV.js#warning-triangle-outline",
+      "kind": "official-jsx-fragment",
+      "type": "JSX",
+      "geometry": "viewBox=0 0 16 16；默认 16px（创建推荐卡按 size=14 显示）；两条 path 内含 SVG 圆弧",
+      "dsassets": "否",
+      "target": "plugins/dscreationreco/icons.go 的 info 按钮（官方 Card.tsx:112 IconWarningTriangleOutlineRegular size=14）",
+      "license": "MIT；随附 licenses/DeepSeek-MIT.txt；品牌不暗示官方背书",
+      "symbol": "IconWarningTriangleOutlineRegular",
+      "source_sha256": "061de8cefa15e1fbb87d301463ad4ebb79259b197ca08e83406f6997c1af8bb8",
+      "bytes": 202,
+      "sha256": "3a53f87e474b611c2192740673ff0ad602acfc261470f72161d9ac2a9bf66cda"
     }
   ],
   "currentBaseline": {
@@ -842,9 +856,10 @@
   "mirrorDrift": {
     "resolved": [
       "icons/dock/database.jsx",
-      "icons/dock/gauge.jsx"
+      "icons/dock/gauge.jsx",
+      "icons/tools/warning-triangle.jsx"
     ],
-    "note": "这 2 个 dock 图标由 dsstatusbar owner 先在镜像新增；本次同步回 home，entries 仍为 rc.5 来源，rc.1 重摘待办。"
+    "note": "这 2 个 dock 图标由 dsstatusbar owner 先在镜像新增；本次同步回 home，entries 仍为 rc.5 来源，rc.1 重摘待办。；另 icons/tools/warning-triangle.jsx 由 vc-creationreco 本轮先在镜像新增：来源是 rc.2 sprite index-ghOpC9uV.js（条目自带 source_sha256），本文件其余 entries 仍是 rc.5/rc.1 来源，主库（dsh-ui-official）同步待办。"
   },
   "entriesSource": {
     "officialVersion": "0.2.1-rc.5",

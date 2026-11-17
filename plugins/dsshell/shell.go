@@ -29,10 +29,12 @@
 // 这里在官方求解之上加一层「用户选定宽度」覆盖（`UserSidebarWidth` /
 // `UserRightbarWidth`，>0 时压过壳给的 Geometry）：
 //
-//	拖拽把手   分隔线两侧各 4px 的抓取带（共 8px，不占布局，绝对定位叠在列上），
-//	           悬停时画 2px 描边线、拖动时画 3px 品牌色线，指针是 SizeWE
+//	拖拽把手   分界线两侧各 4px 的抓取带（共 8px，不占布局，绝对定位叠在列上）。
+//	           **官方不画任何可见的线**：`.handle` 就是一条不可见的 8px 带
+//	           （AppFrame.module.css:220-230；同段注释 :216-219 明写
+//	           「No handle draws a visible pill」），提示只有 cursor:col-resize
 //	拖动限制   侧栏与官方 clampWidth 同为 264–420；右栏 300–视口 70%
-//	           （columns.ts:26-31；首次打开偏好仍为 45%）
+//	           （columns.ts:17-19,27-29；首次打开偏好 max(300, 视口×45%)）
 //	几何真值   拖动后本插件把 env.Geometry 校正成**这一帧真实画出来的**三列，
 //	           否则下游（侧栏的活动面板、composer 的排版宽）还按旧值摆
 //
@@ -66,9 +68,32 @@ const (
 	rightbarMin      = 300
 	rightbarMaxFrac  = 0.7
 	rightbarOpenFrac = 0.45 // 官方首次打开：layoutInfo.rightbar ?? viewport * .45
-	// SidebarRight.tsx:398-399：小于 768px 的右栏自动全屏。
+	// SidebarRight.tsx:398：`const autoFullscreen = viewportWidth < 768`
+	// （:7 的模块注释：「768px fullscreen is derived from viewport width」）。
+	// 右栏在这个宽度以下整列占满，不给正常轨道 —— 见 drawRightbar。
 	rightbarAutoFullscreenWidth = 768
 )
+
+// 官方还有两个**窗口断点**，本插件这一版**没有**实现，原因写在下面（不是漏记）：
+//
+//	SIDEBAR_DRAWER_BREAKPOINT = 768   columns.ts:21
+//	SIDEBAR_AUTO_COLLAPSE     = 1024  columns.ts:25
+//
+// 两者的表现都落在**侧栏收起状态**上，而不是列宽公式上：
+//
+//	1024  AppFrame.tsx:170,174 `narrow = viewport < 1024`，
+//	      侧栏收起 = narrow && !narrowExpanded → 宽度 0（Windows：collapsedWidth 0，
+//	      见 :188，官方 Windows 不留图标轨），再靠顶栏的开关重新展开
+//	      （stores.ts 的 toggleSidebar：<1024 翻 narrowExpanded）。
+//	768   AppFrame.tsx:172 `drawer = viewport < 768 && !windowsTitlebar`
+//	      —— **Windows 上恒为 false**（收起按钮在 caption 行），所以这个断点
+//	      在我们要支持的平台上不产生布局分支。
+//
+// 我们的壳没有「侧栏收起 / 重新展开」这个状态（没有任何一方 publish 它，
+// 也没有 shell.leading 座位上的开关），照 1024 把侧栏宽度置 0 就等于**永久丢掉侧栏**
+// —— 那是比留宽更差的结果。所以这两个断点登记在这里，等壳给出 collapse 状态再消费；
+// 区间常量本身在 `internal/uikernel/official_geometry.go`（SidebarDrawerBreak /
+// SidebarAutoCollapse），不在这里重抄一份。
 
 // 侧栏拖宽与官方 columns.ts:13-15,40-58 使用同一 clampWidth 范围 264–420。
 // 右栏拖宽同样使用官方 columns.ts:26-31,60-62 的 300px–70% 范围。
@@ -80,18 +105,22 @@ const (
 	userRightbarMaxFrac = 0.70
 )
 
-// 拖拽把手的尺寸。
+// 拖拽把手的尺寸（官方 `AppFrame.module.css:220-230` 的 `.handle`）：
 //
-// handleWidth 是**命中带**的宽度，不占布局：抓取带绝对定位叠在列上，
-// 所以三列宽度仍然严格等于 solveColumns 的结果，不会因为这个功能各少 8px。
-// 8px 与 viva 自己的 flex.Splitter 一致。
+//	position:absolute; top:0; bottom:0; width:8px; margin-left:-4px;
+//	cursor:col-resize; z-index:11; touch-action:none
 //
-// 线宽：平时不画线（官方两栏之间本来就没有分隔线，只靠底色差），
-// 悬停 2px / 拖动 3px——这就是「至少视觉提示」的那一档。
+// 抓取带**绝对定位叠在列上**，不占布局，所以三列宽度仍然严格等于
+// solveColumns 的结果，不会因为这个功能各少 8px。
+//
+// 官方**不画任何可见的线**（同段注释 :216-219：「No handle draws a visible
+// pill: the details column was the only one that did, and the right column
+// never had one.」）。所以这里没有「悬停 2px / 拖动 3px」两档——那两个数值是
+// 自造的；唯一的提示是 `.handle` 的 cursor:col-resize（本仓映射成
+// gfx.PointerCursorResizeHorizontal = SizeWE）。
 const (
-	handleWidth     = 8
-	handleLineHover = 2
-	handleLineDrag  = 3
+	handleWidth  = 8 // .handle 的 width
+	handleOffset = 4 // .handle 的 margin-left:-4px：命中带骑在列边界上
 )
 
 // 把手的两种身份。用字符串而不是 bool，是因为一次只能拖一根：
@@ -338,7 +367,12 @@ func (p *Plugin) layout(env *pluginapi.Env) columns {
 			rightbarPref = p.RightbarWidth
 		}
 		if rightbarPref <= 0 {
-			rightbarPref = vw * rightbarOpenFrac // 官方：首次打开占视口 45%
+			// 官方首次打开：`layoutInfo.rightbar ??= Math.max(300,
+			// Math.round(viewport * RIGHTBAR_DEFAULT_RATIO))`
+			// （ui-layout 的 stores.ts `openRightbar`；比例常量 columns.ts:31）。
+			// 老实现只写 viewport*0.45，窄窗时算出来 <300，全靠后面 clampWidth
+			// 再抬回 300 才等价 —— 这里直接把官方的两层写在一处。
+			rightbarPref = max(rightbarMin, round32(vw*rightbarOpenFrac))
 		}
 	}
 
@@ -390,9 +424,10 @@ func syncGeometry(env *pluginapi.Env, cols columns) {
 
 // handles 算这一帧两根把手的位置。width 为 0 表示那一列不在，把手不画也不响应。
 //
-// 左边把手骑在「侧栏右缘」上，右边把手骑在「右栏左缘」上：各向外探 4px，
-// 8px 的抓取带里 4px 压在列内、4px 压在列外。列外那 4px 分别落在中栏的
-// 12px 内边距和右栏的 12px 内边距里，所以不会盖住任何真内容。
+// 左边把手骑在「侧栏右缘」上，右边把手骑在「右栏左缘」上：官方用
+// `left: <列边界>px` + `margin-left: -4px` 表达（AppFrame.tsx:337,339 +
+// AppFrame.module.css:226），等价于这里「边界 − 4px」。8px 的抓取带里 4px 压在
+// 列内、4px 压在列外；列外那 4px 落在中栏的内边距里，所以不会盖住任何真内容。
 func (p *Plugin) handles(env *pluginapi.Env, cols columns) [2]handle {
 	var out [2]handle
 	if env.Tree == nil {
@@ -403,7 +438,7 @@ func (p *Plugin) handles(env *pluginapi.Env, cols columns) [2]handle {
 		out[0] = handle{
 			kind:  handleSidebar,
 			id:    env.Tree.ID(env.Feat, "layout-handle-sidebar"),
-			x:     cols.sidebar - handleWidth/2,
+			x:     cols.sidebar - handleOffset,
 			width: cols.sidebar,
 		}
 	}
@@ -412,7 +447,7 @@ func (p *Plugin) handles(env *pluginapi.Env, cols columns) [2]handle {
 		out[1] = handle{
 			kind:  handleRightbar,
 			id:    env.Tree.ID(env.Feat, "layout-handle-rightbar"),
-			x:     right - handleWidth/2,
+			x:     right - handleOffset,
 			width: cols.rightbar,
 		}
 	}
@@ -614,38 +649,26 @@ func clampUser(px, lo, hi float32) float32 {
 	return clampWidth(px, lo, hi)
 }
 
-// drawHandles 把两根把手叠在分隔线上（绝对定位，不占布局）。
+// drawHandles 把两根抓取带叠在列边界上（绝对定位，不占布局，**不画任何东西**）。
 //
-// 平时**不画线**：官方侧栏与主区之间本来就没有分隔线（只靠底色差），
-// 平白加一条 1px 会让首屏和官方基线截图对不上。悬停才出现 2px 线，
-// 拖动时 3px 且换成品牌色——加上 SizeWE 指针，这就是"这里能拖"的全部提示。
+// 官方 `.handle` 是透明的一条 8px 带（AppFrame.module.css:220-230），同段注释
+// :216-219 说得更直接：「No handle draws a visible pill: the details column was
+// the only one that did, and the right column never had one.」——所以悬停、拖动
+// 都不加线，唯一提示是 cursor:col-resize。
+//
+// 两列之间的那条竖线**不是把手画的**：官方是 `.sidebarCol{border-right:.5px solid
+// var(--dsw-alias-border-l3)}`（:65），Windows 上由 `[data-windows-titlebar]
+// .sidebarCol{border-right:none}`（:49-51）整条去掉。我们要支持的平台（Windows
+// 带 caption 行）属于后者，所以本插件的侧栏列不画右边框——这不是"没人画"。
 func (p *Plugin) drawHandles(f ui.C, env *pluginapi.Env, cols columns) {
-	c := env.Canvas
 	for _, h := range p.handles(env, cols) {
 		if h.width <= 0 {
 			continue
 		}
-		var line float32
-		var color ui.Color
-		switch {
-		case p.dragging.active && p.dragging.kind == h.kind:
-			line, color = handleLineDrag, p.theme.Link
-		case c != nil && (c.Hovered() == h.id || c.Pressed() == h.id):
-			line, color = handleLineHover, p.theme.BorderL4
-		}
 		ui.Column(f).Absolute().Left(h.x).Top(0).Width(handleWidth).FillHeight().
-			Items(ui.Center).
 			HitWith(h.id, handleLabel(h.kind), gfx.HitOptions{
 				Role:   gfx.RoleSlider,
 				Cursor: gfx.PointerCursorResizeHorizontal,
-			}).
-			Children(func() {
-				if line <= 0 {
-					return
-				}
-				// 线宽显式给，不用 FillWidth：绝对盒子自身的 pref 是 0，
-				// 子节点写 FillWidth 会量出 0 宽（见 shortcuts.go 的同一条注释）。
-				ui.Column(f).Width(line).FillHeight().Background(color)
 			})
 	}
 }
@@ -656,6 +679,17 @@ func handleLabel(kind string) string {
 		return "拖动调整右栏宽度"
 	}
 	return "拖动调整侧栏宽度"
+}
+
+// sectionSpacer 是侧栏两段之间那 **1px 留白**：占位、不着色。
+//
+// 为什么不是 `prims.Divider`：官方侧栏没有分隔线（SidebarRoot.module.css 全文
+// 没有 border 规则），画一条 1px border-l1 就是自造视觉。但段间那 1px 的**空间**
+// 不能一起删——ds-sidebar 的 frame_visual_test 把 workspace 段头钉在 Y=178，
+// 那是 8 + 1 + 8 的结果；删掉就掉到 169，越过它 8px 的容差。所以保留盒子、
+// 去掉笔画。
+func sectionSpacer(f ui.C) {
+	ui.Row(f).FillWidth().Height(1)
 }
 
 // draw 只画底色：分栏几何在 children 里。
@@ -723,8 +757,20 @@ func (p *Plugin) drawSidebar(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi
 	if cols.sidebar <= 0 {
 		return
 	}
-	// SidebarRoot.module.css:9-18：padding:6px var(--dsh-sidebar-inline-padding)，
-	// rc.2 的 inline-padding 是 8px；上下 6、左右 8。
+	// SidebarRoot.module.css:9-19：padding:6px var(--dsh-sidebar-inline-padding)，
+	// rc.2 的 inline-padding 是 8px；上下 6、左右 8（:10、:17）。
+	//
+	// **官方侧栏里没有任何分隔线**：SidebarRoot.module.css 全文没有 border 规则，
+	// 纵向节奏由各段自己的 margin 给（`.newSession` margin-top 6（Windows，:84-86）、
+	// `.scrollRegion` margin-top 4（:533-540）、`.panelList` margin-bottom 8（:673-681）、
+	// `.footArea` flex:none（:781-785））。旧实现在这里画了两条 1px border-l1 横线
+	// （`prims.Divider`），官方截图里不存在 —— 现在换成**同样占 1px、不着色**的
+	// 间隔（`sectionSpacer`）：段间总留白不变（8 + 1 + 8），只是不再有那条线。
+	//
+	// 列内 Gap(8) 与这 1px 是**过渡值**：官方的段间留白归占用方，而 ds-sidebar
+	// 仍按 8px 栏内节奏排版（它的 frame_visual_test 把 workspace 段头钉在 Y=178，
+	// 正是 8+1+8 的结果）。切到官方裸列模型要 dsshell + dssidebar 同一次改
+	// （同 columnPad 那条）。
 	//
 	// Shrink(0) 是必须的：侧栏是**定宽**（官方 264–420，默认 280），不参与压缩。
 	// 不写它的话，中间栏 + 右栏一起超宽时 flex 会把侧栏压到 239，
@@ -734,12 +780,15 @@ func (p *Plugin) drawSidebar(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi
 	ui.Column(f).Width(cols.sidebar).Shrink(0).FillHeight().PadX(8).PadY(6).Gap(8).
 		Background(p.theme.SidebarFill).Children(func() {
 		drawSlot(pluginapi.SlotSidebarHeader)
-		p.prims.Divider(f)
-		ui.Column(f).Grow(1).MinHeight(120).Children(func() {
+		sectionSpacer(f)
+		// 滚动区官方是 `flex:1; min-height:0`（SidebarRoot.module.css:533-540）：
+		// 空间不够时它可以被压到 0（内容自己滚），不许反过来把 footer/settings
+		// 顶出侧栏——旧的 MinHeight(120) 就是那个自造下限。
+		ui.Column(f).Grow(1).MinHeight(0).Children(func() {
 			drawSlot(pluginapi.SlotSidebarList)
 		})
 		if env.Has(pluginapi.SlotSidebarFooter) {
-			p.prims.Divider(f)
+			sectionSpacer(f)
 			drawSlot(pluginapi.SlotSidebarFooter)
 		}
 		// 设置行（官方 `SettingsRoot.triggerRow`）：官方 `.footArea` 的顺序是
@@ -763,6 +812,14 @@ func (p *Plugin) drawSidebar(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi
 // 宽度用 solveColumns 的 center，而不是「窗体减一遍侧栏右栏」——
 // 官方只在没有右栏时才允许中栏低于 400，这条规则只写在求解器里。
 // Grow(1) 留着当安全网：三列之和按构造等于视口，正常情况下它不起作用。
+//
+// 列内 `Pad(columnPad=12)` + `Gap(8)` 是**已登记的过渡值，不是官方值**：
+// 官方 `.centerCol` 是裸列（AppFrame.module.css:68-75，无 padding）与
+// `.mainPanel`（:77-83，无 gap），内嵌归占用方（ChatView / composer seat）。
+// 这两条在 `internal/uikernel/official_geometry.go` 里登记为 deviation
+// （"content inset (legacy bridge)"）：dscomposer 的 shellMainPad=12 就是按
+// 「12 + 4 = 官方 16」校的，单方面改 0 会让 composer 净边距掉到 4。
+// 切官方裸列要 dsshell + dstopbar + dsconversation + dscomposer 同一次改。
 func (p *Plugin) drawMain(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot), cols columns) {
 	w := cols.center
 	if w <= 0 {
@@ -793,15 +850,27 @@ func (p *Plugin) drawMain(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Sl
 // 放不下时不是压到 300 硬塞：那样中栏会被挤到 400 以下，
 // 而官方中栏只有在右栏整个不出现时才允许低于 400。
 //
-// 底色这里画 SidebarFill，和官方有一处**已知差异**：官方 `.mP3x-q_rightbarCol`
-// 在 Windows 上不设背景（透出 frame 的 bg-base），面板底色归 dockkit pane 自己画。
-// 我们的右栏占用方（plugins/dsrightbar）直接画在列里，因此保留既有 SidebarFill 底色。
-// SidebarRight.module.css:31-48 不给 panel 加 padding；<768px 按 SidebarRight.tsx:398-399
-// 自动全屏，保留底层三列但不给右栏正常轨道。
+// 底色画 SidebarFill **就是官方在 Windows 上的结果**：`.rightbarCol` 自己不设背景
+// （AppFrame.module.css:264-270），而 Windows 上整框背景是
+// `[data-windows-titlebar] .frame{background:var(--dsw-specific-sidebar-fill)}`
+// （:27-32），所以右栏列透出来的正是 sidebar-fill；中栏才是自己铺 bg-base 的那一列
+// （:34-38）。旧注释把这条写成「已知差异」，其实方向是反的：我们画对了，
+// 官方 Windows 上右栏本来就是 sidebar 底色。
+// SidebarRight.module.css:31-48 不给 panel 加 padding；<768px 按 SidebarRight.tsx:398
+// 自动全屏（`autoFullscreen = viewportWidth < 768`），保留底层三列但不给右栏正常轨道。
 func (p *Plugin) drawRightbar(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot), cols columns) {
 	if cols.rightbar <= 0 {
 		if env.Data.ShowRightbar && env.Has(pluginapi.SlotRightbar) && viewport(env) < rightbarAutoFullscreenWidth {
-			ui.Column(f).Absolute().Right(0).Top(0).Width(viewport(env)).FillHeight().
+			// 全屏面板右侧贴边、**不吃掉侧栏**：官方
+			// `[data-windows-titlebar] .panel[data-sidebar-right-panel='fullscreen']{
+			// max-width:calc(100vw - var(--dsh-windows-sidebar-width))}`
+			// （SidebarRight.module.css:92-94），面板 absolute 右贴边（:31-37），
+			// 所以它的左缘正好落在侧栏右缘。旧实现铺满整窗，会把侧栏整个盖住。
+			w := viewport(env) - cols.sidebar
+			if w < 0 {
+				w = 0
+			}
+			ui.Column(f).Absolute().Right(0).Top(0).Width(w).FillHeight().
 				Background(p.theme.SidebarFill).Children(func() {
 				drawSlot(pluginapi.SlotRightbar)
 			})
@@ -828,9 +897,14 @@ func (p *Plugin) drawBottom(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.
 		return
 	}
 	h := env.Geometry.BottomHeight
-	if h <= 0 {
-		h = 24
+	if h < 0 {
+		h = 0
 	}
+	// 官方 bottomRow 的高度是 `auto`（AppFrame.module.css:4 的 grid-template-rows
+	// `minmax(0,1fr) auto` + :355-361），空内容不预留任何高度
+	// （internal/uikernel/official_geometry.go 的 BottomDefaultHeight = 0）。
+	// 所以这里**不给兜底高度**：旧值 24 是那条已经迁走的全宽状态行的残余，
+	// 占用方要高度就自己通过 Geometry.BottomHeight / occupant 声明。
 	ui.Column(f).FillWidth().Height(h).Background(p.theme.BgBase).Children(func() {
 		drawSlot(pluginapi.SlotShellBottom)
 	})
@@ -840,9 +914,3 @@ var (
 	_ pluginapi.Plugin = (*Plugin)(nil)
 	_ pluginapi.Panels = (*Plugin)(nil)
 )
-
-// _ 保证 draw / children 被引用（调试期临时）。
-var _ = func() bool {
-	println("DBG dsshell funcs wired")
-	return true
-}

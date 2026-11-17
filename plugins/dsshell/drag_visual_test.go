@@ -167,9 +167,14 @@ func TestLayoutDragHeadless(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 悬停时那一帧在分隔线上画了 2px 竖线（平时不画）：x=280 处像素变了。
-	if sameColor(hoverImage.At(280, 600), beforeImage.At(280, 600)) {
-		t.Fatalf("悬停时分隔线上应出现可见的拖拽线，x=280 仍是原色 %v", beforeImage.At(280, 600))
+	// 悬停**只换指针，不画线**：官方 `.handle` 是一条透明的 8px 带
+	// （AppFrame.module.css:220-230），同段注释 :216-219 明写
+	// 「No handle draws a visible pill」。所以拖前与悬停两帧在列边界上必须
+	// 逐像素相同——这一条和 layout_drag_test 的「平时不画线」是同一条判据，
+	// 区别只在于这里量的是真窗口的像素。
+	if !sameColor(hoverImage.At(280, 600), beforeImage.At(280, 600)) {
+		t.Fatalf("悬停不该在列边界上画线（官方 .handle 无可见长条）：x=280 由 %v 变成 %v",
+			beforeImage.At(280, 600), hoverImage.At(280, 600))
 	}
 
 	// 按下 → 拖动（中间多来几个 move，模拟真实的连续拖动）→ 松手。

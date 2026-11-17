@@ -83,7 +83,8 @@ func openHeaderData(cwd string) pluginapi.Snapshot {
 // TestButtonLivesInTheHeaderTitleRowAtBothSizes 是"可见、非 0 高、不挤压页签"
 // 的主证据，两个产品尺寸都跑。
 //
-// 判据不写死坐标：标题行底 = 页签顶 - tabsMarginTop(10)，标题行高 = 30。
+// 判据不写死坐标：官方 .tabs margin-top:10 与 .tab margin-top:-10 抵消，
+// 所以页签命中块顶 = 标题行底，标题行高 = 30。
 // 按钮必须整颗落在这一带里，且垂直居中；页签自己的矩形在有/无按钮两帧里
 // 必须逐像素相同——这就是"不挤压页签"。
 func TestButtonLivesInTheHeaderTitleRowAtBothSizes(t *testing.T) {
@@ -124,11 +125,8 @@ func TestButtonLivesInTheHeaderTitleRowAtBothSizes(t *testing.T) {
 			if !ok {
 				t.Fatalf("%dx%d 页签不见了：texts=%q", size.width, size.height, session.Texts())
 			}
-			const (
-				tabsMarginTop  = 10
-				titleRowHeight = 30
-			)
-			rowBottom := tabs.Bounds.Y - tabsMarginTop
+			const titleRowHeight = 30
+			rowBottom := tabs.Bounds.Y
 			rowTop := rowBottom - titleRowHeight
 			if hit.Bounds.Y < rowTop || hit.Bounds.Y+hit.Bounds.Height > rowBottom {
 				t.Fatalf("%dx%d 按钮 y=%v..%v 不在标题行 %v..%v 里——它是另起了一行、落到正文区",

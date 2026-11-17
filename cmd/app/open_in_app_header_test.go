@@ -110,19 +110,16 @@ func newOpenInAppRig(t *testing.T, m *model, width, height int) openInAppRig {
 	return rig
 }
 
-// titleRowBand 从真实页签的位置反推标题行：页签顶 = 标题行底 + tabsMarginTop(10)，
-// 标题行高 30（官方 titleRow min-height）。
+// titleRowBand 从真实页签的位置反推标题行：官方 .tabs 的 margin-top:10 与
+// .tab 的 margin-top:-10 抵消，所以 tab 命中块顶边就是标题行底；标题行高 30。
 func titleRowBand(t *testing.T, session *headless.Session, width, height int) (top, bottom float32) {
 	t.Helper()
 	tabs, ok := session.Hit("对话")
 	if !ok {
 		t.Fatalf("%dx%d 找不到「对话」页签：texts=%q", width, height, session.Texts())
 	}
-	const (
-		tabsMarginTop  = 10
-		titleRowHeight = 30
-	)
-	bottom = tabs.Bounds.Y - tabsMarginTop
+	const titleRowHeight = 30
+	bottom = tabs.Bounds.Y
 	return bottom - titleRowHeight, bottom
 }
 

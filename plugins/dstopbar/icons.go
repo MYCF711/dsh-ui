@@ -45,3 +45,41 @@ func ellipsisIcon() (gfx.Icon, bool) {
 	}
 	return gfx.Icon{ViewBox: 16, Commands: commands}, true
 }
+
+// panelLeftOutlinePaths 是官方 IconPanelLeftOutlineRegular 的两条 path 原文：
+// assets/official/icons/sidebar/panel-left.jsx:1-2（16 viewBox、Regular 描边 1）。
+// ExpandButton.tsx:21,52 使用同一图标；ExpandButton.module.css:18-20 要求 scaleX(-1)。
+var panelLeftOutlinePaths = [2]string{
+	`M13.5 1.5H2.5C1.94772 1.5 1.5 1.94772 1.5 2.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V2.5C14.5 1.94772 14.0523 1.5 13.5 1.5Z`,
+	`M5.5 1.5V14.5`,
+}
+
+// rightbarPanelIcon 复用官方 panel-left 素材并按官方 CSS 水平镜像；
+// 不保留旧实现的 24 viewBox / 2px 自绘外框。
+func rightbarPanelIcon() (gfx.Icon, bool) {
+	commands := make([]gfx.PathCommand, 0, 32)
+	for _, d := range panelLeftOutlinePaths {
+		parsed, ok := dsassets.ParsePath(d)
+		if !ok {
+			return gfx.Icon{}, false
+		}
+		commands = append(commands, mirrorIconX(parsed, 16)...)
+	}
+	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}, true
+}
+
+// mirrorIconX 只做官方 transform:scaleX(-1) 的坐标变换，不重画路径。
+func mirrorIconX(commands []gfx.PathCommand, viewBox float32) []gfx.PathCommand {
+	out := make([]gfx.PathCommand, len(commands))
+	for i, command := range commands {
+		if command.Kind == gfx.PathCommandClose {
+			out[i] = command
+			continue
+		}
+		command.Point.X = viewBox - command.Point.X
+		command.Control1.X = viewBox - command.Control1.X
+		command.Control2.X = viewBox - command.Control2.X
+		out[i] = command
+	}
+	return out
+}

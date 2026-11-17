@@ -9,9 +9,8 @@
 //
 // 这条链上的每一个字都来自官方中文文案表（OFF:`task-manager-locales.ts:171-330`），
 // 每一个尺寸都来自官方 CSS（OFF:`TaskManagerPage.module.css`，行号在下面各处标注）。
-// **没有一句自造中文、没有一个自造图标**：图标位置沿用本仓既有的文字字形约定
-// （`⌕` / `◷` / `×`，与侧栏工作区工具带同一条先例：本仓没有官方 sprite 导出，
-// 按仓规不许手绘冒充官方图标）。
+// **没有一句自造中文、没有一个自造图标**：时钟/搜索/新建/暂停/恢复/更多/关闭
+// 都复用 dsassets 中的官方 path，不再用 `⌕` / `◷` / `×` 文字字形替代。
 //
 // # 官方哪些表面在这一版里，哪些不在（照实登记，不假装）
 //
@@ -25,8 +24,7 @@
 //	   这条有：标题行的「新建」按钮）
 //	❌ 详情页的**可编辑**规则（官方对 active 任务允许改名称/内容/时间；本仓只读。
 //	   理由同上：编辑时间需要官方那套选择器）
-//	❌ 更多操作菜单（官方把「立即执行 / 删除」收进 ⋯ 菜单；本仓没有通用菜单组件，
-//	   按仓规不手画。三个动作以官方同名文字按钮直接列出，位置差异已登记）
+//	✅ 更多操作菜单（官方 28px ⋯ 按钮；「立即执行 / 删除」收进菜单）
 //	❌ 删除确认 Modal（官方是 Modal；本仓用「同一按钮再点一次确认」，
 //	   与侧栏删除会话同一条先例）
 package dssidebar
@@ -39,6 +37,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -66,11 +65,13 @@ const (
 	zhSchedRule         = "规则"                                                  // 'detail.rule'
 	zhSchedRecords      = "任务运行记录"                                              // 'detail.records'
 	zhSchedClose        = "关闭详情"                                                // 'detail.close'
+	zhSchedMore         = "自动化任务操作"                                             // 'detail.more'
 	zhSchedNextRun      = "下次运行"                                                // 'detail.nextRun'
 	zhSchedName         = "自动化任务名称"                                             // 'detail.name'
 	zhSchedInstruction  = "自动化任务内容"                                             // 'detail.instruction'
 	zhSchedSession      = "关联会话"                                                // 'detail.session'
 	zhSchedRunTime      = "运行时间"                                                // 'rule.title'
+	zhSchedRepeat       = "重复"                                                  // 'rule.repeat'
 	zhSchedPause        = "暂停任务"                                                // 'host.pause'
 	zhSchedResume       = "恢复任务"                                                // 'host.resume'
 	zhSchedRunNow       = "立即执行"                                                // 'host.run'
@@ -99,28 +100,74 @@ const (
 
 // ── 官方几何（OFF:TaskManagerPage.module.css） ─────────────────────────────
 const (
-	schedPageMaxWidth    = 960 // .pageContent{max-width:960px}
-	schedHeadingTop      = 28  // .pageHeading{padding-top:28px}
-	schedHeadingBottom   = 24  // .pageHeading{margin-bottom:24px}
-	schedHeadingHeight   = 28  // .pageHeading h1{line-height:28px}
-	schedNewHeight       = 32  // .headerAction{height:32px;padding:0 12px;border-radius:16px}
-	schedNewRadius       = 16
-	schedFilterHeight    = 28 // .filterTab{height:28px;padding:0 10px;border-radius:14px}
-	schedFilterRadius    = 14
-	schedSearchHeight    = 36 // .searchTools{--task-search-height:36px}
-	schedSearchRadius    = 12 // .searchField{border-radius:12px;border:0.5px solid l3}
-	schedSearchBottom    = 16 // .searchTools{margin-bottom:16px}
-	schedFiltersBottom   = 14 // .filters{margin-bottom:14px}
-	schedRowRadius       = 12 // .row{border-radius:12px;padding:8px;gap:12px}
-	schedRowPad          = 8
-	schedDetailBasisPct  = 47 // .detail{flex:0 0 47%}
-	schedDetailBar       = 44 // .detailTabsBar{height:44px;padding:0 24px}
-	schedDetailGutter    = 24 // .detail{--detail-gutter:24px}
-	schedDetailScrollTop = 24 // .detailScroll{padding:24px 24px 28px}
-	schedDetailScrollBtm = 28
-	schedTabGap          = 36 // .detailTabs{gap:36px}
-	schedRowGlyphWidth   = 16 // .rowGlyph{width:16px;height:20px;margin-top:2px}
-	schedRowGlyphHeight  = 20
+	schedPageMaxWidth      = 960  // .pageContent{max-width:960px}，:38-44
+	schedPagePadMinX       = 24   // padding-inline clamp 下限，:43
+	schedPagePadMaxX       = 48   // clamp 上限与 padding-bottom，:43
+	schedPagePadVw         = 0.04 // clamp 的 4vw，:43
+	schedPageNarrowPadX    = 20   // max-width:767px 的 padding-inline，:46-49
+	schedPageNarrowBreak   = 767  // :46
+	schedHeadingTop        = 28   // .pageHeading{padding-top:28px}，:53-63
+	schedHeadingBottom     = 24   // margin-bottom:24px，:62
+	schedHeadingHeight     = 28   // .pageHeading h1{line-height:28px}，:75-83
+	schedNewHeight         = 32   // .headerAction{height:32px}，:96-102
+	schedNewRadius         = 16   // border-radius:16px，:101
+	schedFilterHeight      = 28   // .filterTab{height:28px}，:163-178
+	schedFilterRadius      = 14   // border-radius:14px，:170
+	schedSearchHeight      = 36   // .searchTools{--task-search-height:36px}，:195-201
+	schedSearchRadius      = 12   // .searchField{border-radius:12px}，:213-226
+	schedSearchBottom      = 16   // .searchTools{margin-bottom:16px}，:200
+	schedSearchGap         = 8    // .searchTools{gap:8px}，:199
+	schedFiltersBottom     = 14   // .filters{margin-bottom:14px}，:145-151
+	schedRowRadius         = 12   // .row{border-radius:12px;padding:8px;gap:12px}，:306-317
+	schedRowPad            = 8    // :313
+	schedRowGlyphWidth     = 16   // .rowGlyph{width:16px;height:20px;margin-top:2px}，:325-331
+	schedRowGlyphHeight    = 20   // :328
+	schedRowGlyphTop       = 2    // :329
+	schedDetailBasisPct    = 47   // .detail{flex:0 0 47%}，:502-512
+	schedDetailBar         = 44   // .detailTabsBar{height:44px}，:625-635
+	schedDetailBarGap      = 20   // .detailTabsBar{gap:20px}，:630
+	schedDetailGutter      = 24   // .detail{--detail-gutter:24px}，:503
+	schedDetailGutterMid   = 20   // max-width:1100px，:1389-1393
+	schedDetailGutterSmall = 16   // max-width:400px，:1414-1417
+	schedDetailMidBreak    = 1100 // :1389
+	schedDetailFullBreak   = 760  // 详情 100% 且隐藏列表，:1395-1403
+	schedDetailSmallBreak  = 400  // :1414
+	schedDetailScrollTop   = 24   // .detailScroll{padding:24px gutter 28px}，:715-724
+	schedDetailScrollBtm   = 28   // :719
+	schedTabGap            = 36   // .detailTabs{gap:36px}，:639-653
+	schedTabFont           = 13   // .detailTab{font-size:13px;line-height:16px;font-weight:500}，:679-690
+	schedTabLine           = 16   // :686
+	schedTabPadBottom      = 13   // :682
+	schedTabUnderline      = 2    // .detailTab::after{height:2px}，:692-701
+	schedDetailActionsGap  = 8    // .detailActions{gap:8px}，:1279-1285
+	schedDetailActionsPull = -8   // .detailActions{margin-right:-8px}，:659-663
+	schedDetailIconSize    = 28   // .detailIconButton{width/height:28px;padding:0}，:668-674
+	schedDetailHeaderGap   = 4    // .detailHeader{margin-bottom:4px}，:566-571
+	schedNextRunBottom     = 20   // .nextRun{margin-bottom:20px}，:589-598
+	schedEditorGap         = 20   // .taskEditor{gap:20px}，:134
+	schedEditorFieldGap    = 8    // .editorField{gap:8px;font-size:14px}，:135
+	schedInstructionMinH   = 112  // .instruction{min-height:112px}，:1107-1135
+	schedInstructionPad    = 12   // :1119
+	schedInstructionRadius = 16   // :1121
+	schedInstructionLine   = 24   // :1127
+	schedRuleRowMinHeight  = 48   // .ruleRow{min-height:48px}，:831-836
+	schedRuleRowsPadX      = 12   // .ruleRows{padding:0 12px}，:801-808
+	schedRuleRowsRadius    = 16   // :807
+	schedDeliveryGap       = 12   // .delivery{gap:12px}，:1152-1162
+	schedDeliveryPadY      = 14   // .delivery{padding:14px 8px}，:1158
+	schedDeliveryPadX      = 8    // :1158
+	schedDeliveryRadius    = 8    // :1159
+	schedDeliveryGlyphTop  = 6    // .deliveryGlyph{margin-top:6px}，:1202-1206
+	schedDeliveryBodyPadY  = 2    // .deliveryBody{padding:2px 0}，:1208-1212
+	schedDeliveryTimeFont  = 14   // .deliveryTime{font-size:14px;line-height:22px;font-weight:500}，:1220-1226
+	schedDeliveryTimeLine  = 22   // :1224
+	schedSavedPromptFont   = 13   // .savedPrompt{font-size:13px;line-height:22px}，:1230-1242
+	schedSavedPromptLine   = 22   // :1239
+	schedSavedPromptTop    = 6    // :1236
+	schedRetentionFont     = 12   // .retentionEnd{font-size:12px;line-height:20px}，:745-751
+	schedRetentionLine     = 20   // :750
+	schedEmptyPadY         = 48   // .empty{padding:48px 20px}，:452-460
+	schedEmptyPadX         = 20   // :456
 )
 
 // scheduleStatusFilter 是官方状态筛选的四个值（顺序也照官方：
@@ -172,27 +219,86 @@ func (p *Plugin) drawSchedulePage(f ui.C, env *pluginapi.Env) {
 		p.schedActionNotice = ""
 	}
 
-	ui.Column(f).FillWidth().FillHeight().Children(func() {
-		p.drawScheduleHeading(f, env)
-		if p.schedActionNotice != "" {
-			ui.Text(f, p.schedActionNotice).FontSize(t.Fonts.Secondary).LineHeight(20).Color(t.Error).
-				MarginSides(0, 0, 8, 0)
+	// 官方 page 是左右两栏：listPane 自己滚动，detail 从窗口顶到底。
+	// 旧实现把标题/筛选/搜索放在两栏之上，导致详情顶条从搜索框下才开始。
+	pagePad := schedulePagePadX(env)
+	showList := p.schedSelected == "" || scheduleViewportWidth(env) > schedDetailFullBreak
+	ui.Row(f).FillWidth().FillHeight().Children(func() {
+		if showList {
+			ui.Column(f).Grow(1).FillHeight().MinWidth(0).Children(func() {
+				ui.Scroll(f).FillWidth().Grow(1).Clip().Children(func() {
+					ui.Column(f).FillWidth().Items(ui.Center).
+						PadSides(0, pagePad, schedPagePadMaxX, pagePad).Children(func() {
+						ui.Column(f).FillWidth().MaxWidth(schedPageMaxWidth).Children(func() {
+							p.drawScheduleHeading(f, env)
+							if p.schedActionNotice != "" {
+								ui.Text(f, p.schedActionNotice).FontSize(t.Fonts.Secondary).LineHeight(20).Color(t.Error).
+									MarginSides(0, 0, 8, 0)
+							}
+							p.drawScheduleFilters(f, env)
+							p.drawScheduleSearch(f, env)
+							p.drawScheduleList(f, env, entries, loaded, errText)
+						})
+					})
+				})
+			})
 		}
-		p.drawScheduleFilters(f, env)
-		p.drawScheduleSearch(f, env)
-		ui.Row(f).FillWidth().Grow(1).Children(func() {
-			p.drawScheduleList(f, env, entries, loaded, errText)
-			if p.schedSelected != "" {
-				p.drawScheduleDetail(f, env, entries)
-			}
-		})
+		if p.schedSelected != "" {
+			p.drawScheduleDetail(f, env, entries)
+		}
 	})
+}
+
+// scheduleViewportWidth 对应 CSS media query 的 viewport；测试/旧壳没有整窗几何时退回本区宽度。
+func scheduleViewportWidth(env *pluginapi.Env) float32 {
+	if env.Geometry.Width > 0 {
+		return env.Geometry.Width
+	}
+	return env.Bounds.Width
+}
+
+// schedulePagePadX 是 pageContent 的 clamp(24px,4vw,48px)，767px 以下改为 20px。
+func schedulePagePadX(env *pluginapi.Env) float32 {
+	width := scheduleViewportWidth(env)
+	if width > 0 && width <= schedPageNarrowBreak {
+		return schedPageNarrowPadX
+	}
+	value := width * schedPagePadVw
+	if value < schedPagePadMinX || width <= 0 {
+		return schedPagePadMinX
+	}
+	if value > schedPagePadMaxX {
+		return schedPagePadMaxX
+	}
+	return value
+}
+
+// scheduleDetailGutterFor 是 detail 的 24→20→16 三档 gutter。
+func scheduleDetailGutterFor(env *pluginapi.Env) float32 {
+	width := scheduleViewportWidth(env)
+	switch {
+	case width > 0 && width <= schedDetailSmallBreak:
+		return schedDetailGutterSmall
+	case width > 0 && width <= schedDetailMidBreak:
+		return schedDetailGutterMid
+	default:
+		return schedDetailGutter
+	}
+}
+
+// scheduleDetailWidth 是 47% 的详情列；760px 以下切到 100%，不设官方之外的像素上限。
+func scheduleDetailWidth(env *pluginapi.Env) (width float32, full bool) {
+	full = scheduleViewportWidth(env) > 0 && scheduleViewportWidth(env) <= schedDetailFullBreak
+	if full {
+		return env.Bounds.Width, true
+	}
+	return env.Bounds.Width * schedDetailBasisPct / 100, false
 }
 
 // drawScheduleHeading 画标题行：标题 + 官方「新建」按钮（= 新建会话）。
 func (p *Plugin) drawScheduleHeading(f ui.C, env *pluginapi.Env) {
 	t := p.theme
-	ui.Row(f).FillWidth().Height(schedHeadingHeight).MarginSides(schedHeadingTop, 0, schedHeadingBottom, 0).
+	ui.Row(f).FillWidth().Height(schedNewHeight).MarginSides(schedHeadingTop, 0, schedHeadingBottom, 0).
 		Items(ui.Center).Children(func() {
 		ui.Text(f, zhSchedTitle).FontSize(20).LineHeight(schedHeadingHeight).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 		ui.Spacer(f)
@@ -201,8 +307,12 @@ func (p *Plugin) drawScheduleHeading(f ui.C, env *pluginapi.Env) {
 		}
 		btn := ui.Row(f).Height(schedNewHeight).Radius(schedNewRadius).
 			Background(t.ButtonPrimaryFill).PadSides(0, 12, 0, 12).
-			Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
+			Items(ui.Center).Justify(ui.Center).Gap(4).Hover(ui.Look{}.Background(t.ButtonPrimaryHover)).
 			Hit(env.Tree.ID(env.Feat, "schedule-new"), zhSchedNew).Children(func() {
+			// Button 的 4px 图标间距沿用官方 primitives size=sm；本类覆盖 32px/12px/16px。
+			if icon, ok := dsassets.MarketPlusOutline(t.ButtonPrimaryFg); ok {
+				ui.Icon(f, icon).Size(13, 13).Color(t.ButtonPrimaryFg) // TaskManagerPage.tsx:204
+			}
 			ui.Text(f, zhSchedNew).FontSize(13).LineHeight(20).Color(t.ButtonPrimaryFg)
 		})
 		if btn.Clicked() {
@@ -247,15 +357,19 @@ func (p *Plugin) drawScheduleSearch(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	ui.Row(f).FillWidth().Height(schedSearchHeight).MarginSides(0, 0, schedSearchBottom, 0).
 		Border(0.5, t.BorderL3).Radius(schedSearchRadius).PadSides(0, 10, 0, 10).
-		Items(ui.Center).Gap(6).Children(func() {
-		ui.Text(f, "⌕").FontSize(14).Color(t.LabelTertiary).Shrink(0)
-		ui.TextFieldID(f, env.Tree.ID(env.Feat, "schedule-search"), &p.schedSearch, zhSchedSearchLabel, "").
-			Grow(1).Height(schedSearchHeight - 2).FontSize(t.Fonts.Secondary)
+		Items(ui.Center).Gap(schedSearchGap).Children(func() {
+		if icon, ok := dsassets.WorkspaceSearch(t.LabelTertiary); ok {
+			ui.Icon(f, icon).Size(14, 14).Color(t.LabelTertiary).Shrink(0) // .searchField svg，:254-257
+		}
+		ui.TextFieldID(f, env.Tree.ID(env.Feat, "schedule-search"), &p.schedSearch, zhSchedSearchLabel, zhSchedSearchHold).
+			Grow(1).Height(schedSearchHeight - 2).FontSize(14)
 		if p.schedSearch.Text() != "" {
 			clear := ui.Row(f).Width(28).Height(28).Shrink(0).Radius(t.Radii.SM).
-				Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
+				MarginSides(0, -6, 0, 0).Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "schedule-search-clear"), zhSchedSearchClear).Children(func() {
-				ui.Text(f, "×").FontSize(14).Color(t.LabelTertiary)
+				if icon, ok := dsassets.ScheduleCloseOutline(t.LabelTertiary); ok {
+					ui.Icon(f, icon).Size(14, 14).Color(t.LabelTertiary) // .searchClear svg，:283-286
+				}
 			})
 			if clear.Clicked() {
 				p.schedSearch.SetText("")
@@ -267,59 +381,75 @@ func (p *Plugin) drawScheduleSearch(f ui.C, env *pluginapi.Env) {
 // drawScheduleList 画任务列表（官方 `.list` / `.listRows`：2px 行距，无外框）。
 func (p *Plugin) drawScheduleList(f ui.C, env *pluginapi.Env, entries []apiclient.ScheduleEntry, loaded bool, errText string) {
 	t := p.theme
-	ui.Column(f).Grow(1).FillHeight().Children(func() {
+	ui.Column(f).FillWidth().Children(func() {
 		if errText != "" {
-			// 官方 CatalogFeedback：错误行 + 重试（不把失败画成空列表）。
-			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-				ui.Text(f, zhSchedLoadError).FontSize(t.Fonts.Secondary).Color(t.Error)
-				ui.Text(f, zhSchedRetry).FontSize(t.Fonts.Secondary).Color(t.Link).
+			// 官方 CatalogFeedback 的 notice：12px/14px padding、9px gap、10px radius、20px 下距。
+			ui.Row(f).FillWidth().Items(ui.Start).Gap(9).MarginSides(0, 0, 20, 0).
+				PadSides(12, 14, 12, 14).Radius(10).Background(t.SidebarFill).Children(func() {
+				ui.Text(f, zhSchedLoadError).FontSize(12).LineHeight(20).Color(t.LabelSecondary).Grow(1)
+				ui.Text(f, zhSchedRetry).FontSize(12).LineHeight(20).Color(t.Link).
 					Hit(env.Tree.ID(env.Feat, "schedule-retry"), zhSchedRetry)
 			})
 			return
 		}
 		if !loaded {
-			ui.Text(f, zhSchedLoading).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
+			ui.Row(f).FillWidth().PadSides(12, 14, 12, 14).Radius(10).Background(t.SidebarFill).Children(func() {
+				ui.Text(f, zhSchedLoading).FontSize(12).LineHeight(20).Color(t.LabelSecondary)
+			})
 			return
 		}
 		rows := p.filteredScheduleRows(entries)
 		if len(rows) == 0 {
-			ui.Text(f, p.scheduleEmptyText()).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
+			ui.Column(f).FillWidth().Items(ui.Center).PadSides(schedEmptyPadY, schedEmptyPadX, schedEmptyPadY, schedEmptyPadX).Children(func() {
+				ui.Text(f, p.scheduleEmptyText()).FontSize(14).LineHeight(22).Color(t.LabelTertiary)
+			})
 			return
 		}
-		ui.Scroll(f).FillWidth().Grow(1).MinHeight(120).Clip().Children(func() {
-			ui.Column(f).FillWidth().Gap(2).Children(func() {
-				for _, entry := range rows {
-					entry := entry
-					selected := p.schedSelected == entry.ID
-					bg := t.BgBase
-					if selected {
-						bg = t.Hover // 官方 .selectedRow / :hover 同一个 hover 底
-					}
-					row := ui.Row(f).FillWidth().Radius(schedRowRadius).Background(bg).
-						PadSides(schedRowPad, schedRowPad, schedRowPad, schedRowPad).
-						Items(ui.Start).Gap(12).Hover(ui.Look{}.Background(t.Hover)).
-						Hit(env.Tree.ID(env.Feat, "schedule-row-"+entry.ID), schedTaskName(entry)).
-						Children(func() {
-							ui.Text(f, "◷").Width(schedRowGlyphWidth).Height(schedRowGlyphHeight).
-								FontSize(14).LineHeight(schedRowGlyphHeight).Color(t.LabelTertiary).Shrink(0)
-							ui.Column(f).Grow(1).Gap(0).Children(func() {
-								ui.Text(f, schedTaskName(entry)).FontSize(14).LineHeight(23).
-									Weight(gfx.WeightMedium).Color(t.LabelPrimary).Ellipsis()
-								ui.Text(f, schedRowSummary(entry)).FontSize(13).LineHeight(21).
-									Color(t.LabelTertiary).MarginSides(2, 0, 0, 0)
-							})
+		ui.Column(f).FillWidth().Gap(2).Children(func() {
+			for _, entry := range rows {
+				entry := entry
+				selected := p.schedSelected == entry.ID
+				inactive := entry.Status != "active" // 官方 endedRow 同时覆盖 paused / ended
+				bg := t.BgBase
+				if selected {
+					bg = t.Hover // 官方 .selectedRow / :hover 同一个 hover 底
+				}
+				titleColor, summaryColor := t.LabelPrimary, t.LabelTertiary
+				if inactive {
+					titleColor, summaryColor = t.LabelTertiary, t.LabelCaption
+				}
+				if inactive && selected {
+					titleColor, summaryColor = t.LabelPrimary, t.LabelTertiary
+				}
+				row := ui.Row(f).FillWidth().Radius(schedRowRadius).Background(bg).
+					PadSides(schedRowPad, schedRowPad, schedRowPad, schedRowPad).
+					Items(ui.Start).Gap(12).Hover(ui.Look{}.Background(t.Hover)).
+					Hit(env.Tree.ID(env.Feat, "schedule-row-"+entry.ID), schedTaskName(entry)).
+					Children(func() {
+						ui.Row(f).Width(schedRowGlyphWidth).Height(schedRowGlyphHeight).Shrink(0).
+							MarginSides(schedRowGlyphTop, 0, 0, 0).Items(ui.Center).Children(func() {
+							if icon, ok := dsassets.SidebarClock(t.LabelTertiary); ok {
+								ui.Icon(f, icon).Size(16, 16).Color(t.LabelTertiary)
+							}
 						})
-					if row.Clicked() {
-						p.schedSelected = entry.ID
-						p.schedTab = "rule"
-						p.schedDeleteArm = false
-						p.schedActionNotice = ""
-						if p.schedExpanded == nil {
-							p.schedExpanded = map[string]bool{}
-						}
+						ui.Column(f).Grow(1).Gap(0).Children(func() {
+							ui.Text(f, schedTaskName(entry)).FontSize(14).LineHeight(23).
+								Weight(gfx.WeightMedium).Color(titleColor).Ellipsis()
+							ui.Text(f, schedRowSummary(entry)).FontSize(13).LineHeight(21).
+								Color(summaryColor).MarginSides(2, 0, 0, 0)
+						})
+					})
+				if row.Clicked() {
+					p.schedSelected = entry.ID
+					p.schedTab = "rule"
+					p.schedMenuOpen = false
+					p.schedDeleteArm = false
+					p.schedActionNotice = ""
+					if p.schedExpanded == nil {
+						p.schedExpanded = map[string]bool{}
 					}
 				}
-			})
+			}
 		})
 	})
 }
@@ -331,115 +461,141 @@ func (p *Plugin) drawScheduleDetail(f ui.C, env *pluginapi.Env, entries []apicli
 	if !ok {
 		return
 	}
-	width := env.Bounds.Width * schedDetailBasisPct / 100
-	if width > 520 {
-		width = 520 // 官方 flex-basis 是 47%，但窄面板里也不该把列表压没
-	}
-	ui.Column(f).Width(width).FillHeight().Border(0, t.BorderL4).
-		Children(func() {
-			p.drawScheduleDetailBar(f, env, entry)
-			body := func() {
-				if p.schedTab == "records" {
-					p.drawScheduleRecords(f, env, entry)
-					return
-				}
-				p.drawScheduleRules(f, env, entry)
-			}
+	width, fullWidth := scheduleDetailWidth(env)
+	gutter := scheduleDetailGutterFor(env)
+	ui.Column(f).Width(width).FillHeight().Children(func() {
+		if !fullWidth {
+			// 官方只画左侧 0.5px l4 竖线，不能用 Border 给四边都加框。
+			ui.Row(f).Absolute().Left(0).Top(0).Bottom(0).Width(0.5).Background(t.BorderL4)
+		}
+		p.drawScheduleDetailBar(f, env, entry)
+		body := func() {
 			if p.schedTab == "records" {
-				ui.Scroll(f).FillWidth().Grow(1).Clip().Children(func() {
-					ui.Column(f).FillWidth().PadSides(schedDetailScrollTop, schedDetailGutter,
-						schedDetailScrollBtm, schedDetailGutter).Children(body)
-				})
+				p.drawScheduleRecords(f, env, entry)
 				return
 			}
-			ui.Column(f).FillWidth().Grow(1).PadSides(schedDetailScrollTop, schedDetailGutter,
-				schedDetailScrollBtm, schedDetailGutter).Children(body)
+			p.drawScheduleRules(f, env, entry)
+		}
+		if p.schedTab == "records" {
+			ui.Scroll(f).FillWidth().Grow(1).Clip().Children(func() {
+				ui.Column(f).FillWidth().PadSides(schedDetailScrollTop, gutter,
+					schedDetailScrollBtm, gutter).Children(body)
+			})
+			return
+		}
+		ui.Scroll(f).FillWidth().Grow(1).Clip().Children(func() {
+			ui.Column(f).FillWidth().PadSides(schedDetailScrollTop, gutter,
+				schedDetailScrollBtm, gutter).Children(body)
 		})
+	})
 }
 
 // drawScheduleDetailBar 画详情顶条：两个 tab + 三条官方动作 + 关闭。
 func (p *Plugin) drawScheduleDetailBar(f ui.C, env *pluginapi.Env, entry apiclient.ScheduleEntry) {
 	t := p.theme
+	gutter := scheduleDetailGutterFor(env)
 	ui.Row(f).FillWidth().Height(schedDetailBar).Shrink(0).
-		Border(0, t.BorderL3).PadSides(0, schedDetailGutter, 0, schedDetailGutter).
-		Items(ui.Center).Gap(schedTabGap).Children(func() {
-		for _, tab := range []string{"rule", "records"} {
-			tab := tab
-			active := p.schedTab == tab
-			label := zhSchedRule
-			if tab == "records" {
-				label = zhSchedRecords
+		PadSides(0, gutter, 0, gutter).Items(ui.Center).Gap(schedDetailBarGap).Children(func() {
+		ui.Row(f).Absolute().Left(0).Right(0).Bottom(0).Height(0.5).Background(t.BorderL3)
+		// detailTabs 是独立的 36px-gap 组；旧实现把 36px 也施加到了每个操作按钮。
+		ui.Row(f).Grow(1).Height(schedDetailBar).Items(ui.End).Gap(schedTabGap).Children(func() {
+			for _, tab := range []string{"rule", "records"} {
+				tab := tab
+				active := p.schedTab == tab
+				label := zhSchedRule
+				if tab == "records" {
+					label = zhSchedRecords
+				}
+				fg := t.LabelTertiary
+				if active {
+					fg = t.BrandPrimary // 官方 aria-selected=true 是 state-business-primary，不是 label-primary
+				}
+				tabBox := ui.Column(f).Shrink(0).Height(schedTabLine+schedTabPadBottom).
+					PadSides(0, 0, schedTabPadBottom, 0).
+					Hit(env.Tree.ID(env.Feat, "schedule-tab-"+tab), label).Children(func() {
+					ui.Text(f, label).FontSize(schedTabFont).LineHeight(schedTabLine).Weight(gfx.WeightMedium).Color(fg)
+					if active {
+						ui.Row(f).Absolute().Left(0).Right(0).Bottom(-1).
+							Height(schedTabUnderline).Radius(schedTabUnderline).Background(t.BrandPrimary)
+					}
+				})
+				if tabBox.Clicked() {
+					p.schedTab = tab
+					p.schedMenuOpen = false
+					p.schedDeleteArm = false
+				}
 			}
-			fg := t.LabelTertiary
-			if active {
-				fg = t.LabelPrimary
-			}
-			tabBox := ui.Row(f).Items(ui.Center).Hit(env.Tree.ID(env.Feat, "schedule-tab-"+tab), label).Children(func() {
-				ui.Text(f, label).FontSize(14).LineHeight(22).Color(fg)
-			})
-			if tabBox.Clicked() {
-				p.schedTab = tab
-				p.schedDeleteArm = false
-			}
-		}
-		ui.Spacer(f)
-		// 三条动作。官方把「立即执行/删除」收在 ⋯ 菜单；本仓没有菜单组件，
-		// 以官方同名文字按钮直排（差异已登记）。非 active 任务不能暂停/恢复，
-		// ended 任务不能执行——与官方 disabled 判据一致。
-		if entry.Status != "ended" {
-			label := zhSchedPause
-			if entry.Status != "active" {
-				label = zhSchedResume
-			}
-			action := ui.Row(f).Items(ui.Center).Hit(env.Tree.ID(env.Feat, "schedule-toggle"), label).Children(func() {
-				ui.Text(f, label).FontSize(13).LineHeight(20).Color(t.LabelSecondary)
-			})
-			if action.Clicked() && env.Act.ScheduleSetActive != nil {
-				env.Act.ScheduleSetActive(entry.ID, entry.Status != "active", entry.UpdatedAt)
-			}
-		}
-		if entry.Status == "active" && !entry.ExecutionActive {
-			run := ui.Row(f).Items(ui.Center).Hit(env.Tree.ID(env.Feat, "schedule-run"), zhSchedRunNow).Children(func() {
-				ui.Text(f, zhSchedRunNow).FontSize(13).LineHeight(20).Color(t.LabelSecondary)
-			})
-			if run.Clicked() && env.Act.ScheduleRun != nil {
-				env.Act.ScheduleRun(entry.ID)
-			}
-		}
-		if entry.ExecutionActive {
-			ui.Text(f, zhSchedRunning).FontSize(12).LineHeight(18).Color(t.LabelTertiary)
-		}
-		del := ui.Row(f).Items(ui.Center).Hit(env.Tree.ID(env.Feat, "schedule-delete"), zhSchedDeleteAction).Children(func() {
-			label := zhSchedDeleteAction
-			if p.schedDeleteArm {
-				label = zhSchedDeleteOK
-			}
-			ui.Text(f, label).FontSize(13).LineHeight(20).Color(t.Error)
 		})
-		if del.Clicked() {
-			// 破坏性：第一次点只是"上膛"，第二次才真删（与侧栏删除会话同一先例）。
-			if !p.schedDeleteArm {
-				p.schedDeleteArm = true
-			} else if env.Act.ScheduleDelete != nil {
-				env.Act.ScheduleDelete(entry.ID)
+		ui.Row(f).Shrink(0).Items(ui.Center).Gap(schedDetailActionsGap).
+			MarginSides(0, schedDetailActionsPull, 0, 0).Children(func() {
+			if entry.Status != "ended" && !entry.ExecutionActive && env.Act.ScheduleSetActive != nil {
+				label, icon := zhSchedPause, func() (gfx.Icon, bool) { return dsassets.SchedulePauseOutline(t.LabelTertiary) }
+				if entry.Status != "active" {
+					label, icon = zhSchedResume, func() (gfx.Icon, bool) { return dsassets.SchedulePlayOutline(t.LabelTertiary) }
+				}
+				officialIcon, _ := icon()
+				action := p.scheduleDetailIconButton(f, env, "schedule-toggle", label, officialIcon)
+				if action.Clicked() {
+					env.Act.ScheduleSetActive(entry.ID, entry.Status != "active", entry.UpdatedAt)
+				}
+			}
+			moreIcon, _ := dsassets.ScheduleEllipsisOutline(t.LabelTertiary)
+			more := p.scheduleDetailIconButton(f, env, "schedule-more", zhSchedMore, moreIcon)
+			if more.Clicked() {
+				p.schedMenuOpen = !p.schedMenuOpen
+			}
+			open := p.schedMenuOpen
+			ui.Menu(f, more, &open, func(items *ui.MenuItems) {
+				if items == nil {
+					return
+				}
+				runDisabled := entry.Status != "active" || entry.ExecutionActive || env.Act.ScheduleRun == nil
+				if items.Item(zhSchedRunNow).Disabled(runDisabled).Clicked() && !runDisabled {
+					env.Act.ScheduleRun(entry.ID)
+				}
+				deleteLabel := zhSchedDeleteAction
+				if p.schedDeleteArm {
+					deleteLabel = zhSchedDeleteOK
+				}
+				deleteDisabled := env.Act.ScheduleDelete == nil
+				if items.Item(deleteLabel).Disabled(deleteDisabled).Clicked() && !deleteDisabled {
+					// 保留本仓已有的两次点击确认；菜单与图标几何改为官方形状。
+					if !p.schedDeleteArm {
+						p.schedDeleteArm = true
+					} else {
+						env.Act.ScheduleDelete(entry.ID)
+						p.closeScheduleDetail()
+					}
+				}
+			})
+			p.schedMenuOpen = open
+			closeIcon, _ := dsassets.ScheduleCloseOutline(t.LabelTertiary)
+			closeBox := p.scheduleDetailIconButton(f, env, "schedule-close", zhSchedClose, closeIcon)
+			if closeBox.Clicked() {
 				p.closeScheduleDetail()
 			}
-		}
-		closeBox := ui.Row(f).Width(28).Height(28).Radius(t.Radii.SM).Items(ui.Center).Justify(ui.Center).
-			Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, "schedule-close"), zhSchedClose).Children(func() {
-			ui.Text(f, "×").FontSize(14).Color(t.LabelTertiary)
 		})
-		if closeBox.Clicked() {
-			p.closeScheduleDetail()
-		}
+	})
+}
+
+// scheduleDetailIconButton 是官方 detailIconButton：28×28、padding 0、tertiary 图标。
+func (p *Plugin) scheduleDetailIconButton(f ui.C, env *pluginapi.Env, id, label string, icon gfx.Icon) ui.Box {
+	t := p.theme
+	return ui.Row(f).Width(schedDetailIconSize).Height(schedDetailIconSize).Shrink(0).
+		Radius(t.Radii.SM).Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
+		Hit(env.Tree.ID(env.Feat, id), label).Children(func() {
+		ui.Icon(f, icon).Size(16, 16).Color(t.LabelTertiary)
 	})
 }
 
 // drawScheduleRules 画「规则」页（官方 Rules：名称、下次运行、内容、运行时间、关联会话）。
 func (p *Plugin) drawScheduleRules(f ui.C, env *pluginapi.Env, entry apiclient.ScheduleEntry) {
 	t := p.theme
-	ui.Column(f).FillWidth().Gap(20).Children(func() {
-		ui.Text(f, schedTaskName(entry)).FontSize(20).LineHeight(28).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+	ui.Column(f).FillWidth().Children(func() {
+		// readonlyName 的 2px 纵向 padding + detailHeader 的 4px 下距。
+		ui.Row(f).FillWidth().PadSides(2, 0, 2, 0).MarginSides(0, 0, schedDetailHeaderGap, 0).Children(func() {
+			ui.Text(f, schedTaskName(entry)).FontSize(20).LineHeight(28).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+		})
 		// 官方 `.nextRun`：active 显示「下次运行 <绝对> (<相对>)」，否则显示状态。
 		next := ""
 		if entry.Status == "active" {
@@ -447,23 +603,49 @@ func (p *Plugin) drawScheduleRules(f ui.C, env *pluginapi.Env, entry apiclient.S
 		} else {
 			next = map[string]string{"paused": zhSchedFilterPaused, "ended": zhSchedFilterEnded}[entry.Status]
 		}
-		ui.Text(f, next).FontSize(13).LineHeight(20).Color(t.LabelTertiary).MarginSides(0, 0, 0, 0)
+		ui.Row(f).FillWidth().MinHeight(20).MarginSides(0, 0, schedNextRunBottom, 0).Items(ui.Center).Children(func() {
+			ui.Text(f, next).FontSize(13).LineHeight(20).Color(t.LabelTertiary)
+		})
+		if entry.ExecutionActive {
+			ui.Text(f, zhSchedRunning).FontSize(12).LineHeight(19.2).Color(t.LabelSecondary).
+				MarginSides(0, 0, 6, 0) // .detailNotice，:1331-1339
+		}
 
 		// 删除上膛后把官方确认文案摊开（本仓没有 Modal，差异已登记）。
 		if p.schedDeleteArm {
-			ui.Column(f).FillWidth().Gap(2).Children(func() {
+			ui.Column(f).FillWidth().Gap(2).MarginSides(0, 0, schedEditorGap, 0).Children(func() {
 				ui.Text(f, zhSchedDeleteTitle).FontSize(14).LineHeight(22).Color(t.LabelPrimary)
 				ui.Text(f, zhSchedDeleteDesc).FontSize(13).LineHeight(20).Color(t.LabelTertiary)
 			})
 		}
 
-		schedField(f, t, zhSchedInstruction, entry.Prompt)
-		schedField(f, t, zhSchedRunTime, schedFrequency(entry))
-		if entry.Target.Kind == "new" && entry.LastDelivery == nil {
-			schedField(f, t, zhSchedSession, zhSchedPendingNew)
-		} else if id := schedTargetSession(entry); id != "" {
-			schedField(f, t, zhSchedSession, id)
-		}
+		ui.Column(f).FillWidth().Gap(schedEditorGap).Children(func() {
+			schedField(f, t, zhSchedName, schedTaskName(entry))
+			// instruction 官方面：112px 最小高、12px padding、16px radius、14px/24px。
+			ui.Column(f).FillWidth().Gap(schedEditorFieldGap).Children(func() {
+				ui.Text(f, zhSchedInstruction).FontSize(14).LineHeight(22.4).Color(t.LabelPrimary)
+				ui.Column(f).FillWidth().MinHeight(schedInstructionMinH).PadSides(schedInstructionPad, schedInstructionPad,
+					schedInstructionPad, schedInstructionPad).Border(0.5, t.BorderL3).Radius(schedInstructionRadius).Children(func() {
+					ui.Wrap(f, entry.Prompt).FontSize(14).LineHeight(schedInstructionLine).Color(t.LabelPrimary)
+				})
+			})
+			ui.Column(f).FillWidth().Gap(schedEditorFieldGap).Children(func() {
+				ui.Text(f, zhSchedRunTime).FontSize(14).LineHeight(22.4).Color(t.LabelPrimary)
+				ui.Column(f).FillWidth().PadSides(0, schedRuleRowsPadX, 0, schedRuleRowsPadX).
+					Border(0.5, t.BorderL3).Radius(schedRuleRowsRadius).Children(func() {
+					ui.Row(f).FillWidth().MinHeight(schedRuleRowMinHeight).Items(ui.Center).Children(func() {
+						ui.Text(f, zhSchedRepeat).FontSize(14).LineHeight(22.4).Color(t.LabelPrimary)
+						ui.Spacer(f)
+						ui.Text(f, schedFrequency(entry)).FontSize(14).LineHeight(22.4).Color(t.LabelPrimary)
+					})
+				})
+			})
+			if entry.Target.Kind == "new" && entry.LastDelivery == nil {
+				schedField(f, t, zhSchedSession, zhSchedPendingNew)
+			} else if id := schedTargetSession(entry); id != "" {
+				schedField(f, t, zhSchedSession, id)
+			}
+		})
 	})
 }
 
@@ -475,7 +657,7 @@ func (p *Plugin) drawScheduleRecords(f ui.C, env *pluginapi.Env, entry apiclient
 		return
 	}
 	page, loaded, errText := env.Act.ScheduleHistory(entry.ID)
-	ui.Column(f).FillWidth().Gap(12).Children(func() {
+	ui.Column(f).FillWidth().Children(func() {
 		switch {
 		case errText != "":
 			ui.Row(f).Items(ui.Center).Gap(8).Children(func() {
@@ -484,50 +666,66 @@ func (p *Plugin) drawScheduleRecords(f ui.C, env *pluginapi.Env, entry apiclient
 					label = zhSchedMissing
 				}
 				ui.Text(f, label).FontSize(t.Fonts.Secondary).Color(t.Error)
-				if env.Act.ScheduleHistory != nil {
-					retry := ui.Text(f, zhSchedHistoryRetry).FontSize(t.Fonts.Secondary).Color(t.Link).
-						Hit(env.Tree.ID(env.Feat, "schedule-history-retry"), zhSchedHistoryRetry)
-					if retry.Clicked() {
-						// 重读同一页：壳的 ScheduleHistory 首次问过就会拉；这里只能
-						// 借 ScheduleHistoryMore 的通道发一次刷新不成立，改用目录刷新
-						// （目录不变时历史仍会按需重读——见 schedule_catalog.go 的缓存边界）。
-						env.Act.ScheduleRefresh()
-					}
+				retry := ui.Text(f, zhSchedHistoryRetry).FontSize(t.Fonts.Secondary).Color(t.Link).
+					Hit(env.Tree.ID(env.Feat, "schedule-history-retry"), zhSchedHistoryRetry)
+				if retry.Clicked() {
+					env.Act.ScheduleRefresh()
 				}
 			})
 		case !loaded:
-			ui.Text(f, zhSchedHistoryLoad).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
+			ui.Column(f).FillWidth().Items(ui.Center).PadSides(schedEmptyPadY, schedEmptyPadX, schedEmptyPadY, schedEmptyPadX).Children(func() {
+				ui.Text(f, zhSchedHistoryLoad).FontSize(14).LineHeight(22.4).Color(t.LabelTertiary)
+			})
 		case len(page.Records) == 0:
-			ui.Text(f, zhSchedNoRecord).FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
+			ui.Column(f).FillWidth().Items(ui.Center).PadSides(schedEmptyPadY, schedEmptyPadX, schedEmptyPadY, schedEmptyPadX).Children(func() {
+				if icon, ok := dsassets.SidebarClock(t.LabelCaption); ok {
+					ui.Icon(f, icon).Size(24, 24).Color(t.LabelCaption).MarginSides(0, 0, 12, 0)
+				}
+				ui.Text(f, zhSchedNoRecord).FontSize(14).LineHeight(22.4).Color(t.LabelTertiary)
+			})
 		default:
 			for i, record := range page.Records {
 				i, record := i, record
 				key := fmt.Sprintf("%s#%d", entry.ID, i)
-				ui.Column(f).FillWidth().Gap(2).Children(func() {
-					ui.Text(f, schedAbsolute(record.ScheduledAt)).FontSize(13).LineHeight(20).
-						Color(t.LabelSecondary)
-					if strings.TrimSpace(record.Prompt) == "" {
-						return // 旧记录没有正文：官方也不拿当前指令顶替
-					}
-					if p.schedExpanded[key] {
-						ui.Wrap(f, record.Prompt).FontSize(13).LineHeight(20).Color(t.LabelTertiary)
-					} else {
-						ui.Wrap(f, record.Prompt).FontSize(13).LineHeight(20).Color(t.LabelTertiary).MaxLines(2)
-					}
-					if len([]rune(record.Prompt)) > 40 {
-						label := zhSchedExpand
-						if p.schedExpanded[key] {
-							label = zhSchedCollapse
+				padTop := float32(schedDeliveryPadY)
+				if i == 0 {
+					padTop = 0 // .delivery:first-of-type{padding-top:0}，:1166-1168
+				}
+				ui.Row(f).FillWidth().Items(ui.Start).Gap(schedDeliveryGap).
+					MarginSides(0, -schedDeliveryPadX, 0, -schedDeliveryPadX).
+					PadSides(padTop, schedDeliveryPadX, schedDeliveryPadY, schedDeliveryPadX).
+					Radius(schedDeliveryRadius).Children(func() {
+					ui.Row(f).Width(16).Height(22).Shrink(0).MarginSides(schedDeliveryGlyphTop, 0, 0, 0).Children(func() {
+						if icon, ok := dsassets.SidebarClock(t.LabelTertiary); ok {
+							ui.Icon(f, icon).Size(16, 16).Color(t.LabelTertiary)
 						}
-						toggle := ui.Text(f, label).FontSize(12).LineHeight(18).Color(t.Link).
-							Hit(env.Tree.ID(env.Feat, "schedule-record-toggle"), label)
-						if toggle.Clicked() {
-							if p.schedExpanded == nil {
-								p.schedExpanded = map[string]bool{}
+					})
+					ui.Column(f).Grow(1).PadSides(schedDeliveryBodyPadY, 0, schedDeliveryBodyPadY, 0).Children(func() {
+						ui.Text(f, schedAbsolute(record.ScheduledAt)).FontSize(schedDeliveryTimeFont).
+							LineHeight(schedDeliveryTimeLine).Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+						if strings.TrimSpace(record.Prompt) == "" {
+							return // 旧记录没有正文：官方也不拿当前指令顶替
+						}
+						prompt := ui.Wrap(f, record.Prompt).FontSize(schedSavedPromptFont).LineHeight(schedSavedPromptLine).
+							Color(t.LabelTertiary).MarginSides(schedSavedPromptTop, 0, 0, 0)
+						if !p.schedExpanded[key] {
+							prompt.MaxLines(2)
+						}
+						if len([]rune(record.Prompt)) > 40 {
+							label := zhSchedExpand
+							if p.schedExpanded[key] {
+								label = zhSchedCollapse
 							}
-							p.schedExpanded[key] = !p.schedExpanded[key]
+							toggle := ui.Text(f, label).FontSize(12).LineHeight(20).Color(t.LabelSecondary).
+								MarginSides(2, 0, 0, -6).Hit(env.Tree.ID(env.Feat, "schedule-record-toggle-"+key), label)
+							if toggle.Clicked() {
+								if p.schedExpanded == nil {
+									p.schedExpanded = map[string]bool{}
+								}
+								p.schedExpanded[key] = !p.schedExpanded[key]
+							}
 						}
-					}
+					})
 				})
 			}
 			if page.NextBefore != "" && env.Act.ScheduleHistoryMore != nil {
@@ -538,12 +736,12 @@ func (p *Plugin) drawScheduleRecords(f ui.C, env *pluginapi.Env, entry apiclient
 				}
 			}
 			if page.EarlierRecordsPruned {
-				ui.Text(f, zhSchedPruned).FontSize(12).LineHeight(18).Color(t.LabelTertiary)
+				ui.Text(f, zhSchedPruned).FontSize(schedRetentionFont).LineHeight(schedRetentionLine).Color(t.LabelTertiary)
 			}
 			if page.Retention.Records > 0 {
 				ui.Text(f, zhSchedRetention+"："+fmt.Sprintf("每个任务最多保留近 %d 天内的 %d 条运行记录。",
 					page.Retention.Days, page.Retention.Records)).
-					FontSize(12).LineHeight(18).Color(t.LabelTertiary)
+					FontSize(schedRetentionFont).LineHeight(schedRetentionLine).Color(t.LabelTertiary)
 			}
 		}
 	})
@@ -552,15 +750,16 @@ func (p *Plugin) drawScheduleRecords(f ui.C, env *pluginapi.Env, entry apiclient
 // schedField 画官方的"标签 + 值"字段块（TaskManagerPage.module.css `.editorField`：
 // 标签与内容 8px 间距、14px 字号；只读值用次级文字色）。
 func schedField(f ui.C, t *pluginapi.Theme, label, value string) {
-	ui.Column(f).FillWidth().Gap(8).Children(func() {
-		ui.Text(f, label).FontSize(14).LineHeight(22).Color(t.LabelPrimary)
-		ui.Wrap(f, value).FontSize(14).LineHeight(22).Color(t.LabelSecondary)
+	ui.Column(f).FillWidth().Gap(schedEditorFieldGap).Children(func() {
+		ui.Text(f, label).FontSize(14).LineHeight(22.4).Color(t.LabelPrimary)
+		ui.Wrap(f, value).FontSize(14).LineHeight(22.4).Color(t.LabelSecondary)
 	})
 }
 
 // closeScheduleDetail 收起详情并清掉它的临时状态。
 func (p *Plugin) closeScheduleDetail() {
 	p.schedSelected = ""
+	p.schedMenuOpen = false
 	p.schedDeleteArm = false
 }
 

@@ -154,6 +154,7 @@ type Plugin struct {
 	schedFilter       string // active(默认) / paused / ended / all
 	schedSelected     string
 	schedTab          string // rule / records
+	schedMenuOpen     bool   // 详情 ⋯ 菜单（TaskDetail.tsx 的 menuOpen）
 	schedDeleteArm    bool   // 删除按钮第一次点击后的"上膛"态
 	schedExpanded     map[string]bool
 	schedActionNotice string

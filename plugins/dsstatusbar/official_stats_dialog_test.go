@@ -246,6 +246,23 @@ func TestStatsDialogStructureFollowsOfficialTree(t *testing.T) {
 	}
 }
 
+// ②” 面板材质：官方 `.panel{background:var(--dsw-specific-menu)}`，
+// 不是三层表面的 BgLayer3（stat-dialog.module.css:16）。
+func TestStatsDialogUsesOfficialMenuSurface(t *testing.T) {
+	h := newStatsDialogHarness(t)
+	canvas := h.openDialog(t, statsSnapshot(statsFullStats()))
+	panel := h.plugin.dialog.panelRect
+	if panel.Width <= 0 || panel.Height <= 0 {
+		t.Fatal("没有量到弹窗面板矩形")
+	}
+	for _, rect := range canvas.Rectangles() {
+		if rect.Bounds == panel && rect.Radius == h.theme.Radii.LG && rect.Color == h.theme.Menu {
+			return
+		}
+	}
+	t.Fatalf("弹窗面板不是官方 Menu 材质：panel=%+v menu=%+v rects=%+v", panel, h.theme.Menu, canvas.Rectangles())
+}
+
 // ③ 八字段逐个渲染：只改一个字段，弹窗读数必须跟着变（其余字段保持为 0）。
 func TestStatsDialogRendersEachOfTheEightFields(t *testing.T) {
 	cases := []struct {

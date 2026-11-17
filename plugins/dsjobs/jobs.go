@@ -50,21 +50,27 @@ const maxShown = 4
 
 // 官方几何（`ui-jobs/src/client/JobListAction.module.css`，逐值）。
 const (
-	jobRowGap        = 6   // .row{gap:6px}
-	jobDotSize       = 5   // StateDot 的可见直径（同其它侧栏状态点）
-	jobChevronSize   = 10  // .chevron 的字号（官方 12 的 svg，这里用文字箭头）
-	jobStopBox       = 20  // .stop{width:20px;height:20px}
-	jobStopRadius    = 8   // .stop{border-radius: var(--dsw-radius-sm)}
-	jobStopArmPadH   = 7   // .stopArmed{padding:0 7px}
-	jobStopArmGap    = 4   // .stopArmed{gap:4px}
-	jobStopFont      = 11  // .stopLabel{font-size:11px;line-height:18px}
-	jobOutputMaxH    = 220 // .panel --dsl-terminal-output-max-height:288px，侧栏更窄取 220
-	jobOutputIndent  = 14  // .panel :global([data-terminal]){--dsl-terminal-gutter:12px}
-	jobOutputPadTop  = 2   // 输出块与行之间的呼吸
-	jobOutputPadBot  = 4
-	jobNoticeFont    = 11   // .notice{font-size:11px;line-height:16px}
-	jobKillArmWindow = 3000 // KILL_ARM_MS = 3_000
-	jobCopiedWindow  = 1200 // "已复制"停留时长（无官方值，纯本地反馈，登记为 derived）
+	jobRowGap           = 6    // .row{gap:6px}（:311-327）
+	jobDotSize          = 10   // StateDot 非 ongoing 外框 10×10（primitives dist index-ghOpC9uV.js:129）
+	jobDotCoreSize      = 6    // StateDot::after inset:20% → 6×6（index-CSAdOBx6.css:1）
+	jobDotOngoingSize   = 14   // StateDot ongoing 默认 14×14（index-ghOpC9uV.js:129）
+	jobStopBox          = 20   // .stop{width:20px;height:20px}（:250-264）
+	jobStopBorder       = 0.5  // .stop{border:0.5px solid border-l2}（:259）
+	jobStopArmPadH      = 7    // .stopArmed{padding:0 7px}（:280-288）
+	jobStopArmGap       = 4    // .stopArmed{gap:4px}（:282）
+	jobStopArmBorderMix = 0.45 // border-color:color-mix(error 45%,transparent)（:285）
+	jobStopArmBgMix     = 0.12 // background:color-mix(error 12%,transparent)（:286）
+	jobStopFont         = 11   // .stopLabel{font-size:11px;line-height:18px}（:301-305）
+	jobStopLine         = 18
+	jobOutputMaxH       = 288 // .panel --dsl-terminal-output-max-height:288px（:430-438）
+	jobOutputIndent     = 12  // .panel [data-terminal]{--dsl-terminal-gutter:12px}（:444-446）
+	jobOutputPadH       = 8   // .panel{margin:0 8px 8px}（:430-431）
+	jobOutputPadBot     = 8
+	jobNoticeMarginB    = 6 // .notice{margin:0 8px 6px}（:448-453）
+	jobNoticeFont       = 11
+	jobNoticeLine       = 16
+	jobKillArmWindow    = 3000 // KILL_ARM_MS = 3_000（JobListAction.tsx:54-55）
+	jobCopiedWindow     = 1200 // "已复制"停留时长（本地反馈，非官方几何）
 )
 
 // 官方文案（zh 字典逐字；`ui-jobs/src/client/locales.ts`）。
@@ -180,28 +186,36 @@ func statusLabel(j pluginapi.Job) string {
 	}
 }
 
-// statusColor 是状态文字的颜色（官方用 label-tertiary / state-error）。
-func statusColor(t *pluginapi.Theme, j pluginapi.Job) ui.Color {
-	if j.Done && j.ExitCode != 0 {
-		return t.Error
-	}
+// statusColor 是官方 `.status` 的固定颜色；失败由 StateDot(error) 表达，不把文字改红。
+func statusColor(t *pluginapi.Theme, _ pluginapi.Job) ui.Color {
 	return t.LabelTertiary
 }
 
-// dotColor 是状态点颜色。
-//
-// 官方 `.rowDot` 用 StateDot 的 ongoing/warning/done/error 四态；本仓只有三态：
-// 跑着用链接色（"活着"），正常结束用 success，非零退出用 error。
-// **不用绿点表示"跑着"**：绿在状态栏已经表示"连着宿主"，复用会混淆（原注释保留）。
+// dotColor 是官方 StateDot 的三态颜色（JobListAction.tsx:88-98 → primitives 令牌）。
+// ongoing=label-tertiary、done=state-success-primary、error=state-error-primary。
 func dotColor(t *pluginapi.Theme, j pluginapi.Job) ui.Color {
 	switch {
 	case !j.Done:
-		return t.Link
+		return t.LabelTertiary
 	case j.ExitCode != 0:
 		return t.Error
 	default:
-		return t.Success
+		return t.SuccessPrimary
 	}
+}
+
+// drawJobStateDot 画官方 StateDot：ongoing 是 14px spinner，其余是 10px
+// 外框里 inset:20% 的 6px 实心圆（primitives dist，见 icons.go 的素材注释）。
+func drawJobStateDot(f ui.C, t *pluginapi.Theme, j pluginapi.Job) {
+	if live(j) {
+		ui.Icon(f, jobStateDotOngoingIcon(t.LabelTertiary)).
+			Size(jobDotOngoingSize, jobDotOngoingSize).Color(t.LabelTertiary)
+		return
+	}
+	ui.Row(f).Size(jobDotSize, jobDotSize).Center().Children(func() {
+		ui.Slot(f).Size(jobDotCoreSize, jobDotCoreSize).
+			Radius(jobDotCoreSize / 2).Background(dotColor(t, j))
+	})
 }
 
 // computeJobs 选出这一帧要画的行，并把"已经消失的任务"的状态清掉。
@@ -275,23 +289,23 @@ func (p *Plugin) drawRow(f ui.C, env *pluginapi.Env, j pluginapi.Job) {
 	clickable := env.Act.JobsOutput != nil && j.SessionID != ""
 	id := env.Tree.ID(env.Feat, "job-row-"+key)
 	ui.Row(f).FillWidth().Items(ui.Center).Gap(jobRowGap).Children(func() {
-		row := ui.Row(f).Items(ui.Center).Gap(jobRowGap).Grow(1).MinHeight(20).
-			Hit(id, shortCmd(j.Command)).Children(func() {
-			p.prims.Dot(f, dotColor(t, j), jobDotSize)
-			ui.Text(f, shortCmd(j.Command)).FontSize(12).Color(t.LabelSecondary).
-				Grow(1).Ellipsis()
-			// 展开箭头：只在真的能展开时画（画了打不开的箭头就是死控件）。
-			if clickable {
-				arrow := "▸"
-				if p.isExpanded(j) {
-					arrow = "▾"
-				}
-				ui.Text(f, arrow).FontSize(jobChevronSize).Color(t.LabelTertiary)
-			}
-			ui.Text(f, statusLabel(j)).FontSize(jobNoticeFont).Color(statusColor(t, j))
-			// 已结束的行给字节数（运行中的行没有稳定终值，不画）。
+		row := ui.Row(f).Items(ui.Center).Gap(jobRowGap).Grow(1).MinWidth(0).
+			MinHeight(jobsRowMinHeight).
+			PadSides(jobsRowPadV, jobsRowPadH, jobsRowPadV, jobsRowPadH).
+			Radius(t.Radii.MD).Hit(id, shortCmd(j.Command)).Children(func() {
+			drawJobStateDot(f, t, j)
+			ui.Text(f, shortCmd(j.Command)).FontSize(jobsRowFont).LineHeight(jobsRowLine).
+				Color(t.LabelSecondary).Grow(1).Ellipsis()
+			ui.Text(f, statusLabel(j)).FontSize(10).LineHeight(16).Color(statusColor(t, j))
+			// 已结束的行给字节数（旧侧栏的 derived 信息；官方弹层不拿它冒充时长）。
 			if j.Done {
-				ui.Text(f, sizeLabel(j.Bytes)).FontSize(jobNoticeFont).Color(t.LabelTertiary)
+				ui.Text(f, sizeLabel(j.Bytes)).FontSize(jobNoticeFont).LineHeight(jobNoticeLine).
+					Color(t.LabelTertiary)
+			}
+			// 展开箭头复用官方 chevron sprite，不再用文本三角形。
+			if clickable {
+				ui.Icon(f, jobRowChevronIcon(p.isExpanded(j))).
+					Size(jobsChevronIcon, jobsChevronIcon).Color(t.LabelTertiary)
 			}
 		})
 		if clickable && row.Clicked() {
@@ -316,19 +330,16 @@ func (p *Plugin) drawStop(f ui.C, env *pluginapi.Env, j pluginapi.Job) {
 	border := t.BorderL2
 	if armed {
 		label = zhStopConfirm
-		// 官方 .stopArmed 用 `color-mix(error 45%, transparent)` 描边 + 12% 底色；
-		// 本仓没有 color-mix，取同语义的主题档：错误色描边 + 抬高一层的底色
-		// （deviation：颜色混合比例不同，形状/尺寸/命中区一致）。
-		border = t.Error
+		border = jobErrorMix(t.Error, jobStopArmBorderMix)
 	}
 	box := ui.Row(f).MinHeight(jobStopBox).Items(ui.Center).Gap(jobStopArmGap).
-		Radius(jobStopRadius).Border(1, border).
+		Radius(t.Radii.SM).Border(jobStopBorder, border).
 		PadSides(0, jobStopArmPadH, 0, jobStopArmPadH).
 		Hit(id, zhStopTitle+" "+shortCmd(j.Command)).Children(func() {
-		ui.Text(f, label).FontSize(jobStopFont).Color(stopColor(t, armed))
+		ui.Text(f, label).FontSize(jobStopFont).LineHeight(jobStopLine).Color(stopColor(t, armed))
 	})
 	if armed {
-		box.Background(t.BgLayer2)
+		box.Background(jobErrorMix(t.Error, jobStopArmBgMix))
 	}
 	if box.Clicked() {
 		if p.takeArmed(key) {
@@ -347,6 +358,12 @@ func stopColor(t *pluginapi.Theme, armed bool) ui.Color {
 	return t.LabelSecondary
 }
 
+// jobErrorMix 等价于官方 color-mix(in srgb, error N%, transparent)。
+func jobErrorMix(color ui.Color, alpha float32) ui.Color {
+	color.Alpha *= alpha
+	return color
+}
+
 // drawOutput 画展开后的输出块。
 //
 // 每帧都会尝试从壳缓存取一次（同步、不会卡绘制）：壳没就绪时返回 ok=false，
@@ -356,7 +373,7 @@ func (p *Plugin) drawOutput(f ui.C, env *pluginapi.Env, j pluginapi.Job) {
 	p.drawOutputBlock(f, env, j, jobOutputMaxH, jobOutputIndent)
 }
 
-// drawOutputBlock 是输出块的实体（侧栏取 220 高、官方弹层取 288 高）。
+// drawOutputBlock 是输出块的实体（两种容器都使用官方 288px 上限与 12px gutter）。
 func (p *Plugin) drawOutputBlock(f ui.C, env *pluginapi.Env, j pluginapi.Job, maxH, gutter float32) {
 	t := p.theme
 	key := jobKey(j)
@@ -369,28 +386,30 @@ func (p *Plugin) drawOutputBlock(f ui.C, env *pluginapi.Env, j pluginapi.Job, ma
 	}
 	view, has := p.storedOutput(key)
 
-	ui.Column(f).FillWidth().Gap(2).
-		PadSides(jobOutputPadTop, 6, jobOutputPadBot, gutter).Children(func() {
+	ui.Column(f).FillWidth().Gap(0).
+		PadSides(0, jobOutputPadH, jobOutputPadBot, gutter).Children(func() {
 		switch {
 		case has && view.Err != "":
 			ui.Wrap(f, zhOutputError+view.Err).FillWidth().FontSize(jobNoticeFont).
-				LineHeight(16).Color(t.Error)
+				LineHeight(jobNoticeLine).Color(t.Error).MarginSides(0, 0, jobNoticeMarginB, 0)
 			p.drawInlineButton(f, env, key+"-retry", zhOutputRetry, func() {
 				p.resetOutput(key)
 			})
 		case !has:
-			ui.Text(f, zhOutputLoading).FontSize(jobNoticeFont).Color(t.LabelTertiary)
+			ui.Text(f, zhOutputLoading).FontSize(jobNoticeFont).LineHeight(jobNoticeLine).
+				Color(t.LabelTertiary)
 		default:
 			if view.Truncated {
 				ui.Wrap(f, zhOutputGap).FillWidth().FontSize(jobNoticeFont).
-					LineHeight(16).Color(t.LabelTertiary)
+					LineHeight(jobNoticeLine).Color(t.LabelTertiary).
+					MarginSides(0, 0, jobNoticeMarginB, 0)
 			}
 			body := view.Output
 			if strings.TrimSpace(body) == "" {
-				ui.Text(f, zhOutputEmpty).FontSize(jobNoticeFont).Color(t.LabelTertiary)
+				ui.Text(f, zhOutputEmpty).FontSize(jobNoticeFont).LineHeight(jobNoticeLine).
+					Color(t.LabelTertiary)
 			} else {
-				// 输出区自己滚：官方给它固定高度（`--dsl-terminal-output-max-height`
-				// 288px），这里侧栏更窄，取 220。
+				// 输出区自己滚：官方 `--dsl-terminal-output-max-height:288px`。
 				ui.Scroll(f).FillWidth().MaxHeight(maxH).Clip().Children(func() {
 					ui.Wrap(f, body).FillWidth().Mono().
 						FontSize(t.Fonts.Code).LineHeight(t.Fonts.CodeLine).
@@ -418,13 +437,13 @@ func (p *Plugin) drawOutputBlock(f ui.C, env *pluginapi.Env, j pluginapi.Job, ma
 	})
 }
 
-// drawInlineButton 画一个小号文字按钮（无边框，命中区按文字宽度）。
+// drawInlineButton 复用官方 sectionToggle/sectionClear 的 11/16、2×4 小文字钮几何。
 func (p *Plugin) drawInlineButton(f ui.C, env *pluginapi.Env, suffix, label string, onClick func()) {
 	t := p.theme
 	id := env.Tree.ID(env.Feat, "job-btn-"+suffix)
-	box := ui.Row(f).MinHeight(18).Items(ui.Center).PadX(2).
-		Radius(t.Radii.XS).Hit(id, label).Children(func() {
-		ui.Text(f, label).FontSize(jobNoticeFont).Color(t.Link)
+	box := ui.Row(f).Items(ui.Center).PadSides(jobsTogglePadV, jobsTogglePadH, jobsTogglePadV, jobsTogglePadH).
+		Radius(t.Radii.SM).Hit(id, label).Children(func() {
+		ui.Text(f, label).FontSize(jobNoticeFont).LineHeight(jobNoticeLine).Color(t.LabelTertiary)
 	})
 	if box.Clicked() && onClick != nil {
 		onClick()

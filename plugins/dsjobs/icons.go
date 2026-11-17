@@ -13,7 +13,12 @@
 // 机械换算出来的，换算脚本与输入在 `tmp/GO8-RC2/_gp2/svg2gfx.txt`。
 package dsjobs
 
-import "github.com/vivaui/viva/gfx"
+import (
+	"math"
+
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
+	"github.com/vivaui/viva/gfx"
+)
 
 // layersIcon 是官方 `IconLayersOutlineRegular`（3 段描边：顶层圆角菱形 + 两条层线）。
 func layersIcon() gfx.Icon {
@@ -66,5 +71,126 @@ func stopIcon() gfx.Icon {
 			gfx.CubicTo(13.5, 2.94772, 13.0523, 2.5, 12.5, 2.5),
 			gfx.ClosePath(),
 		},
+	}
+}
+
+// jobChevronDownIcon 复用共享素材包的 IconChevronDownOutlineRegular。
+func jobChevronDownIcon() gfx.Icon {
+	commands, ok := dsassets.ChevronDownOutline()
+	if !ok {
+		return gfx.Icon{}
+	}
+	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}
+}
+
+// jobChevronRightIcon 是官方 chevron-right-outline，等价于 down 的 rotate(-90deg)。
+func jobChevronRightIcon() gfx.Icon {
+	icon, ok := dsassets.PlanReviewChevron()
+	if !ok {
+		return gfx.Icon{}
+	}
+	return icon
+}
+
+// jobChevronUpIcon 是官方 chevron-up-outline，等价于 down 的 rotate(180deg)。
+// 路径来源同为 index-ghOpC9uV.js:129 的 sprite 表。
+func jobChevronUpIcon() gfx.Icon {
+	commands, ok := dsassets.ParsePath(`M12 10L8.70711 6.70711C8.31658 6.31658 7.68342 6.31658 7.29289 6.70711L4 10`)
+	if !ok {
+		return gfx.Icon{}
+	}
+	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}
+}
+
+func jobRowChevronIcon(open bool) gfx.Icon {
+	if open {
+		return jobChevronUpIcon()
+	}
+	return jobChevronRightIcon()
+}
+
+func jobSectionChevronIcon(open bool) gfx.Icon {
+	if open {
+		return jobChevronDownIcon()
+	}
+	return jobChevronRightIcon()
+}
+
+// StateDot ongoing 的官方 SVG/CSS 几何：index-ghOpC9uV.js:129 给出
+// viewBox=24、cx=cy=12、r=9.5、默认 14px；index-CSAdOBx6.css:1 给出
+// stroke=2、linecap=round、track opacity=.25。静态帧采用官方
+// prefers-reduced-motion 档：dash=18、offset=-3，不手画替代图标。
+const (
+	jobStateDotSpinnerViewBox = 24
+	jobStateDotSpinnerCenter  = 12
+	jobStateDotSpinnerRadius  = 9.5
+	jobStateDotSpinnerStroke  = 2
+	jobStateDotSpinnerDash    = 18
+	jobStateDotSpinnerOffset  = -3
+	jobStateDotTrackAlpha     = 0.25
+)
+
+func jobStateDotOngoingIcon(tint gfx.Color) gfx.Icon {
+	circumference := 2 * math.Pi * jobStateDotSpinnerRadius
+	start := -jobStateDotSpinnerOffset / circumference * 360
+	sweep := jobStateDotSpinnerDash / circumference * 360
+	track := tint
+	track.Alpha *= jobStateDotTrackAlpha
+	return gfx.Icon{
+		ViewBox: jobStateDotSpinnerViewBox,
+		Stroke:  jobStateDotSpinnerStroke,
+		Cap:     gfx.CapRound,
+		Commands: jobStateDotArcCommands(jobStateDotSpinnerCenter, jobStateDotSpinnerCenter,
+			jobStateDotSpinnerRadius, float32(start), float32(sweep)),
+		Layers: []gfx.IconLayer{{
+			Fill: track, FillRule: gfx.PathFillEvenOdd,
+			Commands: jobStateDotRingCommands(jobStateDotSpinnerCenter, jobStateDotSpinnerCenter,
+				jobStateDotSpinnerRadius+jobStateDotSpinnerStroke/2,
+				jobStateDotSpinnerRadius-jobStateDotSpinnerStroke/2),
+		}},
+	}
+}
+
+// jobStateDotArcCommands 把官方 circle+dasharray 机械换算成静态弧，每段 ≤90°。
+func jobStateDotArcCommands(cx, cy, r, startDeg, sweepDeg float32) []gfx.PathCommand {
+	if sweepDeg <= 0 {
+		return nil
+	}
+	segments := int(math.Ceil(float64(sweepDeg / 90)))
+	step := sweepDeg / float32(segments)
+	angle := float64(startDeg) * math.Pi / 180
+	commands := make([]gfx.PathCommand, 0, segments*4)
+	commands = append(commands, gfx.MoveTo(
+		cx+r*float32(math.Cos(angle)), cy+r*float32(math.Sin(angle)),
+	))
+	for i := 0; i < segments; i++ {
+		a0, a1 := angle, angle+float64(step)*math.Pi/180
+		k := 4.0 / 3.0 * math.Tan((a1-a0)/4)
+		p0x, p0y := float64(cx)+float64(r)*math.Cos(a0), float64(cy)+float64(r)*math.Sin(a0)
+		p3x, p3y := float64(cx)+float64(r)*math.Cos(a1), float64(cy)+float64(r)*math.Sin(a1)
+		commands = append(commands, gfx.CubicTo(
+			float32(p0x-k*float64(r)*math.Sin(a0)), float32(p0y+k*float64(r)*math.Cos(a0)),
+			float32(p3x+k*float64(r)*math.Sin(a1)), float32(p3y-k*float64(r)*math.Cos(a1)),
+			float32(p3x), float32(p3y),
+		))
+		angle = a1
+	}
+	return commands
+}
+
+func jobStateDotRingCommands(cx, cy, outer, inner float32) []gfx.PathCommand {
+	commands := jobStateDotCircleCommands(cx, cy, outer)
+	return append(commands, jobStateDotCircleCommands(cx, cy, inner)...)
+}
+
+func jobStateDotCircleCommands(cx, cy, r float32) []gfx.PathCommand {
+	k := 0.5522847498 * r
+	return []gfx.PathCommand{
+		gfx.MoveTo(cx+r, cy),
+		gfx.CubicTo(cx+r, cy+k, cx+k, cy+r, cx, cy+r),
+		gfx.CubicTo(cx-k, cy+r, cx-r, cy+k, cx-r, cy),
+		gfx.CubicTo(cx-r, cy-k, cx-k, cy-r, cx, cy-r),
+		gfx.CubicTo(cx+k, cy-r, cx+r, cy-k, cx+r, cy),
+		gfx.ClosePath(),
 	}
 }

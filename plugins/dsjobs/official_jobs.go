@@ -38,47 +38,54 @@ const SlotSessionHeaderActions = pluginapi.Slot("conversation.session.header.act
 
 // 官方几何（`JobListAction.module.css`）。
 const (
-	jobsTriggerMinHeight  = 28 // .trigger{min-height:28px}
-	jobsTriggerPadV       = 3  // .trigger{padding:3px 2px}
-	jobsTriggerPadH       = 2
-	jobsTriggerGap        = 4  // .trigger{gap:4px}
-	jobsTriggerFont       = 12 // .trigger{font-size:12px;line-height:18px}
-	jobsTriggerLine       = 18
-	jobsActivitySlot      = 14                                 // .activitySlot{width:14px;height:14px}
-	jobsMenuWidth         = 500                                // .menu{width:500px}
-	jobsMenuMaxWidth      = 560                                // max-width:min(560px,100vw-32px)
-	jobsMenuMaxHeight     = 480                                // max-height:min(480px,100dvh-140px)
-	jobsMenuPad           = 4                                  // .menuBody{padding:4px}
-	jobsMenuGap           = 1                                  // .menuBody{gap:1px}
-	jobsMenuRadius        = 12                                 // MenuSurface 的 radius md
-	jobsMenuTopOffset     = 5                                  // top: calc(anchor(bottom) + 5px)
-	jobsMenuWindowInset   = 16                                 // max-width 的 100vw-32px = 两侧 16
-	jobsMenuHeaderBase    = 10 + 30/2 + jobsTriggerMinHeight/2 // header padding-top 10 + titleRow 30 + 触发器 28
-	jobsSectionMarginTop  = 4                                  // .sectionHeader{margin:4px 4px 1px}
-	jobsSectionMarginSide = 4
-	jobsSectionPadTop     = 4 // .sectionHeader{padding:4px 0 3px}
-	jobsSectionPadBottom  = 3
-	jobsSectionFont       = 11 // .sectionHeader{font-size:11px;line-height:16px}
-	jobsSectionLine       = 16
-	jobsToggleGap         = 3 // .sectionToggle/.sectionClear{gap:3px;padding:2px 4px}
-	jobsTogglePadV        = 2
-	jobsTogglePadH        = 4
-	jobsRowLineGap        = 6 // .rowLine{gap:6px}
-	jobsRowLivePadV       = 4 // .rowLineLive{padding:4px 8px 4px 2px}
-	jobsRowLivePadH       = 8
-	jobsRowLivePadL       = 2
-	jobsRowMinHeight      = 28 // .row{min-height:28px;padding:4px 7px}
-	jobsRowPadV           = 4
-	jobsRowPadH           = 7
-	jobsRowGap            = 6 // .row{gap:6px;font-size:12px;line-height:17px}
-	jobsRowFont           = 12
-	jobsRowLine           = 17
-	jobsChevronBox        = 20  // .chevronBox{width:20px;height:20px}
-	jobsChevronIcon       = 12  // IconChevronDownOutlineRegular size={12}
-	jobsTerminalMaxH      = 288 // .panel --dsl-terminal-output-max-height:288px
-	jobsTerminalGutter    = 12  // .panel [data-terminal]{--dsl-terminal-gutter:12px}
-	jobsNoticeFont        = 11  // .notice{font-size:11px;line-height:16px}
-	jobsNoticeLine        = 16
+	jobsTriggerMinHeight         = 28 // .trigger{min-height:28px}
+	jobsTriggerPadV              = 3  // .trigger{padding:3px 2px}
+	jobsTriggerPadH              = 2
+	jobsTriggerGap               = 4  // .trigger{gap:4px}
+	jobsTriggerFont              = 12 // .trigger{font-size:12px;line-height:18px}
+	jobsTriggerLine              = 18
+	jobsActivitySlot             = 14  // .activitySlot{width:14px;height:14px}（:26-33）
+	jobsTriggerCompactBreakpoint = 460 // @container(max-width:460px)（:39）
+	jobsTriggerCompactSize       = 28  // compact .trigger{width/height:28px}（:52-59）
+	jobsTriggerCompactSlot       = 15  // compact .activitySlot及svg{width/height:15px}（:61-65）
+	jobsMenuWidth                = 500 // .menu{width:500px}（:90）
+	jobsMenuMaxWidth             = 560 // max-width:min(560px,100vw-32px)（:91）
+	jobsMenuMaxHeight            = 480 // max-height:min(480px,100dvh-140px)（:92）
+	jobsMenuViewportInset        = 140
+	jobsMenuPad                  = 4                                  // .menuBody{padding:4px}（:111-120）
+	jobsMenuGap                  = 1                                  // .menuBody{gap:1px}
+	jobsMenuRadius               = 12                                 // MenuSurface 的 radius md
+	jobsMenuTopOffset            = 5                                  // top:calc(anchor(bottom)+5px)（:99）
+	jobsMenuWindowInset          = 16                                 // max-width 的 100vw-32px = 两侧 16
+	jobsMenuRight                = 12                                 // .menu{right:12px}（:102）
+	jobsMenuHeaderBase           = 10 + 30/2 + jobsTriggerMinHeight/2 // header padding-top 10 + titleRow 30 + 触发器 28
+	jobsSectionMarginTop         = 4                                  // .sectionHeader{margin:4px 4px 1px}（:123-133）
+	jobsSectionMarginSide        = 4
+	jobsSectionMarginBottom      = 1
+	jobsSectionBorder            = 0.5 // border-top:0.5px solid border-l1
+	jobsSectionPadTop            = 4   // .sectionHeader{padding:4px 0 3px}
+	jobsSectionPadBottom         = 3
+	jobsSectionFont              = 11 // .sectionHeader{font-size:11px;line-height:16px}
+	jobsSectionLine              = 16
+	jobsToggleGap                = 3 // .sectionToggle/.sectionClear{gap:3px;padding:2px 4px}
+	jobsTogglePadV               = 2
+	jobsTogglePadH               = 4
+	jobsRowLineGap               = 6 // .rowLine{gap:6px}
+	jobsRowLivePadV              = 4 // .rowLineLive{padding:4px 8px 4px 2px}
+	jobsRowLivePadH              = 8
+	jobsRowLivePadL              = 2
+	jobsRowMinHeight             = 28 // .row{min-height:28px;padding:4px 7px}
+	jobsRowPadV                  = 4
+	jobsRowPadH                  = 7
+	jobsRowGap                   = 6 // .row{gap:6px;font-size:12px;line-height:17px}
+	jobsRowFont                  = 12
+	jobsRowLine                  = 17
+	jobsChevronBox               = 20  // .chevronBox{width:20px;height:20px}
+	jobsChevronIcon              = 12  // IconChevronDownOutlineRegular size={12}
+	jobsTerminalMaxH             = 288 // .panel --dsl-terminal-output-max-height:288px
+	jobsTerminalGutter           = 12  // .panel [data-terminal]{--dsl-terminal-gutter:12px}
+	jobsNoticeFont               = 11  // .notice{font-size:11px;line-height:16px}
+	jobsNoticeLine               = 16
 )
 
 // 官方文案（zh 字典逐字；`ui-jobs/src/client/locales.ts`）。
@@ -162,23 +169,33 @@ func (p *Plugin) drawTrigger(f ui.C, env *pluginapi.Env) {
 	}
 	label := countLabel(count)
 	id := env.Tree.ID(env.Feat, "jobs-trigger")
-	row := ui.Row(f).MinHeight(jobsTriggerMinHeight).Items(ui.Center).
-		Gap(jobsTriggerGap).
-		PadSides(jobsTriggerPadV, jobsTriggerPadH, jobsTriggerPadV, jobsTriggerPadH).
-		Radius(t.Radii.SM).
-		Hit(id, label).Children(func() {
-		ui.Row(f).Size(jobsActivitySlot, jobsActivitySlot).Items(ui.Center).
+	// Viva 没有 container query；Env.Bounds 是当前分发容器可用的唯一宽度。
+	compact := env.Bounds.Width > 0 && env.Bounds.Width <= jobsTriggerCompactBreakpoint
+	activitySize := float32(jobsActivitySlot)
+	color := t.LabelTertiary
+	trigger := ui.Row(f).Items(ui.Center).Gap(jobsTriggerGap).Radius(t.Radii.SM)
+	if compact {
+		activitySize = jobsTriggerCompactSlot
+		color = t.LabelSecondary
+		trigger = trigger.Size(jobsTriggerCompactSize, jobsTriggerCompactSize).
+			PadSides(0, 0, 0, 0).Justify(ui.Center)
+	} else {
+		trigger = trigger.MinHeight(jobsTriggerMinHeight).
+			PadSides(jobsTriggerPadV, jobsTriggerPadH, jobsTriggerPadV, jobsTriggerPadH)
+	}
+	row := trigger.Hit(id, label).Children(func() {
+		ui.Row(f).Size(activitySize, activitySize).Items(ui.Center).
 			Justify(ui.Center).Children(func() {
-			if len(liveRows) > 0 {
-				// 官方 `.textModeActivity`: 有活任务时活动槽画 ongoing 状态点。
-				p.prims.Dot(f, t.Link, 6)
+			if len(liveRows) > 0 && !compact {
+				// 官方 textModeActivity：14px ongoing spinner；compact 始终显示 layers。
+				drawJobStateDot(f, t, pluginapi.Job{})
 				return
 			}
-			ui.Icon(f, layersIcon()).Size(jobsActivitySlot-2, jobsActivitySlot-2).
-				Color(t.LabelTertiary)
+			ui.Icon(f, layersIcon()).Size(activitySize, activitySize).Color(color)
 		})
-		ui.Text(f, label).FontSize(jobsTriggerFont).LineHeight(jobsTriggerLine).
-			Color(t.LabelTertiary)
+		if !compact {
+			ui.Text(f, label).FontSize(jobsTriggerFont).LineHeight(jobsTriggerLine).Color(color)
+		}
 	})
 	if row.Clicked() {
 		p.toggleOpen()
@@ -225,14 +242,19 @@ func (p *Plugin) drawPanel(f ui.C, env *pluginapi.Env, _ func(pluginapi.Slot)) {
 	// 官方 `top: max(12px, anchor(bottom)+5px)`：触发器的 bottom = header
 	// padding-top 10 + titleRow 30/2 + 触发器 28/2 = 39，加 5。
 	top := float32(jobsMenuHeaderBase + jobsMenuTopOffset)
+	maxHeight := float32(jobsMenuMaxHeight)
 	if env.Bounds.Height > 0 {
-		if limit := env.Bounds.Height - 140; limit > 0 && float32(jobsMenuMaxHeight) > limit {
-			// max-height: min(480px, 100dvh-140px)
+		viewportMax := env.Bounds.Height - jobsMenuViewportInset
+		if viewportMax < maxHeight {
+			maxHeight = viewportMax
 		}
 	}
+	if maxHeight < 0 {
+		maxHeight = 0
+	}
 
-	panel := ui.Column(f).Absolute().Top(top).Right(float32(jobsMenuWindowInset)).
-		Width(width).MaxHeight(jobsMenuMaxHeight).Radius(jobsMenuRadius).
+	panel := ui.Column(f).Absolute().Top(top).Right(float32(jobsMenuRight)).
+		Width(width).MaxHeight(maxHeight).Radius(jobsMenuRadius).
 		Background(t.BgLayer1).Border(1, t.BorderL2).Shadow(gfx.ShadowMD).
 		Pad(jobsMenuPad)
 	// 面板本体吃掉点击：点菜单里面不关（只有菜单外 pointerdown 才关）。
@@ -261,36 +283,40 @@ func (p *Plugin) drawPanel(f ui.C, env *pluginapi.Env, _ func(pluginapi.Slot)) {
 func (p *Plugin) drawSettledHeader(f ui.C, env *pluginapi.Env, count int, settledRows []pluginapi.Job, defaultOpen bool) {
 	t := p.theme
 	open := p.settledExpanded(defaultOpen)
-	ui.Row(f).FillWidth().Items(ui.Center).Justify(ui.Between).
-		MarginSides(jobsSectionMarginTop, jobsSectionMarginSide, 0, jobsSectionMarginSide).
-		PadSides(jobsSectionPadTop, 0, jobsSectionPadBottom, 0).Children(func() {
-		toggleID := env.Tree.ID(env.Feat, "jobs-settled-toggle")
-		label := strings.Replace(zhSectionSettled, "%d", itoa(count), 1)
-		toggle := ui.Row(f).Items(ui.Center).Gap(jobsToggleGap).
-			PadSides(jobsTogglePadV, jobsTogglePadH, jobsTogglePadV, jobsTogglePadH).
-			Radius(t.Radii.SM).Hit(toggleID, label).Children(func() {
-			glyph := "▸"
-			if open {
-				glyph = "▾"
+	ui.Column(f).FillWidth().
+		MarginSides(jobsSectionMarginTop, jobsSectionMarginSide, jobsSectionMarginBottom, jobsSectionMarginSide).
+		Children(func() {
+			// 有活任务行时段头不是 :first-child，保留官方 0.5px 顶分隔线。
+			if !defaultOpen {
+				ui.Row(f).FillWidth().Height(jobsSectionBorder).Background(t.BorderL1)
 			}
-			ui.Text(f, glyph).FontSize(jobsChevronIcon).Color(t.LabelTertiary)
-			ui.Text(f, label).FontSize(jobsSectionFont).LineHeight(jobsSectionLine).
-				Color(t.LabelTertiary)
+			ui.Row(f).FillWidth().Items(ui.Center).Justify(ui.Between).
+				PadSides(jobsSectionPadTop, 0, jobsSectionPadBottom, 0).Children(func() {
+				toggleID := env.Tree.ID(env.Feat, "jobs-settled-toggle")
+				label := strings.Replace(zhSectionSettled, "%d", itoa(count), 1)
+				toggle := ui.Row(f).Items(ui.Center).Gap(jobsToggleGap).
+					PadSides(jobsTogglePadV, jobsTogglePadH, jobsTogglePadV, jobsTogglePadH).
+					Radius(t.Radii.SM).Hit(toggleID, label).Children(func() {
+					ui.Icon(f, jobSectionChevronIcon(open)).Size(jobsChevronIcon, jobsChevronIcon).
+						Color(t.LabelTertiary)
+					ui.Text(f, label).FontSize(jobsSectionFont).LineHeight(jobsSectionLine).
+						Color(t.LabelTertiary)
+				})
+				if toggle.Clicked() {
+					p.toggleSettled(open)
+				}
+				clearID := env.Tree.ID(env.Feat, "jobs-settled-clear")
+				clear := ui.Row(f).Items(ui.Center).
+					PadSides(jobsTogglePadV, jobsTogglePadH, jobsTogglePadV, jobsTogglePadH).
+					Radius(t.Radii.SM).Hit(clearID, zhSectionClear).Children(func() {
+					ui.Text(f, zhSectionClear).FontSize(jobsSectionFont).LineHeight(jobsSectionLine).
+						Color(t.LabelTertiary)
+				})
+				if clear.Clicked() {
+					p.clearSettled(settledRows)
+				}
+			})
 		})
-		if toggle.Clicked() {
-			p.toggleSettled(open)
-		}
-		clearID := env.Tree.ID(env.Feat, "jobs-settled-clear")
-		clear := ui.Row(f).Items(ui.Center).
-			PadSides(jobsTogglePadV, jobsTogglePadH, jobsTogglePadV, jobsTogglePadH).
-			Radius(t.Radii.SM).Hit(clearID, zhSectionClear).Children(func() {
-			ui.Text(f, zhSectionClear).FontSize(jobsSectionFont).LineHeight(jobsSectionLine).
-				Color(t.LabelTertiary)
-		})
-		if clear.Clicked() {
-			p.clearSettled(settledRows)
-		}
-	})
 }
 
 // drawOfficialItem 画一行（官方 JobItem：rowLine + 可选输出面板）。
@@ -298,7 +324,8 @@ func (p *Plugin) drawOfficialItem(f ui.C, env *pluginapi.Env, j pluginapi.Job, i
 	t := p.theme
 	key := jobKey(j)
 	id := env.Tree.ID(env.Feat, "jobs-row-"+key)
-	clickable := env.Act.JobsOutput != nil && j.SessionID != ""
+	// 官方 isObservable：活任务总能展开；已结束任务仅在留有输出时展开。
+	clickable := env.Act.JobsOutput != nil && j.SessionID != "" && (isLive || j.Bytes > 0)
 
 	line := ui.Row(f).FillWidth().Items(ui.Center).Gap(jobsRowLineGap)
 	if isLive {
@@ -307,23 +334,26 @@ func (p *Plugin) drawOfficialItem(f ui.C, env *pluginapi.Env, j pluginapi.Job, i
 			Radius(t.Radii.MD).Background(t.BgLayer2)
 	}
 	line.Children(func() {
-		row := ui.Row(f).Grow(1).MinHeight(jobsRowMinHeight).Items(ui.Center).
+		rowRadius := t.Radii.MD
+		if isLive {
+			rowRadius = t.Radii.SM // .rowLineLive .row{border-radius:radius-sm}（:226-228）
+		}
+		row := ui.Row(f).Grow(1).MinWidth(0).MinHeight(jobsRowMinHeight).Items(ui.Center).
 			Gap(jobsRowGap).PadSides(jobsRowPadV, jobsRowPadH, jobsRowPadV, jobsRowPadH).
-			Radius(t.Radii.MD).Hit(id, shortCmd(j.Command)).Children(func() {
-			p.prims.Dot(f, dotColor(t, j), jobDotSize)
+			Radius(rowRadius).Hit(id, shortCmd(j.Command)).Children(func() {
+			drawJobStateDot(f, t, j)
 			// `.label` 是等宽、单行省略；`.status` 是 10/16 tertiary。
 			ui.Text(f, shortCmd(j.Command)).FontSize(jobsRowFont).LineHeight(jobsRowLine).
 				Mono().Color(labelColor(t, isLive)).Grow(1).Ellipsis()
-			ui.Text(f, statusLabel(j)).FontSize(10).LineHeight(16).
-				Color(statusColor(t, j))
-			if j.Done && j.Bytes > 0 {
-				ui.Text(f, sizeLabel(j.Bytes)).FontSize(jobsNoticeFont).
-					LineHeight(16).Color(t.LabelTertiary)
+			// 活任务 secondary 只放 detail/kind/duration；宿主均无真值，不能用状态文字补位。
+			if !isLive {
+				ui.Text(f, statusLabel(j)).FontSize(10).LineHeight(16).
+					Color(statusColor(t, j))
+			}
+			if clickable {
+				p.drawChevronBox(f, key)
 			}
 		})
-		if clickable {
-			p.drawChevronBox(f, env, key)
-		}
 		if clickable && row.Clicked() {
 			p.toggleExpanded(key)
 		}
@@ -344,26 +374,16 @@ func labelColor(t *pluginapi.Theme, isLive bool) ui.Color {
 	return t.LabelTertiary
 }
 
-// drawChevronBox 画 `.chevronBox`（20×20 描边方块 + 折叠箭头）。
-//
-// 官方是 `IconChevronDownOutlineRegular size={12}` 加 CSS `rotate(-90deg/0)`；
-// viva 的 gfx.Icon 没有旋转变换，这里用同尺寸的三角形文字代替，
-// **登记为 deviation**（方块尺寸/命中区/描边一致）。
-func (p *Plugin) drawChevronBox(f ui.C, env *pluginapi.Env, key string) {
+// drawChevronBox 画 `.chevronBox`（20×20、0.5px 描边 + 官方 12px chevron）。
+// 它在官方 DOM 里是 row button 内的 span，不另设命中区，避免一次点击触发两次展开。
+func (p *Plugin) drawChevronBox(f ui.C, key string) {
 	t := p.theme
-	glyph := "▸"
-	if p.expandedKey() == key {
-		glyph = "▾"
-	}
-	id := env.Tree.ID(env.Feat, "jobs-chevron-"+key)
-	box := ui.Row(f).Size(jobsChevronBox, jobsChevronBox).Items(ui.Center).
-		Justify(ui.Center).Radius(t.Radii.SM).Border(1, t.BorderL2).
-		Background(t.BgLayer1).Hit(id, zhJobsTitle).Children(func() {
-		ui.Text(f, glyph).FontSize(jobsChevronIcon).Color(t.LabelTertiary)
+	ui.Row(f).Size(jobsChevronBox, jobsChevronBox).Items(ui.Center).
+		Justify(ui.Center).Radius(t.Radii.SM).Border(jobStopBorder, t.BorderL2).
+		Background(t.BgLayer1).Children(func() {
+		ui.Icon(f, jobRowChevronIcon(p.expandedKey() == key)).
+			Size(jobsChevronIcon, jobsChevronIcon).Color(t.LabelTertiary)
 	})
-	if box.Clicked() {
-		p.toggleExpanded(key)
-	}
 }
 
 // drawOfficialStop 画官方两段式停止钮（.stop → .stopArmed）。
@@ -373,26 +393,27 @@ func (p *Plugin) drawOfficialStop(f ui.C, env *pluginapi.Env, j pluginapi.Job) {
 	armed := p.armedFor(key)
 	id := env.Tree.ID(env.Feat, "jobs-stop-"+key)
 	border := t.BorderL2
+	background := t.BgLayer1
 	if armed {
-		border = t.Error
+		border = jobErrorMix(t.Error, jobStopArmBorderMix)
+		background = jobErrorMix(t.Error, jobStopArmBgMix)
 	}
-	label := zhStopLabel
+	box := ui.Row(f).Items(ui.Center).Justify(ui.Center).Gap(jobStopArmGap)
 	if armed {
-		label = zhStopConfirm
+		// 确认态保留 stop 图标并扩成文字 pill：width:auto、padding:0 7px。
+		box = box.MinHeight(jobStopBox).PadSides(0, jobStopArmPadH, 0, jobStopArmPadH)
+	} else {
+		// 空闲态是固定 20×20、padding:0 的图标钮。
+		box = box.Size(jobStopBox, jobStopBox).PadSides(0, 0, 0, 0)
 	}
-	box := ui.Row(f).MinHeight(jobsChevronBox).Items(ui.Center).Gap(jobsTriggerGap).
-		Radius(t.Radii.SM).Border(1, border).Background(t.BgLayer1).
-		PadSides(0, jobsRowPadH, 0, jobsRowPadH).
-		Hit(id, zhStopTitle+" "+shortCmd(j.Command)).Children(func() {
+	box = box.Radius(t.Radii.SM).Border(jobStopBorder, border).Background(background).
+		Hit(id, zhStopTitle+" "+shortCmd(j.Command))
+	box.Children(func() {
+		ui.Icon(f, stopIcon()).Size(10, 10).Color(stopColor(t, armed))
 		if armed {
-			ui.Text(f, label).FontSize(jobStopFont).LineHeight(18).Color(t.Error)
-			return
+			ui.Text(f, zhStopConfirm).FontSize(jobStopFont).LineHeight(jobStopLine).Color(t.Error)
 		}
-		ui.Icon(f, stopIcon()).Size(10, 10).Color(stopColor(t, false))
 	})
-	if armed {
-		box.Background(t.BgLayer2)
-	}
 	if box.Clicked() {
 		if p.takeArmed(key) {
 			env.Act.JobsStop(j.SessionID, j.ID)
@@ -494,7 +515,7 @@ func (p *Plugin) expandedKey() string {
 	return p.expanded
 }
 
-// drawOutputWithHeight 是输出块的带高度版本（弹层用官方 288，侧栏用 220）。
+// drawOutputWithHeight 是输出块的带高度版本（官方弹层为 288px）。
 func (p *Plugin) drawOutputWithHeight(f ui.C, env *pluginapi.Env, j pluginapi.Job, maxH float32) {
 	p.drawOutputBlock(f, env, j, maxH, jobsTerminalGutter)
 }

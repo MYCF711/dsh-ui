@@ -239,8 +239,8 @@ func TestGeometryMatchesOfficialSpec(t *testing.T) {
 		"groupRowHeight":   {groupRowHeight, 32},   // rc.2 Rows.module.css:112-116 .projectRow{height:32px}
 		"rowGap":           {rowGap, 2},            // .GAkraW_flatList>*+*{margin-top:2px}
 		"groupGap":         {groupGap, 4},          // .GAkraW_groupSection+.GAkraW_groupSection{margin-top:4px}
-		"searchHeight":     {searchHeight, 30},     // .GAkraW_searchExpanded{height:30px}
-		"sidebarInline":    {sidebarInline, 12},    // --dsh-sidebar-inline-padding:12px
+		"searchHeight":     {searchHeight, 32},     // WorkspaceBrowser.module.css:200-209
+		"sidebarInline":    {sidebarInline, 8},     // SidebarRoot.module.css:9-18
 		"indentStep":       {indentStep, 12},       // --dsh-workspace-indent: depth * 12px
 		"slotWidth":        {slotWidth, 16},        // .wnFoaW_slot{width:16px}
 		"slotHeight":       {slotHeight, 20},       // .wnFoaW_slot{height:20px}

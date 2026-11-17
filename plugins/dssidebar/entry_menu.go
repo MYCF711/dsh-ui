@@ -31,17 +31,13 @@ package dssidebar
 //
 // # 与官方的两处登记在案的差异
 //
-//  1. **More 行的图标不画**：官方 `apps-add-outline` 由 3 个 `<rect rx=1>` + 1 条
-//     路径组成，圆角矩形需要椭圆弧，而 viva 的路径词汇只有 M/L/Q/C/Z（`gfx.PathCommandKind`），
-//     `plugins/dsassets` 对这类素材一律 `Unsupported`（同 `copy` / `branch`
-//     两条素材的处理）。按仓规不画近似形状，所以这一行只有文案。
+//  1. **More 行用官方复合素材**：3 个圆角矩形由 Viva Border/Radius 实画，
+//     加号路径由 dsassets 逐字解析，不用字体 glyph 或贝塞尔近似。
 //  2. **行尾取消固定按钮恒显示**：官方 `.panelUnpin{opacity:0}` 只在
 //     `.panelEntry:hover` 时淡入（SidebarRoot.module.css:660-671）。viva 的
 //     `Box` 没有"本帧是否悬停"的读口，因此按 caption 色常显（不冒充 hover 态）。
 //
-// 行高用本包既有的 `panelRowHeight`（36；官方 rc.2 `.panelRow{min-height:32}`，
-// 本包的历史偏差，`frame_test.go` 已登记）——More 行必须与它同档，否则列表里
-// 会多出一条更矮的行。
+// 行高与面板行共用官方 `.panelRow{min-height:32}`（frame.go 的 panelRowHeight）。
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/entrypins"
@@ -136,14 +132,17 @@ func (p *Plugin) entryMenuEntries() []pluginapi.EntryMenuEntry {
 // drawPanelMoreRow 画官方 `PanelMoreMenu` 的锚点行（不含菜单面）。
 //
 // `wide` 在本仓是常真（Windows 档侧栏收起即整列消失，没有 56px 图标轨），
-// 所以文案恒画；图标不画（见文件头差异 1）。
+// 所以图标与文案都按展开档 16px 实画。
 func (p *Plugin) drawPanelMoreRow(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	var row ui.Box
-	ui.Row(f).FillWidth().PadSides(0, 2, 0, 2).Children(func() {
+	ui.Row(f).FillWidth().Children(func() {
 		row = p.prims.ListRow(f, env.Tree.ID(env.Feat, "panel-more"), p.entryMenu.open, panelRowHeight, func() {
+			ui.Row(f).Width(16).Height(22).Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
+				drawAppsAddIcon(f, t.LabelSecondary, 16)
+			})
 			ui.Text(f, zhPanelsMore).FontSize(t.Fonts.Body).LineHeight(22).
-				Color(t.LabelPrimary).MarginSides(0, 0, 0, 8).Ellipsis()
+				Color(t.LabelPrimary).MarginSides(0, 0, 0, 6).Ellipsis()
 		})
 	})
 	p.entryMenu.row, p.entryMenu.rowDrawn = row, true

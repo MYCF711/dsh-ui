@@ -1,15 +1,13 @@
 // search_result_test.go —— 官方 `searchResultRow`（48px 搜索结果卡）的规格测试。
 //
-// 官方原文（`tmp/official/dsh-client-ui-workspace/client.js`，模块 hash `wnFoaW`）：
+// 官方原文（rc.2 `ui-workspace/src/client/rows/Rows.module.css`）：
 //
-//	.wnFoaW_searchResultRow{box-sizing:border-box;border-radius:var(--dsw-radius-lg);
-//	  cursor:pointer;text-align:left;width:100%;min-height:48px;
-//	  color:var(--dsw-alias-label-primary);background:0 0;border:none;
-//	  flex-direction:column;align-items:stretch;padding:4px 8px;display:flex}
-//	.wnFoaW_searchResultRow:hover,.wnFoaW_searchResultRow.wnFoaW_selected{
-//	  background:var(--dsw-alias-interactive-bg-hover)}
-//	.wnFoaW_searchResultMeta{align-items:center;gap:6px;min-width:0;
-//	  margin-left:20px;display:flex}
+//	.searchResultRow{border-radius:var(--dsw-radius-lg);min-height:48px;
+//	  padding:4px calc(12px - 3px);border-inline:3px solid transparent;
+//	  flex-direction:column;align-items:stretch;display:flex}
+//	.searchResultRow:hover,.searchResultRow.selected{background:var(--dsw-alias-interactive-bg-hover)}
+//	.searchResultMeta{align-items:center;gap:6px;min-width:0;
+//	  margin-left:calc(16px + var(--dsh-sidebar-label-gap));display:flex}
 //	Rows.module.css:66-75 .searchResultTitle{margin:0 var(--dsh-sidebar-label-gap);
 //	  font-size:14px;line-height:20px;…}（rc.2 label-gap=6）
 //	.wnFoaW_searchResultWorkspace,.wnFoaW_searchResultSnippet{…;
@@ -94,24 +92,25 @@ func drawSearchList(t *testing.T) (*Plugin, *v2RecordingPrimitives, *pluginapi.E
 func TestSearchModeDraws48pxResultCards(t *testing.T) {
 	p, rec, _, _, _, _ := drawSearchList(t)
 
-	if len(rec.rows) != 3 {
-		t.Fatalf("搜索命中三条，实际画了 %d 行", len(rec.rows))
+	cards := p.frameBoxes.SearchCards
+	if len(cards) != 3 {
+		t.Fatalf("搜索命中三条，实际画了 %d 行", len(cards))
 	}
-	for i, row := range rec.rows {
-		rect := row.box.Rect()
-		if row.height != 48 || rect.Height != 48 {
-			t.Fatalf("第 %d 张结果卡高度 = %v/%v，官方 .wnFoaW_searchResultRow{min-height:48px}",
-				i, row.height, rect.Height)
+	for i, card := range cards {
+		rect := card.Rect()
+		if rect.Height != 48 {
+			t.Fatalf("第 %d 张结果卡高度 = %v，官方 searchResultRow{min-height:48px}", i, rect.Height)
 		}
-		if rect.Width != 268 {
-			t.Fatalf("第 %d 张结果卡宽度 = %v，want 268（侧栏内宽 = 280-12）", i, rect.Width)
+		if rect.X != 3 || rect.Width != 262 {
+			t.Fatalf("第 %d 张结果卡 x/宽 = %v/%v，want 3/262（268 - 左右各 3px paint inset）",
+				i, rect.X, rect.Width)
 		}
 	}
 	if len(rec.headers) != 0 {
 		t.Fatalf("搜索态是平铺的结果树，不该画工作区分组头，实际画了 %d 个", len(rec.headers))
 	}
-	if len(rec.rows) > 1 {
-		first, second := rec.rows[0].box.Rect(), rec.rows[1].box.Rect()
+	if len(cards) > 1 {
+		first, second := cards[0].Rect(), cards[1].Rect()
 		if got := second.Y - (first.Y + first.Height); got != 2 {
 			t.Fatalf("结果卡间距 = %v，官方 .GAkraW_searchTree>[role=treeitem]+[role=treeitem]{margin-top:2px}", got)
 		}
@@ -280,7 +279,7 @@ func TestSearchResultsKeepTruthOnly(t *testing.T) {
 }
 
 // TestSearchResultCardInnerGeometry 用真实 flex 矩形量卡片内部：
-// 标题行 20、元信息行 17、元信息左缩进 20（对齐标题文字）、
+// 标题行 20、元信息行 17、元信息左缩进 22（16+6，与标题文字对齐）、
 // workspace 上限 = 只有它自己时 100%（官方 `:only-child`）、与片段并排时 40%。
 func TestSearchResultCardInnerGeometry(t *testing.T) {
 	draw := func(hasSnippet bool) searchCardBoxes {
@@ -323,15 +322,13 @@ func TestSearchResultCardInnerGeometry(t *testing.T) {
 	if got := boxes.Meta.Rect().Y - boxes.Heading.Rect().Y; got != 20 {
 		t.Fatalf("标题行到元信息行 = %v，want 20（两行紧挨）", got)
 	}
-	// 标题左边 = 卡片内边距 8 + 图标槽 16 + rc.2 label-gap 6：
-	// Rows.module.css:66-75 margin:0 var(--dsh-sidebar-label-gap)；变量值见
-	// SidebarRoot.module.css:7-11（rc.2 = 6px）。
-	if got := boxes.Title.Rect().X - card.X; got != 30 {
-		t.Fatalf("标题左偏移 = %v，want 30（8+16+6）", got)
+	// 标题左边 = 左内边距 9（12-3）+ 图标槽 16 + rc.2 label-gap 6。
+	if got := boxes.Title.Rect().X - card.X; got != 31 {
+		t.Fatalf("标题左偏移 = %v，want 31（9+16+6）", got)
 	}
-	// 元信息左边 = 卡片内边距 8 + 官方 .searchResultMeta{margin-left:20px}
-	if got := boxes.Meta.Rect().X - card.X; got != 28 {
-		t.Fatalf("元信息左偏移 = %v，want 28（8+20）", got)
+	// 元信息左边 = 左内边距 9 + 官方 margin-left:calc(16px + 6px)=22。
+	if got := boxes.Meta.Rect().X - card.X; got != 31 {
+		t.Fatalf("元信息左偏移 = %v，want 31（9+22）", got)
 	}
 	if got := card.Y + card.Height - (boxes.Meta.Rect().Y + boxes.Meta.Rect().Height); got < 4 {
 		t.Fatalf("卡片底部留白 = %v，官方 padding-bottom 4px", got)

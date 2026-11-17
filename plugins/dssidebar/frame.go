@@ -6,6 +6,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/entrypins"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -20,19 +21,22 @@ const (
 	brandNameHeight        = 24
 	brandNameFontSize      = 18
 	brandNameLineHeight    = 24
-	brandGap               = 8
+	brandGap               = 5  // SidebarRoot.module.css:279-285
+	brandPaddingLeft       = 8  // SidebarRoot.module.css:64-66（Windows 展开态）
+	brandMarkOffsetX       = 1  // SidebarRoot.module.css:72-74
 	brandBadgeWidth        = 46 // 官方 wordmark badge clip rect
 	brandBadgeHeight       = 14
 	newSessionHeight       = 38
-	newSessionMarginTop    = 8
-	newSessionMarginBottom = 12
+	newSessionMarginTop    = 6  // SidebarRoot.module.css:84-86（Windows）
+	newSessionMarginInline = 4  // SidebarRoot.module.css:430：paint-inset 3 + 1
+	panelListTop           = 12 // scrollRegion margin-top 4 + scrollArea 首行 8（:533-555）
 	newSessionFontSize     = 14
 	newSessionLineHeight   = 22
-	panelRowHeight         = 36
+	panelRowHeight         = 32 // SidebarRoot.module.css:685-703
 	panelListGap           = 2
 	panelListBottom        = 8
 	workspaceHeaderHeight  = 36
-	workspaceHeaderBottom  = 4
+	workspaceHeaderBottom  = 0 // WorkspaceBrowser.module.css:66-79：--workspace-toolbar-gap:0
 	workspaceIconSize      = 28
 
 	// dsshell 在两个 sidebar slot 之间固定放 8+1+8=17px。
@@ -54,6 +58,7 @@ type frameBoxes struct {
 	WorkspaceHeader ui.Box
 	SearchButton    ui.Box
 	Search          ui.Box
+	SearchCards     []ui.Box
 	ActivePanel     ui.Box
 }
 
@@ -97,9 +102,11 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 	p.frameBoxes.PanelRows = p.frameBoxes.PanelRows[:0]
 	ui.Column(f).FillWidth().Children(func() {
 		p.frameBoxes.Brand = ui.Row(f).FillWidth().Height(logoRowHeight).Items(ui.Center).Children(func() {
-			p.frameBoxes.BrandIdentity = ui.Row(f).Height(brandIdentityHeight).Gap(brandGap).Items(ui.Center).Children(func() {
+			p.frameBoxes.BrandIdentity = ui.Row(f).Height(brandIdentityHeight).Gap(brandGap).
+				MarginSides(1, 0, -1, brandPaddingLeft).Items(ui.Center).Children(func() {
 				p.frameBoxes.BrandMark = ui.Icon(f, fishIcon()).Width(brandMarkSize).
-					Height(brandMarkSize * fishAspect(fishViewBoxW, fishViewBoxH)).Color(t.LabelPrimary)
+					Height(brandMarkSize*fishAspect(fishViewBoxW, fishViewBoxH)).
+					MarginSides(0, 0, 0, brandMarkOffsetX).Color(t.LabelPrimary)
 				p.frameBoxes.BrandName = ui.Row(f).Width(brandNameWidth).Height(brandNameHeight).
 					Gap(6).Items(ui.Center).Children(func() {
 					ui.Text(f, "deepseek").FontSize(brandNameFontSize).LineHeight(brandNameLineHeight).
@@ -117,11 +124,12 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 
 		newBox := ui.Row(f).FillWidth().Height(newSessionHeight).Radius(t.Radii.MD).
 			Background(t.BgLayer2).Border(0.5, t.BorderL3).Hover(ui.Look{}.Background(t.Hover)).
-			MarginSides(newSessionMarginTop, 2, newSessionMarginBottom, 2).
+			MarginSides(newSessionMarginTop, newSessionMarginInline, 0, newSessionMarginInline).
 			Items(ui.Center).Justify(ui.Center).Hit(env.Tree.ID(env.Feat, "new-session"), "新建会话").Children(func() {
 			ui.Row(f).Items(ui.Center).Gap(6).Children(func() {
-				ui.Text(f, "+").FontSize(newSessionFontSize).LineHeight(newSessionLineHeight).
-					Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+				if icon, ok := dsassets.SidebarNewChatMedium(t.LabelPrimary); ok {
+					ui.Icon(f, icon).Size(14, 14).Color(t.LabelPrimary)
+				}
 				ui.Text(f, "新会话").FontSize(newSessionFontSize).LineHeight(newSessionLineHeight).
 					Weight(gfx.WeightMedium).Color(t.LabelPrimary)
 			})
@@ -143,7 +151,7 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 			return
 		}
 		p.frameBoxes.PanelList = ui.Column(f).FillWidth().Gap(panelListGap).
-			MarginSides(0, 0, panelListBottom, 0).Children(func() {
+			MarginSides(panelListTop, 0, panelListBottom, 0).Children(func() {
 			for _, route := range routes {
 				route := route
 				var row ui.Box
@@ -151,21 +159,23 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 					row = p.prims.ListRow(f, env.Tree.ID(env.Feat, "panel-"+route.ID),
 						p.activePanel == route.ID, panelRowHeight, func() {
 							ui.Row(f).Width(16).Height(22).Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
-								ui.Text(f, route.Glyph).FontSize(16).LineHeight(22).Color(t.LabelSecondary)
+								if icon, ok := sidebarPanelIcon(route.ID, t.LabelSecondary); ok {
+									ui.Icon(f, icon).Size(16, 16).Color(t.LabelSecondary)
+								}
 							})
 							ui.Text(f, route.Label).FontSize(t.Fonts.Body).LineHeight(22).
-								Color(t.LabelPrimary).MarginSides(0, 0, 0, 8).Ellipsis()
+								Color(t.LabelPrimary).MarginSides(0, 0, 0, 6).Ellipsis()
 						})
 				}
 				// 行尾「取消固定」：官方 `.panelUnpin`（绝对定位在行右端）。本仓同列
 				// 布局：行占剩余宽度、按钮 28×28 跟在后面（见 entry_menu.go 差异 2）。
 				if actionsLive && p.pins != nil && route.ID != entrypins.FixedPanelID {
 					ui.Row(f).FillWidth().Children(func() {
-						ui.Row(f).Grow(1).MinWidth(0).PadSides(0, 2, 0, 2).Children(rowBody)
+						ui.Row(f).Grow(1).MinWidth(0).Children(rowBody)
 						p.drawPanelUnpin(f, env, route)
 					})
 				} else {
-					ui.Row(f).FillWidth().PadSides(0, 2, 0, 2).Children(rowBody)
+					ui.Row(f).FillWidth().Children(rowBody)
 				}
 				p.frameBoxes.PanelRows = append(p.frameBoxes.PanelRows, row)
 				if row.Clicked() {
@@ -197,21 +207,32 @@ func (p *Plugin) drawWorkspaceHeaderMargin(f ui.C, env *pluginapi.Env, marginTop
 	t := p.theme
 	p.frameBoxes.SearchButton = ui.Box{}
 	p.frameBoxes.Search = ui.Box{}
-	p.frameBoxes.WorkspaceHeader = ui.Row(f).Width(p.width-sidebarInline-8).Height(workspaceHeaderHeight).
-		MarginSides(marginTop, -4, workspaceHeaderBottom, 4).Background(t.SidebarFill).
-		Items(ui.Center).Gap(4).Children(func() {
+	// listArea 的 -4/+4 相抵；右侧到侧栏边缘 2px。sectionHeader 自身
+	// padding-left:12、非搜索态 margin-right:-4/padding-right:1（官方 :66-91）。
+	header := ui.Row(f).Width(p.width - sidebarInline - 4).Height(workspaceHeaderHeight).
+		Background(t.SidebarFill).Items(ui.Center)
+	if p.searchExpanded {
+		header = header.MarginSides(marginTop, 0, workspaceHeaderBottom, 0).PadSides(0, 4, 0, 4).Gap(0)
+	} else {
+		header = header.MarginSides(marginTop, -4, workspaceHeaderBottom, 0).PadSides(0, 1, 0, 12).Gap(4)
+	}
+	p.frameBoxes.WorkspaceHeader = header.Children(func() {
 		if p.searchExpanded {
 			p.frameBoxes.Search = ui.Row(f).FillWidth().Height(searchHeight).Radius(t.Radii.MD).
 				Border(0.5, t.BorderL4).Items(ui.Center).Children(func() {
 				ui.Row(f).Width(28).Height(searchHeight).Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
-					ui.Text(f, "⌕").FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
+					if icon, ok := dsassets.WorkspaceSearch(t.LabelCaption); ok {
+						ui.Icon(f, icon).Size(11, 11).Color(t.LabelCaption)
+					}
 				})
 				ui.TextFieldID(f, env.Tree.ID(env.Feat, "search"), &p.search, "搜索", "过滤会话…").
-					Grow(1).Height(searchHeight).FontSize(t.Fonts.Secondary)
-				clear := ui.Row(f).Width(28).Height(searchHeight).Shrink(0).Radius(t.Radii.SM).
+					Grow(1).Height(searchHeight).FontSize(13)
+				clear := ui.Row(f).Width(24).Height(24).Shrink(0).Radius(t.Radii.SM).
 					Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 					Hit(env.Tree.ID(env.Feat, "workspace-search-clear"), "清空搜索").Children(func() {
-					ui.Text(f, "×").FontSize(t.Fonts.Secondary).Color(t.LabelTertiary)
+					if icon, ok := dsassets.WorkspaceCloseFill(t.LabelSecondary); ok {
+						ui.Icon(f, icon).Size(14, 14).Color(t.LabelSecondary)
+					}
 				})
 				if clear.Clicked() {
 					p.search.SetText("")
@@ -224,35 +245,28 @@ func (p *Plugin) drawWorkspaceHeaderMargin(f ui.C, env *pluginapi.Env, marginTop
 		ui.Text(f, "工作区").FontSize(t.Fonts.Body).LineHeight(20).Color(t.LabelTertiary).
 			MaxWidthPercent(45).Ellipsis()
 		ui.Spacer(f)
-		search, searchClicked := p.workspaceIconButton(f, env, "workspace-search", "⌕", "搜索会话")
+		search, searchClicked := p.workspaceIconButton(f, env, "workspace-search", "搜索会话", func() {
+			if icon, ok := dsassets.WorkspaceSearch(t.LabelSecondary); ok {
+				ui.Icon(f, icon).Size(14, 14).Color(t.LabelSecondary)
+			}
+		})
 		p.frameBoxes.SearchButton = search
 		if searchClicked {
 			p.searchExpanded = true
 		}
-		_, viewClicked := p.workspaceIconButton(f, env, "workspace-view-options", "▾", "全部收起或展开")
+		_, viewClicked := p.workspaceIconButton(f, env, "workspace-view-options", "全部收起或展开", func() {
+			drawSlidersTwoIcon(f, t.LabelSecondary, 16)
+		})
 		if viewClicked {
 			p.toggleAll()
 		}
-		// 官方「添加工作区」（figure `Harness` 813-23126 那一族的工作区工具带）。
-		//
-		// 之前这里是「没有 OS 目录选择/workspace mutation，整钮隐藏」——那个前提
-		// **现在已经不成立**：宿主 `directoryPicker.list/createDirectory` 是真目录
-		// 浏览（`HOST:cmd/dshd/serve_workspace_api.go:611-612`，真实现 `:1668` 起走
-		// `os.ReadDir`）、`workspace.create` 是真工作区注册表（`:583`）。
-		//
-		// 仍然守住「不画死按钮」：**只有壳真的接了 `OpenDirectoryPicker` 才画**
-		// （`env.Act` 为 nil = 老壳 / 无头装配 → 这一枚不出现）。
-		//
-		// 2026-11-15 起这一格的含义变宽了：官方 directory-flow 两个后端（应用内
-		// 对话框 / OS 原生框）互斥，壳在启动时探一次宿主的组合，再决定这一格接
-		// 哪个后端；**一套都不可用时壳给 nil**，于是这里照样不画。判据没变，
-		// 变的只是"接了哪个后端"由壳决定（`cmd/app/dirpicker_wiring.go`）。
-		//
-		// 字形用 `+` 而不是手画图标：官方这里是 sprite 里的 `IconPlusOutlineRegular`
-		// （`OFF:ui-sidebar` 的 sprite 表），本仓没有那张 sprite 的导出，
-		// 按仓规**不许手绘冒充官方图标**；`+` 与旁边 `⌕`/`▾` 同为文字字形，风格一致。
+		// 只有壳接了真实目录流程才画；图标是 WorkspaceBrowser.tsx:1310 的 project-add 16px。
 		if env.Act.OpenDirectoryPicker != nil {
-			_, addClicked := p.workspaceIconButton(f, env, "workspace-add", "+", "添加工作区")
+			_, addClicked := p.workspaceIconButton(f, env, "workspace-add", "添加工作区", func() {
+				if icon, ok := dsassets.WorkspaceProjectAdd(t.LabelSecondary); ok {
+					ui.Icon(f, icon).Size(16, 16).Color(t.LabelSecondary)
+				}
+			})
 			if addClicked {
 				env.Act.OpenDirectoryPicker()
 			}
@@ -260,12 +274,10 @@ func (p *Plugin) drawWorkspaceHeaderMargin(f ui.C, env *pluginapi.Env, marginTop
 	})
 }
 
-func (p *Plugin) workspaceIconButton(f ui.C, env *pluginapi.Env, id, glyph, label string) (ui.Box, bool) {
+func (p *Plugin) workspaceIconButton(f ui.C, env *pluginapi.Env, id, label string, draw func()) (ui.Box, bool) {
 	box := ui.Row(f).Width(workspaceIconSize).Height(workspaceIconSize).Shrink(0).Radius(p.theme.Radii.SM).
 		Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(p.theme.Hover)).
-		Hit(env.Tree.ID(env.Feat, id), label).Children(func() {
-		ui.Text(f, glyph).FontSize(14).LineHeight(20).Color(p.theme.LabelSecondary)
-	})
+		Hit(env.Tree.ID(env.Feat, id), label).Children(draw)
 	return box, box.Clicked()
 }
 

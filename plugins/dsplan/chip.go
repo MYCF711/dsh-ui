@@ -55,7 +55,10 @@ func (p *Plugin) drawPlanChip(f ui.C, env *pluginapi.Env) {
 			PadSides(0, planChipPadX, 0, planChipPadX).Radius(t.Radii.SM).
 			Background(t.BusinessTertiary).
 			DrawOver(func(d *ui.DrawContext) { drawPlanFocusRing(d, planChipFocusOffset, t.Radii.SM, t.Info) }).
-			Hit(env.Tree.ID(env.Feat, "plan-mode-off"), zhChipTitle)
+			// 无障碍名用官方 `aria-label`（chip.on.aria，locales.ts:18）：
+			// 官方那个 button 的 aria-label 与 title 是两条不同文案
+			// （PlanModeControl.tsx:56-57），Hit 承载的是前者。
+			Hit(env.Tree.ID(env.Feat, "plan-mode-off"), zhChipAria)
 		if locked {
 			chip = chip.Opacity(0.6)
 		} else {

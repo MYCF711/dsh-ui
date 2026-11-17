@@ -29,6 +29,14 @@ const (
 	zhChipLabel      = "计划"                         // chip.label
 	zhChipTitle      = "计划模式已开启 — 点击关闭（/plan off）"  // chip.on.title
 	zhChipExitFailed = "退出计划模式失败"                   // chip.exitFailed
+	// zhChipAria 是官方 chip 的 **无障碍名**（`aria-label`，OFF:locales.ts:18）。
+	//
+	// 官方那个 button 同时有 `aria-label={t('chip.on.aria')}` 与
+	// `title={t('chip.on.title')}`（OFF:PlanModeControl.tsx:56-57）：前者是
+	// 辅助技术的名字，后者是**原生** title 的悬停提示。Viva 的 `Hit(id, label)`
+	// 承载的是前者，没有原生 title 属性这一层，所以这个座位上只有 aria 文案有
+	// 落点——用它，而不是拿 title 文案顶替（后者已登记为差异）。
+	zhChipAria = "计划模式已开启，按下关闭"
 )
 
 // 卡片几何：OFF:PlanPreview.module.css:1-21 逐条。
@@ -70,9 +78,20 @@ const (
 
 var planCardMotion = gfx.Motion{Duration: 120 * time.Millisecond, Easing: gfx.EaseCSS}
 
-// 官方 FileTypeIcon(kind="markdown")：deepseek-500 底板 + neutral-00 折角/MD。
-// 色值分别见 design-platform.css:28,40；三层路径与 markTransform 由 dsassets 复用。
-var planMarkdownIcon, _ = dsassets.FileTypeMarkdown(gfx.RGB24(0x4176e6), gfx.RGB24(0xffffff))
+// 官方 FileTypeIcon(kind="markdown") 的**两个颜色都来自继承**，不是烘死的品牌色：
+//
+//	底板  fill="currentColor"  → `.card` 的 color（PlanPreview.module.css:17）
+//	                              即 --dsw-alias-label-primary
+//	折角  var(--dsw-static-neutral-00) fillOpacity .7（design-platform.css:40）
+//	字    <g color="var(--dsw-static-neutral-00)">（同一处 neutral-00 = 白）
+//
+// 所以这里**每帧按主题色现建**（原先是包级 var 烘了 deepseek-500：
+// design-platform.css:28 那个 `--dsw-static-deepseek-500` 是静态色板，
+// 官方这个部件没有引用它）。gfx 的 tint 只把 Color() 的 alpha 乘进图层 Fill
+// （viva v0.6.4 gfx/icon.go:526-529），烘死底色会让深/浅主题各错一边。
+func planMarkdownIcon(t *pluginapi.Theme) (gfx.Icon, bool) {
+	return dsassets.FileTypeMarkdown(t.LabelPrimary, gfx.RGB24(0xffffff))
+}
 
 // drawCards 画 Turn 尾的计划卡（官方 `PlanCards`，OFF:PlanCard.tsx:43-62）。
 //
@@ -119,7 +138,9 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, sessio
 			Center().Border(cardBorder, t.BorderL1).Radius(cardIconRadius).
 			Background(t.CardTileFill)
 		icon.Children(func() {
-			ui.Icon(f, planMarkdownIcon).Width(cardIconGlyphSize).Height(cardIconGlyphSize)
+			if markdown, ok := planMarkdownIcon(t); ok {
+				ui.Icon(f, markdown).Width(cardIconGlyphSize).Height(cardIconGlyphSize)
+			}
 		})
 		// `.cardDetails`：标题 + 说明两行，flex:1、min-width:0（用 Ellipsis 表达）。
 		ui.Column(f).Grow(1).Gap(cardDetailsGap).Children(func() {

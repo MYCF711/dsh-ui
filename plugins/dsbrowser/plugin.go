@@ -52,8 +52,6 @@
 package dsbrowser
 
 import (
-	"errors"
-
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -97,6 +95,24 @@ const (
 	startPad        float32 = 24
 	hairline        float32 = 0.5
 	goButtonSize    float32 = 28
+
+	// `.failure{padding:6px 12px;color:state-error-primary;
+	//   font:xxxs-11;background:color-mix(in srgb, state-error-primary 8%, transparent)}`
+	// （Browser.module.css:218-224）：错误行的底色是错误色的 8% 叠色。
+	failureTint float32 = 0.08
+	// 官方 `--dsw-font-xxxs-11` 是 11px/14px（gradient-shadow-text.css:262），
+	// `.failure` 与 `.limit` 两行都用它。
+	lineHeightXXS float32 = 14
+	// `.addressChanged{position:absolute;top:6px;right:8px;padding-left:8px;
+	//   color:label-tertiary;font:xxxs-11;line-height:16px;background:bg-layer-2}`
+	// （Browser.module.css:98-108）：地址栏右上角那枚「URL 已变化」角标。
+	addressChangedTop  float32 = 6
+	addressChangedRgt  float32 = 8
+	addressChangedPadL float32 = 8
+	addressChangedLine float32 = 16
+	// `.address:focus{outline:1px solid state-business-primary;outline-offset:-1px}`
+	// （Browser.module.css:115-118）：焦点描边宽 1。
+	addressFocusRing float32 = 1
 )
 
 // Plugin 是右栏浏览器。
@@ -190,17 +206,19 @@ const (
 // 官方 `sidebarBrowser` 词表里本插件用得到的几条（locales.ts:1-30，中文逐字）。
 const (
 	copyAddressPlaceholder = "输入 HTTP(S) 地址"
-	copyStart              = "输入 HTTP(S) 地址开始浏览"
-	copyLoading            = "正在打开…"
-	copyBack               = "后退"
-	copyForward            = "前进"
-	copyReload             = "刷新"
-	copyGo                 = "前往"
-	copyExternal           = "在系统浏览器中打开"
-	copyRestorePrevious    = "上次打开"
-	copyRestoreAction      = "恢复页面"
-	copyLoadFailed         = "页面加载失败；请刷新重试或在系统浏览器中打开。"
-	copyAddressUnknown     = "页面已跳转；当前载体无法读取新的 URL。"
+	// 官方 `address.changed`（locales.ts:8）。
+	copyAddressChanged  = "URL 已变化"
+	copyStart           = "输入 HTTP(S) 地址开始浏览"
+	copyLoading         = "正在打开…"
+	copyBack            = "后退"
+	copyForward         = "前进"
+	copyReload          = "刷新"
+	copyGo              = "前往"
+	copyExternal        = "在系统浏览器中打开"
+	copyRestorePrevious = "上次打开"
+	copyRestoreAction   = "恢复页面"
+	copyLoadFailed      = "页面加载失败；请刷新重试或在系统浏览器中打开。"
+	copyAddressUnknown  = "页面已跳转；当前载体无法读取新的 URL。"
 )
 
 // addressFailureCopy 是官方 `sidebarBrowser.error.*`（locales.ts:17-21，中文逐字）。
@@ -231,17 +249,17 @@ func (p *Plugin) drawBody(f ui.C, env *pluginapi.Env) {
 	ui.Column(f).FillWidth().FillHeight().Background(t.BgBase).Children(func() {
 		p.drawToolbar(f, env)
 		// `.toolbar` 的 `border-bottom:.5px solid border-l3`：viva 没有单边描边，
-		// 用一条 0.5px 的实色行表达同一条线。
+		// 用一条 0.5px 的实色行表达同一条线。官方 `.toolbar{height:38px}` +
+		// `box-sizing:border-box` 意味着**这条线算在 38 之内**（内容盒 37.5），
+		// 所以工具条行高取 `38 - 0.5`，两条合计正好 38（Browser.module.css:11-20）。
 		ui.Column(f).FillWidth().Height(hairline).Shrink(0).Background(t.BorderL3)
-		// `.failure`：地址被拒 / 开页失败（官方两处都画这一行的样式）。
+		// 官方两行**并列**而不是二选一：`error`（载具加载错误）
+		// 与 `addressFailure`（地址被拒）是两个独立分支（BrowserBody.tsx:112-115）。
+		if p.openErr != nil {
+			p.drawStatusRow(f, copyLoadFailed)
+		}
 		if copy := addressFailureCopy(p.failure); copy != "" {
 			p.drawStatusRow(f, copy)
-		} else if p.openErr != nil {
-			if errors.Is(p.openErr, pluginapi.ErrWebUnsupported) {
-				p.drawStatusRow(f, copyLoadFailed)
-			} else {
-				p.drawStatusRow(f, copyLoadFailed)
-			}
 		}
 		// `.content` / `.viewport`：这块矩形就是网页要填的洞。
 		p.content = ui.Column(f).FillWidth().Grow(1).Shrink(1).Clip()
@@ -258,46 +276,78 @@ func (p *Plugin) drawBody(f ui.C, env *pluginapi.Env) {
 // drawToolbar 画官方 `.toolbar`（38px：后退 / 前进 / 刷新 + 地址框 + 外部打开）。
 func (p *Plugin) drawToolbar(f ui.C, env *pluginapi.Env) {
 	t := p.theme
-	ui.Row(f).FillWidth().Height(toolbarHeight).
+	addressID := env.Tree.ID(env.Feat, "browser-address")
+	// 官方 `.addressBox:focus-within` 的两处效果（`.addressGo` 显形、`.addressChanged`
+	// 隐去）都看"地址框是否持有焦点"。本仓的判据是画布上的焦点 id：同一个 id
+	// 既交给 TextFieldID，也在这里比一次，语义与 focus-within 相同。
+	addressFocused := env.Canvas != nil && !addressID.IsZero() && env.Canvas.Focused() == addressID
+	unknown := p.unknown()
+	ui.Row(f).FillWidth().Height(toolbarHeight-hairline).
 		PadSides(toolbarPadY, toolbarPadX, toolbarPadY, toolbarPadX).
 		Items(ui.Center).Gap(toolbarGap).Children(func() {
-		p.drawToolButton(f, env, "browser-back", copyBack, iconChevronLeft(t.LabelSecondary), iconSizeChevron, t.LabelSecondary,
+		p.drawToolButton(f, env, "browser-back", copyBack, iconChevronLeft, iconSizeChevron,
 			p.nav.canGoBack(), func() { p.goBack(env) })
-		p.drawToolButton(f, env, "browser-forward", copyForward, iconChevronRight(t.LabelSecondary), iconSizeChevron, t.LabelSecondary,
+		p.drawToolButton(f, env, "browser-forward", copyForward, iconChevronRight, iconSizeChevron,
 			p.nav.canGoForward(), func() { p.goForward(env) })
 		_, hasTarget := currentTarget(p.nav.value)
-		p.drawToolButton(f, env, "browser-reload", copyReload, iconRefresh(t.LabelSecondary), iconSizeTool, t.LabelSecondary,
+		p.drawToolButton(f, env, "browser-reload", copyReload, iconRefresh, iconSizeTool,
 			hasTarget, func() { p.reload(env) })
 
 		// `.addressBox`
 		ui.Row(f).Grow(1).Height(addressHeight).Shrink(1).Children(func() {
-			field := ui.TextFieldID(f, env.Tree.ID(env.Feat, "browser-address"), &p.address,
+			// `.addressUnknown{color:label-tertiary;background:bg-layer-2}` +
+			// `.addressUnknown:focus{color:label-primary;background:bg-layer-1}`
+			// （Browser.module.css:85-96）：地址读不回来时整格降一档。
+			background, foreground := t.BgLayer1, t.LabelPrimary
+			if unknown && !addressFocused {
+				background, foreground = t.BgLayer2, t.LabelTertiary
+			}
+			field := ui.TextFieldID(f, addressID, &p.address,
 				copyAddressPlaceholder, copyAddressPlaceholder).
-				FillWidth().Height(addressHeight).FontSize(t.Fonts.Caption).
-				Background(t.BgLayer1).Border(hairline, t.BorderL2).Radius(t.Radii.SM).
+				FillWidth().Height(addressHeight).FontSize(t.Fonts.Caption).Color(foreground).
+				Background(background).Border(hairline, t.BorderL2).Radius(t.Radii.SM).
 				PadSides(0, addressPadRight, 0, addressPadLeft)
+			// `.address:focus{outline:1px solid state-business-primary;outline-offset:-1px}`
+			// （:115-118）。Viva 的 Ring 画在盒子外侧、宽 1（不改内容盒），
+			// 与官方"描边不占位"一致；差异只是 offset 0 而非 -1（差 1px，已登记）。
+			if addressFocused {
+				field = field.Ring(addressFocusRing, t.Info)
+			}
 			if field.Submitted() {
 				p.submit(env)
 			}
-			// `.addressGo`（官方绝对定位在输入框右内边距里，`.address` 的
-			// `padding-right:34px` 就是给它留的位）。官方只在 `:focus-within`
-			// 时让它可见；本仓没有"字段是否聚焦"的公开判据，改为**常显**。
-			// 这一处差异登记在 docs/official-parity.md 的 #50 行。
-			goBox := ui.Row(f).Width(goButtonSize).Height(addressHeight).Shrink(0).
-				Absolute().Top(0).Right(0).
-				Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM).
-				Hover(ui.Look{}.Background(t.Hover)).
-				Hit(env.Tree.ID(env.Feat, "browser-go"), copyGo).Children(func() {
-				ui.Icon(f, iconLink(t.LabelSecondary)).Size(iconSizeTool, iconSizeTool).Color(t.LabelSecondary)
-			})
-			if goBox.Clicked() {
-				p.submit(env)
+			// `.addressChanged`（:98-108）：「URL 已变化」角标，`:focus-within` 时隐去。
+			if unknown && !addressFocused {
+				ui.Row(f).Height(addressChangedLine).Shrink(0).
+					Absolute().Top(addressChangedTop).Right(addressChangedRgt).
+					PadSides(0, 0, 0, addressChangedPadL).
+					Background(t.BgLayer2).Children(func() {
+					ui.Text(f, copyAddressChanged).FontSize(t.Fonts.Tiny).
+						LineHeight(addressChangedLine).Color(t.LabelTertiary)
+				})
+			}
+			// `.addressGo{position:absolute;top:0;right:0;visibility:hidden;opacity:0}` +
+			// `.addressBox:focus-within .addressGo{visibility:visible;opacity:1}`
+			// （:72-83）。`.address` 的 `padding-right:34px` 就是给它的位。
+			if addressFocused {
+				goBox := ui.Row(f).Width(goButtonSize).Height(addressHeight).Shrink(0).
+					Absolute().Top(0).Right(0).
+					Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM).
+					Hover(ui.Look{}.Background(t.Hover)).
+					Hit(env.Tree.ID(env.Feat, "browser-go"), copyGo).Children(func() {
+					ui.Icon(f, iconLink(t.LabelSecondary)).Size(iconSizeTool, iconSizeTool).Color(t.LabelSecondary)
+				})
+				if goBox.Clicked() {
+					p.submit(env)
+				}
 			}
 		})
 
 		_, hasExternal := currentTarget(p.nav.value)
-		p.drawToolButton(f, env, "browser-external", copyExternal, iconRightUp(t.LabelSecondary), iconSizeExternal, t.LabelSecondary,
-			hasExternal && env.Act.OpenExternal != nil, func() {
+		// 官方 `externalUrl = unknown ? undefined : target?.url`（BrowserBody.tsx:73）：
+		// 页面自己跳走后旧地址不再可信，所以这一枚按钮跟着 `disabled`（:99）。
+		p.drawToolButton(f, env, "browser-external", copyExternal, iconRightUp, iconSizeExternal,
+			hasExternal && !unknown && env.Act.OpenExternal != nil, func() {
 				target, ok := currentTarget(p.nav.value)
 				if !ok || env.Act.OpenExternal == nil {
 					return
@@ -307,34 +357,57 @@ func (p *Plugin) drawToolbar(f ui.C, env *pluginapi.Env) {
 	})
 }
 
-// drawToolButton 画官方 `.tool`（28×28 圆角；禁用时不变色也不吃点击）并报告是否被点。
-func (p *Plugin) drawToolButton(f ui.C, env *pluginapi.Env, name, label string, icon gfx.Icon, iconSize float32,
-	color ui.Color, enabled bool, run func()) {
+// drawToolButton 画官方 `.tool`（28×28 圆角）并报告是否被点。
+//
+// 三档外观全部来自 Browser.module.css：
+//
+//	常态   color:label-secondary                                  （:22-35）
+//	hover  color:label-primary + background:interactive-bg-hover   （:37-42）
+//	禁用   color:label-quaternary + cursor:default                 （:44-47）
+//
+// 禁用色如实说明：`--dsw-alias-label-quaternary` 在 rc.2 的**全部官方产物里只有
+// 引用、没有定义**（`design-platform.css` 全文 0 处赋值，`app.asar` 内 4 处
+// `var(--dsw-alias-label-quaternary)` 全是用例），按 CSS 层叠规则这属于
+// invalid-at-computed-value，`color` 回退成继承值（`.root` 的 label-primary）。
+// 本仓取 `LabelDimmed` 让"禁用"在界面上看得出来，这一处登记在
+// docs/official-parity.md 的 #50 行。
+func (p *Plugin) drawToolButton(f ui.C, env *pluginapi.Env, name, label string,
+	icon func(gfx.Color) gfx.Icon, iconSize float32, enabled bool, run func()) {
 	t := p.theme
+	var id gfx.ID
+	if env.Tree != nil {
+		id = env.Tree.ID(env.Feat, name)
+	}
+	color := t.LabelSecondary
+	if enabled && env.Canvas != nil && (env.Canvas.Hovered() == id || env.Canvas.Pressed() == id) {
+		color = t.LabelPrimary
+	}
 	if !enabled {
 		color = t.LabelDimmed
 	}
 	box := ui.Row(f).Width(toolSize).Height(toolSize).Shrink(0).
 		Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM)
 	if enabled {
-		box = box.Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, name), label)
+		box = box.Hover(ui.Look{}.Background(t.Hover)).Hit(id, label)
 	}
 	box.Children(func() {
-		ui.Icon(f, icon).Size(iconSize, iconSize).Color(color)
+		ui.Icon(f, icon(color)).Size(iconSize, iconSize).Color(color)
 	})
 	if enabled && box.Clicked() {
 		run()
 	}
 }
 
-// drawStatusRow 画官方 `.failure` 一行（6px/12px、xxxs-11）。
+// drawStatusRow 画官方 `.failure` 一行：6/12、xxxs-11、错误色文字、错误色 8% 底。
 func (p *Plugin) drawStatusRow(f ui.C, copy string) {
 	t := p.theme
+	background := t.Error
+	background.Alpha *= failureTint
 	ui.Row(f).FillWidth().PadSides(statusRowPadY, statusRowPadX, statusRowPadY, statusRowPadX).
-		Children(func() {
-			ui.Paragraph(f, copy, 2).FontSize(t.Fonts.Tiny).LineHeight(t.Fonts.CaptionLine).
-				Color(t.Error).FillWidth()
-		})
+		Background(background).Children(func() {
+		ui.Paragraph(f, copy, 2).FontSize(t.Fonts.Tiny).LineHeight(lineHeightXXS).
+			Color(t.Error).FillWidth()
+	})
 }
 
 // unknown 表示页面已经自己跳到别的地址、当前载具读不回新地址
@@ -347,7 +420,7 @@ func (p *Plugin) drawLimitRow(f ui.C) {
 	ui.Column(f).FillWidth().Shrink(0).Height(hairline).Background(t.BorderL3)
 	ui.Row(f).FillWidth().Shrink(0).PadSides(limitRowPadY, limitRowPadX, limitRowPadY, limitRowPadX).
 		Children(func() {
-			ui.Text(f, copyAddressUnknown).FontSize(t.Fonts.Tiny).LineHeight(t.Fonts.CaptionLine).
+			ui.Text(f, copyAddressUnknown).FontSize(t.Fonts.Tiny).LineHeight(lineHeightXXS).
 				Color(t.LabelTertiary).Ellipsis().FillWidth()
 		})
 }
@@ -362,7 +435,7 @@ func (p *Plugin) drawContentState(f ui.C, env *pluginapi.Env) {
 	}
 	// 官方 .restore：checkpoint 仍在、但本进程尚未请求页面时，显示保存的
 	// title/url 和显式「恢复页面」按钮；不能把它当成普通 start 自动开页。
-	if p.page == nil {
+	if p.page == nil && p.openErr == nil {
 		if target, ok := currentTarget(p.nav.value); ok {
 			ui.Column(f).FillWidth().FillHeight().Pad(startPad).Gap(10).Items(ui.Center).Children(func() {
 				ui.Row(f).Grow(1).Items(ui.Center).Justify(ui.Center).Children(func() {
@@ -435,6 +508,9 @@ func (p *Plugin) submit(env *pluginapi.Env) {
 // goBack / goForward / reload 都走同一条"应用历史 → 载具"的路。
 func (p *Plugin) goBack(env *pluginapi.Env) {
 	p.activate(env)
+	// 官方 `command()` 每次命令都清 addressFailure（BrowserController.ts:163-168），
+	// 否则被拒的红行会一直挂在屏幕上。
+	p.failure = ""
 	request := p.nav.back()
 	if request == nil {
 		return
@@ -450,6 +526,7 @@ func (p *Plugin) goBack(env *pluginapi.Env) {
 
 func (p *Plugin) goForward(env *pluginapi.Env) {
 	p.activate(env)
+	p.failure = ""
 	request := p.nav.forward()
 	if request == nil {
 		return
@@ -465,6 +542,7 @@ func (p *Plugin) goForward(env *pluginapi.Env) {
 
 func (p *Plugin) reload(env *pluginapi.Env) {
 	p.activate(env)
+	p.failure = ""
 	target, ok := currentTarget(p.nav.value)
 	if !ok {
 		return

@@ -303,6 +303,13 @@ func DrawRightTabs(
 			} else {
 				chip = chip.Hover(ui.Look{}.Background(t.Hover))
 			}
+			// 官方 tab 标题里的图标是 `stroke="currentColor"`（TerminalIcon.tsx:9、
+			// BrowserTitle.tsx:3,16），颜色跟着芯片文字走：选中 label-primary、
+			// 未选中 label-secondary。图标和文字同色是官方形态，不能各挂一档。
+			titleColor := t.LabelSecondary
+			if isActive {
+				titleColor = t.LabelPrimary
+			}
 			chip.Children(func() {
 				label := ui.Row(f).Grow(1).Items(ui.Center).Gap(RightTabChipGap)
 				label.Children(func() {
@@ -312,10 +319,10 @@ func DrawRightTabs(
 							iconSize = tab.IconSize
 						}
 						ui.Row(f).Shrink(0).PadSides(0, tab.IconMarginRight, 0, 0).Children(func() {
-							ui.Icon(f, tab.IconImage).Size(iconSize, iconSize).Color(t.LabelSecondary)
+							ui.Icon(f, tab.IconImage).Size(iconSize, iconSize).Color(titleColor)
 						})
 					} else if tab.Icon != "" {
-						ui.Text(f, tab.Icon).FontSize(RightTabChipFontSize).Color(t.LabelSecondary)
+						ui.Text(f, tab.Icon).FontSize(RightTabChipFontSize).Color(titleColor)
 					}
 					text := ui.Text(f, tab.Label).FontSize(RightTabChipFontSize).
 						LineHeight(RightTabChipLineHeight).MaxLines(1).Ellipsis()

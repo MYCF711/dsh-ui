@@ -24,7 +24,7 @@ commit `0b065cf` 的 `internal/creation/**`）。
 | `OFF:cr/src/client/index.ts` | 2 | 浏览器入口：`export { apply, inject } from './mount.ts'` |
 | `OFF:cr/src/client/mount.ts` | 28 | `inject: ['locale','actionCards']`（`:15`）→ 注册 locale（`:23`）与正文（`:24-27`） |
 | `OFF:cr/src/client/Card.tsx` | 159 | `PageCardBody`：header / info 说明 / summary / 预填内容 / 位置选择 / 两套控件 |
-| `OFF:cr/src/client/Card.module.css` | 16 | 全部几何（本文 px 值逐条注行号） |
+| `OFF:cr/src/client/Card.module.css` | 28 | 全部几何（本文 px 值逐条注行号；`:1-16` 主结构，`:17-28` `.controls .footer` / `.locationRow` / `.locationLabel` / `.locationButton` / `.locationMenu` / `.locationOption` / `.customLocation`+textarea 与焦点、占位态） |
 | `OFF:cr/src/client/locales.ts` | 402 | 8 语言；zh 字典在 `:44-78`（**58 条**，本仓只许用这 58 条原文） |
 | `OFF:cr/src/client/info-store.ts` | 8 | `infoDismissed` 是**跨会话持久**偏好（`persist: { name: 'dsh.creation-recommendations.info-dismissed' }`，`:7`） |
 
@@ -50,7 +50,8 @@ section.card                                    OFF:ac/Card.tsx:110（框由框�
 ├─ .header                     cr/Card.module.css:1   padding 12px 20px 0 / 12px / lh 1.5 / 12 gap（行 8 / 列 12）
 │  ├─ .heading（gap 4）        :2
 │  │  ├─ 个性化页面            locales.ts:45  heading
-│  │  └─ info 按钮（28 宽）     :3  .infoButton{width:28px;padding:0} + 14px 图标（Tooltip=creationInfo，展开时 disabled）
+│  │  └─ info 按钮（28×28）     :3  .infoButton{width:28px;padding:0} + sm 原语 height 28 + 14px 图标
+│  │                             （官方 IconWarningTriangleOutlineRegular，viewBox=16；Tooltip=creationInfo，展开时 disabled）
 │  └─ .phase（role=status）    :8  color label-primary ← 11 档文案（§3）
 ├─ .info（默认展开）            :4  margin 12px 20px 0 / padding 12 / radius md / bg-module-platform / 13 / lh 1.7
 │  ├─ p 用创造模式制作新页面…     locales.ts:47  creationMethod
@@ -219,7 +220,7 @@ if (verb === 'create' || verb === 'dismiss') { infoDismissed.set(true); setInfo(
 | CSS（`cr/Card.module.css`） | 本仓常量（`plugins/dscreationreco/plugin.go`） |
 |---|---|
 | `.header` padding/字号/行高/gap | `createdHeaderPadTop/PadX/Font/LineH/GapColumn` |
-| `.heading` gap 4、`.infoButton` 28、图标 14 | `createdHeadingGap` / `createdInfoButtonW` / `createdInfoIcon` |
+| `.heading` gap 4、`.infoButton` 28（+ sm 的 height 28）、图标 14（viewBox 16） | `createdHeadingGap` / `createdInfoButtonW/ButtonH` / `createdInfoIcon` |
 | `.info` margin/padding/13/lh1.7、`p+p` 4、`strong` 500 | `createdInfoMarginTop/Pad/Font/LineH/ParaGap/Strong` |
 | `.body` padding 12 20 20 | `createdBodyPadTop/PadX/PadBottom` |
 | `.content` 12、`.contentLabel` 12/lh1.6 | `createdContentMarginTop/LabelFont/LabelLineH` |
@@ -227,14 +228,28 @@ if (verb === 'create' || verb === 'dismiss') { infoDismissed.set(true); setInfo(
 | `.description` 12/lh1.6 | `createdDescriptionFont/LineH` |
 | `.footer` gap 12 / margin-top 12、`.actions` gap 8 | `createdFooterGap/MarginTop` / `createdActionsGap` |
 | `.controls` 16/16/border .5/gap 12 | `createdControlsMarginTop/PadTop/Gap` |
-| `.locationRow` gap 8、`.locationLabel` 12/lh1.6、`.locationMenu` 264 | `createdLocationRowGap` / `createdLocationLabelFont/LineH` / `createdLocationMenuWidth` |
+| `.locationRow` gap 8、`.locationLabel` 12/lh1.6、`.locationButton` gap 8 + **13px**、`.locationMenu` 264 | `createdLocationRowGap` / `createdLocationLabelFont/LineH` / `createdLocationButtonFont` / `createdLocationMenuWidth` |
 | `.customLocation` gap 6、textarea 72 / 13 / lh1.7 | `createdCustomGap/Height/Font/LineH` |
 | 卡片框 `.text`（13/lh1.7/margin-top 8）与 `.toggle`（12/min-height 24） | `createdTextMarginTop/Font/LineH` / `createdToggleMarginTop/MinHeight/Font` |
 | 折叠预算 `FOLD_WIDTH = 260`（`OFF:ac/Card.tsx:41`） | `foldWidth = 260` |
 
-三个官方值**没有对应绘制参数**（留作证据，见 `plugin.go` 的「证据常量」注释块）：
-`.header{gap:8px 12px}` 的行间距 8（不换行用不到）、`.locationButton{font-size:13px}`（按钮字号由
-viva 主题给）、`.locationOption > span + span{font-size:12px}`（菜单第二行由 `ui.MenuItems.Description` 排版）。
+按钮字号与高度取自官方**按钮原语**（`OFF:web/dist/assets/index-CSAdOBx6.css` 的 primitives
+`_button_1ulci_2` 块：`._sm_1ulci_28{height:28px;font-size:12px;line-height:18px;padding:0 10px;
+border-radius:var(--dsw-radius-sm)}`；官方 `dsh-client-ui-primitives` 不随包发 src，这份 CSS 是唯一可核原件）：
+
+| 官方原语 | 本仓做法 |
+|---|---|
+| `.sm` 的 height 28 / padding 0 10 / radius-sm(8) | viva `Button.Small()` 自带（高度 28、内边距 10、`Radii.SM`=8） |
+| `.sm` 的 font-size 12 | `createdSmallButtonFont = 12` → 每个小按钮 `.FontSize(12)`（viva 默认按主题 FontSizeM=14 画字，差 2px） |
+| `.locationButton` 覆盖成 font-size 13 | `createdLocationButtonFont = 13` → 位置按钮 `.FontSize(13)` |
+| `.infoButton` 是 `size=sm` + 宽 28 | `createdInfoButtonW/H = 28` → 28×28 方形（漏掉高度整条 header 会矮 10px：40→30） |
+
+说明块底色是 `.info{background:var(--dsw-alias-bg-module-platform)}`（`:4`）→ `noticeFill()` 取
+`Theme.BgModulePlatform`；**不是** `bg-layer-3`（亮色 #ffffff vs #f9fafb，见 `design-platform.css:183/189`）。
+
+两个官方值**没有对应绘制参数**（留作证据，见 `plugin.go` 的「证据常量」注释块）：
+`.header{gap:8px 12px}` 的行间距 8（viva `ui.Row` 不换行，用不到）、
+`.locationOption > span + span{font-size:12px}`（菜单第二行由 `ui.MenuItems.Description` 排版）。
 
 ---
 
@@ -244,19 +259,20 @@ viva 主题给）、`.locationOption > span + span{font-size:12px}`（菜单第�
 |---|---|---|---|
 | 1 | **flex-wrap 没有对等物**：官方 `.header`/`.controls`/`.footer` 都是 `flex-wrap: wrap`，viva `ui.Row` 不换行 | viva 的容器布局没有 wrap 档 | `.controls` 按官方的**换行顺序**摆成「位置行 + 按钮」/「textarea」/「按钮右对齐」三行；极窄窗口官方会继续折行，本仓不会 |
 | 2 | **`textarea maxLength={1000}` 没有对等物**（`cr/Card.tsx:140`） | viva `ui.TextArea` 不收长度上限 | 超长不静默截断：宿主 `parseLocation` 判 trim 后 1..1000，超了回 `refused{invalid-location}`，卡片按官方文案提示 |
-| 3 | **info 按钮的图标不是官方那一枚** | 官方是 `IconWarningTriangleOutlineRegular`，`$DSH_HOME/dsh-ui-official/assets/icons/` 与 rc.2 解包树里都**没有它的 path 数据**（只有使用处），按仓规不许手画近似形状 | 用**同为官方素材**的 `IconInfoOutlineRegular`（`icons.go` 存原文，出处 sha256 写在文件头）+ 官方 `Tooltip`（展开时 disabled，与官方同判据） |
+| 3 | ~~info 按钮的图标不是官方那一枚~~ → **已改回官方那一枚** | 旧登记说「rc.2 解包树里只有使用处、没有 path 数据」——**这条结论是错的**：rc.2 sprite `index-ghOpC9uV.js`（sha256 `061de8ce…`、偏移 717952）里 `warning-triangle-outline` 带完整 SVG 正文（viewBox 16、stroke-width 1、round）。原文已存 `assets/official/icons/tools/warning-triangle.jsx`，`icons.go` 按标准 arc→cubic 换算那三段 r=1.33 圆弧（`tmp/GO8-RC2/_vccr/svg2gfx_warning_triangle.{py,txt}`，换算到真实圆弧的最大径向误差 4.1e-5 单位） | 图标已是官方形状；仍不同的是官方 `Tooltip` 在 info 展开时 `disabled`，本仓按同一判据**条件挂载** |
 | 4 | **菜单没有"当前项高亮"** | 官方 `Menu selectedId={value}`（`cr/Card.tsx:52`）；viva `ui.Menu` 只有 `Chosen` 单选圆点 / `Checked` 勾选，那会多画官方没有的标记 | 不标（当前值在触发按钮的文字上可见） |
 | 5 | **chevron 画在按钮外侧** | 官方 chevron 在 `Button` **内部**（`.locationButton{gap:8px}`）；viva 的 `ui.Button` 放不进子节点 | 同一行紧邻按钮右侧；点击面积 = 按钮那部分（不夸大） |
 | 6 | **ARIA 关系没有对等物** | 官方 `role=status`（phase / 应用结果）、`role=alert`（错误行）、`role=note`（info 块）、`aria-controls/expanded` 都是 DOM 属性 | 只保留可交互元素的无障碍名（各按钮 `Hit` label = 官方文案）；纯文本行不带角色 |
 | 7 | **`Hit(id,label)` 的 label 同时是可见文字** | viva 的命中区 label 与节点文字是同一个字段（实测写 `添加到: 右侧栏` 会把按钮文字改掉） | 位置按钮用可见文字（`右侧栏`）当无障碍名，`添加到` 由左侧那格文字承担（官方的 `aria-label` 全串做不到） |
 | 8 | **grapheme 切分** | 官方用 `Intl.Segmenter` 按字素算宽度，Go 侧按 rune 算（与 dsactioncards 同一处差异） | 只影响折叠出现的位置，**不改写原文** |
+| 9 | **菜单项内部三条声明由 viva `MenuItems` 决定**：`.locationMenu{max-width:calc(100vw - 24px)}`（:22）、`.locationOption{gap:2px;line-height:1.5}`（:23）、`.locationOption > span + span{font-size:12px}`（:24） | `ui.MenuItems` 只有 `WidthRange`（已按 :22 的 width 给 264），没有 max-width、行距与第二行字号的参数 | 四项菜单照常可选、第二行仍由 `Description` 画成次要色；极窄窗口下菜单宽度不会收到 `100vw-24` |
 
 **没有 HIDE 任何一格**：11 档 phase、4 条 application、8 条 reason、4 个动词、位置四项、
 预填内容、info 说明块全部有官方原文并已绘制。
 
 ---
 
-## 8. 验证（`go test ./plugins/dscreationreco/ -count=1`，22 组）
+## 8. 验证（`go test ./plugins/dscreationreco/ -count=1`，25 组）
 
 | 测试 | 钉住什么 |
 |---|---|
@@ -282,6 +298,9 @@ viva 主题给）、`.locationOption > span + span{font-size:12px}`（菜单第�
 | `TestOpenPhasesRelabelCreateAsRetry` | 四个 openPhases 的卡按钮读作「重新创建」，且位置行/暂不需要仍在 |
 | `TestPendingVerbShowsItsOwnProgressCopy` | 三个动词的进行时文案（开始创建… / 正在取消… / 恢复中…），结果落地后回落 |
 | `TestMenuHiddenWhileBusy` | 动作在飞时位置菜单不出现（官方 `open && !disabled`），落地后回来 |
+| `TestOfficialWarningTriangleIcon` | info 图标是官方 `warning-triangle-outline` 原文：viewBox=16、stroke=1、cap/join round、14 条命令逐条一致（圆弧已换算） |
+| `TestOfficialCreationButtons` | 按钮几何 = 官方值：info 按钮 28×28、小按钮字号 12、位置按钮字号 13、info 13/lh22.1/padding 12 |
+| `TestInfoBlockUsesModulePlatform` | 说明块底色取 `BgModulePlatform`（取 `BgLayer3` 在亮色档必红） |
 
 ---
 
@@ -291,8 +310,10 @@ viva 主题给）、`.locationOption > span + span{font-size:12px}`（菜单第�
    `EnsureSkill` 落到 `<home>/skills/personalized-pages/SKILL.md`；生产接线里没有 Creator，
    skill 文本**如实**写着"点 Create 会得到 refused{creator-unavailable}"。所以本条的界面是
    **真实的拒绝态展示**，而不是"点一下其实能建页面"。
-2. **`icon-warning-triangle`**：若日后从 rc.2 sprite 里导出这一枚并进
-   `$DSH_HOME/dsh-ui-official/assets/icons/`，把 `icons.go` 的 `infoIcon()` 换成它即可（同 viewBox=14 档）。
+2. ~~`icon-warning-triangle` 待导出~~ **已导出并接线**（本轮 vc-creationreco）：原文在
+   `assets/official/icons/tools/warning-triangle.jsx`（rc.2 sprite，**viewBox=16 不是 14**；
+   `size=14` 只是显示尺寸），`icons.go` 的 `warningIcon()` 就是它；主库
+   `$DSH_HOME/dsh-ui-official/assets/icons/` 侧仍是待同步项（镜像先落，记在 manifest 的 `mirrorDrift`）。
 3. **`reconcile` 的界面侧**：宿主没有后台任务（kind 回调是同步的），`creating`/`installing`
    只在**注入了 Creator 的接线**上真的出现；那时 `cancel` 会回已有 decision（宿主
    `creation.Service.cancel`），卡片按官方 `settled` 语义停在原地——本包不需要额外改动。

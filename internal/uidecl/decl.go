@@ -50,13 +50,29 @@ func Kinds() []string {
 	return []string{string(KindDot), string(KindKeyValue), string(KindLabel), string(KindList)}
 }
 
-// 尺寸缺省值。22 是侧栏底部那行（dssidebar.drawFooter）的高度，
-// 声明部件不写 height 时就照着它来，混在一起才对得齐。
+// 尺寸缺省值。
+//
+// 官方**没有**「声明式部件」这种包（`docs/official-parity.md` 的 66 个
+// `dsh-client-ui-*` 里无对等物），所以这几个数只能取自官方**对等控件**——
+// 也就是「一行只读文字」的官方写法，逐条给 file:line：
+//
+//	defaultHeight 22 = 官方静态只读标签 `.label`（AgentPresetLabel.module.css:9
+//	  height:22px；配 :12-13 的 font-size:12px / line-height:22px）。官方注释写的
+//	  是「static chrome, never a control」，与声明部件「只画不接交互」的定位相同。
+//	listLineSpacing 2 = 官方两行只读详情的堆叠间距 `.details{gap:2px}`
+//	  （Deliverables.module.css:17）。
+//	dotLineHeight 20 = 官方统计药丸里「点/图标 + 一行字」的行高
+//	  `.anchor{font-size:12px;line-height:20px}`（StatsPills.module.css:9-11），
+//	  药丸 `.pill{padding:1px 8px}`（:19）使它正好落在 22 高的盒里。
+//
+// list 每一行的行高不写死：用主题 CaptionLine（12/18），与官方 caption
+// `font-size:12px;line-height:18px`（Deliverables.module.css:6、
+// shortcuts/Reference.module.css:192）同值。
 const (
 	defaultHeight   = 22
 	defaultOrder    = 100
-	listLineHeight  = 18
 	listLineSpacing = 2
+	dotLineHeight   = 20
 )
 
 // Decl 是一份校验过的声明。字段名与 JSON 一一对应，多了 File 用于报错定位。
@@ -506,6 +522,18 @@ func (p *declPlugin) draw(f ui.C, env *pluginapi.Env) {
 	}
 }
 
+// captionText 画一行 Caption 文字，行高由调用方按官方值给（见 defaultHeight 那段）。
+//
+// 为什么必须显式传 LineHeight：Viva 在没有 LineHeight 时按 `fontSize+7` 排行
+// （viva@v0.6.4 ui/layout.go:63-67 的 leading()），12px 字拿到 **19**：
+// 比官方 caption 的 18 高 1px、比官方只读标签行的 22 矮 3px，
+// 于是同一行在 18 高的行盒里溢出 1px、在 22 高的行盒里偏心。官方每一处 caption
+// 都写死了字号+行高（`font-size:12px;line-height:18px` 或 `line-height:22px`），
+// 我们跟着写死，不靠框架默认值。
+func captionText(f ui.C, text string, t *pluginapi.Theme, color ui.Color, line float32) ui.Box {
+	return ui.Text(f, text).FontSize(t.Fonts.Caption).LineHeight(line).Color(color).Ellipsis()
+}
+
 // drawLabel 一行文字。空内容（比如 {cur_title} 恰好没值）就整块不画，
 // 不占高度——否则槽位里会多一条空白，看着像界面坏了。
 func (p *declPlugin) drawLabel(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
@@ -515,7 +543,7 @@ func (p *declPlugin) drawLabel(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 		return
 	}
 	ui.Row(f).FillWidth().Height(d.height()).Items(ui.Center).Children(func() {
-		ui.Text(f, text).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
+		captionText(f, text, t, d.color(t), d.height())
 	})
 }
 
@@ -530,15 +558,19 @@ func (p *declPlugin) drawKeyValue(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 	ui.Row(f).FillWidth().Height(d.height()).Items(ui.Center).Gap(8).Children(func() {
 		if label != "" {
 			// Shrink(0)：标签不许被压缩，空间不够时被省略的永远是右值。
-			ui.Text(f, label).FontSize(t.Fonts.Caption).Color(t.LabelTertiary).Ellipsis().Shrink(0)
+			captionText(f, label, t, t.LabelTertiary, d.height()).Shrink(0)
 			ui.Spacer(f)
 		}
-		ui.Text(f, value).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
+		captionText(f, value, t, d.color(t), d.height())
 	})
 }
 
 // drawDot 状态点 + 一行文字。圆点用 color（默认 success），文字固定次要色——
 // 让「状态点变色」和「文字变色」是两件事，别混。
+//
+// 圆的 6 也是官方值：官方状态点 `.dot{width:6px;height:6px;border-radius:50%}`
+// （stats.module.css:547-550）；圆与文字的间距 6 取自官方 `--dsh-sidebar-label-gap:6px`
+// （SidebarRoot.module.css:12）与统计药丸 `.pill{gap:6px}`（StatsPills.module.css:16）。
 func (p *declPlugin) drawDot(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 	d := p.decl
 	text := Expand(d.Text, env.Data)
@@ -549,7 +581,7 @@ func (p *declPlugin) drawDot(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 		if p.prims != nil {
 			p.prims.Dot(f, d.color(t), 6)
 		}
-		ui.Text(f, text).FontSize(t.Fonts.Caption).Color(t.LabelSecondary).Ellipsis()
+		captionText(f, text, t, t.LabelSecondary, dotLineHeight)
 	})
 }
 
@@ -566,8 +598,8 @@ func (p *declPlugin) drawList(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 			if s == "" {
 				continue
 			}
-			ui.Row(f).FillWidth().Height(listLineHeight).Items(ui.Center).Children(func() {
-				ui.Text(f, s).FontSize(t.Fonts.Caption).Color(d.color(t)).Ellipsis()
+			ui.Row(f).FillWidth().Height(t.Fonts.CaptionLine).Items(ui.Center).Children(func() {
+				captionText(f, s, t, d.color(t), t.Fonts.CaptionLine)
 			})
 		}
 	})

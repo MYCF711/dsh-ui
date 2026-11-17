@@ -127,12 +127,14 @@ func tabRoster(k *Kernel, slot pluginapi.Slot) []pluginapi.Tab {
 			if out[at].IconImage.ViewBox == 0 {
 				out[at].IconImage = p.IconImage
 				out[at].IconMarginRight = p.IconMarginRight
+				out[at].IconSize = p.IconSize
 			}
 			continue
 		}
 		seen[p.Key] = len(out)
 		out = append(out, pluginapi.Tab{Key: p.Key, Kind: p.Key, Multiple: p.Multiple,
-			Label: p.Label, Icon: p.Icon, IconImage: p.IconImage, IconMarginRight: p.IconMarginRight, Order: p.Order})
+			Label: p.Label, Icon: p.Icon, IconImage: p.IconImage, IconMarginRight: p.IconMarginRight,
+			IconSize: p.IconSize, Order: p.Order})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Order < out[j].Order })
 	return out
@@ -305,8 +307,12 @@ func DrawRightTabs(
 				label := ui.Row(f).Grow(1).Items(ui.Center).Gap(RightTabChipGap)
 				label.Children(func() {
 					if tab.IconImage.ViewBox > 0 {
+						iconSize := RightTabTitleIconSize
+						if tab.IconSize > 0 {
+							iconSize = tab.IconSize
+						}
 						ui.Row(f).Shrink(0).PadSides(0, tab.IconMarginRight, 0, 0).Children(func() {
-							ui.Icon(f, tab.IconImage).Size(RightTabTitleIconSize, RightTabTitleIconSize).Color(t.LabelSecondary)
+							ui.Icon(f, tab.IconImage).Size(iconSize, iconSize).Color(t.LabelSecondary)
 						})
 					} else if tab.Icon != "" {
 						ui.Text(f, tab.Icon).FontSize(RightTabChipFontSize).Color(t.LabelSecondary)

@@ -49,7 +49,10 @@ const RightTabTerminal = "terminal"
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{ID: "terminal-tab", Slot: pluginapi.SlotRightPaneTab, Key: RightTabTerminal,
-			Label: "终端", Order: 20, Multiple: true, Draw: p.drawPanelBody},
+			Label: "终端", Order: 20, Multiple: true,
+			// TerminalIcon.tsx:9 的官方 16×16 prompt 图标；没有额外右 margin。
+			IconImage: terminalTitleIcon(), IconSize: terminalTabIconSize,
+			Draw: p.drawPanelBody},
 		{ID: "terminal-panel", Slot: pluginapi.SlotShellOverlay, Order: 98, Draw: p.draw},
 	}
 }
@@ -140,8 +143,9 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 		return
 	}
 	ui.Column(f).Absolute().Top(56).Right(24).Width(720).Children(func() {
+		// F5 浮层是既有 derived 入口；终端内容自身仍只吃官方 root 的 8px 上内边距。
 		ui.Column(f).Radius(p.theme.Radii.Panel).Background(p.theme.InputMajor).Border(1, p.theme.BorderL2).
-			PadSides(14, 14, 12, 14).Gap(4).Children(func() {
+			PadTop(terminalRootPadTop).Children(func() {
 			p.drawTerminal(f, env, RightTabTerminal)
 		})
 	})
@@ -156,7 +160,8 @@ func (p *Plugin) drawPanelBody(f ui.C, env *pluginapi.Env) {
 	if tabID == "" {
 		tabID = RightTabTerminal
 	}
-	ui.Column(f).FillWidth().FillHeight().PadSides(14, 14, 12, 14).Gap(4).Children(func() {
+	// terminal.module.css:1：root  height:100%; min-height:0; padding-top:8px; font-size:13px。
+	ui.Column(f).FillWidth().FillHeight().MinHeight(0).PadTop(terminalRootPadTop).Children(func() {
 		p.drawTerminal(f, env, tabID)
 	})
 }
@@ -168,51 +173,79 @@ func (p *Plugin) drawTerminal(f ui.C, env *pluginapi.Env, tabID string) {
 	env.Act.TerminalEnsure(tabID)
 	state := env.Act.TerminalSnapshot(tabID)
 	t := p.theme
-	ui.Row(f).Gap(8).Children(func() {
-		ui.Text(f, "终端").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		if state.Info != nil {
-			ui.Text(f, state.Info.Title).FontSize(t.Fonts.Caption).Color(t.LabelSecondary)
-			if state.Info.Origin == "agent" {
-				ui.Text(f, "Agent").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-				if state.Info.SandboxMode != "" {
-					ui.Text(f, state.Info.SandboxMode).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
+	status, ended, retry, readOnly := terminalStatus(state)
+	// terminal.module.css:5：状态条只在一项状态/动作存在时出现，gap 8、padding 5×12、bg-l2。
+	if status != "" || retry || readOnly || ended {
+		ui.Row(f).FillWidth().Gap(terminalStatusGap).Items(ui.Center).
+			PadSides(terminalStatusPadY, terminalStatusPadX, terminalStatusPadY, terminalStatusPadX).
+			Background(t.BgLayer2).Children(func() {
+			if status != "" {
+				ui.Text(f, status).FontSize(terminalRootFontSize).Color(t.LabelPrimary)
+			}
+			if readOnly && env.Act.TerminalRetry != nil &&
+				drawTerminalButton(f, env, "terminal-control", "接管输入", terminalButtonOutline, false) {
+				env.Act.TerminalRetry(tabID)
+			}
+			if retry && env.Act.TerminalRetry != nil {
+				label := "重新连接"
+				if state.Phase == "failed" && state.Info == nil {
+					label = "重试"
+				}
+				if drawTerminalButton(f, env, "terminal-retry", label, terminalButtonOutline, false) {
+					env.Act.TerminalRetry(tabID)
 				}
 			}
-		}
-		if env.Act.OpenRightTab != nil && ui.Button(f, "新建").Ghost().Small().Clicked() {
-			env.Act.OpenRightTab(RightTabTerminal)
-		}
-	})
-	if state.Phase != "" && state.Phase != "connected" {
-		ui.Text(f, terminalPhaseText(state.Phase)).FontSize(12).Color(t.LabelTertiary)
+			if ended && env.Act.OpenRightTab != nil &&
+				drawTerminalButton(f, env, "terminal-new-ended", "新建终端", terminalButtonPrimary, true) {
+				env.Act.OpenRightTab(RightTabTerminal)
+			}
+		})
 	}
-	if state.Error != "" {
-		ui.Text(f, state.Error).FontSize(12).Color(t.LabelSecondary)
-		if env.Act.TerminalRetry != nil && ui.Button(f, "重试 / 重新取得控制权").Outline().Small().Clicked() {
-			env.Act.TerminalRetry(tabID)
+	if state.Info != nil {
+		// terminal.module.css:2-4：screen 吃掉剩余高度，四边 8px、bg-base、label-primary。
+		screen := ui.Column(f).FillWidth().Pad(terminalScreenPad).Background(t.BgBase).Clip()
+		if p.showRightbar {
+			screen = screen.Grow(1).MinHeight(0)
 		}
+		screen.Children(func() {
+			for _, line := range terminalLines(state.Screen) {
+				if line == "" {
+					line = " "
+				}
+				// terminal.tsx:95-103,185 + client.terminal.js:8：Consolas 档、13px、lineHeight=1。
+				// Viva 的 MonoSystem 在 Windows 同样落 Consolas；Mono 不读 LineHeight，故固定 13px 行盒。
+				ui.Text(f, line).Mono().FontSize(terminalFontSize).Height(terminalFontSize).Color(t.LabelPrimary)
+			}
+			p.drawDerivedControls(f, env, tabID, state)
+		})
 	}
-	if state.Info == nil {
-		return
+	errorText := state.Error
+	if state.Phase == "disconnected" {
+		errorText = ""
+	} else if errorText == "" && state.Info != nil {
+		errorText = state.Info.Error
 	}
-	ui.Text(f, state.Info.Shell.Name+" · "+state.Info.State).FontSize(11).Color(t.LabelTertiary)
-	if state.Info.State == "running" && !state.Writable {
-		ui.Text(f, "只读（另一个连接持有输入控制权）").FontSize(12).Color(t.LabelTertiary)
-		if env.Act.TerminalRetry != nil && ui.Button(f, "取得控制权").Outline().Small().Clicked() {
-			env.Act.TerminalRetry(tabID)
-		}
+	if errorText != "" {
+		// terminal.module.css:6：错误段 margin 0、padding 10×12、bg-l2、label-primary。
+		ui.Text(f, "终端错误："+errorText).FillWidth().FontSize(terminalRootFontSize).
+			Color(t.LabelPrimary).PadSides(terminalErrorPadY, terminalErrorPadX, terminalErrorPadY, terminalErrorPadX).
+			Background(t.BgLayer2)
 	}
-	lines := terminalLines(state.Screen)
-	for _, line := range lines {
-		if line == "" {
-			line = " "
-		}
-		ui.Text(f, line).FontSize(12).Color(t.LabelSecondary)
-	}
+}
+
+// drawDerivedControls 保留本仓已有的 F6 输入与重命名能力；它们不是官方 xterm 工具栏。
+// 几何只复用官方 .name 与 Button sm，不另造一套按钮尺寸。
+func (p *Plugin) drawDerivedControls(f ui.C, env *pluginapi.Env, tabID string, state pluginapi.TerminalViewState) {
+	t := p.theme
 	if p.renaming {
-		ui.TextFieldID(f, env.Tree.ID(env.Feat, "terminal-rename"), &p.renameField, "终端名称", "1–120 个字符")
-		ui.Row(f).Gap(6).Children(func() {
-			if ui.Button(f, "保存名称").Small().Clicked() {
+		// TerminalTitle.module.css:2：name 120px、min 48px、0×4 padding、0.5px border、radius-sm。
+		ui.TextFieldID(f, env.Tree.ID(env.Feat, "terminal-rename"), &p.renameField, "终端名称", "1–120 个字符").
+			Width(terminalRenameWidth).MinWidth(terminalRenameMinWidth).
+			PadSides(0, terminalRenamePadX, 0, terminalRenamePadX).
+			FontSize(terminalRootFontSize).Background(t.BgLayer1).
+			Border(terminalRenameBorder, t.BorderL3).Radius(t.Radii.SM)
+		ui.Row(f).Gap(terminalStatusGap).Children(func() {
+			if drawTerminalButton(f, env, "terminal-rename-save", "保存名称", terminalButtonPrimary, false) {
 				title := strings.TrimSpace(p.renameField.Text())
 				p.renaming = false
 				if title != "" && env.Act.TerminalRenameOfficial != nil {
@@ -223,19 +256,17 @@ func (p *Plugin) drawTerminal(f ui.C, env *pluginapi.Env, tabID string) {
 					}()
 				}
 			}
-			if ui.Button(f, "取消").Ghost().Small().Clicked() {
+			if drawTerminalButton(f, env, "terminal-rename-cancel", "取消", terminalButtonGhost, false) {
 				p.renaming = false
 			}
 		})
-	} else if ui.Button(f, "重命名").Ghost().Small().Clicked() {
+	} else if drawTerminalButton(f, env, "terminal-rename", "重命名", terminalButtonGhost, false) {
 		p.renameField.SetText(state.Info.Title)
 		p.renaming = true
 	}
-	if env.Act.CloseRightTab != nil && ui.Button(f, "关闭终端").Ghost().Small().Clicked() {
-		env.Act.CloseRightTab(tabID)
-	}
 	if state.Writable {
-		ui.TextFieldID(f, env.Tree.ID(env.Feat, "terminal-input"), &p.field, "命令", "输入后按 F6 执行")
+		ui.TextFieldID(f, env.Tree.ID(env.Feat, "terminal-input"), &p.field, "命令", "输入后按 F6 执行").
+			FontSize(terminalRootFontSize)
 	}
 }
 
@@ -244,15 +275,15 @@ func terminalPhaseText(phase string) string {
 	case "idle", "loading":
 		return "正在读取终端环境…"
 	case "creating":
-		return "正在创建终端…"
+		return "正在启动…"
 	case "connecting":
-		return "正在连接终端…"
+		return "正在连接…"
 	case "disconnected":
-		return "终端连接已断开"
+		return "连接已断开。"
 	case "closed":
-		return "终端已关闭"
+		return "终端已关闭。"
 	case "failed":
-		return "终端不可用"
+		return "不可用"
 	default:
 		return phase
 	}

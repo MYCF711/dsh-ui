@@ -2,6 +2,7 @@ package dscore
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -18,22 +19,17 @@ type Primitives struct {
 //
 // 几何照官方**会话行**（`ui-workspace/src/client/rows/Rows.module.css`）：
 //
-//	.wnFoaW_sessionRow{gap:0;height:32px}
-//	.wnFoaW_projectRow,.wnFoaW_sessionRow{border-radius:var(--dsw-radius-md);
-//	  padding:0 8px;…;padding-inline-start:calc(8px + var(--dsh-workspace-indent,0px))}
-//	.wnFoaW_projectRow:hover,.wnFoaW_sessionRow:hover,
-//	.wnFoaW_sessionRow.wnFoaW_selected{background:var(--dsw-alias-interactive-bg-hover)}
+//	Rows.module.css:1-16,123-126：height:32px;gap:0；
+//	  border-inline:3px solid transparent；padding:0 8px；
+//	  padding-inline-start:calc(12px - 3px + indent)。
+//	Rows.module.css:18-26,317-325：hover/selected 都走 interactive-bg-hover。
 //
-// 注意两点，和"想当然"不一样：
-//   - 行高是**固定 32**，不是最小高；字号 14/20（标题那层给）。
-//   - **选中态和悬停态同色**，都是 `--dsw-alias-interactive-bg-hover`。
-//     我们原来的 NavActive 是自造的深一档色，官方没有这个东西。
-//
-// height 由调用方给（官方会话行 32、项目行 34），这里只管形状。
+// 3px 透明 border 用等效 margin 表达；左侧 9px 是官方 12-3，右侧仍是 8px。
+// height 由调用方给（会话行/项目行均 32），这里只管形状。
 func (p *Primitives) ListRow(f ui.C, id gfx.ID, active bool, height float32, body func()) ui.Box {
 	t := p.Theme
 	row := ui.Row(f).FillWidth().Height(height).Radius(t.Radii.MD).
-		PadX(8).PadY(0).Items(ui.Center).Gap(0)
+		MarginSides(0, 3, 0, 3).PadSides(0, 8, 0, 9).Items(ui.Center).Gap(0)
 	if active {
 		row = row.Background(t.Hover)
 	} else {
@@ -76,36 +72,21 @@ func (p *Primitives) Bubble(f ui.C, body func()) ui.Box {
 	return ui.Column(f).PadSides(10, 16, 10, 16).Radius(t.Radii.XL).Background(t.Bubble).Children(body)
 }
 
-// SectionHeader 画一个分组头（工作区名 + 条数 + 折叠箭头）。
-//
-// 照官方**项目行** `.wnFoaW_projectRow`（它就是侧栏里那一行可折叠的工作区名）：
-//
-//	Rows.module.css:112-116 .projectRow{box-sizing:border-box;align-items:center;height:32px}
-//	.wnFoaW_projectRow,.wnFoaW_sessionRow{border-radius:var(--dsw-radius-md);
-//	  padding:0 8px;gap:6px;color:var(--dsw-alias-label-primary);…}
-//	.wnFoaW_title{font-size:14px;line-height:20px}
-//	.wnFoaW_chevron{color:var(--dsw-alias-label-caption)}
-//	.wnFoaW_arrow{transition:transform .15s var(--ds-ease-in-out)}
-//	.wnFoaW_arrowOpen{transform:rotate(90deg)}
-//
-// rc.2 项目行与会话行同为 32px（Rows.module.css:112-126），字是正文色而不是灰字——
-// 原来那版 26px 的灰字按钮和官方不是一个东西。
+// SectionHeader 画官方项目行：16×20 文件夹槽 + 14/20 标题。
+// Rows.module.css:1-16,112-116,132-140,173-188；Rows.tsx:314-322。
+// 官方没有会话计数，count 仅为保持 pluginapi.Primitives 契约兼容而保留。
+// 静止态画官方 folder-open/close；hover 换 triangle 的动效尚未由 Viva 图元提供。
 func (p *Primitives) SectionHeader(f ui.C, id gfx.ID, title string, count int, open bool) ui.Box {
 	t := p.Theme
-	arrow := "▸"
-	if open {
-		arrow = "▾"
-	}
-	return ui.Row(f).FillWidth().Height(32).Radius(t.Radii.MD).PadX(8).
+	return ui.Row(f).FillWidth().Height(32).Radius(t.Radii.MD).
+		MarginSides(0, 3, 0, 3).PadSides(0, 8, 0, 9).
 		Items(ui.Center).Gap(6).Hover(ui.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
-		ui.Text(f, arrow).FontSize(t.Fonts.Caption).Color(t.LabelCaption)
-		ui.Text(f, title).FontSize(t.Fonts.Body).Color(t.LabelPrimary).Ellipsis()
-		ui.Spacer(f)
-		if count > 0 {
-			// 官方项目行没有计数；计数用的字形取自 `.wnFoaW_meta`
-			// （12px/20、--dsw-alias-label-tertiary）。
-			ui.Text(f, itoa(count)).FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		}
+		ui.Row(f).Width(16).Height(20).Shrink(0).Items(ui.Center).Justify(ui.Center).Children(func() {
+			if icon, ok := dsassets.WorkspaceFolder(t.LabelTertiary, open); ok {
+				ui.Icon(f, icon).Size(16, 16).Color(t.LabelTertiary)
+			}
+		})
+		ui.Text(f, title).FontSize(t.Fonts.Body).LineHeight(20).Color(t.LabelPrimary).Ellipsis().Grow(1)
 	})
 }
 

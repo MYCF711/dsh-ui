@@ -31,8 +31,8 @@
 //
 //	拖拽把手   分隔线两侧各 4px 的抓取带（共 8px，不占布局，绝对定位叠在列上），
 //	           悬停时画 2px 描边线、拖动时画 3px 品牌色线，指针是 SizeWE
-//	拖动限制   侧栏 180–400、右栏 300–视口 40%（官方默认值 264–420 / 45%
-//	           是**算默认**时的口径，用户明确拖到的位置不该被它弹回去）
+//	拖动限制   侧栏与官方 clampWidth 同为 264–420；右栏 300–视口 40%（官方默认 45%
+//	           是首次打开口径，用户明确拖到的位置不该被它弹回去）
 //	几何真值   拖动后本插件把 env.Geometry 校正成**这一帧真实画出来的**三列，
 //	           否则下游（侧栏的活动面板、composer 的排版宽）还按旧值摆
 //
@@ -68,20 +68,11 @@ const (
 	rightbarOpenFrac = 0.45 // 官方首次打开：layoutInfo.rightbar ?? viewport * .45
 )
 
-// 用户拖出来的宽度**不受官方默认值那两条夹取范围约束**：
-// 264–420 是官方算默认宽度时用的，用户明确拖到 180 就该是 180。
-//
-// 上下限的出处与理由：
-//
-//	侧栏 180  再窄就放不下会话行的图标 + 标题（官方折叠态是 56，那是**收起**，不是拖窄）
-//	侧栏 400  与官方上界 420 同量级，留一点余量，避免拖动值被 layout 二次夹掉
-//	右栏 300  与官方下限一致：再窄面板里的表格/代码就开始横向溢出
-//	右栏 40%  面板的合理上限。官方首次打开是 45%，比这里还宽——两者只在「用户
-//	          第一次拖右栏之前」冲突，拖拽时的上限取 max(40%, 按下时的宽度)，
-//	          所以从 45% 往右拖不会突然掉到 40%（见 dragCeiling）
+// 侧栏拖宽与官方 columns.ts:13-15,40-58 使用同一 clampWidth 范围 264–420。
+// 右栏保留本插件已有的 40% 拖动上限；它不属于本次侧栏改动。
 const (
-	userSidebarMin = 180
-	userSidebarMax = 400
+	userSidebarMin = 264
+	userSidebarMax = 420
 
 	userRightbarMin     = 300
 	userRightbarMaxFrac = 0.40
@@ -728,15 +719,15 @@ func (p *Plugin) drawSidebar(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi
 	if cols.sidebar <= 0 {
 		return
 	}
-	// 内边距照官方侧栏根：`.wtg9ga_root{padding:6px var(--dsh-sidebar-inline-padding)}`，
-	// 其中 `--dsh-sidebar-inline-padding:12px`。所以上下 6、左右 12，不是四边 12。
+	// SidebarRoot.module.css:9-18：padding:6px var(--dsh-sidebar-inline-padding)，
+	// rc.2 的 inline-padding 是 8px；上下 6、左右 8。
 	//
 	// Shrink(0) 是必须的：侧栏是**定宽**（官方 264–420，默认 280），不参与压缩。
 	// 不写它的话，中间栏 + 右栏一起超宽时 flex 会把侧栏压到 239，
-	// 而侧栏内部的滚动区是按 280 算的（280-24=256），于是每一行都往中栏里
+	// 而侧栏内部的滚动区是按 280 算的（默认 inner=268），于是每一行都往中栏里
 	// 探出 41px——悬停/选中底色会横穿到会话正文上（这次截图里量出来的：
 	// 行背景 x=20…276，而侧栏列只到 x=247）。
-	ui.Column(f).Width(cols.sidebar).Shrink(0).FillHeight().PadX(12).PadY(6).Gap(8).
+	ui.Column(f).Width(cols.sidebar).Shrink(0).FillHeight().PadX(8).PadY(6).Gap(8).
 		Background(p.theme.SidebarFill).Children(func() {
 		drawSlot(pluginapi.SlotSidebarHeader)
 		p.prims.Divider(f)

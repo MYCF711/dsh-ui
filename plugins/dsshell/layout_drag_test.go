@@ -9,8 +9,7 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
-// TestSolveColumnsLimitsUserSidebar 用户拖出来的侧栏走 180–400，
-// 官方默认值那条路（264–420）一点不动。
+// TestSolveColumnsLimitsUserSidebar 用户拖宽与官方默认值共用 264–420 clamp。
 func TestSolveColumnsLimitsUserSidebar(t *testing.T) {
 	cases := []struct {
 		name                string
@@ -21,18 +20,15 @@ func TestSolveColumnsLimitsUserSidebar(t *testing.T) {
 	}{
 		// 官方口径：200 → 抬到 264（这一段必须与 TestSolveColumnsMatchesOfficial 同源）。
 		{"官方下限 264", 1920, 200, sidebarMin, sidebarMax, 264, 792, 864},
-		// 用户口径：同样的 200 不再被抬到 264。
-		{"用户下限 180", 1920, 200, userSidebarMin, userSidebarMax, 200, 856, 864},
-		// 用户拖到 180：三列之和仍等于视口。
-		{"用户拖到 180", 1920, 180, userSidebarMin, userSidebarMax, 180, 876, 864},
-		// 用户拖到 400：中栏让位，右栏按 available 保持 864。
+		// 用户口径与官方一致：200 同样抬到 264。
+		{"用户下限 264", 1920, 200, userSidebarMin, userSidebarMax, 264, 792, 864},
+		{"用户拖到 264", 1920, 264, userSidebarMin, userSidebarMax, 264, 792, 864},
 		{"用户拖到 400", 1920, 400, userSidebarMin, userSidebarMax, 400, 656, 864},
-		// 用户上限 400：500 被夹回 400，而不是官方上限 420。
-		{"用户上限 400", 1920, 500, userSidebarMin, userSidebarMax, 400, 656, 864},
+		{"用户上限 420", 1920, 500, userSidebarMin, userSidebarMax, 420, 636, 864},
 		// 侧栏拖宽到右栏放不下：官方规则不变——右栏整列消失，中栏吃满。
 		{"拖宽后右栏放不下", 960, 400, userSidebarMin, userSidebarMax, 400, 560, 0},
-		// 同一档窄窗口、侧栏只到 200：available = 360 ≥ 300，右栏按 available 留下。
-		{"拖宽后右栏刚够", 960, 200, userSidebarMin, userSidebarMax, 200, 400, 360},
+		// 侧栏 264 时 available=296<300，右栏同样整列消失。
+		{"拖到 264 右栏不足", 960, 264, userSidebarMin, userSidebarMax, 264, 696, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -277,14 +273,14 @@ func TestDragSidebarHandle(t *testing.T) {
 		t.Fatalf("松手后再画一帧仍应是 344，得到 %v", f.env.Geometry.SidebarWidth)
 	}
 
-	// 下限 180：往左狠拖也不会低于 180。
+	// 下限 264：往左狠拖也不会低于官方 clamp 下界。
 	f.event(gfx.PointerDown, id, 344)
 	f.event(gfx.PointerMove, id, -5000)
 	if got := f.plugin.UserSidebarWidth; got != userSidebarMin {
 		t.Fatalf("侧栏下限应为 %v，得到 %v", userSidebarMin, got)
 	}
 	f.event(gfx.PointerUp, id, -5000)
-	// 上限 400：往右狠拖也不会超过 400（不是官方的 420）。
+	// 上限 420：往右狠拖也不会超过官方 clamp 上界。
 	f.event(gfx.PointerDown, id, 180)
 	f.event(gfx.PointerMove, id, 5000)
 	if got := f.plugin.UserSidebarWidth; got != userSidebarMax {
@@ -456,7 +452,7 @@ func TestReadConfigRestoresWidths(t *testing.T) {
 		t.Fatalf("恢复后的三栏几何：%+v", got)
 	}
 
-	// 越界的存量值：侧栏夹回 180–400，右栏抬到下限 300。
+	// 越界的存量值：侧栏夹回官方 264–420，右栏抬到下限 300。
 	clamped := &Plugin{SidebarWidth: 280}
 	clamped.readConfig(newEnv(pluginapi.Actions{ConfigGet: func() map[string]string {
 		return map[string]string{cfgKeySidebar: "9000", cfgKeyRightbar: "120"}

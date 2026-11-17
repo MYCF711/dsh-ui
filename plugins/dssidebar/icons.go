@@ -23,6 +23,7 @@ package dssidebar
 import (
 	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/ui"
 )
 
 // pinFillHeadPath / pinFillTailPath 是 sprite `"pin-fill"` 的两条 `d` 原文
@@ -56,4 +57,51 @@ func pinFillIcon(color gfx.Color) (gfx.Icon, bool) {
 			{Fill: color, Commands: tail},
 		},
 	}, true
+}
+
+// sidebarPanelIcon 返回面板注册方自己的官方图标；扩展面板没有官方素材时不画。
+func sidebarPanelIcon(id string, color gfx.Color) (gfx.Icon, bool) {
+	switch id {
+	case "plugins":
+		return dsassets.SidebarPluginPinwheel(color)
+	case "schedules":
+		return dsassets.SidebarClock(color)
+	default:
+		return gfx.Icon{}, false
+	}
+}
+
+// drawSlidersTwoIcon 用官方 path + 两枚圆环组成 IconSlidersTwoOutlineRegular。
+// 圆环由 Viva 的圆形 Border 画出，未做贝塞尔近似。
+func drawSlidersTwoIcon(f ui.C, color gfx.Color, size float32) {
+	icon, rings, ok := dsassets.WorkspaceSlidersTwo(color)
+	if !ok {
+		return
+	}
+	scale := size / 16
+	ui.Row(f).Width(size).Height(size).Children(func() {
+		ui.Icon(f, icon).Size(size, size).Color(color)
+		for _, ring := range rings {
+			d := 2 * ring.Radius * scale
+			ui.Row(f).Absolute().Left((ring.CX-ring.Radius)*scale).Top((ring.CY-ring.Radius)*scale).
+				Width(d).Height(d).Radius(gfx.RadiusFull).Border(ring.Stroke*scale, color)
+		}
+	})
+}
+
+// drawAppsAddIcon 用官方 path + 三枚圆角矩形组成 More 行图标。
+func drawAppsAddIcon(f ui.C, color gfx.Color, size float32) {
+	icon, rects, ok := dsassets.SidebarAppsAdd(color)
+	if !ok {
+		return
+	}
+	scale := size / 16
+	ui.Row(f).Width(size).Height(size).Children(func() {
+		ui.Icon(f, icon).Size(size, size).Color(color)
+		for _, rect := range rects {
+			ui.Row(f).Absolute().Left(rect.X*scale).Top(rect.Y*scale).
+				Width(rect.Width*scale).Height(rect.Height*scale).
+				Radius(rect.Radius*scale).Border(rect.Stroke*scale, color)
+		}
+	})
 }

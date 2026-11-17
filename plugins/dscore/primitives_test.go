@@ -87,8 +87,8 @@ func TestListRowGeometry(t *testing.T) {
 	if rect.Height != 32 {
 		t.Errorf("行高 %v，want 32（调用方给的值）", rect.Height)
 	}
-	if rect.Width != 320 {
-		t.Errorf("行宽 %v，want 320（FillWidth）", rect.Width)
+	if rect.X != 3 || rect.Width != 314 {
+		t.Errorf("行矩形 x/宽 = %v/%v，want 3/314（官方左右各 3px paint inset）", rect.X, rect.Width)
 	}
 }
 

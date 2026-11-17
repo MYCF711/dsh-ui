@@ -42,15 +42,15 @@ import (
 //	.GAkraW_flatList>*+*{margin-top:2px}           ← rowGap
 //	.GAkraW_groupSection+.GAkraW_groupSection{margin-top:4px} ← groupGap
 //	.GAkraW_list{padding-bottom:16px}              ← listBottomPadding
-//	.GAkraW_searchExpanded{height:30px}            ← searchHeight
-//	.wtg9ga_root{--dsh-sidebar-inline-padding:12px} ← sidebarInline
+//	WorkspaceBrowser.module.css:200-209 searchExpanded{height:32px} ← searchHeight
+//	SidebarRoot.module.css:9-18 --dsh-sidebar-inline-padding:8px   ← sidebarInline
 //	--dsh-workspace-indent: depth * 12px           ← indentStep
 //
 // 搜索结果卡（官方 `Rows.module.css`，类名前缀 `wnFoaW`；只有搜索态才用）：
 //
 //	.wnFoaW_searchResultRow{…;min-height:48px;flex-direction:column;padding:4px 8px} ← searchResultHeight
 //	Rows.module.css:66-75 .searchResultTitle{margin:0 var(--dsh-sidebar-label-gap)} ← 左右各 6px
-//	.wnFoaW_searchResultMeta{…;gap:6px;margin-left:20px}                            ← searchMetaMarginLeft/Gap
+//	Rows.module.css:77-83 searchResultMeta{gap:6px;margin-left:calc(16px + 6px)} ← searchMetaMarginLeft/Gap
 //	.wnFoaW_searchResultWorkspace{font-size:12px;line-height:17px;max-width:40%}    ← searchMetaLineHeight/Percent
 //	.wnFoaW_searchResultSnippet{font-size:12px;line-height:17px;flex:1}             ← 同上
 //	.GAkraW_searchTree>[role=treeitem]+[role=treeitem]{margin-top:2px}              ← rowGap（复用）
@@ -67,15 +67,15 @@ const (
 	slotHeight        = 20
 	titleMarginLeft   = 6
 	titleMarginRight  = 6
-	searchHeight      = 30
-	sidebarInline     = 12
+	searchHeight      = 32 // WorkspaceBrowser.module.css:200-209
+	sidebarInline     = 8  // SidebarRoot.module.css:9-18
 	indentStep        = 12
 
 	// 官方 searchResultRow 那一档。
 	searchResultHeight    = 48
 	searchTitleLineHeight = 20
 	searchMetaLineHeight  = 17
-	searchMetaMarginLeft  = 20
+	searchMetaMarginLeft  = 22 // Rows.module.css:77-83：16 + label-gap 6
 	searchMetaGap         = 6
 	searchWorkspaceMaxPct = 40
 	emptyStatePadX        = 12
@@ -319,45 +319,12 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		{ID: "header", Slot: pluginapi.SlotSidebarHeader, Order: 10,
 			Draw: p.drawHeader, Children: p.entryMenuChildren, AfterDraw: p.afterEntryMenu},
 		{ID: "list", Slot: pluginapi.SlotSidebarList, Order: 20, Draw: p.drawWorkspace},
-		{ID: "footer", Slot: pluginapi.SlotSidebarFooter, Order: 30, Draw: p.drawFooter},
+		// 官方 footerActions 默认空，不注册固定「N 个会话」占位（SidebarRoot.tsx:461-469）。
 		{ID: "active-panel", Slot: pluginapi.SlotShellOverlay, Order: 50, Draw: p.drawActivePanel},
 		// #62 工作区改名/删除对话框：模态栈顶（103 已被 dsconversation 的
 		// feedback-overlay 占用；同槽同 Order 由 cmd/app 的守卫拦）。
 		{ID: "workspace-dialogs", Slot: pluginapi.SlotShellOverlay, Order: 104, Draw: p.drawWorkspaceDialogs},
 	}
-}
-
-// drawFooter 画左栏底部那一行：会话总数。
-//
-// 官方侧栏 footer（`SidebarRoot.module.css`）只给了这些：
-//
-//	.wtg9ga_footArea{flex-direction:column;flex:none;display:flex}
-//	.wtg9ga_settingsArea,.wtg9ga_footerActions{flex:none;width:100%;min-width:0}
-//	.wtg9ga_footerActions{display:flex}
-//	.wtg9ga_iconButton{border-radius:var(--dsw-radius-sm);width:28px;height:28px;…}
-//
-// **没有高度、没有字号**（里面装的是 28px 图标按钮，高度由按钮撑）。所以这里
-// 行高取按钮那一档 28，字号沿用我们原来的一档（官方未给，不另编一个）。
-//
-// # 为什么这一行不再写「连接状态」
-//
-// 这里原来画的是 `env.Data.Status`（壳的动作状态串，成功 load 一次就变成
-// 「已连接 · N 条（总 M）」）。两处不对：
-//
-//  1. **错层**：官方连接指示的家是 `sidebar.settings`（结构树 §4 S8 原话
-//     「连接指示由 settings 的连接状态驱动，不能移到底部自创 statusbar」），
-//     今天由 dsstatusbar 的 `connection.go` 画在那里；
-//  2. **编事实**：`Status` 是"上一次动作的文案"，不是连接层结论——壳没订阅成功时
-//     它照样可以写着「已连接 · N 条」。连接三态现在从 `Snapshot.Link` 读。
-//
-// 所以这一行只留"会话总数"这一个它自己知道的事实。
-func (p *Plugin) drawFooter(f ui.C, env *pluginapi.Env) {
-	t := p.theme
-	ui.Row(f).FillWidth().Height(28).Items(ui.Center).Gap(6).Children(func() {
-		ui.Text(f, itoa(len(env.Data.Sessions))+" 个会话").
-			FontSize(t.Fonts.Tiny).Color(t.LabelCaption)
-		ui.Spacer(f)
-	})
 }
 
 // drawList 画会话列表：有过滤词走**搜索结果卡**，没有才走分组树。
@@ -396,17 +363,10 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 		}
 	}
 
-	// 滚动区宽度：官方 `.wtg9ga_regionArea{margin-left:-4px;
-	// margin-right:calc(-1 * var(--dsh-sidebar-inline-padding));padding-left:4px}`。
-	// 净效果是**右侧那 12px 内边距被吃掉**：列表右缘贴到侧栏右缘（x=280），
-	// 而不是停在 268。行行背景因此宽 268 而不是 256——差 12px，超过 8px 的
-	// 几何门槛，是这次按图量出来的。
-	//
-	// 左侧 -4 + padding-left 4 相抵，保持 x=12 不动。
-	//
-	// 宽度仍然必须钉死（ScrollArea 里用 FillWidth 时内容宽度算不出来，
-	// 标题会被压成竖排，或者整个内容列撑到窗口宽——都踩过）。
-	inner := p.width - sidebarInline
+	// WorkspaceBrowser.module.css:350-359：左侧 -4/+4 相抵；右侧到侧栏边缘
+	// 2px，scrollbar-gutter 与 padding-right 共同把内容行宽保持在 268px（280 默认宽）。
+	// 因而 inner = width - inline(8) - 4，不能再沿用旧 inline=12 时的 width-inline。
+	inner := p.width - sidebarInline - 4
 	p.logSnapshot(env, q, plan)
 	p.scrollBox = ui.Scroll(f).Width(inner).Grow(1).MinHeight(120).Clip()
 	p.scrollBox.Children(func() {
@@ -506,8 +466,9 @@ func (p *Plugin) drawSearch(f ui.C, env *pluginapi.Env, q string) {
 	}
 	p.logSearchSnapshot(env, q, results)
 
-	// 与分组态同一套宽度口径（侧栏内宽 + 吃掉右侧 12px 内边距），见 drawList。
-	inner := p.width - sidebarInline
+	// 与分组态同一套宽度口径（listArea 右侧距侧栏边缘 2px），见 drawList。
+	inner := p.width - sidebarInline - 4
+	p.frameBoxes.SearchCards = p.frameBoxes.SearchCards[:0]
 	p.scrollBox = ui.Scroll(f).Width(inner).Grow(1).MinHeight(120).Clip()
 	p.scrollBox.Children(func() {
 		ui.Column(f).Width(inner).Gap(0).PadSides(0, 0, listBottomPadding, 0).Children(func() {
@@ -520,7 +481,8 @@ func (p *Plugin) drawSearch(f ui.C, env *pluginapi.Env, q string) {
 			}
 			ui.Column(f).Width(inner).Gap(rowGap).Children(func() {
 				for i := range results {
-					p.drawSearchCard(f, env, results[i])
+					card := p.drawSearchCard(f, env, results[i])
+					p.frameBoxes.SearchCards = append(p.frameBoxes.SearchCards, card.Card)
 				}
 			})
 		})
@@ -530,7 +492,7 @@ func (p *Plugin) drawSearch(f ui.C, env *pluginapi.Env, q string) {
 // searchCardBoxes 是画一张结果卡时真正用到的矩形。
 //
 // 生产路径丢弃返回值（`p.drawSearchCard(...)` 当语句用，不分配）；测试拿它量
-// 卡片内部几何：标题行 20、元信息行 17、元信息左缩进 20、workspace 上限 40%。
+// 卡片内部几何：标题行 20、元信息行 17、元信息左缩进 22、workspace 上限 40%。
 // 没有 snippet 真值时 Snippet 是零值盒子，所以另给一个 HasSnippet 布尔，
 // 测试不需要去碰空盒子的 Rect()。
 type searchCardBoxes struct {
@@ -550,12 +512,8 @@ type searchCardBoxes struct {
 //	  div.searchResultHeading           ← 标题行：活动点槽 + 标题
 //	  div.searchResultMeta              ← 元信息行：workspace +（有真值才有的）snippet
 //
-// 容器复用 dscore 的 `ListRow` 图元（悬停/选中/命中与分组行走同一条路）：
-// 它给的是 radius-md(12)、padding 0 8、垂直居中，而官方 searchResultRow 是
-// radius-lg(16)、padding 4px 8px、align-items:stretch——圆角差 4px、内容顶距差
-// 约 1.5px，都在本轮 8px 门槛内；要对齐就得改 plugins/dscore 的图元（不在本轮
-// 允许改动的路径里），所以如实记在 docs/visual-search-result.md 的缺口里。
-//
+// 容器直接按 Rows.module.css:32-48：radius-lg(16)、3px paint inset、
+// padding 4px 8px 4px 9px（左 12-3），选中/悬停与分组行同一令牌。
 // 第二行的时间**不画**：官方 searchResultRow 里没有时间元素，卡片只有
 // 标题 + workspace + snippet 两行；分组行的时间不受影响。
 func (p *Plugin) drawSearchCard(f ui.C, env *pluginapi.Env, r searchResult) searchCardBoxes {
@@ -564,7 +522,14 @@ func (p *Plugin) drawSearchCard(f ui.C, env *pluginapi.Env, r searchResult) sear
 	// 与分组态同一套 ID（`s-<会话ID>`）：点击/键盘/选中都不需要第二条通路。
 	id := env.Tree.ID(env.Feat, "s-"+r.ID)
 	var out searchCardBoxes
-	card := p.prims.ListRow(f, id, active, searchResultHeight, func() {
+	card := ui.Row(f).FillWidth().Height(searchResultHeight).Radius(t.Radii.LG).
+		MarginSides(0, 3, 0, 3).PadSides(4, 8, 4, 9).Gap(0)
+	if active {
+		card = card.Background(t.Hover)
+	} else {
+		card = card.Hover(ui.Look{}.Background(t.Hover))
+	}
+	card = card.Hit(id, "").Children(func() {
 		ui.Column(f).FillWidth().Children(func() {
 			out.Heading = ui.Row(f).FillWidth().Height(searchTitleLineHeight).Items(ui.Center).Gap(0).
 				Children(func() {
@@ -635,7 +600,7 @@ func (p *Plugin) drawSession(f ui.C, env *pluginapi.Env, s apiclient.Session) {
 	confirming := canDelete && p.pendingDelete == s.ID
 	title := strings.TrimSpace(s.Title)
 	if title == "" {
-		title = "（无标题）"
+		title = officialUntitled // 官方 session.untitled，不以目录名或自造占位兜底
 	}
 	id := env.Tree.ID(env.Feat, "s-"+s.ID)
 
@@ -666,7 +631,7 @@ func (p *Plugin) drawSession(f ui.C, env *pluginapi.Env, s apiclient.Session) {
 				text, color = "确认?", t.Error
 			}
 			ui.Text(f, text).FontSize(10).LineHeight(timeLineHeight).
-				Color(color).Shrink(0)
+				Color(color).Shrink(0).MarginSides(0, -1, 0, 0) // Rows.module.css:238-244
 		}
 		if canDelete {
 			p.drawDeleteBox(f, env, s, confirming)

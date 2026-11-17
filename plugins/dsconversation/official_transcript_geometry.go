@@ -144,6 +144,10 @@ const (
 	UserStackWidthCap float32 = 0.82
 	// UserStackFallbackWidth 是 `--dsh-chat-content-width` 的兜底值（官方 748px）。
 	UserStackFallbackWidth float32 = 748
+	// GoalCommandRowGap 是 `/goal` row/stack 的 6px 间距（GoalCommandInputView.module.css:1-17）。
+	GoalCommandRowGap float32 = 6
+	// GoalCommandChipGap 是命令 chip 的 3px 间距（ReferenceChip.module.css:3-9）。
+	GoalCommandChipGap float32 = 3
 
 	// AttachmentRowGap 是附件行间距（MessageItem.module.css:308-314）。
 	AttachmentRowGap float32 = 8

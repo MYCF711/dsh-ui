@@ -72,20 +72,30 @@ func TestDrawsNothingForEmptyGoal(t *testing.T) {
 //
 //	① **不再有 4×4 圆点**（那是一枚自造占位，官方无此物）；
 //	② 真的画了描边图形（icon 的描边被三角化 → Triangles 非空）；
-//	③ 文字仍是「目标」+ 目标正文。
+//	③ 文字仍是官方「进行中的目标」+ 目标正文。
 func TestDrawsOfficialGoalGlyph(t *testing.T) {
-	canvas := renderGoal(t, &Plugin{}, pluginapi.Actions{
+	p := &Plugin{}
+	canvas := renderGoal(t, p, pluginapi.Actions{
 		Goal: func() string { return "把 DSH 重写成 Go 版本" },
 	})
-	if rects := canvas.Rectangles(); len(rects) != 0 {
-		t.Fatalf("目标条已改用官方 sprite 图标，不该再有圆点矩形：%+v", rects)
+	var bars int
+	for _, rect := range canvas.Rectangles() {
+		if rect.Bounds.Width == 4 && rect.Bounds.Height == 4 {
+			t.Fatalf("目标条不得再画自造 4×4 圆点：%+v", rect)
+		}
+		if rect.Bounds.Height == goalBarHeight && rect.Color == p.theme.Menu {
+			bars++
+		}
+	}
+	if bars != 1 {
+		t.Fatalf("官方 36px specific-menu 目标条 = %d，want 1", bars)
 	}
 	if len(canvas.Triangles()) == 0 {
 		t.Fatal("官方 goal-outline 图标没画出来（没有任何描边三角形）")
 	}
 	var label, objective bool
 	for _, text := range canvas.Texts() {
-		if text.Value == "目标" {
+		if text.Value == goalLabelText {
 			label = true
 		}
 		if text.Value == "把 DSH 重写成 Go 版本" {

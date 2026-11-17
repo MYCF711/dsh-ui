@@ -24,6 +24,7 @@ type Theme struct {
 	SidebarFill      ui.Color // 左栏背景
 	BgLayer1         ui.Color // 抬高一层（卡片）
 	BgLayer2         ui.Color // 抬高两层（气泡、输入框）
+	Menu             ui.Color // 菜单材质：--dsw-specific-menu
 	BgLayer3         ui.Color // 抬高三层（选择器）
 	BgOverlay        ui.Color // 浮层（问题选项序号；design-platform.css:191,343）
 	BgModulePlatform ui.Color // 模块台（Tag neutral / 行内代码）
@@ -53,6 +54,7 @@ type Theme struct {
 
 	// ── 文字 ──
 	LabelPrimary         ui.Color // 正文
+	LabelPrimaryDimmed   ui.Color // 正文减弱：--dsw-alias-label-primary-dimmed
 	LabelSecondary       ui.Color // 次要
 	LabelTertiary        ui.Color // 第三级
 	LabelCaption         ui.Color // 说明 / 状态栏
@@ -181,6 +183,7 @@ func (t *Theme) Palette() map[string]ui.Color {
 		"sidebar":        t.SidebarFill,
 		"layer1":         t.BgLayer1,
 		"layer2":         t.BgLayer2,
+		"menu":           t.Menu,
 		"layer3":         t.BgLayer3,
 		"overlay":        t.BgOverlay,
 		"modulePlatform": t.BgModulePlatform,
@@ -190,6 +193,7 @@ func (t *Theme) Palette() map[string]ui.Color {
 		"border1":        t.BorderL1,
 		"border2":        t.BorderL2,
 		"primary":        t.LabelPrimary,
+		"primaryDimmed":  t.LabelPrimaryDimmed,
 		"secondary":      t.LabelSecondary,
 		"tertiary":       t.LabelTertiary,
 		"caption":        t.LabelCaption,

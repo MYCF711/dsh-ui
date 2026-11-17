@@ -146,6 +146,7 @@ func Dark() *pluginapi.Theme {
 		SidebarFill:      gfx.RGB24(staticNeutralBluish900),
 		BgLayer1:         gfx.RGB24(staticNeutralBluish875),
 		BgLayer2:         gfx.RGB24(staticNeutralBluish850),
+		Menu:             ui.RGBA(48, 49, 54, 0.64), // design-platform.css:467,469
 		BgLayer3:         gfx.RGB24(staticNeutralBluish800),
 		BgOverlay:        gfx.RGB24(staticNeutralBluish700),
 		BgModulePlatform: gfx.RGB24(staticNeutralBluish800),
@@ -172,6 +173,7 @@ func Dark() *pluginapi.Theme {
 		BorderL4: ui.RGBA(255, 255, 255, 0.20), // #ffffff33
 
 		LabelPrimary:         gfx.RGB24(staticNeutralBluish50),
+		LabelPrimaryDimmed:   gfx.RGB24(staticNeutralBluish100), // design-platform.css:408
 		LabelSecondary:       gfx.RGB24(staticNeutralBluish300),
 		LabelTertiary:        gfx.RGB24(staticNeutralBluish400),
 		LabelCaption:         gfx.RGB24(staticNeutralBluish600),
@@ -232,6 +234,7 @@ func Light() *pluginapi.Theme {
 		SidebarFill:      gfx.RGB24(staticNeutralBluish50),
 		BgLayer1:         gfx.RGB24(staticNeutralBluish00),
 		BgLayer2:         gfx.RGB24(staticNeutralBluish00),
+		Menu:             ui.RGBA(252, 253, 254, 0.70), // design-platform.css:316,318
 		BgLayer3:         gfx.RGB24(staticNeutralBluish00),
 		BgOverlay:        gfx.RGB24(staticNeutralBluish150),
 		BgModulePlatform: gfx.RGB24(staticNeutralBluish60),
@@ -257,6 +260,7 @@ func Light() *pluginapi.Theme {
 		BorderL4: ui.RGBA(0, 0, 0, 0.16), // #00000029
 
 		LabelPrimary:         gfx.RGB24(0x000000),
+		LabelPrimaryDimmed:   gfx.RGB24(staticNeutralBluish950), // design-platform.css:256
 		LabelSecondary:       gfx.RGB24(staticNeutralBluish700),
 		LabelTertiary:        gfx.RGB24(staticNeutralBluish600),
 		LabelCaption:         gfx.RGB24(staticNeutralBluish400),

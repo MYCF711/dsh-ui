@@ -69,14 +69,16 @@ func TestGoalBarHeadlessCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 目标条上唯一的图形是官方 sprite `goal-outline`（描边 → 三角化图元）。
-	// 4px 圆点已被删掉，所以这里改为对**三角形图元的包围盒**做位置断言。
+	// 官方 sprite `goal-outline` 与 elevation 描边都会三角化；按 label-tertiary
+	// 只聚合 glyph，避免把 36px 卡片的 BorderL1 轮廓误算进图标包围盒。
 	var glyph gfx.Rect
 	haveGlyph := false
 	var card gfx.Rect
 	haveCard := false
+	var bar gfx.Rect
+	haveBar := false
 	for _, primitive := range session.Snapshot().Primitives {
-		if primitive.Kind == app.TrianglePrimitive {
+		if primitive.Kind == app.TrianglePrimitive && primitive.Color == theme.LabelTertiary {
 			for _, point := range primitive.Points {
 				if !haveGlyph {
 					glyph = gfx.Rect{X: point.X, Y: point.Y}
@@ -103,6 +105,9 @@ func TestGoalBarHeadlessCapture(t *testing.T) {
 		if primitive.Color == theme.InputMajor && primitive.Radius == 28 && b.Height == 98 {
 			card, haveCard = b, true
 		}
+		if primitive.Color == theme.Menu && primitive.Radius == theme.Radii.MD && b.Height == goalBarHeight {
+			bar, haveBar = b, true
+		}
 	}
 	if !haveGlyph {
 		t.Fatal("真实像素帧里找不到官方 goal-outline 图标（没有任何描边三角形）")
@@ -117,9 +122,12 @@ func TestGoalBarHeadlessCapture(t *testing.T) {
 		t.Errorf("目标条图标底边 y=%v 没在输入卡片 y=%v 上方——\"docked above the composer\" 没做到",
 			glyph.Y-inkDY+goalGlyphSize, card.Y)
 	}
-	// 左边距 16（PadSides(6,16,6,16) 的 left）：这条以前是 6，写串过。
-	if !nearPx(glyph.X-inkDX, 24+16, 0.5) {
-		t.Errorf("图标框 x=%v，want 40（外层 Pad 24 + 本行左内边距 16）", glyph.X-inkDX)
+	if !haveBar {
+		t.Fatal("真实像素帧里找不到 36px specific-menu 目标条")
+	}
+	// `.bar{padding-left:12px}`：以真实目标条左边为锚，不再沿用旧 16px 假设。
+	if !nearPx(glyph.X-inkDX, bar.X+goalBarPadLeft, 0.5) {
+		t.Errorf("图标框 x=%v，want %v（目标条 x + 官方左内边距 12）", glyph.X-inkDX, bar.X+goalBarPadLeft)
 	}
 	// 图标是 14×14 的框，但**着墨范围**比框小：官方 sprite 的墨迹落在 viewBox
 	// 的 1.5..14.5（13 个单位）里，缩到 14px 后约 11.4px，再加一个描边宽度。

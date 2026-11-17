@@ -78,10 +78,12 @@ const (
 )
 
 // 官方组件的默认显示尺寸（bundle 里每条图标的 `size`）。
+// 外部打开是例外：BrowserBody.tsx:101 显式传 size={14}，不是默认的 16。
 const (
-	iconSizeChevron float32 = 14
-	iconSizeTool    float32 = 16
-	iconSizeTitle   float32 = 14
+	iconSizeChevron  float32 = 14
+	iconSizeTool     float32 = 16
+	iconSizeExternal float32 = 14
+	iconSizeTitle    float32 = 14
 )
 
 // 出处：六枚图标同包同文件，只有符号不同。
@@ -134,7 +136,7 @@ func iconRightUp(color gfx.Color) gfx.Icon {
 	return buildIcon(dsassets.Asset{
 		ID: "IconRightUpOutlineRegular", Title: "IconRightUpOutlineRegular",
 		Source:  iconSource("IconRightUpOutlineRegular"),
-		ViewBox: 16, Size: iconSizeTool, StrokeWidth: 1,
+		ViewBox: 16, Size: iconSizeExternal, StrokeWidth: 1,
 		Elements: []dsassets.Element{
 			{Kind: dsassets.PathElement, D: pathRightUpArrow, Fill: true},
 			{Kind: dsassets.PathElement, D: pathRightUpStem, Stroke: true},

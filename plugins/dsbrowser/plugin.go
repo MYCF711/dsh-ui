@@ -162,6 +162,8 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			ID: "browser-tab", Slot: pluginapi.SlotRightPaneTab, Key: RightTabBrowser,
 			// 芯片文案 = 官方 `type.label`：中文「浏览器」（locales.ts:4）。
 			Label: browserTypeLabel,
+			// BrowserTitle.tsx:3,16 的地球；Browser.module.css:246-249 额外右 margin 4px。
+			IconImage: iconGlobe(gfx.Color{}), IconMarginRight: browserTitleIconMargin,
 			// 官方 tab 类型没有 `order`（`SidebarRightTabDefinition` 里没这个字段，
 			// tab-registry.ts:106-…），名录顺序 = 注册顺序；Tab.Order 的零值就是
 			// "按装配顺序"，所以这里留 0，不编一个数。
@@ -176,6 +178,14 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 
 // browserTypeLabel 是官方 `sidebarBrowser.type.label`（中文，locales.ts:4）。
 const browserTypeLabel = "浏览器"
+
+const (
+	// Browser.module.css:246-249 的 .titleIcon{margin-right:4px}。
+	browserTitleIconMargin float32 = 4
+	// dockkit .tabTitle{gap:5px;line-height:1.4} 再叠加上面的 4px 右 margin。
+	browserTitleGap        = 5 + browserTitleIconMargin
+	browserTitleLineHeight = 13 * 1.4
+)
 
 // 官方 `sidebarBrowser` 词表里本插件用得到的几条（locales.ts:1-30，中文逐字）。
 const (
@@ -251,12 +261,12 @@ func (p *Plugin) drawToolbar(f ui.C, env *pluginapi.Env) {
 	ui.Row(f).FillWidth().Height(toolbarHeight).
 		PadSides(toolbarPadY, toolbarPadX, toolbarPadY, toolbarPadX).
 		Items(ui.Center).Gap(toolbarGap).Children(func() {
-		p.drawToolButton(f, env, "browser-back", copyBack, iconChevronLeft(t.LabelSecondary), t.LabelSecondary,
+		p.drawToolButton(f, env, "browser-back", copyBack, iconChevronLeft(t.LabelSecondary), iconSizeChevron, t.LabelSecondary,
 			p.nav.canGoBack(), func() { p.goBack(env) })
-		p.drawToolButton(f, env, "browser-forward", copyForward, iconChevronRight(t.LabelSecondary), t.LabelSecondary,
+		p.drawToolButton(f, env, "browser-forward", copyForward, iconChevronRight(t.LabelSecondary), iconSizeChevron, t.LabelSecondary,
 			p.nav.canGoForward(), func() { p.goForward(env) })
 		_, hasTarget := currentTarget(p.nav.value)
-		p.drawToolButton(f, env, "browser-reload", copyReload, iconRefresh(t.LabelSecondary), t.LabelSecondary,
+		p.drawToolButton(f, env, "browser-reload", copyReload, iconRefresh(t.LabelSecondary), iconSizeTool, t.LabelSecondary,
 			hasTarget, func() { p.reload(env) })
 
 		// `.addressBox`
@@ -274,6 +284,7 @@ func (p *Plugin) drawToolbar(f ui.C, env *pluginapi.Env) {
 			// 时让它可见；本仓没有"字段是否聚焦"的公开判据，改为**常显**。
 			// 这一处差异登记在 docs/official-parity.md 的 #50 行。
 			goBox := ui.Row(f).Width(goButtonSize).Height(addressHeight).Shrink(0).
+				Absolute().Top(0).Right(0).
 				Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM).
 				Hover(ui.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "browser-go"), copyGo).Children(func() {
@@ -285,7 +296,7 @@ func (p *Plugin) drawToolbar(f ui.C, env *pluginapi.Env) {
 		})
 
 		_, hasExternal := currentTarget(p.nav.value)
-		p.drawToolButton(f, env, "browser-external", copyExternal, iconRightUp(t.LabelSecondary), t.LabelSecondary,
+		p.drawToolButton(f, env, "browser-external", copyExternal, iconRightUp(t.LabelSecondary), iconSizeExternal, t.LabelSecondary,
 			hasExternal && env.Act.OpenExternal != nil, func() {
 				target, ok := currentTarget(p.nav.value)
 				if !ok || env.Act.OpenExternal == nil {
@@ -297,7 +308,7 @@ func (p *Plugin) drawToolbar(f ui.C, env *pluginapi.Env) {
 }
 
 // drawToolButton 画官方 `.tool`（28×28 圆角；禁用时不变色也不吃点击）并报告是否被点。
-func (p *Plugin) drawToolButton(f ui.C, env *pluginapi.Env, name, label string, icon gfx.Icon,
+func (p *Plugin) drawToolButton(f ui.C, env *pluginapi.Env, name, label string, icon gfx.Icon, iconSize float32,
 	color ui.Color, enabled bool, run func()) {
 	t := p.theme
 	if !enabled {
@@ -309,7 +320,7 @@ func (p *Plugin) drawToolButton(f ui.C, env *pluginapi.Env, name, label string, 
 		box = box.Hover(ui.Look{}.Background(t.Hover)).Hit(env.Tree.ID(env.Feat, name), label)
 	}
 	box.Children(func() {
-		ui.Icon(f, icon).Size(iconSizeTool, iconSizeTool).Color(color)
+		ui.Icon(f, icon).Size(iconSize, iconSize).Color(color)
 	})
 	if enabled && box.Clicked() {
 		run()
@@ -392,9 +403,9 @@ func (p *Plugin) drawTitle(f ui.C, env *pluginapi.Env) {
 	if target, ok := currentTarget(p.nav.value); ok {
 		label = target.Title
 	}
-	ui.Row(f).Items(ui.Center).Gap(4).Children(func() {
+	ui.Row(f).Items(ui.Center).Gap(browserTitleGap).Children(func() {
 		ui.Icon(f, iconGlobe(t.LabelSecondary)).Size(iconSizeTitle, iconSizeTitle).Color(t.LabelSecondary)
-		ui.Text(f, label).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
+		ui.Text(f, label).FontSize(t.Fonts.Secondary).LineHeight(browserTitleLineHeight).
 			Color(t.LabelPrimary).Ellipsis()
 	})
 }

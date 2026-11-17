@@ -31,8 +31,8 @@
 //
 //	拖拽把手   分隔线两侧各 4px 的抓取带（共 8px，不占布局，绝对定位叠在列上），
 //	           悬停时画 2px 描边线、拖动时画 3px 品牌色线，指针是 SizeWE
-//	拖动限制   侧栏与官方 clampWidth 同为 264–420；右栏 300–视口 40%（官方默认 45%
-//	           是首次打开口径，用户明确拖到的位置不该被它弹回去）
+//	拖动限制   侧栏与官方 clampWidth 同为 264–420；右栏 300–视口 70%
+//	           （columns.ts:26-31；首次打开偏好仍为 45%）
 //	几何真值   拖动后本插件把 env.Geometry 校正成**这一帧真实画出来的**三列，
 //	           否则下游（侧栏的活动面板、composer 的排版宽）还按旧值摆
 //
@@ -66,16 +66,18 @@ const (
 	rightbarMin      = 300
 	rightbarMaxFrac  = 0.7
 	rightbarOpenFrac = 0.45 // 官方首次打开：layoutInfo.rightbar ?? viewport * .45
+	// SidebarRight.tsx:398-399：小于 768px 的右栏自动全屏。
+	rightbarAutoFullscreenWidth = 768
 )
 
 // 侧栏拖宽与官方 columns.ts:13-15,40-58 使用同一 clampWidth 范围 264–420。
-// 右栏保留本插件已有的 40% 拖动上限；它不属于本次侧栏改动。
+// 右栏拖宽同样使用官方 columns.ts:26-31,60-62 的 300px–70% 范围。
 const (
 	userSidebarMin = 264
 	userSidebarMax = 420
 
 	userRightbarMin     = 300
-	userRightbarMaxFrac = 0.40
+	userRightbarMaxFrac = 0.70
 )
 
 // 拖拽把手的尺寸。
@@ -123,6 +125,9 @@ const (
 // 切到官方裸列模型要 dsshell + dscomposer + dsconversation + dstopbar 同一次改，
 // 见 V4A 报告的「缺口」一节；到时候只改这个常量一处即可。
 const columnPad = 12
+
+// SidebarRight.module.css:31-48 的 panel 没有 padding；右栏内容 inset 归 dockkit/各 tab。
+const rightbarColumnPad = 0
 
 // columns 是官方 computeColumns 的结果（像素）。
 type columns struct {
@@ -583,11 +588,10 @@ func formatWidth(v float32) string {
 	return strconv.FormatFloat(float64(round32(v)), 'f', 0, 32)
 }
 
-// rightbarDragCeiling 是右栏拖动时的上限：视口 40%。
+// rightbarDragCeiling 是右栏拖动时的上限：官方 columns.ts:28-29 的视口 70%。
 //
-// 唯一一段例外：官方首次打开就占 45%，比 40% 还宽。若按下时就已经比上限宽，
-// 上限抬到按下时的宽度——否则从 45% 往右拖一下，右栏会立刻塌到 40%，
-// 看着像 bug。代价是这种起手状态只能收窄、不能加宽，这也正是期望行为。
+// 若旧配置已经给出更宽的起手值，上限暂时抬到起手宽度，避免按下瞬间跳宽；
+// 正常官方首开偏好 45% 小于 70%，不会进入这段兜底。
 func rightbarDragCeiling(vw, startW float32) float32 {
 	ceiling := vw * userRightbarMaxFrac
 	if startW > ceiling {
@@ -791,14 +795,20 @@ func (p *Plugin) drawMain(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Sl
 //
 // 底色这里画 SidebarFill，和官方有一处**已知差异**：官方 `.mP3x-q_rightbarCol`
 // 在 Windows 上不设背景（透出 frame 的 bg-base），面板底色归 dockkit pane 自己画。
-// 我们的右栏占用方（plugins/dsrightbar）没有自己的面板框，直接画在列里，
-// 所以这层底色只能由列来给——否则右栏和主区同色、边界消失。
-// 真正的面板底色（pane 的 CSS）没在打包产物里找到，等 V4B 定右栏面板形态时一起收。
+// 我们的右栏占用方（plugins/dsrightbar）直接画在列里，因此保留既有 SidebarFill 底色。
+// SidebarRight.module.css:31-48 不给 panel 加 padding；<768px 按 SidebarRight.tsx:398-399
+// 自动全屏，保留底层三列但不给右栏正常轨道。
 func (p *Plugin) drawRightbar(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot), cols columns) {
 	if cols.rightbar <= 0 {
+		if env.Data.ShowRightbar && env.Has(pluginapi.SlotRightbar) && viewport(env) < rightbarAutoFullscreenWidth {
+			ui.Column(f).Absolute().Right(0).Top(0).Width(viewport(env)).FillHeight().
+				Background(p.theme.SidebarFill).Children(func() {
+				drawSlot(pluginapi.SlotRightbar)
+			})
+		}
 		return
 	}
-	ui.Column(f).Width(cols.rightbar).FillHeight().Pad(columnPad).Gap(8).
+	ui.Column(f).Width(cols.rightbar).FillHeight().Pad(rightbarColumnPad).
 		Background(p.theme.SidebarFill).Children(func() {
 		drawSlot(pluginapi.SlotRightbar)
 	})

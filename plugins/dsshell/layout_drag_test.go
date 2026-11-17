@@ -93,19 +93,18 @@ func TestLayoutUserWidthBeatsShellGeometry(t *testing.T) {
 	}
 }
 
-// TestRightbarDragCeiling 右栏拖动上限是视口 40%，
-// 唯独「按下时就已经比 40% 宽」（官方默认打开是 45%）时不往下塌。
+// TestRightbarDragCeiling 右栏拖动上限是官方 columns.ts:28-29 的视口 70%。
 func TestRightbarDragCeiling(t *testing.T) {
 	cases := []struct {
 		name       string
 		vw, startW float32
 		want       float32
 	}{
-		{"1920 从 300 起", 1920, 300, 768},
-		{"1920 从 600 起", 1920, 600, 768},
-		{"1920 官方 45%", 1920, 864, 864}, // 不塌回 768
-		{"1182 官方 45%", 1182, 532, 532}, // 532 > 472.8，同样不塌
-		{"窄窗口下限保护", 700, 300, 300},      // 700*0.4=280 < 300 → 下限 300
+		{"1920 从 300 起", 1920, 300, 1344},
+		{"1920 从 600 起", 1920, 600, 1344},
+		{"1920 官方 45% 起手", 1920, 864, 1344},
+		{"1182 官方 45% 起手", 1182, 532, 827.39996},
+		{"窄窗口 70%", 700, 300, 490},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -289,7 +288,7 @@ func TestDragSidebarHandle(t *testing.T) {
 	f.event(gfx.PointerUp, id, 5000)
 }
 
-// TestDragRightbarHandle 拖右栏：往左变宽、往右变窄，上限 40%（起手比 40% 宽时不塌）。
+// TestDragRightbarHandle 拖右栏：往左变宽、往右变窄，上限为官方 70%。
 func TestDragRightbarHandle(t *testing.T) {
 	f := newDragFixture(t, 1920, 1032)
 	id := f.tree.ID(f.env.Feat, "layout-handle-rightbar")
@@ -314,19 +313,19 @@ func TestDragRightbarHandle(t *testing.T) {
 	if f.env.Geometry.RightWidth != 799 || f.env.Geometry.MainWidth != 841 {
 		t.Fatalf("右栏拖动后几何不对：%+v", f.env.Geometry)
 	}
-	// 继续往左推过 40% 上限：从 864 起手，上限就是 864（不塌回 768）。
+	// 继续往左推到官方 70% 上限：1920×0.7=1344。
 	f.event(gfx.PointerMove, id, -4000)
-	if got := f.plugin.UserRightbarWidth; got != 864 {
-		t.Fatalf("起手 864 时上限应为 864（官方首次打开 45%%），得到 %v", got)
+	if got := f.plugin.UserRightbarWidth; got != 1344 {
+		t.Fatalf("右栏上限应为官方 70%% = 1344，得到 %v", got)
 	}
 	f.event(gfx.PointerUp, id, -4000)
 
-	// 从 300 起手往左推：上限是视口 40% = 768。
+	// 从 300 起手往左推同样是 1344。
 	f.plugin.UserRightbarWidth = 300
 	f.event(gfx.PointerDown, id, 1620)
 	f.event(gfx.PointerMove, id, -4000)
-	if got := f.plugin.UserRightbarWidth; got != 768 {
-		t.Fatalf("从 300 起手上限应为视口 40%% = 768，得到 %v", got)
+	if got := f.plugin.UserRightbarWidth; got != 1344 {
+		t.Fatalf("从 300 起手上限应为官方 70%% = 1344，得到 %v", got)
 	}
 	f.event(gfx.PointerUp, id, -4000)
 

@@ -18,6 +18,7 @@ package dssettings
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -94,6 +95,60 @@ type officialPanel struct {
 	// 账号页：官方 AccountMenu 在 Settings false→true 边沿刷新一次。
 	accountOpenRefreshed bool
 	accountBusy          bool
+	// avatar 是官方 `AccountAvatarLoader` 的插件生命周期唯一一份
+	// （ui-settings-account/src/client/index.ts:61-62：侧栏与设置页共读同一张图）。
+	// 零值可用的判据是 `snapshot==nil`；懒建见 accountAvatarLoader。
+	avatar *accountAvatarLoader
+}
+
+// accountAvatar 是头像加载器的懒建出口（零值可用）。
+//
+// 与官方一致：**一个插件一份**，侧栏启动器（dsnotifications 经 Accountsnapshot）
+// 与设置页读同一张图，两次同 URL 只下一份（account-avatar.ts:27）。
+func (p *Plugin) accountAvatar() *accountAvatarLoader {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	if o.avatar != nil {
+		loader := o.avatar
+		o.mu.Unlock()
+		return loader
+	}
+	// 官方 `publish` 的等价物是壳的重画入口（Notify → Invalidate）。
+	var invalidate func()
+	if o.notify != nil {
+		invalidate = func() { o.notify("") }
+	}
+	o.avatar = &accountAvatarLoader{invalidate: invalidate}
+	loader := o.avatar
+	o.mu.Unlock()
+	return loader
+}
+
+// accountAvatarSnapshot 取当前头像加载状态（nil = 没有图 / 未登录时的 undefined）。
+func (p *Plugin) accountAvatarSnapshot() *AccountAvatarSnapshot {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	loader := o.avatar
+	o.mu.Unlock()
+	if loader == nil {
+		return nil
+	}
+	return loader.snapshotValue()
+}
+
+// syncAccountAvatar 按官方 index.ts:84 把 profile 的 avatarUrl 交给加载器。
+//
+// 官方只在 `result.value?.status === 'ready'` 时 `avatar.setUrl(value.avatarUrl)`；
+// 未就绪/为 null 时**不动**加载器（不是清空）——profile 失败不该把已有头像打掉。
+func (p *Plugin) syncAccountAvatar(snapshot apiclient.AccountSnapshot) {
+	if snapshot.Profile == nil || snapshot.Profile.Status != "ready" || snapshot.Profile.Value == nil {
+		return
+	}
+	url := ""
+	if snapshot.Profile.Value.AvatarURL != nil {
+		url = *snapshot.Profile.Value.AvatarURL
+	}
+	p.accountAvatar().setURL(url)
 }
 
 // ensureOfficial 惰性造面板状态（零值可用）。
@@ -297,6 +352,10 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	if env.Act.AccountSnapshot != nil {
 		snapshot := env.Act.AccountSnapshot()
 		account = &snapshot
+		// 官方 index.ts:84：profile ready 时把 avatarUrl 交给加载器（同一份图
+		// 侧栏与设置页共用）。URL 没变时 setURL 是空操作（account-avatar.ts:27），
+		// 所以每帧调是安全的。
+		p.syncAccountAvatar(snapshot)
 	}
 
 	model := BuildPanelWithSources(describe, facts, inventory, o.pluginsView(), roster)
@@ -663,7 +722,7 @@ func (p *Plugin) drawOfficialRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 					Color(t.Warn).Ellipsis()
 			}
 		})
-		p.drawRowControl(f, t, row)
+		p.drawRowControl(f, t, row, id)
 	}
 	box := ui.Row(f).FillWidth().Height(height).
 		PadSides(RowPadY, 0, RowPadY, 0).Gap(rowGap).Items(ui.Center).
@@ -676,7 +735,7 @@ func (p *Plugin) drawOfficialRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 }
 
 // drawRowControl 画行尾控件（按 Kind 分支）。
-func (p *Plugin) drawRowControl(f ui.C, t *pluginapi.Theme, row PanelRow) {
+func (p *Plugin) drawRowControl(f ui.C, t *pluginapi.Theme, row PanelRow, id gfx.ID) {
 	switch row.Kind {
 	case ItemSwitch:
 		on := row.Known && row.Selected == "true"
@@ -699,7 +758,12 @@ func (p *Plugin) drawRowControl(f ui.C, t *pluginapi.Theme, row PanelRow) {
 		}
 	case ItemStepper:
 		if row.ID == "font-size" {
-			drawFontStepper(f, t, row.Display())
+			// 官方 FontSizeRow.tsx:69-79 的两枚 chevron 各是一次 ±1 的写；
+			// 只有行可写且值已知时才挂命中区（否则不画假按钮）。
+			step := drawFontStepper(f, t, id, row.Title, row.Display(), row.Writable() && row.Known)
+			if step != fontStepperNone {
+				p.stepRowValue(row, step)
+			}
 			break
 		}
 		ui.Row(f).Height(SelectorHeight).Radius(t.Radii.MD).PadX(SelectorPadX).
@@ -772,8 +836,48 @@ func (p *Plugin) activateRow(row PanelRow) {
 	go func() { _ = p.applyRowWrite(row) }()
 }
 
-// applyRowWrite 同步执行一次行写入（测试直接调它，拿到确定结果）。
+// stepRowValue 是 font-size 一行 ↑/↓ 的写入（官方 FontSizeRow.tsx:69-79 →
+// `setFontSize(role, px ± 1)`，区间由 isFontSize 卡在 FONT_SIZE_SPECS 内，
+// theme-settings.ts:40-61 的 text min/max）。
 //
+// 与选择器行的「点一下循环下一项」是两条路：stepper 点边缘只会 ±1，
+// 到了官方区间端点就**不发请求**（宿主会以 out_of_range 拒绝，且官方也不发）。
+func (p *Plugin) stepRowValue(row PanelRow, step fontStepperStep) {
+	if !row.Known || step == fontStepperNone {
+		return
+	}
+	current, err := strconv.Atoi(strings.TrimSpace(row.Value))
+	if err != nil {
+		return
+	}
+	next := current + int(step)*int(row.Bounds.Step)
+	if row.Bounds.HasMin && float64(next) < row.Bounds.Min {
+		return
+	}
+	if row.Bounds.HasMax && float64(next) > row.Bounds.Max {
+		return
+	}
+	if next == current {
+		return
+	}
+	target := row
+	target.Value = strconv.Itoa(next)
+	go func() {
+		o := p.ensureOfficial()
+		o.mu.Lock()
+		writer := o.writer
+		o.mu.Unlock()
+		if writer == nil {
+			p.setWriteState(ClassifyWriteError(target.NS, target.Path, errNoSettingsWriter))
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), panelWriteTimeout)
+		defer cancel()
+		p.setWriteState(ApplySet(ctx, writer, target.NS, target.Path, next, target.Revision))
+	}()
+}
+
+// applyRowWrite 同步执行一次行写入（测试直接调它，拿到确定结果）。
 // 选择器行在骨架里**循环到下一项**（官方是弹出菜单；本仓未实现菜单，报告已登记）。
 func (p *Plugin) applyRowWrite(row PanelRow) WriteState {
 	o := p.ensureOfficial()

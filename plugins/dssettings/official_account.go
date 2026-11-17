@@ -253,11 +253,23 @@ func (p *Plugin) drawAccountPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 		ui.Row(f).FillWidth().PadSides(accountCardPadY, accountCardPadX, accountCardPadY, accountCardPadX).
 			Radius(t.Radii.XL).Background(t.BgLayer2).Border(AccountCardBorder, t.BorderL4).Items(ui.Center).Gap(16).Children(func() {
 			ui.Row(f).Items(ui.Center).Gap(10).Grow(1).MinWidth(0).MinHeight(AccountIdentityMinHeight).Children(func() {
-				// 图片加载器尚未接入时使用官方 AccountAvatar 的 UserOutlineMedium fallback。
-				ui.Row(f).Size(accountAvatar, accountAvatar).Radius(accountAvatar / 2).
-					Items(ui.Center).Justify(ui.Center).Background(t.BorderL1).Children(func() {
-					ui.Icon(f, userOutlineIcon()).Size(NavCellIconSize, NavCellIconSize).Color(t.LabelTertiary)
-				})
+				// 官方 AccountAvatar.tsx:15-18：只有 status==='ready' 才画图，否则画
+				// IconUserOutlineMedium size={16}。两条几何都是 `.avatar`
+				// （AccountSection.module.css:35-46：32×32 圆、bg-skeleton 底）。
+				avatar := p.accountAvatarSnapshot()
+				slot := ui.Row(f).Size(accountAvatar, accountAvatar).Radius(accountAvatar / 2).
+					Items(ui.Center).Justify(ui.Center).Background(t.BorderL1)
+				if avatar != nil && avatar.Status == AccountAvatarReady && avatar.Bitmap.Width > 0 {
+					// AccountAvatar.module.css:1 `object-fit:cover` + 100%×100% + 50% 圆角：
+					// 位图铺满 32×32 方框，圆形由 Radii+Clip 裁出来。
+					slot.Children(func() {
+						ui.Image(f, avatar.Bitmap).Size(accountAvatar, accountAvatar).Clip()
+					})
+				} else {
+					slot.Children(func() {
+						ui.Icon(f, userOutlineIcon()).Size(AccountAvatarIconSize, AccountAvatarIconSize).Color(t.LabelTertiary)
+					})
+				}
 				ui.Column(f).Grow(1).MinWidth(0).Children(func() {
 					ui.Text(f, accountName(snapshot)).FontSize(accountNameSize).Weight(500).Color(t.LabelPrimary).Ellipsis()
 					ui.Text(f, accountStatus(snapshot)).FontSize(accountTextSize).LineHeight(accountTextLine).Color(t.LabelTertiary).Ellipsis()
@@ -294,10 +306,10 @@ func (p *Plugin) drawAccountPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 		// balanceCard：充值余额、可选赠金余额、usage/top-up。
 		ui.Column(f).FillWidth().PadSides(accountCardPadY, accountCardPadX, accountCardPadY, accountCardPadX).
 			Radius(t.Radii.XL).Background(t.BgLayer2).Border(AccountCardBorder, t.BorderL4).Gap(accountRowGap).Children(func() {
-			drawAccountBalanceRow(f, t, "充值余额", snapshot.Balance == nil, snapshot.BalanceFailed, snapshot.Balance)
+			drawAccountBalanceRow(f, env, t, "充值余额", snapshot.Balance == nil, snapshot.BalanceFailed, snapshot)
 			if accountSignedIn(snapshot) && accountBonusVisible(snapshot) {
 				ui.Row(f).FillWidth().Height(0.5).Background(t.BorderL2)
-				drawAccountBonusRow(f, t, snapshot)
+				drawAccountBonusRow(f, env, t, snapshot)
 			}
 			ui.Row(f).FillWidth().Height(0.5).Background(t.BorderL2)
 			ui.Row(f).FillWidth().MinHeight(accountRowHeight).PadSides(6, 0, 6, 0).Items(ui.Center).Gap(10).Children(func() {
@@ -313,27 +325,87 @@ func (p *Plugin) drawAccountPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 	})
 }
 
-func drawAccountBalanceRow(f ui.C, t *pluginapi.Theme, title string, loading, failed bool, balance *apiclient.AccountBalance) {
-	ui.Row(f).FillWidth().MinHeight(accountRowHeight).PadSides(6, 0, 6, 0).Items(ui.Center).Children(func() {
+// accountHTTPURL 报告一个链接是否是完整的 http(s) 目的地。
+//
+// 官方直接把 `state?.links.usageUrl` 塞进 href；本仓要真打开，所以先验形状：
+// 空串 / 相对路径 / 非 http(s) 一律**不画假链接**（账号状态还没到时官方也是
+// `aria-disabled`）。
+func accountHTTPURL(destination string) bool {
+	parsed, err := url.Parse(destination)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return parsed.Host != ""
+}
+
+// drawAccountBalanceRow 画"充值余额"行。
+//
+// 官方 AccountSection.tsx:179-189 三分支：
+//
+//	余额 ready 且有钱包 → `.amount`（18/28/510）
+//	未登录 或 还没读到   → `.unavailable`（灰字，balanceSignedOut / loading）
+//	读失败（有结果但没钱包）→ `platformLink(balanceUnavailable, .unavailableLink)`
+func drawAccountBalanceRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, title string, loading, failed bool, snapshot apiclient.AccountSnapshot) {
+	row := ui.Row(f).FillWidth().MinHeight(accountRowHeight).PadSides(6, 0, 6, 0).Items(ui.Center)
+	row.Children(func() {
 		ui.Text(f, title).FontSize(accountTextSize).Color(t.LabelPrimary).Grow(1)
+		if !accountSignedIn(snapshot) {
+			// 官方 `t('balanceSignedOut')` = 「登录后查看」。
+			ui.Text(f, "登录后查看").FontSize(accountTextSize).Color(t.LabelTertiary)
+			return
+		}
 		text, amount := "", false
 		if loading && !failed {
 			text = "加载中…"
-		} else if balance != nil && balance.Status == "ready" {
-			text, amount = formatAccountWallets(balance.Value)
-		}
-		if text == "" {
-			text = "前往开放平台查看"
+		} else if snapshot.Balance != nil && snapshot.Balance.Status == "ready" {
+			text, amount = formatAccountWallets(snapshot.Balance.Value)
 		}
 		if amount {
 			ui.Text(f, text).FontSize(accountAmount).LineHeight(accountAmountLn).Weight(510).Color(t.LabelPrimary)
-		} else {
-			ui.Text(f, text).FontSize(accountTextSize).Color(t.LabelTertiary)
+			return
 		}
+		if !loading {
+			// 读到了但没钱包 = 读失败：画官方 `.unavailableLink`。
+			drawAccountUnavailableLink(f, env, t, snapshot, "account-balance-unavailable")
+			return
+		}
+		ui.Text(f, "加载中…").FontSize(accountTextSize).Color(t.LabelTertiary)
 	})
 }
 
-func drawAccountBonusRow(f ui.C, t *pluginapi.Theme, snapshot apiclient.AccountSnapshot) {
+// drawAccountUnavailableLink 画 `.unavailableLink`（官方 :123-141）。
+//
+// 视觉证据：`text-decoration: underline; text-underline-offset: 3px`，
+// 颜色 `label-tertiary`，hover 变 `label-primary`。viva 用一条 0.5px 底线
+// 画在文字下方 3px 处表达同一条下划线（几何见 AccountSection.module.css:123-141）。
+func drawAccountUnavailableLink(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, snapshot apiclient.AccountSnapshot, id string) {
+	destination := ""
+	if snapshot.View != nil {
+		destination = snapshot.View.Links.UsageURL
+	}
+	if env.Act.OpenExternal == nil || !accountHTTPURL(destination) {
+		// 目的地不可用（账号态未知 / 不是 http(s)）→ 只留灰字，不画假链接。
+		ui.Text(f, "前往开放平台查看").FontSize(accountTextSize).Color(t.LabelTertiary)
+		return
+	}
+	link := ui.Column(f).Items(ui.End).Gap(AccountUnavailableLinkGap).
+		Hit(env.Tree.ID(env.Feat, id), "前往开放平台查看").Children(func() {
+		ui.Text(f, "前往开放平台查看").FontSize(accountTextSize).LineHeight(accountTextLine).Color(t.LabelTertiary)
+		ui.Row(f).FillWidth().Height(AccountUnavailableLinkStroke).Background(t.LabelTertiary)
+	})
+	if link.Clicked() {
+		accountExternal(env, destination)
+	}
+}
+
+// drawAccountBonusRow 画"赠金余额"行（官方 AccountSection.tsx:190-204）。
+//
+// 官方三分支与充值行同构，只是金额只取 `bonusWallets` 里 > 0 的那些，
+// 且"还没读到"（details.balance === undefined）显示 loading 而不是链接。
+func drawAccountBonusRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, snapshot apiclient.AccountSnapshot) {
 	ui.Row(f).FillWidth().MinHeight(accountRowHeight).PadSides(6, 0, 6, 0).Items(ui.Center).Children(func() {
 		ui.Text(f, "赠金余额").FontSize(accountTextSize).Color(t.LabelPrimary).Grow(1)
 		if snapshot.Balance == nil && !snapshot.BalanceFailed {
@@ -349,13 +421,14 @@ func drawAccountBonusRow(f ui.C, t *pluginapi.Theme, snapshot apiclient.AccountS
 			}
 		}
 		text, amount := formatAccountWallets(positive)
-		if text == "" {
-			text = "前往开放平台查看"
-		}
 		if amount {
 			ui.Text(f, text).FontSize(accountAmount).LineHeight(accountAmountLn).Weight(510).Color(t.LabelPrimary)
-		} else {
-			ui.Text(f, text).FontSize(accountTextSize).Color(t.LabelTertiary)
+			return
 		}
+		if snapshot.Balance == nil {
+			ui.Text(f, "加载中…").FontSize(accountTextSize).Color(t.LabelTertiary)
+			return
+		}
+		drawAccountUnavailableLink(f, env, t, snapshot, "account-bonus-unavailable")
 	})
 }

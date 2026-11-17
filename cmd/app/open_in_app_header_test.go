@@ -138,8 +138,8 @@ func TestOpenInAppButtonLivesInHeaderAtBothSizes(t *testing.T) {
 			if !ok {
 				t.Fatalf("%dx%d 按钮不可见：texts=%q", size.width, size.height, rig.session.Texts())
 			}
-			if hit.Bounds.Width != 56 || hit.Bounds.Height != 24 {
-				t.Fatalf("%dx%d 按钮 %vx%v，want 56x24（0 高等于看不见）",
+			if hit.Bounds.Width != 24 || hit.Bounds.Height != 24 {
+				t.Fatalf("%dx%d 按钮 %vx%v，want 24x24（0 高等于看不见）",
 					size.width, size.height, hit.Bounds.Width, hit.Bounds.Height)
 			}
 			rowTop, rowBottom := titleRowBand(t, rig.session, size.width, size.height)
@@ -150,8 +150,8 @@ func TestOpenInAppButtonLivesInHeaderAtBothSizes(t *testing.T) {
 			if center, want := hit.Bounds.Y+hit.Bounds.Height/2, rowTop+15; center != want {
 				t.Errorf("%dx%d 按钮垂直中心 %v，want 标题行中心 %v", size.width, size.height, center, want)
 			}
-			if !rig.session.HasText("打开") {
-				t.Errorf("%dx%d 按钮只有底色、没有文案：%q", size.width, size.height, rig.session.Texts())
+			if rig.session.HasText("打开") {
+				t.Errorf("%dx%d 官方 compact 分支不应画文字标签：%q", size.width, size.height, rig.session.Texts())
 			}
 
 			// 与右上角 28px 展开钮的关系：官方 headerUtilities gap 8，不许盖住它。

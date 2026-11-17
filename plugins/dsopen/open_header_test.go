@@ -117,8 +117,8 @@ func TestButtonLivesInTheHeaderTitleRowAtBothSizes(t *testing.T) {
 			if !ok {
 				t.Fatalf("%dx%d 找不到「在工作目录里打开」按钮：texts=%q", size.width, size.height, session.Texts())
 			}
-			if hit.Bounds.Width != 56 || hit.Bounds.Height != 24 {
-				t.Fatalf("%dx%d 按钮 %vx%v，want 56x24（0 高就是「看不见」）",
+			if hit.Bounds.Width != 24 || hit.Bounds.Height != 24 {
+				t.Fatalf("%dx%d 按钮 %vx%v，want 24x24（0 高就是「看不见」）",
 					size.width, size.height, hit.Bounds.Width, hit.Bounds.Height)
 			}
 			tabs, ok := session.Hit("对话")
@@ -153,8 +153,8 @@ func TestButtonLivesInTheHeaderTitleRowAtBothSizes(t *testing.T) {
 			if !ok || again.Bounds != hit.Bounds {
 				t.Fatalf("%dx%d 恢复 CWD 后按钮位置不稳定：%+v → %+v", size.width, size.height, hit.Bounds, again.Bounds)
 			}
-			if !session.HasText("打开") {
-				t.Errorf("%dx%d 按钮只有底色没有文案：%q", size.width, size.height, session.Texts())
+			if session.HasText("打开") {
+				t.Errorf("%dx%d 官方 compact 分支不应画文字标签：%q", size.width, size.height, session.Texts())
 			}
 		})
 	}

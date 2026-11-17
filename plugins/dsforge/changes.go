@@ -25,6 +25,7 @@ package dsforge
 import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -53,10 +54,28 @@ const (
 	changesFileHeaderPadR float32 = 4
 	changesFileHeaderPadL float32 = 8
 	changesFileHeaderGap  float32 = 6
+	// `.viewed{height:24px;padding:0 8px 0 6px;border:.5px l2}`。
+	changesViewedH    float32 = 24
+	changesViewedPadR float32 = 8
+	changesViewedPadL float32 = 6
+	// `.badge{padding:0 6px;border-radius:4px;font-size:11px;line-height:18px}`。
+	changesBadgePadX float32 = 6
+	changesBadgeFont float32 = 11
+	changesBadgeLine float32 = 18
+	// `.tool svg{width:15px;height:15px}`。
+	changesRefreshSize float32 = 15
+	// `.line{grid-template-columns:number number 1.4em text}` / `.number{padding-right:6px}`；
+	// DiffFile.tsx:195 的动态 number 宽是 `max(2,digits)ch + 12px`。
+	changesNumberPadR  float32 = 6
+	changesNumberExtra float32 = 12
+	changesSignEm      float32 = 1.4
 	// `.line{min-height:22px;line-height:22px}` / `.text{padding:0 16px 0 6px}`。
 	changesLineH    float32 = 22
 	changesTextPadR float32 = 16
 	changesTextPadL float32 = 6
+	// `.gap,.fileNote{min-height:26px;padding:0 12px;background:forge-fill}`。
+	changesNoteH    float32 = 26
+	changesNotePadX float32 = 12
 	// `.centered{padding:24px;gap:8px;font-size:13px}`。
 	changesCenteredPad float32 = 24
 	changesCenteredGap float32 = 8
@@ -295,11 +314,11 @@ func (p *Plugin) drawChangesToolbar(f ui.C, env *pluginapi.Env, diff *pluginapi.
 			Hover(ui.Look{}.Background(t.Hover)).
 			Hit(env.Tree.ID(env.Feat, "forge-diff-refresh"), copyDiffRefresh)
 		tool.Children(func() {
-			// 官方这里画的是刷新图标（`IconRefreshOutlineRegular`）。素材库里这一枚
-			// 只在 `plugins/dsbrowser` 里有一份**包内**常量（不跨包导出），本插件不
-			// 复制那六条 path（复制一份就等于多一处会漂的官方坐标）。画官方文案的
-			// 提示符代替：`.tool` 仍是官方 28×28 的可点方框。差异登记在账本行。
-			ui.Text(f, "↻").FontSize(changesCenteredFnt).Color(t.LabelSecondary)
+			// RefreshGlyph.tsx:32 是 IconRefreshOutlineRegular；复用 dsassets 已登记的
+			// 官方 sprite 路径（market.go:14-20），不复制坐标。CSS `.tool svg` 是 15×15。
+			if icon, ok := dsassets.MarketRefreshOutline(t.LabelSecondary); ok {
+				ui.Icon(f, icon).Size(changesRefreshSize, changesRefreshSize).Color(t.LabelSecondary)
+			}
 		})
 		if tool.Clicked() {
 			env.Act.Forge.Refresh()
@@ -364,7 +383,7 @@ func (p *Plugin) drawCentered(f ui.C, t *pluginapi.Theme, title, detail string, 
 func (p *Plugin) drawFileCard(f ui.C, env *pluginapi.Env, session string, file apiclient.ForgeDiffFile) {
 	t := p.themeOf(env)
 	expanded := p.open.fileExpanded(session, file.Path)
-	ui.Column(f).FillWidth().Border(changesFileBorder, t.BorderL4).Radius(t.Radii.MD).
+	ui.Column(f).FillWidth().Border(changesFileBorder, t.BorderL4).Radius(t.Radii.LG).
 		Background(t.BgBase).Children(func() {
 		ui.Row(f).FillWidth().MinHeight(changesFileHeaderH).Gap(changesFileHeaderGap).
 			Items(ui.Center).PadSides(0, changesFileHeaderPadR, 0, changesFileHeaderPadL).
@@ -375,19 +394,26 @@ func (p *Plugin) drawFileCard(f ui.C, env *pluginapi.Env, session string, file a
 				ui.Text(f, file.Path).FontSize(changesFont).LineHeight(changesLine).
 					Color(t.LabelPrimary).Shrink(1).Ellipsis()
 				if badge := fileBadge(file); badge != "" {
-					ui.Text(f, badge).FontSize(t.Fonts.Tiny).Color(t.LabelTertiary)
+					ui.Text(f, badge).FontSize(changesBadgeFont).LineHeight(changesBadgeLine).
+						PadSides(0, changesBadgePadX, 0, changesBadgePadX).
+						Radius(t.Radii.XS).Background(t.CardFill).Color(t.LabelSecondary).
+						Shrink(1).Ellipsis()
 				}
 				ui.Spacer(f).Grow(1)
-				ui.Text(f, fileCountsText(file)).FontSize(changesFont).
-					LineHeight(changesLine).Color(t.LabelTertiary).Shrink(0)
+				// 官方 Counts 是两个独立 span（DiffFile.tsx:123-126），不是一串第三级色文字。
+				ui.Text(f, "+"+itoa(file.Additions)).FontSize(changesFont).LineHeight(changesLine).
+					Mono().Color(t.Success).Shrink(0)
+				ui.Text(f, "−"+itoa(file.Deletions)).FontSize(changesFont).LineHeight(changesLine).
+					Mono().Color(t.Error).Shrink(0)
 			})
 			if head.Clicked() {
 				p.open.toggleFile(session, file.Path)
 			}
 			state := p.open.viewedState(session, file.Path, file.Digest)
-			mark := ui.Row(f).Height(changesSelectH).Shrink(0).
-				PadSides(0, changesSelectPadR, 0, changesSelectPadL).Items(ui.Center).
-				Radius(t.Radii.SM).Hover(ui.Look{}.Background(t.Hover)).
+			mark := ui.Row(f).Height(changesViewedH).Shrink(0).Gap(changesFileHeaderGap).
+				PadSides(0, changesViewedPadR, 0, changesViewedPadL).Items(ui.Center).
+				Border(changesFileBorder, t.BorderL2).Radius(t.Radii.SM).
+				Hover(ui.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "forge-viewed:"+file.Path), viewedLabel(state))
 			mark.Children(func() {
 				if icon, ok := checkIcon(); ok && state == viewedDone {
@@ -476,9 +502,9 @@ func (p *Plugin) drawDiffLine(f ui.C, t *pluginapi.Theme, line string) {
 
 // drawNoteLine 画一行说明（未变更行 / 二进制 / 太大）。
 func (p *Plugin) drawNoteLine(f ui.C, t *pluginapi.Theme, text string) {
-	ui.Row(f).FillWidth().Height(changesLineH).Children(func() {
-		ui.Text(f, text).FontSize(t.Fonts.Caption).LineHeight(changesLineH).
-			Color(t.LabelTertiary).PadSides(0, changesTextPadR, 0, changesTextPadL).Ellipsis()
+	ui.Row(f).FillWidth().MinHeight(changesNoteH).Background(t.CardFill).Children(func() {
+		ui.Text(f, text).FontSize(changesFont).LineHeight(changesLine).
+			Color(t.LabelTertiary).PadSides(0, changesNotePadX, 0, changesNotePadX).Ellipsis()
 	})
 }
 

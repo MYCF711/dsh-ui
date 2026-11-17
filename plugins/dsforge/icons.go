@@ -26,6 +26,8 @@ const (
 	chevronSize float32 = 12
 	// 官方 `IconCheckOutlineRegular size={14}`（LocalChangesCard / fileToggle 14px 档）。
 	checkSize float32 = 14
+	// 官方 `IconListPenOutlineRegular size={15}`（LocalChangesCard.tsx:60）。
+	listPenSize float32 = 15
 )
 
 // chevronDownIcon 是官方 `IconChevronDownOutlineRegular`（描边 1、viewBox 16）。
@@ -44,4 +46,11 @@ func checkIcon() (gfx.Icon, bool) {
 		return gfx.Icon{}, false
 	}
 	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}, true
+}
+
+// listPenIcon 复用官方 `IconListPenOutlineRegular` 的五条原始路径。
+// rc.2 sprite 的 `list-pen-outline` 与仓内 `PlanModeOutline` 图元逐条相同
+// （两条横线描边 + 页面/铅笔/下划线填充），因此直接复用，不另抄一份坐标。
+func listPenIcon(color gfx.Color) (gfx.Icon, bool) {
+	return dsassets.PlanModeOutline(color)
 }

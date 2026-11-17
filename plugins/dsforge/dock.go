@@ -130,8 +130,13 @@ func (p *Plugin) drawLocalCard(f ui.C, env *pluginapi.Env) {
 					Radius(t.Radii.SM).Hover(ui.Look{}.Background(t.Hover)).
 					Hit(env.Tree.ID(env.Feat, "forge-local-view"), copyLocalTitle)
 				viewBox.Children(func() {
-					ui.Text(f, localCountsText(local)).FontSize(localFont).LineHeight(localLine).
-						Color(t.LabelSecondary)
+					if icon, ok := listPenIcon(t.LabelSecondary); ok {
+						ui.Icon(f, icon).Size(listPenSize, listPenSize).Color(t.LabelSecondary)
+					}
+					ui.Text(f, "+"+itoa(local.Additions)).FontSize(localFont).LineHeight(localLine).
+						Mono().Color(t.Success)
+					ui.Text(f, "−"+itoa(local.Deletions)).FontSize(localFont).LineHeight(localLine).
+						Mono().Color(t.Error)
 					ui.Text(f, sprintf(copyLocalFiles, itoa(local.Files))).FontSize(localFont).
 						LineHeight(localLine).Color(t.LabelSecondary).Ellipsis()
 				})

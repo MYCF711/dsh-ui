@@ -228,6 +228,15 @@ func (h *settingsWebHarness) clickText(label string) {
 func (h *settingsWebHarness) hasText(want string) bool { return h.session.HasText(want) }
 
 // waitMutate 等到写请求达到 want 次；等待期间继续 pump。
+// waitText 与 settings_items_visual_test.go 的同名助手同口径：有界等待，
+// 断言强度不变（400 次 pump 之后仍不出现就失败）。
+func (h *settingsWebHarness) waitText(want string) bool {
+	for i := 0; i < 400 && !h.hasText(want); i++ {
+		h.pump()
+	}
+	return h.hasText(want)
+}
+
 func (h *settingsWebHarness) waitMutate(want int) bool {
 	for i := 0; i < 600 && h.spy.count() < want; i++ {
 		h.pump()
@@ -495,8 +504,9 @@ func TestSettingsWebSaveFailureDrawsSaveFailed(t *testing.T) {
 	if !h.waitMutate(before + 1) {
 		t.Fatal("点「保存」没发出请求")
 	}
-	h.pump()
-	if !h.hasText(zhFormSaveFailed) {
+	// 与 settings_items_visual_test.go 的 waitText 同一口径：请求发出之后还要
+	// 一次状态更新 + 重绘才落到画布，单次 pump 在负载下不够（CI 上偶发）。
+	if !h.waitText(zhFormSaveFailed) {
 		t.Fatalf("写失败必须画官方 saveFailed；texts=%q", h.session.Texts())
 	}
 }

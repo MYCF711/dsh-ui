@@ -103,6 +103,10 @@ func TestPanelsRegisterTheOfficialTwoSeats(t *testing.T) {
 	if body.Label != "浏览器" {
 		t.Fatalf("芯片文案 = %q，应当是官方 type.label 的「浏览器」", body.Label)
 	}
+	if body.IconImage.ViewBox != 16 || body.IconImage.Stroke != 1 || body.IconMarginRight != 4 {
+		t.Fatalf("芯片标题图标应对应官方 globe 16 viewBox / stroke 1 / margin-right 4：%+v margin=%v",
+			body.IconImage, body.IconMarginRight)
+	}
 	// 官方 tab 类型没有 order 字段，名录顺序 = 注册顺序；零值是"按装配顺序"。
 	if body.Order != 0 || title.Order != 0 {
 		t.Fatalf("order 应当是 0（官方没有这个字段），得到 %d/%d", body.Order, title.Order)
@@ -254,4 +258,27 @@ func titleLabelFor(p *Plugin) string {
 		return target.Title
 	}
 	return browserTypeLabel
+}
+
+func TestToolbarIconSizesMatchOfficialSprite(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		got  float32
+		want float32
+	}{
+		{"chevron-left default 14", iconSizeChevron, 14},
+		{"refresh default 16", iconSizeTool, 16},
+		{"external explicit size={14}", iconSizeExternal, 14},
+		{"globe default 14", iconSizeTitle, 14},
+	} {
+		if tc.got != tc.want {
+			t.Fatalf("%s：实现 %v，官方 %v", tc.name, tc.got, tc.want)
+		}
+	}
+	if browserTitleIconMargin != 4 || browserTitleGap != 9 {
+		t.Fatalf("标题间距 = margin %v + gap 5，官方合成 9，得到 %v", browserTitleIconMargin, browserTitleGap)
+	}
+	if browserTitleLineHeight != 18.2 {
+		t.Fatalf("标题行高 = %v，官方 13×1.4=18.2", browserTitleLineHeight)
+	}
 }

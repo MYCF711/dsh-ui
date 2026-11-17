@@ -190,6 +190,10 @@ func (m *model) applyPendingDraft() {
 	if req != nil && (req.session == "" || req.session == cur) {
 		if req.policy == pluginapi.DraftAppend {
 			m.appendDraft(req.text)
+		} else if req.policy == pluginapi.DraftInsert {
+			// 听写结果：追加到末尾，不加段落分隔（见 pluginapi.DraftInsert 与
+			// speech_voice.go 的 insertDraftInline）。
+			m.insertDraftInline(req.text)
 		} else if req.policy != pluginapi.DraftKeep {
 			m.writeDraft(req.text, req.overwrite || req.policy == pluginapi.DraftReplace)
 		}

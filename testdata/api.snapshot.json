@@ -2061,10 +2061,80 @@
       },
       "req_note": "官方 rc.2 workspaceFiles.stat（HOST:internal/transport/handlers_workspace_official.go:1212-1231；生产接线 HOST:cmd/dshd/serve_workspace_api.go:570 一侧的 FilesStat）。两个都是**位置参数**：sessionId（宿主别名 workspaceFileScopeId|agentId）按会话解析工作区根，path 是**工作区内的相对路径**。**没有 options**：官方 typert 签名是 stat(sessionId, path, signal)，宿主的 officialParams.finish() 是 DisallowUnknownFields，多塞一个字段就 400。宿主只 stat 普通文件（目录回 workspace-file/not-regular-file）。",
       "resp_note": "absolutePath 是宿主解析出来的绝对路径，version 与 readBytes/changes 同源；bytes 可选（官方 `bytes?`）。客户端 #18 只用「成功/失败」这一位：官方 file 菜单 resolve 拿它算 available，失败时把三条动作全标 disabled（OFF:ui-file-actions/src/client/context-menus.tsx:50-60,71,75,79）。"
+    },
+    "speech.catalog": {
+      "batch": 25,
+      "req": {},
+      "resp": [
+        {
+          "id": "string",
+          "name": "string",
+          "language": "string"
+        }
+      ],
+      "req_note": "宿主不读 body。官方 dsh-experimental-api-speech-to-text 的 speech/catalog（OFF:dsh-experimental-client-ui-voice-input/lib/client.js:542-560 的 remote 定义）。宿主实现 HOST:internal/transport/handlers_speech_official.go:141-148 + HOST:cmd/dshd/serve_speech.go:20-32 的 newSpeechAPI()。",
+      "resp_note": "**顶层就是数组**，不套 result 信封（宿主 writeJSON(w, 200, providers)）。只有 id/name/language 三格：官方 JS 侧还带 preparation.phase / location / downloadSources / setupEstimate，本仓宿主不返回，界面不得凭空画下载进度。没有识别器时宿主回 error（ErrNoEngine），不是空数组。"
+    },
+    "speech.prepare": {
+      "batch": 25,
+      "req": {
+        "providerId": "string",
+        "options": {
+          "downloadSource": "string?"
+        }
+      },
+      "resp": {
+        "ok": "bool"
+      },
+      "req_note": "`options` 可省；downloadSource 嵌在 options 里（HOST:internal/transport/handlers_speech_official.go:149-161）。本仓宿主用 Windows **已安装**的识别器，prepare 只是「确认存在 + 标记 prepared」，不下载任何模型（HOST:internal/speech/engine.go:284-300），所以 downloadSource 通常为空。",
+      "resp_note": "固定 {ok:true}；provider 不存在回结构化错误（provider_gone），不是 200。"
+    },
+    "speech.cancelPreparation": {
+      "batch": 25,
+      "req": {
+        "providerId": "string"
+      },
+      "resp": {
+        "ok": "bool"
+      },
+      "req_note": "HOST:internal/transport/handlers_speech_official.go:175-186。没有在准备/已准备的 provider 回结构化错误（provider_gone）。",
+      "resp_note": "固定 {ok:true}。"
+    },
+    "speech.configure": {
+      "batch": 25,
+      "req": {
+        "patch": {
+          "providerId": "string?",
+          "language": "string?"
+        }
+      },
+      "resp": {
+        "providerId": "string?",
+        "language": "string?"
+      },
+      "req_note": "参数从 **patch 子对象**取（没有 patch 时退回顶层，HOST:internal/transport/handlers_speech_official.go:162-174）。选择存在引擎的**进程内** settings 里（HOST:internal/speech/engine.go:305-317），宿主重启就回到空——所以客户端每次启动都要重新 configure 一次。",
+      "resp_note": "回写后的完整选择（两个字段都可能为空）。"
+    },
+    "speech.transcribe": {
+      "batch": 25,
+      "req": {
+        "request": {
+          "audioBase64": "string",
+          "providerId": "string?",
+          "language": "string?"
+        }
+      },
+      "resp": {
+        "text": "string",
+        "audioSeconds": "float",
+        "inferenceSeconds": "float"
+      },
+      "req_note": "参数从 **request 子对象**取（没有 request 时退回顶层）。audioBase64 是**裸 base64**（不带 data:audio/wav;base64, 前缀），宿主直接 base64.StdEncoding.DecodeString（HOST:cmd/dshd/serve_speech.go:37-43），带前缀会被判 invalid_audio。providerId 空 = 用 configure 选的那条；宿主只接受 RIFF/WAVE 且 ≥44 字节（HOST:internal/speech/engine.go:318-321）。",
+      "resp_note": "text 可能是**空串**：那是「没识别出语音」的合法结果，不是错误——客户端必须与失败分开呈现。audioSeconds 是宿主按 WAV 的 byteRate 算的（HOST:internal/speech/engine.go:373-390），inferenceSeconds 是 helper 耗时。"
     }
   },
   "counts": {
-    "total": 122,
+    "total": 127,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2087,7 +2157,8 @@
     "batch21": 14,
     "batch22": 4,
     "batch23": 11,
-    "batch24": 1
+    "batch24": 1,
+    "batch25": 5
   },
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,

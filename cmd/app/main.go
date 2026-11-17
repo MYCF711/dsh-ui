@@ -64,6 +64,7 @@ import (
 	_ "github.com/MYCF711/dsh-ui/plugins/dsterminal"
 	_ "github.com/MYCF711/dsh-ui/plugins/dstool"
 	_ "github.com/MYCF711/dsh-ui/plugins/dstopbar"
+	_ "github.com/MYCF711/dsh-ui/plugins/dsvoice"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
@@ -386,6 +387,9 @@ type model struct {
 	// wave3 是 GUI 第三波两个父容器的壳侧数据接线（账号态 / 会话投影 / apiclient）。
 	// 见 wave3_wiring.go：它只喂缓存，不在绘制里发请求。
 	wave3 wave3Wiring
+	// voice 是麦克风听写（#66 dsh-experimental-client-ui-voice-input）的壳侧状态：
+	// 设备名录 / 识别器目录 / 采集会话。见 speech_voice.go。
+	voice voiceWiring
 
 	mu           sync.Mutex
 	chromeLayout frameChromeLayout // 由 Paint 写入，原生截图报告在 mu 下读取。
@@ -2582,6 +2586,8 @@ func main() {
 		shellMode:        shellTier,
 		// GUI 第三波两个父容器的壳侧数据接线（见 wave3_wiring.go）。
 		wave3: newWave3Wiring(),
+		// 麦克风听写的壳侧状态（见 speech_voice.go）。
+		voice: newVoiceWiring(),
 	}
 	// **先换 cookie，再拉数据**。
 	// 反过来（先 refreshList 再 Connect）的后果实测过：第一次 list 必然 401，
@@ -2706,6 +2712,19 @@ func main() {
 		CordisStop:    m.cordisStopAction,
 		CordisRemove:  m.cordisRemoveAction,
 		CordisRefresh: m.cordisRefreshAction,
+		// #66 麦克风听写（官方 dsh-experimental-client-ui-voice-input）。
+		// 能力真的在壳里：采集走 internal/audio（winmm），识别走宿主 speech.*。
+		Voice: &pluginapi.VoiceActions{
+			Capability:     m.voiceCapability,
+			State:          m.voiceState,
+			Begin:          m.voiceBegin,
+			Stop:           m.voiceStop,
+			Cancel:         m.voiceCancel,
+			Retry:          m.voiceRetry,
+			Insert:         m.voiceInsert,
+			SelectDevice:   m.voiceSelectDevice,
+			RefreshDevices: m.voiceRefreshDevices,
+		},
 		// 宿主 ui-config.json 的读写。ConfigGet 给的是**缓存**（插件要同步返回），
 		// ConfigSet 异步写、失败只报状态栏——插件不等待也不重试。
 		ConfigGet: func() map[string]string {

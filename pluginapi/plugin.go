@@ -1256,6 +1256,15 @@ const (
 	DraftReplace = "replace"
 	DraftAppend  = "append"
 	DraftKeep    = "keep"
+	// DraftInsert 是"追加到草稿末尾"（听写结果用这一档）。
+	//
+	// 与 DraftAppend 的区别：Append 是官方 `appendDraft` 的**段落**语义
+	// （两段之间空一行，`cmd/app/wpc1_send.go` 的 appendDraftParagraph），
+	// 而听写是往现有句子里续话，段落分隔会把一句话拆成两段。
+	//
+	// 它对应的官方动作是 `inputActions.insertText(text, span)`（插在采集时的
+	// 光标处）；本仓没有光标快照，只能追加到末尾，见 VoiceState.Pending 的注释。
+	DraftInsert = "insert"
 )
 
 // Actions 是插件能触发的动作。
@@ -2076,6 +2085,110 @@ type Actions struct {
 	// nil = 壳没接 → 面板不画「重读」入口（本仓面板本来也没有该按钮，
 	// 留这个字段是给"事件没到但清单变了"的手动兜底）。
 	CordisRefresh func()
+
+	// Voice 是麦克风听写（`#66 dsh-experimental-client-ui-voice-input`）的**全部**壳侧入口。
+	//
+	// 为什么合成一个结构而不是六个平铺字段：官方那个包的能力是**一整套**
+	// （采集 + 识别 + 把文字放回草稿），少任何一个都画不出真的听写条。
+	// 拆成六个字段就会出现"有 VoiceStart 没有 VoiceStop"的半接状态，
+	// 那种状态在界面上看起来正常、用起来是坏的。nil = 壳整条没接 → 不画入口。
+	Voice *VoiceActions
+}
+
+// VoiceActions 是听写的一组动作与只读快照入口。
+//
+// 与官方 `client.js:3640-3665` 的 `actions` 注入一一对应：
+//
+//	official                       本仓
+//	useSpeechReadiness((v)=>v)     Capability()（目录/选择/设备/上限）
+//	createRecording()              Begin()（真实采集器由壳持有）
+//	transcribe(request, signal)    （Stop 内部完成识别，见 Stop 注释）
+//	inputActions.captureInsertion  （本仓没有光标快照，见 Insert 注释）
+//	inputActions.insertText        Insert（追加到草稿末尾）
+//	openSettings                   打开设置页（nil = 没有可打开的设置页）
+type VoiceActions struct {
+	// Capability 同步返回就绪快照（壳缓存，首次问触发一次后台读取）。
+	Capability func() VoiceCapability
+	// State 同步返回这一次听写会话的实时状态。
+	State func() VoiceState
+	// Begin 开始一次听写。**异步**：立即返回，结果从 State() 读。
+	Begin func()
+	// Stop 结束采集并识别，成功后把文字排进草稿。**异步**。
+	Stop func()
+	// Cancel 放弃这一次听写（采集停止、识别结果丢弃）。
+	Cancel func()
+	// Retry 在失败反馈之后重来一次。**异步**。
+	Retry func()
+	// Insert 把 feedback 阶段暂存的文字插进草稿。**异步**。
+	//
+	// 本仓**恒无**暂存文字（理由见 VoiceState.Pending），留这个动作是为了
+	// 官方那枚「插入」按钮有对称入口，而不是画一个 nil 判断的分支。
+	Insert func()
+	// SelectDevice 换一只麦克风（`deviceId` 是 audio.Device.ID）。**异步**：
+	// 下一次 Begin 生效；正在录的时候不打断当前这一次。
+	SelectDevice func(deviceID int)
+	// RefreshDevices 重新枚举录音设备（插拔之后）。**异步**。
+	RefreshDevices func()
+}
+
+// VoiceCapability 是「这台机器现在能不能听写」的**真值**。
+//
+// Available=false 时 Reason 必非空，且界面**不画麦克风按钮**——与官方在
+// `navigator.mediaDevices` 缺失时抛 `RecordingError("unavailable")`
+// （`client.js:1528`）表达同一件事，只是提前到画之前判断，不画一个点了才报错的按钮。
+type VoiceCapability struct {
+	Available bool
+	// Reason 是本地化前的中文诊断（"没有麦克风" / "宿主没有语音识别器" / …）。
+	Reason string
+	// Providers 是宿主 `speech/catalog` 的目录（本仓宿主只给 id/name/language）。
+	Providers []VoiceProvider
+	// ProviderID / Language 是当前选择；空串 = 还没选（壳会选第一条）。
+	ProviderID string
+	Language   string
+	// Devices 是录音设备名录；DeviceID=-1 是系统默认。
+	Devices  []VoiceDevice
+	DeviceID int
+	// MaxSeconds 是一次录音的上限（秒），界面用它画倒计时/自动停止。
+	MaxSeconds int
+}
+
+// VoiceProvider 是 `speech/catalog` 的一条（原样透传宿主）。
+type VoiceProvider struct {
+	ID       string
+	Name     string
+	Language string
+}
+
+// VoiceDevice 是一只录音设备。
+//
+// ID 是 `waveInGetNumDevs` 的序号（插拔后会变），不是持久 GUID——
+// 所以界面只把它当"这一次的选择"，不落盘。
+type VoiceDevice struct {
+	ID   int
+	Name string
+}
+
+// VoiceState 是听写会话的实时状态（官方 `phase` 五档 + 电平 + 时长）。
+type VoiceState struct {
+	// Phase 取 "idle" / "requesting" / "recording" / "transcribing" / "feedback"
+	// （与官方 `client.js:1840` 的 setPhase 同名字面量）。
+	Phase string
+	// Message 是 feedback 阶段的用户可见文案（已本地化）。
+	Message string
+	// Pending 是官方 `pending`：`insertText` 因草稿并发改动而失败时暂存的文字。
+	//
+	// 本仓**恒为空**：官方按"采集时光标位置"做 span 冲突检测
+	// （`client.js:1929` 的 `inputActions.captureInsertion()`），而 Viva 的
+	// `ui.Field` 只公开 `Text/SetText`（`viva/ui/field.go:82-95`），
+	// composer 的 editor 不经 `pluginapi` 暴露 → 本仓直接追加到草稿末尾，
+	// 没有"位置失效"这种状态。这是**已知差异**，见账本 #66 行。
+	Pending string
+	// Level 是最近一块的 RMS 电平（0..1），波形按它画。
+	Level float64
+	// Seconds 是当前这段已经录到的秒数（录音中逐帧增长）。
+	Seconds float64
+	// Error 是最近一次失败的宿主/本地原文（诊断用，界面显示 Message）。
+	Error string
 }
 
 // SettingsHostFacts 是设置面板需要的**宿主事实**（决定动态注册）。

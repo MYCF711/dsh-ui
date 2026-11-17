@@ -109,6 +109,12 @@ type (
 	Theme                     = pub.Theme
 	Radii                     = pub.Radii
 	Fonts                     = pub.Fonts
+	// 麦克风听写（#66）：Actions.Voice 的动作组与三份只读快照。纯别名。
+	VoiceActions    = pub.VoiceActions
+	VoiceCapability = pub.VoiceCapability
+	VoiceProvider   = pub.VoiceProvider
+	VoiceDevice     = pub.VoiceDevice
+	VoiceState      = pub.VoiceState
 )
 
 const (
@@ -131,6 +137,7 @@ const (
 	DraftReplace            = pub.DraftReplace
 	DraftAppend             = pub.DraftAppend
 	DraftKeep               = pub.DraftKeep
+	DraftInsert             = pub.DraftInsert
 
 	// context menu 的 target kind（官方 `ContextMenuTargetMap` 的判别键，
 	// OFF:ui-context-menu/src/client/types.ts:29-40 + open-in-app 的 workspace 扩展）。

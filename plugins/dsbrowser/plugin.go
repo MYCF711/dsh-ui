@@ -184,6 +184,14 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			// tab-registry.ts:106-…），名录顺序 = 注册顺序；Tab.Order 的零值就是
 			// "按装配顺序"，所以这里留 0，不编一个数。
 			Order: 0, Multiple: true, Draw: p.drawBody, AfterDraw: p.afterDraw,
+			// 官方向导页的入口卡（`browserDefinition.guide`，definition.tsx:22-25）：
+			// id 'new' / commandId 'browser.new' / order 30 / title '浏览器' /
+			// description '浏览网页'（locales.ts:4-5）。本包**不注册**卡片本体，
+			// 所以向导页画官方那枚标准胶囊（GuideBody.tsx:155 的 `fallback: <EntryBox>`）。
+			Guide: []pluginapi.TabGuide{{
+				ID: "new", Order: 30, Title: "浏览器", Description: "浏览网页",
+				CommandID: "browser.new",
+			}},
 		},
 		{
 			ID: "browser-tab-title", Slot: pluginapi.SlotRightPaneTabTitle, Key: RightTabBrowser,
@@ -242,7 +250,11 @@ func addressFailureCopy(reason addressFailure) string {
 
 // drawBody 画工具条 + 状态行 + 内容区（官方 BrowserBody.tsx 的渲染分支）。
 func (p *Plugin) drawBody(f ui.C, env *pluginapi.Env) {
-	p.activate(env)
+	instance := p.activate(env)
+	// 官方 `tab.navigation.params` 的消费点：`BrowserBody.tsx:53,65` 把
+	// `tab.navigation.params?.url` 当 initialUrl 交给 `controller.start(initialUrl)`。
+	// 必须在这里（不是 afterDraw）：openPage 要改写地址栏与历史状态。
+	p.applyNavigationParams(env, instance)
 	p.drawn = false
 	p.content = ui.Box{}
 	t := p.theme
@@ -572,6 +584,73 @@ func (p *Plugin) restore(env *pluginapi.Env) {
 	p.openPage(env, target)
 }
 
+// applyNavigationParams 消费官方 `tab.navigation.params`（contract/params.ts:31-46 的
+// `browser: { url?: string }`）。
+//
+// 官方的行为是**一次性**的：`BrowserController.start(initialUrl)` 里有
+// `if (this.started || this.disposed) return`（BrowserController.ts:90-98），
+// 所以同一 occurrence 再被 open 一次也不会重新导航。这里逐条照搬：
+//
+//	params.url 为空（官方 undefined） → 什么都不做
+//	这一份参数已经消费过         → 什么都不做（同一帧重绘不会重复开页）
+//	这个 occurrence 已经开过页面 → 什么都不做（官方 started）
+//	否则                        → 过地址白名单，通过就导航，拒了就记 addressFailure
+func (p *Plugin) applyNavigationParams(env *pluginapi.Env, instance *browserInstance) {
+	if instance == nil {
+		return
+	}
+	raw := env.RightTabParams.URL
+	if instance.paramsURL == raw {
+		return
+	}
+	instance.paramsURL = raw
+	if raw == "" || instance.started {
+		return
+	}
+	instance.started = true
+	parsed := parseBrowserAddress(raw, "")
+	if !parsed.OK {
+		p.failure = parsed.Reason
+		p.persistActive(env)
+		return
+	}
+	p.failure = ""
+	p.address.SetText(parsed.Target.URL)
+	if p.nav.navigate(parsed.Target) == nil {
+		return
+	}
+	p.openPage(env, parsed.Target)
+}
+
+// newWindowRequested 是官方 `BrowserController.openRequested` 的逐条移植：
+//
+//	OFF:…/browser/BrowserController.ts:54-59
+//	  openRequested: value => { const r = parseBrowserAddress(value, applicationOrigin)
+//	                            if (!r.ok) { this.addressFailed(r.reason); return }
+//	                            options.openTab(r.target.url) }
+//	OFF:…/view/BrowserBody.tsx:62-70
+//	  openTab: url => tab.actions.openTab('browser', { params: { url }, revealIfOpened: false })
+//
+// 返回值语义见 `pluginapi.WebOpenOptions.OnNewWindow`：true = 应用内已经接下这次新窗口。
+func (p *Plugin) newWindowRequested(env *pluginapi.Env, raw string) bool {
+	parsed := parseBrowserAddress(raw, "")
+	if !parsed.OK {
+		// 地址被拒：官方记在 addressFailure 上（不开任何窗口），状态行由工具条下方那行显示。
+		p.failure = parsed.Reason
+		p.persistActive(env)
+		return true
+	}
+	if env.Act.OpenRightTabParams == nil {
+		// 壳没接带参数的 openTab：**不丢地址**，交回平台默认（系统浏览器）。
+		return false
+	}
+	// `revealIfOpened: false` 在官方意味着"允许并存第二份同样的内容"。本仓 browser
+	// 注册为 multiple:true，openRightTabParams 对 multiple 类型本来就每次新建，
+	// 所以这一条语义天然成立（见 cmd/app/right_tab_occurrences.go）。
+	env.Act.OpenRightTabParams(RightTabBrowser, pluginapi.RightTabParams{URL: parsed.Target.URL})
+	return true
+}
+
 // openPage 在需要时打开一个真网页，然后导航过去。
 //
 // 载具只认**校验过的**地址（官方 `BrowserFrame.loadUrl(target)` 收的就是
@@ -586,9 +665,17 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 	}
 	if p.page == nil {
 		loadEnv := *env // 固定本次 occurrence；壳下一帧会复用并改写原 Env。
-		page, err := env.Web.Open(pluginapi.WebOpenOptions{OnLoad: func(load pluginapi.WebLoad) {
-			p.handleLoad(&loadEnv, load)
-		}})
+		page, err := env.Web.Open(pluginapi.WebOpenOptions{
+			OnLoad: func(load pluginapi.WebLoad) {
+				p.handleLoad(&loadEnv, load)
+			},
+			// 页面自己 `window.open` / `target=_blank`：官方载具把它交给
+			// `BrowserController.openRequested`（BrowserController.ts:54-59），
+			// 再由 `BrowserBody.tsx:66` 开成应用内新标签。这里同一条路。
+			OnNewWindow: func(url string) bool {
+				return p.newWindowRequested(&loadEnv, url)
+			},
+		})
 		if err != nil {
 			p.openErr = err
 			p.persistActive(env)

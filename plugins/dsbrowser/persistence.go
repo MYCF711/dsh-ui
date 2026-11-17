@@ -34,6 +34,12 @@ type browserInstance struct {
 	openErr      error
 	failure      addressFailure
 	addressDraft string
+	// paramsURL 记住这个 occurrence 已经消费过的那份官方
+	// `tab.navigation.params.url`（contract/params.ts:31-46）；同一份只消费一次。
+	paramsURL string
+	// started 对应官方 `BrowserController.started`：`start(initialUrl)` 是一次性的，
+	// 只有"还没请求过页面"时才吃初始地址（BrowserController.ts:90-98）。
+	started bool
 }
 
 func browserInstanceKey(sessionID, tabID string) string { return sessionID + "\x00" + tabID }

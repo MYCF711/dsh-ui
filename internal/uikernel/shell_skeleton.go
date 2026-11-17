@@ -151,6 +151,12 @@ type ShellOptions struct {
 	RightTabs []pluginapi.Tab
 	// ActiveRightTab 是本帧选中的右栏 tab 类型 key；空 = 右栏没有可画面板。
 	ActiveRightTab string
+	// GuideEntries 是右栏向导页的入口卡名录（官方 `SidebarRightTabDefinition.guide`
+	// 的投影，见 view_guide.go 的 `GuideEntries`）。
+	//
+	// 它来自**注册的类型**而不是布局里的 occurrence：官方向导页列的是"能开什么"，
+	// 与"当前开着什么"无关（`GuideBody.tsx` 读的是 registry 的 guideEntries）。
+	GuideEntries []GuideEntry
 	// BridgeLegacy 打开旧插件兼容桥（见文件头）。
 	BridgeLegacy bool
 	// BridgeLegacyComposer 是**中栏 composer 那一段**的兼容桥开关。
@@ -1086,10 +1092,24 @@ func drawRightbarSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispat
 		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightPaneTab) })
 		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightPaneTabTitle) })
 		ui.Row(f).FillWidth().Grow(1).Children(func() {
+			// 指南页（guide）的体：官方是一个 **chain** 座位，占位方接了就整块替换
+			// （`renderSlotChain('sidebar.right.tab.guide', …)`，GuideBody.tsx:176）；
+			// 没人接管时由向导页自己画入口卡列（官方 `fallback: <ShippedGuide>`）。
+			if env != nil && env.Has != nil && env.Has(OffRightGuide) {
+				dispatch(OffRightGuide)
+				return
+			}
+			if env != nil && len(layout.Options.GuideEntries) > 0 && env.DrawKeyed != nil {
+				// 有名录：逐卡 keyed 派发（官方 `renderSlot(…, {entryKey: providerId})`）。
+				DrawRightGuide(f, env, layout.Options.GuideEntries)
+				return
+			}
+			// 没有名录（最小装配 / 第三方老插件）：退回不带 key 的两处派发——旧行为，
+			// 不因为新契约把既有注册点变成"挂上去也不会显示"。
 			dispatch(OffRightGuide)
-			dispatch(OffRightGuideActions)
 			dispatch(OffRightGuideEntry)
 		})
+		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightGuideActions) })
 		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightTabMenuItem) })
 	})
 }

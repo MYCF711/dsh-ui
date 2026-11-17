@@ -263,12 +263,16 @@ func (m *model) runTerminalView(ctx context.Context, sessionID, tabID string, ge
 			rows = env.MaxRows
 		}
 		request := apiclient.TerminalCreateRequest{ID: tabID, Cols: cols, Rows: rows}
-		for _, shell := range shells {
-			if shell.Supported == nil || *shell.Supported {
-				request.ShellPath = shell.Path
-				break
-			}
+		// 官方 `openTab('terminal', { params: { shellPath } })`（face.ts:20-24）优先；
+		// 没有就退回向导页记住的那个选择（`webTerminals.selectShell`），
+		// 再没有才是第一枚可用的 shell（原行为）。
+		preferred := m.rightTabParamsFor(sessionID, tabID).ShellPath
+		if preferred == "" {
+			m.mu.Lock()
+			preferred = m.terminalShellPreferenceLocked(sessionID)
+			m.mu.Unlock()
 		}
+		request.ShellPath = pickTerminalShell(shells, preferred)
 		created, createErr := m.terminalCreateCall(ctx, sessionID, request)
 		if createErr != nil {
 			fail(createErr)

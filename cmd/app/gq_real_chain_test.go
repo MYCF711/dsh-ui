@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dsconversation"
@@ -92,7 +93,7 @@ func TestGQRealChainMarkdownBlocks(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	sessionID, err := client.Create(ctx, "", "", "gq-markdown-blocks")
+	sessionID, err := client.SessionCreateID(ctx, apiclient.SessionCreateRequest{})
 	if err != nil {
 		t.Fatalf("session.create 失败: %v", err)
 	}

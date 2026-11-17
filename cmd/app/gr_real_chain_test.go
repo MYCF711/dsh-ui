@@ -182,7 +182,7 @@ func TestRealChainGROfficialComposer(t *testing.T) {
 	_ = mux
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	sessionID, err := client.Create(ctx, host.home, "workspace-write", "gr-composer")
+	sessionID, err := client.SessionCreateID(ctx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	cancel()
 	if err != nil {
 		t.Fatalf("session.create 失败：%v", err)

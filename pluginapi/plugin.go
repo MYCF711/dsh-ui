@@ -1787,9 +1787,11 @@ type Actions struct {
 	// 插件的 Draw 在绘制线程上，同步等 HTTP 会卡首帧。
 	Forge *ForgeActions
 
-	// SelectWorkspace 是首屏 WorkspacePicker 的 onPick(workspaceId)：复用该工作区的
-	// 空白会话并打开；没有可复用空白会话时必须如实报错，不能用只解 mode 的
-	// session.create 假装会在所选目录建会话。nil = 壳没接，首屏不画现有工作区菜单项。
+	// SelectWorkspace 是首屏 WorkspacePicker 的 onPick(workspaceId)：先复用该工作区的
+	// 空白会话（经 session.load 证实 Total==0 且 cwd 匹配），没有可复用的就发官方
+	// `session.create { workspaceId }`（`types.ts:268-277`）。宿主若只解旧 `mode`，
+	// 壳会读回会话 cwd 核对、如实报错，绝不在进程 cwd 建会话后冒充选择成功。
+	// nil = 壳没接，首屏不画现有工作区菜单项。
 	SelectWorkspace func(workspaceID string)
 
 	// OpenDirectoryPicker 打开**官方目录选择器**（官方 `dsh-client-ui-directory-picker-browse`

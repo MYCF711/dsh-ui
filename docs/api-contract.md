@@ -111,7 +111,7 @@ mockd 的兼容层只在一处实现（`decodeParams`，`cmd/mockd/main.go`）�
 | method | 用途 | 接受的入参名（平铺） |
 |---|---|---|
 | `session.list` | 会话列表 | —（宿主忽略 body；`cwd`/`limit`/`cursor` 尚未实现） |
-| `session.create` | 新建 | `mode`（`cwd`/`title` 客户端会发，宿主暂不读） |
+| `session.create` | 新建 | `mode`（已发布宿主只解它；客户端另发官方 `workspaceId`/`cwd`/`sessionId`/`agentPreset`，见 `internal/apiclient/session_create.go`） |
 | `session.load` | 打开会话（含尾页） | `id` / `sessionId`、`tailMessages` / `limit` |
 
 ### `session.load` 返回的 `messages[].reasoning`

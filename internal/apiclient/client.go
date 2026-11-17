@@ -462,27 +462,9 @@ func (c *Client) Load(ctx context.Context, id string, tail int) (*LoadResult, er
 	return &r, nil
 }
 
-// Create 是 session.create。
-func (c *Client) Create(ctx context.Context, cwd, mode, title string) (string, error) {
-	params := map[string]any{"mode": mode}
-	if cwd != "" {
-		params["cwd"] = cwd
-	}
-	if title != "" {
-		params["title"] = title
-	}
-	var r struct {
-		ID        string `json:"id"`
-		SessionID string `json:"sessionId"` // 真宿主用这个键
-	}
-	if err := c.Call(ctx, "session.create", params, &r); err != nil {
-		return "", err
-	}
-	if r.ID != "" {
-		return r.ID, nil
-	}
-	return r.SessionID, nil
-}
+// session.create 不在这里：它是官方四字段契约，落在 session_create.go
+// （`SessionCreate`）。旧的三参数 `Create(ctx, cwd, mode, title)` 已经删掉——
+// `title` 官方没有、宿主也从没解过，属于空转字段。
 
 // Cancel 是 session.cancel：打断这个会话正在跑的 turn。
 //

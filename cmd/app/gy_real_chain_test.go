@@ -209,7 +209,7 @@ func TestRealChainGYGoalQuestionsStatusbar(t *testing.T) {
 	client, _ := connectRealGUI(t, host)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	sessionID, err := client.Create(ctx, host.home, "workspace-write", "gy-goal-parts")
+	sessionID, err := client.SessionCreateID(ctx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	cancel()
 	if err != nil {
 		t.Fatalf("session.create 失败：%v", err)

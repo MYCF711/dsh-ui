@@ -794,16 +794,23 @@ func (m *model) refreshSession(id string, quiet bool) {
 // mdSlot 记录一条助手消息占位用的 Slot，等布局完成后在它的位置画 Markdown。
 
 // newSession 建一个会话并直接打开。
+//
+// 官方 `uiWorkspace.startSession` 在没有目标工作区时走的就是"一个字段都不点名的
+// session.create"（`OFF:navigation.ts:366-372` 的 `clearMain` 分支之外的 create 路径）：
+// 不点名 workspaceId/cwd 时宿主按自己的 `defaultCwd` 建会话，不点名 agentPreset 时
+// 用配置里的默认 preset（`types.ts:268-277` 的可选键语义）。所以这里**什么都不发**——
+// 旧实现硬写 `mode:"default"`，等于把设置里的默认 preset 开关压掉。
 func (m *model) newSession() {
 	m.setStatus("新建会话…")
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		id, err := m.cli.Create(ctx, "", "default", "")
+		created, err := m.cli.SessionCreate(ctx, apiclient.SessionCreateRequest{})
 		if err != nil {
 			m.setStatus("新建失败: " + err.Error())
 			return
 		}
+		id := created.SessionID
 
 		// 订阅时带上 journal 世代（H14）：宿主换代后发 session/reset，界面据重建基线。
 		m.mux.EpochOf = func(topic string) int64 {

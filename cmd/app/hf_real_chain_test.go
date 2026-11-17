@@ -187,7 +187,7 @@ func TestRealChainHFConnectionGoalIcon(t *testing.T) {
 
 	// ── ① 真会话 + 真 goal。
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	sessionID, err := client.Create(ctx, host.home, "allow", "hf-connection-goal")
+	sessionID, err := client.SessionCreateID(ctx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "allow"})
 	cancel()
 	if err != nil {
 		t.Fatalf("session.create 失败：%v", err)

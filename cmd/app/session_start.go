@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 )
 
@@ -32,15 +33,18 @@ func (m *model) startSession(options pluginapi.StartSessionOptions) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), startSessionTimeout)
 		defer cancel()
-		id, err := m.cli.Create(ctx, "", strings.TrimSpace(options.AgentPreset), "")
+		created, err := m.cli.SessionCreate(ctx, apiclient.SessionCreateRequest{
+			AgentPreset: strings.TrimSpace(options.AgentPreset),
+		})
 		if err != nil {
 			m.setStatus("新建失败: " + err.Error())
 			return
 		}
-		if id == "" {
+		if created.SessionID == "" {
 			m.setStatus("新建失败: 宿主 session.create 返回了空 sessionId")
 			return
 		}
+		id := created.SessionID
 		m.refreshList()
 		m.openSession(id)
 		if options.Prompt != "" && options.WhenDraftExists != pluginapi.DraftKeep {

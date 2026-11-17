@@ -177,7 +177,7 @@ func TestRealChainHESessionStatsDialog(t *testing.T) {
 	client, _ := connectRealGUI(t, host)
 
 	createCtx, createCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	sessionID, err := client.Create(createCtx, host.home, "workspace-write", "he-stats")
+	sessionID, err := client.SessionCreateID(createCtx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	createCancel()
 	if err != nil {
 		t.Fatalf("session.create 失败：%v", err)
@@ -321,7 +321,7 @@ func TestRealChainHESessionStatsDialog(t *testing.T) {
 
 	// ── ⑤ 空会话：没 prompt → 宿主给全 0 真值 → 胶囊「活动 未知」+ 不可点 + 点不开。
 	emptyCtx, emptyCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	emptySessionID, err := client.Create(emptyCtx, host.home, "workspace-write", "he-stats-empty")
+	emptySessionID, err := client.SessionCreateID(emptyCtx, apiclient.SessionCreateRequest{Cwd: host.home, AgentPreset: "workspace-write"})
 	emptyCancel()
 	if err != nil {
 		t.Fatalf("空会话 session.create 失败：%v", err)

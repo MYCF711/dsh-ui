@@ -109,6 +109,11 @@ type (
 	Theme                     = pub.Theme
 	Radii                     = pub.Radii
 	Fonts                     = pub.Fonts
+	// ShadowLayer / Elevation / Shadows 是官方阴影令牌（pluginapi/theme.go）。
+	// 漏一行就是「插件编译得动、壳编译不动」，同 CordisView 那次的踩法。
+	ShadowLayer = pub.ShadowLayer
+	Elevation   = pub.Elevation
+	Shadows     = pub.Shadows
 	// 麦克风听写（#66）：Actions.Voice 的动作组与三份只读快照。纯别名。
 	VoiceActions    = pub.VoiceActions
 	VoiceCapability = pub.VoiceCapability

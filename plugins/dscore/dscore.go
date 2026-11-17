@@ -233,8 +233,9 @@ func Dark() *pluginapi.Theme {
 
 		Selection: ui.RGBA(59, 130, 246, 0.40), // --dsw-alias-bg-document-selection
 
-		Radii: radii,
-		Fonts: fonts(),
+		Radii:   radii,
+		Fonts:   fonts(),
+		Shadows: shadows(),
 	}
 }
 
@@ -336,8 +337,9 @@ func Light() *pluginapi.Theme {
 		// （design-platform.css:179 亮 / :331 暗，两套都是 40%）。
 		Selection: ui.RGBA(59, 130, 246, 0.40),
 
-		Radii: radii,
-		Fonts: fonts(),
+		Radii:   radii,
+		Fonts:   fonts(),
+		Shadows: shadows(),
 	}
 }
 

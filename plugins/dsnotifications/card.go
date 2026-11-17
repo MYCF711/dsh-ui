@@ -27,7 +27,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/gfx"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -62,17 +62,10 @@ const (
 	CloseIconSize float32 = 10
 	// DepthOffset 是 `translateY(-4px × depth)` 的 4px。
 	DepthOffset float32 = 4
-	// PanelStroke 是 `--dsw-elevation-stroke:0 0 0 0.5px`（gradient-shadow-text.css:33）。
-	PanelStroke float32 = 0.5
-	// PanelShadowY / PanelShadowBlur / PanelShadowAlpha 是官方第一层柔光
-	// `0 3px 8px 0 rgba(0,0,0,0.03)`（gradient-shadow-text.css:34-35）。
-	PanelShadowY     float32 = 3
-	PanelShadowBlur  float32 = 8
-	PanelShadowAlpha float32 = 0.03
-	// PanelGlowBlur / PanelGlowAlpha 是官方第二层柔光
-	// `0 0 16px 0 rgba(0,0,0,0.02)`（同一文件同一行）。
-	PanelGlowBlur  float32 = 16
-	PanelGlowAlpha float32 = 0.02
+	// 这里原来还有 PanelStroke / PanelShadowY / PanelShadowBlur / PanelShadowAlpha /
+	// PanelGlowBlur / PanelGlowAlpha 六个本地常量（官方 elevation-panel 的三个数）。
+	// 它们已经并进 `pluginapi.Shadows.Panel`：官方三件套是**令牌**，
+	// 20+ 个浮层各抄一份的结果是只有抄得最认真的那几个是对的。
 )
 
 // depthScaleBase 是官方叠层比例 `252/260`（AccountNotifications.tsx:145 的 Math.pow）。
@@ -100,33 +93,21 @@ func (p *Plugin) drawStack(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, notic
 					WidthPercent(float32(depthScale(depth)) * 100).
 					Radius(CardRadius).
 					Background(t.InputMajor).
-					Draw(func(d *ui.DrawContext) { drawPanelElevation(d, CardRadius, t.BorderL4) })
+					Draw(func(d *ui.DrawContext) { dscore.PaintElevation(d, CardRadius, t.Shadows.Panel, t.BorderL4) })
 			})
 		}
 		p.drawCard(f, env, t, notices[0])
 	})
 }
 
-// drawPanelElevation 画官方 `--dsw-elevation-panel`：0.5px 外描边 +
-// `0 3px 8px/3%`、`0 0 16px/2%` 两层柔光（gradient-shadow-text.css:33-35）。
-// 不拿 Viva ShadowXS（0 1px 2px/5%）冒充这个官方令牌。
-func drawPanelElevation(d *ui.DrawContext, radius float32, stroke gfx.Color) {
-	outer := d.Rect
-	outer.X -= PanelStroke
-	outer.Y -= PanelStroke
-	outer.Width += 2 * PanelStroke
-	outer.Height += 2 * PanelStroke
-	d.Canvas.RoundedOutline(outer, radius+PanelStroke, PanelStroke, d.Fade(stroke))
-	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{OffsetY: PanelShadowY, Blur: PanelShadowBlur},
-		d.Fade(gfx.Color{Alpha: PanelShadowAlpha}))
-	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{Blur: PanelGlowBlur},
-		d.Fade(gfx.Color{Alpha: PanelGlowAlpha}))
-}
-
 // drawCard 画前景卡（唯一可交互的一张）。
+//
+// 卡片阴影是官方 `AccountNotifications.module.css:4` 的
+// `box-shadow:var(--dsw-elevation-panel)`；描边色没重绑，走默认的
+// `--dsw-elevation-stroke-color: var(--dsw-alias-border-l4)`（gradient-shadow-text.css:17）。
 func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, n apiclient.Notification) {
 	ui.Column(f).FillWidth().Radius(CardRadius).Background(t.InputMajor).
-		Draw(func(d *ui.DrawContext) { drawPanelElevation(d, CardRadius, t.BorderL4) }).
+		Draw(func(d *ui.DrawContext) { dscore.PaintElevation(d, CardRadius, t.Shadows.Panel, t.BorderL4) }).
 		Pad(CardPadding).Children(func() {
 		// .copy 是独立列：2px gap 只落在标题与正文之间，不能污染兄弟 .actions 的 12px 上边距。
 		// `role="status"` 是官方可访问性标注；viva 的 Text 没有 role，此处从简。

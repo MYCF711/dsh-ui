@@ -97,15 +97,15 @@ func TestFG2HeadlessTwoWindowSizes(t *testing.T) {
 				}
 			}
 		}
-		assertRect("logoRow", boxes.Brand.Rect(), gfx.Rect{X: 12, Y: 6, Width: 256, Height: 40})
-		assertRect("newSession", boxes.NewSession.Rect(), gfx.Rect{X: 14, Y: 54, Width: 252, Height: 38})
+		assertRect("logoRow", boxes.Brand.Rect(), gfx.Rect{X: 8, Y: 6, Width: 264, Height: 40})
+		assertRect("newSession", boxes.NewSession.Rect(), gfx.Rect{X: 12, Y: 52, Width: 256, Height: 38})
 		if len(boxes.PanelRows) != 2 {
 			t.Fatalf("导航行=%d，want 2", len(boxes.PanelRows))
 		} else {
-			assertRect("plugins panelRow", boxes.PanelRows[0].Rect(), gfx.Rect{X: 14, Y: 104, Width: 252, Height: 36})
-			assertRect("schedules panelRow", boxes.PanelRows[1].Rect(), gfx.Rect{X: 14, Y: 142, Width: 252, Height: 36})
+			assertRect("plugins panelRow", boxes.PanelRows[0].Rect(), gfx.Rect{X: 11, Y: 102, Width: 258, Height: 32})
+			assertRect("schedules panelRow", boxes.PanelRows[1].Rect(), gfx.Rect{X: 11, Y: 136, Width: 258, Height: 32})
 		}
-		assertRect("workspace sectionHeader", boxes.WorkspaceHeader.Rect(), gfx.Rect{X: 16, Y: 188, Width: 260, Height: 36})
+		assertRect("workspace sectionHeader", boxes.WorkspaceHeader.Rect(), gfx.Rect{X: 8, Y: 178, Width: 268, Height: 36})
 		searchButton := boxes.SearchButton.Rect()
 		assertRect("workspace search button", searchButton, gfx.Rect{X: searchButton.X, Y: searchButton.Y, Width: 28, Height: 28})
 

@@ -32,23 +32,23 @@ func fg2HasText(canvas *gfx.Canvas, value string) bool {
 
 func TestFG2OfficialGeometryConstants(t *testing.T) {
 	cases := map[string]struct{ got, want float32 }{
-		"logoRow":          {logoRowHeight, 40},
-		"brandIdentity":    {brandIdentityHeight, 24},
-		"brandMark":        {brandMarkSize, 24},
-		"brandName":        {brandNameHeight, 24},
-		"brandNameFont":    {brandNameFontSize, 18},
-		"brandNameLine":    {brandNameLineHeight, 24},
-		"brandGap":         {brandGap, 8},
-		"newSession":       {newSessionHeight, 38},
-		"newSessionTop":    {newSessionMarginTop, 8},
-		"newSessionBottom": {newSessionMarginBottom, 12},
-		"newSessionFont":   {newSessionFontSize, 14},
-		"newSessionLine":   {newSessionLineHeight, 22},
-		"panelRow":         {panelRowHeight, 36},
-		"panelListGap":     {panelListGap, 2},
-		"panelListBottom":  {panelListBottom, 8},
-		"workspaceHeader":  {workspaceHeaderHeight, 36},
-		"searchExpanded":   {searchHeight, 30},
+		"logoRow":         {logoRowHeight, 40},
+		"brandIdentity":   {brandIdentityHeight, 24},
+		"brandMark":       {brandMarkSize, 24},
+		"brandName":       {brandNameHeight, 24},
+		"brandNameFont":   {brandNameFontSize, 18},
+		"brandNameLine":   {brandNameLineHeight, 24},
+		"brandGap":        {brandGap, 5},
+		"newSession":      {newSessionHeight, 38},
+		"newSessionTop":   {newSessionMarginTop, 6},
+		"panelListTop":    {panelListTop, 12},
+		"newSessionFont":  {newSessionFontSize, 14},
+		"newSessionLine":  {newSessionLineHeight, 22},
+		"panelRow":        {panelRowHeight, 32},
+		"panelListGap":    {panelListGap, 2},
+		"panelListBottom": {panelListBottom, 8},
+		"workspaceHeader": {workspaceHeaderHeight, 36},
+		"searchExpanded":  {searchHeight, 32},
 	}
 	for name, tc := range cases {
 		if tc.got != tc.want {
@@ -79,8 +79,8 @@ func TestFG2BrandNewSessionAndNavigationGeometry(t *testing.T) {
 	if got := boxes.BrandName.Rect().Height; got != 24 {
 		t.Errorf("brandName 高=%v，want 24", got)
 	}
-	if got := boxes.BrandName.Rect().X - (boxes.BrandMark.Rect().X + boxes.BrandMark.Rect().Width); got != 8 {
-		t.Errorf("鱼标与 wordmark 间距=%v，want 8", got)
+	if got := boxes.BrandName.Rect().X - (boxes.BrandMark.Rect().X + boxes.BrandMark.Rect().Width); got != 5 {
+		t.Errorf("鱼标与 wordmark 间距=%v，want 5", got)
 	}
 	deepseek := fg2Text(t, canvas, "deepseek")
 	if deepseek.Style.Size != 18 || deepseek.Bounds.Height != 24 {
@@ -95,8 +95,8 @@ func TestFG2BrandNewSessionAndNavigationGeometry(t *testing.T) {
 	if newRect.Height != 38 {
 		t.Errorf("新会话高=%v，want 38", newRect.Height)
 	}
-	if got := newRect.Y - (boxes.Brand.Rect().Y + boxes.Brand.Rect().Height); got != 8 {
-		t.Errorf("Windows 新会话 margin-top=%v，want 8", got)
+	if got := newRect.Y - (boxes.Brand.Rect().Y + boxes.Brand.Rect().Height); got != 6 {
+		t.Errorf("Windows 新会话 margin-top=%v，want 6", got)
 	}
 	label := fg2Text(t, canvas, "新会话")
 	if label.Style.Size != 14 || label.Bounds.Height != 22 || label.Style.Weight != gfx.WeightMedium {
@@ -106,8 +106,8 @@ func TestFG2BrandNewSessionAndNavigationGeometry(t *testing.T) {
 		t.Fatalf("内置真实导航行=%d，want plugins/schedules 两条", len(boxes.PanelRows))
 	}
 	for i, row := range boxes.PanelRows {
-		if row.Rect().Height != 36 {
-			t.Errorf("导航行 %d 高=%v，want 36", i, row.Rect().Height)
+		if row.Rect().Height != 32 {
+			t.Errorf("导航行 %d 高=%v，want 32", i, row.Rect().Height)
 		}
 		if i > 0 {
 			prev := boxes.PanelRows[i-1].Rect()
@@ -268,8 +268,8 @@ func TestFG2WorkspaceHeaderCollapseExpandAndSearch(t *testing.T) {
 	}
 	canvas.Reset()
 	draw() // 点击在当帧布局后生效；下一帧才是展开后的真实矩形。
-	if got := p.frameBoxes.Search.Rect().Height; got != 30 {
-		t.Fatalf("展开搜索高=%v，want 30", got)
+	if got := p.frameBoxes.Search.Rect().Height; got != 32 {
+		t.Fatalf("展开搜索高=%v，want 32", got)
 	}
 	if fg2HasText(canvas, "工作区") {
 		t.Fatal("搜索展开时 section label 应隐藏")

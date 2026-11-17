@@ -1,17 +1,24 @@
 package dstopbar
 
 import (
+	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/MYCF711/dsh-ui/plugins/dstopbar/viewapi"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
 func drawTopbarVisualTest(t *testing.T, data pluginapi.Snapshot, hasRightbar bool) (*gfx.Canvas, *Plugin) {
+	t.Helper()
+	return drawTopbarVisualTestViews(t, data, hasRightbar, nil)
+}
+
+func drawTopbarVisualTestViews(t *testing.T, data pluginapi.Snapshot, hasRightbar bool, views []pluginapi.Tab) (*gfx.Canvas, *Plugin) {
 	t.Helper()
 	theme := dscore.Dark()
 	p := &Plugin{theme: theme, prims: &dscore.Primitives{Theme: theme}}
@@ -27,7 +34,7 @@ func drawTopbarVisualTest(t *testing.T, data pluginapi.Snapshot, hasRightbar boo
 	view.Draw(canvas, gfx.Rect{Width: 900, Height: 90}, func(f ui.C) {
 		p.draw(f, &pluginapi.Env{
 			Theme: theme, Data: data, Tree: tree, Feat: tree.Feature("topbar-visual-test"), Canvas: canvas,
-			Bounds: gfx.Rect{Width: 900, Height: 832}, MainWidth: 900,
+			Bounds: gfx.Rect{Width: 900, Height: 832}, MainWidth: 900, Views: views, ActiveView: viewapi.Chat,
 			Act: pluginapi.Actions{ToggleRightbar: func() {}},
 			Has: func(slot pluginapi.Slot) bool { return slot == pluginapi.SlotRightbar && hasRightbar },
 		})
@@ -104,6 +111,71 @@ func TestActiveHeaderUsesOfficialCrumbTypography(t *testing.T) {
 	}
 }
 
+func TestViewTabsUseOfficialTypographyAndSelection(t *testing.T) {
+	canvas, _ := drawTopbarVisualTest(t, pluginapi.Snapshot{
+		Cur: "s1", Sessions: []apiclient.Session{{ID: "s1", Title: "真实会话"}},
+		Msgs: []apiclient.Message{{Role: "user", Text: "hi"}}, Total: 1,
+	}, true)
+	theme := dscore.Dark()
+	for _, label := range []string{"对话", "轨迹"} {
+		text := topbarTestText(t, canvas, label)
+		if text.Style.Size != 13 || text.Bounds.Height != 16 || text.Style.Weight != gfx.WeightMedium {
+			t.Errorf("%s 应为官方 13/16/500，实际 size=%v line=%v weight=%v",
+				label, text.Style.Size, text.Bounds.Height, text.Style.Weight)
+		}
+		wantColor := theme.LabelTertiary
+		if label == "对话" {
+			wantColor = theme.Info
+		}
+		if text.Style.Color != wantColor {
+			t.Errorf("%s 颜色 = %+v，官方选中 business-primary / 未选中 label-tertiary = %+v",
+				label, text.Style.Color, wantColor)
+		}
+	}
+}
+
+func TestViewTabLabelUsesOfficial88pxLimit(t *testing.T) {
+	const longLabel = "统计统计统计统计统计统计统计"
+	canvas, _ := drawTopbarVisualTestViews(t, pluginapi.Snapshot{
+		Cur: "s1", Sessions: []apiclient.Session{{ID: "s1", Title: "真实会话"}},
+		Msgs: []apiclient.Message{{Role: "user", Text: "hi"}}, Total: 1,
+	}, true, []pluginapi.Tab{
+		{Key: viewapi.Chat, Label: "对话"}, {Key: pluginapi.ViewStats, Label: longLabel, Order: 40},
+	})
+	var truncated gfx.Text
+	found := false
+	for _, text := range canvas.Texts() {
+		if strings.HasPrefix(text.Value, "统计") {
+			truncated, found = text, true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("长 view label 未绘制：%+v", canvas.Texts())
+	}
+	if got := truncated.Bounds.Width; got != 88 {
+		t.Errorf("截断后的长 view label 宽 = %v，官方 .tabLabel max-width:88", got)
+	}
+}
+
+func TestRightbarIconUsesOfficialPanelLeftMirror(t *testing.T) {
+	icon, ok := rightbarPanelIcon()
+	if !ok {
+		t.Fatal("官方 panel-left 两条 path 应可解析")
+	}
+	if icon.ViewBox != 16 || icon.Stroke != 1 {
+		t.Fatalf("右栏图标 viewBox/stroke = %v/%v，官方 16/1", icon.ViewBox, icon.Stroke)
+	}
+	if len(icon.Commands) < 2 {
+		t.Fatalf("右栏图标命令不足：%+v", icon.Commands)
+	}
+	move, line := icon.Commands[len(icon.Commands)-2], icon.Commands[len(icon.Commands)-1]
+	if move.Kind != gfx.PathCommandMove || move.Point.X != 10.5 || move.Point.Y != 1.5 ||
+		line.Kind != gfx.PathCommandLine || line.Point.X != 10.5 || line.Point.Y != 14.5 {
+		t.Errorf("官方 scaleX(-1) 后分隔线应为 (10.5,1.5)→(10.5,14.5)，实际 %+v %+v", move, line)
+	}
+}
+
 func TestHeaderGeometryMatchesOfficialBlankActiveAndSessionless(t *testing.T) {
 	blankData := pluginapi.Snapshot{
 		Cur: "s1", Sessions: []apiclient.Session{{ID: "s1", Title: "blank"}},
@@ -141,11 +213,25 @@ func TestHeaderGeometryMatchesOfficialBlankActiveAndSessionless(t *testing.T) {
 	if got := active.headerBoxes.Divider.Rect().Height; got != 0.5 {
 		t.Errorf("active 分割线 = %v，官方 0.5", got)
 	}
-	for _, label := range []string{"对话", "轨迹"} {
-		hit := topbarTestHit(t, activeCanvas, label)
-		if hit.Bounds.Height != 25 {
-			t.Errorf("%s 页签高 = %v，官方 25", label, hit.Bounds.Height)
+	chatHit := topbarTestHit(t, activeCanvas, "对话")
+	trajectoryHit := topbarTestHit(t, activeCanvas, "轨迹")
+	for label, hit := range map[string]gfx.Hit{"对话": chatHit, "轨迹": trajectoryHit} {
+		if hit.Bounds.Height != 35 {
+			t.Errorf("%s 页签命中高 = %v，官方 35（负 margin 后布局行仍为 25）", label, hit.Bounds.Height)
 		}
+		if got := active.headerBoxes.Tabs.Rect().Y - hit.Bounds.Y; got != 10 {
+			t.Errorf("%s 页签 margin-top = %v，官方 -10", label, -got)
+		}
+		text := topbarTestText(t, activeCanvas, label)
+		if got := text.Bounds.X - hit.Bounds.X; got != 10 {
+			t.Errorf("%s 左侧命中 padding = %v，官方 10", label, got)
+		}
+	}
+	if got := trajectoryHit.Bounds.X - (chatHit.Bounds.X + chatHit.Bounds.Width); got != 32 {
+		t.Errorf("viewTabs 净间距 = %v，官方 32", got)
+	}
+	if got := active.headerBoxes.Tabs.Rect().Height; got != 25 {
+		t.Errorf("viewTabs 布局行高 = %v，官方 25", got)
 	}
 	t.Logf("FG3_GEOMETRY active root=%+v body=%+v titleRow=%+v corner=%+v divider=%+v",
 		active.headerBoxes.Root.Rect(), active.headerBoxes.Body.Rect(),

@@ -124,7 +124,7 @@ func TestV2UnknownTimeIsHidden(t *testing.T) {
 // TestV2SearchUsesFieldAndNarrowsRealRows 不只测比较函数：搜索词经过实际 Field，
 // 再经过 drawList，最终可见行与键盘顺序必须同时缩到命中项。
 func TestV2SearchUsesFieldAndNarrowsRealRows(t *testing.T) {
-	p, recorder, env, _, canvas := v2Fixture()
+	p, _, env, _, canvas := v2Fixture()
 	env.Data.Sessions = []apiclient.Session{
 		sess("a", "Alpha 真实标题", `D:\work\one`, "2026-11-03T10:00:00Z"),
 		sess("b", "Beta", `D:\work\two`, "2026-11-03T11:00:00Z"),
@@ -139,8 +139,13 @@ func TestV2SearchUsesFieldAndNarrowsRealRows(t *testing.T) {
 	if len(p.lastOrder) != 1 || p.lastOrder[0] != "a" {
 		t.Fatalf("Field 搜索后的可见顺序 = %v，want [a]", p.lastOrder)
 	}
-	if len(recorder.rows) != 1 || recorder.rows[0].active {
-		t.Fatalf("搜索后的实际绘制行 = %+v，want 仅未选中的 a", recorder.rows)
+	var alpha, beta bool
+	for _, text := range canvas.Texts() {
+		alpha = alpha || text.Value == "Alpha 真实标题"
+		beta = beta || text.Value == "Beta"
+	}
+	if !alpha || beta {
+		t.Fatalf("搜索后的实际文字 alpha=%v beta=%v，want 只画 Alpha", alpha, beta)
 	}
 }
 

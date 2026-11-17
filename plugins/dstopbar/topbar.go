@@ -45,7 +45,7 @@ import (
 //
 // 三种状态（都与官方一一对应）：
 //
-//	有会话且有内容  10 + 30 + 10 = 50，底下一条 0.5px 的 border-l3
+//	有会话且有内容  10 + 30 + 10 + 25 = 75，min-height 76，底下一条 0.5px 的 border-l3
 //	有会话但空白    10 + 30 +  0 = 40，没有下划线（headerBlank）
 //	一个会话都没有   0 +  0 + 10 = 10（headerSessionless：上内边距 0、titleRow 塌成 0）
 //
@@ -66,17 +66,36 @@ const (
 
 	titleRowHeight     = 30
 	activeHeaderHeight = 76
-	tabsHeight         = 25
-	tabsMarginTop      = 10
-	tabsGap            = 20
-	tabRuleHeight      = 2
-	titleClusterGap    = 10
-	crumbsGap          = 4
-	crumbMaxWidth      = 220
-	crumbPadX          = 8
-	crumbPadY          = 4
-	cornerMarginLX     = 8
-	cornerMarginRX     = -16
+
+	// ConversationRoot.module.css:225-238：外层 tabs 行高由 viewTabs 的
+	// min-height 25 决定；tabs 自身 margin-top 10、padding-left 8、列间距 20。
+	tabsHeight      = 25
+	tabsMarginTop   = 10
+	tabsColumnGap   = 20
+	tabsPaddingLeft = 8
+
+	// ConversationRoot.module.css:246-314：viewTabs 间距 32；tab 的 35px
+	// 命中块用 margin -10px -10px 0 保持 25px 布局行高，文本 13/16/500，
+	// 左右命中 padding 10、上下 padding 10/9、label 最大宽 88、下划线 2px。
+	viewTabsGap      = 32
+	tabHeight        = 35
+	tabMarginTop     = -10
+	tabHitInline     = 10
+	tabPadTop        = 10
+	tabPadBottom     = 9
+	tabFontSize      = 13
+	tabLineHeight    = 16
+	tabLabelMaxWidth = 88
+	tabRuleHeight    = 2
+	tabRuleRadius    = 2
+
+	titleClusterGap = 10
+	crumbsGap       = 4
+	crumbMaxWidth   = 220
+	crumbPadX       = 8
+	crumbPadY       = 4
+	cornerMarginLX  = 8
+	cornerMarginRX  = -16
 )
 
 // Plugin 实现 pluginapi.Plugin / Panels。
@@ -261,17 +280,22 @@ func (p *Plugin) drawTabs(f ui.C, env *pluginapi.Env) {
 	// （可见 = 全部），有座位时未固定的 view 让位给 More 菜单（官方语义）。
 	all, visible, active, actionsLive := p.viewEntryRoster(env)
 	p.headerBoxes.Tabs = ui.Row(f).WidthPercent(100).Height(tabsHeight).
-		MarginSides(tabsMarginTop, 0, 0, 0).Gap(tabsGap).Children(func() {
-		for _, tab := range visible {
-			box := p.drawTab(f, env, tab.Key, tab.Label, tab.Key == active)
-			// 两个历史命名保留：几何回归测试按名字取盒子（headerBoxes）。
-			switch tab.Key {
-			case viewapi.Chat:
-				p.headerBoxes.ChatTab = box
-			case viewapi.Trajectory:
-				p.headerBoxes.TrajectoryTab = box
+		MarginSides(tabsMarginTop, 0, 0, 0).
+		PadSides(0, 0, 0, tabsPaddingLeft).Gap(tabsColumnGap).Children(func() {
+		// Viva 的 Row.Gap 排在子项 margin 之后；两侧各 -10 的 tab 会再吃掉
+		// 20，所以布局 gap 加回 20，最终边框净间距严格等于官方 viewTabs 的 32。
+		ui.Row(f).Height(tabsHeight).Gap(viewTabsGap + 2*tabHitInline).Children(func() {
+			for _, tab := range visible {
+				box := p.drawTab(f, env, tab.Key, tab.Label, tab.Key == active)
+				// 两个历史命名保留：几何回归测试按名字取盒子（headerBoxes）。
+				switch tab.Key {
+				case viewapi.Chat:
+					p.headerBoxes.ChatTab = box
+				case viewapi.Trajectory:
+					p.headerBoxes.TrajectoryTab = box
+				}
 			}
-		}
+		})
 		// More 按钮：官方只在 `showTabs`（多于一个 view）且座位有占用方时出现。
 		if actionsLive && len(all) > 1 {
 			p.drawViewsMoreButton(f, env, active, p.hiddenViews(all, visible))
@@ -320,20 +344,24 @@ func (p *Plugin) viewRoster(env *pluginapi.Env) ([]pluginapi.Tab, string) {
 
 func (p *Plugin) drawTab(f ui.C, env *pluginapi.Env, view, label string, active bool) ui.Box {
 	t := p.theme
-	box := ui.Column(f).Height(tabsHeight).
+	box := ui.Column(f).Height(tabHeight).
+		MarginSides(tabMarginTop, -tabHitInline, 0, -tabHitInline).
+		PadSides(tabPadTop, tabHitInline, tabPadBottom, tabHitInline).
 		Hit(env.Tree.ID(env.Feat, "view-"+view), label).Children(func() {
-		ui.Row(f).Grow(1).Items(ui.Center).Children(func() {
-			text := ui.Text(f, label).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
-				MaxLines(1).Ellipsis()
-			if active {
-				text.Color(t.LabelPrimary).Weight(gfx.WeightMedium)
-			} else {
-				text.Color(t.LabelTertiary)
-			}
-		})
-		rule := ui.Row(f).WidthPercent(100).Height(tabRuleHeight)
+		text := ui.Text(f, label).FontSize(tabFontSize).LineHeight(tabLineHeight).
+			MaxWidth(tabLabelMaxWidth).MaxLines(1).Ellipsis().Weight(gfx.WeightMedium)
 		if active {
-			rule.Background(t.BorderL4)
+			// ConversationRoot.module.css:288-297：选中文字与下划线都用
+			// --dsw-alias-state-business-primary，不是 LabelPrimary/BorderL4。
+			text.Color(t.Info)
+		} else {
+			text.Color(t.LabelTertiary)
+		}
+		// 官方 .tab::after：bottom:-1、左右各收 10、2px 高、2px 圆角。
+		rule := ui.Row(f).Absolute().Left(tabHitInline).Right(tabHitInline).
+			Bottom(-1).Height(tabRuleHeight).Radius(tabRuleRadius)
+		if active {
+			rule.Background(t.Info)
 		}
 	})
 	if box.Clicked() {
@@ -358,24 +386,14 @@ func (p *Plugin) drawCorner(f ui.C, env *pluginapi.Env) {
 			p.headerBoxes.Corner = ui.Row(f).Width(28).Height(28).Radius(t.Radii.SM).
 				Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
 				Hit(env.Tree.ID(env.Feat, "toggle-rightbar"), "打开右侧边栏").Children(func() {
-				ui.Icon(f, rightbarPanelIcon).Width(15).Height(15).Color(t.LabelSecondary)
+				if icon, ok := rightbarPanelIcon(); ok {
+					ui.Icon(f, icon).Width(15).Height(15).Color(t.LabelSecondary)
+				}
 			})
 			if p.headerBoxes.Corner.Clicked() {
 				env.Act.ToggleRightbar()
 			}
 		})
-}
-
-// rightbarPanelIcon 与官方 ExpandButton 的镜像 PanelLeft 同属 panel-right 形状：
-// 24 viewBox、2px stroke、圆角外框 + 右侧栏分隔线。
-var rightbarPanelIcon = gfx.Icon{
-	ViewBox: 24, Stroke: 2, Cap: gfx.CapRound, Join: gfx.JoinRound,
-	Commands: []gfx.PathCommand{
-		gfx.MoveTo(5, 3), gfx.LineTo(19, 3), gfx.QuadTo(21, 3, 21, 5),
-		gfx.LineTo(21, 19), gfx.QuadTo(21, 21, 19, 21), gfx.LineTo(5, 21),
-		gfx.QuadTo(3, 21, 3, 19), gfx.LineTo(3, 5), gfx.QuadTo(3, 3, 5, 3), gfx.ClosePath(),
-		gfx.MoveTo(15, 3), gfx.LineTo(15, 21),
-	},
 }
 
 // crumb 画一枚官方面包屑。

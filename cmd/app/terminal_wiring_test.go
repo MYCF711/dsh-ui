@@ -91,6 +91,19 @@ func flushTerminalTest(w http.ResponseWriter) {
 	}
 }
 
+// closeStreamingServer 关掉 httptest server，先断客户端连接。
+//
+// 为什么不能直接 srv.Close()：本文件的 fixture 提供 terminal.watch 的**流式**响应
+// （w.(http.Flusher)，见下面 handler），而 httptest.Server.Close() 会一直等所有
+// 未完成的请求收尾。客户端那头若还挂着 watch 流，Close 就永远不返回——
+// 2026-11-17 CI 上真出现过：TestTerminalWiringCreateRetainAttachWriteRenameClose
+// 卡了 9m57s 直到 go test 的 10 分钟包超时，整条 main CI 因此变红。
+// CloseClientConnections 先掐断连接，Close 才有东西可等。
+func closeStreamingServer(srv *httptest.Server) {
+	srv.CloseClientConnections()
+	srv.Close()
+}
+
 func waitTerminalCondition(t *testing.T, condition func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -106,7 +119,7 @@ func waitTerminalCondition(t *testing.T, condition func() bool) {
 func TestTerminalWiringCreateRetainAttachWriteRenameClose(t *testing.T) {
 	fixture := &terminalHostFixture{t: t}
 	srv := httptest.NewServer(http.HandlerFunc(fixture.handler))
-	defer srv.Close()
+	defer closeStreamingServer(srv)
 	m := &model{cli: apiclient.New(srv.URL), cur: "s1"}
 	m.terminalEnsure("tab1")
 	waitTerminalCondition(t, func() bool {
@@ -168,7 +181,7 @@ func TestTerminalWiringCreateRetainAttachWriteRenameClose(t *testing.T) {
 func TestTerminalWiringRecoversListedIdentityWithoutCreate(t *testing.T) {
 	fixture := &terminalHostFixture{t: t, listInfo: true}
 	srv := httptest.NewServer(http.HandlerFunc(fixture.handler))
-	defer srv.Close()
+	defer closeStreamingServer(srv)
 	m := &model{cli: apiclient.New(srv.URL), cur: "s1"}
 	m.terminalEnsure("tab1")
 	waitTerminalCondition(t, func() bool { return m.terminalSnapshot("tab1").Phase == "connected" })

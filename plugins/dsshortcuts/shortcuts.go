@@ -46,6 +46,7 @@ var bindings = []Binding{
 	{"F7 / F8", "选第 1 / 第 2 个选项（提问条出现时）", "plugins/dsquestions"},
 	{"F12", "收起 / 展开右上角的插件提示条", "plugins/dsdemo"},
 	{"Tab / Shift+Tab", "设置面板打开时在面板内循环焦点（模态层陷阱）", "plugins/dssettings/official_modal.go"},
+	{"Ctrl+O", "添加工作区（打开本次组合的目录选择器）", "cmd/app/dirpicker_wiring.go（OnShortcut 层，不是 HandleKey）"},
 }
 
 // Bindings 返回这份键位表的**只读拷贝**（设置面板「快捷键」行要显示条目数，
@@ -71,6 +72,11 @@ type Plugin struct {
 	mu     sync.Mutex
 	shown  bool
 	notify func(string)
+	// blockedAddReason 是「添加工作区」当前被挡住的理由（空串 = 可用）。
+	// 由 draw 每帧从 `env.Data.DirectoryPickerAddBlocked` 抄一份：绘制线程写，
+	// 只有绘制线程读，所以不落在 mu 的保护区里（它和 notify 不同，后者会被
+	// HandleKey 从另一个线程取）。
+	blockedAddReason string
 }
 
 func (*Plugin) ID() string { return "ds-shortcuts" }
@@ -165,6 +171,10 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 		p.notify = env.Act.Notify
 		p.mu.Unlock()
 	}
+	// 官方 `workspace.add` 的禁用理由（逐字来自 locales 的 shortcut.noPicker /
+	// shortcut.directoryBusy）。它由壳算好交过来，本插件不自己判——判据只有一个
+	// 真值来源（cmd/app/dirpicker_wiring.go 的 directoryAddBlockedReason）。
+	p.blockedAddReason = env.Data.DirectoryPickerAddBlocked
 	if !p.shown {
 		return
 	}
@@ -253,6 +263,16 @@ func (p *Plugin) drawList(f ui.C, t *pluginapi.Theme, height float32) {
 				MarginTop(sheetHintMarginY).MarginBottom(sheetHintMarginY)
 			for _, bd := range bindings {
 				p.drawBindingRow(f, t, bd)
+			}
+			// 「添加工作区」当前若被挡住，把官方那句理由原样列出来
+			// （`Snapshot.DirectoryPickerAddBlocked`，逐字取自
+			// `ui-workspace/src/client/locales.ts:16-17` 的 `shortcut.noPicker` /
+			// `shortcut.directoryBusy`）。空串 = 可用，这一行不出现——
+			// 「没话说时多画一行」会让这份表看起来像在报错。
+			if reason := p.blockedAddReason; reason != "" {
+				ui.Text(f, "Ctrl+O 当前不可用："+reason).FontSize(sheetHintSize).
+					LineHeight(sheetHintLine).Color(t.LabelTertiary).
+					MarginTop(sheetHintMarginY).MarginBottom(sheetHintMarginY)
 			}
 		})
 	})

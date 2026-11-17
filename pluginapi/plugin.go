@@ -639,10 +639,33 @@ type Snapshot struct {
 	PendingWorkspaceID string
 	// DirectoryBusy 是 native pick 的 armed/in-flight 真值，菜单动作在此期间禁用。
 	DirectoryBusy bool
-	Cur           string
-	Search        string
-	Status        string
-	Msgs          []apiclient.Message
+	// DirectoryPickerAddBlocked 是官方 `workspace.add` 快捷键（`Ctrl+O`）的
+	// **禁用理由**：非空 = 这次按键被挡住，空串 = 可以执行。
+	//
+	// 官方两条理由**逐字**取自 `ui-workspace/src/client/locales.ts`（zh 段）：
+	//
+	//	`shortcut.noPicker`      「目录选择器不可用」    —— 洞没人占用
+	//	`shortcut.directoryBusy` 「正在选择或添加工作区」—— 正在选 / 正在采用
+	//
+	// 判据逐条照 `ui-workspace/src/client/shortcuts.ts:68-70` 的 `addReason()`：
+	//
+	//	slots.entries('sidebar.workspaces.directoryFlow').length === 0 ⇒ noPicker
+	//	controls.state.getSnapshot().directoryBusy                     ⇒ directoryBusy
+	//	否则 → null（handled）
+	//
+	// 本仓对应物：洞有没有人占 = `Actions.OpenDirectoryPicker != nil`
+	// （壳探不到组合就给 nil，见 cmd/app/dirpicker_wiring.go）；busy 就是这个
+	// `DirectoryBusy`。顺序与官方一致：**先判 noPicker**——没有选择器时
+	// "正在选择"这句话自相矛盾。
+	//
+	// 为什么由壳给文本而不是给布尔：官方 `resolve()` 返回
+	// `{status:'blocked', reason}`，reason 是**要显示给用户的文本**；
+	// 让插件自己拼就会在各处重写一遍并与官方字面量漂移。
+	DirectoryPickerAddBlocked string
+	Cur                       string
+	Search                    string
+	Status                    string
+	Msgs                      []apiclient.Message
 	// Frames 是当前会话 journal 的**原始 Transport 帧**（`session.history` 的
 	// `frames[]` 与 WS 推送**同一个形状**），按 seq 升序、已去重。
 	//

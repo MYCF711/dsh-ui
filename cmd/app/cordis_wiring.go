@@ -65,6 +65,81 @@ const (
 // 落地后的节流：pending 在飞时不叠加请求，间隔内不重复开新的。
 const cordisEventThrottle = 800 * time.Millisecond
 
+// journalWatermark 是事件水位的**分域**持有者：一个 `(sessionID, journalEpoch)`
+// 一个独立的水位，互不影响。
+//
+// # 为什么必须是分域的（这是修掉的一个真 bug，不是防御性设计）
+//
+// 宿主在**每会话各自的 journal** 追加时分配 seq（`docs/transport-contract.md` §3：
+// 「每会话一条独立 WS + 一个 Transport journal；seq 在 journal 追加时分配，
+// 不能是 v4 seq、全局 turn seq 或连接序号」）。所以：
+//
+//	A 会话 journal 的 seq = 1..900，B 会话 journal 的 seq = 1..3 —— **两个序号域**。
+//
+// 早先用一个全局 `eventSeq` 记"已消费到哪"，切到 B 之后 B 的新事件 seq=3
+// 永远 `<= 900`，于是被判成"早就消费过"，**再也不触发重读**。表现是
+// 「B 里 cordis 激活了，面板不刷新」，既不报错也不丢帧。
+//
+// # 为什么键里还要带 journalEpoch
+//
+// 同一个 sessionID 在宿主重启后会换一份 journal（`journalEpoch` 变），
+// 新 journal 的 seq **从 1 重新开始**。只按 sessionID 记水位的话，重启前
+// 涨到 900 的水位会继续压住重启后的 seq=1..n —— 同一个 bug 换个触发条件。
+// 键里带 epoch，换世代就是换序号域，水位从 0 重新开始。
+//
+// # 为什么不设上限
+//
+// 键的数量受"本进程见过多少个 (会话, 世代)"约束，一个壳在一次运行里见过的
+// 会话是有限且很小的（用户手点的会话数 + 重启次数），不为它引入淘汰逻辑——
+// 淘汰逻辑本身要猜"哪个不会再用了"，猜错就退回同一个漏更新。
+type journalWatermark struct {
+	// seq 是每个 `(sessionID, journalEpoch)` 已消费到的最大 seq。
+	seq map[journalKey]int
+}
+
+// journalKey 是一个序号域的标识。
+type journalKey struct {
+	sessionID string
+	epoch     int64
+}
+
+// consume 报告 frames 里有没有**本域没见过**的 cordis 事件；有就把水位抬上去。
+//
+// sessionID / epoch 决定"这是哪个序号域"。空 sessionID（壳还没加载会话、
+// 或宿主没给 id）时**整段跳过**：那时没有可信的域标识，
+// 记一个"空 id 域"会把不同会话的水位混成一份，等于退回全局单值。
+//
+// 返回 true = 至少有一条新事件，调用方据此触发一次重读。
+// 调用方必须持有 m.mu。
+func (w *journalWatermark) consume(sessionID string, epoch int64, frames []apiclient.Frame) bool {
+	if sessionID == "" {
+		return false
+	}
+	key := journalKey{sessionID: sessionID, epoch: epoch}
+	fresh := false
+	for i := range frames {
+		frame := frames[i]
+		if frame.Type != cordisEventPackage && frame.Type != cordisEventRetract {
+			continue
+		}
+		if frame.Seq <= w.seq[key] {
+			continue
+		}
+		if w.seq == nil {
+			w.seq = map[journalKey]int{}
+		}
+		w.seq[key] = frame.Seq
+		fresh = true
+	}
+	return fresh
+}
+
+// last 返回某个序号域的水位（0 = 还没见过该域的任何事件）。
+// 调用方必须持有 m.mu。
+func (w *journalWatermark) last(sessionID string, epoch int64) int {
+	return w.seq[journalKey{sessionID: sessionID, epoch: epoch}]
+}
+
 // cordisState 是 #12 的壳侧缓存。字段全部由 m.mu 保护（与壳其余状态同一把锁）。
 type cordisState struct {
 	// known 表示**成功读到过一次**清单（官方 `snapshot.read`）。
@@ -81,8 +156,15 @@ type cordisState struct {
 	err string
 	// pending 防重入：读在途时不再发第二次请求（每帧、每条事件都可能触发）。
 	pending bool
-	// eventSeq 是已消费的最后一条 cordis 事件帧的 seq（0 = 还没见过）。
-	eventSeq int
+	// watermark 是**按 journal 分域**的事件水位（见 journalWatermark）。
+	//
+	// 早先这里是一个全局单值 `eventSeq`，那是错的：seq 由宿主在**每会话各自的
+	// journal** 追加时分配（`docs/transport-contract.md` §3「seq 在 journal 追加时
+	// 分配」），不同会话的 seq **不共享序号域**。用全局单值记水位，切会话时
+	// 高 seq 会话（例如 A 的 900）会压住低 seq 会话（B 的 3）的新事件，
+	// 表现为「B 里 cordis 明明激活了，面板却不更新」——不报错、不丢帧，
+	// 只是少了一次重读，是最难发现的一类错。
+	watermark journalWatermark
 	// at 是上一次读**完成**的时刻（节流用；零值 = 从没读过）。
 	at time.Time
 }
@@ -95,19 +177,23 @@ type cordisState struct {
 //
 // frames 是当前会话的原始 journal 帧（`Snapshot.Frames` 同一份），这里**只读**
 // 它们来找两条 cordis 事件——不复制、不重放、不改水位（水位本文件自持）。
-func (m *model) cordisFor(frames []apiclient.Frame) *pluginapi.CordisView {
+//
+// sessionID / epoch 是 frames 所属的**序号域**（`Snapshot.Cur` 与
+// `Snapshot.JournalEpoch`）。水位按域分记（见 journalWatermark）：
+// 不同会话、同一会话的不同世代，seq 都不共享序号域。
+func (m *model) cordisFor(sessionID string, epoch int64, frames []apiclient.Frame) *pluginapi.CordisView {
 	if m.cli == nil {
 		return nil
 	}
 	m.mu.Lock()
-	events := m.cordisWatchEventsLocked(frames)
+	events := m.cordisWatchEventsLocked(sessionID, epoch, frames)
 	first := !m.cordis.known && !m.cordis.pending
 	view := &pluginapi.CordisView{
 		Known:    m.cordis.known,
 		Rows:     append([]apiclient.CordisRow(nil), m.cordis.rows...),
 		Removed:  cordisCopySet(m.cordis.removed),
 		Error:    m.cordis.err,
-		EventSeq: m.cordis.eventSeq,
+		EventSeq: m.cordis.watermark.last(sessionID, epoch),
 	}
 	m.mu.Unlock()
 	// 事件到达是**事实变化**，不受节流约束（节流只挡"用户连点/面板反复打开"那类
@@ -125,21 +211,12 @@ func (m *model) cordisFor(frames []apiclient.Frame) *pluginapi.CordisView {
 // 为什么按 seq 记水位而不是"按最后一条的类型判断"：journal 补页、重连重放都会
 // 把同一帧再送一次，靠类型判断会重复触发（官方 single-flight 只能挡住并发，
 // 挡不住重放）。seq 在同一 journal 世代内单调，是这里唯一可靠的去重键。
+//
+// 水位**按 `(sessionID, epoch)` 分域**（journalWatermark）：seq 只在同一个
+// journal 世代内可比，跨会话或跨世代直接比大小会把新事件误判成旧帧。
 // 调用方必须持有 m.mu。
-func (m *model) cordisWatchEventsLocked(frames []apiclient.Frame) bool {
-	fresh := false
-	for i := range frames {
-		frame := frames[i]
-		if frame.Type != cordisEventPackage && frame.Type != cordisEventRetract {
-			continue
-		}
-		if frame.Seq <= m.cordis.eventSeq {
-			continue
-		}
-		m.cordis.eventSeq = frame.Seq
-		fresh = true
-	}
-	return fresh
+func (m *model) cordisWatchEventsLocked(sessionID string, epoch int64, frames []apiclient.Frame) bool {
+	return m.cordis.watermark.consume(sessionID, epoch, frames)
 }
 
 // cordisRefreshAction 触发一次**带节流**的后台清单重读（官方 `onRefresh`）。

@@ -59,10 +59,12 @@ package main
 import (
 	"context"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/plugins/dsdirpicker"
+	"github.com/vivaui/viva/gfx"
 )
 
 // dirSource 是壳给 `dsdirpicker` 的数据源实现。
@@ -286,4 +288,87 @@ type unknownDirPickerKindError struct{ kind apiclient.DirectoryPickerKind }
 
 func (e *unknownDirPickerKindError) Error() string {
 	return "探到了一个不认识的 directoryPicker 组合: " + e.kind.String()
+}
+
+// ── 官方 `workspace.add` 快捷键（Ctrl+O）────────────────────────────────────
+
+// 官方两条禁用理由，**逐字**取自 `ui-workspace/src/client/locales.ts`（zh 段）。
+// 不给英文前缀、不自己改写：这两句话是用户在状态栏看到的那一条。
+const (
+	dirPickerNoPickerText      = "目录选择器不可用"
+	dirPickerDirectoryBusyText = "正在选择或添加工作区"
+)
+
+// directoryAddBlockedReason 是官方 `addReason()`
+// （`OFF:ui-workspace/src/client/shortcuts.ts:68-70`）的逐行等价物。
+//
+// 返回空串 = 可以执行；非空 = 这条文本就是要给用户看的禁用理由。
+//
+// 官方判据的顺序是：
+//
+//	slots.entries('sidebar.workspaces.directoryFlow').length === 0 ⇒ shortcut.noPicker
+//	controls.state.getSnapshot().directoryBusy                     ⇒ shortcut.directoryBusy
+//	否则 → null（handled）
+//
+// 本仓对应物：
+//
+//	洞有没有人占 ⇒ `OpenDirectoryPicker != nil`（壳探不到组合就给 nil）
+//	directoryBusy ⇒ `Snapshot.DirectoryBusy`（native 的 armed/in-flight 真值）
+//
+// 为什么先判 noPicker 再判 busy：官方那两句是三元表达式的两个分支，
+// 顺序就是显示优先级——没有选择器时"正在选择"这句话自相矛盾。
+func directoryAddBlockedReason(hasPicker, busy bool) string {
+	if !hasPicker {
+		return dirPickerNoPickerText
+	}
+	if busy {
+		return dirPickerDirectoryBusyText
+	}
+	return ""
+}
+
+// handleDirectoryAddShortcut 处理官方 `workspace.add` 键位：`Ctrl+O`。
+//
+// # 为什么在壳这一层而不是某个插件里
+//
+// 官方注册在 `ui-workspace`（`shortcuts.ts:85-89`），是**窗口级**绑定
+// （`regions: ['page','editable']`，副作用是打开目录流程），不是某个编辑控件
+// 自己的键位。本仓打开流程的入口是壳给的 `Actions.OpenDirectoryPicker`
+// （见 `dirPickerAction`），所以分发也在这里——插件只负责画按钮。
+//
+// # 为什么走 OnShortcut 而不是 OnKey
+//
+// viva 的 `OnKey` 只送**具名键**（`gfx.Key` 枚举里没有字母：
+// `viva@gfx/input.go:12-47` 只有导航/编辑/F1-F12/修饰键），带修饰键的可打印键
+// 在 `OnKey` 上是 `Key == KeyUnknown && Text == "o"`。而 `app.Config.OnShortcut`
+// 专门在原生文本处理**之前**接收"带修饰键的可打印键"
+// （`viva@app/app.go:130-142`），这才是官方 `primary+KeyO` 的等价入口。
+// 走 `OnKey` 会与输入框抢字符，也可能在编辑区被吞掉。
+//
+// 返回 handled = true 时壳必须自己 Invalidate：这条路径绕过了 OnKey 里那句
+// 显式重绘（那是 F1/命令面板踩过的坑，见 main.go 的注释）。
+func (m *model) handleDirectoryAddShortcut(ev gfx.KeyEvent) bool {
+	if m == nil || ev.Release {
+		return false
+	}
+	if ev.Key != gfx.KeyUnknown || ev.Modifiers&gfx.ModifierControl == 0 {
+		return false
+	}
+	// `Text` 在带 Control 的和弦上是"不带修饰符的字符"（`gfx/input.go:141-144`）。
+	// 只认 o，其它 chord 一律放行（官方只注册了这一个 workspace 级 chord）。
+	if !strings.EqualFold(ev.Text, "o") {
+		return false
+	}
+	m.mu.Lock()
+	busy := m.dirPicker.nativeBusy
+	m.mu.Unlock()
+	if reason := directoryAddBlockedReason(m.dirPickerAction() != nil, busy); reason != "" {
+		// 官方 `{status:'blocked', reason}`：把理由显示出来，**不静默**。
+		m.setStatus(reason)
+		m.inv.Invalidate()
+		return true
+	}
+	m.openDirectoryPicker()
+	m.inv.Invalidate()
+	return true
 }

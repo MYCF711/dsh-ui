@@ -28,6 +28,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -151,12 +152,32 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, n apic
 				})
 		}
 
-		// .close：18×18，绝对定位 6/6。按钮本体透明（只有命中区），图标单独覆画 10px。
+		// .close：18×18 命中盒、绝对定位 6/6、**没有文字**、图标 10px label-caption。
 		//
-		// 为什么分两步：viva 的 Button 自己画 label，塞不进矢量图标；
-		// 图标没有命中区，所以点在图标上仍落到按钮的命中区里（与官方"图标 + 按钮"一致）。
-		if ui.Button(f, labelClose).Ghost().IconOnly().
-			Size(CloseSize, CloseSize).Absolute().Top(CloseInset).Right(CloseInset).Clicked() {
+		// 官方（`AccountNotifications.module.css:13`、`AccountNotifications.tsx:173`）：
+		//
+		//	.close{position:absolute;top:6px;right:6px;display:flex;align-items:center;
+		//	       justify-content:center;width:18px;height:18px;padding:4px;border:0;
+		//	       background:transparent;color:var(--dsw-alias-label-caption);cursor:pointer}
+		//	→ 内容只有一个 `<IconCloseOutlineRegular size={10}/>`，**没有任何文本**。
+		//
+		// 为什么不再用 `ui.Button(...IconOnly())`：viva 的 Button 只有在**挂了 Icon** 时
+		// 才把 label 藏起来（`viva@0.6.4/components/button.go:98-100` 的 hasIcon 分支，
+		// 无 icon 走 `:406` 的 paintButtonLabel），于是 18px 宽里真的画出了「关闭」
+		// 两个字并溢出到卡外（渲染截图里能看到一个「关」字残片）。
+		// 而给它挂 Icon 又会把图标染成 Ghost 的 foreground=label-primary
+		// （`button.go:581`），官方这里要的是 label-caption——颜色会跳档。
+		// 所以命中与图标分开：这个盒子只管点（`.Hit*` 给的正是官方 18×18 命中），
+		// 图标仍按官方 10px 自己画。
+		closeBox := ui.Row(f).Absolute().Top(CloseInset).Right(CloseInset).
+			Size(CloseSize, CloseSize)
+		if env.Tree != nil {
+			closeBox = closeBox.HitWith(
+				env.Tree.ID(env.Feat, "notice-close-"+n.ID), labelClose,
+				gfx.HitOptions{Role: gfx.RoleButton},
+			)
+		}
+		if closeBox.Clicked() {
 			p.ctrl.Dismiss(n.ID)
 		}
 		iconInset := CloseInset + (CloseSize-CloseIconSize)/2

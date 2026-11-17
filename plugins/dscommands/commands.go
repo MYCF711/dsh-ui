@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -38,8 +39,15 @@ type Plugin struct {
 	prims  pluginapi.Primitives
 	act    pluginapi.Actions
 	shown  bool
-	query  []rune // 输入过滤（只有一个字符串，不做多字段）
-	cursor int    // 当前选中项
+	search ui.Field // 官方 PopupSelectView 的单行搜索框（filtered 读取同一真值）
+	cursor int      // 当前选中项
+
+	// viewportContent / searchHeight 是上一帧 AfterDraw 量到的真实布局；
+	// 声明期只用数值，不跨 paint 保留 Box（Viva 明确禁止）。
+	viewportContent float32
+	searchHeight    float32
+	viewportState   *ui.ScrollState // 仅当前 paint，AfterDraw 读取
+	searchBox       ui.Box          // 仅当前 paint，AfterDraw 读取
 
 	// openSettings 是设置浮层的**真实打开动作**（`ui.settings.open`）。
 	//
@@ -297,7 +305,7 @@ func (p *Plugin) commands() []Command {
 // filtered 按输入过滤（大小写不敏感、匹配名字或提示）。
 func (p *Plugin) filtered() []Command {
 	all := p.commands()
-	q := strings.TrimSpace(strings.ToLower(string(p.query)))
+	q := strings.TrimSpace(strings.ToLower(p.search.Text()))
 	if q == "" {
 		return all
 	}
@@ -312,22 +320,13 @@ func (p *Plugin) filtered() []Command {
 
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
-		ID:   "command-panel",
-		Slot: pluginapi.SlotShellOverlay,
-		// 99 = **模态那一档**。`shell.overlay` 这个槽位的分层约定：
-		//
-		//	10   常驻提示条（ds-demo）
-		//	50   侧栏的插件面板
-		//	95   键位表（F1）
-		//	96   交付物面板 / 97 文件预览 / 98 终端 —— 都是"面板"
-		//	99   模态（F2 命令面板）：开着的模态该在一切面板之上
-		//
-		// 这里原来是 96，和 `ds-deliverables` 的交付物面板**撞在一起**了。
-		// 同槽同 Order 的两个面，谁在上面由**装配顺序**决定——那不是设计，是巧合；
-		// 现象是"两个面板都开着时一个盖住另一个"，不崩不报错。
-		// 由 `cmd/app/panels_order_test.go` 守着，不许再撞。
-		Order: 99,
-		Draw:  p.draw,
+		ID: "command-panel",
+		// 官方 PopupSelectView 注册在 conversation.input.overlay（ui-commands/src/client/index.ts:64-65）。
+		// 不再用 shell.overlay 猜右上角坐标：这个座位的锚点就是 composer 卡片宽度。
+		Slot:      uikernel.OffInputOverlay,
+		Order:     99,
+		Draw:      p.draw,
+		AfterDraw: p.afterDraw,
 	}}
 }
 
@@ -340,8 +339,12 @@ func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	// 所以 Ctrl+K 这种组合在这层拿不到。键枚举只有 F1-F12/方向/Enter/Esc 等。
 	if ev.Key == gfx.KeyF2 {
 		p.shown = !p.shown
-		p.query = nil
+		p.search.SetText("")
 		p.cursor = 0
+		p.viewportContent = 0
+		p.searchHeight = 0
+		p.viewportState = nil
+		p.searchBox = ui.Box{}
 		// 借 Notify 的副作用请求重绘（宿主实现是 setStatus：写状态栏 + Invalidate）。
 		// pluginapi 目前没有显式的 repaint 动作，这是插件唯一能请求重绘的公开入口。
 		if p.shown && p.act.Notify != nil {
@@ -375,44 +378,4 @@ func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 		return true
 	}
 	return false
-}
-
-// draw 用**和 dsdemo 完全相同的结构**画（Row + Absolute + Top/Right 一类），
-// 因为那是本仓唯一被真机证明能出现在 shell.overlay 上的写法。
-// 面板贴右上角，宽度固定、高度随条目数。
-func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
-	if !p.shown {
-		return
-	}
-	t := p.theme
-	p.act = env.Act // 每帧刷新：壳可能中途接上新能力
-	cs := p.filtered()
-	w := float32(360)
-
-	// **必须用 Column 而不是 Row**：Row 会把所有子元素排成一行——我第一版
-	// 就是用 Row，结果面板只有一行高、下面几条全被压没了。Column 让高度由
-	// 内容 pref 决定（只给 Top/Right 时宽高就是内容 pref，见 dsshortcuts 注释）。
-	ui.Column(f).Absolute().Top(56).Right(24).Width(w).
-		Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
-		PadSides(14, 14, 12, 14).Gap(4).Children(func() {
-		ui.Text(f, "命令").FontSize(t.Fonts.Caption).Color(t.LabelTertiary)
-		q := string(p.query)
-		if q == "" {
-			q = "输入筛选…"
-		}
-		ui.Text(f, q).FontSize(13).Color(t.LabelSecondary)
-		if len(cs) == 0 {
-			ui.Text(f, "没有匹配的命令").FontSize(13).Color(t.LabelTertiary)
-		}
-		for i, c := range cs {
-			col := t.LabelPrimary
-			if i == p.cursor {
-				col = t.Info // 选中项用 Info 色，和官方下拉的高亮一致
-			}
-			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {
-				ui.Text(f, c.Name).FontSize(13).Color(col)
-				ui.Text(f, c.Hint).FontSize(11).Color(t.LabelTertiary).Grow(1)
-			})
-		}
-	})
 }

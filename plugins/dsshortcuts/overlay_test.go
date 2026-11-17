@@ -124,14 +124,18 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 		t.Fatalf("面板标题出来了但内容没画全：texts=%q", session.Texts())
 	}
 
-	// ② 画的位置：必须是居中、宽 520 的卡片，不是一个 0 宽的东西。
+	// ② 画的位置：必须是居中、宽 480（官方 .dialog{width:min(480px,100%)}）的卡片，
+	// 不是一个 0 宽的东西。取样的两个点不写死坐标，跟着 official_geometry.go 的
+	// 纯函数走——断言本身不变：面板内部是面板底色，面板左边一点必须不是。
 	picture, err := session.Image()
 	if err != nil {
 		t.Fatal(err)
 	}
-	left := (sheetTestW - sheetWidth) / 2
-	assertColor(t, picture, left+5, sheetTop+50, theme.InputMajor, "面板内部（左内边距）")
-	assertNotColor(t, picture, left-12, sheetTop+50, theme.InputMajor, "面板左边")
+	sheetH := panelHeight(sheetTestH)
+	sheetTop := panelTop(sheetTestH, sheetH)
+	left := int((sheetTestW - sheetWidth) / 2)
+	assertColor(t, picture, left+5, int(sheetTop)+50, theme.InputMajor, "面板内部（左内边距）")
+	assertNotColor(t, picture, left-12, int(sheetTop)+50, theme.InputMajor, "面板左边")
 
 	// ③ 绘制顺序：hero 先、面板后（后者盖在前者上面）。
 	texts := session.Texts()
@@ -152,7 +156,7 @@ func TestSheetIsPaintedInOverlaySlot(t *testing.T) {
 	if err := session.Screenshot(path); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("面板已画出：%s（居中 left=%d width=%d）", path, left, sheetWidth)
+	t.Logf("面板已画出：%s（居中 left=%d width=%d）", path, left, int(sheetWidth))
 
 	// ④ 真按键路径：Esc 关闭（经过 OnKey），画面上就不该再有标题。
 	if err := session.Keys("escape"); err != nil {

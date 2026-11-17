@@ -128,43 +128,35 @@ func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 		return true
 	case gfx.KeyEscape:
 		p.mu.Lock()
-		shown, notify := p.shown, p.notify
-		p.shown = false
+		shown := p.shown
 		p.mu.Unlock()
 		if !shown {
 			return false
 		}
-		if notify != nil {
-			notify("键位表已关闭")
-		}
+		// 与面板里的关闭按钮走同一条收起路径（hide 里带重绘请求）。
+		p.hide()
 		return true
 	}
 	return false
 }
 
-// 面板的几何。宽度是设计值，但要能在窄窗口里收窄；顶距是固定值——
-// 面板高度要等布局完才知道，而 viva 的 Absolute 只在「没有 edge 的轴」上
-// 按 Self/Items 对齐，给不了"垂直居中"。
-const (
-	sheetWidth    = 520
-	sheetMinWidth = 320
-	sheetMargin   = 80
-	sheetTop      = 96
-)
-
-// panelWidth 返回面板在给定窗口宽度下的宽度。
-func panelWidth(window float32) float32 {
-	w := float32(sheetWidth)
-	if window > 0 && w > window-2*sheetMargin {
-		w = window - 2*sheetMargin
+// hide 收起面板并请求一帧重绘。
+//
+// 抽出来是因为两个入口都要它：HandleKey（Esc / F1）与面板自己的关闭按钮
+// （官方 Reference.tsx:164 是个真的 `<button className={css.close}>`）。
+func (p *Plugin) hide() {
+	p.mu.Lock()
+	p.shown = false
+	notify := p.notify
+	p.mu.Unlock()
+	if notify != nil {
+		notify("键位表已关闭")
 	}
-	if w < sheetMinWidth {
-		w = sheetMinWidth
-	}
-	return w
 }
 
-// draw 画一张居中卡片：标题 + 逐条键位。
+// draw 画官方快捷键面板：`.dialog` 外框 → `.header`（标题 + 关闭）→ `.list`（滚动，
+// 逐条键位）。结构与官方 Reference.tsx:155-205 同构；数值全在 official_geometry.go，
+// 逐项带官方 file:line，这里只负责"摆"。
 func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// 记住「请求重绘」的入口，给 HandleKey 用（理由见 HandleKey 的注释）。
 	// 每帧都写：Actions 是壳每帧新建的，缓存一份旧的不如跟着帧走。
@@ -177,37 +169,114 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 		return
 	}
 	t := p.theme
-	// **必须 Absolute，并且必须显式 Width**：
+	// **必须 Absolute，并且必须显式 Width/Height**：
 	//   - overlay 槽是"自由画"的区域，普通流式布局里它只是浮层行的一个孩子；
 	//   - 只给 Left/Top 的绝对盒子，宽度取自内容的 pref；内容若是 FillWidth，
 	//     Fill 又相对父盒子的宽度解析，于是父 0 → 子 0，整块退化成 0 宽（实测）。
-	//   - 给两条边（Left+Right）会拉伸到容器宽；这里要的是设计宽度，所以给 Width。
+	//   - 给两条边（Left+Right）会拉伸到容器宽；这里要的是官方设计宽度，所以给 Width。
 	// 居中用的是 env.Bounds：overlay 槽的边界就是整窗（dsshell 用同一对数给
 	// 浮层行定宽高，dsdemo 的提示条也靠它贴在右上角）。
 	w := panelWidth(env.Bounds.Width)
+	h := panelHeight(env.Bounds.Height)
 	left := (env.Bounds.Width - w) / 2
 	if left < 0 {
 		left = 0
 	}
-	rowH := float32(26)
-	ui.Row(f).Absolute().
-		Left(left).Top(sheetTop).
-		Width(w).
-		Children(func() {
-			ui.Column(f).FillWidth().Radius(t.Radii.Panel).
-				Background(t.InputMajor).
-				Shadow(gfx.ShadowXS).
-				PadSides(20, 20, 16, 20).Gap(10).Children(func() {
-				ui.Text(f, "键盘快捷键").FontSize(18).Color(t.LabelPrimary)
-				ui.Text(f, "按 F1 或 Esc 关闭").FontSize(12).Color(t.LabelSecondary)
-				for _, bd := range bindings {
-					ui.Row(f).FillWidth().Height(rowH).Items(ui.Center).Gap(12).Children(func() {
-						// 键名列定宽，右对齐——键名长短不一时才看得成一列
-						// 键名列定宽即可，不折腾右对齐（flex.Box 没有 AlignH）
-						ui.Text(f, bd.Key).FontSize(13).Color(t.LabelPrimary).Width(120)
-						ui.Text(f, bd.Does).FontSize(13).Color(t.LabelSecondary).Grow(1)
-					})
-				}
-			})
+	// Clip：官方 `.dialog` 是圆角+内部滚动容器，内容不该溢出圆角（CSS 里由
+	// overflow 与 border-radius 的裁剪保证）。
+	panel := ui.Column(f).Absolute().Left(left).Top(panelTop(env.Bounds.Height, h)).
+		Width(w).Height(h).
+		Radius(sheetRadius).Background(t.InputMajor).Shadow(gfx.ShadowLG).Clip()
+	// 面板本体吃掉点击：官方这是 Modal，点框内不该落到下面的会话/侧栏上。
+	// 先声明、后声明的子元素（关闭按钮）在它上面——viva 的命中按声明顺序取最后命中。
+	if env.Tree != nil {
+		panel = panel.HitWith(env.Tree.ID(env.Feat, "shortcuts-sheet"), shortcutsTitle,
+			gfx.HitOptions{Role: gfx.RoleGroup})
+	}
+	panel.Children(func() {
+		p.drawHeader(f, env, t)
+		listH := h - sheetHeaderH
+		if listH < 0 {
+			listH = 0
+		}
+		p.drawList(f, t, listH)
+	})
+}
+
+// drawHeader 画 `.header`（46 高、padding 22/54/0/24）与绝对定位的 `.close`。
+//
+// `flex:0 0 46px` 在 viva 里就是固定的 Height(46)：头部不参与伸缩，
+// 剩下的高度全给 `.list`。
+func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
+	ui.Row(f).FillWidth().Height(sheetHeaderH).
+		PadSides(sheetHeaderPadTop, sheetHeaderPadRight, sheetHeaderPadBottom, sheetHeaderPadLeft).
+		Items(ui.Start).Children(func() {
+		// `.title{font-size:16px;line-height:24px;font-weight:500}`：
+		// 22(padding-top) + 24(line-height) = 46，正好填满头部，不多不少。
+		ui.Text(f, shortcutsTitle).FontSize(sheetTitleSize).LineHeight(sheetTitleLine).
+			Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+	})
+	// `.close{position:absolute;top:20px;right:14px;width:28px;height:28px;
+	//  padding:6px;border-radius:28px}`。viva 的 Absolute 就是"相对容器 padding box
+	//  按边定位"（ui/absolute.go:12-21），与 CSS position:absolute 同义。
+	closeBtn := ui.Row(f).Absolute().Top(sheetCloseTop).Right(sheetCloseRight).
+		Size(sheetCloseSize, sheetCloseSize).Radius(sheetCloseRadius).Center().
+		Hover(ui.Look{}.Background(t.Hover))
+	if env.Tree != nil {
+		closeBtn = closeBtn.HitWith(env.Tree.ID(env.Feat, "shortcuts-close"),
+			shortcutsCloseLabel, gfx.HitOptions{})
+	}
+	closeBtn.Children(func() {
+		// 官方 `.close` 的字色是 label-primary，图标颜色跟着 currentColor 走。
+		ui.Icon(f, closeOutlineIcon()).Size(sheetCloseIconSize, sheetCloseIconSize).
+			Color(t.LabelPrimary)
+	})
+	if closeBtn.Clicked() {
+		p.hide()
+	}
+}
+
+// drawList 画 `.list`：官方是 `flex:1;min-height:0;overflow-y:auto` 的滚动容器，
+// `padding:0 16px 18px`；行是 `.row{min-height:42px;padding:8px;border-radius:12px}`。
+//
+// 高度由调用方按"面板高 - 头部高"给定（等价 CSS 的 flex:1 剩余空间），
+// 内容超出就在这一层滚动，而不是把面板撑高。
+func (p *Plugin) drawList(f ui.C, t *pluginapi.Theme, height float32) {
+	viewport := ui.Scroll(f).FillWidth().MinHeight(0).Height(height).Scrollbars()
+	viewport.Children(func() {
+		ui.Column(f).FillWidth().
+			PadSides(0, sheetListPadX, sheetListPadBottom, sheetListPadX).Children(func() {
+			// 本仓补充的一行提示（官方面板没有这一行）：字号/行高/颜色/外边距全用
+			// 官方 `.hint` 与 `p.hint{margin:6px 0}`，不另造一套。
+			ui.Text(f, shortcutsHint).FontSize(sheetHintSize).LineHeight(sheetHintLine).
+				Color(t.LabelTertiary).
+				MarginTop(sheetHintMarginY).MarginBottom(sheetHintMarginY)
+			for _, bd := range bindings {
+				p.drawBindingRow(f, t, bd)
+			}
 		})
+	})
+}
+
+// drawBindingRow 画一行：`.commandLabel` 在左（长文本省略号）、`.keyBadge` 贴右。
+//
+// 官方 `.row{display:flex;justify-content:space-between;gap:8px}`：命令名在左、
+// 键位徽标在右。旧的"键名列定宽 120 + 键名在左"没有官方出处，已按官方顺序摆正。
+func (p *Plugin) drawBindingRow(f ui.C, t *pluginapi.Theme, bd Binding) {
+	ui.Row(f).FillWidth().MinHeight(sheetRowMinH).Pad(sheetRowPad).Gap(sheetRowGap).
+		Radius(sheetRowRadius).Items(ui.Center).Children(func() {
+		// `.commandLabel{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}`
+		ui.Text(f, bd.Does).FontSize(sheetRowFont).LineHeight(sheetRowLine).
+			Color(t.LabelPrimary).Grow(1).MinWidth(0).Ellipsis()
+		// `.keyBadge{height:26px;padding:0 12px;border-radius:10px;
+		//  background:var(--dsw-alias-bg-module-platform)}` +
+		// `.binding .keyBadge{color:var(--dsw-alias-label-secondary)}`。
+		// 徽标字号继承 `.row` 的 13/18（官方 .keyBadge 不自带 font-size）。
+		ui.Row(f).Height(sheetKeyH).
+			PadSides(0, sheetKeyPadX, 0, sheetKeyPadX).Radius(sheetKeyRadius).
+			Background(t.BgModulePlatform).Center().Self(ui.Center).Children(func() {
+			ui.Text(f, bd.Key).FontSize(sheetRowFont).LineHeight(sheetRowLine).
+				Color(t.LabelSecondary)
+		})
+	})
 }

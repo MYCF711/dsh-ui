@@ -33,6 +33,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -317,8 +318,18 @@ func (p *Plugin) drawFeedbackDialog(f ui.C, env *pluginapi.Env) {
 		Hit(env.Tree.ID(env.Feat, "feedback-backdrop"), zhFeedbackClose)
 	card := ui.Column(f).Absolute().Left(left).Top(top).Width(width).
 		Hit(env.Tree.ID(env.Feat, "feedback-dialog"), zhFeedbackDialogTitle).
-		Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
-		Shadow(gfx.ShadowMD).Pad(feedbackDialogPad).Gap(feedbackDialogGap)
+		Radius(t.Radii.Panel).Background(t.InputMajor).
+		// 阴影 = 官方 `--dsw-elevation-prominent`，描边走默认档 `border-l4`。
+		// 官方 `FeedbackDialog.module.css`（ui-message-feedback）只有 `dialog /
+		// categories / chip / detail / submit` 五条规则、**没有 box-shadow**：
+		// 外框是对话框原语 `._dialog_1ytzq_33{box-shadow:var(--dsw-elevation-prominent);
+		// border:0}`（`dsh-web-frontend/dist/assets/index-CSAdOBx6.css`），且没有重绑
+		// `--dsw-elevation-stroke-color`，所以取默认 `--dsw-alias-border-l4`
+		// （gradient-shadow-text.css:17）。
+		Draw(func(d *ui.DrawContext) {
+			dscore.PaintElevation(d, t.Radii.Panel, t.Shadows.Prominent, t.BorderL4)
+		}).
+		Pad(feedbackDialogPad).Gap(feedbackDialogGap)
 	card.Children(func() {
 		// 标题行：标题 + 关闭。
 		ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {

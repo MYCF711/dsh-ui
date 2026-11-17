@@ -84,6 +84,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsassets"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -251,12 +252,15 @@ const (
 	//	  （dsh-client-ui-theme/src/styles/gradient-shadow-text.css:36-37、:33）
 	//	--dsw-elevation-stroke-color: var(--dsw-alias-border-l4)（:17；深色仅菜单面
 	//	  重绑成 l3，Modal 不是菜单面）
-	modalElevationStroke  float32 = 0.5
-	modalElevationShadowY float32 = 3
-	modalElevationShadowB float32 = 8
-	modalElevationShadowA float32 = 0.04
-	modalElevationGlowB   float32 = 20
-	modalElevationGlowA   float32 = 0.05
+	// 这里原来还有 modalElevationStroke / modalElevationShadowY / modalElevationShadowB /
+	// modalElevationShadowA / modalElevationGlowB / modalElevationGlowA 六个本地常量
+	// （官方 `--dsw-elevation-prominent` 的三个数）。它们已并进
+	// `pluginapi.Shadows.Prominent`：官方目录选择器的外框就是对话框原语
+	// `._dialog_1ytzq_33{box-shadow:var(--dsw-elevation-prominent);border:0}`
+	// （`dsh-web-frontend/dist/assets/index-CSAdOBx6.css`）——
+	// `DirectoryBrowser.module.css` 自己只有 `_3zXc5G_dialog{…padding:0}`，**没有**
+	// box-shadow；对话框原语也没重绑 `--dsw-elevation-stroke-color`，所以描边色是
+	// 默认档 `--dsw-alias-border-l4`（gradient-shadow-text.css:17）。
 )
 
 // reqTimeout 是一次宿主数据调用的上限。
@@ -426,10 +430,11 @@ func (p *Plugin) Fields() []*ui.Field { return []*ui.Field{&p.createName} }
 // `cmd/app/panels_order_test.go:84` 那条守卫要求同槽 Order 互不相同，这里避开整条既有档位带。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
-		ID:    "dirpicker-dialog",
-		Slot:  pluginapi.SlotShellOverlay,
-		Order: 102,
-		Draw:  p.draw,
+		ID:        "dirpicker-dialog",
+		Slot:      pluginapi.SlotShellOverlay,
+		Order:     102,
+		Draw:      p.draw,
+		AfterDraw: p.afterDraw,
 	}}
 }
 
@@ -859,10 +864,12 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	ui.Column(f).FillWidth().FillHeight().Center().Children(func() {
 		// 卡片本体 = 官方 Modal 的 `._dialog_1ytzq_33`：radius-panel、bg-layer-2、
 		// border:0，分离线由 elevation-prominent 的 0.5px shadow 环承担
-		// （见本文件 modalElevation* 常量上的出处）。
+		// （出处在本文件 `modalElevation*` 那段已删常量的位置，现住在
+		//  `pluginapi.Shadows.Prominent`）。
+		// 阴影在 AfterDraw 画（见 afterDraw）：卡片自己 `.Clip()`，Draw 钩子会被
+		// 那道裁剪吞掉（#150 实证的 viva 行为）。
 		card := ui.Column(f).Width(cardWidth).Height(cardHeight).
 			Radius(t.Radii.Panel).
-			Draw(func(d *ui.DrawContext) { drawModalElevation(d, t.Radii.Panel, t.BorderL4) }).
 			Background(t.BgLayer2).Clip()
 		p.boxes.Dialog = card
 		card.Children(func() {
@@ -1133,9 +1140,9 @@ func (p *Plugin) drawCreateDialog(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 		if width <= 0 {
 			width = createDialogMaxWidth
 		}
+		// 同对话框卡片：`.Clip()` 之后 Draw 钩子里的阴影会被裁掉，改在 AfterDraw 画。
 		card := ui.Column(f).Width(width).
 			Radius(t.Radii.Panel).
-			Draw(func(d *ui.DrawContext) { drawModalElevation(d, t.Radii.Panel, t.BorderL4) }).
 			Background(t.BgLayer2).Clip()
 		p.boxes.CreateDialog = card
 		card.Children(func() {
@@ -1231,25 +1238,36 @@ func checkOutlineIcon() gfx.Icon {
 	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}
 }
 
-// drawModalElevation 逐层画官方 `--dsw-elevation-prominent`，不拿 Viva 的
-// `ShadowXS/SM` 那套 shadcn 档位近似：
+// afterDraw 在整棵树布局完成之后覆画两张卡的官方 elevation。
 //
-//	0 0 0 0.5px <stroke>, 0 3px 8px 0 rgba(0,0,0,.04), 0 0 20px 0 rgba(0,0,0,.05)
-//
-// 出处见本文件 modalElevation* 常量（gradient-shadow-text.css:33/:36-37/:17）。
-// 为什么没有用 `Box.Border`：官方把这条 0.5px 描边画在 **box-shadow 里**
-// （`border:0`），它**不占布局**；用 Border 会把卡片内容挤小 1px。
-func drawModalElevation(d *ui.DrawContext, radius float32, stroke gfx.Color) {
-	outer := d.Rect
-	outer.X -= modalElevationStroke
-	outer.Y -= modalElevationStroke
-	outer.Width += 2 * modalElevationStroke
-	outer.Height += 2 * modalElevationStroke
-	d.Canvas.RoundedOutline(outer, radius+modalElevationStroke, modalElevationStroke, d.Fade(stroke))
-	d.Canvas.Shadow(d.Rect, radius,
-		gfx.ShadowStyle{OffsetY: modalElevationShadowY, Blur: modalElevationShadowB},
-		d.Fade(gfx.Color{Alpha: modalElevationShadowA}))
-	d.Canvas.Shadow(d.Rect, radius,
-		gfx.ShadowStyle{Blur: modalElevationGlowB},
-		d.Fade(gfx.Color{Alpha: modalElevationGlowA}))
+// 为什么不在 Draw 钩子里画：两张卡自己 `.Clip()`（官方 `_3zXc5G_dialog` 的
+// `overflow:hidden` 等价物），而 viva 对带 Clip 的元素是**先推 Clip、再跑 Draw
+// 钩子**（`ui/paint.go:50-52` 与 `:132`），阴影记进 canvas 时带着那道裁剪
+// （`gfx/canvas.go:1169` 的 clipSnapshot），阴影又被自己的投射矩形挖空
+// （`canvas.go:78-80`），两者相减是空集——等于没画。改前这里正是
+// `.Draw(drawModalElevation…).Clip()` 的组合，那条 elevation 从来没落到屏幕上。
+// AfterDraw 是布局后的覆画阶段（`pluginapi/plugin.go:286-292`，裁剪栈已清空）。
+func (p *Plugin) afterDraw(canvas *gfx.Canvas, env *pluginapi.Env) {
+	t := p.theme
+	if t == nil {
+		t = env.Theme
+	}
+	if t == nil {
+		return
+	}
+	// 先画外层浏览卡，再画叠在它上面的「新建文件夹」卡：两层都开时后者在上。
+	//
+	// `Valid()` 守两道：① 这一帧一张卡都没画时 boxes 是零值（零值 Box 取 Rect 会 panic）；
+	// ② 跨帧的旧 Box 已经随上一次 Begin 作废。
+	for _, box := range []ui.Box{p.boxes.Dialog, p.boxes.CreateDialog} {
+		if !box.Valid() {
+			continue
+		}
+		rect := box.Rect()
+		if rect.Width <= 0 || rect.Height <= 0 {
+			continue
+		}
+		dscore.PaintElevationOverlay(canvas, rect, t.Radii.Panel,
+			t.Shadows.Prominent, t.BorderL4)
+	}
 }

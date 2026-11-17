@@ -59,6 +59,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -229,7 +230,14 @@ func (p *Plugin) drawStatsDialog(f ui.C, env *pluginapi.Env, t *pluginapi.Theme)
 	}
 	// `.panel{background:var(--dsw-specific-menu)}`（stat-dialog.module.css:16），
 	// 不能用 BgLayer3 代替菜单材质。
-	panel = panel.Radius(t.Radii.LG).Background(t.Menu).Shadow(gfx.ShadowLG).
+	// 阴影 = 官方 `--dsw-elevation-prominent` + `--dsw-alias-border-l1` 描边：
+	// stat-dialog.module.css:25-26 `.xXe6ja_panel{--dsw-elevation-stroke-color:
+	// var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent)}`。
+	// 原来的 `Shadow(gfx.ShadowLG)` 是 Tailwind 的 `0 10px 15px -3px .10` 两层。
+	panel = panel.Radius(t.Radii.LG).Background(t.Menu).
+		Draw(func(d *ui.DrawContext) {
+			dscore.PaintElevation(d, t.Radii.LG, t.Shadows.Prominent, t.BorderL1)
+		}).
 		Pad(StatsDialogPad)
 	// 弹窗本体吃掉点击：官方点框内不关闭（stat-dialog.ts 只认"外面"）。
 	// 角色用 RoleGroup：viva v0.2.3 没有 RoleDialog，Group 是"成组的非动作区域"。

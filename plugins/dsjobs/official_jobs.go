@@ -28,6 +28,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -255,7 +256,15 @@ func (p *Plugin) drawPanel(f ui.C, env *pluginapi.Env, _ func(pluginapi.Slot)) {
 
 	panel := ui.Column(f).Absolute().Top(top).Right(float32(jobsMenuRight)).
 		Width(width).MaxHeight(maxHeight).Radius(jobsMenuRadius).
-		Background(t.BgLayer1).Border(1, t.BorderL2).Shadow(gfx.ShadowMD).
+		Background(t.BgLayer1).
+		// 阴影 = 官方 `--dsw-elevation-prominent` + `--dsw-alias-border-l1` 描边：
+		// `JobListAction.module.css:57-58`
+		// `.Ag-ohG_menu{--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);
+		//  box-shadow:var(--dsw-elevation-prominent)}`。官方这个菜单面**没有**自带的
+		// `border`，1px 的 `Border(1, BorderL2)` 是本仓自造的隔离线。
+		Draw(func(d *ui.DrawContext) {
+			dscore.PaintElevation(d, jobsMenuRadius, t.Shadows.Prominent, t.BorderL1)
+		}).
 		Pad(jobsMenuPad)
 	// 面板本体吃掉点击：点菜单里面不关（只有菜单外 pointerdown 才关）。
 	panel.Hit(env.Tree.ID(env.Feat, "jobs-menu"), zhJobsTitle)

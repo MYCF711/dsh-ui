@@ -109,6 +109,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsassets"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -224,14 +225,10 @@ const (
 	arrowInset float32 = 4
 	// 官方 `IconChevronLeft/RightOutlineRegular` 的 sprite 默认 size=14。
 	arrowGlyphSize float32 = 14
-	// elevation-panel：0.5px stroke + 0 3px 8px/3% + 0 0 16px/2%
-	// （AttachmentRail.module.css:100-105；ui-theme/gradient-shadow-text.css:33-35）。
-	arrowStroke      float32 = 0.5
-	arrowShadowY     float32 = 3
-	arrowShadowBlur  float32 = 8
-	arrowShadowAlpha float32 = 0.03
-	arrowGlowBlur    float32 = 16
-	arrowGlowAlpha   float32 = 0.02
+	// 这里原来还有 arrowStroke / arrowShadowY / arrowShadowBlur / arrowShadowAlpha /
+	// arrowGlowBlur / arrowGlowAlpha 六个本地常量（官方 elevation-panel 的三个数）。
+	// 它们已并进 `pluginapi.Shadows.Panel`——`AttachmentRail.module.css`
+	// `.Onur9G_arrow{box-shadow:var(--dsw-elevation-panel)}` 是**令牌**，不是每包一份数。
 )
 
 // ── 数据面注入（照 plugins/dsdirpicker 的 SetSource 写法，不发明新机制）──────
@@ -875,18 +872,18 @@ func (p *Plugin) drawArrow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, direc
 	}
 }
 
-// drawAttachmentArrowElevation 逐层画官方 elevation-panel，不用 Viva ShadowMD 近似。
+// drawAttachmentArrowElevation 画官方 `--dsw-elevation-panel`，描边色是那一处的重绑。
+//
+// 出处 `AttachmentRail.module.css`（ui-attachment，`.Onur9G_arrow`）：
+//
+//	.Onur9G_arrow{--dsw-elevation-stroke-color:var(--dsw-alias-border-l2-darkmode-thin);
+//	              box-shadow:var(--dsw-elevation-panel);border:0;border-radius:999px}
+//
+// 原来这里手抄了 panel 的五个数（arrowStroke 0.5 / 3+8@.03 / 0+16@.02）：数值本来就
+// 对，问题是**第 N 份副本**。现在一处取值在 `Shadows.Panel`，住不下来的是描边色
+// （官方按组件重绑，见 `pluginapi.Elevation` 的注释）。
 func drawAttachmentArrowElevation(d *ui.DrawContext, t *pluginapi.Theme) {
-	outer := d.Rect
-	outer.X -= arrowStroke
-	outer.Y -= arrowStroke
-	outer.Width += 2 * arrowStroke
-	outer.Height += 2 * arrowStroke
-	d.Canvas.RoundedOutline(outer, arrowSize/2+arrowStroke, arrowStroke, d.Fade(attachmentArrowBorder(t)))
-	d.Canvas.Shadow(d.Rect, arrowSize/2, gfx.ShadowStyle{OffsetY: arrowShadowY, Blur: arrowShadowBlur},
-		d.Fade(gfx.Color{Alpha: arrowShadowAlpha}))
-	d.Canvas.Shadow(d.Rect, arrowSize/2, gfx.ShadowStyle{Blur: arrowGlowBlur},
-		d.Fade(gfx.Color{Alpha: arrowGlowAlpha}))
+	dscore.PaintElevation(d, arrowSize/2, t.Shadows.Panel, attachmentArrowBorder(t))
 }
 
 // attachmentArrowBorder 是 border-l2-darkmode-thin：亮 0.10、暗 0.06

@@ -25,6 +25,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -99,6 +100,11 @@ type officialPanel struct {
 	// （ui-settings-account/src/client/index.ts:61-62：侧栏与设置页共读同一张图）。
 	// 零值可用的判据是 `snapshot==nil`；懒建见 accountAvatarLoader。
 	avatar *accountAvatarLoader
+	// card 是上一帧画出来的设置面板卡片（AfterDraw 里取它布局后的矩形画官方
+	// `--dsw-elevation-prominent`）。卡片自己 `.Clip()`，阴影不能在 Draw 钩子里画。
+	// 只在绘制线程读写，所以不走 mu。
+	card      ui.Box
+	cardShown bool
 }
 
 // accountAvatar 是头像加载器的懒建出口（零值可用）。
@@ -506,6 +512,7 @@ func (p *Plugin) drawOfficialPanel(f ui.C, env *pluginapi.Env) {
 	activeID := o.activeID
 	write := o.write
 	o.mu.Unlock()
+	o.cardShown = false
 	if !open || !p.OfficialEnabled() {
 		return
 	}
@@ -532,26 +539,63 @@ func (p *Plugin) drawOfficialPanel(f ui.C, env *pluginapi.Env) {
 	ui.Row(f).Absolute().Inset(0).Background(ui.RGBA(0, 0, 0, 0.24)).
 		Hit(env.Tree.ID(env.Feat, "settings-mask"), "").Children(func() {
 		// ② 卡片：四区网格的相对坐标（children 坐标相对卡片 padding box）。
-		ui.Row(f).Absolute().Left(layout.X).Top(layout.Y).
+		// 阴影 = 官方 `--dsw-elevation-prominent`，描边走默认档 `border-l4`：
+		// `SettingsRoot.module.css:110`
+		// `.AnXs9G_panel{box-shadow:var(--dsw-elevation-prominent)}`——官方这张面板
+		// **没有**重绑 `--dsw-elevation-stroke-color`，所以用默认
+		// `--dsw-alias-border-l4`（gradient-shadow-text.css:17）。官方也没给它
+		// `border`：那圈 0.5px 分离线在 elevation 的描边层里，原来的
+		// `Border(1, BorderL2)` 是多出来的一圈占布局描边。
+		//
+		// 画法在 AfterDraw（见 afterOfficialPanel）：卡片自己 `.Clip()`，
+		// Draw 钩子会被那道裁剪吞掉。
+		card := ui.Row(f).Absolute().Left(layout.X).Top(layout.Y).
 			Width(layout.Width).Height(layout.Height).
-			Radius(t.Radii.Panel).Background(t.BgLayer2).
-			Border(1, t.BorderL2).Shadow(gfx.ShadowXS).Clip().
-			Children(func() {
-				if area, ok := layout.Area("title"); ok {
-					p.drawNavTitle(f, t, relArea(area, layout))
-				}
-				if area, ok := layout.Area("header"); ok {
-					p.drawPanelHeader(f, env, t, relArea(area, layout))
-				}
-				if area, ok := layout.Area("nav"); ok {
-					p.drawPanelNav(f, env, t, relArea(area, layout), model, activeID)
-				}
-				if area, ok := layout.Area("options"); ok {
-					section, _ := model.Section(activeID)
-					p.drawPanelOptions(f, env, t, relArea(area, layout), section, write)
-				}
-			})
+			Radius(t.Radii.Panel).Background(t.BgLayer2).Clip()
+		o.card, o.cardShown = card, true
+		card.Children(func() {
+			if area, ok := layout.Area("title"); ok {
+				p.drawNavTitle(f, t, relArea(area, layout))
+			}
+			if area, ok := layout.Area("header"); ok {
+				p.drawPanelHeader(f, env, t, relArea(area, layout))
+			}
+			if area, ok := layout.Area("nav"); ok {
+				p.drawPanelNav(f, env, t, relArea(area, layout), model, activeID)
+			}
+			if area, ok := layout.Area("options"); ok {
+				section, _ := model.Section(activeID)
+				p.drawPanelOptions(f, env, t, relArea(area, layout), section, write)
+			}
+		})
 	})
+}
+
+// afterOfficialPanel 在布局完成之后覆画设置面板的官方 elevation。
+//
+// 为什么不在 Draw 钩子里画：官方 `.AnXs9G_panel{overflow:hidden}`，本仓对应
+// `.Clip()`；viva 对带 Clip 的元素是**先推 Clip、再跑 Draw 钩子**
+// （`ui/paint.go:50-52` 与 `:132`），阴影记进 canvas 时带着那道裁剪，而阴影又被
+// 自己的投射矩形挖空（`gfx/canvas.go:78-80`），相减是空集——等于没画（#150 实测）。
+// AfterDraw 是布局后的覆画阶段（`pluginapi/plugin.go:286-292`），裁剪栈已清空。
+func (p *Plugin) afterOfficialPanel(canvas *gfx.Canvas, env *pluginapi.Env) {
+	o := p.ensureOfficial()
+	// card / cardShown 只在绘制线程读写（Draw 与 AfterDraw 同一线程），与
+	// model/activeID 那些跨线程字段不同，故意不套 mu——套一半才是错的。
+	box, shown := o.card, o.cardShown
+	// `Valid()`：面板没画的帧与跨帧的旧 Box 都不能取 Rect（零值 Box 会 panic）。
+	if !shown || !box.Valid() {
+		return
+	}
+	rect := box.Rect()
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
+	}
+	t := p.theme
+	if env.Theme != nil {
+		t = env.Theme
+	}
+	dscore.PaintElevationOverlay(canvas, rect, t.Radii.Panel, t.Shadows.Prominent, t.BorderL4)
 }
 
 // relArea 把绝对矩形转成卡片内相对矩形。

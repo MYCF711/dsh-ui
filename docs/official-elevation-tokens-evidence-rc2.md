@@ -78,7 +78,7 @@ viva 的单层原语 `Canvas.Shadow(bounds, radius, ShadowStyle, color)`
 官方每一层都能逐层照抄，只是**层数与档位得自己拿到**。这也是这次加令牌
 而不是"选一个最像的预设"的理由。
 
-## 5. 本轮改了什么（分片：只动 `pluginapi`、`plugins/dscore` 与两个消费方）
+## 5. 第一轮改了什么（分片：只动 `pluginapi`、`plugins/dscore` 与两个消费方）
 
 | 位置 | 改动 |
 |---|---|
@@ -88,6 +88,9 @@ viva 的单层原语 `Canvas.Shadow(bounds, radius, ShadowStyle, color)`
 | `plugins/dscore/dscore.go` | `Light()` / `Dark()` 都装 `Shadows: shadows()` |
 | `plugins/dscommands/panel.go` | 命令面板阴影 → 官方 `--dsw-elevation-prominent` + border-l1 描边 |
 | `plugins/dsnotifications/card.go` | 通知卡片的本地 elevation 常量与 `drawPanelElevation` → 共用 `Shadows.Panel` |
+| （第二轮，task-80） | 剩余 **18 处**消费方全部换掉：13 处 viva 预设 + 5 处手抄副本，逐条见 §7 |
+| `plugins/dscore/shadow_consumers_guard_test.go`（新） | 守卫：这 15 个包不许再出现 `gfx.ShadowXS/SM/MD/LG` |
+| `plugins/dscore/elevation_decision_table_test.go`（新） | 守卫：18 处的「档位 + 描边色」逐条钉住（§10） |
 
 ### 消费方 原值 → 新值
 
@@ -129,59 +132,63 @@ viva 的单层原语 `Canvas.Shadow(bounds, radius, ShadowStyle, color)`
    把宽度吸附到整设备像素（`gfx/rounded_outline.go:11-14`），
    100% 缩放下 0.5px 环可能画成 ~1px；这是 viva 的限制，不是令牌的偏差。
 
-## 7. 剩余待替换（**本轮只列不改**，下一轮分批）
+## 7. 18 处消费方（task-80，**已全部替换**）
 
-### 7.1 还在用 viva 预设的（13 处）
+第一轮只动了 2 个消费方（命令面板、通知卡）。这一轮把剩下的 18 处全部换完：
+**13 处原本拿 viva 预设顶上**，**5 处手抄了同一套数值**。逐条如下（"行"是本轮
+结束时的行号；`§` 指向 §10 的机器可核版本）。
 
-| 插件 | 位置 | 现值 | 官方目标（有证据的已标） |
-|---|---|---|---|
-| dsagentteam | `catalog.go:433` | `ShadowMD` | 卡片面，待对官方包取证 |
-| dsagentteam | `commandrow.go:172` | `var _ = gfx.ShadowMD`（占位引用，无实际绘制） | 可直接删 |
-| dsagentteam | `confirm.go:74` | `ShadowMD` | 确认弹窗 → `prominent`（见下方「弹窗」注） |
-| dscomposer | `composer.go:289` | `ShadowXS` | 待对官方包取证（输入面多半是 `soft`） |
-| dsconversation | `feedback.go:321` | `ShadowMD` | 反馈弹窗 → `prominent`（同上） |
-| dscordis | `panel.go:215` | `ShadowMD` + 自画 1px `border-l1` | `dsh-client-ui-cordis` 用 `elevation-prominent`（描边 0.5px） |
-| dsjobs | `official_jobs.go:258` | `ShadowMD` | `dsh-client-ui-jobs` 用 `elevation-prominent` |
-| dssettings | `official_panel.go:538` | `ShadowXS` | `dsh-client-ui-settings-general` 用 `elevation-prominent` |
-| dssettings | `settings.go:424` | `ShadowXS` | 同上 |
-| dsshortcuts | `shortcuts.go:199` | `ShadowLG` | 快捷键面板，待取证 |
-| dssidebar | `workspace_actions.go:260` | `ShadowMD` | 工作区弹窗 → `prominent`（同上） |
-| dsstatusbar | `official_stats_dialog.go:232` | `ShadowLG` | 统计弹窗 → `prominent`（同上） |
-| dsterminal | `guide.go:295` | `ShadowLG` | 引导面板，待取证 |
+### 7.1 预设 13 处
 
-> **弹窗（注）**：官方的模态框住在打包产物里，没有独立 `src/`：
-> `dsh-web-frontend/dist/assets/index-CSAdOBx6.css` 的
-> `._dialog_1ytzq_33{…box-shadow:var(--dsw-elevation-prominent)}`。
-> 所以"确认/工作区/反馈/统计这些模态框改用 prominent"是有出处的，
-> 不是按"看着像"推的；但那几条仍要逐个核对自己是不是**同一个**组件。
+| # | 位置 | 旧值 → 新值 | 档位 / 描边 | 官方依据 |
+|---|---|---|---|---|
+| 1 | `plugins/dsagentteam/catalog.go:443` | `Border(1,BorderL2)+Shadow(gfx.ShadowMD)` → `PaintElevation` | `Prominent` / `BorderL1` | `TeamAction.module.css` `.VBK9GG_panel{--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);border:0}`（`tmp/asar-css/156__TeamAction`）；菜单原语 `._list_70kcw_7,._submenu_70kcw_8` 同档（`index-CSAdOBx6.css`） |
+| 2 | `plugins/dsagentteam/confirm.go:81` | `Border(1,BorderL2)+Shadow(gfx.ShadowMD)` → `PaintElevation` | `Prominent` / `BorderL4` | 对话框原语 `._dialog_1ytzq_33{…box-shadow:var(--dsw-elevation-prominent);border:0}`（`index-CSAdOBx6.css`），**未重绑**描边色 → 默认 `border-l4`（`gradient-shadow-text.css:17`） |
+| 3 | `plugins/dscomposer/composer.go:298` | `Shadow(gfx.ShadowXS)` → `PaintElevation` | `Soft` / `BorderL2` | `InputBar.module.css:69-72` `.GRgSLq_card{--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);box-shadow:var(--dsw-elevation-soft);border:0}` |
+| 4 | `plugins/dsconversation/feedback.go:330` | `Border(1,BorderL2)+Shadow(gfx.ShadowMD)` → `PaintElevation` | `Prominent` / `BorderL4` | 官方 `FeedbackDialog.module.css` 只有 `dialog/categories/chip/detail/submit`，**无 box-shadow** → 外框是对话框原语（上） |
+| 5 | `plugins/dscordis/panel.go:224` | `Border(1,BorderL1)+Shadow(gfx.ShadowMD)` → `PaintElevation` | `Prominent` / `BorderL1` | `CordisPanel.module.css:96-98` `.Fu0XRq_panel{border:0;border-radius:12px;--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent)}` |
+| 6 | `plugins/dsjobs/official_jobs.go:266` | `Border(1,BorderL2)+Shadow(gfx.ShadowMD)` → `PaintElevation` | `Prominent` / `BorderL1` | `JobListAction.module.css:57-58` `.Ag-ohG_menu{--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent)}` |
+| 7 | `plugins/dssettings/official_panel.go:598`（AfterDraw） | `Border(1,BorderL2)+Shadow(gfx.ShadowXS)+Clip` → `PaintElevationOverlay` | `Prominent` / `BorderL4` | `SettingsRoot.module.css:110` `.AnXs9G_panel{box-shadow:var(--dsw-elevation-prominent)}`，未重绑描边 → 默认 `border-l4` |
+| 8 | `plugins/dssettings/settings.go:432` | `Border(1,BorderL2)+Shadow(gfx.ShadowXS)` → `PaintElevation` | `Prominent` / `BorderL4` | 同上（rc.1 兼容桥的调试设置卡，官方无此卡，档位随设置面） |
+| 9 | `plugins/dsshortcuts/shortcuts.go:251`（AfterDraw） | `Shadow(gfx.ShadowLG)+Clip` → `PaintShadowOverlay` | `Lv3` / **无描边** | `Reference.module.css:63` `.St8tea_dialog{box-shadow:0 0 1px #0003,0 0 4px #00000005,0 12px 32px #00000014}` —— 逐值等于 `--dsw-shadow-lv3`（`gradient-shadow-text.css:8-9`），**不是**三件套 |
+| 10 | `plugins/dssidebar/workspace_actions.go:268` | `Border(1,BorderL2)+Shadow(gfx.ShadowMD)` → `PaintElevation` | `Prominent` / `BorderL4` | 官方 ui-workspace 的模态只有 `modalAction/modalError/menuStatus`（`WorkspacePicker.module.css` 239 字节，无 box-shadow）→ 对话框原语 |
+| 11 | `plugins/dsstatusbar/official_stats_dialog.go:239` | `Shadow(gfx.ShadowLG)` → `PaintElevation` | `Prominent` / `BorderL1` | `stat-dialog.module.css:25-26` `.xXe6ja_panel{--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent)}` |
+| 12 | `plugins/dsterminal/guide.go:307` | `Shadow(gfx.ShadowLG)` → `PaintElevation` | `Prominent` / `BorderL1` | 官方 `TerminalGuide.module.css` 的 `.-4GESq_menu` 只有 `flex:none;display:flex`（无阴影）→ 内部的 primitives `Menu`（`._list_70kcw_7`，prominent+l1） |
+| 13 | `plugins/dsagentteam/commandrow.go` | `var _ = gfx.ShadowMD`（无绘制占位引用） | **删** | 该文件没有任何浮层，占位引用是编译期探针，随令牌落地失去意义 |
 
-`plugins/dsshortcuts/official_geometry.go:18-19` 的注释已经点明这一条：
-"`gfx.ShadowXS..ShadowLG` 五档预设（`ui/box.go:299-304`），表达不出自定义层"。
+> **关于"对话框 → `prominent` + `border-l4`"**：官方模态框住在打包产物里、没有独立
+> `src/**`，唯一证据是 `dsh-web-frontend/dist/assets/index-CSAdOBx6.css` 的
+> `._dialog_1ytzq_33{…;box-shadow:var(--dsw-elevation-prominent)}`，而且它**没有**
+> 重绑 `--dsw-elevation-stroke-color`（所以是默认档 `border-l4`，见 `:17`；
+> 菜单面才重绑成 l1，见 `:23-25`）。第 2/4/10 三处都按这一条处理，而不是按
+> "看着像弹窗"推的。
 
-### 7.2 手抄了同一套 elevation 数值的（5 处，改来源不改数值）
+### 7.2 手抄同套数值 5 处（改来源，不改数值）
 
-| 插件 | 位置 | 手抄的是哪一档 | 本地常量 |
-|---|---|---|---|
-| dsattachment | `rail.go:878-889` | `panel` | `arrowStroke`、`arrowShadowY/Blur/Alpha`、`arrowGlowBlur/Alpha` |
-| dscontextmenu | `context_menu.go:360-362` | `prominent` | `menuShadowOffsetY/Blur/Alpha`、`menuGlowBlur/Alpha`、`menuStroke` |
-| dsdirpicker | `browse.go:1231-1234` | `prominent` | `modalElevationStroke`、`modalElevationShadowY/B/A`、`modalElevationGlowB/A` |
-| dsgoal | `official_seat.go:185-187` | `panel` | `goalPanelShadow*`、`goalPanelGlow*` |
-| dsquestions | `plan_review.go:213-215` | `panel` | `planReviewPanelShadow*`、`planReviewPanelGlow*` |
+这 5 处的数值本来就和官方一致（各包自己在常量注释里写了 file:line），问题是
+**第 N 份副本**：官方哪里调一次 `var(--dsw-elevation-*)`，我们就有 5 个地方各抄
+一遍同样的 3 个数字。现在全部换成令牌，本地常量与那段"描边 + 两层柔光"的几何一起删掉。
 
-这 5 处的数值与官方一致，属于"第 N 份副本"——正是这次系统化要消掉的东西，
-但每个都在别人的写作用域里，本轮不动。
+| # | 位置 | 旧值 → 新值 | 档位 / 描边 | 官方依据 |
+|---|---|---|---|---|
+| 14 | `plugins/dsattachment/rail.go:886` | 本地 `arrowStroke/arrowShadowY/Blur/Alpha/arrowGlowBlur/Alpha` + `drawAttachmentArrowElevation` 的手画几何 → `PaintElevation`（函数保留一行） | `Panel` / `BorderL2DarkmodeThin` | `AttachmentRail.module.css` `.Onur9G_arrow{--dsw-elevation-stroke-color:var(--dsw-alias-border-l2-darkmode-thin);box-shadow:var(--dsw-elevation-panel);border:0;border-radius:999px}` |
+| 15 | `plugins/dscontextmenu/context_menu.go:368` | 本地 `menuShadowOffsetY/Blur/Alpha/menuGlowBlur/Alpha/menuStroke` + 手画几何 → `PaintElevation` | `Prominent` / `BorderL1` | `MenuView.module.css` `.pc3rQa_menu{border:0;…box-shadow:var(--dsw-elevation-prominent)}`（`:28` 重绑 l1）；菜单原语 `._list_70kcw_7` 同档 |
+| 16 | `plugins/dsdirpicker/browse.go:1270`（AfterDraw，两张卡） | 本地 `modalElevation*` 六个常量 + `drawModalElevation` 的手画几何 → `PaintElevationOverlay` | `Prominent` / `BorderL4` | `DirectoryBrowser.module.css` 的 `._3zXc5G_dialog{…padding:0}` **无 box-shadow** → 外框是对话框原语（同 §7.1 注） |
+| 17 | `plugins/dsgoal/official_seat.go:178` | 本地 `goalPanelShadowY/Blur/A/goalPanelGlowBlur/A/goalPanelStroke` → `PaintElevation`（函数保留一行） | `Panel` / `BorderL1` | `GoalBar.module.css` `.Gc24Bq_bar{--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-panel);border:0}` |
+| 18 | `plugins/dsquestions/plan_review.go:205`（两处调用点：`plan_review.go`/`question_flow.go`） | 本地 `planReviewPanelShadow*/Glow*` + 手画几何 → `PaintElevation` | `Panel` / `BorderL2` | `PlanReviewPanel.module.css` `.Nksazq_card{--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);box-shadow:var(--dsw-elevation-panel);border:0}` |
 
-### 7.3 官方哪一种浮层用哪一档（下一轮分批的依据）
+> `dsdirpicker` 的 18 行清单里只算 1 处（原始清单 `:1231` 指的就是 `drawModalElevation`），
+> 而它其实有**两张卡**（浏览卡 `browse.go:870`、新建文件夹卡 `browse.go:1143`）都在用它，
+> 所以两处调用点一起改、AfterDraw 里按"外层卡 → 新建卡"的次序画。
 
-按官方各包 `src/**/*.css` 的 `box-shadow:` 统计：
+### 7.3 为什么有的地方删了 `Border(1, …)`
 
-| 官方令牌 | 用它的官方包 |
-|---|---|
-| `elevation-panel` | account-notifications、attachment、trajectory、user-questions、approval（另带一条 `shadow-lv2`）、chat（2 处）、conversation、goal |
-| `elevation-prominent` | commands、cordis、jobs、schedule（3 处）、sidebar-files（2 处）、sidebar-documentpreview（2 处）、settings-general、model-selection、plugin-manager、subagent、input-trigger、chat、conversation |
-| `elevation-soft` | conversation（1 处） |
-| `shadow-lv3` | 悬停卡 `._card_l6gf9_9`、toast `._toast_af3m1_6`（都在 `dsh-web-frontend` 的 bundle 里） |
-| `shadow-lv2` | approval（1 处） |
+官方这些浮层一律 `border:0`：那圈分离线是 `--dsw-elevation-stroke`
+（`0 0 0 0.5px`）**画在 box-shadow 里**的，**不占布局**（`gradient-shadow-text.css:10-16`
+的注释专门解释了为什么这么做）。我们原来的 `Border(1, t.BorderL2)` 是自造的 1px
+**占布局**描边，且和描边令牌叠在一起会是两圈。所以凡是官方 `border:0` 的那几处，
+`Border(1, …)` 与 `Shadow(…)` 一起换成 `PaintElevation`——这不是顺手改样式，是同一处
+分离线的正确画法。
 
 ## 8. 验证
 
@@ -203,10 +210,69 @@ viva 的单层原语 `Canvas.Shadow(bounds, radius, ShadowStyle, color)`
 
   复原后三个包 `go test -count=1` 全绿。
 
+### 8.1 第二轮（task-80）新增的证据
+
+| 测试 | 钉住什么 |
+|---|---|
+| `plugins/dscore/shadow_consumers_guard_test.go` | 15 个已换完的包**不许**再出现 `gfx.ShadowXS/SM/MD/LG`，且每个包必须真的调到 `dscore.PaintShadow*`/`PaintElevation*`（删掉调用也算回退） |
+| `plugins/dscore/elevation_decision_table_test.go` | 18 处的「档位 + 描边色」逐条钉住（机器版本见 §10）；改任何一处的档位或描边色都点名报出是哪个文件 |
+| `plugins/dsshortcuts/sheet_elevation_test.go` | 快捷键面板是 `Lv3` 的**三层**、`HasClip == false`；另有一条只跑 `Draw` 的用例，断言阴影**不在** Draw 钩子里 |
+| `plugins/dsdirpicker/browse_visual_test.go`（改） | 两张卡的两层柔光 = `Shadows.Prominent`、`HasClip == false`；harness 现在按壳的次序跑 AfterDraw（`cmd/app/main.go:2178-2182`） |
+| `plugins/dssettings/official_panel_elevation_test.go`（新） | 设置面板两层柔光 = `Prominent`、0.5px `border-l4` 发丝环绕在卡片外、`HasClip == false` |
+| `plugins/dsdirpicker/browse_test.go`（改） | 删掉 6 行"常量等于自身"的断言（常量已并入令牌）；取值改由 `plugins/dscore/shadow_test.go` 的官方值表 + 上面两条可视化测试钉住 |
+
+### 8.2 变异验证（本轮，改坏必红、按字节复原）
+
+| 变异 | 结果 |
+|---|---|
+| 在 `dsjobs` 里加回 `var _ = gfx.ShadowMD` | `TestConvertedPluginsUseOfficialShadowTokens` 红，点名 `dsjobs: gfx.ShadowMD` |
+| `dsdirpicker` 的 `afterDraw` 直接 return（阴影等于没画） | `TestCardCastsOfficialProminentElevation` 红："卡片柔光=0 层，want 2" |
+| 把 `dsdirpicker` 的阴影**搬回带 `.Clip()` 的 Draw 钩子**并关掉 afterDraw | 同上测试红：`HasClip == true`，`ClipOf` 正是卡片矩形 `{260,150,680,500}` —— **这就是 #150 那个坑的现场复现**（改前这包里两张卡一直是这个写法，所以它们的 elevation 从来没画出来过） |
+| 快捷键面板改传 `Shadows.Prominent`（档位错） | `TestSheetCastsOfficialLv3Shadow` 红："官方 --dsw-shadow-lv3 是 3 层，实际画了 2 层" |
+| 设置面板改传 `Shadows.Panel`（档位错） | `TestOfficialPanelCastsProminentElevation` 红：第 0 层 alpha `.03` vs 官方 `.04`、第 1 层 blur 16 vs 20 |
+| 令牌值 `lv3` 第三层 alpha `.08 → .09` | `TestOfficialShadowTokens` 红（Light/Dark 各报一次） |
+| `dsgoal` 描边色 `BorderL1 → BorderL2` | `TestElevationDecisionTablePerSite` 红，点名 `dsgoal/official_seat.go: 期望 Shadows.Panel（描边 "BorderL1"）` |
+
+  复原后 `go test ./... -count=1` 全绿（53 包）。
+
 ## 9. 已知限制（如实登记）
 
 - 0.5px 发丝描边在 100% 缩放下可能吸附成 1 设备像素（viva `borderWidth`，
   `gfx/rounded_outline.go:11-14`）；官方是 CSS 的 0.5px，物理像素层面同样
   不一定落得下去，这里的差异属于渲染器粒度，不是令牌取值。
-- 官方 `shadow-lv3` 的第三层 `0 12px 32px` 目前只进了令牌，还没有消费方用它
-  （toast/悬停卡在我们的实现里还没接），属于下一轮。
+- 官方 `shadow-lv3` 原来没有消费方；本轮快捷键面板接上了（`Reference.module.css:63`
+  把 lv3 手抄成了三层原生 box-shadow），所以那一档现在有真实调用点。官方的
+  `._toast_af3m1_6` / 悬停卡 `._card_l6gf9_9` 也用它，但本仓的 toast/悬停卡还没接。
+- 三处对话框（`dsagentteam/confirm.go`、`dsconversation/feedback.go`、
+  `dssidebar/workspace_actions.go`）与 `dsdirpicker` 的 modal，官方对应组件
+  **都没有自己的 box-shadow**，阴影来自打包产物里的对话框原语 `._dialog_1ytzq_33`。
+  这条证据是我们能拿到的最直接的一条（组件 → 原语），但不是组件级 CSS 声明；
+  哪天官方把对话框原语换成别的档，这几处要一起跟。
+
+## 10. 决策表（机器可核）
+
+`plugins/dscore/elevation_decision_table_test.go` 里有一张 `elevationSites` 表，
+用 AST 扫源码核对 18 处的「档位 + 描边色」：
+
+```text
+plugins/dsagentteam/catalog.go          Shadows.Prominent  BorderL1
+plugins/dsagentteam/confirm.go          Shadows.Prominent  BorderL4
+plugins/dscomposer/composer.go          Shadows.Soft       BorderL2
+plugins/dsconversation/feedback.go      Shadows.Prominent  BorderL4
+plugins/dscordis/panel.go               Shadows.Prominent  BorderL1
+plugins/dsjobs/official_jobs.go         Shadows.Prominent  BorderL1
+plugins/dssettings/official_panel.go    Shadows.Prominent  BorderL4
+plugins/dssettings/settings.go          Shadows.Prominent  BorderL4
+plugins/dsshortcuts/shortcuts.go        Shadows.Lv3        —
+plugins/dssidebar/workspace_actions.go  Shadows.Prominent  BorderL4
+plugins/dsstatusbar/official_stats_dialog.go Shadows.Prominent BorderL1
+plugins/dsterminal/guide.go             Shadows.Prominent  BorderL1
+plugins/dsattachment/rail.go            Shadows.Panel      l2-darkmode-thin（按亮/暗算，测试只核档位）
+plugins/dscontextmenu/context_menu.go   Shadows.Prominent  BorderL1
+plugins/dsdirpicker/browse.go           Shadows.Prominent  BorderL4
+plugins/dsgoal/official_seat.go         Shadows.Panel      BorderL1
+plugins/dsquestions/plan_review.go      Shadows.Panel      BorderL2
+```
+
+一处一档一条，不是"浮层都用同一个"。改表就是改契约：先改这张表的依据
+（官方 CSS 的那一行），再改测试里的期望值。

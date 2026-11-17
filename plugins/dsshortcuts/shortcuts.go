@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -77,6 +78,10 @@ type Plugin struct {
 	// 只有绘制线程读，所以不落在 mu 的保护区里（它和 notify 不同，后者会被
 	// HandleKey 从另一个线程取）。
 	blockedAddReason string
+
+	// sheetBox 是上一帧画出来的那张面板（AfterDraw 里取它布局后的矩形画官方
+	// `--dsw-shadow-lv3`）。只有绘制线程读写，不落在 mu 的保护区里。
+	sheetBox ui.Box
 }
 
 func (*Plugin) ID() string { return "ds-shortcuts" }
@@ -97,10 +102,11 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 // Panels 挂在 shell.overlay：它盖住整个框架，正好是弹层该在的地方。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{{
-		ID:    "shortcuts-sheet",
-		Slot:  pluginapi.SlotShellOverlay,
-		Order: 95, // 比 dsdemo 的提示条（Order 10）后画：两者同时出现时面板在上面
-		Draw:  p.draw,
+		ID:        "shortcuts-sheet",
+		Slot:      pluginapi.SlotShellOverlay,
+		Order:     95, // 比 dsdemo 的提示条（Order 10）后画：两者同时出现时面板在上面
+		Draw:      p.draw,
+		AfterDraw: p.afterDraw,
 	}}
 }
 
@@ -194,9 +200,17 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	}
 	// Clip：官方 `.dialog` 是圆角+内部滚动容器，内容不该溢出圆角（CSS 里由
 	// overflow 与 border-radius 的裁剪保证）。
+	// 阴影在 **AfterDraw** 里画（见 afterDraw）：官方 `.dialog` 的阴影是
+	// `--dsw-shadow-lv3` —— 注意官方这一条**不是** elevation 三件套，没有描边层，
+	// `Reference.module.css:63` 直接写的是
+	// `box-shadow:0 0 1px rgba(0,0,0,.2), 0 0 4px rgba(0,0,0,.02), 0 12px 32px rgba(0,0,0,.08)`
+	// —— 逐字等于 `gradient-shadow-text.css:8-9` 的 `--dsw-shadow-lv3`（三层）。
+	// 原来的 `Shadow(gfx.ShadowLG)` 是 Tailwind 的 `0 10px 15px -3px .10` 两层，
+	// 层数、模糊与透明度都不是这一档。
 	panel := ui.Column(f).Absolute().Left(left).Top(panelTop(env.Bounds.Height, h)).
 		Width(w).Height(h).
-		Radius(sheetRadius).Background(t.InputMajor).Shadow(gfx.ShadowLG).Clip()
+		Radius(sheetRadius).Background(t.InputMajor).Clip()
+	p.sheetBox = panel
 	// 面板本体吃掉点击：官方这是 Modal，点框内不该落到下面的会话/侧栏上。
 	// 先声明、后声明的子元素（关闭按钮）在它上面——viva 的命中按声明顺序取最后命中。
 	if env.Tree != nil {
@@ -213,10 +227,34 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	})
 }
 
+// afterDraw 在整棵树布局完成之后覆画面板阴影。
+//
+// 为什么不能在 Draw 钩子里画：本面板自己 `.Clip()`（官方 `.dialog` 也是
+// `overflow` 裁圆角），而 viva 对带 Clip 的元素是**先推 Clip、再跑 Draw 钩子**
+// （`ui/paint.go:50-52` 与 `:132`），阴影记进 canvas 时带着那道裁剪
+// （`gfx/canvas.go:1169` 的 clipSnapshot），阴影又被自己的投射矩形挖空
+// （`canvas.go:78-80`），两者相减是空集——等于没画（#150 在命令面板上已实证）。
+// AfterDraw 是布局后的覆画阶段（`pluginapi/plugin.go:286-292`，裁剪栈已清空）。
+func (p *Plugin) afterDraw(canvas *gfx.Canvas, env *pluginapi.Env) {
+	if !p.shown || p.theme == nil {
+		return
+	}
+	// `Valid()`：面板没画的帧与跨帧的旧 Box 都不能取 Rect（零值 Box 会 panic）。
+	if !p.sheetBox.Valid() {
+		return
+	}
+	rect := p.sheetBox.Rect()
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
+	}
+	// 元素透明度按 1 处理：这张面板不淡出（淡出的浮层才需要走 Draw 钩子）。
+	dscore.PaintShadowOverlay(canvas, rect, sheetRadius, p.theme.Shadows.Lv3[:])
+}
+
 // drawHeader 画 `.header`（46 高、padding 22/54/0/24）与绝对定位的 `.close`。
 //
 // `flex:0 0 46px` 在 viva 里就是固定的 Height(46)：头部不参与伸缩，
-// 剩下的高度全给 `.list`。
+// 剩下的高度全部给 `.list`。
 func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 	ui.Row(f).FillWidth().Height(sheetHeaderH).
 		PadSides(sheetHeaderPadTop, sheetHeaderPadRight, sheetHeaderPadBottom, sheetHeaderPadLeft).

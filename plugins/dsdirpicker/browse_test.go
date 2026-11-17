@@ -316,13 +316,12 @@ func TestOfficialGeometryConstants(t *testing.T) {
 		"createInputFontSize":  {createInputFontSize, 14},
 		"createInputLineH":     {createInputLineH, 22},
 		"createActionsGap":     {createActionsGap, 8},
-		// Modal 卡片：gradient-shadow-text.css:33/:36-37（elevation-prominent）
-		"modalElevationStroke":  {modalElevationStroke, 0.5},
-		"modalElevationShadowY": {modalElevationShadowY, 3},
-		"modalElevationShadowB": {modalElevationShadowB, 8},
-		"modalElevationShadowA": {modalElevationShadowA, 0.04},
-		"modalElevationGlowB":   {modalElevationGlowB, 20},
-		"modalElevationGlowA":   {modalElevationGlowA, 0.05},
+		// Modal 卡片原来在这里钉六个本地 elevation 常量（stroke 0.5 / 3+8@.04 /
+		// 0+20@.05）。它们已经并进 `pluginapi.Shadows.Prominent`，所以那 6 行随常量
+		// 一起删除——取值由 `plugins/dscore/shadow_test.go` 的官方值表钉住，
+		// "画出来的是不是这两层"由 `browse_visual_test.go` 的
+		// TestCardCastsOfficialProminentElevation 钉住（不降级：原来这 6 行只证明
+		// 常量等于自身，现在证明令牌等于官方 CSS 且真的落到画布上）。
 	}
 	for name, tc := range cases {
 		if tc.got != tc.want {

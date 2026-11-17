@@ -6,7 +6,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsassets"
-	"github.com/vivaui/viva/gfx"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -50,13 +50,10 @@ const (
 	planReviewCompactViewport float32 = 720
 	planReviewCompactPadX     float32 = 12
 	planReviewCompactPadBot   float32 = 10
-	// gradient-shadow-text.css:33-35 的 elevation-panel。
-	planReviewPanelStroke     float32 = 0.5
-	planReviewPanelShadowY    float32 = 3
-	planReviewPanelShadowBlur float32 = 8
-	planReviewPanelShadowA    float32 = 0.03
-	planReviewPanelGlowBlur   float32 = 16
-	planReviewPanelGlowA      float32 = 0.02
+	// 官方 PlanReviewPanel.module.css `.Nksazq_card{--dsw-elevation-stroke-color:
+	// var(--dsw-alias-border-l2);box-shadow:var(--dsw-elevation-panel);border:0}`
+	// （同名取值另见 gradient-shadow-text.css:33-35）。原来这里手抄了 panel 的五个数，
+	// 已并进 `pluginapi.Shadows.Panel`；描边色由调用方按官方重绑传 `BorderL2`。
 )
 
 func planReviewIdentity(env *pluginapi.Env, review planreview.Review) string {
@@ -94,7 +91,7 @@ func (p *Plugin) drawPlanReviewOfficial(f ui.C, env *pluginapi.Env, review planr
 		PadSides(questionFramePadTop, questionFramePadX, questionFramePadBottom, questionFramePadX).
 		Children(func() {
 			card := ui.Column(f).FillWidth().Radius(t.Radii.XL).Background(t.InputMajor).
-				Draw(func(d *ui.DrawContext) { drawPlanReviewElevation(d, t.Radii.XL, t.BorderL2) })
+				Draw(func(d *ui.DrawContext) { drawPlanReviewElevation(d, t.Radii.XL, t) })
 			card.Children(func() {
 				ui.Column(f).FillWidth().Radius(t.Radii.XL).Clip().Children(func() {
 					// `.strip`：警告色整行；查看全文挂在官方 list/session 子槽。
@@ -202,18 +199,10 @@ func planReviewFooterLayout(env *pluginapi.Env) (padX, padBottom float32, align 
 	return planReviewFooterPadX, planReviewFooterPadBot, ui.Center
 }
 
-// drawPlanReviewElevation 画官方 elevation-panel，不拿 Viva 预设阴影档位替代。
-func drawPlanReviewElevation(d *ui.DrawContext, radius float32, stroke gfx.Color) {
-	outer := d.Rect
-	outer.X -= planReviewPanelStroke
-	outer.Y -= planReviewPanelStroke
-	outer.Width += 2 * planReviewPanelStroke
-	outer.Height += 2 * planReviewPanelStroke
-	d.Canvas.RoundedOutline(outer, radius+planReviewPanelStroke, planReviewPanelStroke, d.Fade(stroke))
-	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{OffsetY: planReviewPanelShadowY, Blur: planReviewPanelShadowBlur},
-		d.Fade(gfx.Color{Alpha: planReviewPanelShadowA}))
-	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{Blur: planReviewPanelGlowBlur},
-		d.Fade(gfx.Color{Alpha: planReviewPanelGlowA}))
+// drawPlanReviewElevation 画官方 `--dsw-elevation-panel`（PlanReviewPanel.module.css
+// 的 `.card`），不拿 Viva 预设阴影档位替代。数值一处住在 `Shadows.Panel`。
+func drawPlanReviewElevation(d *ui.DrawContext, radius float32, t *pluginapi.Theme) {
+	dscore.PaintElevation(d, radius, t.Shadows.Panel, t.BorderL2)
 }
 
 func (p *Plugin) answerPlanReview(env *pluginapi.Env, key string, review planreview.Review) {

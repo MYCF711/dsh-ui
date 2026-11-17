@@ -35,6 +35,7 @@ package dsgoal
 
 import (
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -70,14 +71,11 @@ const (
 	// `IconGoalOutlineRegular`，而素材库 `assets/icons/tools/goal.jsx` 与 rc.2
 	// sprite 的 4 段 path **逐字节相同**。符号定义见 icons.go（goalGlyphSize）。
 
-	// `.bar{box-shadow:var(--dsw-elevation-panel)}`；三层原值见
-	// ui-theme/src/styles/gradient-shadow-text.css:33-35，stroke 在 GoalBar:32 重绑 BorderL1。
-	goalPanelStroke     float32 = 0.5
-	goalPanelShadowY    float32 = 3
-	goalPanelShadowBlur float32 = 8
-	goalPanelShadowA    float32 = 0.03
-	goalPanelGlowBlur   float32 = 16
-	goalPanelGlowA      float32 = 0.02
+	// `.Gc24Bq_bar{--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);
+	//  box-shadow:var(--dsw-elevation-panel);border:0}`（GoalBar.module.css）。
+	// 原来这里手抄了 elevation-panel 的五个数（0.5 / 3+8@.03 / 0+16@.02）与一个
+	// stroke 常量：取值已并进 `pluginapi.Shadows.Panel`，描边色仍由调用方按官方
+	// 那一处的重绑传（`BorderL1`），所以本地常量全部删掉。
 )
 
 // composerSeatLive 报告**这一帧**官方 composer 座位是不是活的。
@@ -161,7 +159,7 @@ func (p *Plugin) drawGoalBar(f ui.C, env *pluginapi.Env) {
 			PadSides(goalBarPadTop, goalBarPadRight, goalBarPadBottom, goalBarPadLeft).
 			Items(ui.Center).Gap(goalBarGap).
 			Radius(t.Radii.MD).Background(t.Menu).
-			Draw(func(d *ui.DrawContext) { drawGoalPanelElevation(d, t.Radii.MD, t.BorderL1) }).
+			Draw(func(d *ui.DrawContext) { drawGoalPanelElevation(d, t.Radii.MD, t) }).
 			Children(func() {
 				// `.goalGlyph{color:label-tertiary}` + GoalBar.tsx:137 的 size=14。
 				ui.Icon(f, goalOutlineIcon()).Size(goalGlyphSize, goalGlyphSize).Color(t.LabelTertiary)
@@ -174,16 +172,8 @@ func (p *Plugin) drawGoalBar(f ui.C, env *pluginapi.Env) {
 	})
 }
 
-// drawGoalPanelElevation 画官方 elevation-panel，不拿 ShadowXS 的 0/1/2/5% 替代。
-func drawGoalPanelElevation(d *ui.DrawContext, radius float32, stroke gfx.Color) {
-	outer := d.Rect
-	outer.X -= goalPanelStroke
-	outer.Y -= goalPanelStroke
-	outer.Width += 2 * goalPanelStroke
-	outer.Height += 2 * goalPanelStroke
-	d.Canvas.RoundedOutline(outer, radius+goalPanelStroke, goalPanelStroke, d.Fade(stroke))
-	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{OffsetY: goalPanelShadowY, Blur: goalPanelShadowBlur},
-		d.Fade(gfx.Color{Alpha: goalPanelShadowA}))
-	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{Blur: goalPanelGlowBlur},
-		d.Fade(gfx.Color{Alpha: goalPanelGlowA}))
+// drawGoalPanelElevation 画官方 `--dsw-elevation-panel`（GoalBar.module.css 的
+// `.bar`），不拿 ShadowXS 的 0/1/2/5% 替代。数值一处住在 `Shadows.Panel`。
+func drawGoalPanelElevation(d *ui.DrawContext, radius float32, t *pluginapi.Theme) {
+	dscore.PaintElevation(d, radius, t.Shadows.Panel, t.BorderL1)
 }

@@ -33,6 +33,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -133,10 +134,11 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			//
 			// Order 101 压在旧浮层之上（两个同时存在时官方结构优先）；两者的
 			// Draw 各自以 OfficialEnabled() 为判据互斥，不会同时画出来。
-			ID:    "settings-panel",
-			Slot:  pluginapi.SlotShellOverlay,
-			Order: 101,
-			Draw:  p.drawOfficialPanel,
+			ID:        "settings-panel",
+			Slot:      pluginapi.SlotShellOverlay,
+			Order:     101,
+			Draw:      p.drawOfficialPanel,
+			AfterDraw: p.afterOfficialPanel,
 		},
 		{
 			// 官方 ui-settings-session-log 的 shell.overlay/session-log-upload-toast：
@@ -420,8 +422,15 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	idx := 0
 	ui.Row(f).Absolute().Left(left).Top(cardTop).Width(w).Children(func() {
 		ui.Column(f).FillWidth().Radius(t.Radii.Panel).
-			Background(t.InputMajor).Border(1, t.BorderL2).
-			Shadow(gfx.ShadowXS).
+			Background(t.InputMajor).
+			// 阴影 = 官方 `--dsw-elevation-prominent`，描边走默认档 `border-l4`：
+			// 官方设置面 `SettingsRoot.module.css:110`
+			// `.AnXs9G_panel{box-shadow:var(--dsw-elevation-prominent)}` 没有重绑
+			// `--dsw-elevation-stroke-color`（默认 gradient-shadow-text.css:17）。
+			// 本卡是 rc.1 兼容桥（官方没有这一张），档位与设置面同一档。
+			Draw(func(d *ui.DrawContext) {
+				dscore.PaintElevation(d, t.Radii.Panel, t.Shadows.Prominent, t.BorderL4)
+			}).
 			PadSides(20, 20, 16, 20).Gap(6).Children(func() {
 			// 标题行：标题 + 关闭按钮（28px 圆钮交给 prims，不自己拼尺寸和颜色）。
 			ui.Row(f).FillWidth().Items(ui.Center).Gap(8).Children(func() {

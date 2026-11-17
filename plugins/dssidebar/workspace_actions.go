@@ -29,7 +29,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/gfx"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -256,8 +256,18 @@ func (p *Plugin) drawWorkspaceDialogs(f ui.C, env *pluginapi.Env) {
 	}
 	card := ui.Column(f).Absolute().Left(left).Top(top).Width(width).
 		Hit(env.Tree.ID(env.Feat, "ws-dialog"), title).
-		Radius(t.Radii.Panel).Background(t.InputMajor).Border(1, t.BorderL2).
-		Shadow(gfx.ShadowMD).Pad(workspaceDialogPad).Gap(workspaceDialogGap)
+		Radius(t.Radii.Panel).Background(t.InputMajor).
+		// 阴影 = 官方 `--dsw-elevation-prominent`，描边走默认档 `border-l4`：
+		// 官方 ui-workspace 的模态（`WorkspaceDialogs.tsx:1-141`）自己只有
+		// `modalAction/modalError/menuStatus` 三类规则（`WorkspacePicker.module.css`
+		// 239 字节，无 box-shadow），外框就是对话框原语
+		// `._dialog_1ytzq_33{box-shadow:var(--dsw-elevation-prominent);border:0}`
+		// （`dsh-web-frontend/dist/assets/index-CSAdOBx6.css`），且未重绑
+		// `--dsw-elevation-stroke-color`（默认 gradient-shadow-text.css:17）。
+		Draw(func(d *ui.DrawContext) {
+			dscore.PaintElevation(d, t.Radii.Panel, t.Shadows.Prominent, t.BorderL4)
+		}).
+		Pad(workspaceDialogPad).Gap(workspaceDialogGap)
 	card.Children(func() {
 		ui.Row(f).FillWidth().Items(ui.Center).Children(func() {
 			ui.Text(f, title).FontSize(workspaceDialogTitle).Weight(500).

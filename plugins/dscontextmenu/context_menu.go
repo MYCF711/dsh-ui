@@ -20,6 +20,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsassets"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -44,12 +45,11 @@ const (
 	menuSeparatorMarginY float32 = 3   // :44
 	menuSeparatorMarginX float32 = 8   // :44
 	menuButtonIcon       float32 = 16  // Button.tsx:49；sprite 默认 size=16
-	menuShadowOffsetY    float32 = 3   // gradient-shadow-text.css:36-37
-	menuShadowBlur       float32 = 8   // :36-37
-	menuShadowAlpha      float32 = 0.04
-	menuGlowBlur         float32 = 20 // :36-37
-	menuGlowAlpha        float32 = 0.05
-	menuStroke           float32 = 0.5 // :33,36-37
+	// 这里原来还有 menuShadowOffsetY / menuShadowBlur / menuShadowAlpha /
+	// menuGlowBlur / menuGlowAlpha / menuStroke 六个本地常量（官方
+	// `--dsw-elevation-prominent` 的三个数）。它们已并进 `pluginapi.Shadows.Prominent`：
+	// 官方菜单面 `._list_70kcw_7,._submenu_70kcw_8` 与 `MenuView.module.css`
+	// 的 `.pc3rQa_menu` 都是 `box-shadow:var(--dsw-elevation-prominent)`。
 )
 
 type popupState struct {
@@ -266,7 +266,7 @@ func (p *Plugin) drawMenu(c ui.C, id gfx.ID, anchor ui.Box, obj pluginapi.Contex
 			d.Canvas.PushFocusScope(id)
 			d.Canvas.TrapFocus(id)
 			d.Canvas.ReturnFocus(id)
-			drawProminentElevation(d, menuRadius, p.theme.BorderL1)
+			drawProminentElevation(d, menuRadius, p.theme)
 		}).
 		DrawOver(func(d *ui.DrawContext) { d.Canvas.PopFocusScope() })
 	if state.fromAnchor {
@@ -350,16 +350,22 @@ func drawSeparator(c ui.C, t *pluginapi.Theme) {
 	})
 }
 
-func drawProminentElevation(d *ui.DrawContext, radius float32, stroke gfx.Color) {
-	outer := d.Rect
-	outer.X -= menuStroke
-	outer.Y -= menuStroke
-	outer.Width += 2 * menuStroke
-	outer.Height += 2 * menuStroke
-	d.Canvas.RoundedOutline(outer, radius+menuStroke, menuStroke, d.Fade(stroke))
-	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{OffsetY: menuShadowOffsetY, Blur: menuShadowBlur},
-		d.Fade(gfx.Color{Alpha: menuShadowAlpha}))
-	d.Canvas.Shadow(d.Rect, radius, gfx.ShadowStyle{Blur: menuGlowBlur}, d.Fade(gfx.Color{Alpha: menuGlowAlpha}))
+// drawProminentElevation 画官方 `--dsw-elevation-prominent`。
+//
+// 出处：菜单原语 `._list_70kcw_7,._submenu_70kcw_8
+// {--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);
+//
+//	box-shadow:var(--dsw-elevation-prominent)}`
+//
+// （`dsh-web-frontend/dist/assets/index-CSAdOBx6.css`）；官方的上下文菜单
+// `context-menu/src/**` 自己没有 `*.module.css`，绘制交给 primitives `Menu`
+// （`View.tsx:2,50-57`），所以这就是它那一档。
+//
+// 原来这里手抄了 prominent 的五个数（3+8@.04 / 0+20@.05 / stroke 0.5）与一段
+// 描边几何：数值本来就对，问题是**第 N 份副本**——取值现在一行在
+// `Shadows.Prominent`，描边色仍由调用方按官方那一处传（`BorderL1`）。
+func drawProminentElevation(d *ui.DrawContext, radius float32, t *pluginapi.Theme) {
+	dscore.PaintElevation(d, radius, t.Shadows.Prominent, t.BorderL1)
 }
 
 func (p *Plugin) menuSize(c ui.C, actions []pluginapi.ContextMenuAction) (width, height float32) {

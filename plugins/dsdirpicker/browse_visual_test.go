@@ -39,6 +39,13 @@ func (visualSource) Register(_ context.Context, path string) (apiclient.Workspac
 	return apiclient.WorkspaceView{WorkspaceID: "ws-home", Path: path}, nil
 }
 
+// pickedCanvas 是 pickerSession 最近一帧的画布。
+//
+// 为什么要它：`HasClip` 只存在于画布记录的 `gfx.Shadow` 上（snapshot 的
+// `app.Primitive` 不带这个字段），而"阴影有没有被自己的 Clip 吞掉"正是本包最要紧
+// 的一条——卡片自己 `.Clip()`。测试串行跑，所以一个包级变量够用。
+var pickedCanvas *gfx.Canvas
+
 // pickerSession 起一个真实装配的无头窗口，只画 `shell.overlay` 这一槽。
 func pickerSession(t *testing.T, width, height int) (*headless.Session, *Plugin) {
 	t.Helper()
@@ -59,6 +66,7 @@ func pickerSession(t *testing.T, width, height int) (*headless.Session, *Plugin)
 	}
 	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
 		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
+		pickedCanvas = canvas
 		canvas.Fill(bounds, theme.BgBase)
 		env := &pluginapi.Env{
 			Theme: theme, Tree: tree, Feat: feat, Canvas: canvas, Bounds: bounds,
@@ -68,6 +76,14 @@ func pickerSession(t *testing.T, width, height int) (*headless.Session, *Plugin)
 		view.Draw(canvas, bounds, func(f ui.C) {
 			kernel.DrawSlot(f, pluginapi.SlotShellOverlay, env)
 		})
+		// 阴影在 AfterDraw 画（卡片自己 `.Clip()`，Draw 钩子会被裁掉）。
+		// 壳就是这么跑的：布局定下来之后按序跑每个 painter 的 AfterDraw
+		// （cmd/app/main.go:2179-2180）。少了这一步，本测试量的就是"没画出来的东西"。
+		for _, painter := range kernel.AllPainters() {
+			if painter.AfterDraw != nil {
+				painter.AfterDraw(canvas, env)
+			}
+		}
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {
@@ -146,33 +162,59 @@ func TestCardCastsOfficialProminentElevation(t *testing.T) {
 	session, _ := pickerSession(t, 1200, 800)
 	snapshot := session.Snapshot()
 
-	var shadows []app.Primitive
+	if pickedCanvas == nil {
+		t.Fatal("没有捕获到画布")
+	}
+	var card gfx.Rect
 	for _, primitive := range snapshot.Primitives {
-		if primitive.Kind != app.ShadowPrimitive {
+		if primitive.Kind == app.RectanglePrimitive &&
+			primitive.Bounds.Width == dialogMaxWidth && primitive.Bounds.Height == dialogMaxHeight {
+			card = primitive.Bounds
+			break
+		}
+	}
+	var shadows []gfx.Shadow
+	for _, shadow := range pickedCanvas.Shadows() {
+		if shadow.Bounds != card {
 			continue
 		}
-		if primitive.Bounds.Width != dialogMaxWidth || primitive.Bounds.Height != dialogMaxHeight {
-			continue
+		duplicate := false
+		for _, seen := range shadows {
+			if seen.Style == shadow.Style && seen.Color.Alpha == shadow.Color.Alpha {
+				duplicate = true
+			}
 		}
-		shadows = append(shadows, primitive)
+		if !duplicate {
+			shadows = append(shadows, shadow)
+		}
 	}
 	if len(shadows) != 2 {
 		t.Fatalf("卡片柔光=%d 层，want 2（elevation-prominent 的两层）", len(shadows))
 	}
+	// 期望值取**令牌**而不是本包常量：官方 elevation-prominent 的两层柔光
+	// （gradient-shadow-text.css:36-37）现在只在一处定义（plugins/dscore/shadow.go）。
+	prominent := dscore.Dark().Shadows.Prominent
 	want := []struct {
 		offsetY, blur, alpha float32
 	}{
-		{modalElevationShadowY, modalElevationShadowB, modalElevationShadowA},
-		{0, modalElevationGlowB, modalElevationGlowA},
+		{prominent.Glows[0].OffsetY, prominent.Glows[0].Blur, prominent.Glows[0].Alpha},
+		{prominent.Glows[1].OffsetY, prominent.Glows[1].Blur, prominent.Glows[1].Alpha},
 	}
 	for i, layer := range want {
 		got := shadows[i]
-		if got.Shadow.OffsetY != layer.offsetY || got.Shadow.Blur != layer.blur {
+		if got.Style.OffsetY != layer.offsetY || got.Style.Blur != layer.blur {
 			t.Errorf("第 %d 层柔光 offset/blur=%v/%v，want %v/%v（gradient-shadow-text.css:36-37）",
-				i, got.Shadow.OffsetY, got.Shadow.Blur, layer.offsetY, layer.blur)
+				i, got.Style.OffsetY, got.Style.Blur, layer.offsetY, layer.blur)
 		}
 		if d := got.Color.Alpha - layer.alpha; d > 0.001 || d < -0.001 {
 			t.Errorf("第 %d 层柔光 alpha=%v，want %v", i, got.Color.Alpha, layer.alpha)
+		}
+		// 画在 Draw 钩子里的阴影会带着卡片自己的裁剪（`ui/paint.go:50-52` 先 Clip、
+		// `:132` 才跑钩子），而阴影又被自己的投射矩形挖空（`gfx/canvas.go:78-80`）——
+		// 两者相减是空集，屏幕上什么都看不到。所以这张卡片的阴影必须在 AfterDraw 里画。
+		if got.HasClip {
+			t.Errorf("第 %d 层柔光带上了裁剪 %+v：卡片自己 `.Clip()`，在 Draw 钩子里画的阴影会被整层裁掉"+
+				"（viva/ui/paint.go:50-52），必须放在 AfterDraw 里画", i, got.ClipOf)
 		}
 	}
 }

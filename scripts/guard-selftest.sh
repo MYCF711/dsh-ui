@@ -97,18 +97,18 @@ expect_red "键位表漏记 F5" "TestEveryHandledKeyIsDocumented"
 restore plugins/dsshortcuts/shortcuts.go
 
 echo
-echo "== 2. 槽位 Order 守卫（命令面板和交付物面板撞回 96） =="
+echo "== 2. 槽位 Order 守卫（反馈弹窗和交付物面板撞回 96） =="
 python - "$iso" <<'PY'
 import io, sys
-p = sys.argv[1] + '/plugins/dscommands/commands.go'
+p = sys.argv[1] + '/plugins/dsconversation/conversation.go'
 s = io.open(p, encoding='utf-8').read()
-old = '\t\tOrder: 99,\n'
+old = '\t\tOrder: 103,\n'
 if s.count(old) != 1:
-    sys.exit('找不到 Order: 99（守卫的判据是不是改了？）')
+    sys.exit('找不到 Order: 103（守卫的判据是不是改了？）')
 io.open(p, 'w', encoding='utf-8', newline='').write(s.replace(old, '\t\tOrder: 96,\n'))
 PY
 expect_red "两个面板撞 Order 96" "TestNoTwoPanelsShareOneSlotAndOrder"
-restore plugins/dscommands/commands.go
+restore plugins/dsconversation/conversation.go
 
 echo
 echo "== 3. 契约快照守卫（客户端在调的方法从快照里删掉） =="

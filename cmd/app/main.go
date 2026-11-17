@@ -423,8 +423,20 @@ type model struct {
 	rightTabSurfaces map[string]*rightTabSurface
 	rightTabLoaded   map[string]bool
 	rightTabDirty    map[string]bool
-	status           string
-	loading          bool
+	// rightTabParams 是每个 occurrence 的官方 `tab.navigation.params`
+	// （contract/slots.ts:109-121）：由那次 openTab 带进来，**只活在内存里**。
+	//
+	// 为什么不下持久化：官方那字段属于布局的导航记录、不属于持久化的 tab 记录
+	// （`TabRecord` 里没有它），而且持久化它会让浏览器重启后自动开页——官方
+	// 明确不是这个行为（`BrowserController.start` 只吃显式 initialUrl，恢复卡要人点）。
+	// 键 = sessionID + "\x00" + tabID；occurrence 关闭时删除。
+	rightTabParams map[string]pluginapi.RightTabParams
+	// terminalShells 是每会话的 shell 目录缓存（官方 `webTerminals.launchShells` 的同步投影，
+	// 见 terminal_shells.go）；terminalShellPref 是官方 `selectShell` 记住的选择。
+	terminalShells    map[string]*terminalShellCache
+	terminalShellPref map[string]string
+	status            string
+	loading           bool
 
 	// WP-C1 的本地发送与原始终局均按会话隔离；不进入 apiclient.Message.Seq。
 	outgoing   map[string][]pubapi.OutgoingMessage
@@ -2087,6 +2099,9 @@ func newConfig(m *model) app.Config {
 			ScrollBox: func(box ui.Box) { scrollBox, hasScrollBox = box, true },
 		}
 		env.Has = func(slot pluginapi.Slot) bool { return m.kernel.Has(slot) }
+		// keyed 座位的"这个 key 有人吗"：向导页的入口卡要靠它在"没人注册卡片"时
+		// 画官方胶囊 fallback（GuideBody.tsx:150-157）。
+		env.HasKey = func(slot pluginapi.Slot, key string) bool { return m.kernel.HasKey(slot, key) }
 		// 两个选择器座位的**名录 + 当前激活项**：由壳从内核的 painter 表投影出来
 		// （uikernel.ViewTabs / RightTabs），插件只注册、不查表、不算激活。
 		// 会话 view 的选中项存在 dstopbar 提供的 viewapi.Store 里（那是插件间既有
@@ -2097,6 +2112,9 @@ func newConfig(m *model) app.Config {
 		env.ActiveRightTab = m.activeRightTabKey(env.RightTabs)
 		env.ActiveRightTabKind = uikernel.RightTabKind(env.RightTabs, env.ActiveRightTab)
 		env.RightTabID = env.ActiveRightTab
+		// 官方 `tab.navigation.params`：这条路是 window.open 新标签与 terminal 的
+		// `{terminalId}|{shellPath}` 唯一的入口（contract/slots.ts:109-121）。
+		env.RightTabParams = m.rightTabParamsFor(cur, env.RightTabID)
 		// 三栏几何由壳算：它知道侧栏要的宽度、右栏开不开、白名单里有没有底部整行。
 		// 框架插件照着摆，不再自己猜（猜错过：白名单里漏掉 shell，部件就上下堆叠）。
 		// 与上面 env.MainWidth 用的是**同一份**求解结果，不允许两处各算一遍。
@@ -3016,7 +3034,14 @@ func main() {
 		SelectView:     m.selectViewKey,
 		SelectRightTab: m.selectRightTabKey,
 		OpenRightTab:   m.openRightTab,
-		CloseRightTab:  m.closeRightTab,
+		// 带参数的那一支（官方 openTab(kind, { params })）：浏览器 window.open
+		// 新标签与 terminal 的 {terminalId}|{shellPath} 都走它。
+		OpenRightTabParams: m.openRightTabParams,
+		// 官方向导卡的 shell 菜单（`webTerminals.launchShells` / `selectShell`）：
+		// 同步读缓存 + 后台补一轮，见 terminal_shells.go。
+		TerminalLaunchShells: m.terminalShellChoices,
+		TerminalSelectShell:  m.terminalSelectShell,
+		CloseRightTab:        m.closeRightTab,
 		// 审批：真调 session.approve，把宿主的 requestId 与它自己的 optionId 原样回传。
 		// **只有宿主 200 且 accepted 才收气泡**——本地收掉不等于批准了（宿主 §11.7）。
 		// 失败时气泡留着、状态栏报错，用户可以再点一次。

@@ -75,6 +75,36 @@ const (
 	RightTabSepRuleH float32 = 14
 	RightTabSepRuleW float32 = 0.5
 
+	// ── 芯片徽标（官方 primitives 的 `Tag`，`.badge` 包着它）────────────
+	//
+	// 数据源是官方终端标题的实现（`sidebar.right.pane.tab.title` 的 keyed 占用方）：
+	//
+	//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:42-50
+	//	  <TerminalIcon /> {badge} {title}
+	//	OFF:…/TerminalTitle.module.css:3  `.badge{display:inline-flex;flex:none}`
+	//
+	// Tag 本体的几何在编译产物 CSS 里（`dsh-web-frontend/dist/assets/index-CSAdOBx6.css`
+	// 的 `._tag_brmue_4` 模块）：
+	//
+	//	._tag_brmue_4{display:inline-flex;align-items:center;border-radius:999px;
+	//	  corner-shape:round;padding:1px 8px;font-size:11px;line-height:17px;
+	//	  font-weight:500;white-space:nowrap}
+	//	._tag_brmue_4[data-tone=neutral]{background:var(--dsw-alias-bg-module-platform);
+	//	  color:var(--dsw-alias-label-secondary)}
+	//	._tag_brmue_4[data-tone=info]{background:color-mix(in srgb,
+	//	  var(--dsw-alias-state-business-primary) 10%,transparent);
+	//	  color:var(--dsw-alias-state-business-primary)}
+	//
+	// RightTabBadgeHeight = line-height 17 + 2×padding-y 1 = 19。
+	RightTabBadgeLineHeight float32 = 17
+	RightTabBadgePadY       float32 = 1
+	RightTabBadgePadX       float32 = 8
+	RightTabBadgeFontSize   float32 = 11
+	// RightTabBadgeRadius 是 `border-radius:999px`（胶囊，不是一个 radius token）。
+	RightTabBadgeRadius float32 = 999
+	// RightTabBadgeInfoTint 是 info 档底的 `color-mix(… 10%, transparent)`。
+	RightTabBadgeInfoTint float32 = 0.10
+
 	// ViewTabRowHeight 是官方 `.viewTabs{min-height:25px}`。
 	ViewTabRowHeight float32 = ViewTabsMinH
 	// ViewTabGap 是 `.viewTabs{gap:32px}`。
@@ -324,6 +354,10 @@ func DrawRightTabs(
 					} else if tab.Icon != "" {
 						ui.Text(f, tab.Icon).FontSize(RightTabChipFontSize).Color(titleColor)
 					}
+					// 官方徽标**在标题之前**：TerminalTitle.tsx:44-45 的注释
+					// 「The badge precedes the name because the tab's close button
+					// covers the end of the title」。
+					drawRightTabBadge(f, t, tab.Badge)
 					text := ui.Text(f, tab.Label).FontSize(RightTabChipFontSize).
 						LineHeight(RightTabChipLineHeight).MaxLines(1).Ellipsis()
 					if isActive {
@@ -384,5 +418,40 @@ func DrawRightTabs(
 			}
 			break
 		}
+	})
+}
+
+// drawRightTabBadge 画官方芯片徽标：`.badge{display:inline-flex;flex:none}` 包着一枚
+// primitives 的 `Tag`。
+//
+// 数据与形态来自官方终端标题（`sidebar.right.pane.tab.title` 的 keyed 占用方）：
+//
+//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:42-50
+//	  Agent 控制   → <Tag tone="info">Agent</Tag>
+//	  沙箱（未接管）→ <Tag tone="neutral">沙箱</Tag>
+//	几何 OFF:dsh-web-frontend/dist/assets/index-CSAdOBx6.css 的 `._tag_brmue_4`
+//	  （11px / line-height 17 / padding 1px 8px / 圆角 999 / 500 字重）
+//
+// nil 或空文案 = 这一帧没有徽标（官方两个分支都不渲染）。
+func drawRightTabBadge(f ui.C, t *pluginapi.Theme, badge *pluginapi.TabBadge) {
+	if badge == nil || badge.Text == "" || t == nil {
+		return
+	}
+	// `[data-tone=neutral]{background:bg-module-platform;color:label-secondary}`
+	background, foreground := t.BgModulePlatform, t.LabelSecondary
+	if badge.Tone == pluginapi.TabBadgeInfo {
+		// `[data-tone=info]`：底是业务状态色的 10%（color-mix 与 transparent 混 -> 同色不同透明度），
+		// 字是同一个业务状态色。
+		foreground = t.Info
+		background = t.Info.WithAlpha(RightTabBadgeInfoTint)
+	}
+	// `.badge{display:inline-flex;flex:none}`：宽度由内容定，不参与拉伸。
+	ui.Row(f).Height(RightTabBadgeLineHeight+2*RightTabBadgePadY).Shrink(0).
+		Radius(RightTabBadgeRadius).Background(background).
+		PadSides(RightTabBadgePadY, RightTabBadgePadX, RightTabBadgePadY, RightTabBadgePadX).
+		Items(ui.Center).Children(func() {
+		ui.Text(f, badge.Text).FontSize(RightTabBadgeFontSize).
+			LineHeight(RightTabBadgeLineHeight).Weight(gfx.WeightMedium).
+			MaxLines(1).Color(foreground)
 	})
 }

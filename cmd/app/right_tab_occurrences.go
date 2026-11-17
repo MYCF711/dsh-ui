@@ -166,6 +166,21 @@ func (m *model) rightTabsFor() []pluginapi.Tab {
 			}
 		}
 	}
+	// 芯片徽标（官方 `sidebar.right.pane.tab.title` 的 TerminalTitle 会在标题前画一枚
+	// `Tag`）：与标题同一套「问插件一遍」的模式，每帧取值，因为控制权与沙箱是
+	// 跟着宿主终端状态变的实时事实（TerminalTitle.tsx:18-20）。
+	for _, plugin := range m.kernel.Plugins() {
+		provider, ok := plugin.(pluginapi.RightTabBadgeProvider)
+		if !ok {
+			continue
+		}
+		for i := range tabs {
+			if badge, ok := provider.RightTabBadge(sessionID, tabs[i].Key); ok {
+				badge := badge
+				tabs[i].Badge = &badge
+			}
+		}
+	}
 	return tabs
 }
 
@@ -229,8 +244,34 @@ func (m *model) markRightTabSelectionLocked(sessionID, key string) {
 	}
 }
 
-// openRightTab 实现官方 openTab(kind)：multiple 每次都新建，其他类型复用。
+// openRightTab 实现官方 openTab(kind)（不带 params 的那一支）：multiple 每次都新建，
+// 其他类型复用。
 func (m *model) openRightTab(kind string) {
+	m.openRightTabParams(kind, pluginapi.RightTabParams{})
+}
+
+// rightTabParamsKey 是右栏导航参数的内存键（会话 + occurrence）。
+func rightTabParamsKey(sessionID, tabID string) string { return sessionID + "\x00" + tabID }
+
+// rightTabParamsFor 读某个 occurrence 的官方 `tab.navigation.params`
+// （contract/slots.ts:109-121）。零值 = 这次打开没带参数（官方 `undefined`）。
+func (m *model) rightTabParamsFor(sessionID, tabID string) pluginapi.RightTabParams {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.rightTabParams == nil {
+		return pluginapi.RightTabParams{}
+	}
+	return m.rightTabParams[rightTabParamsKey(sessionID, tabID)]
+}
+
+// openRightTabParams 实现官方 `openTab(kind, { params })`
+// （OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:174-179）：
+// multiple 类型每次新建 occurrence，其他类型复用并重新导航——**两种情况下 params
+// 都挂到最终选中的那个 occurrence 上**（官方 navigation.revision 每次 open 都 +1，
+// `slots.ts:115-120`）。
+//
+// 为什么 params 只活在内存：见 model.rightTabParams 的注释。
+func (m *model) openRightTabParams(kind string, params pluginapi.RightTabParams) {
 	if kind == "" {
 		return
 	}
@@ -297,6 +338,12 @@ func (m *model) openRightTab(kind string) {
 		surface.Tabs = append(surface.Tabs, rightTabRecord{ID: selected, Kind: kind})
 	}
 	m.markRightTabSelectionLocked(sessionID, selected)
+	if m.rightTabParams == nil {
+		m.rightTabParams = map[string]pluginapi.RightTabParams{}
+	}
+	// opener 没给参数 = 官方 `navigation.params === undefined`；这时**清掉**旧值，
+	// 否则复用同一 occurrence 时会读到上一次打开的参数（官方每次 open 都换导航记录）。
+	m.rightTabParams[rightTabParamsKey(sessionID, selected)] = params
 	m.rightTabDirty[sessionID] = true
 	m.showRightbar = true
 	if m.rightbarSessions == nil {
@@ -363,6 +410,8 @@ func (m *model) closeRightTab(key string) {
 		return
 	}
 	surface.Tabs = append(surface.Tabs[:index], surface.Tabs[index+1:]...)
+	// occurrence 消失 = 官方那次导航记录也没了：参数不跨关闭保留。
+	delete(m.rightTabParams, rightTabParamsKey(sessionID, key))
 	if surface.ActiveTabID == key {
 		surface.ActiveTabID = ""
 		if len(surface.Tabs) > 0 {

@@ -185,6 +185,31 @@ const (
 	SlotRightPaneTab      Slot = "sidebar.right.pane.tab"
 	SlotRightPaneTabTitle Slot = "sidebar.right.pane.tab.title"
 	SlotConvView          Slot = "conversation.view"
+
+	// ── 右栏向导页（guide）的三个官方座位 ──────────────────────────────
+	//
+	// 官方 `ui-sidebar-right` 自己注册了一个 `kind:'guide'` 的 tab 类型，它的体
+	// 是一个**链**座位，页面上的每张入口卡再各走一个 **keyed** 座位：
+	//
+	//	sidebar.right.tab.guide          chain   —— 整页体的替换缝（官方 GuideBody 的
+	//	                                            `renderSlotChain`）
+	//	sidebar.right.tab.guide.actions  list    —— 向导页 More 菜单的行（root 作用域）
+	//	sidebar.right.tab.guide.entry    keyed   —— **一张卡片**，key = 提供方的 id
+	//
+	// OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:79-99
+	//   `'sidebar.right.tab.guide': { kind: 'chain', scope: 'session', … }`
+	//   `'sidebar.right.tab.guide.actions': { kind: 'list', scope: 'root', … }`
+	//   `'sidebar.right.tab.guide.entry': { kind: 'keyed', scope: 'session',
+	//                                       owner: SidebarRightGuideEntryOwnerProps, … }`
+	// 派发处：同包 `src/client/tabs/guide/GuideBody.tsx:150-157`
+	//   `renderSlot('sidebar.right.tab.guide.entry', { entryId, kind, title, description? },
+	//               { entryKey: entry.providerId, fallback: <EntryBox …> })`
+	//
+	// 占用方拿到的 owner props 走 `Env.GuideEntry`（与 `Env.EntryMenu` 同一个约定：
+	// 只在对应座位的 dispatch 期间非 nil，写者负责恢复）。
+	SlotRightGuide        Slot = "sidebar.right.tab.guide"
+	SlotRightGuideActions Slot = "sidebar.right.tab.guide.actions"
+	SlotRightGuideEntry   Slot = "sidebar.right.tab.guide.entry"
 )
 
 // 官方已注册的**会话视图 id**（各自包注册 `conversation.view` 时给的 `id`）。
@@ -250,6 +275,12 @@ type Painter struct {
 	// 只对 sidebar.right.pane.tab 有意义；conversation.view 留 false。
 	// OFF:dsh-client-ui-sidebar-right/src/client/tab-registry.ts:103-108
 	Multiple bool
+	// Guide 是该 tab 类型在右栏向导页（guide）上的入口卡，官方是
+	// `SidebarRightTabDefinition.guide`（tab-registry.ts:66-135）；空 = 不上向导页。
+	//
+	// 与 `Tab.Guide` 是同一份数据的两个方向：插件在**这里**声明，壳投影进
+	// `Tab.Guide` 供向导页派发（`Env.GuideEntry` + `SlotRightGuideEntry`）。
+	Guide []TabGuide
 	// Draw 画自己。frame 已经是这块槽的位置和尺寸，别自己算全局坐标。
 	Draw func(f ui.C, env *Env)
 	// AfterDraw 在整棵树布局完成之后调用，给那些「必须先知道位置才能画」的东西用：
@@ -347,8 +378,152 @@ type Tab struct {
 	IconImage       gfx.Icon
 	IconMarginRight float32
 	IconSize        float32
+	// Badge 是芯片文案**之前**的一枚官方 `Tag` 徽标；nil = 没有徽标。
+	//
+	// 官方出处（terminal 的 tab 标题实现，`sidebar.right.pane.tab.title` 的 keyed 占用方）：
+	//
+	//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:17-20
+	//	  agentControl = origin==='agent' && control==='agent'
+	//	  sandboxMode  = origin==='agent' ? info.sandboxMode : undefined
+	//	OFF:…/TerminalTitle.tsx:42-50（先图标、再徽标、最后标题）
+	//	  <TerminalIcon />
+	//	  {agentControl ? <span class=badge title=agentHint><Tag tone="info">Agent</Tag></span>
+	//	   : sandboxHint && <span class=badge title=sandboxHint><Tag tone="neutral">沙箱</Tag></span>}
+	//	  <span class=title>…</span>
+	//	几何 OF:…/TerminalTitle.module.css:3  `.badge{display:inline-flex;flex:none}`
+	//
+	// 徽标是**每 occurrence 的实时事实**（origin/control/sandboxMode 跟着 Host 的
+	// 终端状态变），所以壳按帧从 `RightTabBadgeProvider` 取，不从注册处抄一份。
+	Badge *TabBadge
+	// Guide 是该类型在右栏向导页上的入口卡（官方 `SidebarRightTabDefinition.guide`）。
+	//
+	// OFF:dsh-client-ui-sidebar-right/src/client/tab-registry.ts:66-135
+	//   `readonly guide?: readonly SidebarRightGuideEntry[]`
+	// 注册例子：
+	// OFF:dsh-client-ui-sidebar-terminal/src/client/index.ts:72-75
+	//   `guide: [{ id: 'new', order: 20, title: () => t('new'), description: () => t('description'),
+	//              icon: PluginArtworkTerminal }]`
+	// OFF:dsh-client-ui-sidebar-browser/src/client/definition.tsx:22-25
+	//   `guide: [{ id: 'new', commandId: 'browser.new', order: 30, … }]`
+	//
+	// 空 = 这个类型不上向导页。
+	Guide []TabGuide
 	// Order 是注册顺序（官方 `order`；小的在前）。
 	Order int
+}
+
+// TabBadgeTone 是官方 `<Tag tone=…>` 里本仓用得到的两档（terminal 的芯片徽标只用这两档）。
+//
+//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:48  `<Tag tone="info">`
+//	OFF:…/TerminalTitle.tsx:50                                        `<Tag tone="neutral">`
+type TabBadgeTone uint8
+
+const (
+	// TabBadgeInfo 是 `tone="info"`：底 = 状态业务色 10%，字 = 状态业务色。
+	//
+	//	OFF:dsh-web-frontend/dist/assets/index-CSAdOBx6.css
+	//	  `._tag_brmue_4[data-tone=info]{background:color-mix(in srgb,
+	//	    var(--dsw-alias-state-business-primary) 10%,transparent);
+	//	    color:var(--dsw-alias-state-business-primary)}`
+	TabBadgeInfo TabBadgeTone = iota
+	// TabBadgeNeutral 是 `tone="neutral"`：底 = 模块台色，字 = 次要字色。
+	//
+	//	OFF:…/index-CSAdOBx6.css
+	//	  `._tag_brmue_4[data-tone=neutral]{background:var(--dsw-alias-bg-module-platform);
+	//	    color:var(--dsw-alias-label-secondary)}`
+	TabBadgeNeutral
+)
+
+// TabBadge 是右栏 tab 芯片上的一枚官方 `Tag`（primitives 的 Tag）。
+//
+// 形状全部来自官方终端标题的两支（见 `Tab.Badge` 的注释）：一次只有一枚，
+// Agent 优先，沙箱是「被 Agent 打开、还没被接管」的第二档。
+type TabBadge struct {
+	// Text 是 Tag 的文字：官方 `t('badge.agent')` = 「Agent」、`t('badge.sandbox')` = 「沙箱」
+	// （OFF:dsh-client-ui-sidebar-terminal/src/client/locales.ts:26-27）。
+	Text string
+	// Tone 是 Tag 的色调。
+	Tone TabBadgeTone
+	// Hint 是外层 span 的 `title`（悬停提示），官方是 locale 原文：
+	// badge.agentHint / badge.readOnlyHint / badge.workspaceWriteHint（locales.ts:26,28-29）。
+	// 空 = 没有提示。Viva 没有原生 title 承载面，本仓只把它交给无障碍名。
+	Hint string
+}
+
+// TabGuide 是官方 `SidebarRightGuideEntry` 的投影：向导页上的一张入口卡。
+//
+// OFF:dsh-client-ui-sidebar-right/src/client/tab-registry.ts:66-86
+//
+//	type SidebarRightGuideEntry = {
+//	  commandId?, id, order, title: () => string, description?: () => string, icon?
+//	}
+type TabGuide struct {
+	// ID 是提供方内部的稳定身份（官方 `id`）。
+	ID string
+	// Order 是全部类型入口卡的升序位置（官方 `order`）。
+	Order int
+	// Title 是卡片标题（官方 `title()`，本仓按当前语言取好）。
+	Title string
+	// Description 是标题下的一行（官方 `description?()`）；空 = 官方 undefined。
+	Description string
+	// CommandID 是卡片上那枚快捷键的命令 id（官方 `commandId?`，本仓是快捷键
+	// 注册表里的字符串 id，如 "terminal.new" / "browser.new"）。
+	CommandID string
+	// IconImage / IconSize 是卡片图标（官方 `icon?`）；IconImage.ViewBox==0 时
+	// 向导页画官方的方块占位（`GuideBody.tsx:71,83` 的 `CubeGlyph` 分支）。
+	IconImage gfx.Icon
+	IconSize  float32
+}
+
+// GuideEntryProps 是官方 `SidebarRightGuideEntryOwnerProps`：一张已经解析好的
+// 入口卡身份，交给 `sidebar.right.tab.guide.entry` 的占用方（keyed，key = 提供方 id）。
+//
+// OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:236-242
+//
+//	interface SidebarRightGuideEntryOwnerProps {
+//	  readonly entryId: string; readonly kind: string
+//	  readonly title: string;   readonly description?: string
+//	}
+type GuideEntryProps struct {
+	// EntryID 是官方 `entryId`（提供方的入口 id，如 terminal 的 "new"）。
+	EntryID string
+	// Kind 是官方 `kind`：选中这张卡要打开哪个 tab 类型（如 "terminal"）。
+	Kind string
+	// Title 是官方 `title`（已按当前语言解析）。
+	Title string
+	// Description 是官方 `description?`（已按当前语言解析）；空 = 官方 undefined。
+	Description string
+}
+
+// RightTabParams 是官方 `SidebarRightTabParamsMap` 的 Go 投影：openTab 带的**导航参数**。
+//
+// 官方的表是「按 kind 声明、合并扩展」的 JSON 形状映射（contract/params.ts:31-46），
+// 今天只有两个条目：
+//
+//	browser  → { url?: string }
+//	  OFF:dsh-client-ui-sidebar-browser/src/client/index.ts:32-37
+//	terminal → { terminalId: WebTerminalId } | { shellPath: string }（**二选一的联合**）
+//	  OFF:dsh-client-ui-sidebar-terminal/src/client/face.ts:20-24
+//
+// 本仓用固定字段而不是开放 map：官方多出来的键根本不存在，写错键应当编译期就红。
+// terminal 那条联合在这里落成两个字段，调用方只填其中一个（两个都填 = 无意义，
+// 壳按官方 `'terminalId' in params` 判据优先 terminalId，见 index.ts:42-45）。
+// 零值 = 官方 `undefined`（opener 没给参数）。
+type RightTabParams struct {
+	// URL 是 browser 类型的初始地址（官方 `browser: { url? }`）。
+	URL string
+	// TerminalID 是 terminal 类型要绑定的宿主终端身份（官方 `terminalId`）。
+	TerminalID string
+	// ShellPath 是 terminal 类型要启动的 shell 路径（官方 `shellPath`）。
+	ShellPath string
+}
+
+// RightTabBadgeProvider 让插件为右栏 occurrence 提供芯片徽标（官方标题座位的徽标那一段）。
+//
+// 与 `RightTabTitleProvider` 同一个模式：壳在投影名录时问一遍，插件只读自己的状态。
+// 返回 false = 这条 occurrence 没有徽标。
+type RightTabBadgeProvider interface {
+	RightTabBadge(sessionID, tabID string) (TabBadge, bool)
 }
 
 // Env 是绘制期拿到的全部东西：只读快照 + 动作 + 主题。
@@ -381,6 +556,15 @@ type Env struct {
 	// Has 判断某个槽位有没有插件挂东西。框架插件靠它决定"这一列画不画"——
 	// 没有侧栏插件时不该留一条空栏。
 	Has func(Slot) bool
+	// HasKey 判断某个 **keyed 槽**的这个 key 有没有占用方。
+	//
+	// 为什么 `Has` 不够：官方 keyed 座位是「按 key 取一份」，有的 key 有人、有的 key
+	// 没人。最典型的用法是向导页的入口卡——官方给每张卡都带 `fallback`
+	// （OFF:…/tabs/guide/GuideBody.tsx:150-157），所以宿主必须先知道这个 provider
+	// 有没有注册卡片，才能在「没有」时画官方那枚胶囊。
+	//
+	// nil = 老壳/测试环境：按"没人注册"处理。
+	HasKey func(Slot, string) bool
 	// Views 是本帧注册的**会话视图**名录（官方 `conversation.view` 的 list 槽投影）。
 	//
 	// 由壳从内核的 painter 表投影出来（`uikernel.ViewTabs`），已按 (Order, 装配顺序)
@@ -402,6 +586,25 @@ type Env struct {
 	// RightTabID 是本帧浏览器体所属的官方 TabRecord.id（occurrence 身份）。
 	// 空 = 老壳/单实例测试环境，插件用 ActiveRightTab 或类型 key 兼容。
 	RightTabID string
+	// RightTabParams 是本帧 occurrence 的官方 `tab.navigation.params`
+	// （OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:109-121 的
+	// `SidebarRightTabNavigation.params`，取值表见 contract/params.ts）。
+	//
+	// 它由**打开它的那次 openTab 带进来**（`Actions.OpenRightTabParams`），而不是由
+	// 注册处写死：官方 `navigation.params` 是每次 `open` 的实参，浏览器 tab 靠它拿
+	// 初始 URL（`BrowserBody.tsx:53` 的 `tab.navigation.params?.url`），终端 tab 靠它
+	// 拿 `{terminalId}|{shellPath}`（`index.ts:40-50`）。
+	//
+	// 零值 = 官方 `undefined`（这次打开没带参数）。壳在 occurrence 关闭时丢弃。
+	RightTabParams RightTabParams
+	// GuideEntry 是本帧派发 `sidebar.right.tab.guide.entry` 时交给占用方的
+	// owner props（官方 `SidebarRightGuideEntryOwnerProps`）。
+	//
+	// **只在**这一处座位的 keyed dispatch 期间非 nil；写者必须在派发结束后恢复
+	// 原值——与 `EntryMenu` / `ViewportOffset` 同一约定：写者负责恢复，读方不缓存。
+	//
+	// nil = 本帧不在向导卡片里：占用方这时不该画任何东西。
+	GuideEntry *GuideEntryProps
 	// DrawKeyed 把一个 **keyed 子槽**按 key 交回壳去画：只画 key 命中的那几份。
 	//
 	// 为什么要有它：`Painter.Children` 拿到的 `drawSlot` 只带槽名，按官方 keyed 语义
@@ -483,6 +686,24 @@ type WebOpenOptions struct {
 	URL string
 	// OnLoad 收导航事件；nil 表示不关心。
 	OnLoad func(WebLoad)
+	// OnNewWindow 收页面自己发起的 `window.open` / `target=_blank`（官方
+	// `BrowserPageOptions.openRequested`，OFF:dsh-client-ui-sidebar-browser/src/client/
+	// browser/BrowserPage.ts:8-12）。
+	//
+	// 官方载具把它接到浏览器控制器：
+	//
+	//	OFF:…/browser/BrowserController.ts:54-59
+	//	  openRequested: value => { const r = parseBrowserAddress(value, applicationOrigin);
+	//	                            if (!r.ok) { this.addressFailed(r.reason); return }
+	//	                            options.openTab(r.target.url) }
+	//	OFF:…/view/BrowserBody.tsx:62-70
+	//	  openTab: url => tab.actions.openTab('browser', { params: { url }, revealIfOpened: false })
+	//
+	// 返回 true = **由应用内接下**这次新窗口（壳不要再开系统浏览器）；
+	// false = 不要（壳按自己的平台默认处理，通常交系统浏览器）。
+	//
+	// nil = 插件不关心，壳按平台默认处理。
+	OnNewWindow func(url string) bool
 }
 
 // WebLoadPhase 是导航走到哪一步（与 Viva `app.WebLoadPhase` 同序同义）。
@@ -974,6 +1195,30 @@ const (
 	FileDownload = "download"
 )
 
+// TerminalShellChoices 是官方 `TerminalLaunchShells` 的投影
+// （OFF:dsh-api-terminal-controller/src/client/index.ts:28-32）：
+// 宿主发现的 shell 目录 + 浏览器记住的那个可用选择。
+//
+// 官方是一次 async 调用；本仓同步读缓存，所以多一个 Phase 表达"缓存到哪一步"。
+// 三个值与官方菜单的三态分支一一对应（TerminalGuide.tsx:24,50-54）。
+type TerminalShellChoices struct {
+	// Phase 是缓存状态：TerminalShellsLoading / TerminalShellsReady / TerminalShellsFailed。
+	Phase string
+	// Shells 是宿主 `terminal.shells` 的结果（官方 `shells`）。
+	Shells []apiclient.TerminalShell
+	// Selected 是记住的那个 shell（官方 `selectedShell`；不在表里时官方回退首项，壳已算好）。
+	Selected string
+	// Message 是 Phase==TerminalShellsFailed 时的宿主原文（官方 `failed` 文案的 {message}）。
+	Message string
+}
+
+// TerminalShellChoices 的三态（官方 TerminalGuide.tsx 的 MenuState）。
+const (
+	TerminalShellsLoading = "loading"
+	TerminalShellsReady   = "ready"
+	TerminalShellsFailed  = "failed"
+)
+
 // TerminalViewState 是官方 TerminalViewState 的壳缓存子集：阶段、环境、shell
 // 名录、终端元数据、可写性与待绘制文本。Screen 是本仓既有的 ANSI 剥离投影，
 // 不冒充 xterm 的完整 VT 屏幕。
@@ -1146,6 +1391,23 @@ type Actions struct {
 	// Multiple=true 的类型每次调用都新建 occurrence；其他类型复用并选中已有项。
 	// nil = 壳没接，芯片行不画新建入口。
 	OpenRightTab func(kind string)
+	// OpenRightTabParams 是官方 `openTab(kind, { params, revealIfOpened })` 的**带参数**那一支
+	// （OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:174-179）：
+	//
+	//	openTab<K>(kind: K, options?: Placement & { params?: SidebarRightTabParamsFor<K> })
+	//
+	// 官方浏览器卡片就是这么开新标签的：guest 页 `window.open(url)` →
+	// `openRequested`（OFF:…/browser/BrowserController.ts:54-59）→
+	// `tab.actions.openTab('browser', { params: { url }, revealIfOpened: false })`
+	// （OFF:…/view/BrowserBody.tsx:62-70）。
+	//
+	// 语义与 `OpenRightTab` 一致（Multiple 新建、否则复用并选中），只是多带一份
+	// `RightTabParams`；壳把它存进该 occurrence 的导航记录，并在下一帧交给插件
+	// `Env.RightTabParams`。
+	//
+	// nil = 壳没接：需要参数的调用方这时**不要**退化成 `OpenRightTab(kind)` 丢参数
+	// ——那会打开一个空页（浏览器就变成"白开一个标签"）。
+	OpenRightTabParams func(kind string, params RightTabParams)
 	// CloseRightTab 按官方 TabActions.close 关闭指定 occurrence key。
 	// 壳先调用资源 owner's close handler，成功后才从布局移除。
 	// nil = 壳没接，芯片行不画关闭入口。
@@ -1629,6 +1891,21 @@ type Actions struct {
 	// goroutine 或壳的 close handler 中使用；错误必须原样返回，不静默成功。
 	TerminalRenameOfficial func(tabID, title string) error
 	TerminalCloseOfficial  func(tabID string) error
+
+	// TerminalLaunchShells 是官方 `webTerminals.launchShells(sessionId, signal)`
+	// （OFF:dsh-api-terminal-controller/src/client/index.ts:178-185）的壳投影：
+	// 返回本会话**可启动的 shell 目录**与被记住的那个选择，且**不分配 PTY**。
+	//
+	// 官方是 async Promise；本仓绘制帧里没有事件循环，所以壳缓存最近一次结果、
+	// 后台刷新，未就绪时回 `Phase == TerminalShellsLoading`。三态与官方菜单的
+	// loading / ready / failed 分支一一对应（OFF:…/sidebar-terminal/src/client/
+	// TerminalGuide.tsx:24,50-54）。
+	//
+	// nil = 壳没接：向导卡片这时**不画** shell 菜单（画一个点了没反应的菜单更坏）。
+	TerminalLaunchShells func() TerminalShellChoices
+	// TerminalSelectShell 是官方 `webTerminals.selectShell(path)`（同文件 :186-191）：
+	// 把选中的 shell 记成下一次新建终端的默认（官方存浏览器偏好，本仓存在壳里）。
+	TerminalSelectShell func(path string)
 
 	// SetPermission 改当前会话的审批策略（deny/ask/allow/auto）。
 	//

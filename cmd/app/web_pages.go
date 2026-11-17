@@ -57,10 +57,17 @@ func (w webPages) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, err
 	}
 	config := app.WebViewConfig{
 		URL: options.URL,
-		// `NewWindow` 为 true 表示"交给系统浏览器打开"，不会在窗口里再开页
-		// （OFF:viva@v0.6.4/app/web.go:111-114）。官方 iframe 沙箱允许 popup；
-		// 本仓没有应用内 popup 这一层，交回系统浏览器是同一意图的落点。
-		NewWindow: func(target string) bool { return true },
+		// 插件接了 `OnNewWindow`（官方 `BrowserController.openRequested`）时，那个地址
+		// 由插件决定去向：解析通过就开成**应用内右栏新标签**，所以这里必须回 false
+		// ——viva 的语义是「false = 什么都不开、true = 交系统浏览器」
+		// （OFF:viva@v0.6.4/app/web.go:110-113、internal/platform/windows/web_windows.go:407-418）。
+		// 插件没接 / 明确不要（false）时保持旧行为：交系统浏览器。
+		NewWindow: func(target string) bool {
+			if options.OnNewWindow != nil && options.OnNewWindow(target) {
+				return false
+			}
+			return true
+		},
 		// 官方沙箱没有 `allow-downloads`，所以这里一律拒。
 		Download: func(target string) bool { return false },
 	}

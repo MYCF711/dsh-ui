@@ -34,3 +34,23 @@ func terminalTitleIcon() gfx.Icon {
 func terminalPlusIcon() (gfx.Icon, bool) {
 	return dsassets.MarketPlusOutline(gfx.Color{})
 }
+
+// terminalChevronDownIcon 复用共享素材包的 IconChevronDownOutlineRegular
+// （官方向导卡 `.trigger svg` 那枚 14px 箭头，TerminalGuide.module.css:10）。
+func terminalChevronDownIcon() gfx.Icon {
+	commands, ok := dsassets.ChevronDownOutline()
+	if !ok {
+		return gfx.Icon{}
+	}
+	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}
+}
+
+// terminalCheckIcon 复用共享素材包的 IconCheckOutlineRegular：官方 Menu 用它在
+// `selectedId` 那一行前面打勾（TerminalGuide.tsx:65 的 `selectedId`）。
+func terminalCheckIcon() gfx.Icon {
+	commands, ok := dsassets.CheckOutline()
+	if !ok {
+		return gfx.Icon{}
+	}
+	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}
+}

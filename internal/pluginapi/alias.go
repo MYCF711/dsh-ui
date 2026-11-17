@@ -61,8 +61,17 @@ type (
 	Painter        = pub.Painter
 	// Tab 是选择器条目（会话 view / 右栏 tab 的共同形状）。
 	Tab = pub.Tab
-	// 右栏 occurrence 的实时标题与关闭清理（官方 sidebar-right 的两个扩展点）。
+	// TabBadge / TabBadgeTone / TabGuide 是芯片徽标与向导入口卡（公开包定义，纯别名）。
+	TabBadge     = pub.TabBadge
+	TabBadgeTone = pub.TabBadgeTone
+	TabGuide     = pub.TabGuide
+	// GuideEntryProps 是官方 `SidebarRightGuideEntryOwnerProps`（向导卡片的 owner props）。
+	GuideEntryProps = pub.GuideEntryProps
+	// RightTabParams 是官方 `SidebarRightTabParamsMap` 的投影（openTab 的导航参数）。
+	RightTabParams = pub.RightTabParams
+	// 右栏 occurrence 的实时标题 / 徽标与关闭清理（官方 sidebar-right 的三个扩展点）。
 	RightTabTitleProvider = pub.RightTabTitleProvider
+	RightTabBadgeProvider = pub.RightTabBadgeProvider
 	RightTabCloseHandler  = pub.RightTabCloseHandler
 	// WebHost / WebPage / WebOpenOptions 是窗口里的网页宿主（官方右栏浏览器那一层）。
 	// `Env.Web` 已经带上了它；这里补别名是为了让 import internal 路径的插件也能
@@ -85,10 +94,11 @@ type (
 	LinkState = pub.LinkState
 	// ApprovalOption 是审批帧里 data.options 的一项（H13）。
 	// 纯别名，不在这里加任何东西——两份定义会漂移。
-	ApprovalOption      = pub.ApprovalOption
-	TerminalViewState   = pub.TerminalViewState
-	Actions             = pub.Actions
-	StartSessionOptions = pub.StartSessionOptions
+	ApprovalOption       = pub.ApprovalOption
+	TerminalViewState    = pub.TerminalViewState
+	TerminalShellChoices = pub.TerminalShellChoices
+	Actions              = pub.Actions
+	StartSessionOptions  = pub.StartSessionOptions
 	// SettingsHostFacts 是设置面板的宿主事实（决定动态注册哪些 section/item）。
 	SettingsHostFacts = pub.SettingsHostFacts
 	// DesktopUpdatePresentation 是壳对"桌面更新"的事实呈现
@@ -181,6 +191,19 @@ const (
 	SlotRightPaneTab      = pub.SlotRightPaneTab
 	SlotRightPaneTabTitle = pub.SlotRightPaneTabTitle
 	SlotConvView          = pub.SlotConvView
+	// 右栏向导页（guide）的三个官方座位，见公开包里的注释与官方锚点。
+	SlotRightGuide        = pub.SlotRightGuide
+	SlotRightGuideActions = pub.SlotRightGuideActions
+	SlotRightGuideEntry   = pub.SlotRightGuideEntry
+
+	// 芯片徽标的两个官方 tone（`Tag tone="info"` / `tone="neutral"`）。
+	TabBadgeInfo    = pub.TabBadgeInfo
+	TabBadgeNeutral = pub.TabBadgeNeutral
+
+	// 向导卡片 shell 菜单的三态（官方 TerminalGuide.tsx 的 MenuState）。
+	TerminalShellsLoading = pub.TerminalShellsLoading
+	TerminalShellsReady   = pub.TerminalShellsReady
+	TerminalShellsFailed  = pub.TerminalShellsFailed
 
 	// 网页加载相位（与公开包同三个值）。
 	WebLoadStart     = pub.WebLoadStart

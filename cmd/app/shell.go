@@ -132,6 +132,8 @@ func shellOptionsFor(m *model, kernel *uikernel.Kernel, width, height float32) u
 		ActiveView:     m.activeViewKey(),
 		RightTabs:      rightTabs,
 		ActiveRightTab: m.activeRightTabKey(rightTabs),
+		// 向导页入口卡来自**注册的类型**（不是布局 occurrence），见 view_guide.go。
+		GuideEntries: uikernel.GuideEntries(kernel),
 	}
 	if runtime.GOOS == "windows" {
 		opts.CollapsedWidth = 0

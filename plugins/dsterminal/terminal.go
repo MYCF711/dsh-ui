@@ -29,6 +29,10 @@ type Plugin struct {
 	field       ui.Field
 	renameField ui.Field
 	renaming    bool
+
+	// guideMenuOpen 是向导卡片上那枚 shell 菜单的展开态（官方 TerminalGuide 的
+	// `open` 状态，TerminalGuide.tsx:37）。菜单面画在卡片下方，见 guide.go。
+	guideMenuOpen bool
 }
 
 func (*Plugin) ID() string         { return "ds-terminal" }
@@ -52,8 +56,17 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Label: "终端", Order: 20, Multiple: true,
 			// TerminalIcon.tsx:9 的官方 16×16 prompt 图标；没有额外右 margin。
 			IconImage: terminalTitleIcon(), IconSize: terminalTabIconSize,
+			// 官方向导页的入口卡：id 'new' / order 20 / title '新建终端' / description
+			// '在会话工作区运行命令'（index.ts:74、locales.ts:14-15）。
+			Guide: []pluginapi.TabGuide{{
+				ID: "new", Order: 20, Title: zhGuideTitle, Description: zhGuideDescription,
+				IconImage: terminalTitleIcon(), IconSize: guideIconBox,
+			}},
 			Draw: p.drawPanelBody},
 		{ID: "terminal-panel", Slot: pluginapi.SlotShellOverlay, Order: 98, Draw: p.draw},
+		// 官方向导卡（`SidebarRightTabDefinition.guide`，index.ts:72-75）。
+		{ID: "terminal-guide", Slot: pluginapi.SlotRightGuideEntry, Key: guideEntryPainterKey,
+			Draw: p.drawGuideEntry},
 	}
 }
 

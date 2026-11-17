@@ -38,10 +38,11 @@ func (p *Primitives) ListRow(f ui.C, id gfx.ID, active bool, height float32, bod
 	return row.Hit(id, "").Children(body)
 }
 
-// CircleButton 画一个 28px 的圆形图标按钮（官方 .action 就是 28×28、radius 999）。
+// CircleButton 画一个 28px 的圆形图标按钮（官方 .action：QueueDock.module.css:219-233，
+// 28×28、radius 999px）。
 //
-// 用文字字形（+ ↑ ×）而不是矢量图标：viva 的 Icon 是分层路径，为三个字形引一套
-// 图标构造不划算；这个尺寸下字形和图标看不出差别。
+// 是用文字字形（+ ↑ ×）的**退路**：viva 的 Icon 是分层路径，字形和图标在这个尺寸下
+// 看不出差别，所以只在没有对应官方矢量素材时用；有素材请走 CircleIconButton。
 func (p *Primitives) CircleButton(f ui.C, id gfx.ID, glyph string, filled bool) bool {
 	t := p.Theme
 	bg, fg := t.BgLayer3, t.LabelSecondary
@@ -52,6 +53,25 @@ func (p *Primitives) CircleButton(f ui.C, id gfx.ID, glyph string, filled bool) 
 		Items(ui.Center).Justify(ui.Center).
 		Hover(ui.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
 		ui.Text(f, glyph).FontSize(15).Color(fg)
+	}).Clicked()
+}
+
+// CircleIconButton 与 CircleButton 同一套几何，图标换成官方矢量素材。
+//
+// 官方图标键的实际画法就是 `<svg width=15>`：MessageFeedbackActions.module.css:20-23
+// 的 `.action svg { width: 15px; height: 15px }`；静止态颜色取官方 `.action` 的
+// label-tertiary（QueueDock.module.css:231）。hover 只换底色（同处 :229-233 的
+// `background: var(--dsw-alias-interactive-bg-hover)`），图标色不变。
+func (p *Primitives) CircleIconButton(f ui.C, id gfx.ID, icon gfx.Icon, filled bool) bool {
+	t := p.Theme
+	bg, fg := t.BgLayer3, t.LabelTertiary
+	if filled {
+		bg, fg = t.ButtonPrimaryFill, t.ButtonPrimaryFg
+	}
+	return ui.Row(f).Width(28).Height(28).Radius(14).Background(bg).
+		Items(ui.Center).Justify(ui.Center).
+		Hover(ui.Look{}.Background(t.Hover)).Hit(id, "").Children(func() {
+		ui.Icon(f, icon).Size(15, 15).Color(fg)
 	}).Clicked()
 }
 

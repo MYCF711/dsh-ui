@@ -169,8 +169,19 @@ const (
 )
 
 func stateDotOngoingIcon(tint gfx.Color) gfx.Icon {
+	return stateDotOngoingIconAt(tint, 0)
+}
+
+// stateDotOngoingIconAt 是带**旋转相位**的 spinner（phase ∈ [0,1) 为一圈）。
+//
+// 官方 `._spinnerMotion_1i3xo_42{transform-origin:center;animation:
+// _dsh-state-dot-spin_1i3xo_1 1.5s linear infinite}` +
+// `@keyframes _dsh-state-dot-spin_1i3xo_1{to{transform:rotate(360deg)}}`
+// （rc.2 `index-CSAdOBx6.css` 的 primitives dist；reduced-motion 档才静止）。
+// 本仓把"转整枚图形"等价成"把弧的起始角按相位推进 360°"：轨道圆是整圆，不动。
+func stateDotOngoingIconAt(tint gfx.Color, phase float32) gfx.Icon {
 	circumference := 2 * math.Pi * stateDotSpinnerRadius
-	start := -stateDotSpinnerOffset / circumference * 360
+	start := -stateDotSpinnerOffset/circumference*360 + float64(phase)*360
 	sweep := stateDotSpinnerDash / circumference * 360
 	track := tint
 	track.Alpha *= stateDotTrackAlpha

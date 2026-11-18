@@ -353,6 +353,37 @@ func questionMaxHeight(env *pluginapi.Env) float32 {
 	return height
 }
 
+// questionBodyChrome 是卡片里**非正文**部分的固定高度和，用于给正文算上限。
+//
+// 官方 `QuestionComposer.module.css` 那三段相加（rc.2 asar @61563424 / @61566572）：
+//
+//	.header{padding:20px 16px 0 24px} + 行内最高件（headerActions 的 .iconButton{height:24}）
+//	.footer{margin-top:12px;…}        + 共享 Button 默认 md 的 36
+//	.card{padding:0 0 10px}           + 10
+//
+// 于是 `.body{flex:auto;min-height:0;overflow-y:auto}` 能拿到的就是
+// `min(60vh,520px) - 102`：内容比它矮就按内容高，比它高就滚动。
+// 高度上限必须显式给：viva 的 ScrollArea 的 flex basis 是 0（不是内容高），
+// 在内容自适应的祖先链里用 `Grow(1)` 只会拿到 0 高 —— 正文会被整块裁掉（本轮修的缺陷），
+// 与官方 `.card{max-height}` + `.body{flex:auto;min-height:0}` 的语义不符。
+// 显式尺寸这一做法与同仓 `plugins/dsstatusbar/official_dock.go` 画胶囊时用定宽占位盒同源。
+const questionBodyChrome float32 = questionHeaderPadTop + questionIconButtonSize +
+	questionFooterMarginTop + planReviewButtonHeight + questionCardPadBottom
+
+// questionBodyMinHeight 是正文的下限：矮窗下也至少留一行选项的高度，
+// 否则卡片会退化成一个只有按钮的空条。
+const questionBodyMinHeight float32 = questionOptionMinHeight
+
+// questionBodyMaxHeight 是正文滚动区的最大高度（`.card` 上限减掉固定 chrome）。
+func questionBodyMaxHeight(env *pluginapi.Env) float32 {
+	height := questionMaxHeight(env) - questionBodyChrome
+	if height < questionBodyMinHeight {
+		return questionBodyMinHeight
+	}
+	return height
+}
+
+// drawQuestionFlow 画官方通用问题卡：header（固定）→ 正文（可滚动，高 ≤ questionBodyMaxHeight）→ footer（固定）。
 func (p *Plugin) drawQuestionFlow(f ui.C, env *pluginapi.Env, qs []Question) {
 	p.prepareQuestionFlow(env, qs)
 	busy, failure, hidden := p.reviewState(p.flow.key)
@@ -380,7 +411,7 @@ func (p *Plugin) drawQuestionFlow(f ui.C, env *pluginapi.Env, qs []Question) {
 					if p.flow.minimized {
 						return
 					}
-					ui.Scroll(f).FillWidth().Grow(1).MinHeight(0).Children(func() {
+					ui.Scroll(f).FillWidth().MaxHeight(questionBodyMaxHeight(env)).Children(func() {
 						p.drawQuestionBody(f, env, t, qs, compact, busy)
 					})
 					p.drawQuestionFooter(f, env, t, qs, compact, busy, failure)

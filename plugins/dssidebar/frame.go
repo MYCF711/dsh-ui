@@ -176,6 +176,11 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 							})
 							ui.Text(f, route.Label).FontSize(t.Fonts.Body).LineHeight(22).
 								Color(t.LabelPrimary).MarginSides(0, 0, 0, 6).Ellipsis()
+						}).
+						// 键盘焦点环：rc.2 `SidebarRoot.module.css .panelRow:focus-visible`
+						// = 全局 2px business-primary（focus.css）+ outline-offset:-2px。
+						DrawOver(func(d *ui.DrawContext) {
+							drawInsetFocusRing(d, panelRowFocusOffset, t.Radii.MD, t.Info)
 						})
 				}
 				// 行尾「取消固定」：官方 `.panelUnpin`（绝对定位在行右端）。本仓同列

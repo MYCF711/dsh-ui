@@ -49,6 +49,12 @@ var bindings = []Binding{
 	{"Tab / Shift+Tab", "设置面板打开时在面板内循环焦点（模态层陷阱）", "plugins/dssettings/official_modal.go"},
 	{"Ctrl+`", "新建终端标签（官方 terminal.new）", "cmd/app/terminal_shortcut.go（OnShortcut 层，不是 HandleKey）"},
 	{"Ctrl+O", "添加工作区（打开本次组合的目录选择器）", "cmd/app/dirpicker_wiring.go（OnShortcut 层，不是 HandleKey）"},
+	// 官方 context menu 工厂文档原文（rc.2 asar）："It handles right-click,
+	// Shift+F10, the ContextMenu key, viewport coordinates, and focus without
+	// scrolling." —— Shift+F10 是官方承认的键盘入口，不是本仓自造。
+	{"Shift+F10", "打开右键菜单", "plugins/dscontextmenu"},
+	// 菜单打开后：方向键 / Home / End 移高亮，Enter / Space 执行，Esc 关闭。
+	{"Enter / Space", "执行菜单里高亮的项目（菜单打开时）", "plugins/dscontextmenu"},
 }
 
 // Bindings 返回这份键位表的**只读拷贝**（设置面板「快捷键」行要显示条目数，
@@ -215,8 +221,11 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// 面板本体吃掉点击：官方这是 Modal，点框内不该落到下面的会话/侧栏上。
 	// 先声明、后声明的子元素（关闭按钮）在它上面——viva 的命中按声明顺序取最后命中。
 	if env.Tree != nil {
+		// `SkipTab`：官方 Modal 是把焦点 `focus()` 到容器上（`.dialog:focus{outline:none}`，
+		// Reference.module.css），容器**不在** Tab 序里；不跳过的话键盘用户第一下 Tab
+		// 会停在一块没有焦点外观的面板底上。
 		panel = panel.HitWith(env.Tree.ID(env.Feat, "shortcuts-sheet"), shortcutsTitle,
-			gfx.HitOptions{Role: gfx.RoleGroup})
+			gfx.HitOptions{Role: gfx.RoleGroup, SkipTab: true})
 	}
 	panel.Children(func() {
 		p.drawHeader(f, env, t)
@@ -270,7 +279,13 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
 	//  按边定位"（ui/absolute.go:12-21），与 CSS position:absolute 同义。
 	closeBtn := ui.Row(f).Absolute().Top(sheetCloseTop).Right(sheetCloseRight).
 		Size(sheetCloseSize, sheetCloseSize).Radius(sheetCloseRadius).Center().
-		Hover(ui.Look{}.Background(t.Hover))
+		Hover(ui.Look{}.Background(t.Hover)).
+		// 官方 `.close` 只写 `:hover`（Reference.module.css），焦点态走 rc.2 的**全局**
+		// 规则 `focus.css`：`:root{--dsw-focus-ring-width:2px}` +
+		// `:focus-visible{outline-color:var(--dsw-focus-ring-color,
+		// var(--dsw-alias-state-business-primary));outline-width:var(--dsw-focus-ring-width)}`。
+		// 宽度取 `--dsw-focus-ring-width`；viva 的 `Ring` 是元素外侧描边，与 outline 同义。
+		Focus(ui.Look{}.Ring(sheetFocusRingWidth, t.Info))
 	if env.Tree != nil {
 		closeBtn = closeBtn.HitWith(env.Tree.ID(env.Feat, "shortcuts-close"),
 			shortcutsCloseLabel, gfx.HitOptions{})

@@ -278,6 +278,9 @@ const (
 	createdCustomHeight float32 = 72
 	createdCustomFont   float32 = 13
 	createdCustomLineH  float32 = 22.1
+	// rc.2 `Card.module.css:27` 的 `outline:1px solid state-business-primary` + `outline-offset:1px`。
+	createdCustomFocusWidth  float32 = 1
+	createdCustomFocusOffset float32 = 1
 	// 卡片框那一层的 `.text` / `.toggle`（OFF:action-cards/Card.module.css:4-5）：正文与 brief
 	// 折叠都是这一对几何（13/1.7 与 12px、min-height 24）。
 	// 卡片框 `.title{ font-size:16px; font-weight:500; line-height:1.5 }`（OFF:action-cards/Card.module.css:3）
@@ -856,7 +859,25 @@ func (p *Plugin) drawCustomLocation(f ui.C, env *pluginapi.Env, t *pluginapi.The
 		area := ui.TextArea(f, &p.customLocation, zhCustomLabel, zhCustomPlaceholder).
 			FillWidth().Height(createdCustomHeight).
 			FontSize(createdCustomFont).LineHeight(createdCustomLineH).
-			Radius(t.Radii.MD).Border(createdBorderWidth, t.BorderL4).Background(t.BgLayer1)
+			Radius(t.Radii.MD).Border(createdBorderWidth, t.BorderL4).Background(t.BgLayer1).
+			// rc.2 `Card.module.css:27`：
+			//   `.customLocation textarea:focus-visible{
+			//      outline:1px solid var(--dsw-alias-state-business-primary);outline-offset:1px}`
+			// `outline-offset:1` ⇒ 1px 宽的环带落在框外 1..2px，路径中心在 1.5px 处。
+			// 用 DrawOver 自己画：`Look.Focus(...)` 对文本域不生效（vr3 实测环带零命中）。
+			DrawOver(func(d *ui.DrawContext) {
+				if !d.State.FocusVisible {
+					return
+				}
+				const half = createdCustomFocusWidth / 2
+				rect := d.Rect
+				rect.X -= createdCustomFocusOffset + half
+				rect.Y -= createdCustomFocusOffset + half
+				rect.Width += 2 * (createdCustomFocusOffset + half)
+				rect.Height += 2 * (createdCustomFocusOffset + half)
+				d.Canvas.RoundedOutline(rect,
+					t.Radii.MD+createdCustomFocusOffset+half, createdCustomFocusWidth, d.Fade(t.Info))
+			})
 		if s.busy {
 			area = area.Disabled(true)
 		}

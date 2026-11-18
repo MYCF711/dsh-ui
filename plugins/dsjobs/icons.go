@@ -131,8 +131,22 @@ const (
 )
 
 func jobStateDotOngoingIcon(tint gfx.Color) gfx.Icon {
+	return jobStateDotOngoingIconAt(tint, 0)
+}
+
+// jobStateDotOngoingIconAt 是带**旋转相位**的 spinner（phase ∈ [0,1) 为一圈）。
+//
+// 官方 spinner 是 CSS 合成动画：`._spinnerMotion_1i3xo_42{transform-origin:center;
+// animation:_dsh-state-dot-spin_1i3xo_1 1.5s linear infinite}` +
+// `@keyframes _dsh-state-dot-spin_1i3xo_1{to{transform:rotate(360deg)}}`
+// （rc.2 `index-CSAdOBx6.css` 的 primitives dist；只有
+// `@media(prefers-reduced-motion:reduce)` 里才 animation:none）。
+//
+// 本仓没有合成器，等价做法是把整枚图形绕圆心转：弧的起始角按相位推进 360°。
+// 轨道圆是整圆，旋转不改变它，所以只动弧就够了——与官方"转 <g> 不动形状"同形。
+func jobStateDotOngoingIconAt(tint gfx.Color, phase float32) gfx.Icon {
 	circumference := 2 * math.Pi * jobStateDotSpinnerRadius
-	start := -jobStateDotSpinnerOffset / circumference * 360
+	start := -jobStateDotSpinnerOffset/circumference*360 + float64(phase)*360
 	sweep := jobStateDotSpinnerDash / circumference * 360
 	track := tint
 	track.Alpha *= jobStateDotTrackAlpha

@@ -23,6 +23,8 @@
 package dsagentteam
 
 import (
+	"time"
+
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/ui"
 )
@@ -155,7 +157,7 @@ func (p *Plugin) drawTaskRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, tas
 			}
 			ui.Row(f).Width(glyphW).Height(glyphH).Center().
 				Hit(env.Tree.ID(env.Feat, "team-task-glyph-"+task.ID), glyphLabel).Children(func() {
-				p.drawTaskDot(f, t, task)
+				p.drawTaskDot(f, env, t, task)
 			})
 			// .subject：13/17，未展开时单行省略；展开时整段可换行。
 			subject := ui.Text(f, task.Subject).FontSize(rowSize).LineHeight(rowLine).
@@ -197,13 +199,40 @@ func (p *Plugin) drawTaskRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, tas
 // drawTaskDot 画 StateDot：ongoing 是 14px spinner，其余是 10px 外框 + 6px 内核。
 // 官方证据：index-ghOpC9uV.js:129（n = size ?? (ongoing ? 14 : 10)）与
 // index-CSAdOBx6.css:1（dot::after inset:20%；spinner 两圆 r=9.5、stroke=2）。
-func (p *Plugin) drawTaskDot(f ui.C, t *pluginapi.Theme, task TeamTask) {
+//
+// 带 env 是因为 ongoing 的 spinner 要按帧时钟取相位（`stateDotPhase`）。
+func (p *Plugin) drawTaskDot(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, task TeamTask) {
 	if task.Status == StatusInProgress {
-		ui.Icon(f, stateDotOngoingIcon(t.LabelTertiary)).
+		ui.Icon(f, stateDotOngoingIconAt(t.LabelTertiary, stateDotPhase(env))).
 			Size(dotOngoingSize, dotOngoingSize).Color(t.LabelTertiary)
 		return
 	}
 	p.drawDot(f, t, dotColor(t, task))
+}
+
+// stateDotSpinnerPeriod 是官方 StateDot spinner 一圈的时长（1.5s linear infinite）。
+const stateDotSpinnerPeriod = 1500 * time.Millisecond
+
+// stateDotPhase 返回这一帧的旋转相位 [0,1)，并让渲染器再排一帧。
+//
+// 用 viva 自己的排帧接口（不是自造框架）：`Canvas.RequestFrame()` 声明"这一帧没完"，
+// `app/painter.go:864-874` 据此要下一帧，`headless.Session.Advance` 按显示节拍推进
+// 同一只时钟（`app/driver.go:246-263`），相位就取 `Canvas.Now()`。
+// 官方在 `@media (prefers-reduced-motion:reduce)` 下关掉动画：`ReduceMotion()` 为真时
+// 不排帧、相位固定 0（画静态弧，与官方那一档一致）。
+func stateDotPhase(env *pluginapi.Env) float32 {
+	if env == nil || env.Canvas == nil {
+		return 0
+	}
+	if env.Canvas.ReduceMotion() || !env.Canvas.HasClock() {
+		return 0
+	}
+	env.Canvas.RequestFrame()
+	now := env.Canvas.Now()
+	if now <= 0 {
+		return 0
+	}
+	return float32(now%stateDotSpinnerPeriod) / float32(stateDotSpinnerPeriod)
 }
 
 // drawDot 画官方 StateDot 的非 ongoing 分支：10px 外框，::after inset:20%

@@ -388,15 +388,16 @@ var officialSkillGeometry = []SkillGeoRow{
 	{Node: "SkillRow.inspectButton", Prop: "line-height", Official: 16, Impl: SkillInspectLineHeight, Unit: SkillUnitPx, Status: SkillAligned, Anchor: "SkillRow.module.css:174"},
 	{Node: "SkillRow.inspectButton", Prop: "opacity", Official: 0, Impl: SkillInspectOpacity, Unit: SkillUnitRatio, Status: SkillAligned, Anchor: "SkillRow.module.css:176"},
 	{Node: "SkillRow.inspectButton", Prop: "transition-duration", Official: 100, Impl: SkillInspectTransitionMs, Unit: SkillUnitMs, Status: SkillAligned, Anchor: "SkillRow.module.css:177"},
-	// `:focus-visible` 是本仓**做不到**的那一条，原因不是"忘了写"，是 viva 的
-	// 状态来源机制（下面 Formula 里给了 `ui/style.go` 的行号）：
-	// 官方让按钮在**两个并列条件**下显形——`.card:hover`（:186）与
-	// `.inspectButton:focus-visible`（:181）；viva 的 `StateFrom` 把 hover/pressed/focus
-	// 三个 look 的来源**绑成同一个元素**，而官方 `.card:hover` 要求来源是**卡**，
-	// 于是 `:focus-visible`（来源必须是按钮自己）无法同时成立。实测：Tab 走到按钮上
-	// 边框仍不出现；卡片 hover 那一半由 `skillrow_visual_test.go` 的
-	// `TestSkillRowGeometryInPixels` ⑥ 钉住。
-	{Node: "SkillRow.inspectButton:focus-visible", Prop: "opacity", Official: 1, Impl: SkillInspectFocusOpacity, Unit: SkillUnitRatio, Status: SkillDerived, Anchor: "SkillRow.module.css:181", Formula: "官方 :focus-visible{opacity:1}；viva 0.6.4 的 `Box.StateFrom` 让一个元素只跟一个状态来源（ui/style.go:298-303 的 `source`同时用于 FocusVisible/Hovered/Pressed），而本按钮必须跟 `.card:hover`（CSS:186），所以焦点态画不出来；实现按 0 渲染"},
+	// 官方让按钮在**两个并列条件**下显形：`.card:hover`（:186）与
+	// `.inspectButton:focus-visible`（:181）。
+	//
+	// viva 的 `StateFrom` 把 hover/pressed/focus 三个 look 的来源**绑成同一个元素**
+	// （ui/style.go:298-303 的 `source` 同时用于 FocusVisible/Hovered/Pressed），
+	// 而 `.card:hover` 要求来源是**卡**。所以焦点态**不走 look**：按钮在绘制时直接问
+	// `Canvas.FocusVisible() == 自己的 hit id`（CSS `:focus-visible` 的判据），命中就给
+	// `SkillInspectFocusOpacity`（skillrow.go 的 `drawInspectButton`）。这与
+	// `plugins/dsattachment/rail.go:1038` 是同一手法，两条显形条件因此**并列成立**。
+	{Node: "SkillRow.inspectButton:focus-visible", Prop: "opacity", Official: 1, Impl: SkillInspectFocusOpacity, Unit: SkillUnitRatio, Status: SkillAligned, Anchor: "SkillRow.module.css:181"},
 	{Node: "SkillRow.card:hover .inspectButton", Prop: "opacity", Official: 1, Impl: SkillCardHoverInspectOpacity, Unit: SkillUnitRatio, Status: SkillAligned, Anchor: "SkillRow.module.css:186"},
 	{Node: "SkillRow.inspectButton (hover:none)", Prop: "opacity", Official: 1, Impl: SkillInspectNoHoverOpacity, Unit: SkillUnitRatio, Status: SkillAligned, Anchor: "SkillRow.module.css:214"},
 

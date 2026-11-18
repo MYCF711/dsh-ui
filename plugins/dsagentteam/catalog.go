@@ -445,9 +445,20 @@ func (p *Plugin) drawCatalogPanel(f ui.C, env *pluginapi.Env, drawSlot func(plug
 		Pad(catalogMenuPad)
 	// 面板本体吃掉点击：官方点菜单里面不会关（只有菜单外的 pointerdown 才关）。
 	panel.Hit(env.Tree.ID(env.Feat, "subagent-catalog-menu"), zhCatalogTreeAria)
+	// 正文高 = 内容高，上限是面板内框。官方 `.rezYhW_menu{height:fit-content;
+	// max-height:min(560px,calc(100dvh - 140px));overflow:hidden;padding:6px}`
+	// （SubagentHeaderLineage.module.css:162-176）+ `.rezYhW_menuBody{flex:1 1 auto;
+	// min-height:0;overflow:auto}`（:181-188）：名单长了在面板里滚，**不画到外面**。
+	//
+	// 不用 `Grow(1)`：viva 的 flex 里它要确定的主轴尺寸，面板只有 MaxHeight
+	// （上限不是尺寸），正文会拿到 0 高（同一处坑在 dsjobs 弹层上也踩过）。
+	bodyMax := maxHeight - 2*catalogMenuPad
+	if bodyMax < 0 {
+		bodyMax = 0
+	}
 	panel.Children(func() {
 		// `.menuBody{display:flex;flex-direction:column;overflow:auto}`：内容一列。
-		ui.Column(f).FillWidth().Gap(0).Children(func() {
+		ui.Scroll(f).FillWidth().MaxHeight(bodyMax).MinHeight(0).Clip().Gap(0).Children(func() {
 			if facts.hasSharedTasks {
 				p.drawCatalogSectionHeader(f, t)
 			}

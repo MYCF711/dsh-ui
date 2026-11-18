@@ -206,9 +206,11 @@ func dotColor(t *pluginapi.Theme, j pluginapi.Job) ui.Color {
 
 // drawJobStateDot 画官方 StateDot：ongoing 是 14px spinner，其余是 10px
 // 外框里 inset:20% 的 6px 实心圆（primitives dist，见 icons.go 的素材注释）。
-func drawJobStateDot(f ui.C, t *pluginapi.Theme, j pluginapi.Job) {
+//
+// 带 env 是因为 spinner 要按帧时钟取相位（`jobSpinnerPhase`）。
+func drawJobStateDot(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, j pluginapi.Job) {
 	if live(j) {
-		ui.Icon(f, jobStateDotOngoingIcon(t.LabelTertiary)).
+		ui.Icon(f, jobStateDotOngoingIconAt(t.LabelTertiary, jobSpinnerPhase(env))).
 			Size(jobDotOngoingSize, jobDotOngoingSize).Color(t.LabelTertiary)
 		return
 	}
@@ -216,6 +218,56 @@ func drawJobStateDot(f ui.C, t *pluginapi.Theme, j pluginapi.Job) {
 		ui.Slot(f).Size(jobDotCoreSize, jobDotCoreSize).
 			Radius(jobDotCoreSize / 2).Background(dotColor(t, j))
 	})
+}
+
+// jobSpinnerPeriod 是官方 StateDot spinner 的旋转一圈时长（1.5s linear infinite）。
+const jobSpinnerPeriod = 1500 * time.Millisecond
+
+// jobSpinnerPhase 返回这一帧的旋转相位 [0,1)，并让渲染器再排一帧。
+//
+// 机制与官方 CSS 动画同构，但落在 viva 自己的排帧接口上：
+// `Canvas.RequestFrame()` 声明"这一帧没完"，`painter.scheduleIfAnimating` 会据此
+// 要下一帧（`app/painter.go:864-874`），`headless.Session.Advance` 则按显示节拍推进
+// 同一只时钟（`app/driver.go:246-263`）。相位取 `Canvas.Now()`——就是那只时钟。
+//
+// 官方在 `@media (prefers-reduced-motion:reduce)` 下把动画关掉、只留静态弧
+// （dasharray 18 150 / offset -3）；`ReduceMotion()` 为真时这里同样不排帧。
+func jobSpinnerPhase(env *pluginapi.Env) float32 {
+	if env == nil || env.Canvas == nil {
+		return 0
+	}
+	if env.Canvas.ReduceMotion() || !env.Canvas.HasClock() {
+		return 0
+	}
+	env.Canvas.RequestFrame()
+	now := env.Canvas.Now()
+	if now <= 0 {
+		return 0
+	}
+	return float32(now%jobSpinnerPeriod) / float32(jobSpinnerPeriod)
+}
+
+// jobFillL1Mix 是 `--dsw-alias-fill-l1` 的本地等价档。
+//
+// rc.2 只发使用点、不发定义（`.Ag-ohG_row:hover{background:var(--dsw-alias-fill-l1)}`，
+// JobListAction.module.css:336），所以取同一组件上官方**写明**的最近一档：
+// `.Ag-ohG_rowLineLive .Ag-ohG_row:focus-visible{background:color-mix(in srgb,
+// var(--dsw-alias-label-primary) 6%, transparent)}`（同文件:232-234）→ label-primary 6%。
+const jobFillL1Mix = 0.06
+
+// jobRowLiveHoverMix 是活任务卡的 hover 洗色：官方
+// `.Ag-ohG_rowLineLive:hover{background:color-mix(in srgb,
+// var(--dsw-alias-label-primary) 9%, transparent)}`（JobListAction.module.css:205）。
+const jobRowLiveHoverMix = 0.09
+
+// jobFillL1 等价于官方 `color-mix(in srgb, label-primary 6%, transparent)`。
+func jobFillL1(t *pluginapi.Theme) ui.Color { return jobLabelWash(t, jobFillL1Mix) }
+
+// jobLabelWash 把 label-primary 按 alpha 摊成一层透明洗色。
+func jobLabelWash(t *pluginapi.Theme, mix float32) ui.Color {
+	c := t.LabelPrimary
+	c.Alpha *= mix
+	return c
 }
 
 // computeJobs 选出这一帧要画的行，并把"已经消失的任务"的状态清掉。
@@ -292,8 +344,12 @@ func (p *Plugin) drawRow(f ui.C, env *pluginapi.Env, j pluginapi.Job) {
 		row := ui.Row(f).Items(ui.Center).Gap(jobRowGap).Grow(1).MinWidth(0).
 			MinHeight(jobsRowMinHeight).
 			PadSides(jobsRowPadV, jobsRowPadH, jobsRowPadV, jobsRowPadH).
-			Radius(t.Radii.MD).Hit(id, shortCmd(j.Command)).Children(func() {
-			drawJobStateDot(f, t, j)
+			Radius(t.Radii.MD).
+			// 官方 `@media (hover:hover){.Ag-ohG_row:hover{background:
+			// var(--dsw-alias-fill-l1)}}`（JobListAction.module.css:336）。
+			Hover(ui.Look{}.Background(jobFillL1(t))).
+			Hit(id, shortCmd(j.Command)).Children(func() {
+			drawJobStateDot(f, env, t, j)
 			ui.Text(f, shortCmd(j.Command)).FontSize(jobsRowFont).LineHeight(jobsRowLine).
 				Color(t.LabelSecondary).Grow(1).Ellipsis()
 			ui.Text(f, statusLabel(j)).FontSize(10).LineHeight(16).Color(statusColor(t, j))
@@ -335,6 +391,10 @@ func (p *Plugin) drawStop(f ui.C, env *pluginapi.Env, j pluginapi.Job) {
 	box := ui.Row(f).MinHeight(jobStopBox).Items(ui.Center).Gap(jobStopArmGap).
 		Radius(t.Radii.SM).Border(jobStopBorder, border).
 		PadSides(0, jobStopArmPadH, 0, jobStopArmPadH).
+		// 官方 `@media (hover:hover){.Ag-ohG_stop:hover{border-color:color-mix(in srgb,
+		// state-error-primary 45%,transparent);color:state-error-primary}}`
+		// （JobListAction.module.css:273-278）。
+		Hover(ui.Look{}.Border(jobErrorMix(t.Error, jobStopArmBorderMix)).Color(t.Error)).
 		Hit(id, zhStopTitle+" "+shortCmd(j.Command)).Children(func() {
 		ui.Text(f, label).FontSize(jobStopFont).LineHeight(jobStopLine).Color(stopColor(t, armed))
 	})

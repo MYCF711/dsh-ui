@@ -573,7 +573,11 @@ func (p *Plugin) drawConnectionIndicator(f ui.C, env *pluginapi.Env) {
 
 	pill := ui.Row(f).Height(connIndicatorHeight).Radius(t.Radii.SM).
 		Background(fill).Border(connIndicatorBorder, border).
-		Items(ui.Center).Gap(connIndicatorGap).Opacity(opacity)
+		// rc.2 `._indicator_16cyo_1{display:inline-grid;grid-template-columns:14px
+		// max-content;column-gap:4px;padding:0 8px}`：**两列**、column-gap 只加一次。
+		// 所以行内不能再挂 Gap（那会在「左 padding 盒 | 图标 | 文案 | 右 padding 盒」
+		// 之间加三次），间距全部由定宽占位盒显式给。
+		Items(ui.Center).Gap(0).Opacity(opacity)
 
 	// 官方 warning 态是**可点按钮**（`<button onClick={onReconnect}>`）：
 	// 命中区 + hover/active 底色都只在真的接了重连动作时才画。
@@ -591,6 +595,8 @@ func (p *Plugin) drawConnectionIndicator(f ui.C, env *pluginapi.Env) {
 		// 「571 tok/s 被截成 571 tok…」的同一个坑）。
 		ui.Row(f).Width(connIndicatorPadX).Height(connIndicatorHeight)
 		p.drawConnectionIcon(f, view.icon, text, t.LabelTertiary, now)
+		// column-gap:4px —— 图标与文案之间**唯一**的一处间距。
+		ui.Row(f).Width(connIndicatorGap).Height(connIndicatorHeight)
 		// 官方 `font-weight:500`；viva 的 Weight 是**相对常规字重的增量**，
 		// `gfx.WeightMedium` 就是这一档（别处也都用它，别写 500）。
 		ui.Text(f, view.label).FontSize(connIndicatorFont).LineHeight(connIndicatorLine).

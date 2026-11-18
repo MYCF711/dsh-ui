@@ -2995,6 +2995,7 @@ func main() {
 		TerminalRetry:          m.terminalRetry,
 		TerminalSnapshot:       m.terminalSnapshot,
 		TerminalWriteOfficial:  m.terminalWriteOfficial,
+		TerminalResizeOfficial: m.terminalResizeOfficial,
 		TerminalRenameOfficial: m.terminalRenameOfficial,
 		TerminalCloseOfficial:  m.terminalCloseOfficial,
 		// 审批策略：写宿主 <home>/state/session-permission.json。

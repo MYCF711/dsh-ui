@@ -189,6 +189,70 @@ func (m *model) terminalWriteOfficial(tabID, data string, typed bool) {
 	}()
 }
 
+// terminalResizeOfficial 把面板量出来的 cols/rows 发给宿主那条 PTY
+// （`POST /api/terminal.resize`：官方 attach resize 帧在 HTTP 面的回落投影）。
+//
+// 判据分工照官方：**该不该发**由插件按 fitScreen（`terminal.tsx:191-200`）与
+// 同尺寸 return（`model.js:212-223`）决定，见 `plugins/dsterminal/resize.go`。
+// 壳这边只做三件事：
+//
+//  1. 挡住 fitScreen 自己就会挡掉的尺寸（`cols<2 || rows<1` 不发），以及越过
+//     `environment` 上限的尺寸——官方越界是**报错不是截断**，发一条必然被 400
+//     的请求只会把状态栏刷满；
+//  2. **异步**发：调用点在绘制帧里（paintGrid 的 fit 回调），同步等 HTTP 会卡画面；
+//  3. 成功后把本地 VT 屏幕同步成新尺寸（官方是 `xterm.resize(cols, rows)` 与
+//     `model.resize` 一起做）。不同步的话网格还是旧宽，下一帧又算出一个"不同"
+//     的 fit，会反复发。失败只在状态栏讲真话，不假装改成了。
+func (m *model) terminalResizeOfficial(tabID string, cols, rows int) {
+	if cols < 2 || rows < 1 {
+		return
+	}
+	m.mu.Lock()
+	sessionID := m.cur
+	key := userTerminalKey(sessionID, tabID)
+	state := m.terminalViews[key]
+	var id string
+	var maxCols, maxRows int
+	if state != nil && state.public.Info != nil {
+		id = state.public.Info.ID
+	}
+	if state != nil && state.public.Environment != nil {
+		maxCols, maxRows = state.public.Environment.MaxCols, state.public.Environment.MaxRows
+	}
+	m.mu.Unlock()
+	if sessionID == "" || id == "" {
+		return
+	}
+	if (maxCols > 0 && cols > maxCols) || (maxRows > 0 && rows > maxRows) {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := m.cli.TerminalResize(ctx, sessionID, id, cols, rows); err != nil {
+			m.setStatus("改终端尺寸失败: " + err.Error())
+			return
+		}
+		m.mu.Lock()
+		if current := m.terminalViews[key]; current != nil && current.public.Info != nil &&
+			current.public.Info.ID == id {
+			if current.emu != nil {
+				// 上游 `vt.SafeEmulator.Resize` 无返回值，本包的包装统一成 error 只为
+				// 签名一致：w/h 非正才提前返回，这里两个都 >0，所以恒为 nil。
+				_ = current.emu.Resize(cols, rows)
+				current.gridDirty = true
+			}
+			// 宿主的 state 广播也会回填这两项；先在本地记上，免得中间那几帧
+			// 又按旧尺寸算一遍 fit。
+			info := *current.public.Info
+			info.Cols, info.Rows = cols, rows
+			current.public.Info = &info
+		}
+		m.mu.Unlock()
+		m.inv.Invalidate()
+	}()
+}
+
 func (m *model) terminalRenameOfficial(tabID, title string) error {
 	m.mu.Lock()
 	sessionID := m.cur

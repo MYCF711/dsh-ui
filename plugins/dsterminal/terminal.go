@@ -34,6 +34,11 @@ type Plugin struct {
 	renameField ui.Field
 	renaming    bool
 
+	// resizeRequested 记每个 occurrence **上一次发给宿主的**尺寸：官方同尺寸去重
+	// 的「当前尺寸」。绘制是逐帧的，而宿主的 state 回填要等 resize 往返，
+	// 这中间只读 Info 会对同一个尺寸连发（详见 resize.go 的 requestTerminalResize）。
+	resizeRequested map[string]terminalSize
+
 	// guideMenuOpen 是向导卡片上那枚 shell 菜单的展开态（官方 TerminalGuide 的
 	// `open` 状态，TerminalGuide.tsx:37）。菜单面画在卡片下方，见 guide.go。
 	guideMenuOpen bool
@@ -258,7 +263,7 @@ func (p *Plugin) drawTerminal(f ui.C, env *pluginapi.Env, tabID string) {
 				if state.Environment != nil {
 					maxCols, maxRows = state.Environment.MaxCols, state.Environment.MaxRows
 				}
-				p.drawTerminalGrid(f, state.Grid, height, maxCols, maxRows)
+				p.drawTerminalGrid(f, env, tabID, state, height, maxCols, maxRows)
 			} else {
 				for _, line := range terminalLines(state.Screen) {
 					if line == "" {

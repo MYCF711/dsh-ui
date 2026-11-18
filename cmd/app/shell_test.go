@@ -144,7 +144,7 @@ func TestOfficialGeometryMatchesOfficialColumns(t *testing.T) {
 }
 
 func TestShellOptionsForRealState(t *testing.T) {
-	opts := shellOptionsFor(&model{cur: "s1"}, nil, 1182, 832)
+	opts := shellOptionsFor(&model{cur: "s1"}, nil, 1182, 832, nil)
 	if opts.Phase != uikernel.PhaseActive {
 		t.Fatalf("有会话时 phase 应为 active，得到 %v", opts.Phase)
 	}
@@ -159,7 +159,7 @@ func TestShellOptionsForRealState(t *testing.T) {
 		t.Fatalf("Windows 上 CollapsedWidth 应为 0（官方 rail=0），得到 %v", opts.CollapsedWidth)
 	}
 
-	hero := shellOptionsFor(&model{cur: ""}, nil, 1182, 832)
+	hero := shellOptionsFor(&model{cur: ""}, nil, 1182, 832, nil)
 	if hero.Phase != uikernel.PhaseHero {
 		t.Fatalf("没有会话时 phase 应为 hero，得到 %v", hero.Phase)
 	}
@@ -174,11 +174,11 @@ func TestShellOptionsForRealState(t *testing.T) {
 	if err := optKernel.Load(&dscore.Plugin{Dark: true}, side); err != nil {
 		t.Fatalf("装配 dssidebar 失败：%v", err)
 	}
-	withSide := shellOptionsFor(&model{cur: "s1", side: side}, optKernel, 1182, 832)
+	withSide := shellOptionsFor(&model{cur: "s1", side: side}, optKernel, 1182, 832, nil)
 	if withSide.SidebarPreferred != side.Width() || withSide.SidebarPreferred != 280 {
 		t.Fatalf("侧栏偏好 = %v，dssidebar 实际是 %v（应为 280）", withSide.SidebarPreferred, side.Width())
 	}
-	unknown := shellOptionsFor(&model{cur: "s1"}, optKernel, 1182, 832)
+	unknown := shellOptionsFor(&model{cur: "s1"}, optKernel, 1182, 832, nil)
 	if unknown.SidebarPreferred != uikernel.SidebarDefault {
 		t.Fatalf("宽度未知时应落官方默认 %v，得到 %v", uikernel.SidebarDefault, unknown.SidebarPreferred)
 	}
@@ -200,7 +200,7 @@ func TestOfficialShellWiringDispatchesOfficialSlots(t *testing.T) {
 	//   一旦有插件占了官方槽，桥就必须让位——官方语义是「注册在这里 = 整列替换」。）
 
 	m := &model{kernel: kernel, showRightbar: true, cur: "s1"}
-	opts := shellOptionsFor(m, kernel, 1182, 832)
+	opts := shellOptionsFor(m, kernel, 1182, 832, nil)
 	if !opts.BridgeLegacy {
 		t.Fatal("内核里有 sidebar.list / main.body 占用方，兼容桥必须打开")
 	}
@@ -238,7 +238,7 @@ func TestOfficialShellWiringDispatchesOfficialSlots(t *testing.T) {
 	// 反过来：没有旧部件时不许画兼容桥（否则会有两套结构叠着）。
 	clean, cleanDrawn := newProbeKernel(t, "clean", uikernel.OffSidebar, uikernel.OffMain)
 	m2 := &model{kernel: clean, cur: "s1"}
-	opts2 := shellOptionsFor(m2, clean, 1182, 832)
+	opts2 := shellOptionsFor(m2, clean, 1182, 832, nil)
 	if opts2.BridgeLegacy {
 		t.Fatal("没有任何旧槽占用方时不该打开兼容桥")
 	}
@@ -289,7 +289,7 @@ func TestDrawnOfficialSlotsAreRegistered(t *testing.T) {
 		uikernel.OffConvView, uikernel.OffConvComposerBar, uikernel.OffInputModel,
 		uikernel.OffSessionHeaderLineage, uikernel.OffRightbarSession)
 	m := &model{kernel: kernel, showRightbar: true, cur: "s1"}
-	opts := shellOptionsFor(m, kernel, 1920, 1032)
+	opts := shellOptionsFor(m, kernel, 1920, 1032, nil)
 	tree := &gfx.Tree{}
 	canvas := &gfx.Canvas{}
 	canvas.SetTree(tree)
@@ -338,7 +338,7 @@ func TestComposerBridgeFollowsOfficialSeat(t *testing.T) {
 	product, _ := newProbeKernel(t, "product",
 		pluginapi.SlotSidebarList, pluginapi.SlotMainBody,
 		pluginapi.SlotMainComposer, uikernel.OffConvComposer)
-	opts := shellOptionsFor(&model{cur: "s1"}, product, 1182, 832)
+	opts := shellOptionsFor(&model{cur: "s1"}, product, 1182, 832, nil)
 	if !opts.BridgeLegacy {
 		t.Fatal("sidebar.list / main.body 还占着槽，整列兼容桥必须开着（header/正文仍走旧槽）")
 	}
@@ -349,14 +349,14 @@ func TestComposerBridgeFollowsOfficialSeat(t *testing.T) {
 	// 纯旧插件集：官方座位没人 → composer 退回 main.composer（不黑屏）。
 	legacy, _ := newProbeKernel(t, "legacy-only",
 		pluginapi.SlotMainBody, pluginapi.SlotMainComposer)
-	legacyOpts := shellOptionsFor(&model{cur: "s1"}, legacy, 1182, 832)
+	legacyOpts := shellOptionsFor(&model{cur: "s1"}, legacy, 1182, 832, nil)
 	if !legacyOpts.BridgeLegacyComposer {
 		t.Fatal("官方座位没人、旧槽有人时 composer 必须走兼容桥")
 	}
 
 	// 官方座位有人、旧槽没人：同样走官方座位。
 	officialOnly, _ := newProbeKernel(t, "official-only", uikernel.OffConvComposer)
-	officialOpts := shellOptionsFor(&model{cur: "s1"}, officialOnly, 1182, 832)
+	officialOpts := shellOptionsFor(&model{cur: "s1"}, officialOnly, 1182, 832, nil)
 	if officialOpts.BridgeLegacyComposer {
 		t.Fatal("只有官方座位有占用方时 composer 不该走兼容桥")
 	}
@@ -373,7 +373,7 @@ func TestOfficialTierReallyDispatchesComposerSeat(t *testing.T) {
 		t.Helper()
 		kernel, drawn := newProbeKernel(t, "composer-tier", slots...)
 		m := &model{kernel: kernel, cur: "s1"}
-		opts := shellOptionsFor(m, kernel, 1182, 832)
+		opts := shellOptionsFor(m, kernel, 1182, 832, nil)
 		tree := &gfx.Tree{}
 		canvas := &gfx.Canvas{}
 		canvas.SetTree(tree)

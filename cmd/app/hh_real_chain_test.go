@@ -91,7 +91,7 @@ func newHHRealProduct(t *testing.T) *hhRealProduct {
 	p.theme = p.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.feat = p.tree.Feature("hh-real-chain")
 	m := &model{kernel: p.kernel, cur: "s-real"}
-	p.opts = shellOptionsFor(m, p.kernel, 1182, 832)
+	p.opts = shellOptionsFor(m, p.kernel, 1182, 832, nil)
 	return p
 }
 

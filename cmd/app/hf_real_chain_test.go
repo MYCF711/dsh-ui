@@ -108,7 +108,7 @@ func hfOfficialSidebarFrame(t *testing.T, snap pluginapi.Snapshot) (*gfx.Canvas,
 		Geometry: pluginapi.Geometry{Width: 1182, Height: 832, SidebarWidth: 280, MainWidth: 902},
 	}
 	env.Has = func(slot pluginapi.Slot) bool { return kernel.Has(slot) }
-	opts := shellOptionsFor(&model{cur: "official-sidebar"}, kernel, 1182, 832)
+	opts := shellOptionsFor(&model{cur: "official-sidebar"}, kernel, 1182, 832, nil)
 	if opts.BridgeLegacy {
 		t.Fatal("这一帧必须没有旧部件占槽（否则官方 sidebar.settings 不会被 dispatch）")
 	}

@@ -371,8 +371,20 @@ type RightTabTitleProvider interface {
 // 投影时优先问它，返回空串再问 `RightTabTitleProvider`，仍为空就沿用类型标题。
 //
 // 实现只读自己的状态，不发请求（与 `RightTabTitleProvider` 同一条约定）。
+//
+// `frames` 是**本帧该会话的原始 journal 帧**，与 `Env.Data.Frames` 同一份。
+// 为什么要给：官方的标题座位是**渲染期同步读资源**——`useResource<'plan'>(address)`
+// 从**已经加载好的**会话历史里取 `plan.title`（`OFF:PlanPreview.tsx:47-53`），
+// 所以它第一帧就是对的。本仓壳在 `m.view.Draw` **之前**投影名录
+// （`cmd/app/right_tab_occurrences.go` 的 `rightTabsFor`），那一刻插件这一帧还
+// 没画，只给 (sessionID, tabID, address) 就只能读到上一帧的缓存：刚提交计划的那
+// 一帧芯片先显示类型标题「计划」，下一帧才变成计划标题（一帧延迟）。
+// 把帧一并给出，实现才能像官方一样**在问的那一刻**读到数据。
+//
+// 空 = 这一帧没有该会话的帧基线（老壳 / 还没加载 / 只问结构），实现只该退回自己
+// 的增量缓存，不许把空当成"没有计划"。
 type RightTabAddressTitleProvider interface {
-	RightTabTitleFor(sessionID, tabID, address string) string
+	RightTabTitleFor(sessionID, tabID, address string, frames []apiclient.Frame) string
 }
 
 // RightTabCloseHandler 是官方 sidebarRight.registerCloseHandler 的插件面：

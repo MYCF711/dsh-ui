@@ -92,7 +92,7 @@ func newGRProduct(t *testing.T) *grProduct {
 	p.theme = p.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.feat = p.tree.Feature("gr-real-composer")
 	m := &model{kernel: p.kernel, cur: "s-real"}
-	p.opts = shellOptionsFor(m, p.kernel, 1182, 832)
+	p.opts = shellOptionsFor(m, p.kernel, 1182, 832, nil)
 	if !p.opts.BridgeLegacy {
 		t.Fatal("旧部件还在占槽，整列兼容桥必须开着（header/正文仍走旧槽）")
 	}

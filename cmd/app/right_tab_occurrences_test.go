@@ -41,12 +41,12 @@ func TestBrowserOpenCreatesIndependentOccurrencesAndRestoresLayout(t *testing.T)
 	cfg := browserConfigCapture(t)
 	m := browserOccurrenceModel(t)
 	wireBrowserConfigCapture(m, cfg)
-	tabs := m.rightTabsFor()
+	tabs := m.rightTabsFor(nil)
 	if len(tabs) != 3 {
 		t.Fatalf("默认 occurrence 数 = %d，want browser/timeline/terminal", len(tabs))
 	}
 	m.openRightTab("browser")
-	tabs = m.rightTabsFor()
+	tabs = m.rightTabsFor(nil)
 	if len(tabs) != 4 {
 		t.Fatalf("多开后 occurrence 数 = %d，want 4", len(tabs))
 	}
@@ -55,19 +55,19 @@ func TestBrowserOpenCreatesIndependentOccurrencesAndRestoresLayout(t *testing.T)
 		t.Fatalf("第二次 openTab(browser) 没有新 occurrence key：%q", second)
 	}
 	m.openRightTab("timeline")
-	if got := len(m.rightTabsFor()); got != 4 {
+	if got := len(m.rightTabsFor(nil)); got != 4 {
 		t.Fatalf("单实例 timeline 被重复打开：%d", got)
 	}
 	m.selectRightTabKey(second)
-	if got := m.activeRightTabKey(m.rightTabsFor()); got != second {
+	if got := m.activeRightTabKey(m.rightTabsFor(nil)); got != second {
 		t.Fatalf("occurrence 选择失败：%q，want %q", got, second)
 	}
 	m.closeRightTab(second)
-	if got := len(m.rightTabsFor()); got != 3 {
+	if got := len(m.rightTabsFor(nil)); got != 3 {
 		t.Fatalf("关闭后还剩 %d 个 occurrence，want 3", got)
 	}
 	m.openRightTab("browser")
-	third := m.activeRightTabKey(m.rightTabsFor())
+	third := m.activeRightTabKey(m.rightTabsFor(nil))
 	if third == "" || third == second || third == "browser" {
 		t.Fatalf("重开没有分配新 tabId：%q", third)
 	}
@@ -75,7 +75,7 @@ func TestBrowserOpenCreatesIndependentOccurrencesAndRestoresLayout(t *testing.T)
 	// 新 model 没有内存 surface，必须从 dsh.sidebar-right.v1 恢复两个浏览器。
 	restarted := browserOccurrenceModel(t)
 	wireBrowserConfigCapture(restarted, cfg)
-	restored := restarted.rightTabsFor()
+	restored := restarted.rightTabsFor(nil)
 	browsers := 0
 	for _, tab := range restored {
 		if tab.Kind == "browser" {
@@ -95,11 +95,11 @@ func TestBrowserOpenCreatesIndependentOccurrencesAndRestoresLayout(t *testing.T)
 	}
 	empty := browserOccurrenceModel(t)
 	wireBrowserConfigCapture(empty, cfg)
-	if got := len(empty.rightTabsFor()); got != 0 {
+	if got := len(empty.rightTabsFor(nil)); got != 0 {
 		t.Fatalf("全关后重启又播种了 %d 个 tab", got)
 	}
 	empty.openRightTab("browser")
-	if got := len(empty.rightTabsFor()); got != 1 {
+	if got := len(empty.rightTabsFor(nil)); got != 1 {
 		t.Fatalf("空态重新打开浏览器失败：%d", got)
 	}
 }
@@ -119,21 +119,21 @@ func TestRightTabMutationsWaitForConfigInsteadOfMintingCollisions(t *testing.T) 
 	uiConfig = nil
 	m := browserOccurrenceModel(t)
 	m.openRightTab("browser")
-	if m.status == "" || len(m.rightTabsFor()) != 3 {
+	if m.status == "" || len(m.rightTabsFor(nil)) != 3 {
 		t.Fatal("配置未就绪时新建没有明确等待")
 	}
 	m.closeRightTab("browser")
-	if m.status == "" || len(m.rightTabsFor()) != 3 {
+	if m.status == "" || len(m.rightTabsFor(nil)) != 3 {
 		t.Fatal("配置未就绪时关闭没有明确等待")
 	}
 	cfg = map[string]string{rightSidebarConfigKey("s1"): savedRaw}
 	uiConfig = cfg
 	wireBrowserConfigCapture(m, cfg)
-	if got := len(m.rightTabsFor()); got != 4 {
+	if got := len(m.rightTabsFor(nil)); got != 4 {
 		t.Fatal("配置到达后没有恢复两个浏览器 occurrence：", got)
 	}
 	m.openRightTab("browser")
-	if got := len(m.rightTabsFor()); got != 5 {
+	if got := len(m.rightTabsFor(nil)); got != 5 {
 		t.Fatal("配置到达后新建仍然失败：", got)
 	}
 }

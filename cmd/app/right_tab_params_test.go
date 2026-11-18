@@ -20,7 +20,7 @@ func TestOpenRightTabParamsAttachesToOccurrence(t *testing.T) {
 	wireBrowserConfigCapture(m, cfg)
 
 	m.openRightTabParams("browser", pluginapi.RightTabParams{URL: "https://example.com/a"})
-	tabID := m.activeRightTabKey(m.rightTabsFor())
+	tabID := m.activeRightTabKey(m.rightTabsFor(nil))
 	if tabID == "" {
 		t.Fatal("openTab 之后没有选中的 occurrence")
 	}
@@ -30,7 +30,7 @@ func TestOpenRightTabParamsAttachesToOccurrence(t *testing.T) {
 
 	// 多实例类型再开一次 = 独立 occurrence，各自的参数互不覆盖。
 	m.openRightTabParams("browser", pluginapi.RightTabParams{URL: "https://example.com/b"})
-	second := m.activeRightTabKey(m.rightTabsFor())
+	second := m.activeRightTabKey(m.rightTabsFor(nil))
 	if second == tabID {
 		t.Fatal("multiple 类型第二次 openTab 没有新建 occurrence")
 	}
@@ -56,7 +56,7 @@ func TestOpenRightTabWithoutParamsClearsStaleParams(t *testing.T) {
 	// 单实例类型（timeline）复用同一个 occurrence：新的 open 不带参数时，
 	// 官方 `navigation.params` 是 `undefined`，不能读到上一次的值。
 	m.openRightTabParams("timeline", pluginapi.RightTabParams{URL: "https://example.com/old"})
-	tabID := m.activeRightTabKey(m.rightTabsFor())
+	tabID := m.activeRightTabKey(m.rightTabsFor(nil))
 	if got := m.rightTabParamsFor(m.cur, tabID); got.URL == "" {
 		t.Fatal("带参数那次 open 没写进去")
 	}

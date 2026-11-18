@@ -96,7 +96,7 @@ func newHERealProduct(t *testing.T) *heRealProduct {
 	p.theme = p.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.feat = p.tree.Feature("he-stats-dialog")
 	m := &model{kernel: p.kernel, cur: "s-he"}
-	p.opts = shellOptionsFor(m, p.kernel, 1182, 832)
+	p.opts = shellOptionsFor(m, p.kernel, 1182, 832, nil)
 	if p.opts.BridgeLegacyComposer {
 		t.Fatal("官方 composer 座位有占用方时 composer 不该走兼容桥")
 	}

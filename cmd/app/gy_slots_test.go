@@ -105,7 +105,7 @@ func gyFrame(t *testing.T, official bool) ([]string, map[pluginapi.Slot]int) {
 			return
 		}
 		m := &model{kernel: kernel, cur: "s-gy"}
-		opts := shellOptionsFor(m, kernel, 1182, 832)
+		opts := shellOptionsFor(m, kernel, 1182, 832, nil)
 		if !opts.BridgeLegacy {
 			t.Fatal("旧 sidebar/正文还占着槽，整列兼容桥必须开着（-shell official 的产品形状）")
 		}

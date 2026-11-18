@@ -118,7 +118,8 @@ func (m *model) selectRightTabKey(key string) {
 		return
 	}
 	selected := ""
-	for _, tab := range m.rightTabsFor() {
+	// 只找 key/kind，不需要标题：传 nil 帧。
+	for _, tab := range m.rightTabsFor(nil) {
 		kind := tab.Kind
 		if kind == "" {
 			kind = tab.Key

@@ -90,7 +90,7 @@ func TestPlanTabChipUsesOfficialOtherFileIcon(t *testing.T) {
 func TestRightTabTitleFollowsResource(t *testing.T) {
 	plugin := &Plugin{}
 	address := planAddress("session-1", "call-a")
-	if got := plugin.RightTabTitleFor("session-1", "tab1", address); got != "" {
+	if got := plugin.RightTabTitleFor("session-1", "tab1", address, nil); got != "" {
 		t.Fatalf("还没有任何计划帧时不该编标题，得到 %q", got)
 	}
 
@@ -99,22 +99,22 @@ func TestRightTabTitleFollowsResource(t *testing.T) {
 		{CallID: "call-a", Title: "把 GUI 迁到 Go + Viva"},
 		{CallID: "call-b", Title: "另一份方案"},
 	})
-	if got := plugin.RightTabTitleFor("session-1", "tab1", address); got != "把 GUI 迁到 Go + Viva" {
+	if got := plugin.RightTabTitleFor("session-1", "tab1", address, nil); got != "把 GUI 迁到 Go + Viva" {
 		t.Fatalf("资源标题 = %q，want「把 GUI 迁到 Go + Viva」", got)
 	}
 	// 地址对不上（别的 callId）不许借别人的标题。
-	if got := plugin.RightTabTitleFor("session-1", "tab2", planAddress("session-1", "call-zzz")); got != "" {
+	if got := plugin.RightTabTitleFor("session-1", "tab2", planAddress("session-1", "call-zzz"), nil); got != "" {
 		t.Fatalf("不存在的 callId 借到了标题 %q", got)
 	}
 	// 别的会话的地址：本仓只有当前会话的帧，不许跨会话安标题。
-	if got := plugin.RightTabTitleFor("session-2", "tab1", address); got != "" {
+	if got := plugin.RightTabTitleFor("session-2", "tab1", address, nil); got != "" {
 		t.Fatalf("跨会话地址拿到了标题 %q", got)
 	}
 	// 地址不是计划地址 / 是空串：不编。
-	if got := plugin.RightTabTitleFor("session-1", "tab1", "dsh-resource://file/session-1/a.md"); got != "" {
+	if got := plugin.RightTabTitleFor("session-1", "tab1", "dsh-resource://file/session-1/a.md", nil); got != "" {
 		t.Fatalf("非计划地址拿到了标题 %q", got)
 	}
-	if got := plugin.RightTabTitleFor("session-1", "tab1", ""); got != "" {
+	if got := plugin.RightTabTitleFor("session-1", "tab1", "", nil); got != "" {
 		t.Fatalf("空地址拿到了标题 %q", got)
 	}
 }
@@ -127,11 +127,11 @@ func TestRightTabTitleForTemporaryReview(t *testing.T) {
 		reviewPreviewAddress("session-1", "win:req"): {Title: "等待审批的草稿"},
 	}}
 	address := reviewPreviewAddress("session-1", "win:req")
-	if got := plugin.RightTabTitleFor("session-1", "tab1", address); got != "等待审批的草稿" {
+	if got := plugin.RightTabTitleFor("session-1", "tab1", address, nil); got != "等待审批的草稿" {
 		t.Fatalf("临时审阅标题 = %q，want「等待审批的草稿」", got)
 	}
 	// 文档已经不在（地址还在）→ 不编标题，壳保留类型标题。
-	if got := plugin.RightTabTitleFor("session-1", "tab1", reviewPreviewAddress("session-1", "win:other")); got != "" {
+	if got := plugin.RightTabTitleFor("session-1", "tab1", reviewPreviewAddress("session-1", "win:other"), nil); got != "" {
 		t.Fatalf("失效的临时审阅拿到了标题 %q", got)
 	}
 }

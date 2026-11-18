@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/vivaui/viva/ui"
@@ -106,12 +107,14 @@ func linkStateOf(up, down, connecting bool) pluginapi.LinkState {
 //
 // 这里只许读真值：会话、右栏开关、侧栏宽度偏好都来自 model；未知一律按
 // 官方默认（空 bottom、单 view、无 tabs），不编一个假值出来。
-func shellOptionsFor(m *model, kernel *uikernel.Kernel, width, height float32) uikernel.ShellOptions {
+func shellOptionsFor(m *model, kernel *uikernel.Kernel, width, height float32, frames []apiclient.Frame) uikernel.ShellOptions {
 	// 两个选择器座位的名录：壳从内核的 painter 表投影一次，骨架照着画。
 	// 与 `env.Views` / `env.RightTabs` 必须是**同一份**（同一个函数、同一个内核），
 	// 否则官方档与 legacy 档会画出两套页签。
 	views := uikernel.ViewTabs(kernel)
-	rightTabs := m.rightTabsFor()
+	// 帧一并给：芯片标题由这一步定（`opts.RightTabs` 就是骨架画芯片用的名录），
+	// 而壳跑在这里时插件这一帧还没画过——只有帧能让资源型标题现算。
+	rightTabs := m.rightTabsFor(frames)
 	opts := uikernel.ShellOptions{
 		// caption 由 L0 的 frame_chrome 扣过一次，这里的 bounds 已是内容区。
 		Windows: false,

@@ -83,7 +83,7 @@ func newHHProduct(t *testing.T, launcherHeight float32) *hhProduct {
 	p.theme = p.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.feat = p.tree.Feature("hh-smallgaps")
 	m := &model{kernel: p.kernel, cur: "s-hh"}
-	p.opts = shellOptionsFor(m, p.kernel, 1182, 832)
+	p.opts = shellOptionsFor(m, p.kernel, 1182, 832, nil)
 	return p
 }
 

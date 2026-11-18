@@ -30,6 +30,13 @@ type CredentialInfo struct {
 	Source string `json:"source,omitempty"`
 	// Writable 表示 `credentials.set` 能不能影响它；false 时界面必须禁用控件。
 	Writable bool `json:"writable"`
+	// Masked 是 provider 生成的**掩码预览**（官方 `CredentialInfo.masked?: string`，
+	// `@deepseek-ai/dsh-credentials/src/types.ts:62-75`："never the full value"）。
+	//
+	// 只在本地凭据存储（本仓 `source == "catalog"`，官方 `source: 'file'`）时有值：
+	// env / dotenv 层官方 describe 就不回。界面拿它当已存密钥的 placeholder
+	// （官方 ApiKeyInput.tsx:41 的 `saved.masked`）——**明文永远不上线**。
+	Masked string `json:"masked,omitempty"`
 }
 
 // CredentialDescribe 问一批 ref 的凭据状态（官方 `credentials.describe`）。

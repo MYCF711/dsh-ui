@@ -119,6 +119,18 @@ type officialHarness struct {
 	accountStarts    int
 	accountCancels   []string
 	accountExternals []string
+	// credentials 是 `credentials.describe` 的替身答案（键 = 引用名）；
+	// 没问到的 ref 不回 = "不知道"。nil = 一条都不回（老壳的形状）。
+	credentials map[string]apiclient.CredentialInfo
+	// credentialErr 让 `credentials.set` 失败（验证"密钥没落库就不许关卡"）。
+	credentialErr  error
+	credentialSets []credentialSetCall
+}
+
+// credentialSetCall 记录一次 `credentials.set`（值要留原文才能断言 trim 语义）。
+type credentialSetCall struct {
+	ref   string
+	value string
 }
 
 func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
@@ -236,6 +248,27 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			h.mu.Lock()
 			defer h.mu.Unlock()
 			return h.modelsSnapshot
+		},
+		// Models 页的凭据域（官方 `remote.credentials`，与 settings 是两条命名空间）。
+		CredentialStatus: func(refs []string) map[string]apiclient.CredentialInfo {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			if h.credentials == nil {
+				return nil
+			}
+			out := make(map[string]apiclient.CredentialInfo, len(refs))
+			for _, ref := range refs {
+				if info, ok := h.credentials[ref]; ok {
+					out[ref] = info
+				}
+			}
+			return out
+		},
+		CredentialSet: func(ref, value string) error {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.credentialSets = append(h.credentialSets, credentialSetCall{ref: ref, value: value})
+			return h.credentialErr
 		},
 	}
 

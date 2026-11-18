@@ -108,6 +108,12 @@ const (
 	ItemCubes ItemKind = "cubes"
 	// ItemButton 右侧按钮（shortcuts 的「编辑快捷键」）。
 	ItemButton ItemKind = "button"
+	// ItemSecret 是写-only 的密钥输入框（Models 页 ProviderEditor 的 `ApiKeyInput`）。
+	//
+	// 它**不是**设置文档字段：值经 `credentials.set` 落凭据库，读侧只回"设没设"
+	// （官方 ApiKeyInput.tsx:1-68、operations.ts:78-85）。所以这种行永远没有
+	// `Path`，`activateRow` 也不认它——输入本身由登记的 `ui.Field` 接键盘。
+	ItemSecret ItemKind = "secret"
 	// ItemVersion 只读版本行（current-version）。
 	ItemVersion ItemKind = "version"
 )

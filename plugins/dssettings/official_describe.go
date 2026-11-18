@@ -47,6 +47,22 @@ type PanelChoice struct {
 	Disabled bool
 }
 
+// PanelTone 是行内说明文字的**语气**（官方三种 CSS 类）：
+//
+//	PanelToneWarn    `.notice`         `--dsw-alias-state-warn-label`（缺东西/要用户做事）
+//	PanelToneSuccess `.savedNotice`    `--dsw-alias-state-success-primary`（已经就绪）
+//	PanelToneMuted   `.advancedHint`   `--dsw-alias-label-tertiary`（中性：还不知道）
+//
+// 依据 ModelsSection.module.css:29-39 / :335-339。空串 = 按行自己的默认色画。
+type PanelTone string
+
+const (
+	PanelToneNone    PanelTone = ""
+	PanelToneWarn    PanelTone = "warn"
+	PanelToneSuccess PanelTone = "success"
+	PanelToneMuted   PanelTone = "muted"
+)
+
 // PanelRow 是右页的一行（可写行或只读行）。
 type PanelRow struct {
 	// ID 是稳定行 id（拼交互 id `settings-<id>`）。
@@ -77,7 +93,36 @@ type PanelRow struct {
 	Bounds Bounds
 	// Revision 是写这一行时的 expectedRevision 种子（来自 section.revision）。
 	Revision int
+	// Placeholder 是输入类控件（ItemSecret）空着时显示的灰字。
+	//
+	// 官方这一格放的两样东西：已存密钥的**服务端掩码**（`saved.masked`），
+	// 或者 `keyPlaceholder` / `keyPlaceholderFallback{env}`
+	// （ApiKeyInput.tsx:41、ProviderEditor.tsx:466-468）。其它控件行留空。
+	Placeholder string
+	// Tone 是这一行说明文字的语气（见 PanelTone）；空串 = 行自己的默认色。
+	Tone PanelTone
+	// Badge 是行头那枚状态点（官方 `.credentialDot`，ModelsSection.module.css:98-113）；
+	// 空串 = 不画。
+	Badge PanelBadge
+	// HelpText 是 label 后面那枚 `?` 的悬浮帮助正文（官方 `.helpButton` 的 Tooltip，
+	// ModelsSection.module.css:282-302 + ProviderEditor.tsx:460-465）；空 = 不画帮助钮。
+	HelpText string
+	// BadgeLabel 是那枚点的无障碍/悬浮文案（官方 `aria-label` / `title`，
+	// ModelsSection.tsx:488-498）：点本身没有文字，说明只能挂在这两个属性上。
+	BadgeLabel string
 }
+
+// PanelBadge 是行头的状态点。官方只有凭据这一点，两种颜色：
+//
+//	PanelBadgeCredentialConfigured  8px 实心圆，成功色（`:108`）
+//	PanelBadgeCredentialMissing     同上，错误色（`:112`）
+type PanelBadge string
+
+const (
+	PanelBadgeNone                 PanelBadge = ""
+	PanelBadgeCredentialConfigured PanelBadge = "credential-configured"
+	PanelBadgeCredentialMissing    PanelBadge = "credential-missing"
+)
 
 // Display 是这一行**该画出来的值文本**。
 //
@@ -417,8 +462,11 @@ func generalRow(id, title, hostField, field string, choices []Choice, defaultVal
 
 // buildModelsSection 造 Models 独立页。老壳没有目录快照时只从真实 llm 设置
 // 回推出 route；产品路径随后由 syncPanel 用三路桥接快照重建同一页。
+//
+// 这里刻意传 nil 凭据查询：本函数是**纯投影**入口（BuildPanel 只拿 describe + facts），
+// 不持有任何 Actions。线上路径在 official_panel.go 的 syncPanel 里带 env.Act.CredentialStatus。
 func buildModelsSection(panel *PanelSection, describe *apiclient.SettingsDescribeResult, m *PanelModel) {
-	*panel = buildModelsPage(*panel, describe, m, nil, nil)
+	*panel = buildModelsPage(*panel, describe, m, nil, nil, nil)
 }
 
 // buildStaticSection 是「结构在、数据不在」的 section 的统一降级：

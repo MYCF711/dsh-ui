@@ -17,14 +17,19 @@ import (
 
 // retryEditorState 是一张打开中的 provider 卡。original 是 user 层，inherited 是
 // base 层；policy=nil 表示继承，不是空策略。所有数值保留 json.Number 直到写盘。
+//
+// credentialRef 是这张卡 Apply 时要写的凭据引用（官方 `keyRef`，ProviderEditor.tsx:224）。
+// 它在**开卡那一刻**就钉住：写设置时 revision 变了不会连累它，但凭据域与设置文档
+// 是两套 revision，重算一次反而可能落到用户没打开过的那张卡上。
 type retryEditorState struct {
-	route      string
-	original   map[string]any
-	inherited  map[string]any
-	policy     map[string]any
-	revision   int
-	writable   bool
-	generation uint64
+	route         string
+	credentialRef string
+	original      map[string]any
+	inherited     map[string]any
+	policy        map[string]any
+	revision      int
+	writable      bool
+	generation    uint64
 }
 
 func defaultRetryPolicy() map[string]any {

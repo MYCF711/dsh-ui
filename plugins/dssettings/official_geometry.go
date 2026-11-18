@@ -273,10 +273,22 @@ const (
 	ModelsEditorGap      float32 = 14
 	ModelsFieldGap       float32 = 6
 	ModelsInputMinHeight float32 = 32 // ModelsSection.module.css:808-820
-	ModelsButtonHeight   float32 = 36
-	ModelsButtonPadX     float32 = 14
-	ModelsRowButtonH     float32 = 28
-	ModelsRowButtonPadX  float32 = 10
+	// ModelsKeyPadX 是密钥输入框左右内缩（`.input{padding:0 10px}`，:808-820）。
+	ModelsKeyPadX float32 = 10
+	// ModelsKeyToggleInset 是显隐钮到输入框边缘的距离（`.keyToggle{inset:1px 1px 1px auto}`，
+	// :865-875）。
+	ModelsKeyToggleInset float32 = 1
+	// ModelsKeyToggleWidth 是显隐钮宽（`.keyToggle{width:32px}`，:865-875）。
+	ModelsKeyToggleWidth float32 = 32
+	// ModelsKeyHelpButton 是 label 后面那枚 `?` 的边长（`.helpButton{width/height:16px}`，
+	// ModelsSection.module.css:283-284）。
+	ModelsKeyHelpButton float32 = 16
+	// ModelsKeyHelpLine 是 `?` 的字高（`.helpButton{font-size:11px;line-height:15px}`，:293-294）。
+	ModelsKeyHelpLine   float32 = 15
+	ModelsButtonHeight  float32 = 36
+	ModelsButtonPadX    float32 = 14
+	ModelsRowButtonH    float32 = 28
+	ModelsRowButtonPadX float32 = 10
 
 	// DeleteDialogMaxWidth 是删除确认框宽（rc.2 D9：300 → `min(480px, 100%)`，
 	// ModelsSection.module.css:908-910）。
@@ -658,6 +670,12 @@ var OfficialSettingsGeometry = []GeoRow{
 	{Node: "ModelsSection.rowHead", Prop: "gap", Official: 10, Impl: ModelsRowHeadGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:64"},
 	{Node: "ModelsSection.rowName", Prop: "font-size", Official: 14, Impl: ModelsRowNameSize, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:77"},
 	{Node: "ModelsSection.credentialDot", Prop: "size", Official: 8, Impl: ModelsCredentialDot, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:98"},
+	{Node: "ModelsSection.keyInput", Prop: "height", Official: 32, Impl: ModelsInputMinHeight, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:808-820"},
+	{Node: "ModelsSection.keyInput", Prop: "padding-inline", Official: 10, Impl: ModelsKeyPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:808-820"},
+	{Node: "ModelsSection.keyToggle", Prop: "width", Official: 32, Impl: ModelsKeyToggleWidth, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:865-875"},
+	{Node: "ModelsSection.keyToggle", Prop: "inset", Official: 1, Impl: ModelsKeyToggleInset, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:865-875"},
+	{Node: "ModelsSection.helpButton", Prop: "size", Official: 16, Impl: ModelsKeyHelpButton, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:282-302"},
+	{Node: "ModelsSection.helpButton", Prop: "line-height", Official: 15, Impl: ModelsKeyHelpLine, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:282-302"},
 	{Node: "ModelsSection.editor", Prop: "padding-block", Official: 14, Impl: ModelsEditorPadY, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:240"},
 	{Node: "ModelsSection.editor", Prop: "padding-inline", Official: 16, Impl: ModelsEditorPadX, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:240"},
 	{Node: "ModelsSection.editor", Prop: "gap", Official: 14, Impl: ModelsEditorGap, Unit: UnitPx, Status: GeoAligned, Anchor: "ui-settings-models/src/client/ModelsSection.module.css:240"},

@@ -98,7 +98,10 @@ func (p *Plugin) gridRowHeight(env *pluginapi.Env) float32 {
 
 // drawTerminalGrid 声明网格的绘制面。height<=0 表示由容器分配剩余高度
 // （右栏面板有确定高度）；>0 是浮层那种由内容决定高度的情形。
-func (p *Plugin) drawTerminalGrid(f ui.C, grid *vterm.Grid, height float32) {
+//
+// maxCols/maxRows 是宿主 `terminal.environment` 给的上限（<=0 = 没给上限）。
+// 它们只影响「这块面板放得下多少格」的判定，见 resize.go 的 terminalFitSize。
+func (p *Plugin) drawTerminalGrid(f ui.C, grid *vterm.Grid, height float32, maxCols, maxRows int) {
 	if grid == nil {
 		return
 	}
@@ -109,12 +112,12 @@ func (p *Plugin) drawTerminalGrid(f ui.C, grid *vterm.Grid, height float32) {
 		box = box.Grow(1)
 	}
 	box.Draw(func(d *ui.DrawContext) {
-		p.paintGrid(d, grid)
+		p.paintGrid(d, grid, maxCols, maxRows)
 	})
 }
 
 // paintGrid 逐格画：背景块、字形 run、光标。
-func (p *Plugin) paintGrid(d *ui.DrawContext, grid *vterm.Grid) {
+func (p *Plugin) paintGrid(d *ui.DrawContext, grid *vterm.Grid, maxCols, maxRows int) {
 	if d == nil || d.Canvas == nil || grid == nil {
 		return
 	}
@@ -123,9 +126,14 @@ func (p *Plugin) paintGrid(d *ui.DrawContext, grid *vterm.Grid) {
 	if cellW <= 0 || cellH <= 0 {
 		return
 	}
+	// 这块面板按官方 fitScreen 口径能放几列几行（含 environment 上限）。
 	// 屏幕比绘制面大时按整格裁掉：不缩放、不半格偏移——那是自造几何。
-	cols := min(grid.Width, int(d.Rect.Width/cellW))
-	rows := min(grid.Height, int(d.Rect.Height/cellH))
+	wantCols, wantRows := terminalFitSize(d.Rect.Width, d.Rect.Height, cellW, cellH, maxCols, maxRows)
+	if wantCols <= 0 || wantRows <= 0 {
+		return
+	}
+	cols := min(grid.Width, wantCols)
+	rows := min(grid.Height, wantRows)
 	if cols <= 0 || rows <= 0 {
 		return
 	}

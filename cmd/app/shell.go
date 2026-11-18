@@ -135,6 +135,10 @@ func shellOptionsFor(m *model, kernel *uikernel.Kernel, width, height float32, f
 		ActiveView:     m.activeViewKey(),
 		RightTabs:      rightTabs,
 		ActiveRightTab: m.activeRightTabKey(rightTabs),
+		// 芯片就地改名（官方 TerminalTitle 的 dblclick → <input className=css.name>）：
+		// 状态在壳里跨帧保存，uikernel 只按它画。壳没接 `Actions.RenameRightTab`
+		// 时 drawRightTabs 不会进编辑态。
+		RightTabRename: &m.rightTabRename,
 		// 向导页入口卡来自**注册的类型**（不是布局 occurrence），见 view_guide.go。
 		GuideEntries: uikernel.GuideEntries(kernel),
 	}

@@ -51,6 +51,12 @@ func TestOfficialTerminalGuideGeometry(t *testing.T) {
 	if guideMenuPad != 4 || guideMenuRowH != 34 || guideMenuFont != 13 {
 		t.Errorf("菜单面度量漂了：pad=%v row=%v font=%v", guideMenuPad, guideMenuRowH, guideMenuFont)
 	}
+	// 卡片图标是官方 `PluginArtworkTerminal` 的 36-box / 3.5 stroke，不是本包自画的
+	// 16-box 终端字形（`dsh-web-frontend/dist/assets/index-ghOpC9uV.js` 的 xK 组件）。
+	p := &Plugin{}
+	if icon := p.guideIcon(); icon.ViewBox != 36 || icon.Stroke != 3.5 {
+		t.Errorf("guide 图标几何 = viewBox %v / stroke %v，官方 36 / 3.5", icon.ViewBox, icon.Stroke)
+	}
 }
 
 func TestRightTabBadgeFollowsTerminalTitleBranches(t *testing.T) {
@@ -274,6 +280,48 @@ func TestTerminalGuideMenuDrawsShellStates(t *testing.T) {
 			}
 		}
 		_ = env
+	}
+}
+
+// TestTerminalGuideCardDrawsOfficialShortcutKeys 钉住官方 `ShortcutKeys`
+// （TerminalGuide.tsx:81）的接线与几何：键序来自 `Actions.ShortcutKeys`，
+// 每枚元素按 `._keys_38b9q_1` 的 12px/16、gap 3 画；没有目录时一个键都不画。
+func TestTerminalGuideCardDrawsOfficialShortcutKeys(t *testing.T) {
+	if guideShortcutGap != 3 || guideShortcutFont != 12 || guideShortcutLine != 16 {
+		t.Fatalf("ShortcutKeys 几何漂了：gap=%v font=%v line=%v", guideShortcutGap, guideShortcutFont, guideShortcutLine)
+	}
+	draw := func(withCatalog bool) map[string]gfx.Text {
+		p := &Plugin{}
+		canvas, _ := guideVisualCanvas(t, func(f ui.C, env *pluginapi.Env) {
+			env.Act.OpenRightTab = func(string) {}
+			if withCatalog {
+				env.Act.ShortcutKeys = func(commandID string) []string {
+					if commandID != terminalNewCommandID {
+						t.Fatalf("向导卡问错了 command id：%q", commandID)
+					}
+					return []string{"Ctrl", "+", "`"}
+				}
+			}
+			p.drawGuideEntry(f, env)
+		})
+		out := map[string]gfx.Text{}
+		for _, one := range canvas.Texts() {
+			out[one.Value] = one
+		}
+		return out
+	}
+	texts := draw(true)
+	for _, key := range []string{"Ctrl", "+", "`"} {
+		one, ok := texts[key]
+		if !ok {
+			t.Fatalf("ShortcutKeys 元素 %q 没画出来：%v", key, texts)
+		}
+		if one.Style.Size != guideShortcutFont || one.Style.Color != dscore.Dark().LabelTertiary {
+			t.Fatalf("ShortcutKeys 元素 %q 样式 = %+v", key, one.Style)
+		}
+	}
+	if got := draw(false); got["Ctrl"].Value != "" {
+		t.Fatal("没有快捷键目录时不该画 ShortcutKeys")
 	}
 }
 

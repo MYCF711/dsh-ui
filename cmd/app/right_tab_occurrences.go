@@ -526,6 +526,48 @@ func (m *model) closeRightTab(key string) {
 		m.mu.Unlock()
 		return
 	}
+	m.dropRightTabLocked(sessionID, surface, key)
+	m.mu.Unlock()
+	m.persistRightTabSurface(sessionID)
+	m.inv.Invalidate()
+}
+
+// forgetRightTab 从布局里**直接**删掉一枚 occurrence，不走插件的 close handler。
+//
+// 谁用它：官方 `closeEndedAgentTerminals`（OFF:dsh-client-ui-sidebar-terminal/src/client
+// /index.ts:116-126）——Agent 控制的终端离开 roster 就说明**宿主那头已经结束了**
+// （Agent 或它的会话关的），此时再走 `RightTabCloseHandler` → 宿主
+// `terminal.close` 只会拿到一个 not-found，tab 反而永远留在界面上。
+// 官方那里也是直接 `sidebarRight.closeIn(sessionId, tab.id)`（store 动作），
+// 不是那条会先请资源 owner 关闭的 tab 关闭动作。
+func (m *model) forgetRightTab(sessionID, tabID string) {
+	if sessionID == "" || tabID == "" {
+		return
+	}
+	m.mu.Lock()
+	surface := m.rightTabSurfaces[sessionID]
+	if surface == nil {
+		m.mu.Unlock()
+		return
+	}
+	// 终端视图还在等流的话一起停掉：终端已经没了，继续 attach 是空转。
+	if key := userTerminalKey(sessionID, tabID); m.terminalViews != nil {
+		if state := m.terminalViews[key]; state != nil {
+			if state.cancel != nil {
+				state.cancel()
+			}
+			delete(m.terminalViews, key)
+		}
+	}
+	m.dropRightTabLocked(sessionID, surface, tabID)
+	m.mu.Unlock()
+	m.persistRightTabSurface(sessionID)
+	m.inv.Invalidate()
+}
+
+// dropRightTabLocked 是两条关闭路径的共同尾部：删记录、删导航参数、修选中项与右栏开合。
+// 调用方必须持有 m.mu，并且在返回后自己 persist + Invalidate。
+func (m *model) dropRightTabLocked(sessionID string, surface *rightTabSurface, key string) {
 	index := -1
 	for i, tab := range surface.Tabs {
 		if tab.ID == key {
@@ -534,7 +576,6 @@ func (m *model) closeRightTab(key string) {
 		}
 	}
 	if index < 0 {
-		m.mu.Unlock()
 		return
 	}
 	surface.Tabs = append(surface.Tabs[:index], surface.Tabs[index+1:]...)
@@ -558,9 +599,6 @@ func (m *model) closeRightTab(key string) {
 		}
 		m.rightbarSessions[sessionID] = rightbarSessionState{open: false, explicit: true}
 	}
-	m.mu.Unlock()
-	m.persistRightTabSurface(sessionID)
-	m.inv.Invalidate()
 }
 
 // persistRightTabSurface 使用官方持久化 namespace，把本仓单 pane 子集写进

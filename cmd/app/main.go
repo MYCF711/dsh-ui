@@ -435,6 +435,10 @@ type model struct {
 	// 明确不是这个行为（`BrowserController.start` 只吃显式 initialUrl，恢复卡要人点）。
 	// 键 = sessionID + "\x00" + tabID；occurrence 关闭时删除。
 	rightTabParams map[string]pluginapi.RightTabParams
+	// rightTabRename 是右栏芯片就地改名的跨帧状态（官方 TerminalTitle 的 `editing`
+	// 布尔 + `<input>`）。壳持有 `ui.Field` 与正在改名的 occurrence，见
+	// uikernel.RightTabRenameState 与 view_tabs.go 的 DrawRightTabsEditable。
+	rightTabRename uikernel.RightTabRenameState
 	// terminalShells 是每会话的 shell 目录缓存（官方 `webTerminals.launchShells` 的同步投影，
 	// 见 terminal_shells.go）；terminalShellPref 是官方 `selectShell` 记住的选择。
 	terminalShells    map[string]*terminalShellCache
@@ -676,6 +680,13 @@ func (m *model) openSession(id string) {
 	// skill 目录是**按会话**的（随该会话 cwd / agent preset 变），所以切会话时
 	// 重新取一次；失败只降级成"没有目录"，不阻塞下面的加载。
 	go m.refreshSkillCatalog(id)
+
+	// 终端 roster 流跟着"被展示的会话"起停（官方 `AgentTerminalOpener` 就挂在
+	// `conversation.session.header.actions` 上，会话头显示期间才有 watch，
+	// OFF:dsh-client-ui-sidebar-terminal/src/client/index.ts:128-143）。
+	// 没有它，Agent 开的终端永远不会变成可见的右栏 tab（#54 条①的入口）。
+	m.releaseTerminalWatchesExcept(id)
+	m.ensureTerminalWatch(id)
 
 	if hit {
 		// 温切直接使用 canonical 缓存与仍在归约的订阅：不 load、不 refresh、
@@ -1856,7 +1867,10 @@ func newConfig(m *model) app.Config {
 		Web: m.web}
 	// 插件的输入框也要登记，否则收不到键盘（viva 只把登记过的 Field 当输入焦点候选）。
 	// 走一次统一的聚合：以后再加插件不用改这里。
-	fields := []*ui.Field{&m.draft}
+	fields := []*ui.Field{&m.draft,
+		// 右栏芯片的就地改名框归**壳**持有（不是插件字段，见 uikernel.RightTabRenameState），
+		// 所以必须在这里显式登记：不登记的话双击能进编辑态、却一个字都打不进去。
+		&m.rightTabRename.Field}
 	for _, p := range m.kernel.Plugins() {
 		if withFields, ok := p.(pluginapi.Fields); ok {
 			fields = append(fields, withFields.Fields()...)
@@ -2224,6 +2238,13 @@ func newConfig(m *model) app.Config {
 		if ev.Release {
 			return gfx.EventResult{}
 		}
+		// 芯片就地改名的 Esc 必须**先**被编辑框吃掉：官方那一刻 input 有焦点，
+		// Esc 只做「取消改名」（TerminalTitle.tsx:64-66）；漏了这一步，
+		// 同一个 Esc 会继续往下发给插件，顺手拒掉一条审批（dscomposer 的
+		// Esc = reject_once）。其余键照旧交给编辑框自己（它在 .OnKey 里处理）。
+		if ev.Key == gfx.KeyEscape && m.cancelRightTabRename() {
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
 		if runtime.GOOS == "windows" {
 			if result := m.chrome.handleKey(ev); result.Handled {
 				m.inv.Invalidate()
@@ -2244,12 +2265,8 @@ func newConfig(m *model) app.Config {
 	// 文本处理之前到达——这是官方 `workspace.add`（`Ctrl+O`）唯一能落地的入口：
 	// viva 的 `OnKey` 只送具名键，字母在那一层是 `KeyUnknown` + `Text`
 	// （`viva@gfx/input.go:141-144`）。放在 OnKey 之后接线，语义上互不影响。
-	cfg.OnShortcut = func(ev gfx.KeyEvent) gfx.EventResult {
-		if m.handleDirectoryAddShortcut(ev) {
-			return gfx.EventResult{Handled: true, Repaint: true}
-		}
-		return gfx.EventResult{}
-	}
+	// 窗口级 chord 的唯一入口（见 shortcutHandler：Ctrl+O 与 Ctrl+`）。
+	cfg.OnShortcut = m.shortcutHandler
 
 	cfg.OnResize = func(ui.Size) { m.inv.Invalidate() }
 	return cfg
@@ -3078,6 +3095,11 @@ func main() {
 		TerminalLaunchShells: m.terminalShellChoices,
 		TerminalSelectShell:  m.terminalSelectShell,
 		CloseRightTab:        m.closeRightTab,
+		// 芯片就地改名（官方 TerminalTitle 的 dblclick → input → `void view(tab.id).rename(next)`）。
+		// fire-and-forget：失败进状态栏，编辑框已收起——与官方 `void` 同形。
+		RenameRightTab: m.renameRightTab,
+		// 快捷键目录：向导卡右下的 `ShortcutKeys`（官方 `ctx.shortcuts.catalog` 的投影）。
+		ShortcutKeys: m.shortcutKeys,
 		// 审批：真调 session.approve，把宿主的 requestId 与它自己的 optionId 原样回传。
 		// **只有宿主 200 且 accepted 才收气泡**——本地收掉不等于批准了（宿主 §11.7）。
 		// 失败时气泡留着、状态栏报错，用户可以再点一次。

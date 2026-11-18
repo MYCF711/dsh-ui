@@ -21,6 +21,7 @@ package uikernel
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/gfx"
@@ -69,6 +70,23 @@ const (
 	// RightTabControlIconSize 是 dockkit 的 close-fill / plus-outline 显式 size={14}。
 	RightTabControlIconSize float32 = 14
 
+	// RightTabSeparatorWidth 之外，芯片上的就地改名框（官方 `.name`）：
+	//
+	//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.module.css:2
+	//	  `.name{width:120px;min-width:48px;max-width:100%;padding:0 4px;color:inherit;
+	//	   font:inherit;background:var(--dsw-alias-bg-l1);border:0.5px solid
+	//	   var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-sm);outline:none}`
+	//
+	// 它替换的是**标题那一段**：图标与徽标仍在左边（TerminalTitle.tsx:40-59）。
+	RightTabRenameWidth    float32 = 120
+	RightTabRenameMinWidth float32 = 48
+	RightTabRenamePadX     float32 = 4
+	RightTabRenameBorder   float32 = 0.5
+	// RightTabRenameHeight 是 `.tab{font-size:13px;line-height:1}` 下 `.name`（`font:inherit`，
+	// 没有自己的 height）拿到的行盒高 = 13px。Viva 的输入框必须有明确高度才有可命中、
+	// 可挂 IME 的矩形，所以把这条 inherit 出来的行盒高写出来——不是另编一个数。
+	RightTabRenameHeight float32 = 13
+
 	// RightTabSepWidth 是 `.slot{width:10px}`：两枚芯片之间那条分隔轨。
 	RightTabSepWidth float32 = 10
 	// RightTabSepRuleH / W 是 `.slot:before{width:.5px;height:14px}`。
@@ -79,7 +97,7 @@ const (
 	//
 	// 数据源是官方终端标题的实现（`sidebar.right.pane.tab.title` 的 keyed 占用方）：
 	//
-	//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:42-50
+	//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:44-50
 	//	  <TerminalIcon /> {badge} {title}
 	//	OFF:…/TerminalTitle.module.css:3  `.badge{display:inline-flex;flex:none}`
 	//
@@ -285,6 +303,46 @@ func DrawViewTabs(
 	})
 }
 
+// RightTabRenameState 是芯片就地改名的**壳侧**状态：官方 TerminalTitle 的
+// `editing` 布尔 + `<input>` 那两件东西。
+//
+//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:25-36
+//	  chip.addEventListener('dblclick', () => { cancelled=false; setEditing(true) })
+//	OFF:…/TerminalTitle.tsx:51-59
+//	  editing ? <input className={css.name} maxLength={120} …/> : <span className={css.title}>{title}</span>
+//
+// 为什么状态放在壳里而不是 uikernel 里：viva 的 `*ui.Field` 属于**应用**（它是编辑器
+// 与 IME 的真实宿主），跨帧持有它的是壳的 model；uikernel 只在被调用的那一帧读它、
+// 画它、按它的命中身份处理回车/失焦。这样既没有包级可变状态，也不用把 model 塞进来。
+type RightTabRenameState struct {
+	// TabID 是正在改名的 occurrence；空 = 没在改名。
+	TabID string
+	// Field 是编辑器（文本 + 光标 + 选区 + IME 都在里面）。
+	Field ui.Field
+	// focused 记这一轮编辑是否已经拿到过焦点。AutoFocus 有至少一帧的延迟，
+	// 没有它就会「刚打开就被判成失焦 → 立刻提交空名字」。
+	focused bool
+}
+
+// Begin 开始改名：把当前标题灌进编辑器（官方 `<input defaultValue={title}>` 同义）。
+func (s *RightTabRenameState) Begin(tabID, title string) {
+	if s == nil {
+		return
+	}
+	s.TabID = tabID
+	s.Field.SetText(title)
+	s.focused = false
+}
+
+// End 收起编辑器。提交与取消都走它——差别只在调用方有没有先交出新名字。
+func (s *RightTabRenameState) End() {
+	if s == nil {
+		return
+	}
+	s.TabID = ""
+	s.focused = false
+}
+
 // DrawRightTabs 画右栏的 tab 条（官方 dockkit `.tabStrip` + `.tab`）。
 //
 // 逐值照 `index-CSAdOBx6.css` 的 `_123xe_` 模块：
@@ -298,7 +356,33 @@ func DrawViewTabs(
 func DrawRightTabs(
 	f ui.C, env *pluginapi.Env, tabs []pluginapi.Tab, active string, onSelect func(string),
 ) {
-	if len(tabs) == 0 || env == nil || env.Theme == nil {
+	DrawRightTabsEditable(f, env, tabs, active, onSelect, nil)
+}
+
+// DrawRightTabsEditable 是 DrawRightTabs 的**可改名**版本：`rename` 非 nil 时，
+// 双击芯片标题进入就地编辑（官方 TerminalTitle 的行为）。
+//
+// 提交/取消的判据逐条照官方：
+//
+//	回车        → 提交（官方 Enter 只 blur，blur 那一支再提交，TerminalTitle.tsx:60-68）
+//	失焦        → 提交（`onBlur`，:55-59）
+//	提交前      → `trim()`；空串或与原值相同都不提交（`:55-58`）
+//	Esc         → 取消（`:64-66` 先 `cancelled.current = true` 再 blur，于是不提交）。
+//	              viva 把 Esc 交给窗口的 OnKey 而不是输入框，所以这一支在壳里
+//	              （`cmd/app/right_tab_rename.go` 的 cancelRightTabRename）。
+func DrawRightTabsEditable(
+	f ui.C, env *pluginapi.Env, tabs []pluginapi.Tab, active string, onSelect func(string),
+	rename *RightTabRenameState,
+) {
+	if env == nil || env.Theme == nil {
+		return
+	}
+	// 正在改名的那枚 occurrence 不在这一帧的名录里（被 Agent 结束、被别处关掉，
+	// 或会话切走）：编辑态在**绘制线程**收起，不去后台线程改 `ui.Field`。
+	if rename != nil && rename.TabID != "" && !rightTabPresent(tabs, rename.TabID) {
+		rename.End()
+	}
+	if len(tabs) == 0 {
 		return
 	}
 	t := env.Theme
@@ -340,6 +424,15 @@ func DrawRightTabs(
 			if isActive {
 				titleColor = t.LabelPrimary
 			}
+			// 就地改名（官方 TerminalTitle 的 editing 分支）。只有「壳接了改名动作 +
+			// 这一枚 occurrence 正在改名 + 有交互树能给出稳定身份」时才进这一支；
+			// 否则就是普通的标题文字。
+			var renameID gfx.ID
+			editing := false
+			if rename != nil && rename.TabID == tab.Key && env.Act.RenameRightTab != nil && env.Tree != nil {
+				renameID = env.Tree.ID(env.Feat, "right-tab-rename-"+tab.Key)
+				editing = true
+			}
 			chip.Children(func() {
 				label := ui.Row(f).Grow(1).Items(ui.Center).Gap(RightTabChipGap)
 				label.Children(func() {
@@ -358,12 +451,58 @@ func DrawRightTabs(
 					// 「The badge precedes the name because the tab's close button
 					// covers the end of the title」。
 					drawRightTabBadge(f, t, tab.Badge)
-					text := ui.Text(f, tab.Label).FontSize(RightTabChipFontSize).
-						LineHeight(RightTabChipLineHeight).MaxLines(1).Ellipsis()
-					if isActive {
-						text.Color(t.LabelPrimary)
+					if editing {
+						// 官方 `<input className={css.name} maxLength={120}>`：替换标题那一段，
+						// 图标与徽标留在左边（TerminalTitle.tsx:51-59）。
+						editor := ui.TextFieldID(f, renameID, &rename.Field, "重命名标签", "").
+							Width(RightTabRenameWidth).MinWidth(RightTabRenameMinWidth).
+							MaxWidthPercent(100).
+							PadSides(0, RightTabRenamePadX, 0, RightTabRenamePadX).
+							FontSize(RightTabChipFontSize).Height(RightTabRenameHeight).
+							Background(t.BgLayer1).
+							Border(RightTabRenameBorder, t.BorderL3).Radius(t.Radii.SM).
+							AutoFocus()
+						commit := func() {
+							next := strings.TrimSpace(rename.Field.Text())
+							// 官方：`next !== '' && next !== title` 才调 rename；同值等于没改。
+							if next != "" && next != tab.Label && env.Act.RenameRightTab != nil {
+								env.Act.RenameRightTab(tab.Key, next)
+							}
+							rename.End()
+						}
+						// 回车提交。**Esc 不在这里**：viva 把 Esc 交给窗口的 OnKey
+						// （`app.Config.OnKey`），不会送到输入框的 OnKey 上；而那一刻
+						// 必须先把它从插件手里截下来（否则会顺带拒一条审批）。
+						// 所以取消那一支归壳（`model.cancelRightTabRename`，见
+						// cmd/app/right_tab_rename.go），这里只管提交。
+						editor.OnKey(func(ev gfx.KeyEvent) gfx.EventResult {
+							if ev.Key == gfx.KeyEnter {
+								commit()
+								return gfx.EventResult{Handled: true, Repaint: true}
+							}
+							return gfx.EventResult{}
+						})
+						if editor.Submitted() {
+							commit()
+						}
+						// 失焦提交（官方 onBlur）：AutoFocus 在第一帧就拿到焦点，
+						// 所以「拿到过焦点 → 这一帧焦点不在了」就是真的失焦。
+						// 拿不到 Canvas 判据时不做这件事，宁可留着自己按回车。
+						if env.Canvas != nil {
+							if env.Canvas.Focused() == renameID {
+								rename.focused = true
+							} else if rename.focused {
+								commit()
+							}
+						}
 					} else {
-						text.Color(t.LabelSecondary)
+						text := ui.Text(f, tab.Label).FontSize(RightTabChipFontSize).
+							LineHeight(RightTabChipLineHeight).MaxLines(1).Ellipsis()
+						if isActive {
+							text.Color(t.LabelPrimary)
+						} else {
+							text.Color(t.LabelSecondary)
+						}
 					}
 				})
 				// 官方 .tabClose：active / hover / focus-within 才出现，绝对定位 20×20、top/right 4。
@@ -384,6 +523,15 @@ func DrawRightTabs(
 					}
 				}
 			})
+			// 官方把 `dblclick` 挂在**整枚芯片**上（`[data-dockkit-tab]`，
+			// TerminalTitle.tsx:25-36「Dockkit captures the pointer on its drag
+			// handle, which receives the double-click」），所以命中区是芯片本身。
+			// 双击同时也选中（官方 Examples 里 setEditing 不拦点击）。
+			if chip.DoubleClicked() && rename != nil && env.Act.RenameRightTab != nil && env.Tree != nil {
+				if rename.TabID != tab.Key {
+					rename.Begin(tab.Key, tab.Label)
+				}
+			}
 			if chip.Clicked() && onSelect != nil {
 				onSelect(tab.Key)
 			}
@@ -421,12 +569,22 @@ func DrawRightTabs(
 	})
 }
 
+// rightTabPresent 报某枚 occurrence 是否还在名录里（就地改名的收尾判据）。
+func rightTabPresent(tabs []pluginapi.Tab, key string) bool {
+	for _, tab := range tabs {
+		if tab.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
 // drawRightTabBadge 画官方芯片徽标：`.badge{display:inline-flex;flex:none}` 包着一枚
 // primitives 的 `Tag`。
 //
 // 数据与形态来自官方终端标题（`sidebar.right.pane.tab.title` 的 keyed 占用方）：
 //
-//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:42-50
+//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:44-50
 //	  Agent 控制   → <Tag tone="info">Agent</Tag>
 //	  沙箱（未接管）→ <Tag tone="neutral">沙箱</Tag>
 //	几何 OFF:dsh-web-frontend/dist/assets/index-CSAdOBx6.css 的 `._tag_brmue_4`

@@ -435,7 +435,7 @@ type Tab struct {
 	//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:17-20
 	//	  agentControl = origin==='agent' && control==='agent'
 	//	  sandboxMode  = origin==='agent' ? info.sandboxMode : undefined
-	//	OFF:…/TerminalTitle.tsx:42-50（先图标、再徽标、最后标题）
+	//	OFF:…/TerminalTitle.tsx:44-50（先图标、再徽标、最后标题）
 	//	  <TerminalIcon />
 	//	  {agentControl ? <span class=badge title=agentHint><Tag tone="info">Agent</Tag></span>
 	//	   : sandboxHint && <span class=badge title=sandboxHint><Tag tone="neutral">沙箱</Tag></span>}
@@ -574,6 +574,24 @@ type RightTabParams struct {
 // 返回 false = 这条 occurrence 没有徽标。
 type RightTabBadgeProvider interface {
 	RightTabBadge(sessionID, tabID string) (TabBadge, bool)
+}
+
+// RightTabRenameProvider 让插件接受**芯片上的就地改名**（官方 TerminalTitle 双击标题
+// 变成输入框，失焦/回车提交 `view(tab.id).rename(next)`）。
+//
+//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:25-36
+//	  chip.addEventListener('dblclick', () => { cancelled=false; setEditing(true) })
+//	OFF:…/TerminalTitle.tsx:55-59
+//	  onBlur: next = value.trim(); !cancelled && next !== '' && next !== title && view(tab.id).rename(next)
+//	OFF:…/TerminalTitle.tsx:2（`Render the terminal name, editable in place on double-click.`）
+//
+// 与 `RightTabTitleProvider` 的分工：标题是**读**（每帧一个 string），改名是**写**
+// （用户手势触发的宿主调用）。只有真能写的类型才实现它——壳据此决定双击进不进编辑态。
+//
+// 返回 owned=false = 这个 kind 不归我（壳继续问下一个实现者，与 `RightTabCloseHandler`
+// 同一个约定）；owned=true 时 err 决定成败：失败由壳显示出来、本地标题不改。
+type RightTabRenameProvider interface {
+	RightTabRename(sessionID, tabID, kind, title string) (owned bool, err error)
 }
 
 // Env 是绘制期拿到的全部东西：只读快照 + 动作 + 主题。
@@ -1540,6 +1558,31 @@ type Actions struct {
 	// nil = 壳没接：资源型调用方这时**不要**退化成 `OpenRightTab(kind)`——那会把
 	// 两份不同资源的预览合成一份（点第二份就顶掉第一份）。
 	OpenRightResource func(kind, address string, params RightTabParams)
+	// RenameRightTab 提交右栏芯片的**就地改名**（官方 `view(tab.id).rename(next)`）。
+	//
+	//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:55-59
+	//	  `void view(tab.id).rename(next)`（失焦/回车提交，`.trim()`、空串与同值都不提交）
+	//
+	// 提交时机由壳负责（回车或失焦＝提交，Esc＝取消），这里只做"把新名字交出去"
+	// 这一件事：壳按 occurrence 的 kind 找实现 `RightTabRenameProvider` 的插件，
+	// 交给它去发宿主调用。**没有返回值**，与官方 `void` 同形：失败由壳显示在状态栏，
+	// 编辑框已收起——官方也不在输入框里回填错误（错误进的是视图形状）。
+	// nil = 壳没接：芯片双击不进入编辑态。
+	RenameRightTab func(tabID, title string)
+	// ShortcutKeys 返回某条命令在当前平台的按键序列，供向导卡的官方
+	// `ShortcutKeys` 组件用（`ctx.shortcuts.catalog` 的等价物）。
+	//
+	//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalGuide.tsx:81
+	//	  `{shortcut !== undefined && shortcut.keys.length > 0 &&
+	//	    <ShortcutKeys keys={shortcut.keys} className={css.shortcut} />}`
+	//
+	// 官方 `ShortcutKeys`（primitives，bundle `Sp`）把每个元素画成一枚 `<kbd>`，
+	// `"+"` 元素走 separator 样式；plain 档 geometry 来自
+	// `._keys_38b9q_1{display:inline-flex;gap:3px;color:label-tertiary;
+	// font-size:12px;line-height:16px;white-space:nowrap}`。
+	//
+	// nil / 空 = 这条命令没有登记（官方 `shortcut === undefined`，不画）。
+	ShortcutKeys func(commandID string) []string
 	// CloseRightTab 按官方 TabActions.close 关闭指定 occurrence key。
 	// 壳先调用资源 owner's close handler，成功后才从布局移除。
 	// nil = 壳没接，芯片行不画关闭入口。

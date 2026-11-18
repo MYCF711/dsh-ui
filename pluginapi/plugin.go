@@ -605,6 +605,21 @@ type Env struct {
 	//
 	// nil = 本帧不在向导卡片里：占用方这时不该画任何东西。
 	GuideEntry *GuideEntryProps
+	// Turn 是本帧派发 transcript **按轮座位**时交给占用方的 owner props
+	// （官方 `TurnTailOwnerProps`，见 pluginapi/turn_tail.go 文件头的全套锚点）。
+	//
+	// 官方那个座位一轮一次（`turn-tail` 节点的 children：
+	// OFF:dsh-client-ui-chat/src/client/chat/register-node-renderers.ts:88-97，
+	// owner props 见 contract/slots.ts:60-64），所以占用方拿到 `env.Turn`
+	// 就**只该画这一轮**的东西——拿它当"最新一轮"用是错的。
+	//
+	// **只在** `conversation.chat.turnTail` 的按轮 dispatch 期间非 nil；写者必须在
+	// 派发结束后恢复原值——与 `EntryMenu` / `GuideEntry` 同一约定：写者负责恢复，
+	// 读方不缓存。
+	//
+	// nil = **没有轮次基线**（老壳 / mockd / 这一帧还没有 `turn/end` 帧）：占用方
+	// 这时只能退回会话级的近似选择，不许把 nil 当成"第 0 轮"。
+	Turn *TurnProps
 	// DrawKeyed 把一个 **keyed 子槽**按 key 交回壳去画：只画 key 命中的那几份。
 	//
 	// 为什么要有它：`Painter.Children` 拿到的 `drawSlot` 只带槽名，按官方 keyed 语义

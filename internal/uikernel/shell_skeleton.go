@@ -897,7 +897,16 @@ func drawConversationSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, di
 					dispatch(OffImagesContentPlant)
 					// transcript 节点级座位（官方动作卡的两个 children）：
 					// 空槽也 dispatch（没有占用方就什么都不画），与上面几个座位一致。
-					dispatch(OffChatTurnTail)
+					//
+					// turnTail **一轮一次**，不是每帧一次：官方那个座位是
+					// `turn-tail` 节点的 children（OFF:dsh-client-ui-chat/src/client/
+					// chat/register-node-renderers.ts:88-97），`TurnTailNodeView.tsx:43-49`
+					// 每画一个 turn-tail 节点就 renderSlot 一次，owner props 里带这一轮的
+					// turn（contract/slots.ts:60-64）。本骨架没有 `conversation.chat.node`
+					// 工厂节点，所以在正文列尾部**按轮各派一次**（判据与数量见 turns.go）。
+					dispatchTurnTails(env, dispatch)
+					// tool.call.toolview 仍是会话级一次：它是 **keyed**（key = 工具 wire 名），
+					// 官方由 `tool-call` 节点在**每个调用处**渲染；按调用派发不在本单范围。
 					dispatch(OffToolCallView)
 				})
 			})
@@ -906,6 +915,46 @@ func drawConversationSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, di
 		// 整个 composer 区（见 drawComposerSeat 的注释）。
 		drawComposerSeat(f, env, layout, dispatch, measure, ComposerSideClearance)
 	})
+}
+
+// dispatchTurnTails 派发 transcript 的按轮座位（官方 `conversation.chat.turnTail`）。
+//
+// # 为什么不是一次
+//
+// 官方那个座位挂在 `turn-tail` 节点下（OFF:dsh-client-ui-chat/src/client/chat/
+// register-node-renderers.ts:88-97），一轮一个尾节点，`TurnTailNodeView.tsx:43-49`
+// 每个节点各 renderSlot 一次，owner props 是 `TurnTailOwnerProps{turn, seq}`
+// （OFF:.../contract/slots.ts:60-64）。两个官方消费方都只认 owner props 里的那一轮：
+// 计划卡 `usePlans(String(turn.turn))`（OFF:.../ui-plan/src/client/PlanCard.tsx:43-45）、
+// 动作卡 `proposalOf(view, turn.turn)`（OFF:.../ui-action-cards/src/client/Card.tsx:69-76）。
+//
+// 座位契约在本仓走 `Env.Turn`（owner props 只有 `Painter.Draw(f, *Env)` 一个入口，
+// 见 pluginapi/turn_tail.go）。所以这里**按轮各派一次**，每次把这一轮的 owner
+// props 挂上去，派发结束恢复原值（与 `EntryMenu` / `GuideEntry` 同一约定：
+// 写者负责恢复，读方不缓存）。
+//
+// # 没有轮次基线时退回一次
+//
+// `TurnTails` 为空 = 这一帧还没有 `turn/end` 帧（首帧 / 老宿主 / mockd）：派发
+// 一次、`env.Turn` 留 nil，也就是改造前的行为。占用方据此退回会话级的近似选择
+// （dsplan 的 `latestTurn` 就是这一档），不会因为壳没数据而整块不画。
+func dispatchTurnTails(env *pluginapi.Env, dispatch func(pluginapi.Slot)) {
+	if env == nil {
+		dispatch(OffChatTurnTail)
+		return
+	}
+	tails := TurnTails(env.Data.Frames)
+	if len(tails) == 0 {
+		dispatch(OffChatTurnTail)
+		return
+	}
+	for i := range tails {
+		env.Turn = &tails[i]
+		dispatch(OffChatTurnTail)
+	}
+	// 恢复：后面的座位（tool.call.toolview）与同帧的其它 dispatch 不该看见这一格的
+	// owner props。
+	env.Turn = nil
 }
 
 // drawHeroSkeleton 画空白会话的 Hero：官方 HeroShell.root 居中，

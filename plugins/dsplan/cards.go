@@ -93,18 +93,25 @@ func planMarkdownIcon(t *pluginapi.Theme) (gfx.Icon, bool) {
 	return dsassets.FileTypeMarkdown(t.LabelPrimary, gfx.RGB24(0xffffff))
 }
 
-// drawCards 画 Turn 尾的计划卡（官方 `PlanCards`，OFF:PlanCard.tsx:43-62）。
+// drawCards 画这一轮的 Turn 尾计划卡（官方 `PlanCards`，OFF:PlanCard.tsx:43-62）。
+//
+// **一轮一次**：官方座位 `conversation.chat.turnTail` 是 `turn-tail` 节点的
+// children（OFF:.../ui-chat/src/client/chat/register-node-renderers.ts:88-97），
+// owner props 带这一轮的 turn（OFF:.../contract/slots.ts:60-64），`PlanCards` 拿它
+// 只取这一轮的 `submitted-plan` 数据源（OFF:PlanCard.tsx:43-45 +
+// OFF:index.ts:88-92）。本仓壳同样按轮派发（`internal/uikernel/shell_skeleton.go`
+// 的 `dispatchTurnTails`），所以这里读 `env.Turn` 取**那一轮**的计划。
 //
 // 三个"不画"的判据，都是官方同一条"空槽不占位"：
 //   - 没有帧基线（`len(Frames)==0`：老宿主 / mockd）→ 不画
 //   - 本会话没有任何 `exit_plan_mode` 提交 → 不画
-//   - 最新那一轮没有提交 → 不画（卡片属于**提交它的那一轮**）
+//   - 这一轮没有提交 → 不画（卡片属于**提交它的那一轮**）
 func (p *Plugin) drawCards(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	if t == nil || env == nil {
 		return
 	}
-	plans := latestTurn(SubmittedPlans(env.Data.Frames))
+	plans := turnPlans(env, SubmittedPlans(env.Data.Frames))
 	if len(plans) == 0 {
 		return
 	}

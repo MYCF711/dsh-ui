@@ -67,6 +67,10 @@ type (
 	TabGuide     = pub.TabGuide
 	// GuideEntryProps 是官方 `SidebarRightGuideEntryOwnerProps`（向导卡片的 owner props）。
 	GuideEntryProps = pub.GuideEntryProps
+	// TurnProps 是 transcript 按轮座位（官方 `conversation.chat.turnTail`）的
+	// owner props（`TurnTailOwnerProps`，见公开包 pluginapi/turn_tail.go）。
+	// 漏这一行就是"插件编译得动、壳编译不动"——与 CordisView 那次的踩法同一类。
+	TurnProps = pub.TurnProps
 	// RightTabParams 是官方 `SidebarRightTabParamsMap` 的投影（openTab 的导航参数）。
 	RightTabParams = pub.RightTabParams
 	// 右栏 occurrence 的实时标题 / 徽标与关闭清理（官方 sidebar-right 的三个扩展点）。

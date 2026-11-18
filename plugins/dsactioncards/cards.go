@@ -68,9 +68,10 @@
 //     没有注册正文的 kind 仍画官方 `FallbackBody`（OFF:Card.tsx:118-150），其中
 //     kind 自有动词（非 dismiss）**没有入口可点**：不画假按钮（官方在没有 body 时
 //     也只给 dismiss）。
-//   - **per-turn 座位**：官方 turnTail 按轮取（`proposalOf(view, turn)`，
-//     OFF:Card.tsx:69-76），我们的骨架在会话级只 dispatch 一次，所以按
-//     「最新一轮 + 最小 callId」选一张（与官方同轮择一规则一致）。
+//   - ~~**per-turn 座位**~~（2026-11-18 已补）：官方 turnTail 按轮取
+//     （`proposalOf(view, turn)`，OFF:Card.tsx:69-76）；壳现在按轮派发
+//     （`Env.Turn`，见 `pluginapi/turn_tail.go`），本包按那一轮的 turn 选卡。
+//     只有壳没有轮次基线（老壳 / mockd）时才退回「最新一轮 + 最小 callId」。
 //   - **per-call 过程行**：官方 `tool.call.toolview` 是 keyed 槽（key=`propose_action`），
 //     由 tool-call 节点在**每个调用处**渲染；本骨架的座位是会话级的，所以这里只画
 //     **最近一次** `propose_action` 调用的一行。
@@ -92,6 +93,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -287,7 +289,12 @@ type Plugin struct {
 	session string
 
 	// expandedBrief / expandedRow 是两个折叠位的展开态。
-	expandedBrief bool
+	//
+	// expandedBrief **按 callId 记**：turnTail 座位按轮派发后，同一帧里会画多张卡
+	// （一轮一张），共一个布尔量会让「展开」互相串（点开第 1 轮的 brief，第 3 轮
+	// 那份也跟着展开）。官方每张卡各自持有折叠态（`FoldedText` 的 `useState`，
+	// OFF:Card.tsx:51；每张卡各渲染一个），这里用同一张表的 per-callId 项等价承载。
+	expandedBrief map[string]bool
 	expandedRow   bool
 
 	// acting 表示有一次动作在飞（按钮 disabled，官方 `pending`）。
@@ -414,7 +421,7 @@ func (p *Plugin) Refresh(ctx context.Context, sessionID string) error {
 	}
 	if p.viewSession != sessionID {
 		// 换会话：两个折叠位与反馈都重来（旧会话的展开态不该跟到新会话）。
-		p.expandedBrief, p.expandedRow = false, false
+		p.expandedBrief, p.expandedRow = nil, false
 		p.actResult, p.actError, p.actFor = apiclient.ActionCardResult{}, "", ""
 	}
 	p.view, p.viewSession = view, sessionID
@@ -460,23 +467,22 @@ func failureText(err error) string {
 
 // ── 动作：点按钮 ────────────────────────────────────────────────────────────
 
-// actCard 执行一次"这一屏上那张卡"的动作（官方共享的 dismiss 那条路）。
+// proposalFor 取这一帧该画的那**一张**卡。
 //
-// 单卡片座位（会话级）只画一张，所以这里按 `LatestProposal` 取；kind body
-// 的按钮走 `actVerb`，它带明确的 callId——一个 kind 的动词绝不能"顺手落到
-// 另一张卡的 callId 上"。
-func (p *Plugin) actCard(verb string) {
-	p.mu.Lock()
-	view := p.view
-	p.mu.Unlock()
+// 官方座位按轮（owner props 带 turn，OFF:Card.tsx:89 的 `proposalOf(view, turn.turn)`），
+// 本仓壳按轮派发时把那一轮的 turn 放在 `env.Turn` 上，于是这里走
+// `ProposalForTurn`（同轮多张取最小 callId，逐条照 OFF:Card.tsx:69-76）。
+//
+// `env.Turn == nil` = 没有轮次基线（老壳 / mockd / 还没有 turn/end 帧）：退回
+// `LatestProposal` 的会话级近似——改造前就是这个行为。
+func (p *Plugin) proposalFor(env *pluginapi.Env, view *apiclient.ActionCardView) (apiclient.ActionCardProposal, bool) {
 	if view == nil {
-		return
+		return apiclient.ActionCardProposal{}, false
 	}
-	proposal, ok := view.LatestProposal()
-	if !ok {
-		return
+	if env != nil && env.Turn != nil {
+		return view.ProposalForTurn(env.Turn.Turn)
 	}
-	p.actVerb(proposal.CallID, verb, nil)
+	return view.LatestProposal()
 }
 
 // actVerb 对**指定那张卡**执行一次动作（官方 `act(callId, verb, payload)`）。
@@ -562,7 +568,7 @@ func (p *Plugin) drawCardTail(f ui.C, env *pluginapi.Env) {
 	p.act = env.Act
 	view := p.view
 	session := p.viewSession
-	expanded := p.expandedBrief
+	expandedBrief := p.expandedBrief
 	acting := p.acting
 	actError, actResult, actFor := p.actError, p.actResult, p.actFor
 	p.mu.Unlock()
@@ -577,10 +583,11 @@ func (p *Plugin) drawCardTail(f ui.C, env *pluginapi.Env) {
 	p.session = session
 	p.mu.Unlock()
 
-	proposal, ok := view.LatestProposal()
+	proposal, ok := p.proposalFor(env, view)
 	if !ok {
 		return
 	}
+	expanded := expandedBrief[proposal.CallID]
 	decision, hasDecision := view.Decision(proposal.CallID)
 
 	// 官方 ActionCard（OFF:Card.tsx:99-118）：这个 kind 注册了正文就**整段**交给它，
@@ -607,10 +614,10 @@ func (p *Plugin) drawCardTail(f ui.C, env *pluginapi.Env) {
 			p.cardBoxes.Title = ui.Text(f, proposal.Title).
 				FontSize(cardTitleFontSize).LineHeight(cardTitleLineH).Weight(cardTitleWeight).
 				Color(t.LabelPrimary)
-			p.drawBrief(f, env, t, proposal.Brief, expanded)
+			p.drawBrief(f, env, t, proposal.CallID, proposal.Brief, expanded)
 			p.drawStatuses(f, t, decision, hasDecision, actError, actResult, actFor == proposal.CallID)
 			if !hasDecision {
-				p.drawFooter(f, env, t, acting)
+				p.drawFooter(f, env, t, proposal.CallID, acting)
 			}
 		})
 	})
@@ -681,7 +688,7 @@ func (p *Plugin) smallGhostButton(f ui.C, t *pluginapi.Theme,
 }
 
 // drawBrief 画 brief 与它的折叠开关（官方 FoldedText，OFF:Card.tsx:43-67）。
-func (p *Plugin) drawBrief(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, brief string, expanded bool) {
+func (p *Plugin) drawBrief(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, callID, brief string, expanded bool) {
 	preview, omitted := foldBrief(brief)
 	shown := brief
 	if omitted && !expanded {
@@ -706,7 +713,10 @@ func (p *Plugin) drawBrief(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, brief
 	p.cardBoxes.Toggle = toggle
 	if toggle.Clicked() {
 		p.mu.Lock()
-		p.expandedBrief = !p.expandedBrief
+		if p.expandedBrief == nil {
+			p.expandedBrief = map[string]bool{}
+		}
+		p.expandedBrief[callID] = !p.expandedBrief[callID]
 		p.mu.Unlock()
 	}
 }
@@ -753,7 +763,12 @@ func (p *Plugin) drawStatuses(f ui.C, t *pluginapi.Theme, decision apiclient.Act
 }
 
 // drawFooter 画 footer（只有未决定时才有「暂不需要」按钮，官方 :146-148）。
-func (p *Plugin) drawFooter(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, acting bool) {
+//
+// 按钮带**自己那张卡的 callId**：turnTail 按轮派发后同一帧可能有多张卡，
+// "这一屏上那张卡"这种取法会把点击落到别的轮上。官方也是
+// `act(proposal.callId, 'dismiss')`（OFF:Card.tsx:104 的 `send = useCallback((verb, payload) =>
+// act(proposal.callId, verb, payload))`，`FallbackBody` 的按钮走 `send('dismiss')`）。
+func (p *Plugin) drawFooter(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, callID string, acting bool) {
 	footer := ui.Row(f).FillWidth().Items(ui.Center).Justify(ui.End).
 		Gap(footerGap).MarginTop(footerMarginTop)
 	p.cardBoxes.Footer = footer
@@ -764,7 +779,7 @@ func (p *Plugin) drawFooter(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, acti
 			})
 		p.cardBoxes.Dismiss = button
 		if !acting && button.Clicked() {
-			p.actCard(verbDismiss)
+			p.actVerb(callID, verbDismiss, nil)
 		}
 	})
 }
@@ -1058,6 +1073,11 @@ func wideRune(r rune) bool {
 func (p *Plugin) hitID(env *pluginapi.Env, name string) gfx.ID {
 	if env == nil || env.Tree == nil {
 		return gfx.ID{}
+	}
+	// 按轮座位同一帧会画多张卡：交互 id 必须把轮次带上，否则第 1 轮与第 3 轮的
+	// 「展开」「暂不需要」共用一个 id——Viva 的交互态按 id 存，两张卡会互相顶掉。
+	if env.Turn != nil {
+		name = name + "-turn" + strconv.FormatInt(env.Turn.Turn, 10)
 	}
 	return env.Tree.ID(env.Feat, name)
 }

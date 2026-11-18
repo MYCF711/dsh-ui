@@ -10,7 +10,7 @@
 
 | 官方座位 | 官方依据 | 本仓 |
 |---|---|---|
-| `conversation.chat.turnTail` | 每轮尾计划卡，`OFF:dsh-client-ui-plan/src/client/PlanCard.tsx:43-60` | `plugins/dsplan/cards.go`（既有） |
+| `conversation.chat.turnTail` | 每轮尾计划卡，`OFF:dsh-client-ui-plan/src/client/PlanCard.tsx:43-60`；座位一轮一次（`OFF:.../ui-chat/src/client/chat/register-node-renderers.ts:88-97`，owner props `contract/slots.ts:60-64`） | `plugins/dsplan/cards.go` + `pluginapi/turn_tail.go` + `internal/uikernel/{turns.go,shell_skeleton.go}`（2026-11-18 按轮派发） |
 | `sidebar.right.pane.tab` | 右栏完整 Markdown，`OFF:PlanPreview.tsx:18-40` | `plugins/dsplan/preview.go`（既有 + 临时 review） |
 | `conversation.input.plan` | 真实 plan 投影，点击 `/plan off`，`OFF:PlanModeControl.tsx:19-68` | `plugins/dsplan/chip.go`（本轮） |
 | `conversation.plan-review.actions` | 自动一次/手动「查看全文」，`OFF:PlanCard.tsx:62-82`、`OFF:index.ts:97-108` | `plugins/dsplan/review.go`（本轮） |
@@ -64,7 +64,12 @@
 
 ## 4. 仍为 PARTIAL 的差异
 
-1. **逐轮卡**：本仓 `latestTurn` 只画最新一轮，官方按每个 Turn 的 `turnDataSource` 逐轮派发。
+1. **逐轮卡 —— 2026-11-18 已闭合**：座位现在一轮一次（`pluginapi.TurnProps` / `Env.Turn`，
+   `internal/uikernel/turns.go` 的 `TurnTails` + `shell_skeleton.go` 的 `dispatchTurnTails`，
+   判据与 `plugins/dsconversation/official_transcript_projection.go:805-837` 同一张分派表），
+   `plugins/dsplan/cards.go` 只画 `env.Turn` 那一轮；`latestTurn` 降为「没有轮次基线」的回退。
+   **残留**：骨架没有 `conversation.chat.node` 工厂，座位派发点仍在正文列尾部，不是嵌在每一轮
+   尾节点里——内容逐轮正确，位置仍是列尾。
 2. **navigation / 多实例**：右栏仍由插件保存单个 `openAddress`，不是官方每 occurrence 的
    navigation；缺 subagent plan 地址与 `sidebar.right.pane.tab.title` 派发。临时 review 地址本轮已补。
 3. **异步资源态**：本仓同步读帧，没有官方异步 resource 的 loading/failed；临时 expired 已真实实现。
@@ -86,6 +91,10 @@
 | `internal/planreview/review.go` | 官方 narrowing、pending 与 Markdown 摘要 |
 | `plugins/dsquestions/plan_review.go` | 父审阅卡、批准、错误、要求修改 |
 | `plugins/dsplan/{chip,review,preview}.go` | chip、自动/手动全文、durable/临时预览 |
+| `pluginapi/turn_tail.go` + `internal/pluginapi/alias.go` | 按轮座位 owner props（`TurnProps` / `Env.Turn`）契约 |
+| `internal/uikernel/{turns.go,shell_skeleton.go}` | journal 帧 → 轮次表（`TurnTails`）；骨架按轮 dispatch + 派发后恢复 |
+| `internal/apiclient/action_cards.go` | `ProposalForTurn`（官方 `proposalOf`）；`LatestProposal` 降为回退 |
+| `plugins/dsactioncards/cards.go` | 按轮取卡、dismiss 带自己 callId、交互 id 带轮次、brief 展开态按 callId |
 | `cmd/app/{main,wave3_wiring}.go` | 快照、动作、子槽与投影缓存接线 |
 
 ## 6. 测试
@@ -96,6 +105,12 @@
 - GUI：投影坏形状未知；chip 两态与 `/plan off`/失败；plan-review narrowing、官方
   `multiSelect` wire、回答后隐藏；父卡批准原文、失败保留、要求修改不代为回答；自动仅一次、
   手动重开、durable/临时地址及 expired；apiclient null/error/bool 与会话隔离。
+- 逐轮卡（2026-11-18）：`internal/uikernel/turn_seat_test.go`（`TurnTails` 分派表 + 骨架按轮派发/恢复/
+  无基线回退）、`plugins/dsplan/turn_cards_test.go`（两轮各一份计划 → 两帧各画自己那一轮；
+  没有提交的轮一个像素都不画）、`internal/apiclient/action_cards_turn_test.go`（按轮取卡 + 同轮最小 callId +
+  回退档不变）。变异：把 `turnPlans` 改回 `latestTurn` → `TestCardsRenderEachTurnSeparately` 红
+  （第 1 轮那帧画出第 3 轮的卡）；把 `dispatchTurnTails` 改回每帧一次 →
+  `TestFirstScreenDispatchesTurnTailPerTurn` 红（0 次按轮派发）。
 - 最终门禁退出码见本轮 `docs/progress.md` 与交付报告；未 commit/push。
 
 ## 7. 视觉复刻（2026-11-17 · feat/vc-plan）
@@ -123,3 +138,18 @@
 close 外圈的 SVG `A` 由 `viva icons` 编译，未手画。几何与 sprite 结构反证测试在
 `plugins/dsplan/geometry_test.go`、`plugins/dsquestions/plan_review_geometry_test.go`、
 `plugins/dsassets/plan_test.go`。官方 rc.2 没有“计划项勾选框”DOM/CSS，本轮不新增该结构。
+
+## 8. 逐轮座位改造（2026-11-18 · feat/pv-28-turn）
+
+官方那个座位一轮一次（`turn-tail` 节点的 children，`TurnTailNodeView.tsx:43-49` 每节点
+renderSlot 一次），owner props 带这一轮（`contract/slots.ts:60-64`）。改造分四层：
+
+| 层 | 改动 | 锚点 |
+|---|---|---|
+| 契约 | `pluginapi.TurnProps{Turn,Seq}` + `Env.Turn *TurnProps`（只在按轮 dispatch 期间非 nil，写者恢复） | `pluginapi/turn_tail.go`、`pluginapi/plugin.go` 的 `Env` |
+| 壳 | `TurnTails(frames)` 取轮次表（与 transcript 投影同一张 `turn/end` 分派表）；`dispatchTurnTails` 按轮各派一次 | `internal/uikernel/turns.go`、`shell_skeleton.go` |
+| dsplan | `turnPlans` 只画 `env.Turn` 那一轮；`latestTurn` 降回退 | `plugins/dsplan/{cards,plan}.go` |
+| dsactioncards | `ProposalForTurn`（= 官方 `proposalOf`），dismiss 带自己 callId、交互 id 带轮次、展开态按 callId | `internal/apiclient/action_cards.go`、`plugins/dsactioncards/cards.go` |
+
+**残留**：座位派发点仍在正文列尾部（骨架没有 `conversation.chat.node` 工厂），不是嵌在
+每一轮尾节点里；内容逐轮正确、位置仍是列尾，这一条如实登记在 `docs/official-parity.md` 的 #28 行。

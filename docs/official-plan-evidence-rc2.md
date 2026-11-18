@@ -153,3 +153,90 @@ renderSlot 一次），owner props 带这一轮（`contract/slots.ts:60-64`）�
 
 **残留**：座位派发点仍在正文列尾部（骨架没有 `conversation.chat.node` 工厂），不是嵌在
 每一轮尾节点里；内容逐轮正确、位置仍是列尾，这一条如实登记在 `docs/official-parity.md` 的 #28 行。
+
+## 9. 右栏 tab 的 navigation / 多实例 / 五段地址 + 芯片图标与资源标题（2026-11-18 · feat/pv-28-tabs）
+
+这一轮闭合账本 #28 的第 ④⑤ 两条。官方两侧的契约原文先摆出来，再看本仓落点。
+
+### 9.1 ④ 官方：身份是**地址**，不是类型
+
+| 官方 | 原文 | 说明 |
+|---|---|---|
+| `OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:165-177` | `openResource(address, options?)` | 资源型 open：`params` 走 `SidebarRightResourceParams`，另有 `destination` |
+| `OFF:dsh-client-ui-sidebar-right/src/client/tab-registry.ts:140-160` | `readonly contentId: string` +「Two opens of the same address are the same tab, which is what makes opening idempotent.」 | 地址就是 tab 身份、打开幂等 |
+| `OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:110-122` | `SidebarRightTabNavigation{address, params, revision}` | 每次导航 `revision+1`，`params` 是这次 open 的实参 |
+| `OFF:dsh-client-ui-plan/src/client/index.ts:65-69` | 类型注册 `{id, kind:'plan', patterns:['dsh-resource://plan/**','dsh-resource://plan-review/**'], priority:'builtin', canOpen, title}` | 一个 kind 认多个地址前缀 |
+| `OFF:dsh-client-ui-plan/src/client/index.ts:70-76` | `ctx.sidebarRight.openResource(planAddress({session, callId}))` | 每点一张计划卡就按地址开一份 |
+| `OFF:dsh-client-ui-plan/src/client/plan.ts:56-62` | `kind==='session' ? [sessionId, callId] : ['subagent', parentSessionId, childSessionId, mode, callId]` | **五段地址** |
+| `OFF:dsh-client-ui-plan/src/client/plan.ts:69-87` | 段数只认 2 或 5；5 段时 `parts[0]==='subagent'` 且 `parts[3] ∈ {one-shot, continuable, unknown}` | 解析校验 |
+| `OFF:dsh-client-ui-plan/src/client/index.ts:72-74` | `ctx.sessions.subagentAddress(sessionId)` | 五段的父/子/mode 从这里来 |
+
+**subagent 五段地址具体是哪五段**：`subagent` · **父会话 id** · **子会话 id** ·
+**mode**（`one-shot` / `continuable` / `unknown`）· **callId**。计划帧落在**子**会话
+日志里，所以解析出的"内容所在会话"是 `parts[2]`（官方 `OFF:plan-resource.ts:45`
+拿 `target.session` 去 `remote.events` 读 history）。
+
+**params 能不能带 `planId` 之类**：官方 `openResource` 的第二实参只有
+`SidebarRightResourceParams`（`contract/params.ts`），`ui-plan` 只用过一条 ——
+临时审阅 `{'plan-review': {planReview: {markdown, title}}}`（`OFF:review-preview.ts:5-10`、
+`OFF:index.ts:102-104`）；**durable 计划的身份在地址里，不在 params 里**。本仓同理：
+`dsplan` 打开计划时不带 params（零值），只有临时审阅走内存文档。
+
+### 9.2 ④ 本仓落点
+
+| 层 | 改动 |
+|---|---|
+| 契约 | `pluginapi.Tab.Address`（= `contentId` / `navigation.address`）、`Env.RightTabAddress`、`Actions.OpenRightResource(kind, address, params)`、`RightTabAddressTitleProvider`（官方标题座位 owner props 带地址） |
+| 壳 | `cmd/app/right_tab_occurrences.go`：`rightTabRecord.Address` 落盘；`openRightTabAt(kind,address,params)` 按 (kind,address) 幂等、不同地址各自一枚、非 multiple 类型认领空地址占位 tab；`projectRightTabs` 对带地址记录免于「同 kind 单枚」；`decodeRightTabSurface` 拒绝同一 (kind,address) 两枚；`rightTabAddressFor` → `Env.RightTabAddress` |
+| dsplan | `cards.go` 的 `open` 改走 `OpenRightResource`；`preview.go` 的 `resolve` 先读 `env.RightTabAddress`；`plan.go` 的 `planAddressFor` / `parsePlanAddressFull` 实现 2 段 + 5 段全契约 |
+
+**残留（宿主侧）**：五段可解析、可构造，但**当前不会生产**——宿主 `subagent` 投影只有
+`{mode,label,seq}`，没有 `parentSessionId`（`internal/apiclient/projections.go` 的
+`SubagentIdentity` 注释），而官方五段正是靠 `sessions.subagentAddress` 拿父会话 id。
+
+### 9.3 ⑤ 官方：芯片 = `FileTypeIcon kind="other" 16` + 资源标题
+
+`OFF:dsh-client-ui-plan/src/client/PlanPreview.tsx:47-53`（`PlanTitle`）：
+
+```tsx
+const tab = useTabInfo()
+const resource = useResource<'plan'>(tab.tab.navigation.address)
+return <><FileTypeIcon kind="other" size={16} className={css.titleIcon} />{plan?.title ?? tab.tab.title}</>
+```
+
+- **资源标题从哪来**：`plan.title` = 计划正文首个 `# 标题`（`OFF:plan.ts:45-48` 的
+  `/^#\s+(\S[^\r\n]*)/`）；取不到退回 `tab.tab.title`，即类型注册的
+  `title: () => t('preview.title')`（中文「计划」）。
+- **什么时候变**：地址变了（换一份计划）或那一份内容变了；`ui-plan` 的计划正文是不可变
+  的调用参数，所以同一个 callId 的标题不会变。
+- **图标颜色**：`FileTypeIcon` 是 `clsx(css.icon, css[resolvedType], className)`
+  （`OFF:ui-primitives/src/FileTypeIcon.tsx:26-33`），其中
+  `._icon_1wejo_1{color:var(--dsh-file-type-icon-color,var(--dsh-file-type-default-color))}`、
+  `._other_1wejo_32{--dsh-file-type-default-color: var(--dsw-static-neutral-bluish-300)}`；
+  `other` 是 muted（`FileTypeIcon.tsx:233`），折角 `var(--dsw-static-neutral-400)`（`:162-163`）。
+  **两层都是静态色板**，`.titleIcon` 编译产物只有 `{flex:none}`（`lLdGaq_titleIcon`），
+  不覆盖任何颜色变量 → 预建一份就与官方同色，**不需要按帧重建**。
+
+### 9.4 ⑤ 本仓落点
+
+| 层 | 改动 |
+|---|---|
+| 素材 | `plugins/dsassets/files.go` 新增 `FileTypeOther()`（复用仓内已在的 other/muted 图层，底板 `0xcfd3d6` = `--dsw-static-neutral-bluish-300`、折角 `0xa2a4a6` = `--dsw-static-neutral-400`） |
+| 注册 | `plugins/dsplan/plugin.go` 的 `plan-preview` 画带 `IconImage: planTabIcon()` + `IconSize: 16` + `IconMarginRight: 0` |
+| 标题 | `plugins/dsplan/tab_chip.go` 的 `RightTabTitleFor(sessionID, tabID, address)`：计划地址 → 本帧缓存的计划标题；临时审阅地址 → 内存文档标题；跨会话 / 取不到 → 空串（壳保留类型标题） |
+
+**残留（一帧延迟）**：壳在 `m.view.Draw` 之前投影名录（`env.RightTabs = m.rightTabsFor()`），
+而计划标题要等本帧 `drawCards`/`drawPreview` 从帧里算出来，所以刚提交那一帧仍显示类型标题。
+
+### 9.5 测试与变异
+
+- 壳：`cmd/app/right_tab_resource_test.go` —— 同址幂等 / 异址并存（不靠 `Multiple`）/
+  空地址退化 / 落盘还原 + 唯一性拒绝 / 资源标题覆盖类型标题且不串址。
+- 插件：`plugins/dsplan/plan_address_subagent_test.go` —— 五段往返（含需转义字符）+
+  官方校验逐条拒绝 + 五段地址真定位到**子**会话的帧；`plugins/dsplan/tab_chip_test.go` ——
+  图标两层颜色/viewBox/无描边 + `IconSize==16` + `IconMarginRight==0` + 素材同源 +
+  标题取值顺序（计划/审阅/失效/跨会话/非计划地址/空地址）。
+- 变异（每条都先改坏、跑出红、再还原）：`IconSize` 16→14 红；
+  `openRightResource` 去掉按地址查找 → 幂等红；`projectRightTabs` 回旧去重 → 并存红；
+  `parsePlanAddressFull` 去掉 mode 闭集 → 校验红；回退成只认两段 → 五段红；
+  `RightTabTitleFor` 恒空 → 标题红。

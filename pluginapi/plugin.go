@@ -353,6 +353,28 @@ type RightTabTitleProvider interface {
 	RightTabTitle(sessionID, tabID string) string
 }
 
+// RightTabAddressTitleProvider 是资源型右栏 tab 的实时标题（官方标题座位的
+// **带地址**那一支：`useTabInfo().tab.navigation.address`）。
+//
+// 官方 `sidebar.right.pane.tab.title` 的 owner props 里就带地址，占用方按地址去
+// 取资源再画标题：
+//
+//	OFF:dsh-client-ui-plan/src/client/PlanPreview.tsx:47-53（PlanTitle）
+//	  const tab = useTabInfo()
+//	  const resource = useResource<'plan'>(tab.tab.navigation.address)
+//	  <FileTypeIcon kind="other" size={16} className={css.titleIcon} />{plan?.title ?? tab.tab.title}
+//
+// 为什么不能只用 `RightTabTitleProvider`：那个签名只有 `(sessionID, tabID)`，而
+// **同一个类型可以同时开着好几份不同地址**（官方 `TabRecord.contentId` 就是地址，
+// 两个地址 = 两个 tab，见 `tab-registry.ts:140-160` 的 `SidebarRightTabClaim`）。
+// 只给 tabID 的插件只能猜"当前是哪一份"。所以资源型类型实现这个接口，壳在名录
+// 投影时优先问它，返回空串再问 `RightTabTitleProvider`，仍为空就沿用类型标题。
+//
+// 实现只读自己的状态，不发请求（与 `RightTabTitleProvider` 同一条约定）。
+type RightTabAddressTitleProvider interface {
+	RightTabTitleFor(sessionID, tabID, address string) string
+}
+
 // RightTabCloseHandler 是官方 sidebarRight.registerCloseHandler 的插件面：
 // 壳在移除 occurrence 之前调用；关闭网页、删除对应持久化记录等清理必须先成功。
 // 返回 error 会保留 occurrence，不能把失败吞成"已关闭"。
@@ -369,6 +391,22 @@ type Tab struct {
 	Kind string
 	// Multiple 表示这个右栏类型允许并存多个 occurrence。
 	Multiple bool
+	// Address 是该 occurrence 的**经官方 `openResource` 打开的资源地址**
+	// （官方 `TabRecord.contentId`，也就是 `navigation.address`）；
+	// 页型 tab（`openTab(kind)` 打开的浏览器/终端）与默认种下的空 tab 留空。
+	//
+	// 官方约定（OFF:dsh-client-ui-sidebar-right/src/client/tab-registry.ts:140-160）：
+	//
+	//	/** Stable identity of the content, which is the address itself.
+	//	 * Two opens of the same address are the same tab, which is what makes
+	//	 * opening idempotent. */
+	//	readonly contentId: string
+	//
+	// 所以**地址就是身份**：同一个地址永远只该有一个 tab（面板上是同一枚芯片），
+	// 不同地址各自一枚——这就是官方「同一类型可并存多份」的全部机制，不需要
+	// `Multiple`。本仓的 `Key` 是 occurrence 身份（`tab<N>` / 早期等于 kind），
+	// 对资源型 tab 地址才是可读的身份，两者都要带。
+	Address string
 	// Label 是芯片上的文案；官方是 thunk（`label: () => t('view.chat')`），
 	// 本仓按当前语言在注册处取好。
 	Label string
@@ -597,6 +635,17 @@ type Env struct {
 	//
 	// 零值 = 官方 `undefined`（这次打开没带参数）。壳在 occurrence 关闭时丢弃。
 	RightTabParams RightTabParams
+	// RightTabAddress 是本帧 occurrence 的官方 `tab.navigation.address`
+	// （`SidebarRightTabNavigation.address`，OFF:dsh-client-ui-sidebar-right/
+	// src/client/contract/slots.ts:109-121）——**这次导航打到的那个资源地址**。
+	//
+	// 与 `RightTabParams` 同一条来路、同一套约定：由打开它的那次
+	// `Actions.OpenRightResource` 带进来，壳在 occurrence 关闭时丢弃，读方不缓存。
+	//
+	// 空串 = 这个 occurrence 不是按地址打开的：页型 tab（`openTab(kind)` 的浏览器 /
+	// 终端）、默认种下的类型 tab、或老壳。资源型占用方（例如 ds-plan）这时只该退回
+	// 自己的近似选择，不许把空串当成"某个合法地址"。
+	RightTabAddress string
 	// GuideEntry 是本帧派发 `sidebar.right.tab.guide.entry` 时交给占用方的
 	// owner props（官方 `SidebarRightGuideEntryOwnerProps`）。
 	//
@@ -1432,6 +1481,33 @@ type Actions struct {
 	// nil = 壳没接：需要参数的调用方这时**不要**退化成 `OpenRightTab(kind)` 丢参数
 	// ——那会打开一个空页（浏览器就变成"白开一个标签"）。
 	OpenRightTabParams func(kind string, params RightTabParams)
+	// OpenRightResource 是官方 `sidebarRight.openResource(address, { params })`
+	// （OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:165-177）：
+	// **资源型** tab 的打开方式，身份是**地址**而不是类型。
+	//
+	//	openResource(address: string, options?: Placement & {
+	//	  readonly params?: SidebarRightResourceParams
+	//	  readonly destination?: SidebarRightDestination })
+	//
+	// 官方与 `openTab` 的区别只有一条，但正是本接口存在的理由：
+	//
+	//	openTab(kind)      身份是 (kind, 第几次 open) —— multiple 类型每次新建
+	//	openResource(addr) 身份是 contentId = **地址本身**
+	//	  OFF:tab-registry.ts:140-160「Two opens of the same address are the same
+	//	  tab, which is what makes opening idempotent.」
+	//
+	// 所以本接口的语义是：**同一 (kind, address) 复用同一 occurrence 并重新导航
+	// （params 覆盖、等价于官方 navigation.revision+1），不同地址各自一个新
+	// occurrence**。地址为空时退化成 `OpenRightTabParams(kind, params)`。
+	//
+	// 谁需要它：官方 `ui-plan` 每点一张计划卡就 `openResource(planAddress(...))`
+	// （OFF:dsh-client-ui-plan/src/client/index.ts:71-78），所以同一种 `plan` 类型
+	// 可以同时开着好几份不同 callId 的预览；按类型 open 只能有一份。
+	//
+	// 壳把它落进 occurrence 的地址槽，并在下一帧交给插件 `Env.RightTabAddress`。
+	// nil = 壳没接：资源型调用方这时**不要**退化成 `OpenRightTab(kind)`——那会把
+	// 两份不同资源的预览合成一份（点第二份就顶掉第一份）。
+	OpenRightResource func(kind, address string, params RightTabParams)
 	// CloseRightTab 按官方 TabActions.close 关闭指定 occurrence key。
 	// 壳先调用资源 owner's close handler，成功后才从布局移除。
 	// nil = 壳没接，芯片行不画关闭入口。

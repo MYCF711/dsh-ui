@@ -75,8 +75,11 @@ type (
 	RightTabParams = pub.RightTabParams
 	// 右栏 occurrence 的实时标题 / 徽标与关闭清理（官方 sidebar-right 的三个扩展点）。
 	RightTabTitleProvider = pub.RightTabTitleProvider
-	RightTabBadgeProvider = pub.RightTabBadgeProvider
-	RightTabCloseHandler  = pub.RightTabCloseHandler
+	// RightTabAddressTitleProvider 是资源型右栏 tab 的**带地址**实时标题
+	// （官方 `tab.navigation.address`；见公开包 pluginapi/plugin.go）。
+	RightTabAddressTitleProvider = pub.RightTabAddressTitleProvider
+	RightTabBadgeProvider        = pub.RightTabBadgeProvider
+	RightTabCloseHandler         = pub.RightTabCloseHandler
 	// WebHost / WebPage / WebOpenOptions 是窗口里的网页宿主（官方右栏浏览器那一层）。
 	// `Env.Web` 已经带上了它；这里补别名是为了让 import internal 路径的插件也能
 	// 在自己的测试里造假载具，而不必去 import 公开包。

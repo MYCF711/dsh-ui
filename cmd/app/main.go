@@ -2126,6 +2126,10 @@ func newConfig(m *model) app.Config {
 		// 官方 `tab.navigation.params`：这条路是 window.open 新标签与 terminal 的
 		// `{terminalId}|{shellPath}` 唯一的入口（contract/slots.ts:109-121）。
 		env.RightTabParams = m.rightTabParamsFor(cur, env.RightTabID)
+		// 官方 `tab.navigation.address`（contract/slots.ts:109-121）：资源型 tab
+		// 的身份就是地址本身（`TabRecord.contentId`，tab-registry.ts:140-160）。
+		// 与 params 同一套来路与生命周期：由 openResource 带进来、关闭时丢弃。
+		env.RightTabAddress = m.rightTabAddressFor(cur, env.RightTabID)
 		// 三栏几何由壳算：它知道侧栏要的宽度、右栏开不开、白名单里有没有底部整行。
 		// 框架插件照着摆，不再自己猜（猜错过：白名单里漏掉 shell，部件就上下堆叠）。
 		// 与上面 env.MainWidth 用的是**同一份**求解结果，不允许两处各算一遍。
@@ -3063,6 +3067,10 @@ func main() {
 		// 带参数的那一支（官方 openTab(kind, { params })）：浏览器 window.open
 		// 新标签与 terminal 的 {terminalId}|{shellPath} 都走它。
 		OpenRightTabParams: m.openRightTabParams,
+		// 资源型那一支（官方 openResource(address, { params })）：身份是地址，
+		// 同一地址幂等复用、不同地址各自一枚（tab-registry.ts:140-160）。
+		// ds-plan 每点一张计划卡就走这里，所以 `plan` 类型能同时开着好几份预览。
+		OpenRightResource: m.openRightResource,
 		// 官方向导卡的 shell 菜单（`webTerminals.launchShells` / `selectShell`）：
 		// 同步读缓存 + 后台补一轮，见 terminal_shells.go。
 		TerminalLaunchShells: m.terminalShellChoices,

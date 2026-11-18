@@ -69,6 +69,28 @@ func FileType(name string) (FileTypeAsset, bool) {
 	}
 }
 
+// FileTypeOther 是官方 `FileTypeIcon(kind="other")` 那一支——**显式 kind**，
+// 不经过路径分类（官方 props 是 `{path}` 或 `{kind}` 二选一的联合，
+// OFF:ui-primitives/src/FileTypeIcon.tsx:34-45）。
+//
+// 官方的 `other` 是 muted 档，两层颜色都是**静态**的，不跟 `currentColor` 走：
+//
+//	FileTypeIcon.tsx:233  `case 'other': return <FileGlyph size={size} className={className} muted />`
+//	FileTypeIcon.tsx:162-163  muted → <path d={FILE_FOLD} fill="var(--dsw-static-neutral-400)" />
+//	FileTypeIcon.tsx:156      <path d={FILE_BODY} fill="currentColor" />
+//	index-CSAdOBx6.css  `._icon_1wejo_1{color:var(--dsh-file-type-icon-color,
+//	                       var(--dsh-file-type-default-color))}`
+//	                    `._other_1wejo_32{--dsh-file-type-default-color: var(--dsw-static-neutral-bluish-300)}`
+//
+// 所以底板 = neutral-bluish-300、折角 = neutral-400，两层都是固定色板；
+// 调用方所在容器的 `--dsh-file-type-icon-color` 没有被谁覆盖（计划页签的
+// `.titleIcon` 只有 `flex:none`，见 PlanPreview.module.css 编译产物 `lLdGaq_titleIcon`）。
+// 也就是说这个图标**不需要**按帧重建，预建一份就与官方同色。
+func FileTypeOther() (FileTypeAsset, bool) {
+	sheet, ok := fileTypeSheet(fileTypeSheetOther, nil, 0)
+	return FileTypeAsset{Sheet: sheet}, ok
+}
+
 // fileTypeSheet 构造官方 or 组件的 currentColor 底板与折角。muted 使用
 // neutral-400；其余分支使用 neutral-00 的 0.7 alpha。
 func fileTypeSheet(base gfx.Color, marks []gfx.IconLayer, foldAlpha float32) (gfx.Icon, bool) {

@@ -111,7 +111,12 @@ func (p *Plugin) drawCards(f ui.C, env *pluginapi.Env) {
 	if t == nil || env == nil {
 		return
 	}
-	plans := turnPlans(env, SubmittedPlans(env.Data.Frames))
+	all := SubmittedPlans(env.Data.Frames)
+	// 顺手记下本会话所有计划的标题：右栏芯片的**资源标题**由壳在下一帧问
+	// `RightTabTitleFor`，而那一路没有 env（官方那边是 `useResource` 在渲染期现取，
+	// OFF:PlanPreview.tsx:47-53）。这里不求"最全"，只求"本会话出现过的都记下"。
+	p.rememberPlanTitles(all)
+	plans := turnPlans(env, all)
 	if len(plans) == 0 {
 		return
 	}
@@ -168,16 +173,30 @@ func (p *Plugin) drawCard(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, sessio
 
 // open 是「点了一张计划卡」：把这份计划交给右栏全文，并切到它的 tab。
 //
-// 官方的对等动作是 `ctx.sidebarRight.openResource(planAddress(...))`（OFF:index.ts:71-78）：
-// ① 记住地址 ② 右栏切到 plan 类型 ③ 右栏收起时展开。本仓这三个动作分别落在
-// 插件状态、`Act.SelectRightTab`、`Act.ToggleRightbar` 上（内核没有"按地址打开
-// tab"这一层，右栏 tab 只有类型没有 navigation——差异登记在 preview.go 文件头）。
+// 官方是 `ctx.sidebarRight.openResource(planAddress({session, callId}))`
+// （OFF:dsh-client-ui-plan/src/client/index.ts:70-76 + :74）：
+//
+//	ctx.sidebarRight.openResource(planAddress({ session, callId }))
+//
+// 那是**资源型** open：身份是地址本身，同一地址幂等、不同地址各自一枚 tab
+// （OFF:dsh-client-ui-sidebar-right/src/client/tab-registry.ts:140-160）。
+// 本仓对应 `Actions.OpenRightResource`（壳侧 `cmd/app/right_tab_occurrences.go`
+// 的 `openRightResource`），所以 `plan` 类型现在能同时开着好几份预览。
+//
+// 两条退路保持原样（壳没接资源型 open 时不许假装开成功）：
+//   - 壳没 `OpenRightResource` → 老语义：插件记地址 + 切类型 tab + 必要时展开右栏
+//   - 壳连 `SelectRightTab` 都没有 → 什么都不做（右栏 tab 行不是可点的）
 func (p *Plugin) open(env *pluginapi.Env, session string, plan Document) {
 	address := planAddress(session, plan.CallID)
 	if address == "" {
 		return
 	}
 	p.openAddress = address
+	if env.Act.OpenRightResource != nil {
+		// 官方这一次 open 不带 params（计划正文从地址里读），所以 params 零值。
+		env.Act.OpenRightResource(RightTabPlan, address, pluginapi.RightTabParams{})
+		return
+	}
 	if env.Act.SelectRightTab != nil {
 		env.Act.SelectRightTab(RightTabPlan)
 	}

@@ -60,7 +60,12 @@ func (f *terminalHostFixture) handler(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	case "terminal.watch":
 		w.Header().Set("Content-Type", "application/x-ndjson")
-		fmt.Fprintln(w, `[]`)
+		// roster 必须如实包含已建终端。原来发空数组 []，壳的 roster 对账会把刚
+		// create 出来的 tab1 判成「不在名单里」-> closed + missingTerminal。
+		// 本地等待条件先成立看不出；CI 时序相反就必红（2026-11-18 dsh-ui#159 实测
+		// phase="closed" screen 已含 hello info=running）。
+		// 真实宿主的 terminal.watch roster 一定包含已建终端，空数组不真实。
+		fmt.Fprintln(w, `[{"id":"tab1","shell":{"path":"/bin/bash","args":[]},"cwd":"/work","cols":80,"rows":24,"state":"running","origin":"user","control":"user"}]`)
 		flushTerminalTest(w)
 		<-r.Context().Done()
 	case "terminal.input":

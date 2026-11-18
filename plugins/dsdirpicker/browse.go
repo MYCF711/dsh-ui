@@ -209,6 +209,21 @@ const (
 	showHiddenWeight    float32 = 500
 	footerCheckSize     float32 = 14
 
+	// ── 键盘焦点环（官方全局规则）───────────────────────────────────────────
+	//
+	//	:root{--dsw-focus-ring-width:2px}
+	//	:focus-visible{outline-color:var(--dsw-focus-ring-color,
+	//	               var(--dsw-alias-state-business-primary));
+	//	               outline-width:var(--dsw-focus-ring-width)}
+	//
+	// （rc.2 asar：宽度在原文件偏移 59937449 的 `ui-theme/src/styles/focus.css`；
+	// 本组件两条规则 `._3zXc5G_row:focus-visible` / `._3zXc5G_crumb:focus-visible`
+	// 在 asar 偏移 **33132296** / **33130630**，都带 `outline-offset:-2px`。）
+	// 颜色回退到 `--dsw-alias-state-business-primary`，本主题里就是 Info
+	// （与 plugins/dsplan/cards.go:75-76、plugins/dsbrowser/plugin.go:113 同一映射）。
+	focusRingWidth  float32 = 2  // --dsw-focus-ring-width
+	focusRingOffset float32 = -2 // outline-offset
+
 	// 新建文件夹子对话框：`.createDialog{width:min(380px,100%)}`（:403-407）。
 	createDialogMaxWidth float32 = 380
 	// `.createBody{padding:22px 24px 20px;gap:12px}`（:409-414）。
@@ -889,6 +904,31 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	})
 }
 
+// drawInsetFocusRing 画官方 `outline:<2px> solid …;outline-offset:-2px` 的等效环。
+//
+// 为什么不能直接用 Viva 的 `ui.Look.Ring`：它只会画在矩形**外**侧
+// （`ui/style.go:367-377` 的 `outer := Rect{X: r.X - w, …}`），表达不了负的
+// outline-offset；而官方这两条都是 `-2px`（环带落在盒子内缘 0..2px）。
+//
+// RoundedOutline 的描边以路径为中心，所以路径要再内缩半个线宽：
+// `inset = -offset - width/2`，环带才落在 0..2 而不是 1..3。
+// 与 `plugins/dssidebar/focus_ring.go` 的推导同一份（各包自带，不跨包引用）。
+func drawInsetFocusRing(d *ui.DrawContext, offset, radius float32, color gfx.Color) {
+	if !d.State.FocusVisible {
+		return
+	}
+	inset := -offset - focusRingWidth/2
+	rect := d.Rect
+	rect.X += inset
+	rect.Y += inset
+	rect.Width -= 2 * inset
+	rect.Height -= 2 * inset
+	if rect.Width <= 0 || rect.Height <= 0 {
+		return
+	}
+	d.Canvas.RoundedOutline(rect, max(radius-inset, 0), focusRingWidth, d.Fade(color))
+}
+
 // drawHeader 画 header：标题 + 面包屑条（官方 .header / .title / .crumbBar）。
 func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, crumbSource *apiclient.DirectoryListing) {
 	header := ui.Column(f).FillWidth().
@@ -922,7 +962,12 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, crum
 				}
 				crumbBox := ui.Text(f, label).MaxWidth(crumbMaxWidth).Ellipsis().
 					FontSize(crumbFontSize).LineHeight(crumbLineH).Weight(crumbWeight).
-					Color(t.LabelTertiary).Hit(p.hitID(env, "crumb-"+crumb.Path), label)
+					Color(t.LabelTertiary).
+					// `.crumb` 没有 border-radius 声明 → 焦点环是直角环。
+					DrawOver(func(d *ui.DrawContext) {
+						drawInsetFocusRing(d, focusRingOffset, 0, t.Info)
+					}).
+					Hit(p.hitID(env, "crumb-"+crumb.Path), label)
 				if crumbBox.Clicked() && crumb.Path != "" {
 					p.navigate(crumb.Path)
 				}
@@ -1023,7 +1068,11 @@ func (p *Plugin) drawRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 		// = 主题的 InteractiveActive（dscore.go:164/:254 明确映射这条 token）。
 		row = row.Background(t.InteractiveActive)
 	}
-	row = row.Hit(p.hitID(env, "row-"+entry.Path), entry.Name)
+	// `.row:focus-visible{outline: …;outline-offset:-2px}`（rc.2 asar 偏移 33132296）
+	// 与 `.row{border-radius:var(--dsw-radius-sm)}`：环内缩 2px、圆角跟着内缩。
+	row = row.DrawOver(func(d *ui.DrawContext) {
+		drawInsetFocusRing(d, focusRingOffset, t.Radii.SM, t.Info)
+	}).Hit(p.hitID(env, "row-"+entry.Path), entry.Name)
 	p.boxes.Rows = append(p.boxes.Rows, row)
 	row.Children(func() {
 		// 行首 16px folder 图标：官方 `IconFolderCloseRegular` / 选中换

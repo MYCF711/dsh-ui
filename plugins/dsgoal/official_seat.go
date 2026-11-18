@@ -163,8 +163,11 @@ func (p *Plugin) drawGoalBar(f ui.C, env *pluginapi.Env) {
 			Children(func() {
 				// `.goalGlyph{color:label-tertiary}` + GoalBar.tsx:137 的 size=14。
 				ui.Icon(f, goalOutlineIcon()).Size(goalGlyphSize, goalGlyphSize).Color(t.LabelTertiary)
+				// rc.2 `GoalBar.module.css` `.label{…flex:none…}`：固定标签**不许收缩**。
+				// 不写 Shrink(0) 时 viva 默认 flex-shrink:1，长目标会把
+				// 「进行中的目标」压成 1 个字（本轮 vr3 实测 78px → 12px）。
 				ui.Text(f, goalLabelText).FontSize(goalLabelFont).LineHeight(goalLabelLine).
-					Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+					Weight(gfx.WeightMedium).Color(t.LabelPrimary).Shrink(0)
 				// `.objective`：13/20、label-primary-dimmed、一行省略。
 				ui.Text(f, goal).FontSize(goalObjectiveFont).LineHeight(goalObjectiveLine).
 					Color(t.LabelPrimaryDimmed).Grow(1).Ellipsis()

@@ -48,6 +48,9 @@ var displayToKey = map[string]string{
 	"F1": "KeyF1", "F2": "KeyF2", "F3": "KeyF3", "F4": "KeyF4",
 	"F5": "KeyF5", "F6": "KeyF6", "F7": "KeyF7", "F8": "KeyF8",
 	"F9": "KeyF9", "F10": "KeyF10", "F11": "KeyF11", "F12": "KeyF12",
+	// 带修饰键的写法要单列一条：表里的 "Shift+F10" 是整串（不会被分隔符拆开），
+	// 不补这条翻译就永远查不到 KeyF10。
+	"Shift+F10": "KeyF10",
 }
 
 // keyLabel 把 "KeyF7" 说成人话（红的提示里用）。
@@ -115,6 +118,13 @@ func discoveredKeys(t *testing.T) map[string][]string {
 			}
 			key := sel.Sel.Name
 			if !strings.HasPrefix(key, "Key") || key == "KeyEvent" {
+				return true
+			}
+			// `gfx.Key` 是**类型名**，不是某个键。`plugins/dscontextmenu` 的
+			// `stepHighlight(state *popupState, key gfx.Key)` 会被前缀规则当成一个键，
+			// 于是这条守卫报出"`Key` 被吃掉了却没记进表里"——那是守卫自己的假阳性，
+			// 和上面排除 `KeyEvent` 同一条理由。
+			if key == "Key" {
 				return true
 			}
 			if seen[key] == nil {

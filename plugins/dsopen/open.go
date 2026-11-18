@@ -117,7 +117,13 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 		Items(ui.Center).Justify(ui.Center).
 		PadSides(buttonPadY, buttonPadX, buttonPadY, buttonPadX).
 		Radius(t.Radii.SM).Border(buttonBorder, t.BorderL4).
+		// 官方 `OpenTargetButton.module.css`（rc.2 asar 偏移 **34265977**）：
+		//	`.mOxcpG_main:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}`
+		//	`.mOxcpG_main:focus-visible{background:var(--dsw-alias-interactive-bg-hover)}`
+		// 两处画的是**同一层底**；只给 `Hover` 会让键盘焦点完全看不见（Viva 的
+		// `Focus` 就是 CSS 的 `:focus-visible`，见 `ui/style.go:149`）。
 		Hover(ui.Look{}.Background(t.Hover)).
+		Focus(ui.Look{}.Background(t.Hover)).
 		Hit(env.Tree.ID(env.Feat, "open-in-app"), "在工作目录里打开")
 	if box.Clicked() {
 		// 失败走壳的既有状态栏（`openFile` 写一句"打开文件/目录失败: …"）——

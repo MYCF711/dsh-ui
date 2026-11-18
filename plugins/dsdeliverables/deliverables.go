@@ -211,7 +211,13 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 				Border(cardBorder, t.BorderL1).Radius(t.Radii.LG).
 				Background(t.CardFill).
 				Hover(ui.Look{}.Background(t.CardFillHover)).
-				Hit(env.Tree.ID(env.Feat, "deliv-"+itoa(i)), name)
+				Hit(env.Tree.ID(env.Feat, "deliv-"+itoa(i)), name).
+				// 官方 `.cardPreview:focus-visible{box-shadow:inset 0 0 0 2px
+				// var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));
+				// outline:none}`（Deliverables.module.css）：**内**描边，2px。
+				DrawOver(func(d *ui.DrawContext) {
+					drawCardFocusRing(d, t.Radii.LG, t.Info)
+				})
 			if row.Clicked() {
 				p.preview = path
 				p.previewText = ""

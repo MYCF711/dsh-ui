@@ -189,7 +189,7 @@ func (p *Plugin) drawTrigger(f ui.C, env *pluginapi.Env) {
 			Justify(ui.Center).Children(func() {
 			if len(liveRows) > 0 && !compact {
 				// 官方 textModeActivity：14px ongoing spinner；compact 始终显示 layers。
-				drawJobStateDot(f, t, pluginapi.Job{})
+				drawJobStateDot(f, env, t, pluginapi.Job{})
 				return
 			}
 			ui.Icon(f, layersIcon()).Size(activitySize, activitySize).Color(color)
@@ -268,8 +268,19 @@ func (p *Plugin) drawPanel(f ui.C, env *pluginapi.Env, _ func(pluginapi.Slot)) {
 		Pad(jobsMenuPad)
 	// 面板本体吃掉点击：点菜单里面不关（只有菜单外 pointerdown 才关）。
 	panel.Hit(env.Tree.ID(env.Feat, "jobs-menu"), zhJobsTitle)
+	// 正文高 = 内容高，上限是面板内框。官方 `.Ag-ohG_menu{height:fit-content;
+	// max-height:min(480px,calc(100dvh - 140px))}`（JobListAction.module.css:94,108）
+	// + `.Ag-ohG_menuBody{padding:4px;overflow:auto}`（:113-119）。
+	//
+	// 这里**不能用 `Grow(1)`**：viva 的 flex 里它需要确定的主轴尺寸，而面板只有
+	// MaxHeight（上限不是尺寸），正文会拿到 0 高，整个弹层塌成 4+4 的板条。
+	// 改成 Scroll 自带 MaxHeight：内容矮时取内容高，超过才在 288 内滚。
+	bodyMax := maxHeight - 2*jobsMenuPad
+	if bodyMax < 0 {
+		bodyMax = 0
+	}
 	panel.Children(func() {
-		ui.Scroll(f).FillWidth().Grow(1).MinHeight(0).Gap(jobsMenuGap).
+		ui.Scroll(f).FillWidth().MaxHeight(bodyMax).MinHeight(0).Clip().Gap(jobsMenuGap).
 			Children(func() {
 				// 活任务段：官方直接列（没有段标题）。
 				for _, j := range liveRows {
@@ -339,8 +350,12 @@ func (p *Plugin) drawOfficialItem(f ui.C, env *pluginapi.Env, j pluginapi.Job, i
 	line := ui.Row(f).FillWidth().Items(ui.Center).Gap(jobsRowLineGap)
 	if isLive {
 		// `.rowLineLive`：活任务是填充卡（把运行中的工作抬到已结束尾巴之上）。
+		// 卡自己吃 hover 洗色（官方 `@media(hover:hover){.rowLineLive:hover{
+		// background:color-mix(in srgb,label-primary 9%,transparent)}}`，:204-207），
+		// 内层 row 因此保持透明（官方 `.rowLineLive .row:hover{background:0 0}`，:222-226）。
 		line = line.PadSides(jobsRowLivePadV, jobsRowLivePadH, jobsRowLivePadV, jobsRowLivePadL).
-			Radius(t.Radii.MD).Background(t.BgLayer2)
+			Radius(t.Radii.MD).Background(t.BgLayer2).
+			Hover(ui.Look{}.Background(jobLabelWash(t, jobRowLiveHoverMix)))
 	}
 	line.Children(func() {
 		rowRadius := t.Radii.MD
@@ -349,8 +364,14 @@ func (p *Plugin) drawOfficialItem(f ui.C, env *pluginapi.Env, j pluginapi.Job, i
 		}
 		row := ui.Row(f).Grow(1).MinWidth(0).MinHeight(jobsRowMinHeight).Items(ui.Center).
 			Gap(jobsRowGap).PadSides(jobsRowPadV, jobsRowPadH, jobsRowPadV, jobsRowPadH).
-			Radius(rowRadius).Hit(id, shortCmd(j.Command)).Children(func() {
-			drawJobStateDot(f, t, j)
+			Radius(rowRadius)
+		if !isLive {
+			// 官方 `@media (hover:hover){.Ag-ohG_row:hover{background:
+			// var(--dsw-alias-fill-l1)}}`（:335-338）；活任务卡的洗色在卡上。
+			row = row.Hover(ui.Look{}.Background(jobFillL1(t)))
+		}
+		row.Hit(id, shortCmd(j.Command)).Children(func() {
+			drawJobStateDot(f, env, t, j)
 			// `.label` 是等宽、单行省略；`.status` 是 10/16 tertiary。
 			ui.Text(f, shortCmd(j.Command)).FontSize(jobsRowFont).LineHeight(jobsRowLine).
 				Mono().Color(labelColor(t, isLive)).Grow(1).Ellipsis()
@@ -416,6 +437,9 @@ func (p *Plugin) drawOfficialStop(f ui.C, env *pluginapi.Env, j pluginapi.Job) {
 		box = box.Size(jobStopBox, jobStopBox).PadSides(0, 0, 0, 0)
 	}
 	box = box.Radius(t.Radii.SM).Border(jobStopBorder, border).Background(background).
+		// 官方 `@media (hover:hover){.Ag-ohG_stop:hover{border-color:color-mix(in srgb,
+		// state-error-primary 45%,transparent);color:state-error-primary}}`（:273-278）。
+		Hover(ui.Look{}.Border(jobErrorMix(t.Error, jobStopArmBorderMix)).Color(t.Error)).
 		Hit(id, zhStopTitle+" "+shortCmd(j.Command))
 	box.Children(func() {
 		ui.Icon(f, stopIcon()).Size(10, 10).Color(stopColor(t, armed))

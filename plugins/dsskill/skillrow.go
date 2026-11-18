@@ -420,9 +420,23 @@ func (p *Plugin) drawSkillRow(f ui.C, env *pluginapi.Env, c dstool.Card) float32
 					Expandable: expandable,
 				},
 			)
+		} else {
+			// 不可展开时官方那个 `.row` 仍是普通 `div`：**没有** role/tabIndex，
+			// 但 `@media (hover:hover){.row:hover{color:label-secondary}}` 照样生效。
+			// viva 的悬停由命中区算，所以给它一个 `RoleGroup + SkipTab` 的**悬停身份**
+			// （与 `card` 同一手法，见 :395-403）：不进 Tab 序、不带按钮语义。
+			// 换一个 id 前缀，避免把"没有正文"的行伪装成按钮命中区。
+			row = row.HitWith(
+				env.Tree.ID(env.Feat, "skill-rowhover-"+strconv.Itoa(c.Seq)), "",
+				gfx.HitOptions{Role: gfx.RoleGroup, SkipTab: true})
 		}
 		// `@media (hover:hover){.row:hover{color:label-secondary}}`（CSS:19-23）
-		row = row.Hover(ui.Look{}.Color(t.LabelSecondary))
+		row = row.Hover(ui.Look{}.Color(t.LabelSecondary)).
+			// rc.2 的全局键盘焦点环：`focus.css` 的 `:root{--dsw-focus-ring-width:2px}` +
+			// `:focus-visible{outline-width:var(--dsw-focus-ring-width);outline-color:…}`。
+			// `.iJmaOG_row` 没有 `outline:none`，所以 Tab 到行上有一圈 2px 描边。
+			// viva `Ring` 画在元素外侧、以边为中心 —— 与 CSS outline 同义。
+			Focus(ui.Look{}.Ring(skillFocusRingWidth, t.Info))
 		row.Children(func() {
 			p.drawLeading(f, row, leading, t.LabelTertiary)
 
@@ -440,9 +454,16 @@ func (p *Plugin) drawSkillRow(f ui.C, env *pluginapi.Env, c dstool.Card) float32
 			shimmer := ui.Row(f).Items(ui.Center).Gap(0).Grow(1)
 			shimmer.Children(func() {
 				// .title{flex:none;font-size:13px;line-height:calc(24px + delta)}
+				//
+				// 官方 `.title` **不设 color**：继承 `.row` 的 label-tertiary，
+				// 于是 `.row:hover{color:label-secondary}` 时整行字跟着变。
+				// viva 的 Text 颜色不继承，所以把同一条 hover look 显式挂在字上，
+				// 状态来源用 `StateFrom(row)`（"行里的东西跟着行变"）。
 				ui.Text(f, SkillText(p.lang, KeyRowTitle)).
 					FontSize(SkillTitleFontSize).LineHeight(SkillTitleLineHeight).
-					Color(t.LabelTertiary)
+					Color(t.LabelTertiary).
+					Hover(ui.Look{}.Color(t.LabelSecondary)).
+					StateFrom(row)
 				// .separator{flex:none;width:2px;height:2px;border-radius:1px;
 				//   margin:0 8px;background:label-caption}
 				ui.Row(f).Width(SkillSeparatorWidth).Height(SkillSeparatorHeight).
@@ -458,10 +479,17 @@ func (p *Plugin) drawSkillRow(f ui.C, env *pluginapi.Env, c dstool.Card) float32
 				case SkillStateStopped:
 					summaryColor = t.WarnLabel // .stoppedSummary
 				}
-				ui.Text(f, summary).
+				summaryBox := ui.Text(f, summary).
 					FontSize(SkillSummaryFontSize).LineHeight(SkillSummaryLineHeight).
 					Color(summaryColor).MaxWidth(skillContentWidth(env)).
 					MaxLines(1).Ellipsis()
+				// `.summary{color:inherit}` → hover 时跟 `.row` 变 label-secondary；
+				// 但 `.errorSummary` / `.stoppedSummary` 自己写了颜色，那两档不跟。
+				if summaryColor == t.LabelTertiary {
+					summaryBox = summaryBox.
+						Hover(ui.Look{}.Color(t.LabelSecondary)).
+						StateFrom(row)
+				}
 			})
 		})
 		if expandable {
@@ -653,6 +681,16 @@ func (p *Plugin) drawInspectButton(f ui.C, card ui.Box, t *pluginapi.Theme, seq 
 	// column，子节点默认是 `Stretch`（`ui/frame.go` 的 `Align` 注释：Stretch 是跨轴默认），
 	// 不给 self 就画成一条**横贯整张卡**的药丸——官方是贴着文字与内边距的小胶囊。
 	label := SkillText(p.lang, KeyRowInspect)
+	// 官方 `.inspectButton:focus-visible{opacity:1}` 是**独立一条规则**（rc.2 asar 的
+	// SkillRow.module.css），与 `.card:hover .inspectButton{opacity:1}` 并列。
+	// `StateFrom(card)` 把 hover 绑在卡上，焦点态就只能直接问画布：
+	// `FocusVisible()` 正是 CSS `:focus-visible` 的判据（gfx/state.go:19-21）。
+	// 同一手法仓里已有：plugins/dsattachment/rail.go:1038。
+	inspectID := env.Tree.ID(env.Feat, "skill-inspect-"+strconv.Itoa(seq))
+	inspectOpacity := SkillInspectOpacity
+	if env.Canvas != nil && env.Canvas.FocusVisible() == inspectID {
+		inspectOpacity = SkillInspectFocusOpacity
+	}
 	button := ui.Row(f).Items(ui.Center).Gap(SkillInspectGap).
 		Self(ui.Start).
 		MarginSides(SkillInspectMarginTop, SkillInspectMarginRight,
@@ -663,14 +701,14 @@ func (p *Plugin) drawInspectButton(f ui.C, card ui.Box, t *pluginapi.Theme, seq 
 		Radius(SkillInspectRadius).
 		Background(t.BgBase).
 		Color(t.LabelSecondary).
-		Opacity(SkillInspectOpacity).
+		Opacity(inspectOpacity).
 		// `@media (hover:hover){.card:hover .inspectButton{opacity:1}}`（CSS:185-187）
 		Hover(ui.Look{}.Opacity(SkillCardHoverInspectOpacity).
 			// `.inspectButton:hover{background:hover-solid;color:label-primary}`（CSS:189-192）
 			Background(hoverSolidToken(t)).Color(t.LabelPrimary)).
 		StateFrom(card).
 		HitWith(
-			env.Tree.ID(env.Feat, "skill-inspect-"+strconv.Itoa(seq)),
+			inspectID,
 			label,
 			gfx.HitOptions{Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand},
 		)

@@ -428,8 +428,12 @@ func (p *Plugin) Draw(f ui.C, env *pluginapi.Env, props pluginapi.ActionCardBody
 			MarginSides(-recoDetailsBleed, -recoDetailsBleed, -recoDetailsBleed, -recoDetailsBleed).
 			Pad(recoDetailsPad).Radius(t.Radii.SM).
 			Hover(ui.Look{}.Background(t.Hover)).
-			// `:focus-visible` 的底色与 hover 同一条令牌（:5-6）；2px 内描边见文件头「没搬」1。
-			Focus(ui.Look{}.Background(t.Hover))
+			// `:focus-visible`：底色与 hover 同一条令牌，外加 `box-shadow:inset 0 0 0 2px …`
+			// （Card.module.css:6）。底色走 Look；**内**描边在布局后画（DrawOver），几何见 focus.go。
+			Focus(ui.Look{}.Background(t.Hover)).
+			DrawOver(func(d *ui.DrawContext) {
+				drawRecoDetailsFocusRing(d, t.Radii.SM, t.Info)
+			})
 		// 没有插件页就没有可点入口（不画点了没反应的按钮）。
 		open := currentOpenDetails()
 		if open != nil {
@@ -443,14 +447,20 @@ func (p *Plugin) Draw(f ui.C, env *pluginapi.Env, props pluginapi.ActionCardBody
 			}
 		}
 		details.Children(func() {
-			ui.Text(f, title).FontSize(recoTitleFont).LineHeight(recoTitleLineH).
+			// `.title{display:block;font-size:16px;font-weight:500;line-height:1.5;
+			// overflow-wrap:anywhere}`（:7）：是**块级段落**，长标题要折行，不是单行裁掉。
+			ui.Paragraph(f, title, 0).FillWidth().
+				FontSize(recoTitleFont).LineHeight(recoTitleLineH).
 				Weight(recoTitleWeight).Color(t.LabelPrimary)
 			// 描述区：官方 `(loading || available !== undefined)` 才画这一块（Card.tsx:134）。
 			// 文案没到之前画 `.placeholder` 骨架条（:9），到货后换成正文——两者占同一块高度，
 			// 所以卡片不会因为描述到达而跳高。
 			switch {
 			case available:
-				ui.Text(f, state.current.Description).MarginTop(recoDescMarginTop).
+				// `.description{display:block;margin:8px 0 0;font-size:13px;line-height:1.7;
+				// color:label-secondary;overflow-wrap:anywhere}`（:8）：同样折行。
+				ui.Paragraph(f, state.current.Description, 0).FillWidth().
+					MarginTop(recoDescMarginTop).
 					FontSize(recoDescFont).LineHeight(recoDescLineH).Color(t.LabelSecondary)
 			case state.loading:
 				// 行盒高度 = `.description` 的 line-height（22.1），骨架条在其中垂直居中。

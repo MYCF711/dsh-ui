@@ -766,7 +766,10 @@ func (p *Plugin) drawOfficialRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 					Color(t.Warn).Ellipsis()
 			}
 		})
-		p.drawRowControl(f, t, row, id)
+		// 字号 stepper 的 hover 与两枚箭头各要自己的命中区（drawFontStepper 里用法）：
+		// 官方 `._stepper:hover ._arrows` 按**胶囊**而不是整行判 hover，
+		// 两枚 arrow 在官方是独立 button，命中区不能共用（共用会让"点 ↑"变 −1）。
+		p.drawRowControl(f, env, t, row, id)
 	}
 	box := ui.Row(f).FillWidth().Height(height).
 		PadSides(RowPadY, 0, RowPadY, 0).Gap(rowGap).Items(ui.Center).
@@ -779,7 +782,7 @@ func (p *Plugin) drawOfficialRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 }
 
 // drawRowControl 画行尾控件（按 Kind 分支）。
-func (p *Plugin) drawRowControl(f ui.C, t *pluginapi.Theme, row PanelRow, id gfx.ID) {
+func (p *Plugin) drawRowControl(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow, id gfx.ID) {
 	switch row.Kind {
 	case ItemSwitch:
 		on := row.Known && row.Selected == "true"
@@ -804,7 +807,12 @@ func (p *Plugin) drawRowControl(f ui.C, t *pluginapi.Theme, row PanelRow, id gfx
 		if row.ID == "font-size" {
 			// 官方 FontSizeRow.tsx:69-79 的两枚 chevron 各是一次 ±1 的写；
 			// 只有行可写且值已知时才挂命中区（否则不画假按钮）。
-			step := drawFontStepper(f, t, id, row.Title, row.Display(), row.Writable() && row.Known)
+			ids := fontStepperIDs{
+				pill: env.Tree.ID(env.Feat, "settings-stepper-"+row.ID),
+				up:   env.Tree.ID(env.Feat, "settings-stepper-"+row.ID+"/increase"),
+				down: env.Tree.ID(env.Feat, "settings-stepper-"+row.ID+"/decrease"),
+			}
+			step := drawFontStepper(f, t, ids, row.Title, row.Display(), row.Writable() && row.Known)
 			if step != fontStepperNone {
 				p.stepRowValue(row, step)
 			}

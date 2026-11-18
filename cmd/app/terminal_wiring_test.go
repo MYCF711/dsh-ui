@@ -105,6 +105,11 @@ func closeStreamingServer(srv *httptest.Server) {
 }
 
 func waitTerminalCondition(t *testing.T, condition func() bool) {
+	waitTerminalConditionDump(t, condition, nil)
+}
+
+// waitTerminalConditionDump 同上，但超时时会调用 dump 把真实状态打出来。
+func waitTerminalConditionDump(t *testing.T, condition func() bool, dump func() string) {
 	t.Helper()
 	// 30s 而不是 5s：这里等的是**进程内**状态跃迁（正常毫秒级），
 	// 但 CI 高峰期整机负载能把 5s 吃满 -> 2026-11-18 在 dsh-ui#157 上
@@ -117,6 +122,14 @@ func waitTerminalCondition(t *testing.T, condition func() bool) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	// 超时要把**真实状态**打出来。
+	// 2026-11-18 这条在 CI 上稳定报「等待终端状态超时」（把窗口从 5s 提到 30s 也没用，
+	// 每次都是顶到 deadline 才失败），而本地 -count=5 全过、每次 74ms
+	// -> 不是负载，是条件在 CI 环境里根本没成立，光看超时字样查不下去。
+	// 这里把 phase / screen / info 全部打出来，下一次失败就能直接定位。
+	if dump != nil {
+		t.Fatalf("等待终端状态超时（进程内跃迁，本地毫秒级）；真实状态：%s", dump())
+	}
 	t.Fatal("等待终端状态超时")
 }
 
@@ -126,9 +139,13 @@ func TestTerminalWiringCreateRetainAttachWriteRenameClose(t *testing.T) {
 	defer closeStreamingServer(srv)
 	m := &model{cli: apiclient.New(srv.URL), cur: "s1"}
 	m.terminalEnsure("tab1")
-	waitTerminalCondition(t, func() bool {
+	waitTerminalConditionDump(t, func() bool {
 		state := m.terminalSnapshot("tab1")
 		return state.Phase == "connected" && strings.Contains(state.Screen, "hello")
+	}, func() string {
+		st := m.terminalSnapshot("tab1")
+		return fmt.Sprintf("phase=%q screen=%q info=%v writable=%v retained=%v env=%v shells=%d",
+			st.Phase, st.Screen, st.Info, st.Writable, st.Retained, st.Environment, len(st.Shells))
 	})
 	state := m.terminalSnapshot("tab1")
 	if state.Info == nil || state.Info.ID != "tab1" || !state.Writable || !state.Retained {

@@ -180,10 +180,12 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 				}
 				// 行尾「取消固定」：官方 `.panelUnpin`（绝对定位在行右端）。本仓同列
 				// 布局：行占剩余宽度、按钮 28×28 跟在后面（见 entry_menu.go 差异 2）。
+				panelRowID := env.Tree.ID(env.Feat, "panel-"+route.ID)
 				if actionsLive && p.pins != nil && route.ID != entrypins.FixedPanelID {
 					ui.Row(f).FillWidth().Children(func() {
 						ui.Row(f).Grow(1).MinWidth(0).Children(rowBody)
-						p.drawPanelUnpin(f, env, route)
+						// 行 id 一起传：`.panelUnpin` 的显隐按"指针在不在这—行"判。
+						p.drawPanelUnpin(f, env, route, panelRowID)
 					})
 				} else {
 					ui.Row(f).FillWidth().Children(rowBody)

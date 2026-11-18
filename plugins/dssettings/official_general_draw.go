@@ -41,13 +41,7 @@ func (p *Plugin) drawAppearanceRow(f ui.C, t *pluginapi.Theme, row PanelRow, id 
 	}
 }
 
-// drawFontStepper 按 FontSizeRow.module.css:54-128 画 72×36 stepper、
-// 居中数值、右侧 17×12 双 chevron 与外部 px 单位。
-//
-// 两个 chevron 是**真控件**：官方 FontSizeRow.tsx:69-79 的上下箭头各带自己的
-// onClick（`setFontSize(role, px ± 1)` 由 `isFontSize` 卡在 FONT_SIZE_SPECS 区间内），
-// 所以这里也各挂一个命中区，而不是把整条行当"点一下循环下一项"。
-// `readable` 为 false（纯绘制 / 值未知）时不挂命中区，也绝不把点击咽下去。
+// fontStepperStep 是一次点击的方向（0 = 没点）。
 type fontStepperStep int
 
 const (
@@ -58,39 +52,70 @@ const (
 	fontStepperDown fontStepperStep = -1
 )
 
-func drawFontStepper(f ui.C, t *pluginapi.Theme, rowID gfx.ID, title, value string, readable bool) fontStepperStep {
+// fontStepperIDs 是字号 stepper 的三个命中区。
+//
+// 三个 id 必须**互不相同**：viva 的 `Box.Clicked()` 按 hit id 判定，两枚箭头
+// 共用一个 id 时"点 ↑"会同时点亮两枚按钮、后判的那枚把 step 覆盖成 −1——
+// 实测点增大反而把 14 写成了 13。官方两枚 button 是各自独立的节点
+// （FontSizeRow.tsx:69-93），各自 onClick 只带自己的 ±1。
+type fontStepperIDs struct {
+	pill, up, down gfx.ID
+}
+
+// drawFontStepper 画 72×36 胶囊、居中数值、右侧 17×12 双 chevron 与外部 px 单位
+// （FontSizeRow.module.css 的 ._stepper / ._value / ._arrows / ._arrow / ._unit）。
+//
+// 显隐照官方两条规则：`._arrows{opacity:0}` 默认不出现，
+// `._stepper:hover ._arrows{opacity:1}` 指针进入胶囊才出现。
+//
+// viva 没有「父级 hover 驱动子级样式」的通道，只能按本帧 hover 判定：
+// `Canvas.Hovered()` 是 hover 目标的读口（viva components/accordion.go:62 的
+// `hovered := accordion.canvas.Hovered() == id`）。判定键是**胶囊自己的命中区**，
+// 不是整行——官方是 `._stepper:hover`，指针停在标题文字上不该让箭头冒出来。
+// hover 目标变化本身就会触发重绘（app/painter.go:325-328），所以不需要额外 invalidate。
+//
+// `readable` 为 false（值未知 / 纯绘制）时不挂箭头命中区，也绝不把点击咽下去。
+func drawFontStepper(f ui.C, t *pluginapi.Theme, ids fontStepperIDs, title, value string, readable bool) fontStepperStep {
 	step := fontStepperNone
+	hovered := f.Canvas().Hovered()
+	// 指针落在箭头上时（上一帧已显形，命中目标换成箭头 id）也要继续显形，
+	// 否则箭头会在胶囊与箭头之间来回闪。
+	showArrows := ids.pill != (gfx.ID{}) &&
+		(hovered == ids.pill || hovered == ids.up || hovered == ids.down)
 	ui.Row(f).Height(SelectorHeight).Gap(StepperControlGap).Items(ui.Center).Children(func() {
 		ui.Row(f).Width(StepperMinWidth).Height(SelectorHeight).Radius(t.Radii.MD).
-			Background(t.BgLayer3).Children(func() {
+			Background(t.BgLayer3).Hit(ids.pill, title).Children(func() {
 			ui.Row(f).Absolute().Inset(0).Items(ui.Center).Justify(ui.Center).Children(func() {
 				ui.Text(f, value).MinWidth(StepperValueMinWidth).FontSize(RowTitleFontSize).
 					LineHeight(RowTitleLineHeight).TextCenter().Color(t.LabelPrimary)
 			})
-			ui.Column(f).Absolute().Right(StepperArrowRight).Top(StepperArrowTop).
-				Width(StepperArrowWidth).Gap(StepperArrowGap).Children(func() {
-				for _, entry := range []struct {
-					rotate float32
-					step   fontStepperStep
-				}{{180, fontStepperUp}, {0, fontStepperDown}} {
-					arrow := ui.Row(f).Width(StepperArrowWidth).Height(StepperArrowHeight).Radius(t.Radii.XS).
-						Items(ui.Center).Justify(ui.Center)
-					if readable {
-						label := "增大"
-						if entry.step == fontStepperDown {
-							label = "减小"
+			if showArrows {
+				ui.Column(f).Absolute().Right(StepperArrowRight).Top(StepperArrowTop).
+					Width(StepperArrowWidth).Gap(StepperArrowGap).Children(func() {
+					for _, entry := range []struct {
+						rotate float32
+						step   fontStepperStep
+						id     gfx.ID
+						label  string
+					}{
+						{180, fontStepperUp, ids.up, "增大"},
+						{0, fontStepperDown, ids.down, "减小"},
+					} {
+						arrow := ui.Row(f).Width(StepperArrowWidth).Height(StepperArrowHeight).Radius(t.Radii.XS).
+							Items(ui.Center).Justify(ui.Center)
+						if readable {
+							arrow = arrow.Hit(entry.id, title+" "+entry.label)
 						}
-						arrow = arrow.Hit(rowID, title+" "+label)
+						arrow.Children(func() {
+							ui.Icon(f, chevronOutlineIcon()).Size(StepperArrowIcon, StepperArrowIcon).
+								IconTransform(gfx.IconTransform{Rotate: entry.rotate}).Color(t.LabelPrimary)
+						})
+						if readable && arrow.Clicked() {
+							step = entry.step
+						}
 					}
-					arrow.Children(func() {
-						ui.Icon(f, chevronOutlineIcon()).Size(StepperArrowIcon, StepperArrowIcon).
-							IconTransform(gfx.IconTransform{Rotate: entry.rotate}).Color(t.LabelPrimary)
-					})
-					if readable && arrow.Clicked() {
-						step = entry.step
-					}
-				}
-			})
+				})
+			}
 		})
 		ui.Text(f, "px").FontSize(StepperUnitFontSize).LineHeight(StepperUnitLine).Color(t.LabelSecondary)
 	})

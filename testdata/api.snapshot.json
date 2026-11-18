@@ -2131,10 +2131,18 @@
       },
       "req_note": "参数从 **request 子对象**取（没有 request 时退回顶层）。audioBase64 是**裸 base64**（不带 data:audio/wav;base64, 前缀），宿主直接 base64.StdEncoding.DecodeString（HOST:cmd/dshd/serve_speech.go:37-43），带前缀会被判 invalid_audio。providerId 空 = 用 configure 选的那条；宿主只接受 RIFF/WAVE 且 ≥44 字节（HOST:internal/speech/engine.go:318-321）。",
       "resp_note": "text 可能是**空串**：那是「没识别出语音」的合法结果，不是错误——客户端必须与失败分开呈现。audioSeconds 是宿主按 WAV 的 byteRate 算的（HOST:internal/speech/engine.go:373-390），inferenceSeconds 是 helper 耗时。"
+    },
+    "deepseekChatImport/limits": {
+      "batch": 26,
+      "req": {},
+      "resp": {
+        "maxUploadBytes": 0
+      },
+      "req_note": "宿主不读 body（官方 typert 方法 parameters: [] ）。结果逐字取官方 types.ts:50-53 的 DeepseekChatImportLimits。同一包的**上传路由**不是 /api 方法：POST /api/deepseek-chat-import/archive（裸 ZIP + NDJSON 进度流），见 apiclient/chatimport.go 与 DSH-GO internal/transport/handlers_chat_import.go。"
     }
   },
   "counts": {
-    "total": 127,
+    "total": 128,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2158,7 +2166,8 @@
     "batch22": 4,
     "batch23": 11,
     "batch24": 1,
-    "batch25": 5
+    "batch25": 5,
+    "batch26": 1
   },
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,

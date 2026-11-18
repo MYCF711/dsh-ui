@@ -22,6 +22,22 @@ func SidebarNewChatMedium(fill gfx.Color) (gfx.Icon, bool) {
 	)
 }
 
+// SidebarImportUpload 是官方 `IconUploadOutlineRegular`（Medium 档）：
+// `dsh-deepseek-chat-import` 的侧栏触发器用的就是它
+// （OFF:dsh-deepseek-chat-import/lib/client.js 的 ImportSessions 触发器）。
+//
+// 素材来源：`dsh-web-frontend/dist/assets/index-Ciz7DZxv.js` 的图标 sprite
+// `"upload-outline":{size:16,svg:…}`（该文件 sha256 前 16 位 65411dabad4de334）；
+// 三条 path 逐字照抄，Medium 只把 stroke-width 从 1 改成 1.3（与
+// SidebarNewChatMedium 同一档位约定）。
+func SidebarImportUpload(fill gfx.Color) (gfx.Icon, bool) {
+	return buildSidebarIcon(1.3, fill,
+		Element{Kind: PathElement, D: `M8 10.0469V1.95317`, Stroke: true},
+		Element{Kind: PathElement, D: `M4.25 5.70317L8 1.95317L11.75 5.70317`, Stroke: true},
+		Element{Kind: PathElement, D: `M1.5 10.0469V13.158C1.5 13.3937 1.60536 13.6198 1.79289 13.7865C1.98043 13.9532 2.23478 14.0469 2.5 14.0469H13.5C13.7652 14.0469 14.0196 13.9532 14.2071 13.7865C14.3946 13.6198 14.5 13.3937 14.5 13.158V10.0469`, Stroke: true},
+	)
+}
+
 // SidebarPluginPinwheel 是 PluginsPanelIcon.tsx:14 的 IconPluginPinwheelOutlineRegular。
 // 官方片段：assets/official/icons/sidebar/plugin-pinwheel.jsx:1-4。
 func SidebarPluginPinwheel(fill gfx.Color) (gfx.Icon, bool) {

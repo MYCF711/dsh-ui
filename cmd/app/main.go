@@ -3113,14 +3113,17 @@ func main() {
 		CompactSession:               m.compactSession,
 		ForkSession:                  m.forkSession,
 		NewSession:                   m.newSession,
-		Send:                         m.sendText,
-		ExecuteCommand:               m.executeCommandLine,
-		AnswerQuestion:               m.answerQuestion,
-		Copy:                         func(text string) { _ = m.copyText(text) },
-		CopyResult:                   m.copyText,
-		OpenExternal:                 m.openExternal,
-		OpenFile:                     m.openFile,
-		Notify:                       m.setStatus,
+		// 官方 rc.5 的 DeepSeek 聊天导入（侧栏 `sidebar.session.action`）。
+		// nil 会让侧栏不画导入按钮——那是"壳没这条能力"的诚实表达。
+		ImportDeepSeekSessions: m.importDeepSeekSessions,
+		Send:                   m.sendText,
+		ExecuteCommand:         m.executeCommandLine,
+		AnswerQuestion:         m.answerQuestion,
+		Copy:                   func(text string) { _ = m.copyText(text) },
+		CopyResult:             m.copyText,
+		OpenExternal:           m.openExternal,
+		OpenFile:               m.openFile,
+		Notify:                 m.setStatus,
 		// 桌面更新指示器的点击（官方 `DesktopUpdateBridge.open()`）：
 		// 走宿主拿更新入口 URL，再交给**系统默认浏览器**。
 		// 见 desktop_update_wiring.go。

@@ -57,16 +57,16 @@ type popupState struct {
 	point      ui.Rect
 	fromAnchor bool
 	focused    bool
-	// actions / rowIDs / highlight 是**键盘导航**的全部状态。
+	// actions / rowIDs / highlight 是**键盘高亮**的状态：画面上的高亮底由它直接落
+	// 下来（官方 `_item:focus-visible{background:interactive-bg-hover}`），不依赖
+	// Viva 的 `:focus-visible` 判定。
 	//
-	// 为什么插件自己记高亮，而不是全靠 `menu.Shortcut(...)`：Viva 只从
-	// `ui.Page.Key` 派发 `ui.Box.Shortcut`（`viva@v0.6.4/ui/page.go:1090-1093`），
-	// 而本壳的 `cfg.OnKey`（`cmd/app/main.go` 的 OnKey）只走
-	// `kernel.HandleKey` + 自绘页面，从不调用 `Page.Key`——所以那几条 Shortcut
-	// 在真装配下永不触发（↑↓ 靠 Viva 的焦点路由器还能动，Shift+F10 完全打不开）。
-	// 这里改用**插件自己的** `pluginapi.KeyHandler`（壳已经每帧调它），
-	// 官方语义（`_item:focus-visible{background:interactive-bg-hover}`）由
-	// `highlight` 直接落到画面上，不依赖 Viva 的 `:focus-visible` 判定。
+	// 按键**不由插件处理**：官方 `dsh-client-ui-context-menu` 没有任何插件级全局按键
+	// 路由——菜单键归菜单原语自己（`View.tsx:50-57` 的 `Menu` 带 `autoFocus`/`onClose`/
+	// `onSelect`），触发器键归**有焦点的那个触发器元素**（`trigger.ts:29-37` 的
+	// `onKeyDown` 读 `event.currentTarget`，`show()` 里 `preventDefault` +
+	// `stopPropagation`，一个键只有一处处理）。本插件照这个形状落成 Viva 的两条
+	// `Shortcut`（见 `drawMenu` 与 `Attach`），不再实现 `pluginapi.KeyHandler`。
 	actions   []pluginapi.ContextMenuAction
 	rowIDs    []gfx.ID
 	highlight int
@@ -177,11 +177,50 @@ func (p *Plugin) Attach(c ui.C, id gfx.ID, target ui.Box, obj pluginapi.ContextM
 			canvas.Consume()
 		}
 	}
-	if target.Shortcut(gfx.ModifierShift, "f10") {
-		p.closeMenus()
-		state.open, state.fromAnchor, state.focused = true, true, false
+	// Shift+F10 / ContextMenu 键：官方把它挂在**触发器元素自己的** `onKeyDown` 上
+	// （`trigger.ts:29-37`：读 `event.currentTarget`，只在这个元素有焦点时成立；
+	// `show()` 里 `preventDefault`+`stopPropagation`，一个键只处理一次）。
+	// Viva 的 `ui.ContextMenu` 是同一条规则："at the target when it has the focus and
+	// Shift+F10 is pressed"（`viva@v0.6.4/ui/menu.go:57-59`），判据是
+	// `target.id == event.Target`（`ui/menu.go:631-640`）——容器只要 `Hit` 过就算数
+	// （`ui/menu.go:75`）。
+	//
+	// 为什么不用 `target.Shortcut(gfx.ModifierShift, "f10")`：`Box.Shortcut` 对容器按
+	// **作用域覆盖**匹配（`ui/shortcut.go:69-71`、`:120-123`、`:162-165`），而本仓的
+	// 交互 id 是 `env.Tree.ID(env.Feat, …)` 扁平命名，永远不落在 `ui.Row` 按位置命名
+	// 出来的作用域里——于是容器上声明的 Shift+F10 在真装配下**永不触发**
+	// （`cmd/app/page_shortcut_test.go` 只有把目标换成叶子 `ui.Slot` 才匹配得上）。
+	// 页面级 `ui.Shortcut` 没有这个限制（`ui/shortcut.go:49-51`、`:106-108`），代价是
+	// 它不带「焦点在这一个元素上」的判据，所以判据由这里按官方/viva 的规则补：
+	// 焦点正好落在某个有菜单的目标上才开它。
+	if ui.Shortcut(c, ui.Shift, "f10") {
+		if focused, ok := p.focusedContext(c); ok {
+			p.closeMenus()
+			focused.open, focused.fromAnchor, focused.focused = true, true, false
+		}
 	}
 	p.drawMenu(c, id, target, obj, state)
+}
+
+// focusedContext 取「键盘焦点正好在它身上」的那个目标的菜单状态。
+//
+// 官方 `trigger.ts:31-37` 只在 `event.currentTarget`（= 有焦点的触发器）上开菜单，
+// 不是在"某个目标"上开；`ui/menu.go:633` 的 `target.id == event.Target` 是同一条
+// 判据的 Viva 写法。焦点不在任何已声明菜单的目标上就什么都不开。
+func (p *Plugin) focusedContext(c ui.C) (*popupState, bool) {
+	canvas := c.Canvas()
+	if canvas == nil {
+		return nil, false
+	}
+	id := canvas.Focused()
+	if id.IsZero() {
+		return nil, false
+	}
+	state, ok := p.contexts[id]
+	if !ok || state == nil {
+		return nil, false
+	}
+	return state, true
 }
 
 // Button 实现 pluginapi.ContextMenus：官方 `contextMenu.button` 的等价物。
@@ -314,13 +353,34 @@ func (p *Plugin) drawMenu(c ui.C, id gfx.ID, anchor ui.Box, obj pluginapi.Contex
 			})
 		})
 	})
+	// 菜单自己的键：官方把导航交给菜单原语（`View.tsx:50-57` 的 `Menu` ——
+	// `autoFocus` / `contextual` / `onClose` / `onSelect`，插件不声明全局键），
+	// Viva 的同一形状是**容器级** `Box.Shortcut`（`ui/shortcut.go:53-71`：焦点在
+	// 这个容器里就成立），派发者是 `ui.Page.Key`（`ui/page.go:502-514`
+	// → `matchShortcut`，`cmd/app/main.go` 的 `cfg.OnKey` 每帧先送页面）。
+	//
+	// Enter / Space **不在这里**：Viva 的输入路由器本来就把「焦点区域上的 Enter /
+	// Space」变成一次点击（`viva@v0.6.4/internal/input/input.go:308-315`；
+	// `gfx.RoleMenuItem` 两个键都算，`:344-345`），由 painter 兑现成点击
+	// （`app/painter.go:554`），和官方 `Menu` 选中一项是同一条语义。插件再声明一遍
+	// 就是两套机制处理同一个键。
 	if menu.Shortcut(0, "escape") {
 		state.open = false
 	}
-	for _, key := range []string{"up", "down", "home", "end"} {
-		if menu.Shortcut(0, key) {
-			p.moveFocus(c, key, actions, rowIDs)
-		}
+	// 四行显式声明而不是循环一张表：这张表同时是 `plugins/dsshortcuts` 的
+	// `shortcuts_guard_test.go` 反向核对的依据（它按 AST 找真实的 chord 参数），
+	// 藏在 `[]string{...}` 里的进去就查不到了。
+	if menu.Shortcut(0, "up") {
+		p.moveFocus(c, "up", actions, rowIDs)
+	}
+	if menu.Shortcut(0, "down") {
+		p.moveFocus(c, "down", actions, rowIDs)
+	}
+	if menu.Shortcut(0, "home") {
+		p.moveFocus(c, "home", actions, rowIDs)
+	}
+	if menu.Shortcut(0, "end") {
+		p.moveFocus(c, "end", actions, rowIDs)
 	}
 	if !state.focused {
 		if first := nextEnabled(actions, -1, 1); first >= 0 && c.Canvas() != nil {
@@ -334,115 +394,6 @@ func (p *Plugin) drawMenu(c ui.C, id gfx.ID, anchor ui.Box, obj pluginapi.Contex
 	if state.keyboard && state.highlight >= 0 && state.highlight < len(rowIDs) && c.Canvas() != nil {
 		c.Canvas().RequestFocus(rowIDs[state.highlight])
 	}
-}
-
-// HandleKey 实现 pluginapi.KeyHandler：菜单打开时的 ↑↓ / Home / End / Enter /
-// Space / Escape，以及 Shift+F10 打开菜单。
-//
-// 为什么由插件自己接：壳的按钮链是 `kernel.HandleKey`（`cmd/app/main.go` 的
-// OnKey），它每帧都已经调到这里；而 `ui.Box.Shortcut` 走的是 `ui.Page.Key`，
-// 本壳从不调用（全仓 `grep '\.Key(ev'` 为空）。见 popupState 里那段注释。
-func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
-	if ev.Release {
-		return false
-	}
-	p.mu.Lock()
-	open := make([]*popupState, 0, len(p.contexts))
-	for _, state := range p.contexts {
-		if state.open {
-			open = append(open, state)
-		}
-	}
-	for _, state := range p.buttons {
-		if state.open {
-			open = append(open, state)
-		}
-	}
-	p.mu.Unlock()
-	if len(open) > 0 {
-		for _, state := range open {
-			switch ev.Key {
-			case gfx.KeyEscape:
-				p.closeMenus()
-				return true
-			case gfx.KeyDown, gfx.KeyUp, gfx.KeyHome, gfx.KeyEnd:
-				if p.stepHighlight(state, ev.Key) {
-					return true
-				}
-				return true // 菜单开着就把方向键吃掉，别让焦点路由器跑出菜单
-			case gfx.KeyEnter, gfx.KeySpace:
-				if p.runHighlighted(state) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	// Shift+F10：官方在 Windows 上的键盘入口（`context_menu.go` 早先那条
-	// `target.Shortcut(gfx.ModifierShift,"f10")` 想要的形状）。
-	if ev.Key == gfx.KeyF10 && ev.Modifiers&gfx.ModifierShift != 0 {
-		p.mu.Lock()
-		var target *popupState
-		for _, state := range p.contexts {
-			target = state
-			break
-		}
-		if target != nil {
-			p.closeMenus()
-			target.open = true
-			target.fromAnchor = false
-			target.focused = false
-			target.keyboard = true
-			target.highlight = max(nextEnabled(target.actions, -1, 1), 0)
-			target.point = ui.Rect{X: target.rect.X, Y: target.rect.Y + target.rect.Height}
-		}
-		p.mu.Unlock()
-		return target != nil
-	}
-	return false
-}
-
-// stepHighlight 把高亮移到下一个/上一个可用项（跳过 disabled），Home/End 到两端。
-func (p *Plugin) stepHighlight(state *popupState, key gfx.Key) bool {
-	if len(state.actions) == 0 {
-		return false
-	}
-	next := state.highlight
-	switch key {
-	case gfx.KeyHome:
-		next = nextEnabled(state.actions, -1, 1)
-	case gfx.KeyEnd:
-		next = nextEnabled(state.actions, len(state.actions), -1)
-	case gfx.KeyDown:
-		if found := nextEnabled(state.actions, state.highlight, 1); found >= 0 {
-			next = found
-		}
-	case gfx.KeyUp:
-		if found := nextEnabled(state.actions, state.highlight, -1); found >= 0 {
-			next = found
-		}
-	}
-	if next < 0 {
-		return false
-	}
-	state.highlight, state.keyboard = next, true
-	return true
-}
-
-// runHighlighted 执行高亮那一项并关菜单（官方 Enter/Space 裁决）。
-func (p *Plugin) runHighlighted(state *popupState) bool {
-	if state.highlight < 0 || state.highlight >= len(state.actions) {
-		return false
-	}
-	action := state.actions[state.highlight]
-	state.open = false
-	if action.Disabled {
-		return true
-	}
-	if action.Run != nil {
-		action.Run()
-	}
-	return true
 }
 
 func (p *Plugin) drawItem(c ui.C, id gfx.ID, index int, action pluginapi.ContextMenuAction, state *popupState) {
@@ -474,8 +425,8 @@ func (p *Plugin) drawItem(c ui.C, id gfx.ID, index int, action pluginapi.Context
 			Focus(ui.Look{}.Background(hover))
 		// 键盘高亮那一行：官方 `_item.active{background:interactive-bg-hover}`
 		// （MenuView）/ `:focus-visible{background:interactive-bg-hover}`
-		// （primitives Menu）画的是同一层底。索引由 `HandleKey` 维护，
-		// 不依赖 `:focus-visible` 的模态判定。
+		// （primitives Menu）画的是同一层底。索引由 `moveFocus` / 打开时的首行
+		// 建立，不依赖 `:focus-visible` 的模态判定。
 		if index == state.highlight {
 			row = row.Background(hover)
 		}

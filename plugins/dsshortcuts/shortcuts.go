@@ -5,7 +5,10 @@
 // 用户只能靠读源码或者别人告诉。
 //
 // 这里做的事很窄：按 F1 弹一块面板列出**真实存在的绑定**，Esc 或再按 F1 收起。
-// 不编：表里每一条都在本仓有对应的 `HandleKey`，注释里写了它在哪个文件。
+// 不编：表里每一条在本仓都有真实来路，`Where` 写清在哪；来路有三种，由 `Route` 标出——
+// 插件自己的 `HandleKey`（零值）、Viva 的 `ui.Page.Key` 派发插件声明的 `Shortcut`
+// （`routeShortcut`）、以及 Viva 输入路由器把焦点上的 Enter/Space 兑现成一次点击
+// （`routeVivaActivate`）。
 //
 // 它同时是「第三方插件只靠 ID/Requires/Register/Panels/HandleKey 就能接入」的第二个样例
 // ——第一个是 dsdemo，那个更小，只有 Panels 没有 HandleKey。
@@ -20,12 +23,32 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
+// route 是一条键位**由哪一层接**。表里每一条都必须说得出这一层，
+// 因为"谁在处理这个键"决定了它为什么生效、坏了该看哪儿。
+type route uint8
+
+const (
+	// routePluginKey（零值）是最老的口径：插件自己实现 `pluginapi.KeyHandler`，
+	// 由壳的 `kernel.HandleKey` 按装配顺序转发。
+	routePluginKey route = iota
+	// routeShortcut 是 Viva 的设计：插件在绘制里声明 `ui.Shortcut` /
+	// `Box.Shortcut`，由 `ui.Page.Key` 路由派发（`viva@v0.6.4/ui/shortcut.go:94-135`）。
+	routeShortcut
+	// routeVivaActivate 是 Viva 输入路由器的原生激活：焦点区域上的 Enter / Space
+	// 就是一次点击（`viva@v0.6.4/internal/input/input.go:308-315`），
+	// `gfx.RoleMenuItem` 两键都算（`:344-345`），由 painter 兑现（`app/painter.go:554`）。
+	// 插件**不声明**它——声明了就是两套机制抢同一个键。
+	routeVivaActivate
+)
+
 // Binding 是一条键位说明。Where 写的是**这条绑定真实存在于哪个包**，
 // 不写"理论支持"——写了就有人会去试，试不通就是骗人。
 type Binding struct {
 	Key   string
 	Does  string
 	Where string
+	// Route 见 route：零值 = 插件自己的 HandleKey。
+	Route route
 }
 
 // bindings 是全部真实键位。改动这里之前先确认对应插件里那行 HandleKey 还在。
@@ -34,27 +57,38 @@ type Binding struct {
 // 这条规矩由 shortcuts_guard_test.go 卡住：从 plugins/ 下扫 `ui.KeyX`，
 // 表里少一个就红。写这条守卫的原因见那个文件的开头。
 var bindings = []Binding{
-	{"↑ / ↓", "上下选会话（焦点在侧栏时）", "plugins/dssidebar"},
-	{"Home / End", "跳到第一个 / 最后一个会话", "plugins/dssidebar"},
-	{"Enter", "发送输入框里的内容", "plugins/dscomposer"},
-	{"Esc", "拒绝当前审批请求（reject_once）", "plugins/dscomposer/approval.go"},
-	{"Esc", "关闭搜索框（搜索打开时）", "plugins/dsconversation"},
-	{"Esc / 停止键", "打断当前正在跑的 turn", "plugins/dscomposer（Cancel 接线）"},
-	{"F1", "打开 / 关闭这份键位表", "plugins/dsshortcuts"},
-	{"F2", "命令面板：模型 / 权限 / 反馈记录 / 栏宽", "plugins/dscommands"},
-	{"F5", "打开 / 关闭终端面板", "plugins/dsterminal"},
-	{"F6", "把终端输入框里的命令发出去", "plugins/dsterminal"},
-	{"F7 / F8", "选第 1 / 第 2 个选项（提问条出现时）", "plugins/dsquestions"},
-	{"F12", "收起 / 展开右上角的插件提示条", "plugins/dsdemo"},
-	{"Tab / Shift+Tab", "设置面板打开时在面板内循环焦点（模态层陷阱）", "plugins/dssettings/official_modal.go"},
-	{"Ctrl+`", "新建终端标签（官方 terminal.new）", "cmd/app/terminal_shortcut.go（OnShortcut 层，不是 HandleKey）"},
-	{"Ctrl+O", "添加工作区（打开本次组合的目录选择器）", "cmd/app/dirpicker_wiring.go（OnShortcut 层，不是 HandleKey）"},
+	{Key: "↑ / ↓", Does: "上下选会话（焦点在侧栏时）", Where: "plugins/dssidebar"},
+	{Key: "Home / End", Does: "跳到第一个 / 最后一个会话", Where: "plugins/dssidebar"},
+	{Key: "Enter", Does: "发送输入框里的内容", Where: "plugins/dscomposer"},
+	{Key: "Esc", Does: "拒绝当前审批请求（reject_once）", Where: "plugins/dscomposer/approval.go"},
+	{Key: "Esc", Does: "关闭搜索框（搜索打开时）", Where: "plugins/dsconversation"},
+	{Key: "Esc / 停止键", Does: "打断当前正在跑的 turn", Where: "plugins/dscomposer（Cancel 接线）"},
+	{Key: "F1", Does: "打开 / 关闭这份键位表", Where: "plugins/dsshortcuts"},
+	{Key: "F2", Does: "命令面板：模型 / 权限 / 反馈记录 / 栏宽", Where: "plugins/dscommands"},
+	{Key: "F5", Does: "打开 / 关闭终端面板", Where: "plugins/dsterminal"},
+	{Key: "F6", Does: "把终端输入框里的命令发出去", Where: "plugins/dsterminal"},
+	{Key: "F7 / F8", Does: "选第 1 / 第 2 个选项（提问条出现时）", Where: "plugins/dsquestions"},
+	{Key: "F12", Does: "收起 / 展开右上角的插件提示条", Where: "plugins/dsdemo"},
+	{Key: "Tab / Shift+Tab", Does: "设置面板打开时在面板内循环焦点（模态层陷阱）", Where: "plugins/dssettings/official_modal.go"},
+	{Key: "Ctrl+`", Does: "新建终端标签（官方 terminal.new）", Where: "cmd/app/terminal_shortcut.go（OnShortcut 层，不是 HandleKey）"},
+	{Key: "Ctrl+O", Does: "添加工作区（打开本次组合的目录选择器）", Where: "cmd/app/dirpicker_wiring.go（OnShortcut 层，不是 HandleKey）"},
 	// 官方 context menu 工厂文档原文（rc.2 asar）："It handles right-click,
 	// Shift+F10, the ContextMenu key, viewport coordinates, and focus without
 	// scrolling." —— Shift+F10 是官方承认的键盘入口，不是本仓自造。
-	{"Shift+F10", "打开右键菜单", "plugins/dscontextmenu"},
-	// 菜单打开后：方向键 / Home / End 移高亮，Enter / Space 执行，Esc 关闭。
-	{"Enter / Space", "执行菜单里高亮的项目（菜单打开时）", "plugins/dscontextmenu"},
+	//
+	// 2026-11-18：`ui.Page.Key` 接上之后（`cmd/app/main.go` 的 `cfg.OnKey` 先送页面），
+	// 右键菜单的键改由 Viva 的路由派发，插件不再实现 `pluginapi.KeyHandler`
+	// （官方 `trigger.ts:29-37` 的触发器键 + `View.tsx:50-57` 的菜单键，两处而已）。
+	{Key: "Shift+F10", Does: "打开右键菜单（焦点在那一行上时）",
+		Where: "plugins/dscontextmenu（Attach 里的页面级 ui.Shortcut）", Route: routeShortcut},
+	{Key: "↑ / ↓ / Home / End", Does: "在菜单项之间移动（菜单打开时）",
+		Where: "plugins/dscontextmenu（drawMenu 里的容器级 Shortcut）", Route: routeShortcut},
+	{Key: "Esc", Does: "关闭右键菜单（菜单打开时）",
+		Where: "plugins/dscontextmenu（drawMenu 里的容器级 Shortcut）", Route: routeShortcut},
+	// Enter / Space 不是插件声明的键：Viva 的输入路由器把焦点菜单项上的它们变成一次
+	// 点击（官方 Menu 里"选中一项"是同一条语义）。插件再声明一遍就是两套机制。
+	{Key: "Enter / Space", Does: "执行菜单里高亮的项目（菜单打开时）",
+		Where: "plugins/dscontextmenu（不接：Viva 输入路由器在焦点菜单项上兑现一次点击）", Route: routeVivaActivate},
 }
 
 // Bindings 返回这份键位表的**只读拷贝**（设置面板「快捷键」行要显示条目数，

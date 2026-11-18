@@ -69,11 +69,21 @@ type shellPageKeyHarness struct {
 	rowID   gfx.ID
 	runs    []string // 菜单动作真的被执行了几次、哪几条
 	wide    int      // 页面级 ui.Shortcut(c, 0, "f9") 被兑现的次数
+	// container 让目标按**真实调用点的形状**摆：`ui.Row` + 子元素 + `.Hit(id)`
+	// （`dscore/primitives.go:99-111` 的 SectionHeader、`dsfiles/files.go:161-172`
+	// 的 fileRow 都是这个形状），而不是叶子 `ui.Slot`。
+	container bool
 }
 
 func newShellPageKeyHarness(t *testing.T) *shellPageKeyHarness {
 	t.Helper()
-	h := &shellPageKeyHarness{t: t, spy: &pageKeySpy{}, menu: &dscontextmenu.Plugin{}}
+	return newShellPageKeyHarnessShaped(t, false)
+}
+
+// newShellPageKeyHarnessShaped 同一台壳，只换目标的形状（叶子 / 真实容器）。
+func newShellPageKeyHarnessShaped(t *testing.T, container bool) *shellPageKeyHarness {
+	t.Helper()
+	h := &shellPageKeyHarness{t: t, spy: &pageKeySpy{}, menu: &dscontextmenu.Plugin{}, container: container}
 	h.theme = dscore.VivaTheme(dscore.Dark())
 
 	kernel := uikernel.New("shell-page-key")
@@ -132,8 +142,22 @@ func (h *shellPageKeyHarness) paint(canvas *gfx.Canvas, size ui.Size) {
 		if ui.Shortcut(f, 0, "f9") {
 			h.wide++
 		}
-		target := ui.Slot(f).FillWidth().FillHeight().
-			HitWith(h.rowID, "工作区", gfx.HitOptions{Role: gfx.RoleButton})
+		var target ui.Box
+		if h.container {
+			// 真实调用点的形状：容器 + 子元素 + `.Hit(id)`。子元素故意不带交互 id
+			// （`ui.Row`/`ui.Text` 由 Viva 按位置命名），这正是"容器的作用域覆盖不到
+			// 扁平命名 id"的那种形状。
+			target = ui.Row(f).FillWidth().FillHeight().HitWith(h.rowID, "工作区", gfx.HitOptions{Role: gfx.RoleButton}).
+				Children(func() {
+					ui.Row(f).Width(16).Height(20).Children(func() {
+						ui.Text(f, "▸").FontSize(13)
+					})
+					ui.Text(f, "工作区").FontSize(13).Grow(1).Ellipsis()
+				})
+		} else {
+			target = ui.Slot(f).FillWidth().FillHeight().
+				HitWith(h.rowID, "工作区", gfx.HitOptions{Role: gfx.RoleButton})
+		}
 		h.menu.Attach(f, h.rowID, target, pluginapi.ContextMenuTarget{Kind: "workspace", ID: "w-page-key"})
 	})
 }
@@ -288,5 +312,161 @@ func TestShellPageWideShortcut(t *testing.T) {
 	}
 	if seen := h.spy.keys(); len(seen) != 0 {
 		t.Errorf("F9 已由页面接掉，却又进了 kernel.HandleKey：%v", seen)
+	}
+}
+
+// ── dscontextmenu 的真形状：容器目标 + 官方键位 ───────────────────────────────
+//
+// 上面那台 harness 用叶子 `ui.Slot`（`Box.Shortcut` 的元素级精确匹配）。插件的两个
+// 真实调用点却是容器（`dscore/primitives.go:99-111`、`dsfiles/files.go:161-172`），
+// 而 `Box.Shortcut` 对容器按作用域覆盖匹配，本仓的扁平 id 永远覆盖不到。下面这台
+// harness 就按真实形状摆，钉住**插件改走页面路由之后**每个键只处理一次。
+
+// takeKeys 取走探针到目前为止看到的键（清空，便于按阶段判）。
+func (h *shellPageKeyHarness) takeKeys() []gfx.KeyEvent {
+	seen := h.spy.keys()
+	h.spy.mu.Lock()
+	h.spy.seen = nil
+	h.spy.mu.Unlock()
+	return seen
+}
+
+// itemIDs 取这一帧菜单行的 id（按画面顺序）。
+func (h *shellPageKeyHarness) itemIDs() []gfx.ID {
+	items := h.menuItems()
+	out := make([]gfx.ID, len(items))
+	for i, item := range items {
+		out[i] = item.ID
+	}
+	return out
+}
+
+// TestShellContextMenuShiftF10OnContainerTarget 钉住：真实形状（容器 + 扁平 id）下，
+// Shift+F10 仍然由页面路由打开菜单。
+//
+// 官方依据：`trigger.ts:29-37` 把 Shift+F10 挂在**有焦点的触发器元素**上；
+// viva 的 `ui.ContextMenu` 是同一条规则（`ui/menu.go:57-59,631-640`，判据是
+// `target.id == event.Target`），容器只要 `Hit` 过就算数（`ui/menu.go:75`）。
+//
+// 变异：把 `Attach` 里的 `ui.Shortcut(c, ui.Shift, "f10")` 换回
+// `target.Shortcut(gfx.ModifierShift, "f10")` → 本测试红（容器分支匹配不到），
+// 而插件已经不再有 `HandleKey` 兜底。
+func TestShellContextMenuShiftF10OnContainerTarget(t *testing.T) {
+	h := newShellPageKeyHarnessShaped(t, true)
+	h.focusTarget()
+	h.keys("shift+f10")
+	if items := h.menuItems(); len(items) == 0 {
+		t.Error("真实形状（容器目标）下 Shift+F10 没打开菜单：页面对容器级 `Box.Shortcut` " +
+			"匹配不上（`ui/shortcut.go:69-71,120-123,162-165`），必须由 `Attach` 里的页面级 " +
+			"`ui.Shortcut(c, ui.Shift, \"f10\")` 派发")
+	}
+	if seen := h.spy.keys(); len(seen) != 0 {
+		t.Errorf("Shift+F10 由页面接掉后又进了 kernel.HandleKey：%v（同一个键走两条路）", seen)
+	}
+}
+
+// TestShellContextMenuKeysHandledOnce 钉住**一个键只处理一次**：每个键按一次，
+// 只发生一次状态转移（↓ 只走一格、Enter/Space 只跑一次动作、Esc 只关一次）。
+//
+// 为什么这样判：双处理在菜单上表现为"一次按键走两格 / 动作跑两次"。所以 ↓ 一次的
+// 判据是「焦点正好落在第 2 行」，而不是"焦点变了"——后者两份处理都满足。
+//
+// 按键归属（每条都带探针判据，防的正是同一个键被两条链各处理一次）：
+//
+//	Shift+F10 / Esc / ↑↓ Home End → 页面路由（插件声明的 `Shortcut`），
+//	                               **一个都不进程探针**；
+//	Enter / Space                → 页面不认，落在 Viva 的输入路由器上
+//	                               （`internal/input/input.go:308-315`）变成一次点击，
+//	                               由 painter 兑现（`app/painter.go:554`）——
+//	                               插件不再自己跑一遍，`Run` 只被调一次。
+func TestShellContextMenuKeysHandledOnce(t *testing.T) {
+	h := newShellPageKeyHarnessShaped(t, true)
+	h.focusTarget()
+	h.keys("shift+f10")
+	h.takeKeys()
+	ids := h.itemIDs()
+	if len(ids) != 2 {
+		t.Fatalf("菜单行数 = %d，want 2（测试支架失效）", len(ids))
+	}
+	if got := h.focused(); got != ids[0] {
+		t.Fatalf("菜单打开后焦点 = %v，want 第一行 %v", got, ids[0])
+	}
+
+	// ↓ 一次 = 走一格。双处理会一次走两格（或原地来回）。
+	h.keys("down")
+	if got := h.focused(); got != ids[1] {
+		t.Errorf("↓ 按一次后焦点 = %v，want 第 2 行 %v：一个键被处理了不止一次", got, ids[1])
+	}
+	h.keys("up")
+	if got := h.focused(); got != ids[0] {
+		t.Errorf("↑ 按一次后焦点 = %v，want 第 1 行 %v：一个键被处理了不止一次", got, ids[0])
+	}
+	h.keys("end")
+	if got := h.focused(); got != ids[1] {
+		t.Errorf("End 按一次后焦点 = %v，want 末行 %v", got, ids[1])
+	}
+	h.keys("home")
+	if got := h.focused(); got != ids[0] {
+		t.Errorf("Home 按一次后焦点 = %v，want 首行 %v", got, ids[0])
+	}
+	if seen := h.takeKeys(); len(seen) != 0 {
+		t.Errorf("↑↓/Home/End 由页面接掉后仍进了 kernel.HandleKey：%v（同一个键走两条路）", seen)
+	}
+
+	// Enter：页面不认 → 插件链看到一次（没人处理）→ Viva 兑现一次点击。
+	h.keys("enter")
+	if seen := h.takeKeys(); len(seen) != 1 || seen[0].Key != gfx.KeyEnter {
+		t.Errorf("Enter 应该原样进 kernel.HandleKey 一次（Viva 的原生激活靠这条），实际 %v", seen)
+	}
+	if len(h.runs) != 1 || h.runs[0] != "one" {
+		t.Errorf("Enter 之后动作跑了 %d 次（%v），want 1：`RoleMenuItem` 上的 Enter 由 Viva 兑现一次点击", len(h.runs), h.runs)
+	}
+	if items := h.menuItems(); len(items) != 0 {
+		t.Error("Enter 选了菜单项之后菜单没关（官方 `onSelect` 之后关闭）")
+	}
+
+	// Space 同理（同一段路由器把 Space 也算作激活）。
+	h.runs = nil
+	h.keys("shift+f10")
+	h.takeKeys()
+	h.keys("space")
+	if seen := h.takeKeys(); len(seen) != 1 || seen[0].Key != gfx.KeySpace {
+		t.Errorf("Space 应该原样进 kernel.HandleKey 一次，实际 %v", seen)
+	}
+	if len(h.runs) != 1 {
+		t.Errorf("Space 之后动作跑了 %d 次（%v），want 1", len(h.runs), h.runs)
+	}
+
+	// Esc 由页面接掉；菜单关掉之后同一个键回到插件链（菜单关着就没有这条快捷键）。
+	h.keys("shift+f10")
+	h.takeKeys()
+	h.keys("escape")
+	if items := h.menuItems(); len(items) != 0 {
+		t.Error("Esc 之后菜单没关")
+	}
+	if seen := h.takeKeys(); len(seen) != 0 {
+		t.Errorf("Esc 由页面接掉后仍进了 kernel.HandleKey：%v", seen)
+	}
+	h.keys("escape")
+	if seen := h.takeKeys(); len(seen) != 1 || seen[0].Key != gfx.KeyEscape {
+		t.Errorf("菜单已经关掉，第二个 Esc 必须原样进 kernel.HandleKey 一次，实际 %v", seen)
+	}
+}
+
+// TestShellContextMenuClosesLeavesKeysToPlugins 钉住：菜单没开时，这些键**不属于**
+// 插件——容器级 `menu.Shortcut(...)` 只在 `drawMenu` 里声明，菜单关着就不存在，
+// 所以 Esc / ↓ / Enter 必须原样进 `kernel.HandleKey`（否则菜单会偷走别的插件的键）。
+func TestShellContextMenuClosesLeavesKeysToPlugins(t *testing.T) {
+	h := newShellPageKeyHarnessShaped(t, true)
+	h.focusTarget()
+	for _, key := range []string{"escape", "down", "up", "home", "end"} {
+		h.keys(key)
+	}
+	seen := h.spy.keys()
+	if len(seen) != 5 {
+		t.Fatalf("菜单没开时按 5 个键，插件链看到 %d 个（%v）：菜单关着就不该声明这些快捷键", len(seen), seen)
+	}
+	if items := h.menuItems(); len(items) != 0 {
+		t.Error("菜单没开，按键却把菜单打开了")
 	}
 }

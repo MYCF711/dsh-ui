@@ -103,3 +103,96 @@ python scripts/scripts-index.py                                PASS
 
 快照：`testdata/api.snapshot.json` batch12 = `workspace.registry` / `workspace.rename` / `workspace.delete`，
 `counts.total=64`，各批之和 64（守卫 `TestSnapshotCountsMatchMethods`）。
+
+## 4. 键盘路由审计（2026-11-18，`ui.Page.Key` 接上之后）
+
+### 4.1 背景
+
+`ui.Box.Shortcut` / `ui.Shortcut` 在 `ui.Page.Key` 接上之前是**死代码**（本壳是
+`Page.Draw` 形态，宿主自己不送键进页面路由），所以本插件当时用
+`pluginapi.KeyHandler` 自己处理 Shift+F10 / ↑↓ / Home / End / Enter / Space / Esc。
+dsh-ui#166（`cmd/app/main.go` 的 `cfg.OnKey` 先送 `m.view.Key(ev)`，页面接了立刻 return）
+接上之后两套机制会并存，这一节是收口后的口径。
+
+### 4.2 官方怎么做（`dsh-client-ui-context-menu` rc.2 源码）
+
+| 键 | 官方落点 | 语义 |
+|---|---|---|
+| Shift+F10 / ContextMenu | `src/client/trigger.ts:29-37` | 挂在**触发器元素自己的 `onKeyDown`**，读 `event.currentTarget`；`show()` 里 `preventDefault`+`stopPropagation`（一个键只处理一次）；`getTriggerProps` 还给了 `tabIndex:0`，所以键成立的前提是"触发器有焦点" |
+| Esc / ↑↓ / Home / End / Enter / Space | `src/client/View.tsx:50-57` | 全交给 primitives 的 `Menu`（`autoFocus` / `contextual` / `onClose` / `onSelect`），**插件不声明任何全局键** |
+| Esc（开菜单过渡期） | `src/client/index.ts` 的 `window.addEventListener('keydown', escape, true)` | 只在 `active !== undefined && target === null`（还没上屏）时成立，且 `stopImmediatePropagation()` |
+
+结论：官方**没有**插件级全局按键路由；每个键只有一个所有者。
+
+### 4.3 本仓落点（Viva 的两条官方形状 + 一条原生激活）
+
+| 键 | 本仓落点 | 为什么是这条 |
+|---|---|---|
+| Shift+F10 | `plugins/dscontextmenu/context_menu.go` 的 `Attach`：`ui.Shortcut(c, ui.Shift, "f10")` +「焦点正好是这个目标」判据 | 官方是"触发器元素自己的键"；viva `ui.ContextMenu` 的规则逐字相同——"at the target when it has the focus and Shift+F10 is pressed"（`ui/menu.go:57-59`），判据 `target.id == event.Target`（`:631-640`），容器只要 `Hit` 过也算（`:75`）。**旧写法 `target.Shortcut(gfx.ModifierShift,"f10")` 在真装配下是死声明**：`Box.Shortcut` 对容器按作用域覆盖匹配（`ui/shortcut.go:69-71,120-123,162-165`），而本仓交互 id 是 `env.Tree.ID(env.Feat,…)` 扁平命名，永远不落在 `ui.Row` 按位置命名的作用域里 |
+| Esc、↑、↓、Home、End | `drawMenu` 的容器级 `menu.Shortcut(...)`（只有菜单开着才声明） | 官方把菜单键给菜单原语；viva 的对应形状是容器级 `Box.Shortcut`（`ui/shortcut.go:53-71`），派发者 `ui.Page.Key`（`ui/page.go:502-514` → `matchShortcut`） |
+| Enter、Space | **插件不声明**，由 Viva 输入路由器把"焦点区域上的一击"兑现成点击（`internal/input/input.go:308-315`；`gfx.RoleMenuItem` 两键都算，`:344-345`；painter 兑现 `app/painter.go:554`） | 官方 Menu 的"选中一项"就是这件事；插件再声明一遍即两套机制 |
+
+`pluginapi.KeyHandler` 已整条删除（`context_menu.go` 里不再有 `HandleKey`、
+`stepHighlight`、`runHighlighted`）。
+
+### 4.4 全仓 Shortcut 声明盘点
+
+`grep -rn "\.Shortcut(" --include="*.go" .` 的非测试命中只有 dscontextmenu 一处
+（`Attach` 的 Shift+F10、`drawMenu` 的 Esc + 四个导航键）；页面级 `ui.Shortcut`
+在插件里只有本插件 `Attach` 的这一条。改动前后：
+
+- **死声明（已删）**：`target.Shortcut(gfx.ModifierShift,"f10")` —— 容器作用域匹配不到扁平 id，真装配下永不触发；
+- **活的（保留）**：`drawMenu` 的 `escape` / `up` / `down` / `home` / `end`；
+- **新接上的**：`Attach` 的页面级 `ui.Shortcut(c, ui.Shift, "f10")`（按焦点判定目标）；
+- **改成原生激活（不是 Shortcut）**：Enter / Space。
+
+### 4.5 测试与变异
+
+```text
+go test ./cmd/app/ -run 'TestShellContextMenu|TestShellPageKey|TestShellPageWide|TestShellKeyHandler'   ok
+go test ./plugins/dscontextmenu/                                                                       ok
+go test ./plugins/dsshortcuts/                                                                          ok
+```
+
+新增/改动的判据：
+
+- `cmd/app/page_shortcut_test.go`
+  - `newShellPageKeyHarnessShaped`：目标按**真实调用点形状**（`ui.Row` + 子元素 + `.Hit(id)`）摆；
+  - `TestShellContextMenuShiftF10OnContainerTarget`：真实形状下 Shift+F10 由页面打开菜单，且不进程探针；
+  - `TestShellContextMenuKeysHandledOnce`：**一个键只处理一次**——↓ 一次只走一格（不是"焦点变了"）、
+    Enter/Space 动作只跑一次、Esc 只关一次；页面接掉的键一个都不进 `kernel.HandleKey`，
+    Enter/Space 必须原样进一次（Viva 的原生激活靠这条）；
+  - `TestShellContextMenuClosesLeavesKeysToPlugins`：菜单没开时这五个键原样进插件链（不偷键）。
+- `plugins/dscontextmenu/keyboard_routing_test.go`
+  - `TestPluginHasNoGlobalKeyHandler`：本插件不得再实现 `pluginapi.KeyHandler`（"不要两套并存"）；
+  - `TestShiftF10OpensOnlyTheFocusedTrigger`：焦点在哪一行就开哪一行的菜单（旧 KeyHandler 取的是"第一个登记过的目标"）；
+  - `TestShiftF10WithoutFocusOpensNothing`：焦点不在任何目标上时什么都不开。
+- `plugins/dsshortcuts/shortcuts.go` + `shortcuts_guard_test.go`：F1 表新增 `Binding.Route`
+  （`routePluginKey` / `routeShortcut` / `routeVivaActivate`），反向核对按路线分派——
+  `routeShortcut` 行必须能在插件里找到真实 chord 声明，`routeVivaActivate` 行要求该包
+  **没有** `HandleKey`。这不是放宽：对这几行它比"扫 `ui.KeyXxx` 常量"更严。
+
+变异（逐条实跑，红 → 还原绿；日志在 `DSH-GO/tmp/GO8-RC2/_sc/`）：
+
+| 变异 | 结果 |
+|---|---|
+| 壳把 `m.view.Key(ev)` 的早退去掉（同键进两条链） | 红：`Shift+F10 由页面接掉后又进了 kernel.HandleKey` |
+| Shift+F10 改回 `target.Shortcut(...)` | 红：`真实形状（容器目标）下 Shift+F10 没打开菜单` |
+| 把 KeyHandler 加回来 + 壳不早退 | 红：菜单根本打不开（页面 Activate 被吞） |
+| 插件在 Enter 上自己跑一遍动作但不认领 | 红：`Enter 之后动作跑了 3 次（[one one one]），want 1` |
+| 同一个 ↓ 处理者在同一帧应用两次 | 绿（说明"同帧重复请求焦点"本身是 no-op；双处理只能在**跨机制**时发生，由上面的探针判据抓） |
+| F1 表把 Shift+F10 的 `Route` 去掉 | 红：`表里有 Shift+F10 这一行，但 plugins/ 下没有任何文件在处理它` |
+| 把 `HandleKey` 加回 dscontextmenu | 红：`Enter（KeyEnter）记成 Viva 原生激活，但 plugins/dscontextmenu 又实现了 HandleKey` |
+| 删掉 `menu.Shortcut(0,"home")` | 红：`表里把 Home（KeyHome）记成 ui.Shortcut 派发，但 plugins/ 下没有任何文件声明它` |
+
+### 4.6 门禁（本轮，worktree `feat/hs-shortcut-audit`）
+
+```text
+python scripts/parity-count.py --check                         0
+CGO_ENABLED=0 go build ./...                                   0
+go vet ./...                                                   0
+CGO_ENABLED=0 go test ./... -count=1                           0（55 包 / 0 FAIL）
+test -z "$(gofmt -l cmd internal plugins pluginapi)"            0（空）
+python scripts/doc-links.py                                    0
+python scripts/scripts-index.py                                0
+```

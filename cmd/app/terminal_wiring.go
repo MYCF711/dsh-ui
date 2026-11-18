@@ -18,6 +18,7 @@ import (
 	"github.com/MYCF711/dsh-ui/internal/ansi"
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/vterm"
 )
 
 type terminalViewState struct {
@@ -25,6 +26,16 @@ type terminalViewState struct {
 	started    bool
 	generation uint64
 	cancel     context.CancelFunc
+
+	// emu 是这条终端的 VT 屏幕，snapshot 帧建屏、output 帧喂**原始字节**
+	// （不是剥过序列的 Screen）。官方在这里做的是同一件事：snapshot 时
+	// `xterm.reset(); xterm.resize(cols, rows)` 再 write，之后逐帧 write
+	// （terminal.tsx:141-151）。
+	emu *vterm.Emulator
+	// grid 是 emu 的不可变快照，供插件逐格绘制。只在有新字节之后重建一次，
+	// 因为绘制一帧只读一次快照，而读取循环可能一帧来好几批。
+	grid      *vterm.Grid
+	gridDirty bool
 }
 
 // 官方 `TerminalViewIssue` 的五档里本仓真会遇到的两种
@@ -107,6 +118,10 @@ func (m *model) ensureTerminalView(sessionID, tabID string, retry bool) {
 	// 不能继续贴在新状态上，否则界面会把已经接上的终端画成空态。
 	state.public.Issue = ""
 	state.public.Writable = false
+	// 上一轮的屏幕不能带进新一轮：官方重新 attach 时也是 `xterm.reset()`。
+	state.emu = nil
+	state.grid = nil
+	state.gridDirty = false
 	m.mu.Unlock()
 	m.inv.Invalidate()
 	go m.runTerminalView(ctx, sessionID, tabID, generation)
@@ -121,6 +136,13 @@ func (m *model) terminalSnapshot(tabID string) pluginapi.TerminalViewState {
 	}
 	out := state.public
 	out.Shells = append([]apiclient.TerminalShell(nil), state.public.Shells...)
+	if state.emu != nil {
+		if state.grid == nil || state.gridDirty {
+			state.grid = state.emu.Grid()
+			state.gridDirty = false
+		}
+		out.Grid = state.grid
+	}
 	if state.public.Info != nil {
 		info := *state.public.Info
 		out.Info = &info
@@ -403,6 +425,17 @@ func (m *model) runTerminalView(ctx context.Context, sessionID, tabID string, ge
 			opened = true
 			sequence = frame.Sequence
 			state.public.Screen = ansi.Strip(frame.Screen)
+			// 建 VT 屏幕并喂**原始**快照：官方就是 `xterm.reset();
+			// xterm.resize(info.cols, info.rows); xterm.write(snapshot.screen)`
+			// （terminal.tsx:146-150）。Screen 那条剥序列投影照旧保留，
+			// 给没有网格的读者（agent 侧文本语义）用。
+			state.emu = vterm.New(frame.Info.Cols, frame.Info.Rows)
+			if _, err := state.emu.Write([]byte(frame.Screen)); err != nil {
+				m.mu.Unlock()
+				fail(err)
+				return
+			}
+			state.gridDirty = true
 			state.public.Info = terminalInfoPtr(frame.Info)
 			state.public.Writable = frame.Writable && frame.Info.State == "running"
 			state.public.Phase = "connected"
@@ -415,6 +448,15 @@ func (m *model) runTerminalView(ctx context.Context, sessionID, tabID string, ge
 			}
 			sequence = frame.Sequence
 			state.public.Screen = boundedTerminalScreen(state.public.Screen+ansi.Strip(frame.Data), env.MaxBufferedBytes)
+			if state.emu != nil {
+				// 喂原始字节：颜色/光标定位只在这条路上存在。
+				if _, err := state.emu.Write([]byte(frame.Data)); err != nil {
+					m.mu.Unlock()
+					fail(err)
+					return
+				}
+				state.gridDirty = true
+			}
 		case "state":
 			state.public.Info = terminalInfoPtr(frame.Info)
 			state.public.Writable = frame.Writable && frame.Info.State == "running"

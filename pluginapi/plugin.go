@@ -25,6 +25,7 @@ import (
 	"errors"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/internal/vterm"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -1344,6 +1345,20 @@ type TerminalViewState struct {
 	Writable    bool
 	Retained    bool
 	Screen      string
+	// Grid 是这条终端的**单元格网格**：每格的字形、宽度（全角=2）、前景/背景、
+	// 属性，加上光标的位置/形状/闪烁。
+	//
+	// 它与 Screen 是同一块 VT 屏幕的两个投影：Screen 给「读文本」（agent 侧
+	// terminal_read 的语义），Grid 给「画」。**界面必须优先用 Grid**——
+	// 官方渲染的是 xterm 的屏幕缓冲，而 Screen 是剥掉控制序列后的文本，
+	// 光标定位绘制（vim/htop）与颜色在那一层已经丢了。
+	//
+	// nil = 壳还没有 VT 屏幕（老壳，或 attach 的 snapshot 帧还没到）：
+	// 这时界面退回 Screen 文本投影，不假装有网格。
+	//
+	// 类型来自 internal/vterm（与 apiclient 一样是同模块的内部契约包）：
+	// 契约里放的是本仓自己的中性类型，上游 uv/vt 的类型一个都不外泄。
+	Grid *vterm.Grid
 	// Issue 是官方 `TerminalViewState.issue` 的投影：终端视图自身的问题分类，
 	// 文案由界面按官方 locale 渲染（不是 Host 抛来的自由文本）。
 	//

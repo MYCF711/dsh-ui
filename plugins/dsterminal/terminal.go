@@ -2,7 +2,11 @@
 //
 // 每个右栏 occurrence 对应一条真实 Host PTY：create/list/environment/shells →
 // retain → attach/watch，输入带官方 typed 语义，rename/close 都等宿主确认。
-// 本仓仍使用 internal/ansi 的可读文本投影，不冒充 xterm 的完整 VT 模拟器。
+//
+// 画面走 `internal/vterm` 的**单元格网格**（见 grid.go）：颜色、反显、下划线、
+// 光标形状与位置、全角字双宽都按官方 xterm 的样子画。`internal/ansi` 的可读文本
+// 投影只留作**退路**——壳还没给出网格（老壳 / snapshot 帧未到）时按行画文本，
+// 不假装有颜色与光标。
 package dsterminal
 
 import (
@@ -238,13 +242,26 @@ func (p *Plugin) drawTerminal(f ui.C, env *pluginapi.Env, tabID string) {
 			screen = screen.Grow(1).MinHeight(0)
 		}
 		screen.Children(func() {
-			for _, line := range terminalLines(state.Screen) {
-				if line == "" {
-					line = " "
+			if state.Grid != nil {
+				// 网格路径：`state.Grid` 是壳里那块 VT 屏幕的快照（官方画的是同一块
+				// xterm 屏幕缓冲），颜色/光标定位/全角宽度都在里面。见 grid.go。
+				//
+				// 高度：右栏面板由容器分配剩余高度；F5 浮层的高度由内容决定，
+				// 所以按「屏幕行数（封顶 maxLines）× 实测行盒」给。
+				height := float32(0)
+				if !p.showRightbar {
+					height = float32(min(state.Grid.Height, maxLines)) * p.gridRowHeight(env)
 				}
-				// terminal.tsx:95-103,185 + client.terminal.js:8：Consolas 档、13px、lineHeight=1。
-				// Viva 的 MonoSystem 在 Windows 同样落 Consolas；Mono 不读 LineHeight，故固定 13px 行盒。
-				ui.Text(f, line).Mono().FontSize(terminalFontSize).Height(terminalFontSize).Color(t.LabelPrimary)
+				p.drawTerminalGrid(f, state.Grid, height)
+			} else {
+				for _, line := range terminalLines(state.Screen) {
+					if line == "" {
+						line = " "
+					}
+					// terminal.tsx:95-103,185 + client.terminal.js:8：Consolas 档、13px、lineHeight=1。
+					// Viva 的 MonoSystem 在 Windows 同样落 Consolas；Mono 不读 LineHeight，故固定 13px 行盒。
+					ui.Text(f, line).Mono().FontSize(terminalFontSize).Height(terminalFontSize).Color(t.LabelPrimary)
+				}
 			}
 			p.drawDerivedControls(f, env, tabID, state)
 		})

@@ -19,6 +19,7 @@ package main
 import (
 	"testing"
 
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/vivaui/viva/ui"
 )
@@ -36,7 +37,7 @@ type resourceTitlePlugin struct {
 	titles map[string]string
 }
 
-func (p *resourceTitlePlugin) RightTabTitleFor(sessionID, tabID, address string) string {
+func (p *resourceTitlePlugin) RightTabTitleFor(sessionID, tabID, address string, frames []apiclient.Frame) string {
 	return p.titles[address]
 }
 
@@ -76,7 +77,7 @@ func TestOpenRightResourceIsIdempotentPerAddress(t *testing.T) {
 	wireBrowserConfigCapture(m, cfg)
 
 	m.openRightResource("plan", testPlanAddressA, pluginapi.RightTabParams{})
-	first := m.activeRightTabKey(m.rightTabsFor())
+	first := m.activeRightTabKey(m.rightTabsFor(nil))
 	if first == "" {
 		t.Fatal("openResource 之后没有选中的 occurrence")
 	}
@@ -86,11 +87,11 @@ func TestOpenRightResourceIsIdempotentPerAddress(t *testing.T) {
 
 	// 同一地址第二次：官方「same tab」——不新建、不换 ID。
 	m.openRightResource("plan", testPlanAddressA, pluginapi.RightTabParams{})
-	second := m.activeRightTabKey(m.rightTabsFor())
+	second := m.activeRightTabKey(m.rightTabsFor(nil))
 	if second != first {
 		t.Fatalf("同一地址第二次 openResource 换了 occurrence：%q → %q（官方是同一枚 tab）", first, second)
 	}
-	if got := len(rightTabsOfKind(m.rightTabsFor(), "plan")); got != 1 {
+	if got := len(rightTabsOfKind(m.rightTabsFor(nil), "plan")); got != 1 {
 		t.Fatalf("同一地址开了 %d 枚 plan tab，want 1", got)
 	}
 }
@@ -103,14 +104,14 @@ func TestOpenRightResourceKeepsOneTabPerAddress(t *testing.T) {
 	wireBrowserConfigCapture(m, cfg)
 
 	m.openRightResource("plan", testPlanAddressA, pluginapi.RightTabParams{})
-	aID := m.activeRightTabKey(m.rightTabsFor())
+	aID := m.activeRightTabKey(m.rightTabsFor(nil))
 	m.openRightResource("plan", testPlanAddressB, pluginapi.RightTabParams{})
-	bID := m.activeRightTabKey(m.rightTabsFor())
+	bID := m.activeRightTabKey(m.rightTabsFor(nil))
 
 	if aID == "" || bID == "" || aID == bID {
 		t.Fatalf("两个地址没有各自一枚 tab：a=%q b=%q", aID, bID)
 	}
-	plans := rightTabsOfKind(m.rightTabsFor(), "plan")
+	plans := rightTabsOfKind(m.rightTabsFor(nil), "plan")
 	if len(plans) != 2 {
 		t.Fatalf("plan tab 数 = %d，want 2（地址就是身份，Multiple 与它无关）", len(plans))
 	}
@@ -131,7 +132,7 @@ func TestOpenRightResourceEmptyAddressFallsBackToKind(t *testing.T) {
 	wireBrowserConfigCapture(m, cfg)
 
 	m.openRightResource("plan", "", pluginapi.RightTabParams{})
-	tabID := m.activeRightTabKey(m.rightTabsFor())
+	tabID := m.activeRightTabKey(m.rightTabsFor(nil))
 	if tabID == "" {
 		t.Fatal("空地址时没有退化出可用的 occurrence")
 	}
@@ -187,9 +188,9 @@ func TestResourceTitleReplacesTypeLabel(t *testing.T) {
 	wireBrowserConfigCapture(m, cfg)
 
 	m.openRightResource("plan", testPlanAddressA, pluginapi.RightTabParams{})
-	tabID := m.activeRightTabKey(m.rightTabsFor())
+	tabID := m.activeRightTabKey(m.rightTabsFor(nil))
 	labelOf := func() string {
-		for _, tab := range m.rightTabsFor() {
+		for _, tab := range m.rightTabsFor(nil) {
 			if tab.Key == tabID {
 				return tab.Label
 			}
@@ -209,5 +210,72 @@ func TestResourceTitleReplacesTypeLabel(t *testing.T) {
 	plugin.titles = map[string]string{testPlanAddressB: "另一份计划"}
 	if got := labelOf(); got != "计划" {
 		t.Fatalf("别的地址的标题串了进来：%q", got)
+	}
+}
+
+// framesTitlePlugin 只在壳把**帧**递过来时才给标题：用来钉「壳确实把本帧帧给了
+// provider」——这正是官方 `PlanTitle` 里 `useResource` 在渲染期同步读资源的等价物
+// （OFF:PlanPreview.tsx:47-53）。没有帧就没有标题，所以这个替身一旦拿到标题，
+// 就证明壳在 Draw 之前已经把数据递到了。
+type framesTitlePlugin struct {
+	viewRosterPlugin
+}
+
+func (p *framesTitlePlugin) RightTabTitleFor(sessionID, tabID, address string, frames []apiclient.Frame) string {
+	if len(frames) == 0 {
+		return ""
+	}
+	return "帧里的标题"
+}
+
+// TestRightTabTitleProviderReceivesFramesBeforeDraw 钉住 #28 ⑤ 的修法：
+// 壳投影名录时（`shellOptionsFor` → `rightTabsFor`，跑在 `m.view.Draw` 之前）
+// 必须把本帧该会话的原始帧交给资源型标题 provider，否则插件只能读到上一帧缓存，
+// 刚提交那一帧的芯片会先显示类型标题「计划」。
+//
+// 变异：`rightTabsFor` 里把 `frames` 换成 `nil`（或只给 `RightTabTitleProvider`
+// 不给带地址的那一支）→ 第一条断言红。
+func TestRightTabTitleProviderReceivesFramesBeforeDraw(t *testing.T) {
+	m := viewWiringModel(t)
+	plugin := &framesTitlePlugin{viewRosterPlugin: viewRosterPlugin{id: "frames-roster", panels: []pluginapi.Painter{
+		{ID: "plan", Slot: pluginapi.SlotRightPaneTab, Key: "plan", Label: "计划",
+			Order: 30, Draw: func(ui.C, *pluginapi.Env) {}},
+	}}}
+	if err := m.kernel.Load(plugin); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	m.cur = "s1"
+	m.rightTabSurfaces = map[string]*rightTabSurface{}
+	// 配置已加载（产品里由 `uiConfig` 到位触发；测试里直接置位，否则
+	// `openRightTabAt` 会以「右栏配置尚未加载」拒绝新建）。
+	m.rightTabLoaded = map[string]bool{"s1": true}
+	m.rightTabDirty = map[string]bool{}
+	m.mu.Unlock()
+
+	// 按地址打开一枚 plan tab（官方 openResource；地址就是 contentId）。
+	m.openRightTabAt("plan", testPlanAddressA, pluginapi.RightTabParams{})
+
+	frames := []apiclient.Frame{{Seq: 1, Type: "tool/call"}}
+
+	// 壳画芯片用的名录就是这个函数（`shellOptionsFor` 里同一行），帧必须传下去。
+	opts := shellOptionsFor(m, m.kernel, 1182, 832, frames)
+	label := ""
+	for _, tab := range opts.RightTabs {
+		if tab.Key == "plan" && tab.Address == testPlanAddressA {
+			label = tab.Label
+		}
+	}
+	if label != "帧里的标题" {
+		t.Fatalf("计划 tab 标题 = %q，want「帧里的标题」——壳没把帧交给 provider，"+
+			"第一帧就会退成类型标题", label)
+	}
+
+	// 没有帧（老壳 / 还没加载）时退回类型标题，不许编。
+	opts = shellOptionsFor(m, m.kernel, 1182, 832, nil)
+	for _, tab := range opts.RightTabs {
+		if tab.Key == "plan" && tab.Address == testPlanAddressA && tab.Label != "计划" {
+			t.Fatalf("没有帧时标题 = %q，want 类型标题「计划」", tab.Label)
+		}
 	}
 }

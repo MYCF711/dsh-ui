@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 )
@@ -118,7 +119,11 @@ func encodeRightTabSurface(sessionID string, surface *rightTabSurface) (string, 
 
 // rightTabsFor 返回当前会话的 occurrence 名录，并叠加插件的实时标题。
 // 配置未到之前先用默认内存布局；配置到达后，只要用户尚未改动，就用保存布局替换。
-func (m *model) rightTabsFor() []pluginapi.Tab {
+//
+// `frames` 是本帧该会话的原始 journal 帧，原样转给资源型标题 provider：壳在
+// `m.view.Draw` 之前投影名录，插件这一帧还没画过，只有帧能让它像官方的
+// `useResource` 那样**在问的那一刻**算出标题（否则第一帧只显示类型标题）。
+func (m *model) rightTabsFor(frames []apiclient.Frame) []pluginapi.Tab {
 	if m.kernel == nil {
 		return nil
 	}
@@ -197,7 +202,7 @@ func (m *model) rightTabsFor() []pluginapi.Tab {
 			if !ok {
 				continue
 			}
-			if title := provider.RightTabTitleFor(sessionID, tabs[i].Key, tabs[i].Address); title != "" {
+			if title := provider.RightTabTitleFor(sessionID, tabs[i].Key, tabs[i].Address, frames); title != "" {
 				tabs[i].Label = title
 				break
 			}
@@ -354,7 +359,8 @@ func (m *model) openRightTabAt(kind, address string, params pluginapi.RightTabPa
 		m.setStatus("右栏配置尚未加载，请稍后重试新建")
 		return
 	}
-	tabs := m.rightTabsFor()
+	// 这里只找类型定义（key/kind），不需要标题：传 nil 帧，省一次计划扫描。
+	tabs := m.rightTabsFor(nil)
 	var definition *pluginapi.Tab
 	for i := range tabs {
 		tabKind := tabs[i].Kind

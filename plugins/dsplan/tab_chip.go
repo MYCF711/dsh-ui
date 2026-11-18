@@ -1,6 +1,7 @@
 package dsplan
 
 import (
+	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/gfx"
@@ -61,7 +62,13 @@ func planTabIcon() gfx.Icon {
 //
 // 地址属于**别的会话**时返回空串：官方资源读的是地址里那个会话的 history，
 // 本仓只有当前会话的帧，硬画会把别的会话的计划标题安在这枚芯片上。
-func (p *Plugin) RightTabTitleFor(sessionID, tabID, address string) string {
+//
+// `frames` 是壳在本帧 Draw 之前递过来的原始帧（`Env.Data.Frames` 同一份）。
+// 官方标题座位在**渲染期**读资源（`OFF:PlanPreview.tsx:47-53` 的 `useResource`），
+// 所以它第一帧就有标题；本仓的 `planTitles` 是画的时候（`drawCards`/`drawPreview`）
+// 才填的，只靠它就会「刚提交那一帧显示类型标题」。带上帧以后这里能像官方一样
+// 现算：缓存命中就直接用（常态），没命中才扫一遍帧——只有新计划出现的那一帧会扫。
+func (p *Plugin) RightTabTitleFor(sessionID, tabID, address string, frames []apiclient.Frame) string {
 	if address == "" {
 		return ""
 	}
@@ -81,7 +88,19 @@ func (p *Plugin) RightTabTitleFor(sessionID, tabID, address string) string {
 	if sessionID != "" && planSessionID != sessionID {
 		return ""
 	}
-	return p.planTitles[callID]
+	if title := p.planTitles[callID]; title != "" {
+		return title
+	}
+	// 缓存里还没有：用壳递来的帧现算（官方是渲染期同步读资源，同一条语义）。
+	// 只认 callId 命中的那一份；扫到的标题顺手记进缓存，后面几帧不再扫。
+	for _, plan := range SubmittedPlans(frames) {
+		if plan.CallID != callID {
+			continue
+		}
+		p.rememberPlanTitles([]Document{plan})
+		return plan.Title
+	}
+	return ""
 }
 
 // rememberPlanTitles 把本帧所有已提交计划的标题记进缓存（供右栏芯片取用）。

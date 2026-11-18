@@ -1965,7 +1965,7 @@ func newConfig(m *model) app.Config {
 		if shellTier == shellOfficial {
 			// 官方骨架自己解三列；Geometry 与真画出来的必须是同一份结果
 			//（旧代码 buildGeometry 与 dsshell 各算一遍，分叉过一次）。
-			shellOpts = shellOptionsFor(m, m.kernel, contentBounds.Width, contentBounds.Height)
+			shellOpts = shellOptionsFor(m, m.kernel, contentBounds.Width, contentBounds.Height, frames)
 			geom = officialGeometry(contentBounds.Width, contentBounds.Height, shellOpts)
 		} else {
 			geom = buildGeometry(contentBounds.Width, contentBounds.Height, m.side.Width(), hasRightbar,
@@ -2118,7 +2118,9 @@ func newConfig(m *model) app.Config {
 		// 会话 view 的选中项存在 dstopbar 提供的 viewapi.Store 里（那是插件间既有
 		// 的唯一出处，壳不另起一份），右栏 tab 的选中项存在壳自己的模型里。
 		env.Views = uikernel.ViewTabs(m.kernel)
-		env.RightTabs = m.rightTabsFor()
+		// 帧一并给它：壳在 Draw 之前投影名录，只有帧能让资源型标题像官方的
+		// `useResource` 那样在问的那一刻算出标题（否则刚提交那一帧是类型标题）。
+		env.RightTabs = m.rightTabsFor(frames)
 		env.ActiveView = m.activeViewKey()
 		env.ActiveRightTab = m.activeRightTabKey(env.RightTabs)
 		env.ActiveRightTabKind = uikernel.RightTabKind(env.RightTabs, env.ActiveRightTab)

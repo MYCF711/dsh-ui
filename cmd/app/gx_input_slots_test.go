@@ -145,7 +145,7 @@ func newGXProduct(t *testing.T, mode shellMode) *gxProduct {
 		{Provider: "deepseek", DisplayName: "DeepSeek", Seed: "llm"},
 	})
 	m := &model{kernel: p.kernel, cur: "s-gx", shellMode: mode}
-	p.opts = shellOptionsFor(m, p.kernel, 1182, 832)
+	p.opts = shellOptionsFor(m, p.kernel, 1182, 832, nil)
 	return p
 }
 

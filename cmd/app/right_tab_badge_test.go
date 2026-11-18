@@ -43,7 +43,7 @@ func TestRightTabsCarryPluginBadge(t *testing.T) {
 	m.mu.Lock()
 	m.cur = "s1"
 	m.mu.Unlock()
-	tabs := m.rightTabsFor()
+	tabs := m.rightTabsFor(nil)
 	if len(tabs) == 0 {
 		t.Fatal("没有右栏 tab 名录")
 	}

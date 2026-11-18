@@ -1,0 +1,1 @@
+{"type":"outcome","outcome":{"ok":false,"error":{"reason":"missing-manifest","message":"the archive has no manifest.json"}}}

@@ -252,7 +252,13 @@ func (p *Plugin) drawTerminal(f ui.C, env *pluginapi.Env, tabID string) {
 				if !p.showRightbar {
 					height = float32(min(state.Grid.Height, maxLines)) * p.gridRowHeight(env)
 				}
-				p.drawTerminalGrid(f, state.Grid, height)
+				// 宿主 environment 的列/行上限：官方 fitScreen 就是拿它夹住
+				// FitAddon 量出来的尺寸（terminal.tsx:195-196）。
+				maxCols, maxRows := 0, 0
+				if state.Environment != nil {
+					maxCols, maxRows = state.Environment.MaxCols, state.Environment.MaxRows
+				}
+				p.drawTerminalGrid(f, state.Grid, height, maxCols, maxRows)
 			} else {
 				for _, line := range terminalLines(state.Screen) {
 					if line == "" {

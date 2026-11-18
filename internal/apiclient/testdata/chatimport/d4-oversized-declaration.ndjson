@@ -1,0 +1,1 @@
+{"type":"outcome","outcome":{"ok":false,"error":{"reason":"too-large","message":"manifest.json declares 314572800 uncompressed bytes, more than the 268435456-byte entry limit"}}}

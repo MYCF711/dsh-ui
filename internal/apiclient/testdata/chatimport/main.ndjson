@@ -1,0 +1,4 @@
+{"type":"progress","done":0,"total":2}
+{"type":"progress","done":1,"total":2}
+{"type":"progress","done":2,"total":2}
+{"type":"outcome","outcome":{"ok":true,"value":{"workspaceId":"ws-d551e80b-46fd-d2fa-a068-e2f221b41134","workspacePath":"D:\\DeepSeek Harness\\default-workspace\\DSH-GO-vi\\tmp\\GO8-RC5\\_vi\\run\\workspace-4207289577","sessionIds":["042f8f30-f8e2-4a2d-b2f8-75db5108fd84","e8493eb1-ce05-406a-b8ab-c542da2d4b4d"],"conversationCount":2,"omittedByLimit":0,"skipped":[]}}}

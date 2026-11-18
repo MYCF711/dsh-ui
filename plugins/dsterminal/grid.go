@@ -35,6 +35,28 @@ const (
 	// underline 形光标厚 1px：xterm 的 `.xterm-cursor-underline{border-bottom:1px …}`，
 	// 官方 module CSS 只覆盖它的 border-bottom-color（terminal.module.css:17）。
 	terminalCursorUnderlineHeight float32 = 1
+
+	// terminalDimAlpha 是 faint（SGR 2）的前景透明度。
+	//
+	// 官方 xterm 的 dim **不是**给整行加 opacity：内联进官方包的 xterm.css 里有
+	// `.xterm-dim{opacity:1!important}` 把那条关掉
+	// （`dsh-client-ui-sidebar-terminal/lib/client.terminal.js` byte 491841），
+	// 改由主题样式表**逐类**下发一个半透明的前景色：
+	//
+	//	`${selector} .xterm-dim { color: ${multiplyOpacity(foreground,.5).css} }`
+	//	`${selector} .xterm-fg-N.xterm-dim { color: ${multiplyOpacity(ansi[N],.5).css} }`
+	//	`${selector} .xterm-fg-INVERTED_DEFAULT_COLOR.xterm-dim { … }`
+	//
+	// （同文件 byte 76534 / 78917 / 79214；`_setTheme` 里生成这段 CSS 的那条语句
+	// 就是 `.xterm-dim` 的唯一实现）。所以「faint = 前景色 alpha 0.5，由浏览器
+	// 合成在格子底色上」——这个 0.5 是官方值，不是我们估的亮度。
+	//
+	// 我们走同一条合成链：底色由 paintGridBackground 先画好，字形 run 带 0.5 alpha。
+	// `gfx.Color` 有 Alpha（`viva@v0.6.4/gfx/canvas.go:14-19`，`ui.Color` 是它的别名
+	// `ui/vocab.go:10`），Viva 的 Windows 文本路径逐 run 取用
+	// （`internal/platform/windows/direct_grid_windows.go:44` → `renderer_windows.go:687`
+	// 的 `frame.TextColor = […A]`），所以这里不需要自己算混色。
+	terminalDimAlpha float32 = 0.5
 )
 
 // gridColor 把 vterm 解析好的颜色换成画布颜色。
@@ -72,6 +94,13 @@ func (p *Plugin) paintOf(style vterm.Style) terminalCellPaint {
 		underline: style.Attrs.Has(vterm.AttrUnderline),
 		strike:    style.Attrs.Has(vterm.AttrStrike),
 		conceal:   style.Attrs.Has(vterm.AttrConceal),
+	}
+	// SGR 2 faint：淡化的是**最终**前景色。次序与 xterm 的 createRow 一致——
+	// 先反显换色（上面那次 swap）、粗体的亮色映射已在 internal/vterm 的 styleOf
+	// 里做过，最后才把 alpha 降到 0.5（terminalDimAlpha）。conceal 排在它后面：
+	// SGR 8 的格子本来就画成底色，不该被 faint 再调一次。
+	if style.Attrs.Has(vterm.AttrFaint) {
+		out.fg = out.fg.WithAlpha(terminalDimAlpha)
 	}
 	if out.conceal {
 		// SGR 8：字形不可见。官方 xterm 画成与底色同色（不是跳过不画），

@@ -183,3 +183,72 @@ func TestGridRedrawKeepsOnlyFinalFrame(t *testing.T) {
 		t.Fatalf("第 1 行应只剩最后帧 %q，实际 %q", "progress 100%", row)
 	}
 }
+
+// TestScrollbackKeepsScrolledOffLines 钉住滚回缓冲的**内容与投影**：滚出屏幕顶端
+// 的行必须能原样取回来，颜色/属性跟它当时在屏幕上时一致（不是重新解析文本），
+// 并且当前屏幕不受影响。
+//
+// 上游依据见 cell.go 的 Scrollback 注释：正常换行滚屏就会把顶行推进 scrollback
+// （`x/vt@v0.1.0/screen.go:359-366`），所以这里不是造一段历史，而是取上游的。
+func TestScrollbackKeepsScrolledOffLines(t *testing.T) {
+	e := New(10, 3)
+	write(t, e, "\x1b[31mred\x1b[0m\r\n") // 第 1 行：索引红
+	write(t, e, "\x1b[1mtwo\x1b[0m\r\n")  // 第 2 行：粗体
+	write(t, e, "three\r\n")
+	write(t, e, "four\r\n")
+	write(t, e, "five\r\n")
+
+	// 5 行写进 3 行屏：最后那次换行又滚掉一行，所以是 3 行历史。
+	if got := e.ScrollbackLen(); got != 3 {
+		t.Fatalf("滚回应有 3 行，实际 %d", got)
+	}
+	sb := e.Scrollback()
+	if sb.Width != 10 || sb.Height != 3 {
+		t.Fatalf("滚回投影应为 10×3，实际 %d×%d", sb.Width, sb.Height)
+	}
+	rows := []string{"red", "two", "three"}
+	for y, want := range rows {
+		var row string
+		for x := 0; x < sb.Width; x++ {
+			row += mustCell(t, sb, x, y).Content
+		}
+		if row = strings.TrimRight(row, " "); row != want {
+			t.Fatalf("滚回第 %d 行应为 %q，实际 %q", y, want, row)
+		}
+	}
+	// 颜色与属性跟着一起回来：SGR 31 是官方调色板的 #cc0000，SGR 1 是粗体。
+	wantColor(t, mustCell(t, sb, 0, 0).Style.Fg, 0xcc, 0x00, 0x00, "滚回里的红字")
+	if attrs := mustCell(t, sb, 0, 1).Style.Attrs; !attrs.Has(AttrBold) {
+		t.Fatalf("滚回里的粗体应当保留，实际 attrs=%#x", uint16(attrs))
+	}
+	// 行比屏幕窄：补出来的格子是零值（Width==0），与 Grid 的约定一致。
+	if c := mustCell(t, sb, 5, 0); c.Width != 0 || c.Content != "" {
+		t.Fatalf("滚回行尾的填充格应是零值 Cell，实际 %+v", c)
+	}
+	// 滚回不是屏幕：没有光标。
+	if sb.Cursor.Visible {
+		t.Fatalf("滚回快照不该有可见光标，实际 %+v", sb.Cursor)
+	}
+	// 当前屏幕只剩后两行 + 空行。
+	if got := e.Lines(); len(got) < 2 || got[0] != "four" || got[1] != "five" {
+		t.Fatalf("当前屏幕应只剩 four/five，实际 %q", got)
+	}
+}
+
+// TestScrollbackEmptyWithoutScroll 没有滚出任何行时，滚回是**空且不报错**：
+// 渲染器不必先判断有没有历史。
+func TestScrollbackEmptyWithoutScroll(t *testing.T) {
+	e := New(8, 4)
+	write(t, e, "one\r\ntwo\r\n")
+
+	if got := e.ScrollbackLen(); got != 0 {
+		t.Fatalf("没有滚出行为时应为 0 行，实际 %d", got)
+	}
+	sb := e.Scrollback()
+	if sb.Width != 8 || sb.Height != 0 || len(sb.Cells) != 0 {
+		t.Fatalf("空滚回应是 8×0，实际 %d×%d（cells=%d）", sb.Width, sb.Height, len(sb.Cells))
+	}
+	if _, ok := sb.Cell(0, 0); ok {
+		t.Fatal("空滚回的 (0,0) 必须越界")
+	}
+}

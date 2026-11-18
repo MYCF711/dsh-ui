@@ -407,6 +407,57 @@ func TestGridColorsReverseUnderlineAndIndexed(t *testing.T) {
 	}
 }
 
+// TestGridFaintDimsForeground 钉住 SGR 2 的视觉：faint 的字形用**同一个前景色
+// 加 terminalDimAlpha 透明度**画，而不是我们算出来的某个「暗一档」的颜色。
+//
+// 官方依据见 grid.go 的 terminalDimAlpha 注释：xterm 把 `.xterm-dim` 的前景色
+// 下成 `multiplyOpacity(fg,.5)`。所以断言直接拿主题色 + 同一个 0.5 去比——
+// 谁都改不了这个值而不弄红这条测试。
+func TestGridFaintDimsForeground(t *testing.T) {
+	grid := emulatorGrid(t, 12, 1,
+		"P"+"\x1b[2mD\x1b[0m"+"\x1b[2;31mR\x1b[0m"+"\x1b[2;1;31mB\x1b[0m"+"\x1b[2;7mV\x1b[0m")
+	canvas, theme := terminalGridCanvas(t, grid, nil)
+
+	runs := gridRuns(canvas, 0)
+	labels := []string{"普通", "faint", "faint+索引红", "faint+粗体红", "faint+反显"}
+	if len(runs) != len(labels) {
+		t.Fatalf("应有 %d 段（%v），实际 %d 段：%+v", len(labels), labels, len(runs), runs)
+	}
+	// 这里**写字面量 0.5**，不引用 terminalDimAlpha：官方 xterm 下发的就是
+	// `multiplyOpacity(fg,.5)`（grid.go 的 terminalDimAlpha 注释里的 CSS 原文）。
+	// 引用常量的断言会跟着常量一起漂，测不出「我们把数值改了」。
+	const officialDimAlpha float32 = 0.5
+	want := []gfx.Color{
+		theme.LabelPrimary,
+		theme.LabelPrimary.WithAlpha(officialDimAlpha),
+		gfx.RGB(0xcc, 0x00, 0x00).WithAlpha(officialDimAlpha),
+		// 粗体的 0–7 号索引色按官方 drawBoldTextInBrightColors 映射到 8–15
+		// （internal/vterm/cell.go:215-220），faint 只降 alpha，不改色号。
+		gfx.RGB(0xef, 0x29, 0x29).WithAlpha(officialDimAlpha),
+		// 反显先换色（前景用背景色），faint 再降到 0.5。
+		theme.BgBase.WithAlpha(officialDimAlpha),
+	}
+	for i, run := range runs {
+		if run.color != want[i] {
+			t.Fatalf("%s 段的颜色应为 %+v，实际 %+v", labels[i], want[i], run.color)
+		}
+	}
+	if runs[0].color.Alpha == officialDimAlpha {
+		t.Fatal("没有 SGR 2 的格子不该被降 alpha")
+	}
+	if runs[4].color.Red == theme.LabelPrimary.Red && runs[4].color.Green == theme.LabelPrimary.Green {
+		t.Fatalf("反显+faint 不该退回普通前景色，实际 %+v", runs[4].color)
+	}
+
+	// faint 只动字色：反显格的背景块仍是 label-primary，不跟着变半透明。
+	x, y := gridTestOrigin()
+	if fills := gridFillsAt(canvas, gfx.Rect{
+		X: x + 4*gridTestCellW, Y: y, Width: gridTestCellW, Height: gridTestCellH,
+	}); len(fills) != 1 || fills[0].Color != theme.LabelPrimary {
+		t.Fatalf("反显+faint 格的背景应是 label-primary，实际 %+v", fills)
+	}
+}
+
 // TestGridClipsToVisibleColumns 钉住「屏幕比绘制面宽时按整格裁」：
 // 只画放得下的列，不缩放、不半格偏移。
 func TestGridClipsToVisibleColumns(t *testing.T) {

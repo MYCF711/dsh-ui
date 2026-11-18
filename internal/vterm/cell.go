@@ -161,6 +161,49 @@ func (e *Emulator) Grid() *Grid {
 	return grid
 }
 
+// ScrollbackLen 报告滚回缓冲里有多少行（屏幕上方已经滚出去的历史行）。
+//
+// 上游**正常换行滚屏**就会把丢掉的顶行推进 scrollback：`x/vt@v0.1.0/cc.go:29`
+// 那句 `// XXX: Handle scrollback whenever we add it.` 是**过期注释**，真正落盘在
+// `Screen.ScrollUp` → `Screen.DeleteLine`（`screen.go:297-303` 与 `screen.go:359-366`
+// 的 `scrollback.PushN`）。探针（2026-11-19，20 行写进 5 行屏）读到 16 行——
+// 与 xterm 的语义一致：滚回不含当前屏。
+//
+// 成本：一次读锁，可以每帧调。
+func (e *Emulator) ScrollbackLen() int { return e.inner.ScrollbackLen() }
+
+// Scrollback 返回滚回缓冲的快照，投影与 Grid **完全相同**（同一套 Cell / Style，
+// 颜色、反显、下划线、全角宽度都按同一份代码算出来），渲染器可以直接拿它当
+// 「屏幕上方那几行」画。
+//
+//   - 行 0 是最老的一行，行 ScrollbackLen()-1 是紧挨屏幕顶端的一行；
+//   - Width 取**当前屏幕宽度**：上游按行存 cells，短行由调用方按 Width 补齐，
+//     补出来的格子是零值 Cell（Width==0），与 Grid 对未写格子的约定一致；
+//   - Cursor 恒不可见：滚回不是屏幕，那里没有光标。
+//
+// **不要每帧调**：这是 O(行数×列数)，而且上游每取一格要拿一次读锁
+// （1000 行 × 90 列 = 9 万次）。每帧只该问 ScrollbackLen()，用户真的往回滚时
+// 才取整块。
+func (e *Emulator) Scrollback() *Grid {
+	w, _ := e.Size()
+	n := e.inner.ScrollbackLen()
+	grid := &Grid{Width: w, Height: n}
+	if w <= 0 || n <= 0 {
+		return grid
+	}
+	grid.Cells = make([]Cell, w*n)
+	for y := 0; y < n; y++ {
+		for x := 0; x < w; x++ {
+			c := e.inner.ScrollbackCellAt(x, y)
+			if c == nil {
+				continue
+			}
+			grid.Cells[y*w+x] = Cell{Content: c.Content, Width: c.Width, Style: styleOf(&c.Style)}
+		}
+	}
+	return grid
+}
+
 // styleOf 把上游样式投影成本包的类型。
 func styleOf(s *uv.Style) Style {
 	fg, fgIndex := resolve(s.Fg)

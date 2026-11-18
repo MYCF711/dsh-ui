@@ -18,10 +18,16 @@ import (
 const rightSidebarPersistence = "dsh.sidebar-right.v1"
 
 // rightTabRecord 是本仓单 pane 中的 TabRecord 子集。
-// ID 是 occurrence 身份；Kind 是 keyed 槽派发与插件归属。
+// ID 是 occurrence 身份；Kind 是 keyed 槽派发与插件归属；
+// Address 是按官方 `openResource(address)` 打开时那个地址（= 官方 contentId），
+// 页型 tab（浏览器/终端）与默认种下的类型 tab 留空。
 type rightTabRecord struct {
 	ID   string `json:"id"`
 	Kind string `json:"kind"`
+	// Address 是官方 `TabRecord.contentId` / `tab.navigation.address`：
+	// **地址就是身份**（OFF:tab-registry.ts:140-160），同一地址只该有一枚 tab。
+	// 落盘是官方行为（侧栏布局按 Session 持久化地址），所以这里也进 JSON。
+	Address string `json:"address,omitempty"`
 }
 
 // rightTabSurface 是每会话的持久化布局。空 Tabs 是合法状态（全部关闭），
@@ -71,12 +77,23 @@ func decodeRightTabSurface(sessionID, raw string) (*rightTabSurface, error) {
 		return nil, nil
 	}
 	seen := map[string]bool{}
+	// 官方 `contentId` 的唯一性：同一个 (kind, address) 只能有一枚 tab
+	// （OFF:tab-registry.ts:140-160「Two opens of the same address are the same tab」）。
+	// 落盘的布局如果违反这条，说明写侧出了问题，按无效处理而不是画两枚一模一样的芯片。
+	seenAddress := map[string]bool{}
 	maxMint := 0
 	for _, tab := range surface.Tabs {
 		if tab.ID == "" || tab.Kind == "" || seen[tab.ID] {
 			return nil, fmt.Errorf("无效或重复的 tab occurrence")
 		}
 		seen[tab.ID] = true
+		if tab.Address != "" {
+			key := tab.Kind + "\x00" + tab.Address
+			if seenAddress[key] {
+				return nil, fmt.Errorf("同一资源地址出现了两枚 tab")
+			}
+			seenAddress[key] = true
+		}
 		if strings.HasPrefix(tab.ID, "tab") {
 			if n, err := strconv.Atoi(strings.TrimPrefix(tab.ID, "tab")); err == nil && n > maxMint {
 				maxMint = n
@@ -166,6 +183,26 @@ func (m *model) rightTabsFor() []pluginapi.Tab {
 			}
 		}
 	}
+	// 资源型 occurrence 的标题要**带地址**问（官方标题座位的 owner props 里就有
+	// `tab.navigation.address`，OFF:dsh-client-ui-plan/src/client/PlanPreview.tsx:47-53）：
+	// 同一个类型可以同时开着好几份不同地址，只给 tabID 只能猜。
+	// 顺序是官方的 `plan?.title ?? tab.tab.title`：先问带地址的，再问不带地址的，
+	// 都为空就保留注册期的类型标题（`Tab.Label`）。
+	for i := range tabs {
+		if tabs[i].Address == "" {
+			continue
+		}
+		for _, plugin := range m.kernel.Plugins() {
+			provider, ok := plugin.(pluginapi.RightTabAddressTitleProvider)
+			if !ok {
+				continue
+			}
+			if title := provider.RightTabTitleFor(sessionID, tabs[i].Key, tabs[i].Address); title != "" {
+				tabs[i].Label = title
+				break
+			}
+		}
+	}
 	// 芯片徽标（官方 `sidebar.right.pane.tab.title` 的 TerminalTitle 会在标题前画一枚
 	// `Tag`）：与标题同一套「问插件一遍」的模式，每帧取值，因为控制权与沙箱是
 	// 跟着宿主终端状态变的实时事实（TerminalTitle.tsx:18-20）。
@@ -201,11 +238,19 @@ func projectRightTabs(types []pluginapi.Tab, surface *rightTabSurface) []plugina
 	out := make([]pluginapi.Tab, 0, len(surface.Tabs))
 	for _, record := range surface.Tabs {
 		tab, ok := byKind[record.Kind]
-		if !ok || seenSingle[record.Kind] && !tab.Multiple {
+		if !ok {
+			continue
+		}
+		// 「同 kind 只能有一枚」这条只对**页型** occurrence 成立。资源型（带地址）
+		// 的并存机制不是 `Multiple`，而是官方那条「地址就是身份」：不同地址各自
+		// 一枚 tab（OFF:tab-registry.ts:140-160）。所以带地址的记录不受 seenSingle
+		// 约束——否则同一类型永远只能看到第一份资源。
+		if record.Address == "" && seenSingle[record.Kind] && !tab.Multiple {
 			continue
 		}
 		seenSingle[record.Kind] = true
 		tab.Key = record.ID
+		tab.Address = record.Address
 		tab.Order = len(out)
 		out = append(out, tab)
 	}
@@ -272,6 +317,32 @@ func (m *model) rightTabParamsFor(sessionID, tabID string) pluginapi.RightTabPar
 //
 // 为什么 params 只活在内存：见 model.rightTabParams 的注释。
 func (m *model) openRightTabParams(kind string, params pluginapi.RightTabParams) {
+	m.openRightTabAt(kind, "", params)
+}
+
+// openRightResource 实现官方 `openResource(address, { params })`
+// （OFF:dsh-client-ui-sidebar-right/src/client/contract/slots.ts:165-177）。
+//
+// 与 `openRightTabParams` 的唯一差别是**身份**：官方把资源 tab 的身份定为
+// `contentId = address`（OFF:tab-registry.ts:140-160「Two opens of the same address
+// are the same tab, which is what makes opening idempotent」），所以：
+//
+//	同一 (kind, address) → 复用同一 occurrence，params 覆盖（= 官方 navigation 重导航）
+//	不同 address         → 各自新开一枚 tab
+//
+// 空地址 = 调用方没有资源身份（不该发生），退化成按类型打开，不静默造一枚无身份
+// 的 tab。
+func (m *model) openRightResource(kind, address string, params pluginapi.RightTabParams) {
+	if address == "" {
+		m.openRightTabParams(kind, params)
+		return
+	}
+	m.openRightTabAt(kind, address, params)
+}
+
+// openRightTabAt 是两条 open 的共同实现：address 空 = 页型 `openTab(kind)`，
+// 非空 = 资源型 `openResource(address)`。
+func (m *model) openRightTabAt(kind, address string, params pluginapi.RightTabParams) {
 	if kind == "" {
 		return
 	}
@@ -324,7 +395,31 @@ func (m *model) openRightTabParams(kind string, params pluginapi.RightTabParams)
 		m.rightTabSurfaces[sessionID] = surface
 	}
 	selected := ""
-	if !definition.Multiple {
+	if address != "" {
+		// 资源型：先按 (kind, address) 找同一份内容——这就是官方的幂等。
+		for _, tab := range surface.Tabs {
+			if tab.Kind == kind && tab.Address == address {
+				selected = tab.ID
+				break
+			}
+		}
+		// 再退一步：**没有地址占位 tab** 就认领它。
+		//
+		// 为什么要有这一步：官方资源 tab 只从 `openResource` 诞生，不需要先有一枚
+		// 空 tab；本仓 `defaultRightTabSurface` 会给每个注册类型先种一枚（产品入口），
+		// 那枚的 Address 是空的。不认领的话第一次打开资源会变成"占位 + 真内容"两枚
+		// 同 kind 的芯片，比官方多一枚。非 multiple 类型按「同 kind 只有一枚」认领
+		// 是安全的；multiple 类型（浏览器/终端）不认领，它们本来就每次新建。
+		if selected == "" && !definition.Multiple {
+			for _, tab := range surface.Tabs {
+				if tab.Kind == kind && tab.Address == "" {
+					selected = tab.ID
+					break
+				}
+			}
+		}
+	} else if !definition.Multiple {
+		// 页型：非 multiple 复用同 kind 的那一枚。
 		for _, tab := range surface.Tabs {
 			if tab.Kind == kind {
 				selected = tab.ID
@@ -333,9 +428,18 @@ func (m *model) openRightTabParams(kind string, params pluginapi.RightTabParams)
 		}
 	}
 	if selected == "" {
+		// 还没打开过这份内容（或页型 multiple 每次新建）：铸一个新的 occurrence。
 		surface.Minted++
 		selected = fmt.Sprintf("tab%d", surface.Minted)
-		surface.Tabs = append(surface.Tabs, rightTabRecord{ID: selected, Kind: kind})
+		surface.Tabs = append(surface.Tabs, rightTabRecord{ID: selected, Kind: kind, Address: address})
+	} else if address != "" {
+		// 复用同一地址时把地址钉回去：老记录（升级前落的盘）可能只有 ID/Kind。
+		for i := range surface.Tabs {
+			if surface.Tabs[i].ID == selected {
+				surface.Tabs[i].Address = address
+				break
+			}
+		}
 	}
 	m.markRightTabSelectionLocked(sessionID, selected)
 	if m.rightTabParams == nil {
@@ -353,6 +457,24 @@ func (m *model) openRightTabParams(kind string, params pluginapi.RightTabParams)
 	m.mu.Unlock()
 	m.persistRightTabSurface(sessionID)
 	m.inv.Invalidate()
+}
+
+// rightTabAddressFor 读某个 occurrence 的官方 `tab.navigation.address`
+// （contract/slots.ts:109-121）。空串 = 这枚 tab 不是按地址打开的。
+func (m *model) rightTabAddressFor(sessionID, tabID string) string {
+	if sessionID == "" || tabID == "" {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if surface := m.rightTabSurfaces[sessionID]; surface != nil {
+		for _, tab := range surface.Tabs {
+			if tab.ID == tabID {
+				return tab.Address
+			}
+		}
+	}
+	return ""
 }
 
 // closeRightTab 先跑插件清理，再提交布局删除；清理失败时 tab 保留。

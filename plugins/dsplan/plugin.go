@@ -36,6 +36,14 @@ type Plugin struct {
 
 	// chip 是 /plan off 的在飞与错误状态。
 	chip planChipState
+	// planTitles 是「callId → 计划标题」的本帧缓存，供右栏芯片的**资源标题**用。
+	//
+	// 为什么要有这一层：官方标题座位 `useResource<'plan'>(tab.tab.navigation.address)`
+	// 在渲染期就能拿到资源（OFF:PlanPreview.tsx:47-53），本仓的资源是
+	// `env.Data.Frames`，而壳问标题（`rightTabsFor`）时**没有 env**。所以计划正文
+	// 每帧照常从帧里算（`drawCards`），顺手把标题记下来，壳下一帧问标题时就有了。
+	// 代价是「刚提交那一帧的芯片仍显示类型标题『计划』」，下一帧起才是计划标题。
+	planTitles map[string]string
 	// openedReviews 记录本会话已自动打开过的审阅，手动关右栏后不被下一帧重新打开。
 	openedReviews map[string]bool
 	// reviewWindow 是官方 reviewPreviewAddress 的浏览器生命周期随机前缀。
@@ -70,10 +78,12 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 //	conversation.input.plan             计划模式 chip（真实 plan 投影 + /plan off）
 //	conversation.plan-review.actions    待审计划的自动/手动「查看全文」
 //
-// 右栏 tab 芯片上的文案来自 `Painter.Label`（官方 `title: () => t('preview.title')`，
-// OFF:index.ts:104-108）；官方还注册了 `sidebar.right.pane.tab.title` 画"图标 + 标题"，
-// 而本仓 official 档骨架不派发那个槽（`internal/uikernel/shell_skeleton.go:1067-1082`
-// 只派发 tab 体），所以这里不注册标题座位——注册了也永远不画。
+// 右栏 tab 芯片上的**类型**文案来自 `Painter.Label`（官方 `title: () => t('preview.title')`，
+// OFF:index.ts:65-69）；芯片上的**资源**文案与图标走官方的标题座位
+// `sidebar.right.pane.tab.title`（OFF:index.ts:112-114 + OFF:PlanPreview.tsx:47-53）。
+// 本仓 official 档骨架不派发那个座位（只派发 tab 体），所以这里把它拆成两半接：
+// 图标进 `Painter.IconImage`/`IconSize`，文案进 `RightTabAddressTitleProvider`
+// （见 tab_chip.go），两条都由壳在投影名录时用上。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		{
@@ -100,7 +110,15 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Key:   RightTabPlan,
 			Label: zhTitle,
 			Order: 30, // dsterminal 是 20：终端在左、计划在右
-			Draw:  p.drawPreview,
+			// 芯片标题前的图标是官方 `FileTypeIcon kind="other" size={16}`
+			// （OFF:PlanPreview.tsx:53，PlanTitle 那一段）。
+			//
+			// 它是**静态**的两层色板（底 neutral-bluish-300、折角 neutral-400），
+			// 不跟 currentColor 走，详见 dsassets.FileTypeOther 的注释；所以这里
+			// 预建一份就与官方同色，不需要按帧重建（与计划卡那枚 markdown 图标不同）。
+			IconImage: planTabIcon(),
+			IconSize:  planTabIconSize,
+			Draw:      p.drawPreview,
 			// 正文是「布局后覆画」：Markdown 的 Paint 必须等布局定下来才知道画在哪
 			// （与 dsconversation 的 MarkdownView 同一条理由）。
 			AfterDraw: p.afterDrawPreview,

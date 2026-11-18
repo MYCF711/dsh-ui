@@ -92,10 +92,10 @@ type previewBoxes struct {
 // （OFF:plan-resource.ts:24-70 从 session history 逐页翻找），本仓直接从
 // `env.Data.Frames` 里取（同一个 journal 的原始帧，壳已经缓存好）。
 //
-// **与官方的差异（登记）**：官方右栏 tab 带 navigation address（一份 tab 对应
-// 一个 `dsh-resource://plan/…`）。本仓 keyed 槽的 key 只有**类型**、没有地址，
-// 所以选了哪份计划由插件状态承载（点卡片时写入）。没选过时退到"本会话最新一份
-// 计划"——不然用户点开这个 tab 只会看到一句"不可用"，而会话里明明有计划。
+// 正文身份来自本帧 occurrence 的官方 `tab.navigation.address`（`env.RightTabAddress`）。
+// 按地址打开（点计划卡走 `Actions.OpenRightResource`）时一枚 tab 就是一个地址；
+// 空地址是"默认种下的类型 tab / 老壳"，这时退回插件记的最近一次打开，仍没有再退到
+// "本会话最新一份计划"——不然用户点开这个 tab 只会看到一句"不可用"，而会话里明明有计划。
 func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
 	p.boxes = previewBoxes{}
 	t := p.theme
@@ -103,7 +103,10 @@ func (p *Plugin) drawPreview(f ui.C, env *pluginapi.Env) {
 		return
 	}
 	plans := SubmittedPlans(env.Data.Frames)
-	plan, status := p.resolve(env.Data.Cur, plans)
+	// 与 drawCards 同一条：右栏正文自己也可能成为"这一帧唯一见过计划帧的地方"
+	// （会话视图切到轨迹、或 Turn 尾被别的东西顶掉时），标题缓存照样要填。
+	p.rememberPlanTitles(plans)
+	plan, status := p.resolve(env, plans)
 	if status != previewReady {
 		ui.Column(f).FillWidth().FillHeight().
 			PadSides(messagePad, messagePad, messagePad, messagePad).Children(func() {
@@ -239,21 +242,36 @@ func (p *Plugin) openLink(env *pluginapi.Env, destination string) {
 
 // resolve 决定右栏该画哪份计划。
 //
-//	① 点过卡片 → 那个地址：解析失败 `invalidAddress`，找不到 `notFound`
-//	② 没点过 → 本会话**最新**一份计划（官方没有这一态：它的 tab 由地址打开）
-//	③ 会话里一份都没有 → `unavailable`（官方原文 `计划预览不可用`）
-func (p *Plugin) resolve(session string, plans []Document) (Document, previewStatus) {
-	if p.openAddress != "" {
-		if addressSession, _, reviewAddress := parseReviewPreviewAddress(p.openAddress); reviewAddress {
+// **地址优先**（官方语义）：本帧派发的 occurrence 带 `env.RightTabAddress`
+// （官方 `tab.navigation.address`，contract/slots.ts:109-121）时就按它找——
+// 那是这枚 tab 自己的资源，与"用户最后点了哪张卡"无关。空 = 这枚 tab 不是按地址
+// 打开的（默认种下的类型 tab / 老壳），退回插件记的 `openAddress`。
+//
+// 判据顺序：
+//
+//	① 临时审阅地址 → 本进程的临时文档；文档没了 = `expired`（官方同一条）
+//	② 计划地址     → 按 (会话, callId) 在该会话的帧里找：解析失败 `invalidAddress`
+//	③ 地址属于别的会话 → 按"没选过"处理（右栏 tab 是全局的，切会话后这条地址在
+//	   本会话里没有意义；不报"找不到"，因为用户没在找它）
+//	④ 都没有地址 → 本会话**最新**一份计划（官方没有这一态：它的 tab 由地址打开）
+//	⑤ 会话里一份都没有 → `unavailable`（官方原文 `计划预览不可用`）
+func (p *Plugin) resolve(env *pluginapi.Env, plans []Document) (Document, previewStatus) {
+	session := env.Data.Cur
+	openAddress := p.openAddress
+	if env.RightTabAddress != "" {
+		openAddress = env.RightTabAddress
+	}
+	if openAddress != "" {
+		if addressSession, _, reviewAddress := parseReviewPreviewAddress(openAddress); reviewAddress {
 			if addressSession != session {
 				return Document{}, previewExpired
 			}
-			if plan, exists := p.temporaryReviews[p.openAddress]; exists {
+			if plan, exists := p.temporaryReviews[openAddress]; exists {
 				return plan, previewReady
 			}
 			return Document{}, previewExpired
 		}
-		addressSession, callID, ok := parsePlanAddress(p.openAddress)
+		addressSession, callID, ok := parsePlanAddress(openAddress)
 		if !ok {
 			return Document{}, previewInvalidAddress
 		}

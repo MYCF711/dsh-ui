@@ -257,47 +257,140 @@ func latestTurn(plans []Document) []Document {
 	return out
 }
 
-// planAddress 是官方 `planAddress`（OFF:plan.ts:56-65）的逐字移植：
+// planSession 是官方 `SessionAddress`（OFF:plan.ts:19-22 的 `PlanAddress.session`，
+// 类型来自 `@deepseek-ai/dsh-api-session-controller/types`）在本包的投影。
+//
+// 官方是二选一的联合：
+//
+//	{ kind: 'session',  sessionId }
+//	{ kind: 'subagent', parentSessionId, childSessionId, mode }
+//	OFF:plan.ts:58-61  `session.kind === 'session'
+//	  ? [session.sessionId, callId]
+//	  : ['subagent', session.parentSessionId, session.childSessionId, session.mode, callId]`
+//
+// `mode` 是官方闭集 `SubagentAddress.mode`，`parsePlanAddress` 只认这三个值
+// （OFF:plan.ts:78 `(parts[3] === 'one-shot' || parts[3] === 'continuable' || parts[3] === 'unknown')`）。
+type planSession struct {
+	// Subagent 为 true = 五段形态（子代理会话里提交的计划）。
+	Subagent bool
+	// SessionID 是 `kind:'session'` 那一支的会话 id；Subagent 时为 **child** 会话 id。
+	SessionID string
+	// ParentSessionID / Mode 只在 Subagent 时有值。
+	ParentSessionID string
+	Mode            string
+}
+
+// 官方 `SubagentAddress.mode` 的闭集三值（OFF:plan.ts:78）。
+const (
+	subagentModeOneShot     = "one-shot"
+	subagentModeContinuable = "continuable"
+	subagentModeUnknown     = "unknown"
+)
+
+// subagentPlanMode 判一个 mode 是否在官方闭集内。
+func subagentPlanMode(mode string) bool {
+	return mode == subagentModeOneShot || mode == subagentModeContinuable || mode == subagentModeUnknown
+}
+
+// planAddress 是官方 `planAddress`（OFF:plan.ts:56-62）的 `kind:'session'` 分支：
 //
 //	dsh-resource://plan/<sessionId>/<callId>
 //
-// 分段用 `encodeURIComponent` 转义。本仓只支持 `session` 形态（宿主没有
-// subagent 会话地址这一层，且 `Cur` 永远是当前会话的 id）。
+// 分段用 `encodeURIComponent` 转义。
 func planAddress(sessionID, callID string) string {
-	if sessionID == "" || callID == "" {
-		return ""
-	}
-	return "dsh-resource://plan/" + uriComponent(sessionID) + "/" + uriComponent(callID)
+	return planAddressFor(planSession{SessionID: sessionID}, callID)
 }
 
-// parsePlanAddress 是官方 `parsePlanAddress`（OFF:plan.ts:69-87）的 session 分支。
+// planAddressFor 是官方 `planAddress` 的**完整**移植，两条分支都在：
 //
-// 只认两段（session + callId）：subagent 的五段形态需要宿主真发 subagent 会话，
-// 本仓没有那条数据，认它就是"能解析但永远解析不到东西"。
+//	kind='session'  → dsh-resource://plan/<sessionId>/<callId>                        （2 段）
+//	kind='subagent' → dsh-resource://plan/subagent/<parent>/<child>/<mode>/<callId>   （5 段）
+//
+// 五段就是官方那条「**subagent 五段地址**」：`subagent` · 父会话 id · 子会话 id ·
+// mode（`one-shot`/`continuable`/`unknown`）· callId（OFF:plan.ts:58-61）。
+func planAddressFor(session planSession, callID string) string {
+	if session.SessionID == "" || callID == "" {
+		return ""
+	}
+	if session.Subagent {
+		if session.ParentSessionID == "" || !subagentPlanMode(session.Mode) {
+			return ""
+		}
+		return "dsh-resource://plan/subagent/" +
+			uriComponent(session.ParentSessionID) + "/" +
+			uriComponent(session.SessionID) + "/" +
+			uriComponent(session.Mode) + "/" +
+			uriComponent(callID)
+	}
+	return "dsh-resource://plan/" + uriComponent(session.SessionID) + "/" + uriComponent(callID)
+}
+
+// parsePlanAddress 是官方 `parsePlanAddress`（OFF:plan.ts:69-87）的逐字移植。
+//
+// 返回被寻址的**内容所在会话**（`session`）与 callId：
+//
+//	2 段 → kind='session'：session = parts[0]
+//	5 段 → kind='subagent'：session = parts[2]（**child** 会话——计划帧落在子会话日志里，
+//	        官方 `planResourceProvider` 就是拿 `target.session` 去读 history，
+//	        OFF:plan-resource.ts:45 的 `remote.events({address: sessionAddress})`）
+//
+// 五段的校验与官方逐条一致（OFF:plan.ts:73-81）：
+//
+//	· 前缀必须是 `dsh-resource://plan/`，且整体不得含 `?` / `#`（官方正则 `([^?#]+)`）
+//	· 任一解码后为空串 → 无效
+//	· 段数只能是 2 或 5
+//	· 5 段时 parts[0] 必须是 `subagent`，parts[3] 必须在前面的三值闭集内
+//
+// 本仓**能解析**五段、也能用它定位（子会话 id 就是帧所属会话），但**当前不会生产**
+// 五段地址：宿主 `subagent` 投影只有 `{mode,label,seq}`，**没有 `parentSessionId`**
+// （见 `internal/apiclient/projections.go` 的 `SubagentIdentity` 注释），而官方
+// `planAddress` 的五段正是靠 `ctx.sessions.subagentAddress(sessionId)` 拿到父会话 id
+// （OFF:index.ts:72-74）。缺父 id = 拼不出合法五段串，这条如实登记在账本 ④。
 func parsePlanAddress(address string) (sessionID, callID string, ok bool) {
+	session, call, ok := parsePlanAddressFull(address)
+	if !ok {
+		return "", "", false
+	}
+	return session.SessionID, call, true
+}
+
+// parsePlanAddressFull 是 `parsePlanAddress` 的完整形态：除了「内容在哪」还给出
+// 这条地址是哪种会话形态（官方 `PlanAddress.session`）。
+func parsePlanAddressFull(address string) (session planSession, callID string, ok bool) {
 	const prefix = "dsh-resource://plan/"
 	if !strings.HasPrefix(address, prefix) {
-		return "", "", false
+		return planSession{}, "", false
 	}
 	rest := address[len(prefix):]
 	if rest == "" || strings.ContainsAny(rest, "?#") {
-		return "", "", false
+		return planSession{}, "", false
 	}
 	parts := strings.Split(rest, "/")
-	if len(parts) != 2 {
-		return "", "", false
+	if len(parts) != 2 && len(parts) != 5 {
+		return planSession{}, "", false
 	}
 	for i, part := range parts {
 		if part == "" {
-			return "", "", false
+			return planSession{}, "", false
 		}
 		decoded, err := url.PathUnescape(part)
 		if err != nil || decoded == "" {
-			return "", "", false
+			return planSession{}, "", false
 		}
 		parts[i] = decoded
 	}
-	return parts[0], parts[1], true
+	if len(parts) == 2 {
+		return planSession{SessionID: parts[0]}, parts[1], true
+	}
+	if parts[0] != "subagent" || !subagentPlanMode(parts[3]) {
+		return planSession{}, "", false
+	}
+	return planSession{
+		Subagent:        true,
+		SessionID:       parts[2], // child
+		ParentSessionID: parts[1],
+		Mode:            parts[3],
+	}, parts[4], true
 }
 
 // uriComponent 是 ECMAScript `encodeURIComponent` 的等价实现。

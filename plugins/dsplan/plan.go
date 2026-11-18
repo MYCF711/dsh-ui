@@ -41,6 +41,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
+	"github.com/MYCF711/dsh-ui/pluginapi"
 )
 
 // ServiceID 是本插件的注册名（官方包名 → 本仓插件 id 的既有命名法）。
@@ -64,8 +65,10 @@ const (
 // Document 是一份**已提交的计划**：官方 `SubmittedPlan`（OFF:plan.ts:17-22）。
 //
 // 字段一一对应，只多两个本仓要用的定位量：
-//   - Turn / Seq 来自宿主 `tool/call` 帧（官方 plan 侧不需要，因为它的 turnTail
-//     座位是**按轮**派发的；本仓座位是会话级，只能靠这两个值自己选轮）
+//   - Turn / Seq 来自宿主 `tool/call` 帧。官方 plan 侧不需要它们（它的 turnTail
+//     座位按轮派发，`PlanCards` 直接拿 `turn.turn` 去查那一轮的数据源）；
+//     本仓座位现在也按轮派发（`env.Turn`），但**数据源**仍是整份 journal 帧，
+//     所以要靠 Turn 把"这一份属于哪一轮"找回来。
 type Document struct {
 	// CallID 是这次 `exit_plan_mode` 调用的 id（官方 `ToolCallId`）。
 	CallID string
@@ -190,13 +193,44 @@ func isPlanSpace(c byte) bool {
 	return false
 }
 
-// latestTurn 取**最新一轮**的计划（官方 turnTail 座位是按轮的，
-// OFF:PlanCard.tsx:43-44：`usePlans(String(turn.turn))`）。
+// turnPlans 取**这一帧该画的那一轮**的计划。
 //
-// 本仓的 `conversation.chat.turnTail` 是会话级座位（`internal/uikernel/
-// official_slots.go:428-431` 记的 kind/scope，壳每帧只派发一次），所以这里按
-// "最大 Turn 的那一组"选——与 dsactioncards 的「最新一轮 + 最小 callId」同一取舍，
-// 那一处的取舍理由与登记同样适用于本包。
+// 官方判据只有一句（OFF:PlanCard.tsx:43-45）：
+//
+//	const plans = usePlans(String(turn.turn))   // turn = owner props 里那一轮
+//
+// 本仓的 owner props 在 `env.Turn` 上（官方 `TurnTailOwnerProps`，见
+// `pluginapi/turn_tail.go` 与 `internal/uikernel/shell_skeleton.go` 的
+// `dispatchTurnTails`）：非 nil 就**只画那一轮**。
+//
+// nil = 没有轮次基线（老壳 / mockd / 这一帧还没有 `turn/end` 帧）→ 退回
+// `latestTurn` 的会话级近似（改造前的行为）。这条回退与官方不冲突：官方在没有
+// turn-tail 节点时**根本不渲染这个座位**，我们只是让老壳仍能画出东西来。
+func turnPlans(env *pluginapi.Env, plans []Document) []Document {
+	if env != nil && env.Turn != nil {
+		return plansForTurn(plans, env.Turn.Turn)
+	}
+	return latestTurn(plans)
+}
+
+// plansForTurn 取某一轮的全部计划，保持日志顺序（= 官方 invocation order，
+// OFF:PlanCard.tsx:39 的 "in invocation order" + :48 的 `plans.map`）。
+func plansForTurn(plans []Document, turn int64) []Document {
+	out := make([]Document, 0, len(plans))
+	for _, plan := range plans {
+		if plan.Turn == turn {
+			out = append(out, plan)
+		}
+	}
+	return out
+}
+
+// latestTurn 取**最新一轮**的计划——这是**没有轮次基线时**的会话级回退，
+// 不是座位语义。
+//
+// 官方 turnTail 座位是按轮的（OFF:PlanCard.tsx:43-44 的 `usePlans(String(turn.turn))`），
+// 壳按轮派发时走上面的 `turnPlans`。只有壳没给 `env.Turn`（老壳 / mockd /
+// 这一帧还没有 `turn/end` 帧）时，这里才按"最大 Turn 的那一组"选。
 func latestTurn(plans []Document) []Document {
 	if len(plans) == 0 {
 		return nil

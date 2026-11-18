@@ -105,13 +105,13 @@ func (v *ActionCardView) Decision(callID string) (ActionCardDecision, bool) {
 	return decision, ok
 }
 
-// LatestProposal 取"这一屏该画的那一张卡"。
+// LatestProposal 取投影里"最新一轮"的那一张卡——**没有轮次基线时**的会话级回退。
 //
-// 官方判据（OFF:src/client/Card.tsx:69-76）：`turnTail` 座位**按轮**取；
-// 若同一轮里出现多张（宿主投影理论上不会），取**最小的 callId**。本仓的
-// turnTail 座位是会话级（见 plugins/dsactioncards 的包注释"没搬的细节"），
-// 所以按"最新一轮 + 最小 callId"选一张：这与官方在同一轮里的择一规则一致，
-// 只是把"哪一轮"从座位参数换成了投影里的最新 turn。
+// 官方没有这个选择：turnTail 座位是按轮的，`ActionCardTail` 只取 owner props 里
+// 那一轮（OFF:src/client/Card.tsx:87-89 的 `proposalOf(view, turn.turn)`）。
+// 所以正式路径是 `ProposalForTurn`；本方法只在 `Env.Turn == nil`（老壳 / mockd /
+// 这一帧还没有 turn-tail 节点）时使用，规则是"最新一轮 + 最小 callId"
+// （与官方同轮择一规则一致，只是把"哪一轮"换成了投影里的最新 turn）。
 func (v *ActionCardView) LatestProposal() (ActionCardProposal, bool) {
 	if v == nil || len(v.Proposals) == 0 {
 		return ActionCardProposal{}, false
@@ -126,6 +126,30 @@ func (v *ActionCardView) LatestProposal() (ActionCardProposal, bool) {
 			best = proposal
 		case proposal.Turn == best.Turn && proposal.CallID < best.CallID:
 			best = proposal
+		}
+	}
+	return best, found
+}
+
+// ProposalForTurn 取**某一轮**该画的那一张卡。
+//
+// 官方 `proposalOf`（OFF:src/client/Card.tsx:69-76）逐条：
+//
+//	只认 proposal.turn === turn
+//	同轮多张（宿主投影理论上不会有）取**最小的 callId**
+//	没有这一轮的卡 → undefined（占用方整块不画，空槽不占位）
+func (v *ActionCardView) ProposalForTurn(turn int64) (ActionCardProposal, bool) {
+	if v == nil || len(v.Proposals) == 0 {
+		return ActionCardProposal{}, false
+	}
+	var best ActionCardProposal
+	var found bool
+	for _, proposal := range v.Proposals {
+		if proposal.Turn != turn {
+			continue
+		}
+		if !found || proposal.CallID < best.CallID {
+			best, found = proposal, true
 		}
 	}
 	return best, found

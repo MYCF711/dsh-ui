@@ -60,7 +60,7 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			// '在会话工作区运行命令'（index.ts:74、locales.ts:14-15）。
 			Guide: []pluginapi.TabGuide{{
 				ID: "new", Order: 20, Title: zhGuideTitle, Description: zhGuideDescription,
-				IconImage: terminalTitleIcon(), IconSize: guideIconBox,
+				IconImage: p.guideIcon(), IconSize: guideIconBox,
 			}},
 			Draw: p.drawPanelBody},
 		{ID: "terminal-panel", Slot: pluginapi.SlotShellOverlay, Order: 98, Draw: p.draw},
@@ -197,7 +197,16 @@ func (p *Plugin) drawTerminal(f ui.C, env *pluginapi.Env, tabID string) {
 	status, ended, retry, readOnly := terminalStatus(state)
 	// terminal.module.css:5：状态条只在一项状态/动作存在时出现，gap 8、padding 5×12、bg-l2。
 	if status != "" || retry || readOnly || ended {
-		ui.Row(f).FillWidth().Gap(terminalStatusGap).Items(ui.Center).
+		// terminal.module.css:5：`.status{display:flex;flex-wrap:wrap;align-items:center;
+		// gap:8px;padding:5px 12px;background:var(--dsw-alias-bg-l2)}`。
+		//
+		// `flex-wrap:wrap` 用 viva 的 `Flow()`：它是"会换行的 Row"，语义与 CSS 的
+		// flex-wrap 一致，每一行各自分配宽度，`gap` 同时是行内与行间距
+		// （`viva@v0.6.4/ui/frame.go:533-544`、`website/content/guides/zh/declarative-layout.md:36`）。
+		// 旧账写这条"缺 Viva 容器 wrap"是**过期结论**——v0.6.4 有这个容器。
+		// 换成 Flow 后窄右栏（面板 360 左右）里的状态文字 + 两个按钮会像官方那样折行，
+		// 而不是被压成一行截断。
+		ui.Flow(f).FillWidth().Gap(terminalStatusGap).Items(ui.Center).
 			PadSides(terminalStatusPadY, terminalStatusPadX, terminalStatusPadY, terminalStatusPadX).
 			Background(t.BgLayer2).Children(func() {
 			if status != "" {

@@ -6,7 +6,7 @@ package uikernel
 //
 // 数据来源与形状全部来自官方终端标题（`sidebar.right.pane.tab.title` 的占用方）：
 //
-//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:42-50
+//	OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalTitle.tsx:44-50
 //	  <TerminalIcon /> {badge} {title}   —— 徽标在标题**之前**
 //	OFF:…/TerminalTitle.module.css:3     `.badge{display:inline-flex;flex:none}`
 //	OFF:dsh-web-frontend/dist/assets/index-CSAdOBx6.css  `._tag_brmue_4`

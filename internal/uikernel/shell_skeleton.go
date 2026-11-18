@@ -151,6 +151,9 @@ type ShellOptions struct {
 	RightTabs []pluginapi.Tab
 	// ActiveRightTab 是本帧选中的右栏 tab 类型 key；空 = 右栏没有可画面板。
 	ActiveRightTab string
+	// RightTabRename 是芯片就地改名的状态（官方 TerminalTitle 的 `editing` + `<input>`）。
+	// 壳持有、跨帧保存；nil = 这一帧不做就地改名（双击不进编辑态）。
+	RightTabRename *RightTabRenameState
 	// GuideEntries 是右栏向导页的入口卡名录（官方 `SidebarRightTabDefinition.guide`
 	// 的投影，见 view_guide.go 的 `GuideEntries`）。
 	//
@@ -1160,7 +1163,7 @@ func drawRightbarSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispat
 			if env.Act.SelectRightTab != nil {
 				selectTab = env.Act.SelectRightTab
 			}
-			DrawRightTabs(f, env, layout.Options.RightTabs, layout.Options.ActiveRightTab, selectTab)
+			DrawRightTabsEditable(f, env, layout.Options.RightTabs, layout.Options.ActiveRightTab, selectTab, layout.Options.RightTabRename)
 			ui.Row(f).FillWidth().Grow(1).Children(func() {
 				env.DrawKeyed(f, OffRightPaneTab, RightTabKind(layout.Options.RightTabs, layout.Options.ActiveRightTab))
 			})

@@ -3,7 +3,7 @@ package main
 // right_tab_badge_test.go —— 壳把插件的芯片徽标投影进 `pluginapi.Tab.Badge` 的断言。
 //
 // 官方：`sidebar.right.pane.tab.title` 的占用方在标题前画一枚 `Tag`
-// （OFF:…/sidebar-terminal/src/client/TerminalTitle.tsx:42-50）。本仓的壳在投影名录时
+// （OFF:…/sidebar-terminal/src/client/TerminalTitle.tsx:44-50）。本仓的壳在投影名录时
 // 问一遍 `RightTabBadgeProvider`，与「实时标题」是同一个模式。
 
 import (

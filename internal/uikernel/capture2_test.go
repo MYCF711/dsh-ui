@@ -47,7 +47,7 @@ func TestRightTabsWithBadgesCapture(t *testing.T) {
 		return func(f ui.C) { DrawRightTabs(f, env, tabs, "terminal", func(string) {}) }
 	})
 
-	// 官方 TerminalTitle.tsx:42-50 的 DOM 顺序 `<TerminalIcon/>{badge}{title}`：
+	// 官方 TerminalTitle.tsx:44-50 的 DOM 顺序 `<TerminalIcon/>{badge}{title}`：
 	// 徽标必须在标题之前，且与标题同一条基线（图上一眼能看出歪没歪）。
 	boxes := map[string]gfx.Text{}
 	for _, one := range session.Snapshot().Texts {

@@ -79,7 +79,10 @@ type (
 	// （官方 `tab.navigation.address`；见公开包 pluginapi/plugin.go）。
 	RightTabAddressTitleProvider = pub.RightTabAddressTitleProvider
 	RightTabBadgeProvider        = pub.RightTabBadgeProvider
-	RightTabCloseHandler         = pub.RightTabCloseHandler
+	// RightTabRenameProvider 是芯片就地改名的写入面（官方 TerminalTitle 的
+	// `view(tab.id).rename(next)`，见公开包 pluginapi/plugin.go）。
+	RightTabRenameProvider = pub.RightTabRenameProvider
+	RightTabCloseHandler   = pub.RightTabCloseHandler
 	// WebHost / WebPage / WebOpenOptions 是窗口里的网页宿主（官方右栏浏览器那一层）。
 	// `Env.Web` 已经带上了它；这里补别名是为了让 import internal 路径的插件也能
 	// 在自己的测试里造假载具，而不必去 import 公开包。

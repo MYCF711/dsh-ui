@@ -106,7 +106,11 @@ func closeStreamingServer(srv *httptest.Server) {
 
 func waitTerminalCondition(t *testing.T, condition func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	// 30s 而不是 5s：这里等的是**进程内**状态跃迁（正常毫秒级），
+	// 但 CI 高峰期整机负载能把 5s 吃满 -> 2026-11-18 在 dsh-ui#157 上
+	// 报「等待终端状态超时」，而同分支根本没碰终端代码。
+	// 提高截止时间不改判据（条件仍然必须成立），只是给负载留余量。
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if condition() {
 			return

@@ -87,13 +87,24 @@ python - "$iso" <<'PY'
 import io, sys, re
 p = sys.argv[1] + '/plugins/dsshortcuts/shortcuts.go'
 s = io.open(p, encoding='utf-8').read()
-# 删掉 F5 那一行（F5 在 dsterminal 里真的被处理）
-s2 = re.sub(r'\n\t\{"F5",[^\n]*\n', '\n', s, count=1)
-if s2 == s:
+# 删掉 F5 那一行（F5 在 dsterminal 里真的被处理）。
+# 按**语义**删，不按字面格式删：这一行历史上有两种写法
+#   {"F5", "打开 / 关闭终端面板", "plugins/dsterminal"}     ← 位置参数（rc.2 起）
+#   {Key: "F5", Does: "打开 / 关闭终端面板", Where: ...}    ← 命名字段（2026-11-18 起）
+# 2026-11-18 踩过：只认前面那种写法，表改成命名字段后正则匹配不到 ->
+# 变异没生效、脚本不报错、守卫自然还是绿 -> 整条自检退化成「永远通过」，
+# 那比没有自检更糟（它会让后面每一次都以为守卫生效）。
+s2, n = re.subn(r'\n\t\{[^\n]*?"F5"[^\n]*\n', '\n', s, count=1)
+if n == 0:
     sys.exit('找不到 F5 那一行，用例失效')
 io.open(p, 'w', encoding='utf-8', newline='').write(s2)
 PY
-expect_red "键位表漏记 F5" "TestEveryHandledKeyIsDocumented"
+# 变异的退出码必须查：非零 = 没改成功 = 后面的 expect_red 毫无意义
+if [ $? -ne 0 ]; then
+  chk "键位表漏记 F5：变异没生效" 1 "改文件的 python 失败了（定位不到那一行），后面的 expect_red 不作数"
+else
+  expect_red "键位表漏记 F5" "TestEveryHandledKeyIsDocumented"
+fi
 restore plugins/dsshortcuts/shortcuts.go
 
 echo

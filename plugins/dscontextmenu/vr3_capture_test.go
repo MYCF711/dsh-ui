@@ -84,7 +84,11 @@ func vr3OpenMenu(t *testing.T, dir string, width, height int, actions []pluginap
 	rowID := tree.ID(feature, "vr3-row")
 	target := pluginapi.ContextMenuTarget{Kind: "workspace", ID: "w-vr3"}
 	pageTheme := dscore.VivaTheme(p.theme)
-	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	// Root 与壳的 `pageRoot` 同位：壳把整窗 `ui.Page` 的作用域钉在插件命名交互 id 的
+	// feature 上（`cmd/app/main.go` 的 `pageRoot`），页面级 `ui.Shortcut` 才匹配得上
+	// （`viva@v0.6.4/ui/shortcut.go:106-108` 的 pageWide 判据）。本 harness 就是一台
+	// 迷你壳，feature 是下面 `tree.Feature("context-menu-vr3")`。
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme, Root: "context-menu-vr3"})
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "context-menu-vr3", Width: width, Height: height, Tree: tree,
@@ -101,20 +105,21 @@ func vr3OpenMenu(t *testing.T, dir string, width, height int, actions []pluginap
 		})
 	}
 	config.OnScroll = view.Wheel
-	// 按键接线与壳（`cmd/app/main.go` 的 `cfg.OnKey`）同序：**先页面，再插件**。
-	// 壳是 `Page.Draw` 形态，viva 要求这种形态由宿主自己用 `Page.Key` 路由输入
-	// （`viva@v0.6.4/ui/page.go:716-721`），并且排在宿主自己的按键处理之前
-	// （`ui/page.go:1088-1093`）；`ui.Box.Shortcut` 只由那条路由派发
-	// （`ui/shortcut.go:94-135`）。页面接掉的键不再交给插件（一个键只走一条路）。
+	// 按键接线与壳（`cmd/app/main.go` 的 `cfg.OnKey`）同序：**页面路由先接**，
+	// 它接掉的键就到此为止（一个键只走一条路）。壳是 `Page.Draw` 形态，viva 要求
+	// 这种形态由宿主自己用 `Page.Key` 路由输入（`viva@v0.6.4/ui/page.go:716-721`），
+	// 且排在宿主自己的按键处理之前（`ui/page.go:1088-1093`）；`ui.Box.Shortcut` /
+	// `ui.Shortcut` 只由那条路由派发（`ui/shortcut.go:94-135`）。
+	//
+	// 插件这一侧**没有** `pluginapi.KeyHandler`：官方 `dsh-client-ui-context-menu`
+	// 没有插件级全局按键路由，菜单键归菜单、触发器键归有焦点的触发器
+	// （`trigger.ts:29-37`、`View.tsx:50-57`）。
 	config.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
 		if ev.Release {
 			return gfx.EventResult{}
 		}
 		if result := view.Key(ev); result.Handled || !result.Activate.IsZero() {
 			return result
-		}
-		if p.HandleKey(ev) {
-			return gfx.EventResult{Handled: true, Repaint: true}
 		}
 		return gfx.EventResult{}
 	}
@@ -542,9 +547,9 @@ func TestVR3KeyboardFocusHighlightsItem(t *testing.T) {
 		t.Errorf("↓ 之后焦点在第 %d 行（%q）仍无 hover 底色", nextIdx, nextItems[nextIdx].Label)
 	}
 
-	// Esc 必须关菜单（官方菜单的 Escape 收起）。插件用 `menu.Shortcut(0,"escape")` 判，
-	// 而壳只把按键交给 `kernel.HandleKey`（`cmd/app/main.go:2237-2265`），全仓没有把按键
-	// 送进 `ui.Page.Key`——所以这一条会连带失效。
+	// Esc 必须关菜单（官方菜单的 Escape 收起）。插件用容器级
+	// `menu.Shortcut(0,"escape")` 判（`context_menu.go` 的 drawMenu），派发者是
+	// `ui.Page.Key`（壳的 `cfg.OnKey` 每帧先送页面，`ui/shortcut.go:94-135`）。
 	if err := m.session.Keys("escape"); err != nil {
 		t.Fatalf("Esc 失败：%v", err)
 	}
@@ -577,9 +582,8 @@ func TestVR3KeyboardOpenShortcut(t *testing.T) {
 	m.pump()
 	m.shot("context-menu-shift-f10.png")
 	if items := vr3MenuItems(m.session.Snapshot()); len(items) == 0 {
-		t.Errorf("按 Shift+F10 没打开菜单：`target.Shortcut(gfx.ModifierShift,\"f10\")`" +
-			"（context_menu.go:165）在真装配下不触发——壳只把按键交给 `kernel.HandleKey`，" +
-			"全仓没有任何地方调用 `ui.Page.Key`（`cmd/app/main.go:2237-2265`）")
+		t.Errorf("按 Shift+F10 没打开菜单：页面级 `ui.Shortcut(c, ui.Shift, \"f10\")`" +
+			"（`Attach` 里，官方 `trigger.ts:29-37` 的触发器键）没被 `ui.Page.Key` 派发")
 	}
 }
 

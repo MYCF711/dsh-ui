@@ -4,7 +4,7 @@
 >
 > `OFF` = `DSH-GO/tmp/GO8-RC2/official-rc2/dsh/node_modules/@deepseek-ai/`；`HOST` = DSH-GO。
 >
-> **结论：🟡 PARTIAL。四个可见座位均有真实数据与动作，plan-review 与 `/plan off` 已闭环；剩余差异在 §4，不把这两项继续记成 HIDE。**
+> **结论：✅ IMPLEMENTED。四个可见座位均有真实数据与动作，plan-review 与 `/plan off` 已闭环；最后一处差异（座位派发点位置）已于 2026-11-18 按官方节点语义闭合，见 §10。**
 
 ## 1. 官方座位与本仓落点
 
@@ -68,8 +68,8 @@
    `internal/uikernel/turns.go` 的 `TurnTails` + `shell_skeleton.go` 的 `dispatchTurnTails`，
    判据与 `plugins/dsconversation/official_transcript_projection.go:805-837` 同一张分派表），
    `plugins/dsplan/cards.go` 只画 `env.Turn` 那一轮；`latestTurn` 降为「没有轮次基线」的回退。
-   **残留**：骨架没有 `conversation.chat.node` 工厂，座位派发点仍在正文列尾部，不是嵌在每一轮
-   尾节点里——内容逐轮正确，位置仍是列尾。
+   **位置也已闭合（2026-11-18，见 §10）**：派发点搬进 transcript 的每一条 `turn-tail` 行，
+   壳只在"这一帧没有尾节点"时兜底——不再是"统一画在正文列尾"。
 2. **navigation / 多实例**：右栏仍由插件保存单个 `openAddress`，不是官方每 occurrence 的
    navigation；缺 subagent plan 地址与 `sidebar.right.pane.tab.title` 派发。临时 review 地址本轮已补。
 3. **异步资源态**：本仓同步读帧，没有官方异步 resource 的 loading/failed；临时 expired 已真实实现。
@@ -151,8 +151,10 @@ renderSlot 一次），owner props 带这一轮（`contract/slots.ts:60-64`）�
 | dsplan | `turnPlans` 只画 `env.Turn` 那一轮；`latestTurn` 降回退 | `plugins/dsplan/{cards,plan}.go` |
 | dsactioncards | `ProposalForTurn`（= 官方 `proposalOf`），dismiss 带自己 callId、交互 id 带轮次、展开态按 callId | `internal/apiclient/action_cards.go`、`plugins/dsactioncards/cards.go` |
 
-**残留**：座位派发点仍在正文列尾部（骨架没有 `conversation.chat.node` 工厂），不是嵌在
-每一轮尾节点里；内容逐轮正确、位置仍是列尾，这一条如实登记在 `docs/official-parity.md` 的 #28 行。
+**位置已闭合（2026-11-18 · feat/pv-28-pos，见 §10）**：上面那张表是**内容层**（一轮一次、只画
+`env.Turn` 那一轮）；派发**位置**随后搬进 transcript 的每一条 `turn-tail` 行，壳改为兜底。
+本节表格里"壳 `dispatchTurnTails` 按轮各派一次"是当时的状态，现在是"transcript 在节点里派、
+壳让位"。
 
 ## 9. 右栏 tab 的 navigation / 多实例 / 五段地址 + 芯片图标与资源标题（2026-11-18 · feat/pv-28-tabs）
 
@@ -240,3 +242,48 @@ return <><FileTypeIcon kind="other" size={16} className={css.titleIcon} />{plan?
   `openRightResource` 去掉按地址查找 → 幂等红；`projectRightTabs` 回旧去重 → 并存红；
   `parsePlanAddressFull` 去掉 mode 闭集 → 校验红；回退成只认两段 → 五段红；
   `RightTabTitleFor` 恒空 → 标题红。
+
+## 10. 座位派发点的**位置**（2026-11-18 · feat/pv-28-pos）
+
+账本 #28 最后一条差异：座位派发点在正文**列尾**，而不是嵌在每一轮尾节点里——内容逐轮正确，
+位置不是官方那种逐轮插入。这一节记官方语义、落点与证伪。
+
+### 10.1 官方位置语义（三处锚点，缺一条都不成立）
+
+| 官方 | 原文要点 |
+|---|---|
+| `OFF:dsh-client-ui-chat/src/client/chat/register-node-renderers.ts:88-97` | `conversation.chat.node` 上 `key:'turn-tail'`，`children:{'conversation.chat.turnTail':{kind:'list',scope:'session'}, 'conversation.chat.assistant-actions':{kind:'list'}}` —— 座位是**这个节点**的 children，不是会话级座位 |
+| `OFF:dsh-client-ui-chat/src/client/chat/TurnTailNodeView.tsx:43-51` | `const owner: TurnTailOwnerProps = {turn, seq: closing?.finalNode.seq ?? data.seq, openFile}`；`const tail = renderSlot('conversation.chat.turnTail', owner)` —— **每画一个尾节点就派一次**；`:46` 的 `turn === undefined` 直接 `return null`；`:57-64` 是 `{tail}` 在 `MessageIconActions` **之前** |
+| `OFF:dsh-client-ui-chat/src/client/conversation-nodes/turn-tail.ts:135-139` + `chat-snapshot-builder.ts:522-535` + `common.ts:9-21` | 尾节点自己 `chatNode(context,'turn-tail', data.seq + CHAT_SYNTHETIC_SEQ_OFFSETS.finalizedFollowup, …)`；flow 用 `orderedVisibleChatNodes` 按 `anchor → rank → originalAnchor` 排序，偏移表注释原文「the max-tokens notice sits between a closing Assistant and the turn-tail **so the tail stays the turn's last node**」——所以每一轮的卡紧跟那一轮尾，下一轮的第一个节点排在它后面 |
+
+结论：位置不是"列尾统一派发"，而是"**flow 里那条尾节点之后**"。
+
+### 10.2 本仓落点（四层）
+
+| 层 | 改动 | 文件 |
+|---|---|---|
+| transcript（派发点） | `drawTurnTail` 先 `drawTurnTailSeat`（在本条尾节点里派发 + 顺序在动作行之前）再画动作行；派发期间挂 `Env.Turn`、结束后恢复；`env.DrawSlot == nil`（独立装配）或 `Turn` 未知时不派 | `plugins/dsconversation/official_transcript_view.go` |
+| 契约 | 新增 `Env.TurnTailSeatsDrawn`（每帧从 0 起；transcript 每派一次加一） | `pluginapi/plugin.go` |
+| 壳 | `dispatchTurnTails` **让位**：计数 > 0 直接返回（绝不在列尾补一遍）；只在没有尾节点时兜底——无基线派一次（`Env.Turn == nil`）、有基线但没画 chat transcript 仍按轮各派一次 | `internal/uikernel/shell_skeleton.go`、`turns.go`（注释同步） |
+| 消费方 | 内容层一行没动（`dsplan` / `dsactioncards` 仍按 `env.Turn` 取那一轮） | `plugins/dsplan`、`plugins/dsactioncards` |
+
+### 10.3 测试与变异
+
+- `plugins/dsconversation/official_transcript_turn_tail_seat_test.go`
+  - ① `TestTurnTailSeatDispatchedInsideEachTurnNode`：两次派发都在**各自尾节点的行内**
+    （第 1 轮 `RowsBefore=2`、第 3 轮 `RowsBefore=5`，总行数 6），owner props 逐轮
+    `{1,3}` / `{3,6}`，派发后 `Env.Turn == nil`、`Env.TurnTailSeatsDrawn == 2`。
+  - ② `TestTurnTailSeatSitsBetweenItsOwnTurnAndTheNext`：**几何**——`计划卡@1` 在
+    「第一轮回答」之下、「第二轮提问」之上；`计划卡@3` 在「第二轮回答」之下；两卡先序且不重叠。
+  - ③ `TestTurnTailSeatSkippedWithoutTurnOrChannel`：`turn` 未知 / 没有 `env.DrawSlot` 时不派、
+    不记数、不 panic（官方 `TurnTailNodeView.tsx:43-46`）。
+- `cmd/app/turn_tail_seat_position_test.go` **端到端**：真实内核（`ds-core` + `ds-conversation` +
+  `ds-plan`）+ 官方骨架 + 两轮各一份 `exit_plan_mode`，断言两张**真计划卡**都在，且
+  `旧方案.y < 第二轮提问.y`、`新方案.y > 第二轮回答.y`、旧卡底不越过第二轮起点。
+- `internal/uikernel/turn_seat_test.go` 新增 `TestFirstScreenSkipsColumnEndWhenTranscriptOwnsTurnTailSeat`：
+  transcript 派过（计数 > 0）时骨架在列尾的派发次数 = 0、`Env.Turn` 恢复 nil。
+- 变异（先改坏、跑红、再还原）：
+  - 座位移回正文列尾（行内不派、循环后统一派）→ ① 行号判定红（`已画 6 行，want 2`）+
+    ② 几何红（`卡 y=208，第 2 轮提问 y=122`）+ 端到端红（`卡 y=579，第 2 轮提问 y=353`）。
+  - 删掉壳的让位早退 → `骨架又在正文列尾派了 2 次` 红。
+  - 只删行内派发（让壳兜底接回列尾）→ 端到端红（同上 `y=579`），证明兜底路径与位置断言都活着。

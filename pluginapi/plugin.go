@@ -681,6 +681,26 @@ type Env struct {
 	// nil = **没有轮次基线**（老壳 / mockd / 这一帧还没有 `turn/end` 帧）：占用方
 	// 这时只能退回会话级的近似选择，不许把 nil 当成"第 0 轮"。
 	Turn *TurnProps
+	// TurnTailSeatsDrawn 是本帧 **transcript 在自己的 `turn-tail` 节点里**
+	// 派发 `conversation.chat.turnTail` 的次数（每派一次加一）。
+	//
+	// # 它存在的唯一理由：座位派发点要落在官方位置
+	//
+	// 官方那个座位是 `turn-tail` 节点的 children（OFF:dsh-client-ui-chat/src/
+	// client/chat/register-node-renderers.ts:88-97），节点在 flow 里按
+	// `anchorSeq` 排（OFF:.../conversation-nodes/turn-tail.ts:135-139 的
+	// `data.seq + finalizedFollowup`，排序见 OFF:.../conversation-nodes/
+	// chat-snapshot-builder.ts:522-535），所以**每一轮的卡就在那一轮尾后面**。
+	// 本仓能画出这个位置的只有一个地方：transcript 的 `turn-tail` 行
+	// （`plugins/dsconversation/official_transcript_view.go` 的 drawTurnTail）。
+	//
+	// 壳因此不再在正文列尾派发这个座位（那会把所有轮次的卡堆到列尾），
+	// 只在**这一帧一个尾节点都没画**时退回列尾兜底：有轮次表就按轮各派一次，
+	// 没有基线（mockd / 老宿主）就派一次、`Env.Turn` 留 nil。判据就是这个计数：
+	// transcript 写、壳读。
+	//
+	// 每帧新建 `Env` 时从 0 开始（壳的渲染循环就是每帧新建），写者只需加一。
+	TurnTailSeatsDrawn int
 	// DrawKeyed 把一个 **keyed 子槽**按 key 交回壳去画：只画 key 命中的那几份。
 	//
 	// 为什么要有它：`Painter.Children` 拿到的 `drawSlot` 只带槽名，按官方 keyed 语义

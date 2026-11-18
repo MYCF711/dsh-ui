@@ -177,3 +177,69 @@ func TestFirstScreenDispatchTurnTailWithoutBaseline(t *testing.T) {
 		t.Fatalf("没有轮次基线时应派发 1 次且 env.Turn == nil；实际 count=%d null=%d", count, nullSeen)
 	}
 }
+
+// TestFirstScreenSkipsColumnEndWhenTranscriptOwnsTurnTailSeat ②（位置）：这一帧
+// transcript 已经在各自 `turn-tail` 节点里派发过座位时，骨架**不许**再在正文
+// 列尾派一遍。
+//
+// 官方位置语义（OFF:dsh-client-ui-chat/src/client/chat/register-node-renderers.ts:88-97
+// 的 children + OFF:.../conversation-nodes/turn-tail.ts:135-139 的 anchorSeq 排序
+// + OFF:.../chat-snapshot-builder.ts:522-535）决定了座位属于**那条尾节点**，
+// 所以 transcript 派发时 `env.TurnTailSeatsDrawn` 会加一；骨架据此让位。
+//
+// 变异（删掉 `Env.TurnTailSeatsDrawn > 0` 那条早退）：本用例的 count 从 0 变成 2，
+// 也就是两轮的卡在列尾**又**画一遍——正是账本里那条"位置仍在列尾"的差异。
+func TestFirstScreenSkipsColumnEndWhenTranscriptOwnsTurnTailSeat(t *testing.T) {
+	frames := []apiclient.Frame{
+		turnFrame(t, 1, "turn/start", map[string]any{"turn": 1}),
+		turnEndFrame(t, 2, 1, "completed"),
+		turnFrame(t, 3, "turn/start", map[string]any{"turn": 3}),
+		turnEndFrame(t, 4, 3, "completed"),
+	}
+	// has 一律 false：中栏不许被 `main.body` / `conversation` 占用方整块接管，
+	// 否则骨架根本不画 transcript 区（这一条用例要量的正是那个位置）。
+	env, canvas := newSkeletonEnv(1182, 832, func(pluginapi.Slot) bool { return false })
+	env.Data.Frames = frames
+
+	// 模拟 transcript（真实实现：dsconversation 的 drawTurnTailSeat）：在
+	// `conversation.view` 的绘制里按节点派发座位，并给计数加一。
+	var inNode []pluginapi.TurnProps
+	env.DrawKeyed = func(f ui.C, slot pluginapi.Slot, key string) {
+		if slot != OffConvView {
+			return
+		}
+		for _, turn := range []int64{1, 3} {
+			props := pluginapi.TurnProps{Turn: turn, Seq: int(turn)}
+			prev := env.Turn
+			env.Turn = &props
+			env.TurnTailSeatsDrawn++
+			inNode = append(inNode, *env.Turn)
+			env.Turn = prev
+		}
+	}
+
+	opts := officialSeatOpts()
+	opts.Views = []pluginapi.Tab{{Key: pluginapi.ViewChat, Label: "对话"}}
+	opts.ActiveView = pluginapi.ViewChat
+
+	var columnEnd int
+	pageTheme := dscore.VivaTheme(dscore.Dark())
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	view.Draw(canvas, env.Bounds, func(f ui.C) {
+		FirstScreen(f, env, opts, func(slot pluginapi.Slot) {
+			if slot == OffChatTurnTail {
+				columnEnd++
+			}
+		})
+	})
+
+	if len(inNode) != 2 || inNode[0].Turn != 1 || inNode[1].Turn != 3 {
+		t.Fatalf("transcript 侧节点内派发 = %+v，want 第 1 轮、第 3 轮各一次（用例前提没成立）", inNode)
+	}
+	if columnEnd != 0 {
+		t.Fatalf("transcript 已在尾节点里派发过座位，骨架又在正文列尾派了 %d 次（位置退回列尾）", columnEnd)
+	}
+	if env.Turn != nil {
+		t.Fatalf("列尾兜底之后 env.Turn 没恢复：%+v", *env.Turn)
+	}
+}

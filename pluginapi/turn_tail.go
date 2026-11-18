@@ -27,10 +27,13 @@ package pluginapi
 // 所以壳在派发这个座位之前把 owner props 挂到 `Env.Turn` 上，**派发完必须恢复
 // 原值**——与 `Env.EntryMenu` / `Env.GuideEntry` 同一约定：写者负责恢复，读方不缓存。
 //
-// 壳按轮各派一次（谁写、写在哪见 `internal/uikernel/shell_skeleton.go` 的
-// `dispatchTurnTails`）。`Env.Turn == nil` 表示**没有轮次基线**（老壳 / mockd /
-// 这一帧还没有 `turn/end` 帧）：占用方这时只能退回会话级的近似选择，
-// 不许把 nil 当成"第 0 轮"。
+// 派发点在 transcript 的 `turn-tail` 行里（官方那个位置）：
+// `plugins/dsconversation/official_transcript_view.go` 的 drawTurnTailSeat，
+// 每条尾节点派一次、并给 `Env.TurnTailSeatsDrawn` 加一；壳据此不再在正文列尾
+// 补一遍，只在"这一帧没有尾节点"时兜底按轮派发
+// （`internal/uikernel/shell_skeleton.go` 的 `dispatchTurnTails`）。
+// `Env.Turn == nil` 表示**没有轮次基线**（老壳 / mockd / 这一帧还没有
+// `turn/end` 帧）：占用方这时只能退回会话级的近似选择，不许把 nil 当成"第 0 轮"。
 type TurnProps struct {
 	// Turn 是这一轮的轮次号（官方 `TurnTailOwnerProps.turn.turn`）。
 	//

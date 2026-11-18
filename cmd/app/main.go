@@ -1856,6 +1856,25 @@ func parseWinSize(s string) (int, int, bool) {
 	return w, h, true
 }
 
+// pageRoot 是整窗 `ui.Page` 的作用域名，**必须**是插件命名交互 id 的那个 feature。
+//
+// 为什么：viva 用 `PageConfig.Root` 判「这个 id 是不是我页面上的」
+// （`viva@v0.6.4/ui/page.go:182-183`），判据落在
+// `p.tree.Within(id.Scope(), p.root)`（`ui/page.go:399-402`）。本壳所有插件都拿
+// `Env.Feat = home` 造交互 id（`ids.go` 的 `home` 与 cfg.Paint 里的 `Feat: home`），
+// 页面却用默认的 "page"，于是页面级 `ui.Shortcut` 永远匹配不上
+// （`ui/shortcut.go:106-108` 的 pageWide 判据）。元素级 `Box.Shortcut` 按 id 精确
+// 匹配、不受这一条影响，但既然两者都走同一个 Page，Root 就按内容所在的作用域给，
+// 不留一个默认值当陷阱。
+const pageRoot = "home"
+
+// newWindowPage 造整窗的 ui.Page。一个 Page 活过所有帧（名字/作用域/滚动状态都挂在
+// 它身上），所以只建一次；Tree 是整窗的交互树（与 `app.Config{Tree: &tree}` 同一棵），
+// Theme 传包级 `theme` 的地址，运行时换主题下一帧跟着换。
+func newWindowPage(theme *ui.Theme, tree *gfx.Tree) *ui.Page {
+	return ui.NewPage(ui.PageConfig{Tree: tree, Root: pageRoot, Theme: theme})
+}
+
 func newConfig(m *model) app.Config {
 	if m.web == nil {
 		m.web = &app.WebHost{}
@@ -2237,6 +2256,38 @@ func newConfig(m *model) app.Config {
 	cfg.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
 		if ev.Release {
 			return gfx.EventResult{}
+		}
+		// 整窗的 `ui.Page` 先接按键——它是 `ui.Box.Shortcut` / `ui.Shortcut` 唯一的驱动源。
+		//
+		// 为什么必须由壳来调：本壳是 `Page.Draw` 把整页画进内容区的形态
+		// （`m.view.Draw(canvas, contentBounds, …)`，上面 cfg.Paint 里那一句），
+		// viva 对这种形态的规定写得很直白——"A host that draws a page this way routes
+		// its input with Key, Pointer, Wheel and TextInput; Config does that for a whole
+		// window"（`viva@v0.6.4/ui/page.go:716-721`）。而 Shortcut 只由那条路由派发：
+		// `Page.Key` → `onKey` → `routeKey` → `matchShortcut`
+		// （`ui/page.go:502-514`、`ui/page.go:1085-1093`、`ui/shortcut.go:94-135`）。
+		// 派中的结果靠 `EventResult.Activate` 回到 app 的 painter，由它再跑一次
+		// "事件通行"重画——那一画里 `canvas.Clicked(id)` 为真，声明它的那句
+		// Shortcut 才返回 true（`viva@app/painter.go:727-735,744-756`）。少了这一步，
+		// 插件里声明的 Shortcut 全是死代码。
+		//
+		// 为什么排在这里（宿主自己的按键处理**之前**）：同一段注释的下一句是
+		// "Give the page the event before the host's own key handling"
+		// （`ui/page.go:1088-1093`）；全窗口页面也是这个次序——`Config` 把
+		// `base.OnKey` 收成 `p.baseKey` 当兜底，`p.onKey` 才是 `config.OnKey`
+		// （`ui/page.go:659-663`）。
+		//
+		// **一个键只走一条路**：页面接了（Handled，或带 Activate 的点击）就立刻返回，
+		// 不再往下交给 chrome / `kernel.HandleKey`；页面没接才轮到底下那条链。
+		// 这样 `pluginapi.KeyHandler` 的既有路径（dscontextmenu 目前靠它兜住
+		// Shift+F10 / 菜单方向键）行为不变，也不会被页面和插件各处理一遍。
+		if m.view != nil {
+			if result := m.view.Key(ev); result.Handled || !result.Activate.IsZero() {
+				// 与下面 `kernel.HandleKey` 分支同理：Shortcut 的 Activate 由 painter
+				// 兑现一次事件重画，但 shell.overlay 的内容还得靠壳自己求帧。
+				m.inv.Invalidate()
+				return result
+			}
 		}
 		// 芯片就地改名的 Esc 必须**先**被编辑框吃掉：官方那一刻 input 有焦点，
 		// Esc 只做「取消改名」（TerminalTitle.tsx:64-66）；漏了这一步，
@@ -2711,7 +2762,7 @@ func main() {
 	// 所以必须在这里建一次，不能在 Paint 里每帧新建。
 	// Theme 传包级 `theme` 的地址 → applyPendingTheme 改 theme，下一帧跟着换。
 	// Tree 给整窗的交互树（与 app.Config{Tree: &tree} 是同一棵）。
-	m.view = ui.NewPage(ui.PageConfig{Tree: &tree, Theme: &theme})
+	m.view = newWindowPage(&theme, &tree)
 	// 官方目录浏览器：把数据源与「打开后」的回调注入插件（见 dirpicker_wiring.go）。
 	wireDirPicker(m)
 	wireOfficialPanels(m)

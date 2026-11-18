@@ -101,18 +101,20 @@ func vr3OpenMenu(t *testing.T, dir string, width, height int, actions []pluginap
 		})
 	}
 	config.OnScroll = view.Wheel
-	// 按键接线与壳（`cmd/app/main.go` 的 `cfg.OnKey`）同序：**先插件，再页面**。
-	// 页面这一段是 2026-11-18 才补上的：Viva 只从 `Page.Key` 派发 `ui.Box.Shortcut`
-	// （`viva@v0.6.4/ui/page.go:1090-1093`），少了它菜单的方向键/Esc/Shift+F10 全是死代码。
+	// 按键接线与壳（`cmd/app/main.go` 的 `cfg.OnKey`）同序：**先页面，再插件**。
+	// 壳是 `Page.Draw` 形态，viva 要求这种形态由宿主自己用 `Page.Key` 路由输入
+	// （`viva@v0.6.4/ui/page.go:716-721`），并且排在宿主自己的按键处理之前
+	// （`ui/page.go:1088-1093`）；`ui.Box.Shortcut` 只由那条路由派发
+	// （`ui/shortcut.go:94-135`）。页面接掉的键不再交给插件（一个键只走一条路）。
 	config.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
 		if ev.Release {
 			return gfx.EventResult{}
 		}
+		if result := view.Key(ev); result.Handled || !result.Activate.IsZero() {
+			return result
+		}
 		if p.HandleKey(ev) {
 			return gfx.EventResult{Handled: true, Repaint: true}
-		}
-		if result := view.Key(ev); result.Handled || result.Repaint {
-			return result
 		}
 		return gfx.EventResult{}
 	}

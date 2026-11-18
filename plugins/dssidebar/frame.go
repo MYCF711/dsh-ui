@@ -30,17 +30,27 @@ const (
 	brandPaddingLeft       = 8 // SidebarRoot.module.css:64-66（Windows 展开态）
 	brandMarkOffsetX       = 1 // SidebarRoot.module.css:72-74
 	newSessionHeight       = 38
-	newSessionMarginTop    = 6  // SidebarRoot.module.css:84-86（Windows）
-	newSessionMarginInline = 4  // SidebarRoot.module.css:430：paint-inset 3 + 1
-	panelListTop           = 12 // scrollRegion margin-top 4 + scrollArea 首行 8（:533-555）
-	newSessionFontSize     = 14
-	newSessionLineHeight   = 22
-	panelRowHeight         = 32 // SidebarRoot.module.css:685-703
-	panelListGap           = 2
-	panelListBottom        = 8
-	workspaceHeaderHeight  = 36
-	workspaceHeaderBottom  = 0 // WorkspaceBrowser.module.css:66-79：--workspace-toolbar-gap:0
-	workspaceIconSize      = 28
+	newSessionMarginTop    = 6 // SidebarRoot.module.css:84-86（Windows）
+	newSessionMarginInline = 4
+	// newSessionRowGap 是官方 `.newSessionRow` 的 `gap:6px`（SidebarRoot.module.css:428）：
+	// 新会话按钮与导入触发器之间的间距。
+	newSessionRowGap = 6
+	// importActionSize 是官方 `.trigger.wide` 的几何：38×38（ImportSessions.module.css）。
+	importActionSize = 38
+	// importActionIcon 是官方触发器图标尺寸（sprite 的 `size:16`）。
+	importActionIcon = 16
+	// importActionLabel 是官方 zh 字典的 `action.label`（lib/client.js）：
+	// 官方把它当按钮的 aria-label，这里当 Hit 的无障碍名。
+	importActionLabel     = "导入 DeepSeek 会话"
+	panelListTop          = 12 // scrollRegion margin-top 4 + scrollArea 首行 8（:533-555）
+	newSessionFontSize    = 14
+	newSessionLineHeight  = 22
+	panelRowHeight        = 32 // SidebarRoot.module.css:685-703
+	panelListGap          = 2
+	panelListBottom       = 8
+	workspaceHeaderHeight = 36
+	workspaceHeaderBottom = 0 // WorkspaceBrowser.module.css:66-79：--workspace-toolbar-gap:0
+	workspaceIconSize     = 28
 
 	// dsshell 在两个 sidebar slot 之间固定放 8+1+8=17px。
 	// 官方 regionArea 此处只有 sectionHeader 的 margin-top:2px，
@@ -51,11 +61,16 @@ const (
 // frameBoxes 记录真实 flex 矩形，供两档无头窗口和组件测试量测。
 // 不使用“常量等于自己”的自证代替布局证据。
 type frameBoxes struct {
-	Brand           ui.Box
-	BrandIdentity   ui.Box
-	BrandMark       ui.Box
-	BrandName       ui.Box
-	NewSession      ui.Box
+	Brand         ui.Box
+	BrandIdentity ui.Box
+	BrandMark     ui.Box
+	BrandName     ui.Box
+	NewSession    ui.Box
+	// Import 是官方 `sidebar.session.action` 那颗导入触发器（宽档 38×38）。
+	// 零值 Box 的 Rect() 会 panic，所以"画没画"另有 ImportDrawn 这个标记：
+	// 壳没接 `Actions.ImportDeepSeekSessions` 时两者都保持"没有"。
+	Import          ui.Box
+	ImportDrawn     bool
 	PanelList       ui.Box
 	PanelRows       []ui.Box
 	WorkspaceHeader ui.Box
@@ -103,6 +118,7 @@ func (p *Plugin) panelRoutes() []panelRoute {
 func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 	t := p.theme
 	p.frameBoxes.PanelRows = p.frameBoxes.PanelRows[:0]
+	p.frameBoxes.ImportDrawn = false
 	ui.Column(f).FillWidth().Children(func() {
 		p.frameBoxes.Brand = ui.Row(f).FillWidth().Height(logoRowHeight).Items(ui.Center).Children(func() {
 			p.frameBoxes.BrandIdentity = ui.Row(f).Height(brandIdentityHeight).Gap(brandGap).
@@ -133,19 +149,29 @@ func (p *Plugin) drawHeader(f ui.C, env *pluginapi.Env) {
 			ui.Spacer(f)
 		})
 
-		newBox := ui.Row(f).FillWidth().Height(newSessionHeight).Radius(t.Radii.MD).
-			Background(t.BgLayer2).Border(0.5, t.BorderL3).Hover(ui.Look{}.Background(t.Hover)).
+		// 官方容器几何（SidebarRoot.module.css:424-430 `.newSessionRow`）：
+		// display:flex / align-items:center / **gap:6px** / 左右各 paint-inset+1px。
+		// 里面对半分：`.newSession` 是 `flex:1 1 auto; min-width:0`，
+		// 导入触发器是固定方形。没有导入能力时触发器不占位、行与原来逐像素相同。
+		var newBox ui.Box
+		ui.Row(f).FillWidth().Height(newSessionHeight).Gap(newSessionRowGap).
 			MarginSides(newSessionMarginTop, newSessionMarginInline, 0, newSessionMarginInline).
-			Items(ui.Center).Justify(ui.Center).Hit(env.Tree.ID(env.Feat, "new-session"), "新建会话").Children(func() {
-			ui.Row(f).Items(ui.Center).Gap(6).Children(func() {
-				if icon, ok := dsassets.SidebarNewChatMedium(t.LabelPrimary); ok {
-					ui.Icon(f, icon).Size(14, 14).Color(t.LabelPrimary)
-				}
-				ui.Text(f, "新会话").FontSize(newSessionFontSize).LineHeight(newSessionLineHeight).
-					Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+			Items(ui.Center).Children(func() {
+			newBox = ui.Row(f).Grow(1).MinWidth(0).Height(newSessionHeight).Radius(t.Radii.MD).
+				Background(t.BgLayer2).Border(0.5, t.BorderL3).Hover(ui.Look{}.Background(t.Hover)).
+				Items(ui.Center).Justify(ui.Center).
+				Hit(env.Tree.ID(env.Feat, "new-session"), "新建会话").Children(func() {
+				ui.Row(f).Items(ui.Center).Gap(6).Children(func() {
+					if icon, ok := dsassets.SidebarNewChatMedium(t.LabelPrimary); ok {
+						ui.Icon(f, icon).Size(14, 14).Color(t.LabelPrimary)
+					}
+					ui.Text(f, "新会话").FontSize(newSessionFontSize).LineHeight(newSessionLineHeight).
+						Weight(gfx.WeightMedium).Color(t.LabelPrimary)
+				})
 			})
+			p.frameBoxes.NewSession = newBox
+			p.drawImportAction(f, env, t)
 		})
-		p.frameBoxes.NewSession = newBox
 		if newBox.Clicked() {
 			p.activePanel = ""
 			if env.Act.NewSession != nil {
@@ -352,4 +378,42 @@ func (p *Plugin) drawPluginsPanel(f ui.C, env *pluginapi.Env) {
 func (p *Plugin) drawSchedulesPanel(f ui.C, env *pluginapi.Env) {
 	// 官方 TaskManagerPage 的落地在 schedule_page.go（数据面 Actions.ScheduleCatalog）。
 	p.drawSchedulePage(f, env)
+}
+
+// drawImportAction 画官方 `sidebar.session.action` 的**宿主座位**：
+// dsh-deepseek-chat-import 那颗按钮就落在这颗位置上。
+//
+// 官方几何（OFF:dsh-deepseek-chat-import/src/client/ImportSessions.module.css:3-24）：
+// 宽档 `.trigger.wide` 是 38×38、圆角 MD、0.5px BorderL3 描边、抬高填充；
+// 图标是 `IconUploadOutlineRegular`（16），无障碍名是 `导入 DeepSeek 会话`。
+//
+// 只画 wide 档：本仓侧栏没有官方 `.collapsed` 窄轨态（宽度由壳给、插件没有收起
+// 渲染分支），所以没有 36×36 无描边那一档可对齐。窄轨态真做出来时，
+// 这里要按官方 `.trigger` 与 `.trigger.wide` 两条分支补齐。
+//
+// 填充色用的是 `BgLayer2`——本仓把官方 `.newSession` 的 `card-fill` 也映到它
+// （见上面 New session 那段），两颗按钮因此天然同色；官方触发器用的
+// `--dsw-alias-button-elevated-fill` 目前在 `pluginapi.Theme` 里没有对应令牌，
+// 加新令牌要连带改 theme 表与 golden，不在这次改动面里。
+//
+// 壳没接 `Actions.ImportDeepSeekSessions` 时**不画**（官方这条 slot 也没人坐）：
+// 画一颗点了不弹文件对话框的按钮，比不画更坏。
+func (p *Plugin) drawImportAction(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
+	if env == nil || env.Act.ImportDeepSeekSessions == nil {
+		return
+	}
+	trigger := ui.Row(f).Width(importActionSize).Height(importActionSize).Shrink(0).
+		Radius(t.Radii.MD).Background(t.BgLayer2).Border(0.5, t.BorderL3).
+		Hover(ui.Look{}.Background(t.Hover)).
+		Items(ui.Center).Justify(ui.Center).
+		Hit(env.Tree.ID(env.Feat, "import-sessions"), importActionLabel).Children(func() {
+		if icon, ok := dsassets.SidebarImportUpload(t.LabelPrimary); ok {
+			ui.Icon(f, icon).Size(importActionIcon, importActionIcon).Color(t.LabelPrimary)
+		}
+	})
+	p.frameBoxes.Import = trigger
+	p.frameBoxes.ImportDrawn = true
+	if trigger.Clicked() {
+		env.Act.ImportDeepSeekSessions()
+	}
 }

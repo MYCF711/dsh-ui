@@ -1459,6 +1459,20 @@ type Actions struct {
 	// 比不画更让人以为"删掉了"。
 	DeleteSession func(id string)
 	NewSession    func()
+	// ImportDeepSeekSessions 是最官方 rc.5 `dsh-deepseek-chat-import` 的导入动
+	// （侧栏 `sidebar.session.action` 那颗按钮点下去做的事）：
+	// 选一个 `deepseek_data-*.zip` → 校验宿主上限 → 上传导入 → 刷新会话列表，
+	// 全程进度写状态栏。官方这一步在浏览器里由插件自己完成
+	// （`ImportSessions.tsx` 的 `injected.importArchive`）；本仓没有浏览器，
+	// 文件对话框、HTTP 客户端、列表缓存都归壳，所以整条流程是一个动作。
+	//
+	// 目标工作区用官方对话框的默认值：**当前会话所在的工作区**。
+	// 没有当前会话、或它不属于任何工作区时，壳只写一句状态栏，不猜一个写进去。
+	//
+	// 异步：内部起 goroutine，调用方不要阻塞绘制线程。
+	// nil = 壳没接（老壳 / 无头 / 测试）→ 侧栏**不画**导入按钮：
+	// 画一个点了没反应的按钮，比不画更坏。
+	ImportDeepSeekSessions func()
 	// Notify 让插件在状态栏说一句话（"已复制"这类反馈）。
 	// 插件不直接写状态栏：状态栏是另一个插件的地盘。
 	//

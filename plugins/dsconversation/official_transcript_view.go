@@ -34,6 +34,7 @@ import (
 
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
@@ -303,7 +304,7 @@ func (v *OfficialTranscriptView) drawRow(f ui.C, env *pluginapi.Env, e Transcrip
 		case ChatNodeTurnProcess:
 			v.drawTurnProcess(f, e)
 		case ChatNodeTurnTail:
-			v.drawTurnTail(f, e)
+			v.drawTurnTail(f, env, e)
 		case ChatNodeSystemPrompt:
 			v.drawDisclosureRow(f, e, "系统提示", "")
 		case ChatNodeQuestionReply:
@@ -1063,10 +1064,29 @@ func (v *OfficialTranscriptView) drawTurnProcess(f ui.C, e TranscriptEntry) {
 	})
 }
 
-// drawTurnTail 画 §5.15 Turn 尾：动作行 + 用量 + 扩展位。
-func (v *OfficialTranscriptView) drawTurnTail(f ui.C, e TranscriptEntry) {
+// drawTurnTail 画 §5.15 Turn 尾：按轮座位（计划卡 / 动作卡）+ 动作行 + 用量。
+//
+// # 座位就在这一条节点里（官方位置语义）
+//
+// 官方 `conversation.chat.turnTail` 不是正文列的座位，而是 `turn-tail` 节点的
+// children（OFF:dsh-client-ui-chat/src/client/chat/register-node-renderers.ts:88-97
+// 的 `children: {'conversation.chat.turnTail': {kind:'list'}}`），
+// `TurnTailNodeView.tsx:43-51` 每画一个节点就 renderSlot 一次：
+//
+//	const owner: TurnTailOwnerProps = { turn, seq: closing?.finalNode.seq ?? data.seq, openFile }
+//	const tail = renderSlot('conversation.chat.turnTail', owner)
+//
+// 而 `turn-tail` 节点本身按 `anchorSeq = data.seq + finalizedFollowup` 排在 flow 里
+// （OFF:.../conversation-nodes/turn-tail.ts:135-139；排序 OFF:.../chat-snapshot-builder.ts:522-535），
+// 也就是**每一轮的尾后面**。所以本仓也必须在这里派发，不能在正文列尾统一派一遍
+// （那会把所有轮次的卡堆到列尾）。
+//
+// 顺序也照官方 `TurnTailNodeView.tsx:57-64`：`{tail}` 在 `MessageIconActions` 之前，
+// 所以座位画在动作行上面。
+func (v *OfficialTranscriptView) drawTurnTail(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
 	t := v.Theme
 	ui.Column(f).FillWidth().Gap(TurnTailGap).Children(func() {
+		v.drawTurnTailSeat(f, env, e)
 		actions := ui.Row(f).FillWidth().Items(ui.Center).Gap(ActionsRowGap).Height(ActionsRowHeight).
 			MarginSides(TurnTailActionsMarginTop, 0, 0, AssistantActionsMarginLeft)
 		actions.Children(func() {
@@ -1078,6 +1098,30 @@ func (v *OfficialTranscriptView) drawTurnTail(f ui.C, e TranscriptEntry) {
 			}
 		})
 	})
+}
+
+// drawTurnTailSeat 在**这一条 `turn-tail` 节点里**派发按轮座位。
+//
+// owner props 走 `Env.Turn`（官方 `TurnTailOwnerProps{turn, seq}`，
+// OFF:.../contract/slots.ts:60-64；本仓通道见 pluginapi/turn_tail.go）：
+// 写者负责恢复原值，读方不缓存——与 `EntryMenu` / `GuideEntry` 同一约定。
+//
+// 同时把 `Env.TurnTailSeatsDrawn` 加一：壳据此知道"座位已经在各自轮次里画过了"，
+// 不再在正文列尾补一遍（`internal/uikernel/shell_skeleton.go` 的 dispatchTurnTails）。
+//
+// 两个"不派发"的判据：
+//
+//	env.DrawSlot == nil  独立装配（单测 / 没有内核的挂载）：没有派发通道
+//	!e.TurnKnown()       官方 `TurnTailNodeView.tsx:43-46`：turn 取不到时整块不渲染
+func (v *OfficialTranscriptView) drawTurnTailSeat(f ui.C, env *pluginapi.Env, e TranscriptEntry) {
+	if env == nil || env.DrawSlot == nil || !e.TurnKnown() {
+		return
+	}
+	prev := env.Turn
+	env.Turn = &pluginapi.TurnProps{Turn: e.Turn, Seq: e.Seq}
+	env.TurnTailSeatsDrawn++
+	env.DrawSlot(f, uikernel.OffChatTurnTail)
+	env.Turn = prev
 }
 
 // drawQuestionReply 画 §5.18 已答问题批次；官方几何在 official_question_reply.go。

@@ -7,9 +7,14 @@ package uikernel
 //
 // 那个座位在官方是**一轮一次**的（`turn-tail` 节点的 children：
 // OFF:dsh-client-ui-chat/src/client/chat/register-node-renderers.ts:88-97，
-// `TurnTailNodeView.tsx:43-49` 每画一个 turn-tail 节点 renderSlot 一次）。
-// 本骨架没有 `conversation.chat.node` 工厂节点，座位只能在正文列尾部由骨架
-// 自己派发（`drawConversationSkeleton` 的 `dispatchTurnTails`），所以骨架必须
+// `TurnTailNodeView.tsx:43-51` 每画一个 turn-tail 节点 renderSlot 一次）。
+// 座位位置也在那个节点里（排在 flow 中那一轮尾的位置：
+// OFF:.../conversation-nodes/turn-tail.ts:135-139），所以本仓由 transcript
+// 在每条 `turn-tail` 行里派发（`plugins/dsconversation` 的 drawTurnTailSeat）。
+//
+// 本文件服务的是壳的**兜底档**：这一帧没有 transcript 尾节点时
+// （mockd / 老宿主 / 选中了非 chat 的 view），`drawConversationSkeleton` 的
+// `dispatchTurnTails` 仍在正文列尾按轮各派一次，所以骨架必须
 // **自己知道这一帧有几轮**——这就是本文件。
 //
 // # 判据与 transcript 投影必须一致（否则出现"画了尾却没座位"的假缺口）

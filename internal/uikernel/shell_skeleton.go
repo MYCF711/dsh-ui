@@ -887,6 +887,14 @@ func drawConversationSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, di
 					// 没接上时（最小装配 / 单测环境）退回旧行为"把挂在这一槽上的全画
 					// 一遍"——那是过渡桥，与 `BridgeLegacy` 同一性质，不是终态：
 					// 终态下这一槽只会有一个 key 命中。
+					//
+					// 座位计数先清零再画 transcript：transcript 在自己的 `turn-tail`
+					// 行里每派一次 `conversation.chat.turnTail` 就加一，壳据此判断
+					// "这一帧的座位已经落在各自轮次里了"（见下面的 dispatchTurnTails）。
+					// 每帧新建 Env 时它本来就是 0，这里只是把"谁先写"钉死在代码里。
+					if env != nil {
+						env.TurnTailSeatsDrawn = 0
+					}
 					if env != nil && env.DrawKeyed != nil && layout.Options.ActiveView != "" {
 						env.DrawKeyed(f, OffConvView, layout.Options.ActiveView)
 					} else {
@@ -898,12 +906,14 @@ func drawConversationSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, di
 					// transcript 节点级座位（官方动作卡的两个 children）：
 					// 空槽也 dispatch（没有占用方就什么都不画），与上面几个座位一致。
 					//
-					// turnTail **一轮一次**，不是每帧一次：官方那个座位是
-					// `turn-tail` 节点的 children（OFF:dsh-client-ui-chat/src/client/
-					// chat/register-node-renderers.ts:88-97），`TurnTailNodeView.tsx:43-49`
-					// 每画一个 turn-tail 节点就 renderSlot 一次，owner props 里带这一轮的
-					// turn（contract/slots.ts:60-64）。本骨架没有 `conversation.chat.node`
-					// 工厂节点，所以在正文列尾部**按轮各派一次**（判据与数量见 turns.go）。
+					// turnTail 的**位置**是官方定的：那个座位是 `turn-tail` 节点的
+					// children（OFF:dsh-client-ui-chat/src/client/chat/
+					// register-node-renderers.ts:88-97），节点按 anchorSeq 排在 flow
+					// 里（OFF:.../conversation-nodes/turn-tail.ts:135-139 +
+					// chat-snapshot-builder.ts:522-535），所以每一轮的卡就该在**那一轮
+					// 尾后面**——已经在上面画 transcript 时由 transcript 自己派发
+					// （`plugins/dsconversation` 的 drawTurnTailSeat）。壳这里只在
+					// "这一帧一个尾节点都没画"时退回列尾派发（判据见 turns.go）。
 					dispatchTurnTails(env, dispatch)
 					// tool.call.toolview 仍是会话级一次：它是 **keyed**（key = 工具 wire 名），
 					// 官方由 `tool-call` 节点在**每个调用处**渲染；按调用派发不在本单范围。
@@ -919,28 +929,47 @@ func drawConversationSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, di
 
 // dispatchTurnTails 派发 transcript 的按轮座位（官方 `conversation.chat.turnTail`）。
 //
-// # 为什么不是一次
+// # 位置：座位在每一轮尾节点里，不在正文列尾
 //
 // 官方那个座位挂在 `turn-tail` 节点下（OFF:dsh-client-ui-chat/src/client/chat/
-// register-node-renderers.ts:88-97），一轮一个尾节点，`TurnTailNodeView.tsx:43-49`
-// 每个节点各 renderSlot 一次，owner props 是 `TurnTailOwnerProps{turn, seq}`
-// （OFF:.../contract/slots.ts:60-64）。两个官方消费方都只认 owner props 里的那一轮：
-// 计划卡 `usePlans(String(turn.turn))`（OFF:.../ui-plan/src/client/PlanCard.tsx:43-45）、
-// 动作卡 `proposalOf(view, turn.turn)`（OFF:.../ui-action-cards/src/client/Card.tsx:69-76）。
+// register-node-renderers.ts:88-97 的 `children`），一轮一个尾节点，
+// `TurnTailNodeView.tsx:43-51` 每个节点各 renderSlot 一次，owner props 是
+// `TurnTailOwnerProps{turn, seq}`（OFF:.../contract/slots.ts:60-64）。尾节点本身
+// 按 `anchorSeq = data.seq + finalizedFollowup` 排在 flow 里
+// （OFF:.../conversation-nodes/turn-tail.ts:135-139；排序
+// OFF:.../chat-snapshot-builder.ts:522-535 的 orderedVisibleChatNodes），
+// 所以**每一轮的卡就紧跟那一轮尾**，下一轮的第一个节点排在它后面。
+//
+// 本仓能落在那个位置的只有 transcript 自己：`plugins/dsconversation` 的
+// `OfficialTranscriptView.drawTurnTail` 在每条 `turn-tail` 行里派发本座位
+// （`drawTurnTailSeat`），并给 `Env.TurnTailSeatsDrawn` 加一。所以本函数
+// **首要动作是让位**：这一帧 transcript 已经派过（计数 > 0）就直接返回，
+// 绝不再在正文列尾补一遍——否则同一轮画两张卡，一张在正确位置、一张堆在列尾。
+//
+// # 什么时候还由壳派发
+//
+// 两种"这一帧根本没有尾节点"的情形（计数 == 0，故退回本函数）：
+//
+//	① 没有轮次基线（首帧 / 老宿主 / mockd）：`TurnTails` 为空 → 派发一次、
+//	   `env.Turn` 留 nil，占用方退回会话级的近似选择（dsplan 的 `latestTurn`
+//	   就是这一档），不会因为壳没数据而整块不画。
+//	② 有基线但没画 chat transcript（选中了非 chat 的 `conversation.view`，
+//	   或者最小装配里 `env.DrawKeyed` 没接上）：仍按轮各派一次，行为与改造前一致。
+//	   官方在非 chat 视图里本来就没有 chat flow，也就没有这个座位——本仓保留这一档
+//	   只为不退步（宁可位置退化，也不让卡整块消失）。
 //
 // 座位契约在本仓走 `Env.Turn`（owner props 只有 `Painter.Draw(f, *Env)` 一个入口，
-// 见 pluginapi/turn_tail.go）。所以这里**按轮各派一次**，每次把这一轮的 owner
-// props 挂上去，派发结束恢复原值（与 `EntryMenu` / `GuideEntry` 同一约定：
-// 写者负责恢复，读方不缓存）。
-//
-// # 没有轮次基线时退回一次
-//
-// `TurnTails` 为空 = 这一帧还没有 `turn/end` 帧（首帧 / 老宿主 / mockd）：派发
-// 一次、`env.Turn` 留 nil，也就是改造前的行为。占用方据此退回会话级的近似选择
-// （dsplan 的 `latestTurn` 就是这一档），不会因为壳没数据而整块不画。
+// 见 pluginapi/turn_tail.go）。每次派发把这一轮的 owner props 挂上去，派发结束
+// 恢复原值（与 `EntryMenu` / `GuideEntry` 同一约定：写者负责恢复，读方不缓存）。
 func dispatchTurnTails(env *pluginapi.Env, dispatch func(pluginapi.Slot)) {
 	if env == nil {
 		dispatch(OffChatTurnTail)
+		return
+	}
+	if env.TurnTailSeatsDrawn > 0 {
+		// transcript 已在各自 `turn-tail` 节点里派发过（官方位置）。
+		// 再派一遍 = 同一轮的卡在列尾多出一张。
+		env.Turn = nil
 		return
 	}
 	tails := TurnTails(env.Data.Frames)

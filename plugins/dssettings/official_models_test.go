@@ -34,7 +34,7 @@ func TestModelsPageJoinsRealDirectoryAndCatalog(t *testing.T) {
 	snapshot := modelsSnapshotFixture()
 	model := BuildPanel(describe, fullDesktopFacts())
 	panel, _ := model.Section("models")
-	panel = buildModelsPage(panel, describe, nil, snapshot, nil)
+	panel = buildModelsPage(panel, describe, nil, snapshot, nil, nil)
 	if panel.Models == nil || len(panel.Models.Providers) != 4 {
 		t.Fatalf("目录 join = %+v，应为 4 条真实 route", panel.Models)
 	}
@@ -82,7 +82,7 @@ func TestModelsPageFailuresAreNotEmptySuccess(t *testing.T) {
 	describe := describeFixture()
 	snapshot := &apiclient.ModelsPageSnapshot{RegisteredError: "registered 501", CatalogError: "catalog unavailable"}
 	panel, _ := BuildPanel(describe, fullDesktopFacts()).Section("models")
-	panel = buildModelsPage(panel, describe, nil, snapshot, nil)
+	panel = buildModelsPage(panel, describe, nil, snapshot, nil, nil)
 	if len(panel.Models.Errors) != 2 || panel.Note == "" {
 		t.Fatalf("失败必须可见：errors=%v note=%q", panel.Models.Errors, panel.Note)
 	}
@@ -203,7 +203,7 @@ func TestModelsProviderFailuresStayUnknown(t *testing.T) {
 		Configurable:    []apiclient.ConfigurableProvider{{Provider: "deepseek", DisplayName: "DeepSeek", SettingsNamespace: "llm", SettingsPath: []string{"providers", "deepseek"}}},
 	}
 	panel, _ := BuildPanel(describe, fullDesktopFacts()).Section("models")
-	panel = buildModelsPage(panel, describe, nil, snapshot, nil)
+	panel = buildModelsPage(panel, describe, nil, snapshot, nil, nil)
 	row, ok := panel.Row("provider-edit-deepseek")
 	if !ok || !strings.Contains(row.Desc, "注册未知") || strings.Contains(row.Desc, "未注册") {
 		t.Fatalf("首次 listProviders 失败被写成确定状态：%+v", row)
@@ -217,7 +217,7 @@ func TestModelsProviderFailuresStayUnknown(t *testing.T) {
 		Registered:        []apiclient.ProviderInfo{{ID: "deepseek", Name: "DeepSeek"}},
 		ConfigurableError: "configurable failed",
 	}
-	panel = buildModelsPage(panel, describe, nil, snapshot, nil)
+	panel = buildModelsPage(panel, describe, nil, snapshot, nil, nil)
 	row, ok = panel.Row("provider-edit-deepseek")
 	if !ok || !strings.Contains(row.Desc, "配置未知") || !strings.Contains(row.Reason, "配置状态未知") || strings.Contains(row.Reason, "没有可写") {
 		t.Fatalf("首次 configurable 失败被写成没有配置：%+v", row)
@@ -232,7 +232,7 @@ func TestCatalogDefaultAlsoSelectsCurrentChoice(t *testing.T) {
 		}
 	}
 	panel, _ := BuildPanel(describe, fullDesktopFacts()).Section("models")
-	panel = buildModelsPage(panel, describe, nil, modelsSnapshotFixture(), nil)
+	panel = buildModelsPage(panel, describe, nil, modelsSnapshotFixture(), nil, nil)
 	row, _ := panel.Row("model-default")
 	if row.Selected != "zeta-1" || row.Value != "zeta-1" {
 		t.Fatalf("catalog 生效默认值没有同步 Selected：%+v", row)

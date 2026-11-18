@@ -62,6 +62,18 @@ type officialPanel struct {
 	// 只有 Apply 行会经 writer 发一次 settings.mutate。
 	modelsEdit           *retryEditorState
 	nextModelsGeneration uint64
+	// credentialSet 是壳的 `credentials.set`（官方 `operations.storeCredential`，
+	// operations.ts:78-81）。nil = 壳没接：密钥行这时不画（不画点了没反应的框）。
+	//
+	// 为什么单独一路而不是塞进 SettingsWriter：凭据与设置文档是**两个库、两套拒绝
+	// 语义**（设置只读时凭据仍可写），官方也是两条 Remote 命名空间。
+	credentialSet func(ref, value string) error
+	// modelsKeyClearPending 表示"这次 Apply 已经把密钥写进凭据库了，下一个窗口
+	// 线程帧把输入框清空"。
+	//
+	// 为什么不在写成功的 goroutine 里清：Viva 的 ui.Field 只能在窗口线程读写
+	// （`ui/field.go` 的 Field 注释），跨线程 SetText 是数据竞争。
+	modelsKeyClearPending bool
 
 	// rows 是当前 section 的可点行（键盘光标用）。
 	rows   []PanelRow
@@ -71,9 +83,18 @@ type officialPanel struct {
 	//
 	// 为什么放在面板状态里而不是模型里：模型每帧从数据面重算，交互态必须跨帧活着
 	// （展开的卡片、搜索串、段的开合）。
+	// pluginsSearchField 是「内置插件」页的搜索框。
 	pluginsSearchField ui.Field
-	pluginsGlobalOpen  *bool
-	pluginsExpanded    string
+	// modelsKeyField 是 Models 页 provider 卡里的 API 密钥输入框。
+	//
+	// 为什么和 editor 草稿分开：`retryEditorState` 每帧 clone、可并存多代，而
+	// Viva 的 ui.Field 是**窗口线程上的唯一一份**（输入法/光标/选区的宿主）。
+	// 所以草稿文本活在 Field 里，`modelsEdit` 只保存"写哪、写什么引用"这类元信息。
+	// Secure 恒为 true（官方 `type={revealed ? 'text' : 'password'}` 的默认态，
+	// ApiKeyInput.tsx:38）；显隐钮在 draw 里翻它。
+	modelsKeyField    ui.Field
+	pluginsGlobalOpen *bool
+	pluginsExpanded   string
 	// pluginsActiveTab 是 `settings.plugins.tab` 里选中的那一项（空串 = 第一项）。
 	pluginsActiveTab string
 	// pluginsCursorKey 是键盘光标所在的卡片 rowKey（空串 = 还没有光标）。
@@ -341,6 +362,9 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	if env.Act.SettingsHostFacts != nil {
 		facts = fromAPIHostFacts(env.Act.SettingsHostFacts())
 	}
+	// 凭据域是**独立**的一路能力（官方 `remote.credentials` 与 `remote.settings`
+	// 两条命名空间）：设置写接上了不代表凭据也能写，所以单独判 nil。
+	credentialSet := env.Act.CredentialSet
 	// 内置插件页的数据面是**另一条**宿主能力（官方 `pluginInventory.list`），
 	// 与 describe 各自独立：describe 在、清单没接时，那一页显示"未知·宿主未接"。
 	if env.Act.PluginInventory != nil {
@@ -374,7 +398,8 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	o.mu.Unlock()
 	for index := range model.Sections {
 		if model.Sections[index].ID == "models" {
-			model.Sections[index] = buildModelsPage(model.Sections[index], describe, nil, modelsSnapshot, modelsEdit)
+			model.Sections[index] = buildModelsPage(model.Sections[index], describe, nil, modelsSnapshot, modelsEdit,
+				env.Act.CredentialStatus)
 		}
 		if model.Sections[index].Account != nil && account != nil {
 			model.Sections[index].Account = account
@@ -385,6 +410,7 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	o.describe = describe
 	o.facts = facts
 	o.writer = writer
+	o.credentialSet = credentialSet
 	o.roster = roster
 	o.agentPresetRefresh = refresh
 	o.hasSource = hasSource

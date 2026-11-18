@@ -251,7 +251,7 @@ func TestBuildPanelRetryPolicyRowsAreRendered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	models = buildModelsPage(models, describe, nil, nil, edit)
+	models = buildModelsPage(models, describe, nil, nil, edit, nil)
 	byID := map[string]PanelRow{}
 	for _, row := range models.Rows {
 		byID[row.ID] = row

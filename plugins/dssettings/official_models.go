@@ -28,6 +28,20 @@ type ModelsProvider struct {
 	Configured      bool
 	ConfiguredKnown bool
 	Error           string
+
+	// APIKeyEnv 是官方 `row.apiKeyEnv`（store.ts:263）：这个 profile 里**命名**的
+	// 凭据引用。空 = 没命名（页面这时用 deriveCredentialKeyRef 推）。
+	APIKeyEnv string
+	// NativeAuth 是 provider 自己声明的原生鉴权（官方 `entry.nativeAuth`），
+	// describe 要问的 ref 集合包含它的 Env（store.ts:275）。
+	NativeAuth *apiclient.ProviderNativeAuth
+	// CredentialRef 是本页会写入的引用（官方 `refFor`：命名优先，否则推导）。
+	CredentialRef string
+	// Credential 是**命名引用**的状态（官方 `row.credential`）。
+	// nil = describe 没答这个 ref —— 不知道，不是"未配置"。
+	Credential *apiclient.CredentialInfo
+	// DerivedCredential 是**推导引用**的状态（官方 `row.derivedCredential`）。
+	DerivedCredential *apiclient.CredentialInfo
 }
 
 // ModelsPage 是 Models 页的非设置文档数据面。
@@ -39,6 +53,10 @@ type ModelsPage struct {
 
 // JoinProviderDirectory 对齐官方 joinProviderDirectory：先 configurable 声明顺序，
 // 再补只注册的 route，最后稳定地把 account/official 提前（store.ts:45-76）。
+//
+// 同一趟里算出凭据域要看的两件事（store.ts:263）：profile 里命名了的 `apiKeyEnv`，
+// 以及本页将来会写入的 `CredentialRef`（命名优先，否则推导）。**这里只推导、不发请求**：
+// describe 的结果由 applyModelsCredentials 落回行上。
 func JoinProviderDirectory(registered []apiclient.ProviderInfo, configurable []apiclient.ConfigurableProvider, describe *apiclient.SettingsDescribeResult) []ModelsProvider {
 	active := make(map[string]bool, len(registered))
 	for _, provider := range registered {
@@ -48,18 +66,22 @@ func JoinProviderDirectory(registered []apiclient.ProviderInfo, configurable []a
 	rows := make([]ModelsProvider, 0, len(registered)+len(configurable))
 	for _, entry := range configurable {
 		declared[entry.Provider] = true
+		apiKeyEnv, _ := profileAPIKeyEnv(describe, entry.SettingsNamespace, entry.SettingsPath)
 		rows = append(rows, ModelsProvider{
 			Provider: entry.Provider, DisplayName: entry.DisplayName,
 			SettingsNS: entry.SettingsNamespace, SettingsPath: append([]string(nil), entry.SettingsPath...),
 			Active: active[entry.Provider], Configured: providerConfigured(describe, entry.SettingsNamespace, entry.SettingsPath),
-			Error: entry.Error,
+			Error:     entry.Error,
+			APIKeyEnv: apiKeyEnv, NativeAuth: entry.NativeAuth,
+			CredentialRef: credentialRefFor(describe, entry.Provider, entry.SettingsNamespace, entry.SettingsPath),
 		})
 	}
 	for _, provider := range registered {
 		if declared[provider.ID] {
 			continue
 		}
-		rows = append(rows, ModelsProvider{Provider: provider.ID, DisplayName: provider.Name, Active: true})
+		rows = append(rows, ModelsProvider{Provider: provider.ID, DisplayName: provider.Name, Active: true,
+			CredentialRef: credentialRefFor(describe, provider.ID, "", nil)})
 	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		return providerRank(rows[i].Provider) < providerRank(rows[j].Provider)
@@ -152,11 +174,15 @@ func fallbackProviders(describe *apiclient.SettingsDescribeResult) []ModelsProvi
 	}
 	out := make([]ModelsProvider, 0, len(routes))
 	for _, route := range routes {
+		path := []string{"providers", route}
+		apiKeyEnv, _ := profileAPIKeyEnv(describe, apiclient.SettingsNSLLM, path)
 		out = append(out, ModelsProvider{
 			Provider: route, DisplayName: route, SettingsNS: apiclient.SettingsNSLLM,
-			SettingsPath: []string{"providers", route}, Configured: true, ConfiguredKnown: true,
+			SettingsPath: path, Configured: true, ConfiguredKnown: true,
 			// settings 只能证明配置存在，不能证明 route 已注册。
-			ActiveKnown: false,
+			ActiveKnown:   false,
+			APIKeyEnv:     apiKeyEnv,
+			CredentialRef: credentialRefFor(describe, route, apiclient.SettingsNSLLM, path),
 		})
 	}
 	return out
@@ -164,8 +190,12 @@ func fallbackProviders(describe *apiclient.SettingsDescribeResult) []ModelsProvi
 
 // buildModelsPage 重建 Models 页的拍平行与视觉分组。edit 非空时只展开该 provider
 // 的 retryPolicy 草稿；其它 provider 保持一张关闭的卡（ModelsSection.tsx:458-563）。
+//
+// credentials 是壳的 `credentials.describe` 缓存查询（nil = 壳没接这条能力）：
+// 它只往行上落"设没设"，落不到的行保持 nil，投影层画中性说明——不把整页读挂。
 func buildModelsPage(panel PanelSection, describe *apiclient.SettingsDescribeResult, m *PanelModel,
-	snapshot *apiclient.ModelsPageSnapshot, edit *retryEditorState) PanelSection {
+	snapshot *apiclient.ModelsPageSnapshot, edit *retryEditorState,
+	credentials func([]string) map[string]apiclient.CredentialInfo) PanelSection {
 	panel.Rows = nil
 	panel.Groups = nil
 	page := &ModelsPage{}
@@ -220,9 +250,18 @@ func buildModelsPage(panel PanelSection, describe *apiclient.SettingsDescribeRes
 		}
 	}
 
+	// 凭据状态 join：官方把 `credentials.describe` 当**增强**而不是前置条件
+	// （store.ts:281-283 注释），所以这里失败/没接都只让行上的凭据格保持空。
+	applyModelsCredentials(page.Providers, credentials)
+
 	for _, provider := range page.Providers {
 		rows := []PanelRow{providerEditRow(provider, edit != nil && edit.route == provider.Provider)}
 		if edit != nil && edit.route == provider.Provider {
+			// 官方卡片顺序：密钥字段（ApiKeyInput）→ 自定义设置折叠区 → EditorFooter。
+			// 本页折叠区里的可写面只有 retryPolicy 草稿，所以密钥行排在最前。
+			if keyRow, ok := modelsKeyRow(provider, edit.writable); ok {
+				rows = append(rows, keyRow)
+			}
 			rows = append(rows, edit.rows()...)
 			rows = append(rows, retryFooterRows(provider.Provider, edit.writable)...)
 		}
@@ -277,6 +316,14 @@ func providerEditRow(provider ModelsProvider, open bool) PanelRow {
 	row := PanelRow{ID: "provider-edit-" + provider.Provider, Title: title,
 		Desc: strings.Join(status, " · "), Reason: provider.Error,
 		Kind: ItemButton, NS: provider.SettingsNS}
+	// 行头那枚凭据点：官方只有"命名引用已配置 / 明确缺失"两态（ModelsSection.tsx:459-500）。
+	if label, missing, ok := modelsCredentialBadge(provider); ok {
+		row.Badge = PanelBadgeCredentialConfigured
+		row.BadgeLabel = label
+		if missing {
+			row.Badge = PanelBadgeCredentialMissing
+		}
+	}
 	// 目前真实写契约是 llm.providers.<route>.retryPolicy；whole-section 或
 	// 未配置 route 不画一个点了才报错的假编辑按钮。
 	if provider.ConfiguredKnown && provider.Configured && provider.SettingsNS == apiclient.SettingsNSLLM {

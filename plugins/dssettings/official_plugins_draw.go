@@ -139,7 +139,10 @@ func (p *Plugin) drawPluginsStatus(f ui.C, env *pluginapi.Env, t *pluginapi.Them
 		if plugins.State == PluginsError || plugins.State == PluginsUnknown {
 			color = t.Error
 		}
-		ui.Text(f, plugins.Note).FontSize(PluginsStatusFontSize).LineHeight(PluginsStatusLn).
+		// 官方 `PluginInventorySettingsTab.module.css` 的 `.failure` 是 flex 容器、
+		// 里面是普通 `p`（`margin:0`），错误句按容器宽**自动换行**——不是单行裁切。
+		// 这里用 Wrap 走同一条路：`ui.Text` 单行放不下时会把后半句直接切掉。
+		ui.Wrap(f, plugins.Note).FontSize(PluginsStatusFontSize).LineHeight(PluginsStatusLn).
 			Color(color).FillWidth()
 	}
 	if !plugins.ShowRetry {

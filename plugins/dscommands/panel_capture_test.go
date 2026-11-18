@@ -119,3 +119,77 @@ func TestCommandPanelRenderCapture(t *testing.T) {
 	}
 	t.Logf("VR_COMMAND_CAPTURE path=%s", path)
 }
+
+// TestCommandPanelFilteredCapture 是同一面板的**过滤后**状态：搜索框里有词、
+// 列表只剩匹配行。默认态那张看不出"过滤后会不会留空、会不会残留上一屏的行"。
+//
+// 过滤走的是产品同一处真值（`p.search` → filtered()），不是另造一份清单。
+func TestCommandPanelFilteredCapture(t *testing.T) {
+	dir := os.Getenv("VR_COMMAND_CAPTURE_DIR")
+	if dir == "" {
+		dir = t.TempDir()
+	} else if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const width, height = 920, 832
+	p := &Plugin{theme: dscore.Dark(), shown: true}
+	// 「权限」在命令表里只匹配权限相关的一条，用它验证"过滤真的把别的行拿掉"。
+	p.search.SetText("权限")
+	act := commandCaptureActions()
+	tree := &gfx.Tree{}
+	feat := tree.Feature("command-filtered-capture")
+	pageTheme := dscore.VivaTheme(p.theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	config := app.Config{
+		Title: "command-filtered-capture", Width: width, Height: height, Tree: tree,
+		WindowMode: app.WindowFrameless,
+	}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
+		env := &pluginapi.Env{
+			Theme: p.theme, Act: act, Tree: tree, Feat: feat, Canvas: canvas,
+			Data:   pluginapi.Snapshot{Cur: "session-1"},
+			Bounds: bounds, MainWidth: size.Width,
+		}
+		canvas.Fill(bounds, p.theme.BgBase)
+		view.Draw(canvas, bounds, func(f ui.C) {
+			ui.Column(f).Absolute().Left(20).Top(400).Width(680).Height(36).Children(func() {
+				p.draw(f, env)
+			})
+		})
+		p.afterDraw(canvas, env)
+	}
+	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	for range 2 {
+		if err := session.Driver().Pump(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	texts := session.Texts()
+	joined := strings.Join(texts, "\u0000")
+	if !strings.Contains(joined, "权限") {
+		t.Fatalf("过滤后没有留下含「权限」的命令：%q", texts)
+	}
+	// 默认态那几条必须已经消失——否则说明 filtered() 没被走。
+	for _, gone := range []string{"压缩上下文", "侧栏宽一点", "主题：深色"} {
+		if strings.Contains(joined, gone) {
+			t.Fatalf("过滤后仍画出不匹配的 %q：%q", gone, texts)
+		}
+	}
+	// 搜索框自己要把词画出来（输入没生效的话用户看不到自己打了什么）。
+	if !strings.Contains(joined, "权限") || len(texts) < 2 {
+		t.Fatalf("搜索框没有显示过滤词：%q", texts)
+	}
+	path := filepath.Join(dir, "command-panel-filtered.png")
+	if err := session.Screenshot(path); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(path); err != nil || info.Size() == 0 {
+		t.Fatalf("截图为空：path=%s info=%v err=%v", path, info, err)
+	}
+	t.Logf("VR_COMMAND_CAPTURE path=%s", path)
+}

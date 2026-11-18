@@ -155,13 +155,31 @@ func (p *Plugin) drawPanelMoreRow(f ui.C, env *pluginapi.Env) {
 // drawPanelUnpin 画面板行尾的「取消固定」按钮（官方 `.panelUnpin`）。
 //
 // 只在有固定态服务时画：没有服务就没有"取消固定"这个动作，按钮只会点了没反应。
-func (p *Plugin) drawPanelUnpin(f ui.C, env *pluginapi.Env, route panelRoute) {
+//
+// 显隐照官方 `@media (hover:hover)` 的两条：
+//
+//	SidebarRoot.module.css  `.panelUnpin{opacity:0}`
+//	SidebarRoot.module.css  `.panelEntry:hover .panelUnpin,
+//	                         .panelEntry:has(:focus-visible) .panelUnpin{opacity:1}`
+//
+// 即：指针没进这一行时 pin 图标**不可见**，进这一行才淡入。命中区始终在
+// （官方 opacity 0 的 button 仍在 DOM 里、仍可点），所以这里只控制图标画不画。
+//
+// 判定用 `Canvas.Hovered()`（viva components/accordion.go:62 的同一读口）；
+// 行 id 与按钮自己的 id 都算"在这一行里"，否则指针一移到 pin 上 hover 目标
+// 就换成按钮、图标反而消失。
+func (p *Plugin) drawPanelUnpin(f ui.C, env *pluginapi.Env, route panelRoute, rowID gfx.ID) {
 	t := p.theme
+	unpinID := env.Tree.ID(env.Feat, "panel-unpin-"+route.ID)
+	hovered := f.Canvas().Hovered()
+	show := hovered == rowID || hovered == unpinID
 	unpin := ui.Row(f).Width(28).Height(28).Shrink(0).Radius(t.Radii.SM).
 		Items(ui.Center).Justify(ui.Center).Hover(ui.Look{}.Background(t.Hover)).
-		Hit(env.Tree.ID(env.Feat, "panel-unpin-"+route.ID),
-			zhPanelUnpinTooltip+route.Label)
+		Hit(unpinID, zhPanelUnpinTooltip+route.Label)
 	unpin.Children(func() {
+		if !show {
+			return
+		}
 		if icon, ok := pinFillIcon(t.LabelCaption); ok {
 			ui.Icon(f, icon).Size(14, 14).Color(t.LabelCaption)
 		}

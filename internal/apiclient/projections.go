@@ -351,14 +351,20 @@ func (c *ContextPressure) Occupancy() (used int64, window int64, percent int, ok
 // `OfficialSubagentIdentity`）：`{mode,label,seq}`。`seq` 是 `subagent/spawn`
 // 帧在该子会话自己日志里的序号（own-suffix 证据）。
 //
-// **本仓宿主没有 `parentSessionId`**：官方会话模型里子代理地址带父会话 id，
-// 本仓的 `subagent/spawn` 只在子会话日志里落 mode/label/seq。所以任何"父会话
-// 面包屑"都**不能**从这个键推出来（见 `docs/official-plugin-manager-evidence-rc2.md`
-// 同一批的 #56 登记）。
+// `ParentSessionID` / `ChildSessionID` 是官方 `SubagentAddress` 的两段：
+// `dsh-api-session-controller/lib/typert.host.js:320-323` 的
+// `{parentSessionId, childSessionId, mode}`。宿主侧 dsh-go#68 已把这两段
+// 折进 `subagent` 投影（值取自 durable `subagent/spawn` 同名字段），
+// 因此 subagent 五段地址现在**能从真实数据产出来**，不再只能靠客户端构造。
+//
+// 三键 `mode/label/seq` 仍是官方投影原样（`typert.host.js:493-501`），
+// 老消费方只解三键也不受影响。
 type SubagentIdentity struct {
-	Mode  string `json:"mode"`
-	Label string `json:"label"`
-	Seq   int64  `json:"seq"`
+	Mode            string `json:"mode"`
+	Label           string `json:"label"`
+	Seq             int64  `json:"seq"`
+	ParentSessionID string `json:"parentSessionId"`
+	ChildSessionID  string `json:"childSessionId"`
 }
 
 // SubagentIdentity 解 `subagent`。返回 (nil,false) = 键缺失/为 null

@@ -2093,6 +2093,18 @@ type Actions struct {
 	TerminalSnapshot func(tabID string) TerminalViewState
 	// TerminalWriteOfficial 写入当前 tab 绑定的 PTY；typed=true 只用于真实人员输入。
 	TerminalWriteOfficial func(tabID, data string, typed bool)
+	// TerminalResizeOfficial 把面板量出来的 cols/rows 发给宿主那条 PTY
+	// （官方 attach 的 `{type:'resize', sequence, cols, rows}` 帧在 HTTP 面的
+	// 回落投影，宿主 `POST /api/terminal.resize`）。
+	//
+	// **去重与档位在调用方**：插件按官方口径判「该不该发」
+	// （`terminal.tsx:191-200` 的 `fitScreen` + `model.js:212-223` 的同尺寸
+	// return），所以壳拿到的一定是"已夹进 environment 上限、且与当前 PTY 不同"
+	// 的尺寸。实现方只做三件事：照 id 发给宿主、失败讲真话、**不阻塞绘制帧**
+	// （异步发，不能在这个调用里同步等 HTTP）。
+	//
+	// nil = 壳没接（老壳）：插件不发，界面继续按整格裁掉右侧（不假装面板即 PTY）。
+	TerminalResizeOfficial func(tabID string, cols, rows int)
 	// TerminalRenameOfficial / TerminalCloseOfficial 是同步宿主动作，调用方在
 	// goroutine 或壳的 close handler 中使用；错误必须原样返回，不静默成功。
 	TerminalRenameOfficial func(tabID, title string) error

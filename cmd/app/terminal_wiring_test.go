@@ -20,6 +20,7 @@ type terminalHostFixture struct {
 	calls    []string
 	create   map[string]any
 	write    map[string]any
+	resize   map[string]any
 	closeID  string
 	listInfo bool
 }
@@ -71,6 +72,11 @@ func (f *terminalHostFixture) handler(w http.ResponseWriter, r *http.Request) {
 	case "terminal.input":
 		f.mu.Lock()
 		f.write = body
+		f.mu.Unlock()
+		writeTerminalTestResult(w, `{"ok":true}`)
+	case "terminal.resize":
+		f.mu.Lock()
+		f.resize = body
 		f.mu.Unlock()
 		writeTerminalTestResult(w, `{"ok":true}`)
 	case "terminal.rename":
@@ -223,6 +229,77 @@ func TestTerminalWiringRecoversListedIdentityWithoutCreate(t *testing.T) {
 	}
 	for _, view := range m.terminalViews {
 		view.cancel()
+	}
+	m.mu.Unlock()
+}
+
+// TestTerminalWiringResizeSendsOfficialShape 钉住 `terminal.resize` 的**生产接线**：
+// 插件量出的 cols/rows 经 Actions 到壳，再以宿主形状
+// （sessionId + id + cols + rows，见 DSH-GO/internal/transport/handlers_terminal.go
+// 的 handleTerminalResize）打出去，成功后本地 VT 屏幕与 Info 一起跟上。
+//
+// 为什么必须验「本地也跟上」：宿主那条 `terminal.resize` 会广播 state，但那是
+// 异步的；本地屏幕若还停在旧宽，绘制层下一帧算出来的 fit 与上次不同，就会
+// 再发一次——真机上表现为"面板一拉就连续刷 resize"。这条断言把它挡住。
+func TestTerminalWiringResizeSendsOfficialShape(t *testing.T) {
+	fixture := &terminalHostFixture{t: t}
+	srv := httptest.NewServer(http.HandlerFunc(fixture.handler))
+	defer closeStreamingServer(srv)
+	m := &model{cli: apiclient.New(srv.URL), cur: "s1"}
+	m.terminalEnsure("tab1")
+	waitTerminalConditionDump(t, func() bool {
+		return m.terminalSnapshot("tab1").Phase == "connected"
+	}, func() string {
+		st := m.terminalSnapshot("tab1")
+		return fmt.Sprintf("phase=%q screen=%q info=%v", st.Phase, st.Screen, st.Info)
+	})
+
+	m.terminalResizeOfficial("tab1", 140, 45)
+	waitTerminalCondition(t, func() bool {
+		fixture.mu.Lock()
+		defer fixture.mu.Unlock()
+		return fixture.resize != nil
+	})
+	fixture.mu.Lock()
+	resize := fixture.resize
+	fixture.mu.Unlock()
+	if resize["sessionId"] != "s1" || resize["id"] != "tab1" ||
+		resize["cols"] != float64(140) || resize["rows"] != float64(45) {
+		t.Fatalf("resize 参数形状错误（宿主 decode 的就是这四个字段）：%v", resize)
+	}
+	waitTerminalConditionDump(t, func() bool {
+		st := m.terminalSnapshot("tab1")
+		return st.Info != nil && st.Info.Cols == 140 && st.Info.Rows == 45 &&
+			st.Grid != nil && st.Grid.Width == 140 && st.Grid.Height == 45
+	}, func() string {
+		st := m.terminalSnapshot("tab1")
+		grid := "nil"
+		if st.Grid != nil {
+			grid = fmt.Sprintf("%d×%d", st.Grid.Width, st.Grid.Height)
+		}
+		return fmt.Sprintf("info=%v grid=%s", st.Info, grid)
+	})
+
+	// 官方 fitScreen 自己就挡掉的尺寸（cols<2 / rows<1）不发；越过
+	// environment 上限（本 fixture 给 500×200）的也不发——越界在宿主是报错
+	// 不是截断，发出去只会刷状态栏。
+	fixture.mu.Lock()
+	fixture.resize = nil
+	fixture.mu.Unlock()
+	m.terminalResizeOfficial("tab1", 1, 45)
+	m.terminalResizeOfficial("tab1", 140, 0)
+	m.terminalResizeOfficial("tab1", 501, 45)
+	time.Sleep(50 * time.Millisecond)
+	fixture.mu.Lock()
+	blocked := fixture.resize
+	fixture.mu.Unlock()
+	if blocked != nil {
+		t.Fatalf("被挡住的尺寸不该打 HTTP：%v", blocked)
+	}
+
+	m.mu.Lock()
+	for _, watch := range m.terminalWatchers {
+		watch.cancel()
 	}
 	m.mu.Unlock()
 }

@@ -70,6 +70,51 @@ func TestOfficialTerminalUnaryAndInputShapes(t *testing.T) {
 	}
 }
 
+// TestTerminalResizeShape 钉住 `terminal.resize` 的参数形状。
+//
+// 判据是**宿主 handler 的 decode 结构**（`DSH-GO/internal/transport/
+// handlers_terminal.go` 的 `handleTerminalResize`：sessionId/agentId + id +
+// cols + rows，平铺不包 `params`）。形状错了宿主会 400「缺 id」，而错误文案
+// 与"终端不在了"很像，查起来很绕——所以这里逐字段钉住。
+func TestTerminalResizeShape(t *testing.T) {
+	var got map[string]any
+	reject := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if path := strings.TrimPrefix(r.URL.Path, "/api/"); path != "terminal.resize" {
+			t.Errorf("应该只打 terminal.resize，实际 %s", path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("请求体不是 JSON 对象：%v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if reject {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":{"code":"bad_request","message":"尺寸越界：cols∈[2,500]、rows∈[1,200]（收到 1×0）","hint":"按官方 fitScreen 重算","retryable":false}}`)
+			return
+		}
+		fmt.Fprint(w, `{"result":{"ok":true}}`)
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+	ctx := context.Background()
+	if err := c.TerminalResize(ctx, "s1", "tab1", 140, 45); err != nil {
+		t.Fatalf("resize 应该成功：%v", err)
+	}
+	// 平铺：外层只有 sessionId/id/cols/rows 四个键，没有 params 包壳。
+	if len(got) != 4 || got["sessionId"] != "s1" || got["id"] != "tab1" {
+		t.Fatalf("resize 参数形状错误：%v", got)
+	}
+	if got["cols"] != float64(140) || got["rows"] != float64(45) {
+		t.Fatalf("cols/rows 必须原样上行（不夹取）：%v", got)
+	}
+	// 宿主拒绝时错误要原样交给调用方：壳据此在状态栏说真话，而不是假装改成。
+	reject = true
+	err := c.TerminalResize(ctx, "s1", "tab1", 1, 0)
+	if err == nil || !strings.Contains(err.Error(), "尺寸越界") {
+		t.Fatalf("越界错误必须原样返回：%v", err)
+	}
+}
+
 func TestOfficialTerminalAttachRetainWatchStreams(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")

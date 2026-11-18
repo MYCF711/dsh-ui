@@ -123,6 +123,24 @@ func (c *Client) TerminalRename(ctx context.Context, sessionID, id, title string
 	return c.Call(ctx, "terminal.rename", map[string]any{"agentId": sessionID, "id": id, "title": title}, nil)
 }
 
+// TerminalResize 是官方 attach 帧 `{type:'resize', sequence, cols, rows}` 的
+// **HTTP 回落投影**（宿主 `POST /api/terminal.resize`，见
+// `DSH-GO/internal/transport/handlers_terminal.go` 的 `handleTerminalResize`）。
+//
+// 官方那条 uplink 只在 L2 mux 的 attach 帧机上；本仓的 GUI 没有 officialwire
+// mux 客户端（见 docs/gui-terminal-resize-gap.md §4），所以宿主补了一条与
+// `terminal.input` 同型的加法方法，参数就是帧里那几个字段。
+//
+// **档位校验归宿主**：`cols∈[2,maxCols]`、`rows∈[1,maxRows]` 越界是报错不是截断
+// （官方 `lib/index.js:622-633`）。调用方该做的是官方界面那一半
+// （`terminal.tsx:191-200` 的 `fitScreen`：算不出来就**不发**），
+// 而不是在这里夹一个"看起来安全"的值——截断会让 PTY 与面板悄悄错位。
+func (c *Client) TerminalResize(ctx context.Context, sessionID, id string, cols, rows int) error {
+	return c.Call(ctx, "terminal.resize", map[string]any{
+		"sessionId": sessionID, "id": id, "cols": cols, "rows": rows,
+	}, nil)
+}
+
 // TerminalWrite 是官方 TerminalInput.write 的 HTTP 上行投影：data 原样写入，
 // typed 只由真实人员手势产生；协议回包不冒充 xterm 协议回复。
 func (c *Client) TerminalWrite(ctx context.Context, sessionID, id, data string, typed bool) error {

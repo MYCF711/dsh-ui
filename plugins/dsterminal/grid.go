@@ -100,8 +100,13 @@ func (p *Plugin) gridRowHeight(env *pluginapi.Env) float32 {
 // （右栏面板有确定高度）；>0 是浮层那种由内容决定高度的情形。
 //
 // maxCols/maxRows 是宿主 `terminal.environment` 给的上限（<=0 = 没给上限）。
-// 它们只影响「这块面板放得下多少格」的判定，见 resize.go 的 terminalFitSize。
-func (p *Plugin) drawTerminalGrid(f ui.C, grid *vterm.Grid, height float32, maxCols, maxRows int) {
+// 它们既决定「这块面板放得下多少格」（裁绘），也决定「该向宿主申请多大」
+// （resize），见 resize.go 的 terminalFitSize / terminalResizeWanted。
+//
+// 绘制面是唯一知道**真实矩形**的地方，所以 resize 的判断也挂在这里：
+// 面板量出来的尺寸与当前 PTY 不同时，paintGrid 会经 onFit 回调把它发出去。
+func (p *Plugin) drawTerminalGrid(f ui.C, env *pluginapi.Env, tabID string, state pluginapi.TerminalViewState, height float32, maxCols, maxRows int) {
+	grid := state.Grid
 	if grid == nil {
 		return
 	}
@@ -112,12 +117,19 @@ func (p *Plugin) drawTerminalGrid(f ui.C, grid *vterm.Grid, height float32, maxC
 		box = box.Grow(1)
 	}
 	box.Draw(func(d *ui.DrawContext) {
-		p.paintGrid(d, grid, maxCols, maxRows)
+		p.paintGrid(d, grid, maxCols, maxRows, func(cols, rows int) {
+			// 官方 fitScreen 的后半段：量出来的尺寸交给 model.resize。
+			// 去重（同尺寸/算不出来不发）在 requestTerminalResize 里按官方判据做。
+			p.requestTerminalResize(env, tabID, state, cols, rows)
+		})
 	})
 }
 
 // paintGrid 逐格画：背景块、字形 run、光标。
-func (p *Plugin) paintGrid(d *ui.DrawContext, grid *vterm.Grid, maxCols, maxRows int) {
+//
+// onFit 拿到的是「这块面板按官方 fitScreen 口径能放几列几行」，在裁剪之前调用：
+// 屏幕比面板小时也该把 PTY 放大到面板尺寸，那正是 fit 的意义。
+func (p *Plugin) paintGrid(d *ui.DrawContext, grid *vterm.Grid, maxCols, maxRows int, onFit func(cols, rows int)) {
 	if d == nil || d.Canvas == nil || grid == nil {
 		return
 	}
@@ -131,6 +143,9 @@ func (p *Plugin) paintGrid(d *ui.DrawContext, grid *vterm.Grid, maxCols, maxRows
 	wantCols, wantRows := terminalFitSize(d.Rect.Width, d.Rect.Height, cellW, cellH, maxCols, maxRows)
 	if wantCols <= 0 || wantRows <= 0 {
 		return
+	}
+	if onFit != nil {
+		onFit(wantCols, wantRows)
 	}
 	cols := min(grid.Width, wantCols)
 	rows := min(grid.Height, wantRows)

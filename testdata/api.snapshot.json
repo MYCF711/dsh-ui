@@ -1988,6 +1988,19 @@
       "resp": null,
       "req_note": "OFF:src/index.ts:335-345；trim 后 1–120 字符，watch/attach state 发布新标题。"
     },
+    "terminal.resize": {
+      "batch": 27,
+      "req": {
+        "sessionId": "string",
+        "id": "string",
+        "cols": "int",
+        "rows": "int"
+      },
+      "resp": {
+        "ok": "bool"
+      },
+      "req_note": "宿主加法方法（DSH-GO/internal/transport/handlers_terminal.go 的 handleTerminalResize）：官方 uplink 的 resize 帧 {type:'resize',sequence,cols,rows} 在 HTTP 面的回落投影。校验照官方：cols∈[2,maxCols]、rows∈[1,maxRows]，越界报错不截断（lib/index.js:622-633）；缺 sessionId 直接拒（resize 只在会话内的终端上有意义）。"
+    },
     "terminal.retain": {
       "batch": 23,
       "req": {
@@ -2142,7 +2155,7 @@
     }
   },
   "counts": {
-    "total": 128,
+    "total": 129,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2167,7 +2180,8 @@
     "batch23": 11,
     "batch24": 1,
     "batch25": 5,
-    "batch26": 1
+    "batch26": 1,
+    "batch27": 1
   },
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,

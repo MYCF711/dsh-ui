@@ -443,10 +443,21 @@ func (p *Plugin) drawChangesHeader(f ui.C, env *pluginapi.Env, diff *pluginapi.F
 // （`MenuItem.Chosen` → `ui/menu.go:465-473` 的 checked）。为此**不再**把菜单画成
 // 头部下方的一列——那会占布局、把下面内容整体下推。
 //
-// 仍差一档：官方菜单面用 `--dsw-elevation-prominent`，而 Viva 的浮层固定
-// `gfx.ShadowMD`（`viva@v0.6.4/components/dropdown_menu.go:769-771`）。这一条是
-// 渲染器令牌缺口，已登记在账本 #64；手绘面板能换回官方阴影但会失去浮层，两害相权
-// 保留浮层（用户可见的是"菜单位置对不对"，不是阴影偏一档）。
+// 仍差一档（**上游缺口，已核到具体行**）：官方菜单面用 `--dsw-elevation-prominent`，
+// 而 Viva 的浮层把阴影固定成 `gfx.ShadowMD`——`components/dropdown_menu.go:511-519`
+// 里只有 `*Options.Shadow` 能覆盖它，而 `ui.Menu` 这条路径不传 `Shadow`
+// （`ui/menu_paint.go:120-125` 构造 `DropdownMenuOptions` 时没有它；
+// `ui.MenuItems` 也没有 `Shadow` 方法，只有 `RowHeight`）。
+//
+// 试过 `MenuItems.Unpainted()` + `DrawPanel`：面板能换成官方令牌，但 `Unpainted`
+// 同时关掉**行**的绘制（`base/menu.go:293-296` 原文 "declare its behavior, size and
+// rows but paint none of them"），要用就得再用 `DrawItem` 把 Viva 的整行渲染
+// （文字/勾选/快捷键/分隔线/悬停底）在本仓重抄一遍——那是把上游渲染逻辑复制进本仓，
+// 比差一档阴影贵得多，而且必然走样（`TestScopeMenuIsAnOverlayWithOfficialOrder`
+// 当场抓到条目整个消失）。所以这里保留 Viva 的面板。
+//
+// 解除条件：`ui.MenuItems` 拿到 `Shadow` 透传（`vivaui/viva#355` 目前只做到
+// `components` 层），届时一行接上，见 `docs/viva-fork-replace.md` §4。
 func (p *Plugin) drawScopeMenu(f ui.C, env *pluginapi.Env, diff *pluginapi.ForgeDiff, anchor ui.Box) {
 	session := diff.SessionID
 	open := p.open.menuOpen(session)

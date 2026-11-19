@@ -40,6 +40,7 @@ package uikernel
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -265,8 +266,14 @@ func DrawModelMenu(f ui.C, env *pluginapi.Env, opts ModelMenuOptions) bool {
 			menu = menu.Bottom(opts.Bounds.Height - opts.Anchor.Y + ModelMenuAnchorGap)
 		}
 		menu.MaxHeight(maxHeight)
+		// 阴影＝官方 `--dsw-elevation-prominent`（`ModelSelect.module.css:107-135`，
+		// 文件头已记这一条），不是 Viva 的 `gfx.ShadowMD`：预设档位移 4/6、
+		// 无描边层，与本菜单面的官方档位对不上。
 		menu.Radius(t.Radii.MD).Background(t.BgLayer3).Border(1, t.BorderL1).
-			Shadow(gfx.ShadowMD).Pad(ModelMenuPad).Gap(0).Children(func() {
+			Draw(func(d *ui.DrawContext) {
+				dscore.PaintElevation(d, t.Radii.MD, t.Shadows.Prominent, t.BorderL1)
+			}).
+			Pad(ModelMenuPad).Gap(0).Children(func() {
 			if opts.FetchFailure != "" {
 				// 官方 `.error`：11/16 + error 色 + 6px 7px 内边距 + md 圆角。
 				ui.Row(f).FillWidth().Radius(t.Radii.MD).

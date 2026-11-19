@@ -42,7 +42,7 @@ package uikernel
 
 import (
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
-	"github.com/vivaui/viva/gfx"
+	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -151,8 +151,17 @@ func DrawEntryMoreMenu(f ui.C, env *pluginapi.Env, opts EntryMenuOptions) bool {
 			menu = menu.Bottom(opts.Bounds.Height - opts.Anchor.Y + EntryMoreMenuAnchorGap)
 		}
 		menu.MaxHeight(opts.Bounds.Height - 2*EntryMoreMenuEdgeMargin)
+		// 阴影＝官方 `--dsw-elevation-prominent`（ModelSelect.module.css:107-135 的
+		// MenuSurface 档，文件头已记这一条），不是 Viva 的 `gfx.ShadowMD`：预设档是
+		// 位移 4/6 的 Tailwind 阶梯、没有描边层，与本菜单面的官方档位对不上
+		// （数值对照见 `plugins/dscore/shadow.go` 顶部取值表）。
+		// 画法用 Draw 钩子的 `dscore.PaintElevation`，与 `plugins/dscommands/panel.go`
+		// 同一处置：官方 elevation 必须在外扩 0.5px 的矩形上先描边再铺柔光。
 		menu.Radius(t.Radii.MD).Background(t.BgLayer3).Border(1, t.BorderL1).
-			Shadow(gfx.ShadowMD).Pad(EntryMoreMenuPad).Gap(0).Children(func() {
+			Draw(func(d *ui.DrawContext) {
+				dscore.PaintElevation(d, t.Radii.MD, t.Shadows.Prominent, t.BorderL1)
+			}).
+			Pad(EntryMoreMenuPad).Gap(0).Children(func() {
 			// owner props 只在本帧这一层里有效：dispatch 前挂上，dispatch 后恢复
 			// （与 `Env.ViewportOffset` 同一约定：写者负责恢复）。
 			var saved *pluginapi.EntryMenuProps

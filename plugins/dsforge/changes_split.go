@@ -151,6 +151,8 @@ type changesDiffPaintRow struct {
 	text   string
 	left   *changesDiffPaintCell
 	right  *changesDiffPaintCell
+	// gap 是这段未变更行的下标（>= 0 才可点）；-1 = 不是 gap 行。
+	gap int
 }
 
 // changesDiffLayout 是一份文件在左右对比下的完整排版。
@@ -214,7 +216,11 @@ func (p *Plugin) changesFileBodyWidth(env *pluginapi.Env) float32 {
 }
 
 // layoutSplitDiff 排一份文件的左右对比内容。canvas 为 nil 时量不了文本，返回 nil。
-func (p *Plugin) layoutSplitDiff(canvas *gfx.Canvas, t *pluginapi.Theme, file apiclient.ForgeDiffFile, width float32, wrap bool) *changesDiffLayout {
+//
+// 段模型与单栏同一份（官方 `segmentsOf()`，`OFF:src/client/diff-rows.ts:151-184`）：
+// gap 段是一条 26px 的可点条纹，点开过的段摊成 context 行后与相邻 hunk 行
+// 同处一个 `rows` 段（官方也是这样再交给 `splitRows()` 配对，`DiffFile.tsx:421-427`）。
+func (p *Plugin) layoutSplitDiff(canvas *gfx.Canvas, t *pluginapi.Theme, file apiclient.ForgeDiffFile, width float32, wrap bool, lines []string, open map[int]bool) *changesDiffLayout {
 	if canvas == nil || t == nil || width <= 0 {
 		return nil
 	}
@@ -228,8 +234,12 @@ func (p *Plugin) layoutSplitDiff(canvas *gfx.Canvas, t *pluginapi.Theme, file ap
 	codeStyle := gfx.TextStyle{Size: t.Fonts.Code, Mono: true}
 
 	appendNote := func(kind, text string, height float32) {
-		layout.rows = append(layout.rows, changesDiffPaintRow{kind: kind, text: text, height: height})
+		layout.rows = append(layout.rows, changesDiffPaintRow{kind: kind, text: text, height: height, gap: -1})
 		layout.height += height
+	}
+	appendGap := func(segment changesSegment) {
+		appendNote("gap", gapText(segment), changesDiffGapH)
+		layout.rows[len(layout.rows)-1].gap = segment.index
 	}
 	appendPair := func(pair changesSplitPair) {
 		row := changesDiffPaintRow{kind: "pair"}
@@ -258,39 +268,47 @@ func (p *Plugin) layoutSplitDiff(canvas *gfx.Canvas, t *pluginapi.Theme, file ap
 		layout.rows = append(layout.rows, row)
 		layout.height += row.height
 	}
-
-	prevNewEnd := 0
-	drawn := 0
-	for _, hunk := range file.Hunks {
-		if drawn >= changesMaxLinesPerFile {
-			break
-		}
-		if gap := hunk.NewStart - prevNewEnd; gap > 1 {
-			appendNote("gap", sprintf(copyDiffUnchanged, itoa(gap-1)), changesDiffGapH)
-			drawn++
-		}
-		appendNote("hunk", hunkHeader(hunk), changesDiffRowH)
-		drawn++
-		oldNo, newNo := hunk.OldStart, hunk.NewStart
-		rows := make([]changesRow, 0, len(hunk.Lines))
-		for _, line := range hunk.Lines {
-			if drawn >= changesMaxLinesPerFile {
-				break
-			}
-			row := changesDiffRowOf(line, oldNo, newNo)
-			if row.old != nil {
-				oldNo++
-			}
-			if row.new != nil {
-				newNo++
-			}
-			rows = append(rows, row)
-			drawn++
-		}
+	appendPairs := func(rows []changesRow) {
 		for _, pair := range changesSplitRows(rows) {
 			appendPair(pair)
 		}
-		prevNewEnd = hunk.NewStart + hunk.NewLines
+	}
+
+	drawn := 0
+	for _, segment := range changesSegmentsOf(file, lines, open) {
+		if drawn >= changesMaxLinesPerFile {
+			break
+		}
+		if segment.kind == changesSegmentGap {
+			appendGap(segment)
+			drawn++
+			continue
+		}
+		// 渲染上限（见 changesMaxLinesPerFile 的注释）：超出预算的尾部行不排，
+		// 一帧画几万行会把右栏卡住。宿主已按自己的 diff 上限截过一层。
+		if remaining := changesMaxLinesPerFile - drawn; remaining > 0 && len(segment.rows) > remaining {
+			segment.rows = segment.rows[:remaining]
+		}
+		// 一个 rows 段可能跨多个 hunk（相邻 hunk 之间没有未变更行时官方也不断段），
+		// `row.hunk >= 0` 标出每个 hunk 的第一行；hunk 头是本仓既有形状。
+		blockStart := 0
+		for at, row := range segment.rows {
+			if row.hunk < 0 {
+				continue
+			}
+			if at > blockStart {
+				appendPairs(segment.rows[blockStart:at])
+			}
+			blockStart = at
+			if row.hunk < len(file.Hunks) {
+				appendNote("hunk", hunkHeader(file.Hunks[row.hunk]), changesDiffRowH)
+				drawn++
+			}
+		}
+		if blockStart < len(segment.rows) {
+			appendPairs(segment.rows[blockStart:])
+		}
+		drawn += len(segment.rows)
 	}
 	return layout
 }
@@ -315,20 +333,25 @@ func (p *Plugin) layoutSplitCell(canvas *gfx.Canvas, style gfx.TextStyle, cell c
 
 // splitLayout 取（并缓存）一份文件的左右对比排版。
 //
-// 排版要逐行量文本，diff 大时每帧重排很贵；键是「路径 + digest + 宽度 + 折行 + 字号」，
-// 证据变了才重排。缓存只存活在内存，且总条数封顶（换会话/刷新时不会无限长）。
+// 排版要逐行量文本，diff 大时每帧重排很贵；键是「路径 + digest + 宽度 + 折行 + 字号
+// + 展开了哪些 gap + 正文到没到」，证据变了才重排。缓存只存活在内存，且总条数封顶
+// （换会话/刷新时不会无限长）。
 func (p *Plugin) splitLayout(env *pluginapi.Env, file apiclient.ForgeDiffFile, width float32, wrap bool) *changesDiffLayout {
 	t := p.themeOf(env)
 	if t == nil || env == nil || env.Canvas == nil || width <= 0 {
 		return nil
 	}
-	key := file.Path + "|" + file.Digest + "|" + itoa(int(width)) + "|" + itoa(boolDigit(wrap)) + "|" + itoa(int(t.Fonts.Code*100))
+	session := fileSession(env)
+	lines := gapLinesOf(forgeDiffOf(env), file)
+	open := p.open.gapSet(session, file.Path)
+	key := file.Path + "|" + file.Digest + "|" + itoa(int(width)) + "|" + itoa(boolDigit(wrap)) + "|" +
+		itoa(int(t.Fonts.Code*100)) + "|" + gapTextSignature(open, lines)
 	if file.Digest != "" {
 		if layout := p.open.layouts[key]; layout != nil {
 			return layout
 		}
 	}
-	layout := p.layoutSplitDiff(env.Canvas, t, file, width, wrap)
+	layout := p.layoutSplitDiff(env.Canvas, t, file, width, wrap, lines, open)
 	if layout == nil {
 		return nil
 	}
@@ -447,6 +470,14 @@ func (p *Plugin) paintSplit(canvas *gfx.Canvas, env *pluginapi.Env, file apiclie
 	leftRect := gfx.Rect{X: rect.X, Y: rect.Y, Width: half, Height: rect.Height}
 	rightRect := gfx.Rect{X: rect.X + half, Y: rect.Y, Width: rect.Width - half, Height: rect.Height}
 
+	// gap 条纹的命中区最后才登记：左右两列的滚动视口命中区铺满整列
+	// （`paintSplitColumn` 里的 `Viewport(...)`），先登记的会被盖住。
+	type splitGapHit struct {
+		index int
+		box   gfx.Rect
+	}
+	var gapHits []splitGapHit
+
 	y := rect.Y
 	for _, row := range layout.rows {
 		switch row.kind {
@@ -455,8 +486,20 @@ func (p *Plugin) paintSplit(canvas *gfx.Canvas, env *pluginapi.Env, file apiclie
 				gfx.TextStyle{Size: t.Fonts.Code, Mono: true, Color: t.CodeComment})
 		case "gap":
 			canvas.Fill(gfx.Rect{X: rect.X, Y: y, Width: rect.Width, Height: row.height}, t.CardFill)
-			canvas.Label(row.text, gfx.Rect{X: rect.X + changesNotePadX, Y: y, Width: rect.Width - 2*changesNotePadX, Height: row.height},
-				gfx.TextStyle{Size: changesFont, Color: t.LabelTertiary})
+			gapBox := gfx.Rect{X: rect.X + changesNotePadX, Y: y, Width: rect.Width - 2*changesNotePadX, Height: row.height}
+			// `.gap:hover{color:label-primary}`（ChangesTab.module.css:758-762）。
+			gapInk := t.LabelTertiary
+			if row.gap >= 0 && canvas.Hovered() == gapRowID(env, file.Path, row.gap) {
+				gapInk = t.LabelPrimary
+			}
+			canvas.Label(row.text, gapBox, gfx.TextStyle{Size: changesFont, Color: gapInk})
+			// 官方 `DiffFile.tsx:409-415` 的 gap 是 `<button>`：整条 26px 都可点。
+			// 左右对比的正文在 canvas 上画，所以用 `canvas.Hit` 登记命中区
+			// （登记放在两列画完之后，见下面 gapHits 的注释）。
+			if row.gap >= 0 && !p.open.gapWanted(fileSession(env), file.Path) && forgeLoadTextAvailable(env) {
+				gapHits = append(gapHits, splitGapHit{index: row.gap,
+					box: gfx.Rect{X: rect.X, Y: y, Width: rect.Width, Height: row.height}})
+			}
 		case "pair":
 			if row.left != nil {
 				if bg, gutter := diffCellColors(t, row.left.kind); bg.Alpha > 0 {
@@ -488,11 +531,21 @@ func (p *Plugin) paintSplit(canvas *gfx.Canvas, env *pluginapi.Env, file apiclie
 			}
 			y += row.height
 		}
-		return
+	} else {
+		p.paintSplitColumn(canvas, env, file, changesDiffSideLeft, leftRect, layout, targets, numberW)
+		p.paintSplitColumn(canvas, env, file, changesDiffSideRight, rightRect, layout, targets, numberW)
 	}
 
-	p.paintSplitColumn(canvas, env, file, changesDiffSideLeft, leftRect, layout, targets, numberW)
-	p.paintSplitColumn(canvas, env, file, changesDiffSideRight, rightRect, layout, targets, numberW)
+	// 现在才登记 gap 命中区：两列的滚动视口命中区铺满整列，晚登记的赢。
+	for _, gap := range gapHits {
+		id := gapRowID(env, file.Path, gap.index)
+		canvas.Hit(id, gap.box)
+		if event, ok := canvas.PointerOn(id); ok && event.Kind == gfx.PointerDown &&
+			event.Button <= gfx.PointerButtonPrimary {
+			p.expandGap(env, fileSession(env), file, gap.index)
+			canvas.Consume()
+		}
+	}
 }
 
 // diffCellColors 返回一格的底色与行号槽底色（官方 `.add` / `.del`；context 无底色）。

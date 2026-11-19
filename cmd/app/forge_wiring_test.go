@@ -41,6 +41,10 @@ type forgeHost struct {
 	followFeed chan string
 	// followStarted 在 follow 请求真的到达时关闭（测试据此再推帧）。
 	followStarted chan struct{}
+
+	// texts / textFail 是 `forgePanel.localText` 的假回包（按文件路径）。
+	texts    map[string]string
+	textFail map[string]bool
 }
 
 func (h *forgeHost) body(path string) map[string]any {
@@ -108,6 +112,24 @@ func newForgeHost(t *testing.T) (*forgeHost, *httptest.Server) {
 				base = `"origin/main"`
 			}
 			_, _ = w.Write([]byte(`{"base":` + base + `,"files":` + files + `,"omitted":0}`))
+		case "/api/forgePanel.localText":
+			path, _ := body["path"].(string)
+			host.mu.Lock()
+			failed := host.textFail[path]
+			text, known := host.texts[path]
+			host.mu.Unlock()
+			if failed {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(`{"error":{"code":"git_failed","message":"读不到 a.go","hint":"","retryable":false}}`))
+				return
+			}
+			if !known {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"error":{"code":"not_found","message":"没有这个文件","hint":"","retryable":false}}`))
+				return
+			}
+			encoded, _ := json.Marshal(text)
+			_, _ = w.Write([]byte(`{"result":` + string(encoded) + `}`))
 		case "/api/forgePanel.diffBases":
 			_, _ = w.Write([]byte(`{"automatic":{"name":"origin/main","worktree":false},"remote":[],"local":[]}`))
 		case "/api/forgePanel.localCommits":
@@ -506,4 +528,69 @@ func TestForgeFollowDrivesEveryOfficialBlocker(t *testing.T) {
 			t.Fatalf("帧 blocker=%s 折进来是 %q，want %q", frame, got, want)
 		}
 	}
+}
+
+// TestForgeLocalTextKeepsEveryPath 钉住 gap 展开的**数据来源**：壳必须按文件路径
+// 缓存 `forgePanel.localText` 的原文（官方 `Expansion.texts` 是 `Record<path,…>`，
+// `OFF:src/client/ChangesTab.tsx:177-181`）。旧实现只有一个 `Text/TextPath` 槽，
+// 第二个文件的回包会把第一个覆盖掉 —— 两个文件都点开时必有一个永远等不到正文。
+func TestForgeLocalTextKeepsEveryPath(t *testing.T) {
+	host, srv := newForgeHost(t)
+	host.texts = map[string]string{"a.go": "L01\nL02\nL03\n", "b.go": "B1\nB2\n"}
+	m := newForgeModel(t, host, srv)
+	waitFor(t, "首次 forge 视图", func() bool { return m.forgeFor() != nil })
+
+	m.forgeTextAction("a.go")
+	waitFor(t, "a.go 的新侧全文", func() bool {
+		view := m.forgeFor()
+		return view != nil && view.Diff.Texts["a.go"] == "L01\nL02\nL03\n"
+	})
+	m.forgeTextAction("b.go")
+	waitFor(t, "b.go 的新侧全文", func() bool {
+		view := m.forgeFor()
+		return view != nil && view.Diff.Texts["b.go"] == "B1\nB2\n"
+	})
+
+	view := m.forgeFor()
+	if view == nil {
+		t.Fatal("forge 视图不该为空")
+	}
+	if view.Diff.Texts["a.go"] != "L01\nL02\nL03\n" {
+		t.Fatalf("a.go 的正文被覆盖了：%q", view.Diff.Texts["a.go"])
+	}
+	if len(view.Diff.TextErrors) != 0 {
+		t.Fatalf("成功路径不该有失败记录：%v", view.Diff.TextErrors)
+	}
+}
+
+// TestForgeLocalTextFailureIsPerPathAndClearsOnRetry：读失败必须留下**按路径**的
+// 原因（否则 gap 永远停在 loading 态），重试时清掉旧错误。
+func TestForgeLocalTextFailureIsPerPathAndClearsOnRetry(t *testing.T) {
+	host, srv := newForgeHost(t)
+	host.texts = map[string]string{"a.go": "L01\n"}
+	host.textFail = map[string]bool{"a.go": true}
+	m := newForgeModel(t, host, srv)
+	waitFor(t, "首次 forge 视图", func() bool { return m.forgeFor() != nil })
+
+	m.forgeTextAction("a.go")
+	waitFor(t, "a.go 的失败记录", func() bool {
+		view := m.forgeFor()
+		return view != nil && view.Diff.TextErrors["a.go"] != ""
+	})
+	view := m.forgeFor()
+	if _, ok := view.Diff.Texts["a.go"]; ok {
+		t.Fatalf("失败路径不该有正文：%q", view.Diff.Texts["a.go"])
+	}
+	if view.Diff.TextErrors["a.go"] == "" {
+		t.Fatal("失败原因必须按路径留出口（插件据此把 gap 退回可点态）")
+	}
+
+	host.mu.Lock()
+	host.textFail = nil
+	host.mu.Unlock()
+	m.forgeTextAction("a.go")
+	waitFor(t, "重试后的正文", func() bool {
+		view := m.forgeFor()
+		return view != nil && view.Diff.Texts["a.go"] == "L01\n" && view.Diff.TextErrors["a.go"] == ""
+	})
 }

@@ -84,6 +84,10 @@ const (
 	// `.gap,.fileNote{min-height:26px;padding:0 12px;background:forge-fill}`。
 	changesNoteH    float32 = 26
 	changesNotePadX float32 = 12
+	// `.gap{gap:6px}`（ChangesTab.module.css:734-751）与官方
+	// `IconChevronsUpDownOutlineRegular size={12}`（DiffFile.tsx:413）。
+	changesGapIconGap  float32 = 6
+	changesGapIconSize float32 = 12
 	// `.centered{padding:24px;gap:8px;font-size:13px}`。
 	changesCenteredPad float32 = 24
 	changesCenteredGap float32 = 8
@@ -95,17 +99,20 @@ const (
 
 // 官方本地范围的文案（locales.ts:198-206，逐字）。
 const (
-	copyScopeBranch       = "分支"
-	copyScopeUncommitted  = "未提交"
-	copyScopeUnstaged     = "未暂存"
-	copyScopeStaged       = "已暂存"
-	copyDiffRefresh       = "刷新变更"
-	copyDiffEmpty         = "没有变更"
-	copyDiffError         = "无法读取变更"
-	copyDiffOmitted       = "另有 %s 个未跟踪的文件没有列出"
-	copyDiffBinary        = "二进制文件，无法显示变更"
-	copyDiffFileTooLarge  = "文件太大，无法显示变更"
-	copyDiffUnchanged     = "%s 行未变更"
+	copyScopeBranch      = "分支"
+	copyScopeUncommitted = "未提交"
+	copyScopeUnstaged    = "未暂存"
+	copyScopeStaged      = "已暂存"
+	copyDiffRefresh      = "刷新变更"
+	copyDiffEmpty        = "没有变更"
+	copyDiffError        = "无法读取变更"
+	copyDiffOmitted      = "另有 %s 个未跟踪的文件没有列出"
+	copyDiffBinary       = "二进制文件，无法显示变更"
+	copyDiffFileTooLarge = "文件太大，无法显示变更"
+	copyDiffUnchanged    = "%s 行未变更"
+	// `OFF:…/src/client/locales.ts:277`：`'diff.unchangedRest': '其余未变更的行'`
+	// （最后一个 hunk 之后那段的行数还没读到时的文案）。
+	copyDiffUnchangedRest = "其余未变更的行"
 	copyDiffNewFile       = "新文件"
 	copyDiffDeleted       = "已删除"
 	copyDiffRenamed       = "由 %s 重命名"
@@ -147,6 +154,12 @@ type changesOpen struct {
 	scrolls   map[diffScrollKey]*changesDiffScroll
 	// layouts 是左右对比的排版缓存（键见 splitLayout；内容/宽度/折行变了才重排）。
 	layouts map[string]*changesDiffLayout
+	// 以下是 #64 ① 未变更行 gap 的界面态（官方 `Expansion.open` / `texts[path]`）：
+	// gaps 是每个文件点开过的 gap 下标；gapWant 是"正文正在读"的路径；
+	// gapScope 记每个会话当前 gap 状态属于哪个 diff 范围（换范围就整桶丢掉）。
+	gaps     map[string]map[string]map[int]bool
+	gapWant  map[string]map[string]bool
+	gapScope map[string]string
 }
 
 func newChangesOpen() changesOpen {
@@ -163,6 +176,9 @@ func newChangesOpen() changesOpen {
 		wrap:      map[string]bool{},
 		scrolls:   map[diffScrollKey]*changesDiffScroll{},
 		layouts:   map[string]*changesDiffLayout{},
+		gaps:      map[string]map[string]map[int]bool{},
+		gapWant:   map[string]map[string]bool{},
+		gapScope:  map[string]string{},
 	}
 }
 
@@ -339,6 +355,8 @@ func (p *Plugin) drawChangesBody(f ui.C, env *pluginapi.Env) {
 // drawChangesContent 画官方 `.body`：宽 ≥760 时是「文件树 | 可拖宽分栏 | diff」，
 // 否则只有 diff。
 func (p *Plugin) drawChangesContent(f ui.C, env *pluginapi.Env, diff *pluginapi.ForgeDiff) {
+	// gap 界面态先与这一帧的 diff 对齐（换范围清桶、失败退回折叠）。
+	p.syncGapState(diff.SessionID, diff)
 	available := p.changesBodyWidth(env)
 	if !changesTreeVisible(available) || diff.Err != "" || len(diff.Files) == 0 {
 		p.frame.diffWidth = available
@@ -704,47 +722,141 @@ func (p *Plugin) drawHunks(f ui.C, env *pluginapi.Env, file apiclient.ForgeDiffF
 	// 官方取的是全 diff 的最大行号，而面板里每张文件卡各自渲染。
 	numbers := changesNumberW(file, t.Fonts.Code)
 	singleSide := changesSingleSide(file)
+	session := fileSession(env)
+	diff := forgeDiffOf(env)
+	lines := gapLinesOf(diff, file)
 	drawn := 0
-	prevNewEnd := 0
-	for _, hunk := range file.Hunks {
-		if drawn >= changesMaxLinesPerFile {
-			return
-		}
-		if gap := hunk.NewStart - prevNewEnd; gap > 1 {
-			p.drawNoteLine(f, t, sprintf(copyDiffUnchanged, itoa(gap-1)))
-			drawn++
-		}
-		ui.Row(f).FillWidth().Height(changesLineH).Children(func() {
-			ui.Text(f, hunkHeader(hunk)).FontSize(t.Fonts.Code).LineHeight(changesLineH).
-				Color(t.CodeComment).PadSides(0, changesTextPadR, 0, changesTextPadL)
-		})
-		drawn++
-		oldNo, newNo := hunk.OldStart, hunk.NewStart
-		for _, line := range hunk.Lines {
+	// 段模型与官方 `segmentsOf()` 同一份（`OFF:src/client/diff-rows.ts:151-184`）：
+	// hunk 前/间/后的未变更行各一段，点开过的段摊成 context 行。
+	for _, segment := range changesSegmentsOf(file, lines, p.open.gapSet(session, file.Path)) {
+		if segment.kind == changesSegmentGap {
 			if drawn >= changesMaxLinesPerFile {
 				return
 			}
-			row := changesDiffRowOf(line, oldNo, newNo)
-			if row.old != nil {
-				oldNo++
+			p.drawGapRow(f, env, session, file, segment)
+			drawn++
+			continue
+		}
+		for _, row := range segment.rows {
+			if drawn >= changesMaxLinesPerFile {
+				return
 			}
-			if row.new != nil {
-				newNo++
+			if row.hunk >= 0 && row.hunk < len(file.Hunks) {
+				ui.Row(f).FillWidth().Height(changesLineH).Children(func() {
+					ui.Text(f, hunkHeader(file.Hunks[row.hunk])).FontSize(t.Fonts.Code).LineHeight(changesLineH).
+						Color(t.CodeComment).PadSides(0, changesTextPadR, 0, changesTextPadL)
+				})
+				drawn++
 			}
 			p.drawDiffRow(f, t, numbers, singleSide, row, wrap)
 			drawn++
 		}
-		prevNewEnd = hunk.NewStart + hunk.NewLines
+	}
+}
+
+// drawGapRow 画官方 `.gap` 那一条可点的未变更行（`OFF:…/src/client/DiffFile.tsx:409-415`）。
+//
+// 文案两句逐字取自 `OFF:…/src/client/locales.ts:276-277`；图标是官方
+// `IconChevronsUpDownOutlineRegular size={12}`（`:413`）；条纹几何取自
+// `OFF:…/src/client/ChangesTab.module.css:734-766`（26px 高、0 12px、gap 6、12/18、
+// forge-fill 底、label-tertiary 字；hover 换 interactive-bg-hover + label-primary）。
+// `disabled={text === 'loading'}`（DiffFile.tsx:411）在本仓是「请求在飞」时不给命中区。
+func (p *Plugin) drawGapRow(f ui.C, env *pluginapi.Env, session string, file apiclient.ForgeDiffFile, segment changesSegment) {
+	t := p.themeOf(env)
+	label := gapText(segment)
+	loading := p.open.gapWanted(session, file.Path)
+	clickable := !loading && forgeLoadTextAvailable(env)
+	id := gapRowID(env, file.Path, segment.index)
+	row := ui.Row(f).FillWidth().MinHeight(changesNoteH).Background(t.CardFill).
+		Gap(changesGapIconGap).Items(ui.Center).
+		PadSides(0, changesNotePadX, 0, changesNotePadX)
+	if clickable {
+		row = row.Hit(id, label).Hover(ui.Look{}.Background(t.Hover))
+	}
+	// `.gap:hover{color:label-primary}`（ChangesTab.module.css:758-762）：Viva 的子文本
+	// 不继承父节点 hover 态，所以自己问一次「这一帧指针是不是悬在我这条上」。
+	ink := t.LabelTertiary
+	if clickable && env.Canvas != nil && env.Canvas.Hovered() == id {
+		ink = t.LabelPrimary
+	}
+	row.Children(func() {
+		if icon, ok := chevronsUpDownIcon(); ok {
+			ui.Icon(f, icon).Size(changesGapIconSize, changesGapIconSize).Color(ink)
+		}
+		ui.Text(f, label).FontSize(changesFont).LineHeight(changesLine).
+			Color(ink).Shrink(1).Ellipsis()
+	})
+	if clickable && row.Clicked() {
+		p.expandGap(env, session, file, segment.index)
+	}
+}
+
+// forgeLoadTextAvailable 报告壳有没有接 `forgePanel.localText` 的读动作。
+// 没接就不画可点的 gap（本仓约定：nil = 老壳，不画点了没反应的入口）。
+func forgeLoadTextAvailable(env *pluginapi.Env) bool {
+	return env != nil && env.Act.Forge != nil && env.Act.Forge.LoadText != nil
+}
+
+// expandGap 是官方 `expand()`（`OFF:…/src/client/ChangesTab.tsx:776-796`）：
+// 把 index 并进展开集合；正文还没读过就发起一次读。**只加不删**——单个 gap
+// 官方没有收起路径（`ChangesTab.tsx:778` 是唯一的写点，见 changes_gap.go 文件头）。
+func (p *Plugin) expandGap(env *pluginapi.Env, session string, file apiclient.ForgeDiffFile, index int) {
+	if !forgeLoadTextAvailable(env) {
+		return
+	}
+	p.open.openGap(session, file.Path, index)
+	if diff := forgeDiffOf(env); diff != nil {
+		if _, ok := diff.Texts[file.Path]; ok {
+			return // 正文已在手：只展开，不重复读
+		}
+	}
+	p.open.setGapWanted(session, file.Path, true)
+	env.Act.Forge.LoadText(file.Path)
+}
+
+// gapRowID 是 gap 条纹的稳定命中 id（同一个 gap 每帧同一个 id，viva 不会重挂）。
+func gapRowID(env *pluginapi.Env, path string, index int) gfx.ID {
+	if env == nil || env.Tree == nil {
+		return gfx.ID{}
+	}
+	return env.Tree.ID(env.Feat, "forge-diff-gap:"+path+":"+itoa(index))
+}
+
+// syncGapState 在画文件列表之前把 gap 界面态与这一帧的 diff 对齐：
+//
+//   - 换范围 → 整桶清空（官方换 `ChangesData` 就换 `Expansion`，`ChangesTab.tsx:773`）；
+//   - 正文读到了 → 清"在飞"标记；
+//   - 正文读失败 → 清掉该文件的展开集合（官方 `ChangesTab.tsx:787-795` 同时删
+//     `texts[path]` 与 `open[path]`，gap 退回可点的折叠态）。
+func (p *Plugin) syncGapState(session string, diff *pluginapi.ForgeDiff) {
+	if diff == nil {
+		return
+	}
+	p.open.syncGapScope(session, diff.Scope)
+	for _, file := range diff.Files {
+		if _, ok := diff.Texts[file.Path]; ok {
+			p.open.setGapWanted(session, file.Path, false)
+		}
+		if diff.TextErrors[file.Path] != "" {
+			p.open.setGapWanted(session, file.Path, false)
+			p.open.clearGaps(session, file.Path)
+		}
 	}
 }
 
 // changesRow 是画出来的一行：两侧行号（各有/皆无）加正文。对应官方
 // `DiffRow`（`OFF:src/client/diff-rows.ts:9-13`）。
+//
+// `hunk` 是**本仓的排版标记**（官方 DiffRow 没有它）：>= 0 表示这一行是某个
+// hunk 的第一行，画之前要先画那一行 `@@ -a,b +c,d @@` 头（本仓从第一版起就画
+// hunk 头；官方 `DiffFile.tsx` 不画，这是本仓既有形状，不在 gap 这一单里改动）。
+// -1 = 普通行。
 type changesRow struct {
 	old  *int
 	new  *int
 	sign string
 	text string
+	hunk int
 }
 
 // changesDiffRowOf 把一行 patch 文本连同当前两侧行号折成 changesRow。
@@ -766,7 +878,7 @@ func changesDiffRowOf(line string, oldNo, newNo int) changesRow {
 			text = line[1:]
 		}
 	}
-	return changesRow{old: old, new: next, sign: sign, text: text}
+	return changesRow{old: old, new: next, sign: sign, text: text, hunk: -1}
 }
 
 // changesSingleSide 是官方 `singleSide`（`OFF:src/client/DiffFile.tsx:190`）：

@@ -129,3 +129,33 @@ func wrapFillIcon(color gfx.Color) (gfx.Icon, bool) {
 func listPenIcon(color gfx.Color) (gfx.Icon, bool) {
 	return dsassets.PlanModeOutline(color)
 }
+
+// chevronsUpDownIcon 是官方 `IconChevronsUpDownOutlineRegular`（未变更行 gap 条纹
+// 与工具栏「全部展开/折叠」的图标，`OFF:src/client/DiffFile.tsx:413`、`:488`、
+// `ChangesTab.tsx:1218`）。
+//
+// 素材来自官方图标 sprite `"chevrons-up-down-outline"`
+// （`dsh-web-frontend/dist/assets/index-ghOpC9uV.js`，rc.2 安装包内，sprite 定义在
+// byte 759571 附近：`size:16`、`fill="none"`、`stroke="currentColor"`、
+// `stroke-linecap/linejoin="round"`、`stroke-width` 由调用方给，Regular 档 = 1）。
+// 官方原文两条 `<path>` 是上下两个 V 形折线，**描边不填充**：
+//
+//	d="m5.1 6 2.9-2.9L10.9 6"        （相对 m + 隐式 lineto 对）
+//	d="m5.1 10 2.9 2.9 2.9-2.9"
+//
+// `dsassets` 的路径解析器只吃显式命令（不吃 `m` 后面的隐式坐标对），所以这里写成
+// **几何完全等价**的绝对形式：`M5.1 6 L8 3.1 L10.9 6` / `M5.1 10 L8 12.9 L10.9 10`。
+// 端点逐个相同，不是近似。
+var chevronsUpDownAsset = dsassets.Asset{
+	ID: "chevrons-up-down-outline", Title: "展开未变更行", ViewBox: 16, StrokeWidth: 1,
+	Elements: []dsassets.Element{
+		{Kind: dsassets.PathElement, D: `M5.1 6 L8 3.1 L10.9 6`, Stroke: true,
+			Cap: gfx.CapRound, CapSet: true, Join: gfx.JoinRound, JoinSet: true},
+		{Kind: dsassets.PathElement, D: `M5.1 10 L8 12.9 L10.9 10`, Stroke: true,
+			Cap: gfx.CapRound, CapSet: true, Join: gfx.JoinRound, JoinSet: true},
+	},
+}
+
+func chevronsUpDownIcon() (gfx.Icon, bool) {
+	return dsassets.Build(chevronsUpDownAsset, gfx.Color{})
+}

@@ -172,9 +172,26 @@ type ForgeDiff struct {
 	// AutomaticWorktree 表示那个分叉点是本会话工作树的起点提交。
 	AutomaticWorktree bool
 	// Text / TextPath 是 `localText` 的结果（选中文件的新侧全文）。
+	//
+	// 这是**单文件槽**（同一时刻只有一份）。未变更行 gap 展开需要**每个文件各自**
+	// 的新侧全文（官方 `Expansion.texts` 是 `Record<path, lines|'loading'>`，
+	// `OFF:src/client/ChangesTab.tsx:177-181`），所以下面另给按路径的 `Texts`。
 	Text     string
 	TextPath string
-	Loading  bool
+	// Texts 是按**文件路径**缓存的 `localText` 结果（新侧全文，`\n` 原文）。
+	//
+	// 键存在 = 这个文件的新侧全文已经读到；键不存在 = 还没读过。官方同形：
+	// `ChangesTab.tsx:782-786` 用 `textLines()` 切行、`matchesHunks()` 验过才
+	// 存进 `texts[path]`（本仓在 `cmd/app` 的 `forgeLoadText` 里落这份原文，
+	// 由插件调 `changesSegmentsOf` 前自己用 `changesMatchesHunks` 验）。
+	Texts map[string]string
+	// TextErrors 是按路径的读取失败原因（空串/键不存在 = 没有失败）。
+	//
+	// 官方失败时 `ChangesTab.tsx:787-795` 报 `toast.expandFailed` 并**把该文件的
+	// open/text 一起清掉**；本仓没有 `shell.overlay` toast 座位（账本 #64 ⑦），
+	// 但失败原因必须有读出口，否则 gap 会永远停在 loading 态。
+	TextErrors map[string]string
+	Loading    bool
 	// Err 是最近一次读的失败文本（空 = 没有失败）。界面照官方 `diff.error` 画。
 	Err string
 	// BasesErr 是 `diffBases` 的失败文本（它不该让整份 diff 变成错误）。

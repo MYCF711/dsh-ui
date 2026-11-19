@@ -170,7 +170,12 @@ func (e *Emulator) Grid() *Grid {
 // 与 xterm 的语义一致：滚回不含当前屏。
 //
 // 成本：一次读锁，可以每帧调。
-func (e *Emulator) ScrollbackLen() int { return e.inner.ScrollbackLen() }
+func (e *Emulator) ScrollbackLen() int {
+	if e.scrollbackOff {
+		return 0
+	}
+	return e.inner.ScrollbackLen()
+}
 
 // Scrollback 返回滚回缓冲的快照，投影与 Grid **完全相同**（同一套 Cell / Style，
 // 颜色、反显、下划线、全角宽度都按同一份代码算出来），渲染器可以直接拿它当
@@ -186,7 +191,7 @@ func (e *Emulator) ScrollbackLen() int { return e.inner.ScrollbackLen() }
 // 才取整块。
 func (e *Emulator) Scrollback() *Grid {
 	w, _ := e.Size()
-	n := e.inner.ScrollbackLen()
+	n := e.ScrollbackLen()
 	grid := &Grid{Width: w, Height: n}
 	if w <= 0 || n <= 0 {
 		return grid
@@ -195,6 +200,84 @@ func (e *Emulator) Scrollback() *Grid {
 	for y := 0; y < n; y++ {
 		for x := 0; x < w; x++ {
 			c := e.inner.ScrollbackCellAt(x, y)
+			if c == nil {
+				continue
+			}
+			grid.Cells[y*w+x] = Cell{Content: c.Content, Width: c.Width, Style: styleOf(&c.Style)}
+		}
+	}
+	return grid
+}
+
+// SetScrollbackSize 设滚回缓冲最多存几行（官方在这里是 xterm 的
+// `scrollback` 选项：`terminal.tsx:104` 把它设成 `environment.scrollback ?? 0`，
+// 也就是**宿主说多少就是多少**，xterm 自己的默认 1000 被宿主的真值覆盖）。
+//
+// 为什么必须由壳体显式设：上游 `Screen` 默认 10000 行（`screen.go:26` 的
+// `NewScrollback(DefaultScrollbackSize)`），比官方多一个数量级；
+// 滚回越长，一次窗口快照要碰的格子越多，也越偏离官方（xterm 里滚到底就**看不到**
+// 更老的行）。传 <=0 = 关掉滚回（官方 `scrollback: 0` 的语义）。
+func (e *Emulator) SetScrollbackSize(maxLines int) {
+	if maxLines <= 0 {
+		// 关掉：上游 `SetMaxLines(<=0)` 是**空操作**（默认 10000 会留着），
+		// 所以这里先清空、把上限压到 1 行（内存有界），再由 scrollbackOff
+		// 让本包的投影报 0 行——界面据此不留滚动条槽（官方 FitAddon 同样
+		// 在 `scrollback === 0` 时扣 0px）。
+		e.scrollbackOff = true
+		e.inner.ClearScrollback()
+		e.inner.SetScrollbackSize(1)
+		return
+	}
+	e.scrollbackOff = false
+	e.inner.SetScrollbackSize(maxLines)
+}
+
+// Window 返回「滚回 + 当前屏」这条**虚拟缓冲**里第 first 行起共 lines 行的快照，
+// 投影与 Grid 相同（同一套 Cell / Style），专门给「用户往上滚」这一种取帧用。
+//
+// 为什么不是「先取整块 Scrollback 再自己切」：滚回 1000 行 × 90 列 = 9 万格，
+// 实测 1.73 ms 一帧（每格一次读锁，见 Scrollback 的注），而窗口只要 24 行
+// ≈ 0.04 ms——差 40 倍。渲染器每帧只需要**看得见的那几行**。
+//
+// 坐标：0 是滚回里最老的一行，ScrollbackLen() 是第一行**屏幕**行；也就是
+// `ScrollbackLen()+屏幕高` 是虚拟缓冲的总行数。参数越界按夹住处理：
+// first<0 → 0，窗口底边超过总行数就截短（返回的 Height 可能小于 lines）。
+//
+// 光标恒不可见：调用方只在**离开底部**时用这个窗口（滚到底就该画 Grid()，
+// 那里才有光标——官方 xterm 同样只在 ydisp==ybase 时画光标）。
+func (e *Emulator) Window(first, lines int) *Grid {
+	w, h := e.Size()
+	n := e.ScrollbackLen()
+	grid := &Grid{Width: w}
+	if w <= 0 || lines <= 0 {
+		return grid
+	}
+	total := n + h
+	if first < 0 {
+		first = 0
+	}
+	if first > total {
+		first = total
+	}
+	if first+lines > total {
+		lines = total - first
+	}
+	if lines <= 0 {
+		return grid
+	}
+	grid.Height = lines
+	grid.Cells = make([]Cell, w*lines)
+	for y := 0; y < lines; y++ {
+		line := first + y
+		for x := 0; x < w; x++ {
+			// 前半段在滚回里，后半段就是当前屏——两段用同一套投影，
+			// 所以滚到底与画屏幕接缝处不会出现两种样式。
+			var c *uv.Cell
+			if line < n {
+				c = e.inner.ScrollbackCellAt(x, line)
+			} else {
+				c = e.inner.CellAt(x, line-n)
+			}
 			if c == nil {
 				continue
 			}

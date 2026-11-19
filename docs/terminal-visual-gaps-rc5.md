@@ -50,7 +50,7 @@ Viva 的 `gfx.Color` 带 Alpha（`viva@v0.6.4/gfx/canvas.go:14-19`，`ui.Color` 
 - 什么时候该重开：只有当我们不再自己画网格、而是真嵌 xterm 时；或者用户明确
   要求「低对比色也要看得清」，那时应作为**设计决定**登记，而不是当成对官方的复刻。
 
-## C. scrollback —— 模型层做了，渲染没做
+## C. scrollback —— 模型层 + 渲染都已做（2026-11-19 补齐）
 
 官方这边（全部是事实，不是推测）：
 
@@ -66,8 +66,8 @@ Viva 的 `gfx.Color` 带 Alpha（`viva@v0.6.4/gfx/canvas.go:14-19`，`ui.Color` 
 - 一条容易漏的几何事实：FitAddon 在 `scrollback != 0` 时**预留 14px** 给滚动条，
   再从可用宽度算列数（`proposeDimensions`，byte 489675：
   `t = scrollback===0 ? 0 : overviewRuler?.width || 14`，随后 `width - padding - t`）。
-  即官方有滚回时 cols 比我们现在的 `terminalFitSize` 少 1~2 列。**本单不动它**：
-  单方面扣 14px 而不画滚动条，会留一条空槽，比现在的差异更难看。
+  即官方有滚回时 cols 比 `terminalFitSize` 少 1~2 列。**这条已经接上**：扣宽与
+  画滚动条现在出自同一个 `terminalScrollbarGutter()`（0 或 14），见下面的接线。
 
 上游能力（`github.com/charmbracelet/x/vt@v0.1.0`）：
 
@@ -83,9 +83,35 @@ Viva 的 `gfx.Color` 带 Alpha（`viva@v0.6.4/gfx/canvas.go:14-19`，`ui.Color` 
 测试 `internal/vterm/cell_test.go` 的 `TestScrollbackKeepsScrolledOffLines` /
 `TestScrollbackEmptyWithoutScroll`。
 
-没做渲染，原因具体（不是「做不到」）：数据通路要改三个**不在本单写入范围**的位置——
-`pluginapi.TerminalViewState` 加一个 `Scrollback *vterm.Grid` 字段、
-`cmd/app/terminal_wiring.go` 填充它、`plugins/dsterminal` 加滚轮与偏移绘制。
-而且接线前必须先定快照成本策略：`Scrollback()` 是 O(行数×列数) 且每格一次读锁
-（1000×90 ≈ 9 万次），不能塞进每帧的 `Grid()`；每帧只该问 `ScrollbackLen()`，
-用户真的往回滚时才取整块。下一单可直接按这四步做。
+### 渲染接线（2026-11-19 补齐）
+
+**先测成本，再定接口形状**（实测：`bench` 用真模拟器，90 列 × 1000 行滚回）：
+
+| 取法 | 格数 | 单次耗时 | 每次的 Cells 切片 |
+|---|---|---|---|
+| `Scrollback()` 整块 | 90 000 | **1.725 ms** | ≈ 3.5 MiB |
+| `Window(first, 24)` 可见窗口 | 2 160 | **0.041 ms**（41.9×） | ≈ 84 KiB |
+| `ScrollbackLen()` | — | **0.0001 ms** | — |
+
+所以接口按「长度每帧、窗口按需」切成两半，而不是往 `TerminalViewState` 塞一整块
+`Scrollback *vterm.Grid`：
+
+- `pluginapi.TerminalViewState.ScrollbackLen`：每帧带（一次读锁）。滚动条比例与
+  「还能不能再往上滚」都靠它。
+- `pluginapi.Actions.TerminalScrollbackWindow(tabID, first, lines) *vterm.Grid`：
+  只在**用户往上滚了**的那一帧调，壳按坐标切一段（`internal/vterm` 的
+  `Emulator.Window`，跨滚回与当前屏、光标恒不可见）。
+- 容量按官方 `scrollback` 选项：`Emulator.SetScrollbackSize(environment.scrollback)`
+  （上游默认 10000 行，比官方多一个数量级；`<=0` 由壳层投影成 0 行 = 官方
+  「没有滚回」的语义）。
+- 交互：`plugins/dsterminal` 实现 `pluginapi.ScrollHandler`，滚轮换算逐条照抄
+  xterm `_getLinesFromWheelEvent`（`scrollSensitivity:1`、Alt/Ctrl/Shift ×5、
+  像素 ÷ 格高、|Δ|<50 时 ×0.3 的小增量阻尼、小数余量跨事件累积）；滚到底恢复
+  跟随（官方 `ydisp==ybase`），`scrollOnUserInput` 让 F6 输入回到贴底。
+- 滚动条：`ScrollbarState._computeValues` 的几何（最小滑块 20px）+ 官方颜色
+  `opacity(foreground,.2)`，画在 fit 已经扣掉的那 14px 槽里。
+
+测试：`internal/vterm/scrollback_test.go`（窗口坐标/夹取/光标/容量/resize 不丢）、
+`cmd/app/terminal_scrollback_test.go`（快照带长度、窗口动作、宿主容量真的生效）、
+`plugins/dsterminal/scrollback_test.go`（14px 与 fit、滚轮换算、滚动条几何、
+往上滚看到历史行、滚到底回到当前屏、resize 后仍停在历史）。

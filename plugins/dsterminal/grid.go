@@ -139,6 +139,8 @@ func (p *Plugin) drawTerminalGrid(f ui.C, env *pluginapi.Env, tabID string, stat
 	if grid == nil {
 		return
 	}
+	// 滚动条槽宽与 fit 用的是**同一个数**（官方 scrollback===0 ? 0 : 14）。
+	gutter := terminalScrollbarGutter(terminalScrollbackCapacity(state))
 	box := ui.Stack(f).FillWidth().MinHeight(0).Clip()
 	if height > 0 {
 		box = box.Height(height)
@@ -146,19 +148,18 @@ func (p *Plugin) drawTerminalGrid(f ui.C, env *pluginapi.Env, tabID string, stat
 		box = box.Grow(1)
 	}
 	box.Draw(func(d *ui.DrawContext) {
-		p.paintGrid(d, grid, maxCols, maxRows, func(cols, rows int) {
-			// 官方 fitScreen 的后半段：量出来的尺寸交给 model.resize。
-			// 去重（同尺寸/算不出来不发）在 requestTerminalResize 里按官方判据做。
-			p.requestTerminalResize(env, tabID, state, cols, rows)
-		})
+		p.paintGrid(d, env, tabID, state, grid, gutter, maxCols, maxRows)
 	})
 }
 
-// paintGrid 逐格画：背景块、字形 run、光标。
+// paintGrid 逐格画：背景块、字形 run、光标，外加官方那条滚动条。
 //
-// onFit 拿到的是「这块面板按官方 fitScreen 口径能放几列几行」，在裁剪之前调用：
-// 屏幕比面板小时也该把 PTY 放大到面板尺寸，那正是 fit 的意义。
-func (p *Plugin) paintGrid(d *ui.DrawContext, grid *vterm.Grid, maxCols, maxRows int, onFit func(cols, rows int)) {
+// 两块屏幕在这里分叉：**贴底**画 `state.Grid`（当前屏，带光标），**滚上去了**
+// 就画壳按坐标切出来的窗口（`TerminalScrollbackWindow`，没有光标）。官方那边
+// 这一步是 xterm 自己的 viewport 按 `ydisp` 选行；滚动位置在界面侧，所以取哪
+// 一段由这里说，壳只负责切（见 pluginapi.Actions.TerminalScrollbackWindow 的
+// 成本说明）。
+func (p *Plugin) paintGrid(d *ui.DrawContext, env *pluginapi.Env, tabID string, state pluginapi.TerminalViewState, grid *vterm.Grid, gutter float32, maxCols, maxRows int) {
 	if d == nil || d.Canvas == nil || grid == nil {
 		return
 	}
@@ -167,32 +168,86 @@ func (p *Plugin) paintGrid(d *ui.DrawContext, grid *vterm.Grid, maxCols, maxRows
 	if cellW <= 0 || cellH <= 0 {
 		return
 	}
-	// 这块面板按官方 fitScreen 口径能放几列几行（含 environment 上限）。
+	// 这块面板按官方 fitScreen 口径能放几列几行（含 environment 上限与滚动条槽）。
 	// 屏幕比绘制面大时按整格裁掉：不缩放、不半格偏移——那是自造几何。
-	wantCols, wantRows := terminalFitSize(d.Rect.Width, d.Rect.Height, cellW, cellH, maxCols, maxRows)
+	wantCols, wantRows := terminalFitSize(d.Rect.Width, d.Rect.Height, cellW, cellH, maxCols, maxRows, gutter)
 	if wantCols <= 0 || wantRows <= 0 {
 		return
 	}
-	if onFit != nil {
-		onFit(wantCols, wantRows)
-	}
+	// 官方 fitScreen 的后半段：量出来的尺寸交给 model.resize。
+	// 去重（同尺寸/算不出来不发）在 requestTerminalResize 里按官方判据做。
+	p.requestTerminalResize(env, tabID, state, wantCols, wantRows)
 	cols := min(grid.Width, wantCols)
 	rows := min(grid.Height, wantRows)
 	if cols <= 0 || rows <= 0 {
 		return
 	}
 	x0, y0 := d.Rect.X, d.Rect.Y
+	p.rememberWheelTarget(canvas, env, tabID, cols, rows, cellW, cellH, gutter, d.Rect, state.ScrollbackLen)
+
+	// 滚回：只有壳给了窗口才滚得动（老壳没有那条动作，界面按「没有历史」画）。
+	scrollback := max(state.ScrollbackLen, 0)
+	view := p.scrollViewFor(tabID)
+	ydisp := scrollback
+	if scrollback > 0 && env != nil && env.Act.TerminalScrollbackWindow != nil {
+		ydisp = view.resolve(scrollback)
+	}
+	p.wheelYdisp = ydisp
+	if ydisp < scrollback {
+		if window := env.Act.TerminalScrollbackWindow(tabID, ydisp, rows); window != nil {
+			if windowRows := min(window.Height, rows); windowRows > 0 {
+				p.paintGridRows(canvas, window, 0, windowRows, cols, x0, y0, cellW, cellH)
+				p.paintScrollbar(canvas, d.Rect, gutter, rows, scrollback+grid.Height, ydisp, cellH)
+				return
+			}
+		}
+	}
+	p.paintGridRows(canvas, grid, 0, rows, cols, x0, y0, cellW, cellH)
+	p.paintGridCursor(canvas, grid, cols, rows, x0, y0, cellW, cellH)
+	p.paintScrollbar(canvas, d.Rect, gutter, rows, scrollback+grid.Height, scrollback, cellH)
+}
+
+// rememberWheelTarget 记下这一帧的滚轮几何，并声明命中区。
+//
+// 命中区是**整块终端**（官方 xterm 在整块上 `preventDefault` 吃掉滚轮，
+// 不只是文字行），这样 HandleScroll 用 `event.Target` 就能判「手势落在我身上」。
+func (p *Plugin) rememberWheelTarget(canvas *gfx.Canvas, env *pluginapi.Env, tabID string, cols, rows int, cellW, cellH, gutter float32, rect ui.Rect, scrollback int) {
+	if env != nil && env.Tree != nil {
+		p.wheelHit = env.Tree.ID(env.Feat, "terminal-screen")
+	}
+	p.wheelTab, p.wheelCellH = tabID, cellH
+	p.wheelScrollback = max(scrollback, 0)
+	if p.wheelHit.IsZero() || p.wheelCellH <= 0 {
+		return
+	}
+	p.wheelRect = ui.Rect{
+		X: rect.X, Y: rect.Y,
+		Width:  float32(cols)*cellW + gutter,
+		Height: float32(rows) * cellH,
+	}
+	if canvas != nil {
+		// 语义是「一块不带动作的区域」而不是按钮：它只为把滚轮路由到终端，
+		// 按下去不该触发任何东西，也不该变成键盘 Tab 站（SkipFocus）。用
+		// RoleTerminal 会更贴切，但那会让焦点变成**裸键盘**（Viva 的 RoleTerminal
+		// 语义），而本仓终端还没有原始键输入这条链路——那会把用户的按键吞掉。
+		canvas.HitWithOptions(p.wheelHit, p.wheelRect, terminalWheelLabel, gfx.HitOptions{
+			Role: gfx.RoleGroup, SkipFocus: true,
+		})
+	}
+}
+
+// paintGridRows 把 source 的第 offset 行起共 rows 行画到 (x0,y0)。
+func (p *Plugin) paintGridRows(canvas *gfx.Canvas, source *vterm.Grid, offset, rows, cols int, x0, y0, cellW, cellH float32) {
 	for y := 0; y < rows; y++ {
 		top := y0 + float32(y)*cellH
-		p.paintGridBackground(canvas, grid, y, cols, x0, top, cellW, cellH)
-		p.paintGridText(canvas, grid, y, cols, x0, top, cellW, cellH)
+		p.paintGridBackground(canvas, source, offset+y, cols, x0, top, cellW, cellH)
+		p.paintGridText(canvas, source, offset+y, cols, x0, top, cellW, cellH)
 	}
-	p.paintGridCursor(canvas, grid, cols, rows, x0, y0, cellW, cellH)
 }
 
 // paintGridBackground 画一行的背景块：同色相邻格合并成一个矩形，
 // 默认背景（就是 screen 自己的底色）不画。
-func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, y, cols int, x0, top, cellW, cellH float32) {
+func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, row, cols int, x0, top, cellW, cellH float32) {
 	start := -1
 	var current ui.Color
 	flush := func(end int) {
@@ -208,7 +263,7 @@ func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, y, co
 		start = -1
 	}
 	for x := 0; x < cols; x++ {
-		cell, ok := grid.Cell(x, y)
+		cell, ok := grid.Cell(x, row)
 		if !ok {
 			flush(x)
 			continue
@@ -235,7 +290,7 @@ func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, y, co
 //   - **全角字单独成 run**，跨 2 格，渲染器把它居中放在那两格里；
 //   - 宽字形的第二格（Width==0 的占位）**跳过**，否则全角后面会多出一格空白；
 //   - 相邻的半角同风格字合并成一个 run，长行不会碎成几十个 label。
-func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, y, cols int, x0, top, cellW, cellH float32) {
+func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, row, cols int, x0, top, cellW, cellH float32) {
 	var value strings.Builder
 	runs := make([]gfx.TextRun, 0, 16)
 	var current terminalCellPaint
@@ -263,7 +318,7 @@ func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, y, cols int
 	}
 
 	for x := 0; x < cols; x++ {
-		cell, ok := grid.Cell(x, y)
+		cell, ok := grid.Cell(x, row)
 		if !ok || cell.Width == 0 || cell.Content == "" {
 			continue // 宽字形的占位尾巴
 		}

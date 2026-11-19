@@ -44,17 +44,33 @@ import "github.com/MYCF711/dsh-ui/pluginapi"
 //	cellW/cellH —— 画布对等宽字体的**实测**格子尺寸（`Canvas.MonoCellSize`），
 //	               与官方 xterm 量的是同一件事；<=0 表示还没量到
 //	maxCols/maxRows —— 官方 `environment.maxCols/maxRows`；<=0 表示宿主没给上限
+//	gutter —— 给滚动条留的宽度（官方是 `scrollback===0 ? 0 : 14`，见
+//	          terminalScrollbarGutter）。**它必须在这里扣**：官方 FitAddon 的
+//	          `proposeDimensions` 就是 `availableWidth = 宽度 - 内距 - gutter`
+//	          之后才除格宽（client.terminal.js byte 489888 的
+//	          `const t=0===scrollback?0:overviewRuler?.width||14`）。
+//	          只画滚动条不扣这 14px，最后一列会被滑块盖住；只扣不画，右边会留
+//	          一条永远空着的槽——两边都得是同一个数。
 //
 // 返回 (0,0) 表示**官方口径下不该发 resize**：格子还没量到、面板放不下一行，
 // 或者算出来 `cols < 2 || rows < 1`（官方同样直接 return，不把 1 列的终端发给宿主）。
 //
 // 取整用截断而不是四舍五入：半格放不下一个字，官方 FitAddon 也是向下取整
 // （`Math.floor`）。多留半格会画出一条永远被裁的残列。
-func terminalFitSize(rectW, rectH, cellW, cellH float32, maxCols, maxRows int) (cols, rows int) {
+func terminalFitSize(rectW, rectH, cellW, cellH float32, maxCols, maxRows int, gutter float32) (cols, rows int) {
 	if cellW <= 0 || cellH <= 0 || rectW <= 0 || rectH <= 0 {
 		return 0, 0
 	}
-	cols = int(rectW / cellW)
+	if gutter < 0 {
+		gutter = 0
+	}
+	available := rectW - gutter
+	if available < cellW {
+		// 扣掉滚动条之后连一格都放不下：官方此时 `Math.max(2, …)` 会硬给 2 列，
+		// 本仓面板窄到这个程度时按「量不出来」处理，不发 resize。
+		return 0, 0
+	}
+	cols = int(available / cellW)
 	rows = int(rectH / cellH)
 	if maxCols > 0 && cols > maxCols {
 		cols = maxCols

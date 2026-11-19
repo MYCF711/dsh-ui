@@ -2161,10 +2161,100 @@
         "maxUploadBytes": 0
       },
       "req_note": "宿主不读 body（官方 typert 方法 parameters: [] ）。结果逐字取官方 types.ts:50-53 的 DeepseekChatImportLimits。同一包的**上传路由**不是 /api 方法：POST /api/deepseek-chat-import/archive（裸 ZIP + NDJSON 进度流），见 apiclient/chatimport.go 与 DSH-GO internal/transport/handlers_chat_import.go。"
+    },
+    "models.catalog.list": {
+      "batch": 28,
+      "req": {},
+      "resp": {
+        "revision": "int",
+        "models": [
+          "object"
+        ],
+        "credentials": {
+          "<ref>": {
+            "configured": "bool",
+            "writable": "bool"
+          }
+        },
+        "active": {
+          "id": "string",
+          "revision": "int"
+        }
+      },
+      "req_note": "零参数（HOST:cmd/dshd/serve_models.go:29 的白名单是空数组）。这是**可写模型目录**本身，与 session.modelCatalog（宿主现在能路由哪些模型）是两路：目录里存了什么和能路由什么可以不一致。",
+      "resp_note": "models 是宿主原始 JSON 对象数组，字段顺序与未识别字段必须原样保留（HOST:internal/llm/model_catalog.go:469 的 upsert 注释）。credentials 只回 configured/writable，**永不回值**（HOST:internal/llm/model_catalog.go:76-84）。active.revision 是设置文档（W61 model namespace）的 revision，与外层目录 revision 是两个独立乐观锁（HOST:cmd/dshd/serve_models.go:189-196）。"
+    },
+    "models.catalog.upsert": {
+      "batch": 28,
+      "req": {
+        "model": "object",
+        "credential": "string?",
+        "expectedRevision": "int?"
+      },
+      "resp": {
+        "revision": "int",
+        "models": [
+          "object"
+        ],
+        "credentials": "object",
+        "active": "ModelCatalogActive"
+      },
+      "req_note": "同 id 做部分更新、新 id 追加；可选字段**显式 null = 删除该字段**（HOST:internal/llm/model_catalog.go:466-471、:1095-1109）。credential 空串 = 删掉这个 apiKeyEnv 引用。expectedRevision 为 null 会被 host 拒（HOST:cmd/dshd/serve_models.go:236-241），只能省略。合法字段：id/name/owned_by/api/baseURL/apiKeyEnv/contextWindow/maxTokens/input/reasoningEfforts/retryPolicy（HOST:internal/llm/model_catalog.go:1136-1240），未知字段原样保留。",
+      "resp_note": "回**整份目录 + 新 revision**；界面直接拿它当新快照，不必再读一次。"
+    },
+    "models.catalog.reorder": {
+      "batch": 28,
+      "req": {
+        "ids": [
+          "string"
+        ],
+        "expectedRevision": "int?"
+      },
+      "resp": {
+        "revision": "int",
+        "models": [
+          "object"
+        ],
+        "credentials": "object",
+        "active": "ModelCatalogActive"
+      },
+      "req_note": "ids 必须是目录的**全排列**：数量不等/含重复/含目录外 id 都是 bad_request，空目录是 empty_catalog，空数组是 empty_order（HOST:internal/llm/model_catalog.go:513-546）。**没有 delete**：整组方法里没有删除入口，所以 UI 的行删除没有面（见 docs/official-parity.md #41）。",
+      "resp_note": "回整份目录 + 新 revision。"
+    },
+    "models.catalog.test": {
+      "batch": 28,
+      "req": {
+        "id": "string",
+        "baseURL": "string?",
+        "api": "string?",
+        "credential": "string?"
+      },
+      "resp": {
+        "id": "string",
+        "ok": "bool",
+        "model": "string?",
+        "latencyMs": "int"
+      },
+      "req_note": "一次**真实推理请求**（HOST:internal/llm/model_catalog.go:884-886 的注释），会走目的地栅栏、认证与上游；id 必须非空且首尾无空白（HOST:cmd/dshd/serve_models.go:161-166）。三个 override 为 nil = 沿用目录，**不要用空串表达没给**（HOST:internal/llm/model_catalog.go:861-869 是直接覆盖）。",
+      "resp_note": "ModelTestResult（HOST:internal/llm/model_catalog.go:95-100）。失败是宿主四字段（credential_missing / account_sign_in_required / invalid_config / upstream_error），不是 ok:false。"
+    },
+    "models.catalog.set-active": {
+      "batch": 28,
+      "req": {
+        "id": "string",
+        "expectedRevision": "int?"
+      },
+      "resp": {
+        "activeModel": "string",
+        "activeRevision": "int",
+        "revision": "int"
+      },
+      "req_note": "先校验 id 在目录里（不在回 not_found，HOST:cmd/dshd/serve_models.go:137-152），再写 W61 model 命名空间的 defaultModel；revision 是设置文档的乐观锁。",
+      "resp_note": "activeModel/activeRevision 是设置文档的新值，revision 是目录当时的 revision。"
     }
   },
   "counts": {
-    "total": 130,
+    "total": 135,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2190,7 +2280,8 @@
     "batch24": 1,
     "batch25": 5,
     "batch26": 1,
-    "batch27": 1
+    "batch27": 1,
+    "batch28": 5
   },
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,

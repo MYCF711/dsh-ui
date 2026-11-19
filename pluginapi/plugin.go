@@ -22,6 +22,7 @@
 package pluginapi
 
 import (
+	"encoding/json"
 	"errors"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
@@ -2077,6 +2078,35 @@ type Actions struct {
 	ModelsPageRefresh func()
 	// SetModel 改当前会话的模型覆盖（空串 = 清除）。
 	SetModel func(id string)
+
+	// ── 模型目录编辑器（宿主 `models.catalog.*`，#41）──────────────────
+	//
+	// 为什么不是 profile 的 `models`：官方两个编辑器写的是 provider profile 的
+	// `models` 数组，本仓宿主**不发布**这个字段（`../DSH-GO/internal/settingsform/
+	// provider_schema.go:167` 原文"models 等在宿主由模型目录承载"），落了也没人读。
+	// 等价真值是宿主的模型目录，五个方法见 `../DSH-GO/cmd/dshd/serve_models.go:28-34`。
+	//
+	// 六条的形状与本仓既有能力钩子一致：**同步返回，nil = 壳没接**。
+	// 写口返回 error 原样交给界面（宿主的四字段错误，含 `revision_conflict`），
+	// 调用方必须在 goroutine 里调——绘制帧不能等 HTTP。
+	//
+	// **没有 delete 钩子，也不该有**：宿主 `model_catalog.go:513-546` 的 Reorder
+	// 要目录的全排列、整组方法里没有删除入口。行删除在这条契约下没有面，
+	// 不能拿 reorder 冒充（少一个 id 会被宿主 `bad_request` 拒）。
+	// ModelsCatalogSnapshot 同步返回壳缓存的那一份（Loading=true 表示首次读取还在飞）；
+	// nil = 壳没接（老壳），界面据此**不画**一个点了没反应的目录卡。
+	ModelsCatalogSnapshot func() *apiclient.ModelCatalogSnapshot
+	// ModelsCatalogRefresh 触发后台重读目录；不等待结果，壳拉完 Invalidate。
+	ModelsCatalogRefresh func()
+	// ModelsCatalogUpsert 写一条模型（model 是宿主原样 JSON，含 id）。
+	// expectedRevision 为 nil = 不 fence；冲突回 error，**不得重试覆盖**。
+	ModelsCatalogUpsert func(model json.RawMessage, credential *string, expectedRevision *int64) (apiclient.ModelCatalogDocument, error)
+	// ModelsCatalogReorder 按 ids 提交**全排列**；ids 少于目录会被宿主拒绝。
+	ModelsCatalogReorder func(ids []string, expectedRevision *int64) (apiclient.ModelCatalogDocument, error)
+	// ModelsCatalogTest 对一条目录模型发一次真实探测（宿主走认证与目的地栅栏）。
+	ModelsCatalogTest func(id string) (apiclient.ModelCatalogTestResult, error)
+	// ModelsCatalogSetActive 把一条目录模型设成默认；宿主会先校验它在目录里。
+	ModelsCatalogSetActive func(id string, expectedRevision *int64) (apiclient.ModelCatalogSetActiveResult, error)
 
 	// Goal 读这条会话当前在做的事（壳缓存，来自 session.load 的投影）。
 	// 空 = 没设过，插件据此不画目标条。

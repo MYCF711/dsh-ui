@@ -166,13 +166,13 @@ func TestModelsCredentialBadgeOnlyForNamedReference(t *testing.T) {
 // TestModelsKeyStateFollowsTheOfficialFourBranches 钉官方 ProviderEditor.tsx:437-496。
 func TestModelsKeyStateFollowsTheOfficialFourBranches(t *testing.T) {
 	// ① profile 没命名引用：placeholder 用无实参那一句，说明行整块不画。
-	noName := modelsKeyState(ModelsProvider{Provider: "p"})
+	noName := modelsKeyState(ModelsProvider{Provider: "p"}, modelsKeyRemovalNone)
 	if noName.Placeholder != zhModelsKeyPlaceholder || noName.Hint != "" || noName.Known {
 		t.Fatalf("无命名引用：%+v", noName)
 	}
 
 	// ② describe 没答：placeholder 走回退那句，说明是"尚未确认"（中性色）。
-	unanswered := modelsKeyState(ModelsProvider{Provider: "p", APIKeyEnv: "P_API_KEY"})
+	unanswered := modelsKeyState(ModelsProvider{Provider: "p", APIKeyEnv: "P_API_KEY"}, modelsKeyRemovalNone)
 	if unanswered.Placeholder != "留空使用环境认证（P_API_KEY）" || unanswered.Hint != zhModelsKeyFallbackUnchecked {
 		t.Fatalf("describe 没答：%+v", unanswered)
 	}
@@ -182,7 +182,7 @@ func TestModelsKeyStateFollowsTheOfficialFourBranches(t *testing.T) {
 
 	// ③ 本地存储层有值：掩码当 placeholder + 成功色"使用已保存的"。
 	saved := modelsKeyState(ModelsProvider{Provider: "p", APIKeyEnv: "P_API_KEY",
-		Credential: &apiclient.CredentialInfo{Configured: true, Source: credentialSourceCatalog, Writable: true, Masked: "sk-••••1234"}})
+		Credential: &apiclient.CredentialInfo{Configured: true, Source: credentialSourceCatalog, Writable: true, Masked: "sk-••••1234"}}, modelsKeyRemovalNone)
 	if !saved.Saved || saved.Placeholder != "sk-••••1234" || saved.Hint != zhModelsKeySaved || saved.Tone != modelsKeyHintSuccess {
 		t.Fatalf("已存密钥：%+v", saved)
 	}
@@ -192,14 +192,14 @@ func TestModelsKeyStateFollowsTheOfficialFourBranches(t *testing.T) {
 
 	// ④ env 层供得上：成功色"已检测到环境变量"。
 	env := modelsKeyState(ModelsProvider{Provider: "p", APIKeyEnv: "P_API_KEY",
-		Credential: &apiclient.CredentialInfo{Configured: true, Source: "env"}})
+		Credential: &apiclient.CredentialInfo{Configured: true, Source: "env"}}, modelsKeyRemovalNone)
 	if env.Saved || env.Hint != "已检测到环境变量（P_API_KEY）" || env.Tone != modelsKeyHintSuccess {
 		t.Fatalf("env 回退：%+v", env)
 	}
 
 	// ⑤ 明确没有：warn 色 + 官方那句"请填写或设置环境变量"。
 	missing := modelsKeyState(ModelsProvider{Provider: "p", APIKeyEnv: "P_API_KEY",
-		Credential: &apiclient.CredentialInfo{}})
+		Credential: &apiclient.CredentialInfo{}}, modelsKeyRemovalNone)
 	if missing.Hint != "未检测到环境变量。请填写 API 密钥，或设置环境变量 P_API_KEY。" || missing.Tone != modelsKeyHintWarn {
 		t.Fatalf("明确缺失：%+v", missing)
 	}
@@ -320,6 +320,10 @@ type fakeCredentials struct {
 	calls []struct{ ref, value string }
 	err   error
 	log   *[]string
+	// unsets 记录 `credentials.unset` 的引用名（#41 收尾 ①：删已存密钥）。
+	unsets []string
+	// unsetErr 让删除失败（钉"删除失败不许关卡"）。
+	unsetErr error
 }
 
 func (f *fakeCredentials) set(ref, value string) error {
@@ -328,6 +332,15 @@ func (f *fakeCredentials) set(ref, value string) error {
 		*f.log = append(*f.log, "credential:"+ref)
 	}
 	return f.err
+}
+
+// unset 是官方 `removeCredential`（operations.ts:82-85）的替身。
+func (f *fakeCredentials) unset(ref string) error {
+	f.unsets = append(f.unsets, ref)
+	if f.log != nil {
+		*f.log = append(*f.log, "unset:"+ref)
+	}
+	return f.unsetErr
 }
 
 // TestModelsApplyKeyOnlyDoesNotTouchSettings 钉官方 ProviderEditor.tsx:364-368：

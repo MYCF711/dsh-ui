@@ -125,6 +125,10 @@ type officialHarness struct {
 	// credentialErr 让 `credentials.set` 失败（验证"密钥没落库就不许关卡"）。
 	credentialErr  error
 	credentialSets []credentialSetCall
+	// credentialUnsetErr 让 `credentials.unset` 失败（验证"删除失败不许关卡"）。
+	credentialUnsetErr error
+	// credentialUnsets 记录 `credentials.unset` 的引用名（顺序即调用顺序）。
+	credentialUnsets []string
 }
 
 // credentialSetCall 记录一次 `credentials.set`（值要留原文才能断言 trim 语义）。
@@ -269,6 +273,13 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			defer h.mu.Unlock()
 			h.credentialSets = append(h.credentialSets, credentialSetCall{ref: ref, value: value})
 			return h.credentialErr
+		},
+		// 删除已存密钥（官方 `remote.credentials.unset`，operations.ts:82-85）。
+		CredentialUnset: func(ref string) error {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.credentialUnsets = append(h.credentialUnsets, ref)
+			return h.credentialUnsetErr
 		},
 	}
 

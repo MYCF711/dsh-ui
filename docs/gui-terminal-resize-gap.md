@@ -102,7 +102,7 @@ cols/rows 发给宿主，让 PTY 真的变成那么宽（`xterm.resize` + `model
   `cmd/app/terminal_wiring.go` 的 `terminalResizeOfficial`——异步发、挡住
   `cols<2||rows<1` 与越过 `environment` 上限的尺寸、成功后把本地 VT 屏幕
   `vterm.Resize` 同步到新尺寸（否则下一帧又算出一个"不同"的 fit）。
-- 契约快照 `testdata/api.snapshot.json` 收录 `terminal.resize`（batch27，total 129）。
+- 契约快照 `testdata/api.snapshot.json` 收录 `terminal.resize`（batch27；当时 total 129，`credentials.unset` 加入后为 130）。
 - 测试：`plugins/dsterminal/resize_test.go`（面板宽度→列数、上限夹取、去重语义、
   上限真的到绘制面、**尺寸变→发一次 / 同尺寸→不发 / 夹取后与实际发送一致 /
   壳没接不发 / 未 connected 不发**）、`internal/apiclient/terminal_test.go`

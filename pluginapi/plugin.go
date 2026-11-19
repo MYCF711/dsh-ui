@@ -2280,6 +2280,13 @@ type Actions struct {
 	// 调用方必须在 goroutine 里调（绘制线程不能等 HTTP）。
 	// nil = 壳没接 → 密钥控件禁用并说明原因。
 	CredentialSet func(ref, value string) error
+	// CredentialUnset 删一个凭据引用（宿主 `credentials.unset`，官方
+	// `OFF:operations.ts:82-85` 的 `removeCredential`；幂等，结果是 void）。
+	// 同步返回错误，调用方必须在 goroutine 里调（绘制线程不能等 HTTP）。
+	//
+	// 与 CredentialSet 分开判 nil：宿主可以只实现一半（删得掉、写不进），
+	// 界面在删这一步据此说"壳未接"，而不是把删除静默当成成功。
+	CredentialUnset func(ref string) error
 
 	// ── Cordis 面板的三个生命周期动词（GUI 账本 #12）─────────────────────
 	//

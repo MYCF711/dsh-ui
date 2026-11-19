@@ -56,6 +56,15 @@ const (
 	zhModelsKeyPlaceholderFallback = "留空使用环境认证（%s）"
 	// zhModelsKeySaved 是"已有本地存储密钥"的说明（locales.ts:224）。
 	zhModelsKeySaved = "使用已保存的 API key。"
+	// zhModelsKeyReplace / RemovePending / RemovePendingEnvironment / RemoveApplied 是
+	// 替换与删除四档说明（locales.ts:225-228）。四句都逐字抄，不改标点。
+	//
+	// `zhModelsKeyRemovePending` 用在没有可见环境回退变量时；有变量时用
+	// `zhModelsKeyRemovePendingEnvironment` 并把 `{hint}` 换成那个变量名。
+	zhModelsKeyReplacePending           = "保存以替换已保存的 API key。"
+	zhModelsKeyRemovePending            = "保存以清除已保存的 API key，并改用环境认证。"
+	zhModelsKeyRemovePendingEnvironment = "保存以清除已保存的 API key。之后使用环境认证（%s）。"
+	zhModelsKeyRemoveApplied            = "密钥已清除，请重试保存以完成配置更新；此删除无法撤销"
 	// zhModelsKeyFallbackMissing / Detected / Unchecked 是环境回退三态（locales.ts:229/230/232）。
 	zhModelsKeyFallbackMissing   = "未检测到环境变量。请填写 API 密钥，或设置环境变量 %s。"
 	zhModelsKeyFallbackDetected  = "已检测到环境变量（%s）"
@@ -244,6 +253,32 @@ const (
 	modelsKeyHintMuted   modelsKeyHintTone = "muted"
 )
 
+// modelsKeyRemovalState 是官方 `keyRemoval` 的三态（ProviderEditor.tsx:203-205,354）：
+// 没有删除请求 / 请求了还没发 / 已经删掉（撤不回来）。
+type modelsKeyRemovalState int
+
+const (
+	// modelsKeyRemovalNone 对应官方 `keyRemoval === undefined`。
+	modelsKeyRemovalNone modelsKeyRemovalState = iota
+	// modelsKeyRemovalPending 对应官方 `keyRemoval !== undefined && !removed`：
+	// 点 Apply 才会真的发 `credentials.unset`，之前只是待办。
+	modelsKeyRemovalPending
+	// modelsKeyRemovalApplied 对应官方 `keyRemoval.removed === true`。
+	modelsKeyRemovalApplied
+)
+
+// keyRemovalState 把卡上的删除待办折成三态。
+func (s *retryEditorState) keyRemovalState() modelsKeyRemovalState {
+	switch {
+	case s == nil || s.keyRemovalRef == "":
+		return modelsKeyRemovalNone
+	case s.keyRemovalApplied:
+		return modelsKeyRemovalApplied
+	default:
+		return modelsKeyRemovalPending
+	}
+}
+
 // modelsKeyField 是一个 provider 的密钥字段该显示什么（不含用户正在打的草稿）。
 type modelsKeyField struct {
 	// Placeholder 是空输入框里的灰字（官方 `keyPlaceholder` 或 `keyPlaceholderFallback`，
@@ -262,6 +297,12 @@ type modelsKeyField struct {
 	// Help 是 label 那枚 `?` 的帮助正文（官方 `keyHelp` + `visibleRefs.join(' / ')`）；
 	// 空 = 官方 `keyHelp === undefined`（没有任何可见引用）→ 不画帮助钮。
 	Help string
+	// Removal 是删除待办的三态：非 none 时说明行改成删除文案、掩码占位不再显示
+	// （官方 `saved` 属性这时整块不传，ApiKeyInput.tsx:34,41）。
+	Removal modelsKeyRemovalState
+	// Masked 是服务端掩码预览（官方 `saved.masked`，可为空串）；只有"本地凭据
+	// 存储有值"那一档才有。
+	Masked string
 }
 
 // modelsKeyState 把官方那串三元判据收成一个纯函数。
@@ -269,15 +310,23 @@ type modelsKeyField struct {
 // 判据来源（逐条对应 ProviderEditor.tsx）：
 //
 //	:437-441  namedRef = 生效 profile 的 apiKeyEnv；authRefs = [namedRef] 或 nativeAuth.env
-//	:446-459  credentialHint 的四档
+//	:446-459  credentialHint 的四档，**前面还压着 keyRemoval 两档**
 //	:466-468  keyPlaceholder = keyHint 未定义 ? keyPlaceholder : keyPlaceholderFallback
 //	:496      credentialHint 的 CSS 类（missingRefs→notice / 未答→advancedHint / 有检测→savedNotice）
 //	:473-483  savedCredential = detected.source === 'file' && 该 ref 可见
-func modelsKeyState(provider ModelsProvider) modelsKeyField {
-	field := modelsKeyField{Placeholder: zhModelsKeyPlaceholder}
+//
+// removal 非 none 时官方只画删除相关那两句，不再显示掩码占位：`saved` 属性整块
+// 不传（`keyDraft` 已经不是 undefined，:492）。
+func modelsKeyState(provider ModelsProvider, removal modelsKeyRemovalState) modelsKeyField {
+	field := modelsKeyField{Placeholder: zhModelsKeyPlaceholder, Removal: removal}
 	if provider.APIKeyEnv == "" {
 		// 官方 keyHint === undefined：没有命名引用就谈不上"环境回退"，placeholder 用
 		// 无实参那一句，说明行整块不画。
+		if removal == modelsKeyRemovalApplied {
+			field.Hint, field.Tone, field.Known = zhModelsKeyRemoveApplied, modelsKeyHintWarn, provider.Credential != nil
+		} else if removal == modelsKeyRemovalPending {
+			field.Hint, field.Tone = zhModelsKeyRemovePending, modelsKeyHintWarn
+		}
 		return field
 	}
 	named := provider.APIKeyEnv
@@ -294,6 +343,21 @@ func modelsKeyState(provider ModelsProvider) modelsKeyField {
 	if len(visible) > 0 {
 		field.Help = fmt.Sprintf(zhModelsKeyHelp, strings.Join(visible, " / "))
 	}
+	// 删除两档压在凭据状态之前（官方 :446-459 的三元链顺序）。
+	switch removal {
+	case modelsKeyRemovalApplied:
+		field.Hint, field.Tone = zhModelsKeyRemoveApplied, modelsKeyHintWarn
+		field.Known = provider.Credential != nil
+		return field
+	case modelsKeyRemovalPending:
+		field.Tone = modelsKeyHintWarn
+		field.Hint = zhModelsKeyRemovePending
+		if len(visible) > 0 {
+			field.Hint = fmt.Sprintf(zhModelsKeyRemovePendingEnvironment, visible[0])
+		}
+		field.Known = provider.Credential != nil
+		return field
+	}
 	info := provider.Credential
 	if info == nil {
 		// describe 没答：官方 `keyFallbackUnchecked`（:446-459 的 fallback 分支）。
@@ -306,6 +370,7 @@ func modelsKeyState(provider ModelsProvider) modelsKeyField {
 	if info.Configured && info.Source == credentialSourceCatalog {
 		// 本地存储层有值：官方用掩码当 placeholder、用成功色说明"已保存"。
 		field.Saved = true
+		field.Masked = info.Masked
 		field.Hint = zhModelsKeySaved
 		field.Tone = modelsKeyHintSuccess
 		if info.Masked != "" {
@@ -351,11 +416,14 @@ func modelsKeyHidden(provider ModelsProvider) bool {
 // 它只是**投影**：真正的输入框是 `officialPanel.modelsKeyField`（Viva 的 ui.Field
 // 必须挂在窗口线程上，不能每帧重造）。这里给出上层的静态部分——label、placeholder、
 // 说明与语气、可写性。
-func modelsKeyRow(provider ModelsProvider, writable bool) (PanelRow, bool) {
+//
+// removal 是这张卡上的删除三态：`applied` 时按官方 `disabled={disabled ||
+// keyRemoval?.removed === true}` 停掉输入（ProviderEditor.tsx:505）。
+func modelsKeyRow(provider ModelsProvider, writable bool, removal modelsKeyRemovalState) (PanelRow, bool) {
 	if provider.Provider == modelsProviderAccount || modelsKeyHidden(provider) {
 		return PanelRow{}, false
 	}
-	state := modelsKeyState(provider)
+	state := modelsKeyState(provider, removal)
 	row := PanelRow{
 		ID:          modelsKeyRowPrefix + provider.Provider,
 		Title:       zhModelsKeyInput,
@@ -366,7 +434,9 @@ func modelsKeyRow(provider ModelsProvider, writable bool) (PanelRow, bool) {
 		Desc:        state.Hint,
 		Tone:        panelToneOf(state.Tone),
 		Known:       state.Known,
-		Disabled:    !writable,
+		Saved:       state.Saved,
+		SavedMask:   state.Masked,
+		Disabled:    !writable || removal == modelsKeyRemovalApplied,
 		// 密钥**永远**走凭据域，不走 settings.mutate：这里刻意不给 Path，
 		// 免得任何通用写路径把它当成设置文档字段。
 		Value: "",

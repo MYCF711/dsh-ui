@@ -181,6 +181,33 @@ func (m *model) credentialSet(ref, value string) error {
 // errWebProviderNotWired 是壳没有这条能力时的错误（与宿主 501 同一句话）。
 var errWebProviderNotWired = notWiredError("宿主未接 credentials.set")
 
+// credentialUnset 删一个凭据引用（官方 `credentials.unset`，`OFF:operations.ts:82-85`），
+// 删成功后同样**重新读一次**该 ref 的状态。
+//
+// 为什么读完还要再读：删掉的是本地凭据库那一层，环境变量 / dotenv 层可能仍然供得上
+// （官方 describe 的 `source` 就是干这个的）。不重读就会把"还在 env 里"误画成
+// "没有密钥"——两句话不一样。
+//
+// **同步返回错误**：调用方在 goroutine 里调，把错误交给界面画四字段/失败行。
+func (m *model) credentialUnset(ref string) error {
+	if m.cli == nil {
+		return errWebProviderUnsetNotWired
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), credentialTimeout)
+	defer cancel()
+	if err := m.cli.CredentialUnset(ctx, ref); err != nil {
+		return err
+	}
+	go m.refreshCredentialRefs([]string{ref})
+	// 官方 credentials/record-updated 与 reference-updated 都会使 cot limits 失效。
+	m.cotTranslationRefresh()
+	return nil
+}
+
+// errWebProviderUnsetNotWired 是壳没有 `credentials.unset` 时的错误。
+// 与 set 的那句分开：一句说"写不进"，一句说"删不掉"，指向的动作不同。
+var errWebProviderUnsetNotWired = notWiredError("宿主未接 credentials.unset")
+
 // notWiredError 是"没有这条能力"的错误类型（不冒充宿主的四字段）。
 type notWiredError string
 

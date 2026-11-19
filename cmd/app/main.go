@@ -3052,11 +3052,12 @@ func main() {
 		AgentPresetRoster:  m.agentPresetRosterSnapshot,
 		AgentPresetRefresh: m.agentPresetRefresh,
 		// #47「网页搜索与获取」设置页的两条数据面：官方 web.listProviders 的缓存
-		// 与凭据域（describe/set）。都不是 Host 设置，见 web_provider_wiring.go。
+		// 与凭据域（describe/set/unset）。都不是 Host 设置，见 web_provider_wiring.go。
 		WebProviderList:    m.webProviderListSnapshot,
 		WebProviderRefresh: m.webProviderRefresh,
 		CredentialStatus:   m.credentialStatusSnapshot,
 		CredentialSet:      m.credentialSet,
+		CredentialUnset:    m.credentialUnset,
 		FSRead: func(path string) (string, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()

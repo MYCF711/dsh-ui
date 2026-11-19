@@ -99,6 +99,15 @@ type PanelRow struct {
 	// 或者 `keyPlaceholder` / `keyPlaceholderFallback{env}`
 	// （ApiKeyInput.tsx:41、ProviderEditor.tsx:466-468）。其它控件行留空。
 	Placeholder string
+	// Saved 表示这一格是**已存密钥**那一态（官方 `savedCredential`，
+	// ProviderEditor.tsx:473-483）：它按官方 `.savedKeyInput` 画（占位色
+	// label-primary，ModelsSection.module.css:847-850），并且是"清空草稿 = 清除
+	// 已存密钥"那条交互的开关（ProviderEditor.tsx:507-509）。其它行恒 false。
+	Saved bool
+	// SavedMask 是官方 `saved.masked`（`ApiKeyInput.tsx:41` 的 placeholder 源）：
+	// describe 给的服务端掩码预览。空串 = 宿主没给预览（那时官方 placeholder
+	// 就是空，不画掩码）。明文永远不上线，所以这里只有掩码。
+	SavedMask string
 	// Tone 是这一行说明文字的语气（见 PanelTone）；空串 = 行自己的默认色。
 	Tone PanelTone
 	// Badge 是行头那枚状态点（官方 `.credentialDot`，ModelsSection.module.css:98-113）；

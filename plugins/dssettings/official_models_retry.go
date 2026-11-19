@@ -30,6 +30,28 @@ type retryEditorState struct {
 	revision      int
 	writable      bool
 	generation    uint64
+	// keyRemovalRef 非空 = 用户已请求删掉这个凭据引用（官方 `keyDraft = {ref}`，
+	// ProviderEditor.tsx:203-205）。它是**待办**，还没发请求。
+	keyRemovalRef string
+	// keyRemovalApplied = 官方 `keyDraft.removed === true`（ProviderEditor.tsx:354）：
+	// `credentials.unset` 已经成功。设了它就撤不回——官方注释「A later settings
+	// failure cannot restore a secret that was deleted」，所以后面的设置写失败时
+	// 卡片不关、Cancel 变 close、说明改成 `keyRemoveApplied`。
+	keyRemovalApplied bool
+}
+
+// keyRemovalPending 表示"这一帧有一笔待删的凭据"（官方 `keyRemoval !== undefined`）。
+func (s *retryEditorState) keyRemovalPending() bool {
+	return s != nil && s.keyRemovalRef != ""
+}
+
+// requestKeyRemoval 记下待删的引用（官方 `saved.clear()` → `setKeyDraft({ref})`，
+// ProviderEditor.tsx:496）。重复请求幂等：已经记着就保持原状。
+func (s *retryEditorState) requestKeyRemoval() {
+	if s == nil || s.credentialRef == "" {
+		return
+	}
+	s.keyRemovalRef = s.credentialRef
 }
 
 func defaultRetryPolicy() map[string]any {

@@ -53,6 +53,24 @@ func (c *Client) CredentialDescribe(ctx context.Context, refs []string) (map[str
 	return out, nil
 }
 
+// CredentialUnset 删一个凭据引用（官方 `credentials.unset`，结果 void，幂等）。
+//
+// 官方调用点：`OFF:operations.ts:82-85` 的 `removeCredential` → `credentials.unset(ref)`。
+// 它是**幂等**的（删一个本来就没有的引用也算成功），所以界面重试删除不需要先 describe。
+//
+// 语义边界与 set 对称但破坏性相反：
+//   - 删掉的是**本地凭据库**那一层；环境变量 / dotenv 层不受影响，删完以后可能
+//     又"回退到 env"，所以界面不能把删成功当成"现在肯定没有密钥"；
+//   - 官方在 Apply 里把这一步排在**设置写之前**（ProviderEditor.tsx:350-356），
+//     理由写在官方注释里：设置写失败还可以重试，而删掉的密钥**撤不回来**，
+//     所以它必须先做、并且做完就地记成"已删"。
+func (c *Client) CredentialUnset(ctx context.Context, ref string) error {
+	params := map[string]any{"ref": ref}
+	// 宿主成功信封是 `{}`（官方结果是 void），解成 struct{} 即可。
+	var out struct{}
+	return c.Call(ctx, "credentials.unset", params, &out)
+}
+
 // CredentialSet 写一个凭据引用（官方 `credentials.set`，结果 void）。
 //
 // 值是**服务器可信**的明文：调用方必须已经明确拿到用户输入的密钥，且不能把

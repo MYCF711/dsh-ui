@@ -83,6 +83,11 @@ type forgeState struct {
 	// basesPending 表示 diffBases 在飞（自动分叉点名下一帧才能显示）。
 	basesPending bool
 	textPending  bool
+	// texts / textErrs 是按文件路径缓存的新侧全文与读取失败原因（gap 展开用，
+	// 官方 `Expansion.texts` 同形）。键存在 = 读到/失败；切范围时整表清空
+	// （官方换一份 `ChangesData` 就把 `texts`/`open` 一起丢掉，`ChangesTab.tsx:773`）。
+	texts    map[string]string
+	textErrs map[string]string
 
 	worktree pluginapi.ForgeWorktree
 	// branchRead 表示当前这份 diff 是**成功读到的** branch 范围结果。
@@ -165,8 +170,24 @@ func (m *model) forgeViewLocked(cur string) *pluginapi.ForgeView {
 	view.Diff.SessionID = cur
 	view.Diff.Scope = m.forge.scope
 	view.Diff.Loading = m.forge.diffPending
+	// 快照必须是**不可变**的（插件在绘制线程读）：两张 map 每帧整份复制，
+	// 不让后台的 `forgeLoadText` 与绘制线程共享同一个 map。
+	view.Diff.Texts = cloneForgeTexts(m.forge.texts)
+	view.Diff.TextErrors = cloneForgeTexts(m.forge.textErrs)
 	view.Local = forgeLocalSummary(m.forge.diff, m.forge.branchRead)
 	return view
+}
+
+// cloneForgeTexts 复制一张只读快照用的字符串表（nil 保持 nil）。
+func cloneForgeTexts(source map[string]string) map[string]string {
+	if source == nil {
+		return nil
+	}
+	out := make(map[string]string, len(source))
+	for key, value := range source {
+		out[key] = value
+	}
+	return out
 }
 
 // forgeLocalSummary 从 branch 范围的 diff 算出 `changes.local` 卡片的数字。
@@ -332,6 +353,10 @@ func (m *model) forgeRefresh(sessionID string, generation int, scope string) {
 	m.forge.textPending = false
 	m.forge.diff.Text = ""
 	m.forge.diff.TextPath = ""
+	// 重新读 diff = 换了一份数据：按路径的未变更行正文全部作废（官方
+	// `ChangesTab.tsx:773` 在 `previous.data !== owner` 时把 texts/open 清空）。
+	m.forge.texts = nil
+	m.forge.textErrs = nil
 	m.mu.Unlock()
 	m.inv.Invalidate()
 
@@ -519,13 +544,25 @@ func (m *model) forgeLoadText(sessionID string, generation int, path string) {
 		return
 	}
 	m.forge.textPending = false
+	if m.forge.texts == nil {
+		m.forge.texts = map[string]string{}
+	}
+	if m.forge.textErrs == nil {
+		m.forge.textErrs = map[string]string{}
+	}
 	if err != nil {
+		// 失败必须留下**按路径**的原因：插件据此把 gap 退回可点态
+		// （官方 `toast.expandFailed` 之后同样清 open/text，`ChangesTab.tsx:787-795`）。
+		delete(m.forge.texts, path)
+		m.forge.textErrs[path] = forgeErrText(err)
 		m.forge.diff.Text = ""
 		m.forge.diff.TextPath = ""
 		m.mu.Unlock()
 		m.inv.Invalidate()
 		return
 	}
+	m.forge.texts[path] = text
+	delete(m.forge.textErrs, path)
 	m.forge.diff.Text = text
 	m.forge.diff.TextPath = path
 	m.mu.Unlock()
@@ -591,6 +628,9 @@ func (m *model) forgeScopeAction(scope string) {
 	// 在飞标记：插件据此不画"没有变更"（还没读到 ≠ 没有改动）。
 	m.forge.diffPending = true
 	m.forge.textPending = false
+	// 切范围 = 换一份 diff：按路径的正文全部作废，别把上一个范围的行画到这个范围。
+	m.forge.texts = nil
+	m.forge.textErrs = nil
 	m.mu.Unlock()
 	m.inv.Invalidate()
 	go m.forgeLoadScope(sessionID, generation, scope)
@@ -604,6 +644,11 @@ func (m *model) forgeTextAction(path string) {
 	m.mu.Lock()
 	sessionID, generation := m.forge.session, m.forge.generation
 	m.forge.textPending = true
+	// 重读之前先清掉这个路径上一次的失败：否则插件会在"新请求在飞"的这几帧里
+	// 仍看到旧错误，把 gap 当成失败态反复退回（官方重试是一次干净的读）。
+	if m.forge.textErrs != nil {
+		delete(m.forge.textErrs, path)
+	}
 	m.mu.Unlock()
 	go m.forgeLoadText(sessionID, generation, path)
 }

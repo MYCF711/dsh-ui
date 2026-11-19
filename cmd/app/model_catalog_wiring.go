@@ -149,6 +149,40 @@ func (m *model) modelsCatalogReorder(ids []string, expectedRevision *int64) (api
 	return document, nil
 }
 
+// modelsCatalogReplace 一次写入整份模型数组（宿主 `models.catalog.replace`）。
+//
+// 这是编辑卡唯一的写出口：官方删一行就是本地 splice 后整数组重写
+// （`DeepSeekModelsEditor.tsx:157-160` + `operations.ts:86-91`），宿主 Replace 是
+// 同一条语义（逐行规范化 + 重复 id 拒绝 + 乐观锁 + 整数组替换）。调用方必须在
+// goroutine 里调；错误原样返回，由插件分类成失败态。
+func (m *model) modelsCatalogReplace(models []json.RawMessage, expectedRevision *int64) (apiclient.ModelCatalogDocument, error) {
+	if m.cli == nil {
+		return apiclient.ModelCatalogDocument{}, errModelCatalogNotWired
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), modelCatalogTimeout)
+	defer cancel()
+	document, err := m.cli.ModelCatalogReplace(ctx, models, expectedRevision)
+	if err != nil {
+		return apiclient.ModelCatalogDocument{}, err
+	}
+	m.publishModelCatalog(document)
+	return document, nil
+}
+
+// llmDiscoverModels 问端点上有哪些模型（官方 `llm.discoverModels`）。
+//
+// 它是一次**真实上游请求**（宿主真的 `GET <baseURL>/models`，
+// `../DSH-GO/cmd/dshd/serve_account_api.go:492-538`），所以用测试那一档超时；
+// 8 秒按目录读写算不出来。结果不进缓存：这是"用户按了一次"的动作。
+func (m *model) llmDiscoverModels(settingsNS string, request apiclient.ModelDiscoveryRequest) ([]apiclient.DiscoveredModel, error) {
+	if m.cli == nil {
+		return nil, errModelCatalogNotWired
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), modelCatalogTestTimeout)
+	defer cancel()
+	return m.cli.LLMDiscoverModels(ctx, settingsNS, request)
+}
+
 // modelsCatalogTest 发一次真实探测（宿主 `models.catalog.test`）。
 //
 // 它是**一次真实推理请求**（宿主 `model_catalog.go:884-886` 的注释），所以超时

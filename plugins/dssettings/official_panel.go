@@ -70,9 +70,15 @@ type officialPanel struct {
 	nextCatalogGeneration uint64
 	// catalogSnapshot 是这一帧的宿主目录快照（开卡时用它建草稿）。
 	catalogSnapshot *apiclient.ModelCatalogSnapshot
-	// catalogWritable 表示壳接上了目录写口（upsert 与 reorder 都要在）。
+	// modelsPage 是这一帧的三路只读目录快照（开卡时用它的 provider 事实算协议候选
+	// 与 baseURL 占位；不参与写入）。
+	modelsPage *apiclient.ModelsPageSnapshot
+	// catalogWritable 表示壳接上了目录写口（判据是 `replace` 在：它才是官方
+	// 整数组写入语义，删除/排序/新增都走它）。
 	catalogWritable bool
-	// 四个目录 DataPlane 钩子（nil = 老壳）。
+	// 目录 DataPlane 钩子（nil = 老壳）。
+	catalogReplace   func([]json.RawMessage, *int64) (apiclient.ModelCatalogDocument, error)
+	catalogDiscover  func(string, apiclient.ModelDiscoveryRequest) ([]apiclient.DiscoveredModel, error)
 	catalogUpsert    func(json.RawMessage, *string, *int64) (apiclient.ModelCatalogDocument, error)
 	catalogReorder   func([]string, *int64) (apiclient.ModelCatalogDocument, error)
 	catalogTest      func(string) (apiclient.ModelCatalogTestResult, error)
@@ -157,6 +163,9 @@ type officialPanel struct {
 	// 只在绘制线程读写，所以不走 mu。
 	card      ui.Box
 	cardShown bool
+	// catalogDrag 是模型目录行的拖放状态（official_models_catalog_drag.go）。
+	// 与 card 同一档：只有窗口线程的绘制/指针/AfterDraw 读写它，故意不套 mu。
+	catalogDrag catalogDragState
 }
 
 // accountAvatar 是头像加载器的懒建出口（零值可用）。
@@ -433,7 +442,7 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	if env.Act.ModelsCatalogSnapshot != nil {
 		catalogSnapshot = env.Act.ModelsCatalogSnapshot()
 	}
-	catalogWritable := env.Act.ModelsCatalogUpsert != nil && env.Act.ModelsCatalogReorder != nil
+	catalogWritable := env.Act.ModelsCatalogReplace != nil
 	o.mu.Lock()
 	modelsEdit := o.modelsEdit.clone()
 	catalogEdit := o.modelsCatalog
@@ -458,7 +467,10 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	o.roster = roster
 	o.agentPresetRefresh = refresh
 	o.catalogSnapshot = catalogSnapshot
+	o.modelsPage = modelsSnapshot
 	o.catalogWritable = catalogWritable
+	o.catalogReplace = env.Act.ModelsCatalogReplace
+	o.catalogDiscover = env.Act.LLMDiscoverModels
 	o.catalogUpsert = env.Act.ModelsCatalogUpsert
 	o.catalogReorder = env.Act.ModelsCatalogReorder
 	o.catalogTest = env.Act.ModelsCatalogTest
@@ -591,6 +603,10 @@ func (p *Plugin) drawOfficialPanel(f ui.C, env *pluginapi.Env) {
 	write := o.write
 	o.mu.Unlock()
 	o.cardShown = false
+	// 拖放声明跟着绘制帧走：viva 的 DragState 只对本帧声明过的元素成立，
+	// 所以每帧开头把上一帧的落点行清掉（official_models_catalog_drag.go 的 beginPaint）。
+	// 可写性由本帧的行绘制填（只有真画出目录行才算可落）。
+	p.catalogDrag().beginPaint(env)
 	if !open || !p.OfficialEnabled() {
 		return
 	}
@@ -674,6 +690,10 @@ func (p *Plugin) afterOfficialPanel(canvas *gfx.Canvas, env *pluginapi.Env) {
 		t = env.Theme
 	}
 	dscore.PaintElevationOverlay(canvas, rect, t.Radii.Panel, t.Shadows.Prominent, t.BorderL4)
+	// 模型目录行的拖放视觉（落点插入线 + 拖拽预览）也只能在这里画：两者都落在
+	// 自己那个盒子**外面**，Draw 钩子里的会被 viva 的逐元素裁剪吃掉
+	// （official_models_catalog_drag.go 的 paintCatalogDragOverlay）。
+	p.paintCatalogDragOverlay(canvas, env, t, rect)
 }
 
 // relArea 把绝对矩形转成卡片内相对矩形。

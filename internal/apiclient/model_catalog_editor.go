@@ -151,6 +151,33 @@ func (c *Client) ModelCatalogReorder(ctx context.Context, ids []string, expected
 	return out, nil
 }
 
+// ModelCatalogReplace 是 `models.catalog.replace`：**一次写入整份模型数组**。
+//
+// 它才是官方编辑器语义的等价物：官方删一行是本地数组 `splice` 后把整个 `models`
+// 数组写回去（`DeepSeekModelsEditor.tsx:157-160` 的 `onRemove` → `remove(index)`，
+// 落盘走一次 `settings.mutate` 的整数组重写，`operations.ts:86-91`）。宿主
+// `../DSH-GO/internal/llm/model_catalog.go` 的 `Replace` 就是同一条语义：
+// 逐行规范化 + 重复 id 拒绝 + 乐观锁，然后**整数组替换**（`pruneOrphanCredentials`
+// 顺带清掉没人引用的凭据）。空数组是合法目标（删到空）。
+//
+// 与 `ModelCatalogReorder` 的区别是决定性的：reorder 要求 ids 是目录的**全排列**
+// （少一条即 `bad_request`，`model_catalog.go:525-546`），所以它表达不了删除；
+// replace 直接给出目标数组，删除/新增/排序一次说完，也不再需要"先 upsert 再 reorder"
+// 的两段式（那两段之间失败会留下半份目录）。
+func (c *Client) ModelCatalogReplace(ctx context.Context, models []json.RawMessage, expectedRevision *int64) (ModelCatalogDocument, error) {
+	if models == nil {
+		// 宿主把 `models=null` 当拒绝（`serve_models.go:236-241` 的 null 白名单），
+		// 而 `models=[]` 是"删到空"的合法目标。nil 切片在这里就是后者。
+		models = []json.RawMessage{}
+	}
+	params := catalogRevisionParams(map[string]any{"models": models}, expectedRevision)
+	var out ModelCatalogDocument
+	if err := c.Call(ctx, "models.catalog.replace", params, &out); err != nil {
+		return ModelCatalogDocument{}, err
+	}
+	return out, nil
+}
+
 // ModelCatalogTest 是 `models.catalog.test`：对一条目录模型发一次真实探测请求。
 //
 // 它**不是**"列端点上的模型"（那是官方 `llm.discoverModels`），宿主对它的注释是

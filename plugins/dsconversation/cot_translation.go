@@ -30,11 +30,14 @@
 package dsconversation
 
 import (
+	"math"
 	"strings"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/MYCF711/dsh-ui/plugins/dsassets"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
@@ -325,8 +328,14 @@ func (p *Plugin) cotRetry(key string) {
 //	`.toolbar > .viewToggle{margin-inline-start:-10px;color:label-tertiary}`
 //	`.failure{color:label-primary;font-size:13px}`
 //	pending 出的是 `IconLoadingOutlineRegular size=14` 的转圈图标 + `aria-label=translating`，
-//	不是一行文字（`OFF:TranslationBody.tsx:53-55`）。本仓用 Viva 的 `ui.Spinner` 画同一个
-//	意思——它没有官方那个 14px 图标的几何，这一点登记在账本行。
+//	不是一行文字（`OFF:TranslationBody.tsx:53-55`）。图标本体是官方的
+//	（`dsassets.LoadingOutline`，sprite 原文），旋转按 `Translation.module.css:17-18` 的
+//	`.spinner{animation:cot-translation-spin 1s linear infinite}` 自己转：
+//	本仓用 `ui.Box.IconTransform` 每帧给一个角度，`prefers-reduced-motion` 时按
+//	同文件 `:19-21` 的 `@media` 分支停住不转。
+//	**仍差一档**：官方把图标包在 `<span role="status" aria-label={translating}>` 里，
+//	Viva 的非交互图标没有 a11y role/label 出口（`ui/paint.go:185-187` 只把 `label`
+//	交给 Checkbox，`ui/box.go` 也没有 Role 设置器），所以这句无障碍名进不了无障碍树。
 //
 // 文案逐字来自 OFF:src/client/locales.ts（中文那一份）。
 func (p *Plugin) drawCotToolbar(f ui.C, env *pluginapi.Env, key string, entry *cotEntry, unavailable bool) {
@@ -351,7 +360,7 @@ func (p *Plugin) drawCotToolbar(f ui.C, env *pluginapi.Env, key string, entry *c
 		})
 		if entry.pending && !entry.failed {
 			// 官方是 `IconLoadingOutlineRegular` 14px + `aria-label=translating`。
-			ui.Spinner(f)
+			p.drawCotSpinner(f, env)
 		}
 		if entry.failed {
 			ui.Text(f, cotLabelFailed).FontSize(cotFailFontSize).Color(t.LabelPrimary)
@@ -364,6 +373,63 @@ func (p *Plugin) drawCotToolbar(f ui.C, env *pluginapi.Env, key string, entry *c
 			ui.Text(f, cotLabelProviderUnavailable).FontSize(t.Fonts.Secondary).Color(t.LabelSecondary)
 		}
 	})
+}
+
+// cotSpinnerSize 是官方那处 `IconLoadingOutlineRegular size={14}` 的显示尺寸
+// （`OFF:TranslationBody.tsx:55`）。
+const cotSpinnerSize float32 = 14
+
+// cotSpinnerPeriod 是官方 `.spinner{animation:cot-translation-spin 1s linear infinite}`
+// 一圈的时长（`OFF:Translation.module.css:17-18`）。
+const cotSpinnerPeriod = time.Second
+
+// cotSpinnerAngle 把时钟相位换成这一帧的旋转角（弧度，一圈 = 2π）。
+//
+// 官方是 CSS 线性动画：`@keyframes cot-translation-spin{to{transform:rotate(360deg)}}`，
+// 所以角度 = (now mod 1s)/1s × 2π。`prefers-reduced-motion: reduce` 时官方
+// `@media` 分支把动画设成 none（同文件 `:19-21`）——停在第 0 帧，不是画得更慢。
+// 没有时钟（无头/测试壳）同样停在 0：排不出下一帧的动画只会闪一下。
+func cotSpinnerAngle(now time.Duration, reduceMotion, hasClock bool) float32 {
+	if reduceMotion || !hasClock || now <= 0 {
+		return 0
+	}
+	phase := float32(now%cotSpinnerPeriod) / float32(cotSpinnerPeriod)
+	return phase * 2 * math.Pi
+}
+
+// drawCotSpinner 画官方那枚 14px loading 图标，并按 1s/圈 自转。
+//
+// 图标本体走 `dsassets.LoadingOutline`（sprite 原文，不手画）；旋转走
+// `IconTransform`，排帧走 `Canvas.RequestFrame`——与 `dsforge` 的 StateDot
+// 同一判据（`plugins/dsforge/progress.go` 的 `stateDotPhase`）。
+func (p *Plugin) drawCotSpinner(f ui.C, env *pluginapi.Env) {
+	icon, ok := dsassets.LoadingOutline(p.theme.LabelPrimary)
+	if !ok {
+		// 官方这条 path 只有一条描边、没有 cap/join 冲突，`Build` 不会失败；
+		// 真失败了也不许拿近似形状顶上（`dsassets.Build` 的约定），
+		// 退回改版前的 Viva spinner。
+		ui.Spinner(f)
+		return
+	}
+	var (
+		angle        float32
+		reduceMotion bool
+		hasClock     bool
+		now          time.Duration
+	)
+	if env != nil && env.Canvas != nil {
+		reduceMotion = env.Canvas.ReduceMotion()
+		hasClock = env.Canvas.HasClock()
+		now = env.Canvas.Now()
+		angle = cotSpinnerAngle(now, reduceMotion, hasClock)
+		if angle != 0 {
+			env.Canvas.RequestFrame()
+		}
+	}
+	box := ui.Icon(f, icon).Size(cotSpinnerSize, cotSpinnerSize).Color(p.theme.LabelPrimary)
+	if angle != 0 {
+		box.IconTransform(gfx.IconTransform{Rotate: angle})
+	}
 }
 
 // cotToolbarToggleInset 是官方 `.viewToggle{margin-inline-start:-10px}`

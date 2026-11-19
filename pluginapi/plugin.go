@@ -2387,6 +2387,15 @@ type Actions struct {
 	// 拆成六个字段就会出现"有 VoiceStart 没有 VoiceStop"的半接状态，
 	// 那种状态在界面上看起来正常、用起来是坏的。nil = 壳整条没接 → 不画入口。
 	Voice *VoiceActions
+
+	// UIState 是界面状态（官方 Electron `Local Storage` 的等价物）的窄通道。
+	//
+	// 给的是"一 key 一取值"的原样 JSON，不是设置字段：官方把这类纯前端记忆
+	// 放在客户端 store 里（`dsh.sidebar-browser.v1`、`dsh.user-questions.drafts.v1`），
+	// 本仓由宿主落 `<home>/state/ui-state/<key>.json`。
+	// **不要**用它存设置或会话数据：那是 settings / v4 日志的地盘。
+	// nil = 壳没接 → 消费方退回进程内记忆，不要假装持久化成功。
+	UIState *UIStateActions
 }
 
 // VoiceActions 是听写的一组动作与只读快照入口。

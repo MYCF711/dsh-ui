@@ -125,6 +125,8 @@ type (
 	ShadowLayer = pub.ShadowLayer
 	Elevation   = pub.Elevation
 	Shadows     = pub.Shadows
+	// 界面状态（官方 Local Storage 的等价物）：Actions.UIState 的动作组。纯别名。
+	UIStateActions = pub.UIStateActions
 	// 麦克风听写（#66）：Actions.Voice 的动作组与三份只读快照。纯别名。
 	VoiceActions    = pub.VoiceActions
 	VoiceCapability = pub.VoiceCapability

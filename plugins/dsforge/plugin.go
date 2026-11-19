@@ -48,8 +48,20 @@ type Plugin struct {
 	theme *pluginapi.Theme
 	// open 是本视图自己的界面态（官方放在 changes-store 的 per-tab 桶里）：
 	// 文件卡展开、已读标记、范围菜单是否展开，以及 #64 ②③ 的树宽/对比/换行。
-	// 全部只在内存，不落盘。
+	//
+	// 已读标记**落盘**（官方 viewed-files.ts 存 `dsh.forge-viewed.v1`，本仓经宿主
+	// `uiState.*` 存同一份形状，见 viewed_store.go）；其余仍在内存。
 	open changesOpen
+	// viewedSynced 记"哪些 (会话, diff 源) 已经从宿主读过标记"——每格只读一次，
+	// 避免每帧都问一遍。
+	viewedSynced map[string]bool
+	// viewedSource 是本帧在画的 diff 源 key（标记写回时用同一个）。
+	viewedSource string
+	// viewedDiff 是本帧在画的 diff（标记写回时取文件名与 digest 的集合）。
+	viewedDiff *pluginapi.ForgeDiff
+	// viewedPaths 是本帧 diff 里的路径集合：写回时丢掉已不在 diff 里的标记
+	// （官方 viewed-files.ts:87-104 的 `present` 判据）。
+	viewedPaths map[string]bool
 	// changesWidth 是上一帧量到的变更视图正文宽度：官方 `@container (min-width:760px)`
 	// 的容器宽度，immediate mode 下由 AfterDraw 从 root.Rect() 量回（见 changes_tree.go）。
 	changesWidth float32

@@ -2010,6 +2010,42 @@
       },
       "req_note": "宿主加法方法（DSH-GO/internal/transport/handlers_terminal.go 的 handleTerminalResize）：官方 uplink 的 resize 帧 {type:'resize',sequence,cols,rows} 在 HTTP 面的回落投影。校验照官方：cols∈[2,maxCols]、rows∈[1,maxRows]，越界报错不截断（lib/index.js:622-633）；缺 sessionId 直接拒（resize 只在会话内的终端上有意义）。"
     },
+    "uiState.get": {
+      "batch": 29,
+      "req": {
+        "key": "string"
+      },
+      "resp": {
+        "found": "bool",
+        "value": "any"
+      },
+      "req_note": "宿主加法方法（DSH-GO/internal/transport/handlers_ui_state.go 的 handleUIStateGet）：官方 Electron `Local Storage` 的等价物，落 `<home>/state/ui-state/<key>.json`。key 逐字用官方 localStorage 键名的命名空间（官方包里的 persist 值：`dsh.sidebar-browser.v1`、`dsh.user-questions.drafts.v1`），后缀由调用方给。**不走 settings.mutate**：它有 revision 栅栏，界面点击会推进 revision。",
+      "resp_note": "found=false = 没存过（不是错误，官方 getItem 也回 null）；found=true 时 value 是**原样 JSON**（宿主不解释、不改写，读回逐字节相同）。"
+    },
+    "uiState.set": {
+      "batch": 29,
+      "req": {
+        "key": "string",
+        "value": "any"
+      },
+      "resp": {
+        "key": "string",
+        "bytes": "int"
+      },
+      "req_note": "宿主加法方法（handleUIStateSet）：整份覆盖、last-write-wins。空值与显式 null 一律 400（清状态用 uiState.delete）。key 只做文件名安全校验（[A-Za-z0-9._-]、≤200、不许以 . 开头），宿主不解释语义。",
+      "resp_note": "bytes = 真正落盘的 JSON 字节数（trim 之后）。"
+    },
+    "uiState.delete": {
+      "batch": 29,
+      "req": {
+        "key": "string"
+      },
+      "resp": {
+        "deleted": "bool"
+      },
+      "req_note": "宿主加法方法（handleUIStateDelete）。",
+      "resp_note": "deleted=false = 本来就没有（不是错误）。"
+    },
     "terminal.retain": {
       "batch": 23,
       "req": {
@@ -2298,7 +2334,7 @@
     }
   },
   "counts": {
-    "total": 137,
+    "total": 140,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2325,7 +2361,8 @@
     "batch25": 5,
     "batch26": 1,
     "batch27": 1,
-    "batch28": 7
+    "batch28": 7,
+    "batch29": 3
   },
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,

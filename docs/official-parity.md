@@ -12,7 +12,7 @@
 - 🟡 `settings-account`（`dssettings/official_account.go` + `official_account_avatar.go`：真 profile/contact、充值/赠金余额（官方精度 + 「前往开放平台查看」下划线链接）、官方三态头像图片加载、登录/取消/登出、usage/top-up；缺口是 `account.watch` 流、两类 onboarding、`shell.quota-notice`、Platform 内嵌页、contactUs，见 #38）
 - ❌ `settings-agent-loop`
 - 🟡 `settings-general`（只有**主题**：深 / 浅 / 跟随系统，走 `Actions.SetTheme`，选完当场生效。语言、启动行为、快捷键这些通用项没有入口）
-- 🟡 `settings-models`（`plugins/dssettings/official_models*.go`：provider 目录真实 join + 模型目录分组 + `model.defaultModel` 写 + retryPolicy 卡内草稿 + **API 密钥单字段全链**（`credentials.describe/set/unset`，含掩码占位与官方占位色、环境回退三态说明、`apiKey.ts` 五条校验、provider 行头凭据点、EditorFooter 三态、草稿清空删已存密钥）；仍缺 baseURL / displayName+api / 模型目录编辑器 / 发现测试，见 #41）
+- 🟡 `settings-models`（`plugins/dssettings/official_models*.go`：provider 目录真实 join + 模型目录分组 + `model.defaultModel` 写 + retryPolicy 卡内草稿 + **API 密钥单字段全链**（`credentials.describe/set/unset`，含掩码占位与官方占位色、环境回退三态说明、`apiKey.ts` 五条校验、provider 行头凭据点、EditorFooter 三态、草稿清空删已存密钥）+ **模型目录编辑器语义层**（`official_models_catalog.go`：容量三态解析/回显（十进制 1M=1000K、整数意图吸附）、五条行校验（ID 必填/trim 后唯一/名称非空/两个容量正整数）、patch 的清空即删键、发现弹窗勾选与"清空列表"判据、拖放插入位、输入类型至少留一项 + DeepSeek 去图连带删两个图片预算字段）；仍缺 baseURL / displayName+api / 模型目录编辑器的**写路径**（官方写 provider profile 的 `models` 数组，宿主 `internal/settingsform/provider_schema.go:167` 明确不发布它、只发布 retryPolicy，等价真值 `models.catalog.*` 在 GUI 仓无客户端/无 `Actions` 钩子，且目录契约没有 delete → 行删除无面）/ 发现测试，见 #41）
 - ❌ `settings-plugin-inventory`
 - ❌ `settings-plugins`
 - ✅ `settings-session-log`（2026-11-16 补齐 general Switch + shell.overlay 结果 Toast；宿主上传方缺失仍如实返回失败，不伪报上传成功）

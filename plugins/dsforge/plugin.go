@@ -28,6 +28,8 @@ package dsforge
 import (
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/ui"
 )
 
 // 右侧变更视图的 tab 类型 key。
@@ -45,8 +47,20 @@ const changesTabLabel = "变更"
 type Plugin struct {
 	theme *pluginapi.Theme
 	// open 是本视图自己的界面态（官方放在 changes-store 的 per-tab 桶里）：
-	// 文件卡展开、已读标记、范围菜单是否展开。全部只在内存，不落盘。
+	// 文件卡展开、已读标记、范围菜单是否展开，以及 #64 ②③ 的树宽/对比/换行。
+	// 全部只在内存，不落盘。
 	open changesOpen
+	// changesWidth 是上一帧量到的变更视图正文宽度：官方 `@container (min-width:760px)`
+	// 的容器宽度，immediate mode 下由 AfterDraw 从 root.Rect() 量回（见 changes_tree.go）。
+	changesWidth float32
+	// frame 是本帧 Draw 交给 AfterDraw 的几何（只在同一帧内有效）。
+	frame changesFrame
+	// diffTargets 是左右两列的横滚视口命中 id → (会话, 文件, 列) 的映射，
+	// HandleScroll 据此把横向手势分给正确的那一列。
+	diffTargets map[gfx.ID]diffScrollTarget
+	// splitter 是本帧文件树分栏的状态；HandleKey 把方向键/Home/End 交给它
+	// （viva SplitterState.Key 的约定：OFF:viva@v0.6.5/ui/splitter.go:37-61）。
+	splitter *ui.SplitterState
 }
 
 func (*Plugin) ID() string { return "ds-forge" }
@@ -90,6 +104,10 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			// （`TestNoTwoPanelsShareOneSlotAndOrder` 必须互不相同）。取 1 = 排在浏览器之后。
 			ID: "forge-changes-tab", Slot: pluginapi.SlotRightPaneTab, Key: changesTabKey,
 			Label: changesTabLabel, Order: 1, Draw: p.drawChangesBody,
+			// 左右对比正文是在 canvas 上画的（每列自己的 BeginScrollArea），
+			// 必须等布局解完拿到 slot 矩形才能画：viva 的绘制顺序由布局树决定，
+			// 在 Draw 里直接画会被后画的节点盖住（pluginapi.Painter.AfterDraw 的约定）。
+			AfterDraw: p.afterDrawChanges,
 		},
 		{
 			// 同 key 的标题槽（mount.ts:367-369），Order 与体一致。

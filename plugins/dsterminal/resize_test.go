@@ -40,7 +40,9 @@ func TestTerminalFitSizeFollowsPanel(t *testing.T) {
 		{name: "格子还没量到 → 不发", rectW: 344, rectH: 400, cellW: 0, cellH: 0, wantCols: 0, wantRows: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cols, rows := terminalFitSize(tc.rectW, tc.rectH, tc.cellW, tc.cellH, tc.maxCols, tc.maxRows)
+			// gutter=0：这一组钉的是「可用宽度 ÷ 格宽」本身；留 14px 滚动条槽
+			// 的那一组在 TestTerminalFitSizeReservesScrollbarGutter。
+			cols, rows := terminalFitSize(tc.rectW, tc.rectH, tc.cellW, tc.cellH, tc.maxCols, tc.maxRows, 0)
 			if cols != tc.wantCols || rows != tc.wantRows {
 				t.Fatalf("版式 %v：得到 %d×%d，期望 %d×%d", tc.name, cols, rows, tc.wantCols, tc.wantRows)
 			}

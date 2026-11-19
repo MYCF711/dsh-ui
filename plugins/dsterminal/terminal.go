@@ -42,6 +42,19 @@ type Plugin struct {
 	// guideMenuOpen 是向导卡片上那枚 shell 菜单的展开态（官方 TerminalGuide 的
 	// `open` 状态，TerminalGuide.tsx:37）。菜单面画在卡片下方，见 guide.go。
 	guideMenuOpen bool
+
+	// scroll 是每个 occurrence 的滚动位置（官方那边由 xterm 的 viewport 持有，
+	// 本仓的屏幕在壳里，所以由界面记）。见 scrollback.go。
+	scroll map[string]*terminalScrollView
+
+	// 下面这几项是**最近一帧**留下的手势几何：滚轮事件只带指针坐标与命中 id，
+	// 要知道「落在哪个终端、一格多高、还能往上滚几行」得由绘制时记下来。
+	wheelHit        gfx.ID
+	wheelTab        string
+	wheelCellH      float32
+	wheelScrollback int
+	wheelYdisp      int
+	wheelRect       ui.Rect
 }
 
 func (*Plugin) ID() string         { return "ds-terminal" }
@@ -99,12 +112,30 @@ func (p *Plugin) CloseRightTab(sessionID, tabID, kind string, actions pluginapi.
 	if kind != RightTabTerminal {
 		return nil
 	}
+	// 这条 occurrence 没了：滚动位置不能留给下一次重开（新终端没有那段历史）。
+	p.forgetScroll(tabID)
 	if actions.TerminalCloseOfficial == nil {
 		return fmt.Errorf("用户终端 close 未接线")
 	}
 	return actions.TerminalCloseOfficial(tabID)
 }
 
+// HandleScroll 接住落在终端上的滚轮：官方那边是 xterm viewport 的滚动条与
+// 滚轮（`scrollSensitivity:1`），本仓按同一套换算自己滚（见 scrollback.go）。
+//
+// 只在指针命中终端时接手；返回 Handled 之后壳不再把这次手势交给页面滚动
+// ——官方 xterm 同样是 `preventDefault`，滚到头也不让页面动。
+func (p *Plugin) HandleScroll(ev gfx.ScrollEvent) gfx.EventResult {
+	if p.wheelHit.IsZero() || ev.Target != p.wheelHit {
+		return gfx.EventResult{}
+	}
+	if ev.DeltaY == 0 {
+		return gfx.EventResult{}
+	}
+	return gfx.EventResult{Handled: true, Repaint: p.scrollTerminal(ev)}
+}
+
+// HandleKey 是 F5/F6：F5 开关浮层、F6 把输入行写进 PTY。
 func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 	if ev.Key == gfx.KeyF6 {
 		if !p.open && !p.rightActive {
@@ -118,6 +149,9 @@ func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 		if p.currentTab != "" && p.act.TerminalWriteOfficial != nil {
 			// F6 是真实人员输入，不是 xterm 的协议回复，因此 typed=true。
 			p.act.TerminalWriteOfficial(p.currentTab, line+"\n", true)
+			// 官方 `scrollOnUserInput: true`（DEFAULT_OPTIONS，官方没有覆盖它）：
+			// 用户一输入，viewport 回到贴底——正在看的永远是最新那几行。
+			p.scrollViewFor(p.currentTab).follow = true
 		}
 		if p.act.Notify != nil {
 			p.act.Notify("输入已提交: " + line)

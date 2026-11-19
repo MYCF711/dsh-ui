@@ -42,6 +42,10 @@ type Emulator struct {
 	// drained 是上游的应答流（程序发来的 DSR / DA 之类必须回，否则它会卡住）。
 	// 这里丢弃应答，因为本包只做「看屏幕」；真要驱动程序请走 terminal_send 那条路。
 	zombie bool
+	// scrollbackOff 是「官方 `scrollback: 0`」这一档：上游没有关掉滚回的公开入口
+	// （`Screen.SetScrollback(nil)` 要未导出的 scrs，`SetMaxLines(<=0)` 直接 return），
+	// 所以这里记住「关掉了」，由本包的投影层报 0 行。
+	scrollbackOff bool
 }
 
 // New 造一块 w×h 的终端屏幕。

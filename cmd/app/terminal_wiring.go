@@ -142,6 +142,10 @@ func (m *model) terminalSnapshot(tabID string) pluginapi.TerminalViewState {
 			state.gridDirty = false
 		}
 		out.Grid = state.grid
+		// 滚回长度只是一次读锁（实测 0.1 µs），每帧都带上：滚动条比例与
+		// 「还能不能再往上滚」都靠它。整块滚回**不**在这里取，见
+		// terminalScrollbackWindow 的成本说明。
+		out.ScrollbackLen = state.emu.ScrollbackLen()
 	}
 	if state.public.Info != nil {
 		info := *state.public.Info
@@ -152,6 +156,32 @@ func (m *model) terminalSnapshot(tabID string) pluginapi.TerminalViewState {
 		out.Environment = &env
 	}
 	return out
+}
+
+// terminalScrollbackWindow 取「滚回 + 当前屏」这条虚拟缓冲的一段，给用户往上滚
+// 的那一帧画。官方那边这一步是 xterm 自己的 viewport（`ydisp` 决定画哪几行）；
+// 本仓的屏幕在壳里，所以按坐标切一段出来。
+//
+// 成本：只碰窗口里的格子（实测 24 行 × 90 列 = 0.04 ms），**不是**整块滚回
+// （1000 行 × 90 列 = 1.73 ms/帧，见 internal/vterm 的 Scrollback 注）。
+// 调用点在绘制帧里，所以：
+//   - 不取整块；
+//   - 也不在 m.mu 里做这件事：拿到的 `*vterm.Emulator` 是一块独立对象，
+//     换代（retry/重建）只会让 m.terminalViews 指向新的一块，旧的那块就算
+//     还被旧读循环写也不会竞争——上游 `vt.SafeEmulator` 的每个访问器自己加锁
+//     （`ScrollbackCellAt` / `CellAt` 都是 RLock）。所以这里可以安全地出锁读。
+func (m *model) terminalScrollbackWindow(tabID string, first, lines int) *vterm.Grid {
+	m.mu.Lock()
+	state := m.terminalViews[userTerminalKey(m.cur, tabID)]
+	var emu *vterm.Emulator
+	if state != nil {
+		emu = state.emu
+	}
+	m.mu.Unlock()
+	if emu == nil {
+		return nil
+	}
+	return emu.Window(first, lines)
 }
 
 func (m *model) terminalWriteOfficial(tabID, data string, typed bool) {
@@ -494,6 +524,11 @@ func (m *model) runTerminalView(ctx context.Context, sessionID, tabID string, ge
 			// （terminal.tsx:146-150）。Screen 那条剥序列投影照旧保留，
 			// 给没有网格的读者（agent 侧文本语义）用。
 			state.emu = vterm.New(frame.Info.Cols, frame.Info.Rows)
+			// 滚回容量按官方 xterm 的 `scrollback` 选项：宿主 environment 说多少
+			// 就是多少（`terminal.tsx:104` 的 `environment?.scrollback ?? 0`）。
+			// 上游默认 10000 行比官方多一个数量级，不设就会滚出 xterm 里根本
+			// 看不到的历史，也让一次取帧要碰的格子更多。
+			state.emu.SetScrollbackSize(env.Scrollback)
 			if _, err := state.emu.Write([]byte(frame.Screen)); err != nil {
 				m.mu.Unlock()
 				fail(err)

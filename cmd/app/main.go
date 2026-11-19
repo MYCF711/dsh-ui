@@ -2991,13 +2991,14 @@ func main() {
 			defer m.mu.Unlock()
 			return m.termText
 		},
-		TerminalEnsure:         m.terminalEnsure,
-		TerminalRetry:          m.terminalRetry,
-		TerminalSnapshot:       m.terminalSnapshot,
-		TerminalWriteOfficial:  m.terminalWriteOfficial,
-		TerminalResizeOfficial: m.terminalResizeOfficial,
-		TerminalRenameOfficial: m.terminalRenameOfficial,
-		TerminalCloseOfficial:  m.terminalCloseOfficial,
+		TerminalEnsure:           m.terminalEnsure,
+		TerminalRetry:            m.terminalRetry,
+		TerminalSnapshot:         m.terminalSnapshot,
+		TerminalScrollbackWindow: m.terminalScrollbackWindow,
+		TerminalWriteOfficial:    m.terminalWriteOfficial,
+		TerminalResizeOfficial:   m.terminalResizeOfficial,
+		TerminalRenameOfficial:   m.terminalRenameOfficial,
+		TerminalCloseOfficial:    m.terminalCloseOfficial,
 		// 审批策略：写宿主 <home>/state/session-permission.json。
 		// **异步、失败只写状态栏**——和 ConfigSet 同一个策略：插件不等待、不重试。
 		SetPermission: func(perm string) {

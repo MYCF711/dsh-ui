@@ -1359,6 +1359,16 @@ type TerminalViewState struct {
 	// 类型来自 internal/vterm（与 apiclient 一样是同模块的内部契约包）：
 	// 契约里放的是本仓自己的中性类型，上游 uv/vt 的类型一个都不外泄。
 	Grid *vterm.Grid
+	// ScrollbackLen 是滚回缓冲的行数（屏幕上方已经滚出去的历史行），
+	// 与官方 xterm 的 `buffer.scrollbackLength` 同一个数。
+	//
+	// 官方把滚回交给 xterm 自己管、滚动条按 `能滚的行数` 画；本仓的滚回在壳里
+	// （internal/vterm），所以这个数得从这里露出来：**一次读锁**，可以每帧读，
+	// 滚动条的比例与「还能不能再往上滚」都靠它。
+	//
+	// 它与 Grid 的口径一致：**不含当前屏**（ScrollbackLen()==0 时用户无处可滚，
+	// 官方这时 scrollback 选项为 0，连 14px 滚动条槽都不会留）。
+	ScrollbackLen int
 	// Issue 是官方 `TerminalViewState.issue` 的投影：终端视图自身的问题分类，
 	// 文案由界面按官方 locale 渲染（不是 Host 抛来的自由文本）。
 	//
@@ -2091,6 +2101,20 @@ type Actions struct {
 	TerminalRetry func(tabID string)
 	// TerminalSnapshot 同步读某 occurrence 的缓存；绝不发 HTTP。
 	TerminalSnapshot func(tabID string) TerminalViewState
+	// TerminalScrollbackWindow 取「滚回 + 当前屏」这条虚拟缓冲的第 first 行起
+	// 共 lines 行的**单元格快照**，给「用户往上滚了」的那一帧画用。
+	//
+	// 为什么不是把整块滚回塞进 TerminalViewState：滚回是 9 万格量级，实测整块
+	// 快照 1.73 ms/帧（每格一次读锁），而看得见的那 24 行只要 0.04 ms。滚回
+	// 只跟**用户滚到哪**有关，而滚动位置是界面状态（官方由 xterm 的 viewport
+	// 持有），所以取哪一段只能由界面说；壳只负责按坐标切。
+	//
+	// 坐标口径与 TerminalViewState.ScrollbackLen 一致：0 = 滚回里最老的一行，
+	// ScrollbackLen 是第一行屏幕行。越界夹住；光标不在窗口里（官方只在
+	// ydisp==ybase、也就是贴底时画光标，那时该用 TerminalViewState.Grid）。
+	//
+	// nil = 老壳（没有滚回窗口）：界面按「不能往上滚」处理，不假装有历史。
+	TerminalScrollbackWindow func(tabID string, first, lines int) *vterm.Grid
 	// TerminalWriteOfficial 写入当前 tab 绑定的 PTY；typed=true 只用于真实人员输入。
 	TerminalWriteOfficial func(tabID, data string, typed bool)
 	// TerminalResizeOfficial 把面板量出来的 cols/rows 发给宿主那条 PTY

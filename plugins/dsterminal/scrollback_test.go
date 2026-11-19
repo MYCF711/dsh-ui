@@ -338,13 +338,17 @@ func TestTerminalScrollbackDeclaresWheelTarget(t *testing.T) {
 			if hit.Bounds.Width <= 0 || hit.Bounds.Height <= 0 {
 				t.Fatalf("终端命中区没有面积：%+v", hit.Bounds)
 			}
-			// 它只是滚轮的路由区：不该抢键盘焦点（那会多出一个 Tab 站），
-			// 也不该被当成按钮读给读屏软件。
-			if hit.Focusable {
-				t.Fatalf("终端滚轮命中区不该可聚焦：%+v", hit)
+			// 它同时是滚轮路由区**和**焦点判据（官方 .xterm-focus 的对应物，
+			// 见 grid.go 的 screenFocused），所以必须可聚焦；但**不占 Tab 站**
+			// （SkipTab），也不该被当成按钮读给读屏软件。
+			if !hit.Focusable {
+				t.Fatalf("终端屏幕命中区必须可聚焦，否则光标永远是失焦态（outline）：%+v", hit)
+			}
+			if !hit.SkipTab {
+				t.Fatalf("终端屏幕命中区不该占一个 Tab 站（SkipTab）：%+v", hit)
 			}
 			if hit.Role != gfx.RoleGroup {
-				t.Fatalf("终端滚轮命中区该是 group 角色，实际 %v", hit.Role)
+				t.Fatalf("终端屏幕命中区该是 group 角色，实际 %v", hit.Role)
 			}
 		}
 	}

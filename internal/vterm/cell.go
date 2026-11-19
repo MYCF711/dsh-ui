@@ -68,14 +68,50 @@ type Cell struct {
 	Style   Style
 }
 
-// CursorShape 是光标形状，对应 DECSCUSR（CSI Ps SP q）的三档。
+// CursorShape 是光标形状。
+//
+// 官方的四种形态是四个 CSS 类，**不是四个 DECSCUSR 档**：
+//
+//	block       terminal.module.css:13-14  `background-color:var(--terminal-cursor)`
+//	outline     terminal.module.css:15     `outline-color:var(--terminal-cursor)`
+//	bar         terminal.module.css:16     `box-shadow:1px 0 0 var(--terminal-cursor) inset`
+//	underline   terminal.module.css:17     `border-bottom-color:var(--terminal-cursor)`
+//
+// 前三个（block / bar / underline）由 DECSCUSR（CSI Ps SP q）选，outline 不来自
+// 程序：它是 xterm 的 `cursorInactiveStyle` 默认值 —— 官方投进 asar 的 xterm
+// DEFAULT_OPTIONS 原文 `cursorStyle:"block",cursorWidth:1,cursorInactiveStyle:"outline"`。
+// 而 xterm 的渲染器（同 asar）是这么二分的：
+//
+//	if (isFocused) {
+//	    blink && push("xterm-cursor-blink");
+//	    push(style==="bar" ? "xterm-cursor-bar" : style==="underline" ? "xterm-cursor-underline" : "xterm-cursor-block");
+//	} else switch (cursorInactiveStyle) {
+//	    case "outline": push("xterm-cursor-outline"); ... }
+//
+// 所以 outline 是**失焦态**的形状，和 Shape 不是同一维：Shape 来自程序，
+// 失焦时被 CursorInactiveShape 顶替。取该画哪一个用 Cursor.ShapeAt。
 type CursorShape uint8
 
 const (
 	CursorBlock CursorShape = iota
 	CursorBar
 	CursorUnderline
+	// CursorOutline 是**失焦**时的形态：格内 1px 空心框。
+	//
+	// xterm 的 `@keyframes`/主题样式表（官方 asar）原文：
+	//   `.xterm-cursor.xterm-cursor-outline { outline: 1px solid ${cursor}; outline-offset: -1px; }`
+	// `outline-offset:-1px` 把框收进格子内沿，所以是**格内** 1px 的四边形，
+	// 不是格外的 halo。官方 module CSS 只覆盖它的颜色（terminal.module.css:15）。
+	CursorOutline
 )
+
+// CursorInactiveShape 是失焦时的光标形态。
+//
+// 官方没有覆盖 xterm 的 `cursorInactiveStyle`（terminal.tsx:91-95 只设了
+// cursorBlink / fontSize / fontFamily / scrollback / minimumContrastRatio），
+// 所以就是 xterm 的默认值 `outline`。它是常量而不是字段：我们没有让用户或
+// 主题改这一档的入口。
+const CursorInactiveShape = CursorOutline
 
 // String 便于测试与日志读。
 func (s CursorShape) String() string {
@@ -86,6 +122,8 @@ func (s CursorShape) String() string {
 		return "bar"
 	case CursorUnderline:
 		return "underline"
+	case CursorOutline:
+		return "outline"
 	default:
 		return fmt.Sprintf("CursorShape(%d)", uint8(s))
 	}
@@ -93,8 +131,8 @@ func (s CursorShape) String() string {
 
 // Cursor 是光标状态：位置、可见性、形状、是否闪烁。
 //
-// Blink 只表达**程序允许它闪**（DECSCUSR 的 1/3/5 档）；实际有没有闪是界面的事
-// （官方 `terminalCursorBlink` 还要 `.xterm-focus`，terminal.module.css:18-19）。
+// Shape / Blink 是**程序**说的（DECSCUSR 的 1–6 档）。实际画哪一个形状、闪不闪
+// 还要看焦点，见 ShapeAt / BlinkAt。
 type Cursor struct {
 	X, Y    int
 	Visible bool
@@ -102,15 +140,50 @@ type Cursor struct {
 	Blink   bool
 }
 
+// ShapeAt 报告给定焦点状态下该画哪个形状。
+//
+// 有焦点画程序选的 DECSCUSR 档；没焦点一律 CursorInactiveShape（outline）。
+// 这两条都出自 xterm 渲染器里那句 `isFocused ? … : cursorInactiveStyle`。
+func (c Cursor) ShapeAt(focused bool) CursorShape {
+	if focused {
+		return c.Shape
+	}
+	return CursorInactiveShape
+}
+
+// BlinkAt 报告给定焦点状态下该不该闪。
+//
+// 闪烁**只在有焦点时**成立，这是两处独立证据的同一个结论：
+//   - xterm 渲染器把 `xterm-cursor-blink` 这个类只加在 `isFocused` 分支里；
+//   - xterm 生成的动画规则全部挂在 `.xterm-rows.xterm-focus` 下，
+//     官方 module CSS 再补一条也是 `.xterm-rows.xterm-focus …`（terminal.module.css:18）。
+//
+// 所以失焦时是 outline 形态且静止，不会出现「空心框在闪」。
+func (c Cursor) BlinkAt(focused bool) bool { return c.Blink && focused }
+
+// Defaults 是**程序**通过 OSC 改过的默认颜色（OSC 10 前景 / 11 背景 / 12 光标色）。
+//
+// 为什么放在快照里而不是让渲染器去问模拟器：渲染器拿到的只有 Grid，而且这三个值
+// 是终端级状态（与行、与滚动窗口都无关），跟着屏幕快照走最省事。
+// Set=false 表示「没被改过」——那时光标色与默认前景走主题，官方同样把没被
+// OSC 覆盖的那些落回 `this.defaults`（terminal-theme.ts:67、73）。
+type Defaults struct {
+	Fg, Bg, Cursor Color
+}
+
 // Grid 是屏幕在某一刻的**不可变快照**，供渲染器逐格绘制。
 //
 // 为什么给快照而不是让渲染器直接调 Cell(x,y)：渲染线程与读取循环不是一条
 // goroutine，逐格回调会跨锁几百次（一次 resize 之后 80×24 就是 1920 次），
 // 快照一次拿完，之后随便画。
+//
+// Default 只有 Grid() 填：滚回窗口 / Scrollback 不是屏幕，没有「终端级默认色」
+// 这一说，渲染器画它们时用的仍是屏幕那一份。
 type Grid struct {
 	Width, Height int
 	Cells         []Cell
 	Cursor        Cursor
+	Default       Defaults
 }
 
 // Cell 返回 (x,y) 这一格；越界或未分配的格子返回 false。
@@ -132,7 +205,7 @@ func (g *Grid) Cell(x, y int) (Cell, bool) {
 func (e *Emulator) Grid() *Grid {
 	b := e.inner.Bounds()
 	w, h := b.Dx(), b.Dy()
-	grid := &Grid{Width: w, Height: h}
+	grid := &Grid{Width: w, Height: h, Default: e.defaults()}
 	if w <= 0 || h <= 0 {
 		return grid
 	}
@@ -146,7 +219,7 @@ func (e *Emulator) Grid() *Grid {
 			grid.Cells[y*w+x] = Cell{
 				Content: c.Content,
 				Width:   c.Width,
-				Style:   styleOf(&c.Style),
+				Style:   e.styleOf(&c.Style),
 			}
 		}
 	}
@@ -203,7 +276,7 @@ func (e *Emulator) Scrollback() *Grid {
 			if c == nil {
 				continue
 			}
-			grid.Cells[y*w+x] = Cell{Content: c.Content, Width: c.Width, Style: styleOf(&c.Style)}
+			grid.Cells[y*w+x] = Cell{Content: c.Content, Width: c.Width, Style: e.styleOf(&c.Style)}
 		}
 	}
 	return grid
@@ -281,16 +354,16 @@ func (e *Emulator) Window(first, lines int) *Grid {
 			if c == nil {
 				continue
 			}
-			grid.Cells[y*w+x] = Cell{Content: c.Content, Width: c.Width, Style: styleOf(&c.Style)}
+			grid.Cells[y*w+x] = Cell{Content: c.Content, Width: c.Width, Style: e.styleOf(&c.Style)}
 		}
 	}
 	return grid
 }
 
 // styleOf 把上游样式投影成本包的类型。
-func styleOf(s *uv.Style) Style {
-	fg, fgIndex := resolve(s.Fg)
-	bg, _ := resolve(s.Bg)
+func (e *Emulator) styleOf(s *uv.Style) Style {
+	fg, fgIndex := e.resolve(s.Fg)
+	bg, _ := e.resolve(s.Bg)
 	attrs := attrsOf(s.Attrs)
 	if s.Underline != uv.UnderlineNone {
 		attrs |= AttrUnderline
@@ -299,7 +372,7 @@ func styleOf(s *uv.Style) Style {
 	// xterm core 的 DEFAULT_OPTIONS；官方没有覆盖它），所以粗体的 0–7 号索引色
 	// 画成 8–15 那一档的高亮色。这是**官方默认行为**，不是我们选的近似。
 	if attrs.Has(AttrBold) && fgIndex >= 0 && fgIndex < 8 {
-		fg = palette[fgIndex+8]
+		fg = e.indexed(fgIndex + 8)
 	}
 	return Style{Fg: fg, Bg: bg, Attrs: attrs}
 }
@@ -341,7 +414,7 @@ func cursorShape(style vt.CursorStyle) CursorShape {
 
 // resolve 把上游颜色解析成 8 位通道，并返回它在 256 色调色板里的下标
 // （-1 = 真彩、未知类型或未设置）。
-func resolve(c color.Color) (Color, int) {
+func (e *Emulator) resolve(c color.Color) (Color, int) {
 	switch v := c.(type) {
 	case nil:
 		return Color{}, -1
@@ -350,17 +423,58 @@ func resolve(c color.Color) (Color, int) {
 		if index < 0 || index >= 16 {
 			return Color{}, -1
 		}
-		return palette[index], index
+		return e.indexed(index), index
 	case ansi.IndexedColor:
-		return palette[int(v)], int(v)
-	case ansi.RGBColor:
-		return RGB(v.R, v.G, v.B), -1
+		index := int(v)
+		if index < 0 || index > 255 {
+			return Color{}, -1
+		}
+		return e.indexed(index), index
 	}
-	r, g, b, a := c.RGBA()
-	return Color{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8), Set: true}, -1
+	return plainColor(c), -1
 }
 
-// palette 是 256 色调色板。
+// plainColor 解析所有不涉及调色板下标的颜色：真彩、上游 colorful.Color、
+// color.RGBA 等等。
+func plainColor(c color.Color) Color {
+	if rgb, ok := c.(ansi.RGBColor); ok {
+		return RGB(rgb.R, rgb.G, rgb.B)
+	}
+	r, g, b, a := c.RGBA()
+	return Color{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: uint8(a >> 8), Set: true}
+}
+
+// indexed 解析 256 色调色板里第 i 项的颜色。
+//
+// **先问上游**：`x/vt@v0.1.0` 的模拟器自带一张可变的 256 项颜色表
+// （`emulator.go:422-446` 的 `IndexedColor/SetIndexedColor`，字段 `e.colors`），
+// OSC 4 改的就是它。上游没被改过时它回 `ansi.IndexedColor(i)`——那是个**类型**
+// 而不是具体颜色，意思就是「还没人设置过」，这时才落回本包这张照抄官方
+// xterm DEFAULT_ANSI_COLORS 的静态表（defaultPalette）。
+//
+// 为什么不去 `SetIndexedColor` 里预填整张表：预填会让「程序改过」与「默认」
+// 再也分不开，OSC 104 的单条复位就只能靠我们另记一份状态；而现在复位一次
+// （把该项设回 nil）上游自己就回了 `ansi.IndexedColor(i)`，不存在第二份副本。
+func (e *Emulator) indexed(i int) Color {
+	if i < 0 || i > 255 {
+		return Color{}
+	}
+	c := e.inner.IndexedColor(i)
+	if c == nil {
+		return defaultPalette[i]
+	}
+	if _, unset := c.(ansi.IndexedColor); unset {
+		return defaultPalette[i]
+	}
+	if basic, ok := c.(ansi.BasicColor); ok {
+		if j := int(basic); j >= 0 && j < 16 {
+			return defaultPalette[j]
+		}
+	}
+	return plainColor(c)
+}
+
+// defaultPalette 是 256 色调色板的**默认**值（程序没改过时的那一张）。
 //
 // 取值**照抄官方终端渲染器自带的那张表**：`@xterm/xterm` 的 DEFAULT_ANSI_COLORS，
 // 打进官方包 `dsh-client-ui-sidebar-terminal/lib/client.terminal.js`（rc.2 asar）。
@@ -374,7 +488,9 @@ func resolve(c color.Color) (Color, int) {
 //
 // 注意这**不是** x/ansi 自带的那张经典 xterm 表：`ansi.BasicColor(1).RGBA()` 是
 // xterm 经典红，官方界面实际画的是 #cc0000。两边差一个色号，用错就会与官方不同色。
-var palette = buildPalette()
+//
+// 它是只读的默认值，不是活动调色板：OSC 4 改的是上游模拟器里那张表（见 indexed）。
+var defaultPalette = buildPalette()
 
 func buildPalette() [256]Color {
 	var p [256]Color

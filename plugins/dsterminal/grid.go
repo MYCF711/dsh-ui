@@ -36,6 +36,12 @@ const (
 	// 官方 module CSS 只覆盖它的 border-bottom-color（terminal.module.css:17）。
 	terminalCursorUnderlineHeight float32 = 1
 
+	// outline 形（**失焦态**）是格内 1px 空心框。xterm 生成的那条规则原文是
+	// `.xterm-cursor.xterm-cursor-outline { outline: 1px solid ${cursor}; outline-offset: -1px; }`
+	// ——`outline-offset:-1px` 把框从格外收进格内沿，所以四条边都落在格子**里面**。
+	// 官方 module CSS 只覆盖它的颜色（terminal.module.css:15），宽度没改，仍是 1px。
+	terminalCursorOutlineWidth float32 = 1
+
 	// terminalDimAlpha 是 faint（SGR 2）的前景透明度。
 	//
 	// 官方 xterm 的 dim **不是**给整行加 opacity：内联进官方包的 xterm.css 里有
@@ -70,14 +76,30 @@ type terminalCellPaint struct {
 	bold, italic, underline, strike, conceal bool
 }
 
+// defaultColors 返回终端这一屏的默认前景/背景。
+//
+// 次序照官方 terminal-theme.ts:73 `{...this.defaults, ...Object.fromEntries(this.special)}`：
+// 先取 DSH 主题色，再让**程序**通过 OSC 10/11 写的颜色盖上去；OSC 110/111 复位之后
+// Defaults 里那一档回到 Set=false，就又落回主题色。
+func (p *Plugin) defaultColors(def vterm.Defaults) (fg, bg ui.Color) {
+	fg, bg = p.theme.LabelPrimary, p.theme.BgBase
+	if def.Fg.Set {
+		fg = gridColor(def.Fg)
+	}
+	if def.Bg.Set {
+		bg = gridColor(def.Bg)
+	}
+	return fg, bg
+}
+
 // paintOf 解析一格的颜色与属性。
 //
 // 默认前景/背景来自主题：官方把 xterm 的 foreground/background 设成页面自己的
 // 颜色（terminal-theme.ts:57-64 的 `update(background, foreground)`，调用点在
 // terminal.tsx:124-127 用 `getComputedStyle` 取 `.screen` 的那两个值）。
 // 反显在这里换色——只有这里同时知道两个默认值。
-func (p *Plugin) paintOf(style vterm.Style) terminalCellPaint {
-	fg, bg := p.theme.LabelPrimary, p.theme.BgBase
+func (p *Plugin) paintOf(def vterm.Defaults, style vterm.Style) terminalCellPaint {
+	fg, bg := p.defaultColors(def)
 	if style.Fg.Set {
 		fg = gridColor(style.Fg)
 	}
@@ -211,14 +233,24 @@ func (p *Plugin) paintGrid(d *ui.DrawContext, env *pluginapi.Env, tabID string, 
 	if ydisp < scrollback {
 		if window := env.Act.TerminalScrollbackWindow(tabID, ydisp, rows); window != nil {
 			if windowRows := min(window.Height, rows); windowRows > 0 {
-				p.paintGridRows(canvas, window, 0, windowRows, cols, x0, y0, cellW, cellH, ydisp, sel)
+				p.paintGridRows(canvas, window, grid.Default, 0, windowRows, cols, x0, y0, cellW, cellH, ydisp, sel)
 				p.paintScrollbar(canvas, d.Rect, gutter, rows, scrollback+grid.Height, ydisp, cellH)
 				return
 			}
 		}
 	}
-	p.paintGridRows(canvas, grid, 0, rows, cols, x0, y0, cellW, cellH, ydisp, sel)
-	p.paintGridCursor(canvas, grid, cols, rows, x0, y0, cellW, cellH)
+	def := grid.Default
+	// 程序用 OSC 11 换了默认背景时，整屏底色就是它（xterm 把 `theme.background`
+	// 画满整个 viewport）。默认背景不铺的话，没显式底色的格子会露出面板自己的
+	// bg-base，与程序要的颜色差一层。
+	if def.Bg.Set {
+		canvas.Fill(gfx.Rect{
+			X: x0, Y: y0,
+			Width: float32(cols) * cellW, Height: float32(rows) * cellH,
+		}, gridColor(def.Bg))
+	}
+	p.paintGridRows(canvas, grid, def, 0, rows, cols, x0, y0, cellW, cellH, ydisp, sel)
+	p.paintGridCursor(canvas, grid, def, p.screenFocused(canvas), cols, rows, x0, y0, cellW, cellH)
 	p.paintScrollbar(canvas, d.Rect, gutter, rows, scrollback+grid.Height, scrollback, cellH)
 }
 
@@ -242,11 +274,18 @@ func (p *Plugin) rememberWheelTarget(canvas *gfx.Canvas, env *pluginapi.Env, tab
 	}
 	if canvas != nil {
 		// 语义是「一块不带动作的区域」而不是按钮：它只为把滚轮路由到终端，
-		// 按下去不该触发任何东西，也不该变成键盘 Tab 站（SkipFocus）。用
-		// RoleTerminal 会更贴切，但那会让焦点变成**裸键盘**（Viva 的 RoleTerminal
-		// 语义），而本仓终端还没有原始键输入这条链路——那会把用户的按键吞掉。
+		// 按下去不触发任何动作。用 RoleTerminal 会更贴切，但那会让焦点变成
+		// **裸键盘**（Viva 的 RoleTerminal 语义），而本仓终端还没有原始键输入
+		// 这条链路——那会把用户的按键吞掉。
+		//
+		// 但它**必须能拿焦点**：官方光标的「失焦态」就是靠 xterm helper textarea
+		// 的 DOM 焦点判的（`.xterm-focus`，terminal.module.css:18-19，xterm 渲染器
+		// 同一判据）。点一下终端拿焦点 → 实心光标闪；点到别处 → outline 空心框
+		// 且不闪（见 screenFocused / Cursor.ShapeAt）。
+		// SkipTab 而不是 SkipFocus：能按，但不占一个 Tab 站（与 dsshortcuts /
+		// dsskill 里「官方把焦点给容器 div」的写法同一个组合）。
 		canvas.HitWithOptions(p.wheelHit, p.wheelRect, terminalWheelLabel, gfx.HitOptions{
-			Role: gfx.RoleGroup, SkipFocus: true,
+			Role: gfx.RoleGroup, SkipTab: true,
 		})
 	}
 }
@@ -255,21 +294,25 @@ func (p *Plugin) rememberWheelTarget(canvas *gfx.Canvas, env *pluginapi.Env, tab
 //
 // first 是这段窗口**第一行的绝对行号**（虚拟缓冲坐标），选区判断要用它把
 // 「第几行」对回用户选的位置；sel 是这一帧要画的选区（空选区什么都不改）。
-func (p *Plugin) paintGridRows(canvas *gfx.Canvas, source *vterm.Grid, offset, rows, cols int, x0, y0, cellW, cellH float32, first int, sel vterm.Selection) {
+// def 是这一屏的默认前景/背景（程序用 OSC 10/11 改过的话就是它写的颜色）。
+func (p *Plugin) paintGridRows(canvas *gfx.Canvas, source *vterm.Grid, def vterm.Defaults, offset, rows, cols int, x0, y0, cellW, cellH float32, first int, sel vterm.Selection) {
 	for y := 0; y < rows; y++ {
 		top := y0 + float32(y)*cellH
 		line := first + y
-		p.paintGridBackground(canvas, source, offset+y, cols, x0, top, cellW, cellH)
+		p.paintGridBackground(canvas, source, def, offset+y, cols, x0, top, cellW, cellH)
 		// 选中态是**独立的底层**：官方 xterm 把选区画成一层面板（byte 80805 的
 		// `_selectionContainer`、byte 78634 的 CSS），盖在格子底色上、字形之下。
 		p.paintTerminalSelection(canvas, source, line, cols, x0, top, cellW, cellH, sel)
-		p.paintGridText(canvas, source, offset+y, line, cols, x0, top, cellW, cellH, sel)
+		p.paintGridText(canvas, source, def, offset+y, line, cols, x0, top, cellW, cellH, sel)
 	}
 }
 
 // paintGridBackground 画一行的背景块：同色相邻格合并成一个矩形，
 // 默认背景（就是 screen 自己的底色）不画。
-func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, row, cols int, x0, top, cellW, cellH float32) {
+func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, def vterm.Defaults, row, cols int, x0, top, cellW, cellH float32) {
+	// 默认底色（主题的 bg-base，或被 OSC 11 换掉的那一个）不画：
+	// paintGrid 已经铺过整屏，这里只画与它不同的色块。
+	_, base := p.defaultColors(def)
 	start := -1
 	var current ui.Color
 	flush := func(end int) {
@@ -290,8 +333,8 @@ func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, row, 
 			flush(x)
 			continue
 		}
-		paint := p.paintOf(cell.Style)
-		if paint.bg == p.theme.BgBase {
+		paint := p.paintOf(def, cell.Style)
+		if paint.bg == base {
 			flush(x)
 			continue
 		}
@@ -312,7 +355,7 @@ func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, row, 
 //   - **全角字单独成 run**，跨 2 格，渲染器把它居中放在那两格里；
 //   - 宽字形的第二格（Width==0 的占位）**跳过**，否则全角后面会多出一格空白；
 //   - 相邻的半角同风格字合并成一个 run，长行不会碎成几十个 label。
-func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, row, line, cols int, x0, top, cellW, cellH float32, sel vterm.Selection) {
+func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, def vterm.Defaults, row, line, cols int, x0, top, cellW, cellH float32, sel vterm.Selection) {
 	_, selText := terminalSelectionColors(p.theme)
 	var value strings.Builder
 	runs := make([]gfx.TextRun, 0, 16)
@@ -345,7 +388,7 @@ func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, row, line, 
 		if !ok || cell.Width == 0 || cell.Content == "" {
 			continue // 宽字形的占位尾巴
 		}
-		paint := p.paintOf(cell.Style)
+		paint := p.paintOf(def, cell.Style)
 		if sel.Contains(cols, x, line) {
 			// 选中的格子换成 selectionForeground（官方 theme 里就是 background，
 			// terminal-theme.ts:61），与 xterm 的 `_applyStyle` 换色同一处（byte 88032）。
@@ -396,23 +439,32 @@ func gridWeight(bold bool) float32 {
 	return gfx.WeightRegular
 }
 
-// paintGridCursor 画光标：形状按 DECSCUSR（block / bar / underline），
-// 颜色按官方 terminal-cursor.ts 的对比度规则，闪烁按官方 CSS 的 1s 相位。
-func (p *Plugin) paintGridCursor(canvas *gfx.Canvas, grid *vterm.Grid, cols, rows int, x0, y0, cellW, cellH float32) {
+// paintGridCursor 画光标：形状按 DECSCUSR（block / bar / underline）+ 失焦时的
+// outline，颜色按官方 terminal-cursor.ts 的对比度规则，闪烁按官方 CSS 的 1s 相位
+// 且**只在终端有焦点时**。
+func (p *Plugin) paintGridCursor(canvas *gfx.Canvas, grid *vterm.Grid, def vterm.Defaults, focused bool, cols, rows int, x0, y0, cellW, cellH float32) {
 	cursor := grid.Cursor
 	if !cursor.Visible || cursor.X < 0 || cursor.Y < 0 || cursor.X >= cols || cursor.Y >= rows {
 		return
 	}
-	if cursor.Blink && !p.cursorVisibleNow(canvas) {
+	// 闪烁只在有焦点时成立（Cursor.BlinkAt 里有两条独立证据）。
+	if cursor.BlinkAt(focused) && !p.cursorVisibleNow(canvas) {
 		return
 	}
+	shape := cursor.ShapeAt(focused)
 	cell, ok := grid.Cell(cursor.X, cursor.Y)
 	width := 1
 	if ok && cell.Width > 1 {
 		width = cell.Width // 块光标盖住整个全角字
 	}
-	paint := p.paintOf(cell.Style)
-	fill, accent := terminalCursorColors(p.theme.LabelPrimary, paint.bg)
+	paint := p.paintOf(def, cell.Style)
+	// 光标色：程序用 OSC 12 换过就用它，否则默认取前景色
+	// （官方 terminal-theme.ts:60 `cursor: foreground`、:67 `special.get('cursor') ?? …`）。
+	preferred, _ := p.defaultColors(def)
+	if def.Cursor.Set {
+		preferred = gridColor(def.Cursor)
+	}
+	fill, accent := terminalCursorColors(preferred, paint.bg)
 
 	rect := gfx.Rect{
 		X:      x0 + float32(cursor.X)*cellW,
@@ -420,7 +472,13 @@ func (p *Plugin) paintGridCursor(canvas *gfx.Canvas, grid *vterm.Grid, cols, row
 		Width:  float32(width) * cellW,
 		Height: cellH,
 	}
-	switch cursor.Shape {
+	switch shape {
+	case vterm.CursorOutline:
+		// 失焦态：格内 1px 空心框（xterm 的
+		// `.xterm-cursor-outline { outline: 1px solid ${cursor}; outline-offset: -1px; }`）。
+		// 四条边**都落在格子里面**——offset -1px 就是把框收内沿，不是格外描边。
+		// 空心框只改框色，格子里的字不重画（官方那条规则也只有一个 outline-color）。
+		p.paintCursorOutline(canvas, rect, fill)
 	case vterm.CursorBar:
 		// 官方是格内左侧 1px 的 inset 影子（terminal.module.css:16）。
 		canvas.Fill(gfx.Rect{X: rect.X, Y: rect.Y, Width: terminalCursorBarWidth, Height: rect.Height}, fill)
@@ -450,6 +508,30 @@ func (p *Plugin) paintGridCursor(canvas *gfx.Canvas, grid *vterm.Grid, cols, row
 			}})
 		}
 	}
+}
+
+// paintCursorOutline 画格内 1px 空心框（四条边，不重叠）。
+func (p *Plugin) paintCursorOutline(canvas *gfx.Canvas, rect gfx.Rect, color ui.Color) {
+	const w = terminalCursorOutlineWidth
+	canvas.Fill(gfx.Rect{X: rect.X, Y: rect.Y, Width: rect.Width, Height: w}, color)
+	canvas.Fill(gfx.Rect{X: rect.X, Y: rect.Y, Width: w, Height: rect.Height}, color)
+	canvas.Fill(gfx.Rect{X: rect.X + rect.Width - w, Y: rect.Y, Width: w, Height: rect.Height}, color)
+	canvas.Fill(gfx.Rect{X: rect.X, Y: rect.Y + rect.Height - w, Width: rect.Width, Height: w}, color)
+}
+
+// screenFocused 报告「键盘焦点是不是在这块终端屏幕上」。
+//
+// 官方那边是 xterm helper textarea 的 DOM 焦点：xterm 只给有焦点的 rows 加
+// `xterm-focus` 类，光标形状与闪烁都挂在它下面（Cursor.ShapeAt / BlinkAt 的注释）。
+// 这里同一件事：屏幕那块命中区拿到焦点，就算焦点在这块终端上。
+//
+// 它同时是**指针按下就会拿焦点**的那块区（viva 的 press 规则：指针下的命中区接手
+// 焦点），所以点一下终端 → 实心光标闪；点别处 → 变空心框、静止，与官方一致。
+func (p *Plugin) screenFocused(canvas *gfx.Canvas) bool {
+	if canvas == nil || p.wheelHit.IsZero() {
+		return false
+	}
+	return canvas.Focused() == p.wheelHit
 }
 
 // cursorVisibleNow 报告这一帧该不该画光标，并且**预约下一帧**。

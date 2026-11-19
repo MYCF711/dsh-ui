@@ -251,13 +251,24 @@ func (f *settingsItemFields) forgetMirror() { f.mirror = nil }
 
 // ── 卡片 / 分组 ─────────────────────────────────────────────────────
 
-// settingsItemCardsFor 是这一帧的卡片清单（壳没接 describe 时一张都没有）。
+// settingsItemCardsFor 是这一帧的卡片清单（壳没接 describe 时只剩语音输入那一页）。
 //
-// `SettingsDescribe == nil` 是老壳/最小装配：那时**不画任何卡片**——官方 whileServed
-// 在拿不到"服务了哪些命名空间"时同样不挂载任何一页，绝不按名字猜着画。
+// `SettingsDescribe == nil` 是老壳/最小装配：settings 那几条**一张都不画**——官方
+// whileServed 在拿不到"服务了哪些命名空间"时同样不挂载任何一页，绝不按名字猜着画。
+// 唯一例外是 #66 ④：官方那一页来自 `plugins.bundle.config` 槽、由注入决定，与
+// settings 命名空间无关，所以只看 `Act.Voice`。
 func (p *Plugin) settingsItemCardsFor(env *pluginapi.Env) []settingsItemCardState {
-	if env == nil || env.Act.SettingsDescribe == nil {
+	if env == nil {
 		return nil
+	}
+	// #66 ④：语音输入那一页只看 `Act.Voice`（官方 `plugins.bundle.config` 的占用方
+	// 由注入决定存在与否，与 settings 命名空间无关）。
+	voice := env.Act.Voice
+	if env.Act.SettingsDescribe == nil {
+		if voice == nil {
+			return nil
+		}
+		return settingsItemCards(nil, settingsItemFormSnapshot{voice: voice})
 	}
 	describe := env.Act.SettingsDescribe()
 	p.ensureSettingsItemForm().reconcileSubagentModel(describe)
@@ -283,6 +294,7 @@ func (p *Plugin) settingsItemCardsFor(env *pluginapi.Env) []settingsItemCardStat
 			settingsWebKeyRefFromDescribe(describe),
 		})
 	}
+	snapshot.voice = voice
 	return settingsItemCards(describe, snapshot)
 }
 
@@ -294,12 +306,20 @@ func settingsWebKeyRefFromDescribe(describe *apiclient.SettingsDescribeResult) s
 
 // settingsItemCards 返回这一帧要画的卡片（官方 whileServed 未满足的**整张不出现**）。
 func settingsItemCards(describe *apiclient.SettingsDescribeResult, fallback settingsItemFormSnapshot) []settingsItemCardState {
-	if describe == nil {
-		return nil
-	}
 	ledger := settingsItemLedger()
 	out := make([]settingsItemCardState, 0, len(ledger))
 	for _, item := range ledger {
+		// #66 ④：语音输入那一页不依赖 settings describe（官方这一页来自
+		// `plugins.bundle.config` 槽），只要壳接了 `Act.Voice` 就存在。
+		if item.Kind == settingsItemKindVoiceInput {
+			if card, ok := buildSettingsVoiceCard(item, fallback.voice); ok {
+				out = append(out, card)
+			}
+			continue
+		}
+		if describe == nil {
+			continue
+		}
 		var card settingsItemCardState
 		if item.Kind == settingsItemKindWebSearch {
 			card = buildSettingsItemWebCard(item, describe, fallback)
@@ -334,6 +354,8 @@ type settingsItemFormSnapshot struct {
 	catalog           *apiclient.ModelsPageSnapshot
 	catalogWired      bool
 	catalogRetryWired bool
+	// voice 是 #66 ④ 的壳入口（nil = 壳整条没接 → 那一页整张不出现）。
+	voice *pluginapi.VoiceActions
 }
 
 // itemFormSnapshot 取这一帧的草稿快照。
@@ -416,6 +438,11 @@ func (p *Plugin) openSettingsItem(id string) {
 	p.itemSelected = id
 	p.ensureSettingsItemForm().discard()
 	p.itemFields.forgetMirror()
+	// #66 ④：官方这一页挂载即重新枚举设备（MicrophonePicker.tsx:40-116），
+	// 每次重新进入都重新武装一次（离开详情后清掉）。
+	p.voiceEnumerated = false
+	// 重新进入时下拉是收着的（官方的 menu 状态属于组件本地，卸载即丢）。
+	p.itemVoiceMenus = nil
 }
 
 // CloseSettingsItemDetail 关闭官方插件配置详情页（测试与壳的无鼠标入口用）。
@@ -472,6 +499,13 @@ func (p *Plugin) drawSettingsItemDetail(f ui.C, env *pluginapi.Env, card setting
 // drawSettingsItemForm 画共享表单框架：readOnly 说明 → 各 section → footer(save)。
 func (p *Plugin) drawSettingsItemForm(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, card settingsItemCardState) {
 	ui.Column(f).FillWidth().Children(func() {
+		if card.Voice != nil {
+			// #66 ④：官方这一页没有保存按钮（选设备是**立即生效**的动作，
+			// `selectMicrophone` 直接写 store，OFF:MicrophonePicker.tsx:128-131），
+			// 所以整页画完就结束，不走 footer。
+			p.drawSettingsVoiceForm(f, env, t, card)
+			return
+		}
 		if !card.Writable {
 			// `._readOnly_ft7vz_8{margin:0 0 12px;font-size:12px;line-height:1.5}`
 			ui.Text(f, zhFormReadOnly).FillWidth().FontSize(itemFormFailedSize).

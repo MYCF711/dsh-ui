@@ -489,7 +489,22 @@ func (p *Plugin) drawTitle(f ui.C, env *pluginapi.Env) {
 		label = target.Title
 	}
 	ui.Row(f).Items(ui.Center).Gap(browserTitleGap).Children(func() {
-		ui.Icon(f, iconGlobe(t.LabelSecondary)).Size(iconSizeTitle, iconSizeTitle).Color(t.LabelSecondary)
+		// 官方 BrowserTitle.tsx:3 画的是**一枚** svg，其中赤道那一笔写
+		// `stroke-linecap="square"`、其余三条没写（= butt）。viva 一枚 `gfx.Icon`
+		// 只有一个 `Cap`（OFF:viva@v0.6.5/gfx/icon.go:29-31），所以这里用
+		// `ui.Stack`（OFF:viva@v0.6.5/ui/elements.go:15）把**两枚同尺寸**图标叠在
+		// 同一个 14×14 槽里：外圆 + 两条经线（Cap 为零值 = butt），加一枚只含赤道
+		// 那一笔、`Cap = gfx.CapSquare` 的图标。叠出来的墨迹与官方 SVG 逐像素一致。
+		//
+		// tab 芯片那一侧拿到的是一枚 `gfx.Icon`（`pluginapi.Painter.IconImage`），
+		// 叠不了两枚，所以它走"方帽等价几何"（icons.go 的 iconGlobe）。两处必须
+		// 视觉一致，由 icons_globe_test.go 的像素断言钉住。
+		ui.Stack(f).Size(iconSizeTitle, iconSizeTitle).Children(func() {
+			ui.Icon(f, iconGlobeOutline(t.LabelSecondary)).
+				Size(iconSizeTitle, iconSizeTitle).Color(t.LabelSecondary)
+			ui.Icon(f, iconGlobeEquator(t.LabelSecondary)).
+				Size(iconSizeTitle, iconSizeTitle).Color(t.LabelSecondary)
+		})
 		ui.Text(f, label).FontSize(t.Fonts.Secondary).LineHeight(browserTitleLineHeight).
 			Color(t.LabelPrimary).Ellipsis()
 	})
@@ -688,15 +703,27 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 	p.persistActive(env)
 }
 
-// handleLoad 把载具的加载事件翻成 `nav.frameLoaded(revision)`。
+// handleLoad 把载具的导航事件翻成应用侧状态。三档都在用：
 //
-// 官方 `IframeImpl.handleLoaded(revision)` 只认"当前这一代请求"的 load；
-// 这里也一样：事件回来时取**当前**请求的 revision 交给状态机，由它按
-// `navigation.revision !== revision` 自己丢弃过期的（navigation.go 的 frameLoaded）。
+//	WebLoadStart     → 页面自己发起的导航也进 loading 态（navigation.go 的 started）
+//	WebLoadCommitted → 采纳**已提交的地址**（官方 `address='observed'`，commit）
+//	WebLoadDone      → `frameLoaded(revision)`，仍只认当前这一代（revision 守卫）
+//
+// 官方 `IframeImpl.handleLoaded(revision)` 只认"当前这一代请求"的 load；这里一样：
+// Done 回来时取**当前**请求的 revision 交给状态机，由它按 `navigation.revision !==
+// revision` 自己丢弃过期的（navigation.go 的 frameLoaded）。
+//
+// 官方 ElectronWebViewImpl.ts:159-186 还有五处事件，其中三样在 Viva 契约里**拿不到**：
+//
+//	page-title-updated 的真实标题   `element.getTitle()` —— 无对应字段
+//	did-fail-load 的 code/description  —— 无错误码（`WebLoad` 只有 Phase/URL）
+//	canGoBack / canGoForward          —— `*app.WebView` 没有这两个查询
+//
+// 依据：`app.WebLoad` 只有 `Phase`/`URL` 两个字段（OFF:viva@v0.6.5/app/web.go:187-190）、
+// `*app.WebView` 的方法表只有 ID/Load/LoadHTML/Reload/Back/Forward/Eval/PostMessage/
+// Focus/Close（同文件 :278-303）。所以这三样不许用"猜一个"顶上，
+// 已登记在 docs/official-parity.md 的 #50 行。
 func (p *Plugin) handleLoad(env *pluginapi.Env, load pluginapi.WebLoad) {
-	if load.Phase != pluginapi.WebLoadDone {
-		return
-	}
 	sessionID, tabID := browserEnvIdentity(env)
 	key := browserInstanceKey(sessionID, tabID)
 	if key != p.currentKey {
@@ -704,19 +731,58 @@ func (p *Plugin) handleLoad(env *pluginapi.Env, load pluginapi.WebLoad) {
 		if instance == nil || instance.page == nil {
 			return
 		}
-		if request := instance.nav.value.Request; request != nil {
-			instance.nav.frameLoaded(request.Revision)
-			p.saveActive()
-			if err := p.persistSession(env, sessionID); err != nil && env.Act.Notify != nil {
-				env.Act.Notify("保存浏览器状态失败: " + err.Error())
-			}
+		// 旁路 occurrence 的事件只能落在它自己身上（三档都一样）：别的 tab 的
+		// Start/Committed 不许污染当前 occurrence 的状态机与地址栏。
+		committed, changed := applyWebLoad(&instance.nav, load)
+		if !changed {
+			return
+		}
+		if committed != nil {
+			instance.addressDraft = committed.URL
+		}
+		p.saveActive()
+		if err := p.persistSession(env, sessionID); err != nil && env.Act.Notify != nil {
+			env.Act.Notify("保存浏览器状态失败: " + err.Error())
 		}
 		return
 	}
-	if request := p.nav.value.Request; request != nil {
-		p.nav.frameLoaded(request.Revision)
-		p.persistActive(env)
+	committed, changed := applyWebLoad(&p.nav, load)
+	if !changed {
+		return
 	}
+	if committed != nil {
+		// 官方 `address='observed'`：地址栏显示的就是这个已提交的地址。
+		p.address.SetText(committed.URL)
+	}
+	p.persistActive(env)
+}
+
+// applyWebLoad 把一个载具事件落进某一份 occurrence 的导航状态。
+//
+// 返回值：采纳到的地址（只有 Committed 有）与"状态是否变了"。
+// 它只改传进来的那份状态机，不碰 Plugin 的字段——当前 occurrence 与旁路
+// occurrence 因此共用同一条翻译，两条路不会各写各的。
+func applyWebLoad(nav *browserNavigation, load pluginapi.WebLoad) (*browserTarget, bool) {
+	switch load.Phase {
+	case pluginapi.WebLoadStart:
+		return nil, nav.started()
+	case pluginapi.WebLoadCommitted:
+		// 地址白名单与地址栏同一条判据：引擎报回来的 URL 也要过 `parseBrowserAddress`。
+		parsed := parseBrowserAddress(load.URL, "")
+		if !parsed.OK {
+			return nil, false
+		}
+		target := parsed.Target
+		return &target, nav.commit(target)
+	case pluginapi.WebLoadDone:
+		request := nav.value.Request
+		if request == nil {
+			return nil, false
+		}
+		nav.frameLoaded(request.Revision)
+		return nil, true
+	}
+	return nil, false
 }
 
 // afterDraw 把真网页摆进内容区。

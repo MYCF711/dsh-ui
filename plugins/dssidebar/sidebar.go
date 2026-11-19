@@ -190,6 +190,13 @@ type Plugin struct {
 	itemForm     *settingsItemForm
 	itemFields   settingsItemFields
 	itemWebMenus map[string]bool
+	// itemVoiceMenus 是 #66 ④ 麦克风 select 的展开态（键 = 官方 DOM id）；
+	// voiceEnumerated/voiceEnumeratedFor 记录"上一次为哪个选中项枚举过设备"
+	// （官方 effect 依赖 `selected.id`，见 settings_voice_draw.go）。
+	// 三者都只由绘制线程读写（与 itemWebMenus 同一先例）。
+	itemVoiceMenus     map[string]bool
+	voiceEnumerated    bool
+	voiceEnumeratedFor int
 	// cotSettingsMounted 对应官方 TranslationSettings 的挂载 effect：每次进入
 	// bundle 配置段只主动 refreshProviders 一次，离开详情后重新武装。
 	cotSettingsMounted bool

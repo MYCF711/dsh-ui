@@ -150,18 +150,20 @@ func (p *Plugin) clearTerminalSelection(tabID string) bool {
 //	selectionBackground: foreground, selectionForeground: background,
 //	selectionInactiveBackground: foreground
 //
-// 其中 foreground/background 是 `.screen` 上算出来的 `label-primary` / `bg-base`
-// （`terminal.tsx:140-143` 用 `getComputedStyle` 取），所以：
+// 这里的 `foreground` / `background` **不是主题常量**，而是 xterm 那两个
+// 会变的默认色：官方先 `update(background, foreground)`（terminal-theme.ts:57-64，
+// 调用点 terminal.tsx:124-127 用 `getComputedStyle` 取 `.screen` 的那两个值），
+// 之后程序可以用 OSC 10 / 11 把它们换掉（同一文件 39-53 行那两段观察者）。
+// 所以入参必须是**已经按 OSC 覆盖算过的**那份（`p.defaultColors(def)`），不能直接
+// 传 `theme.BgBase` / `theme.LabelPrimary`——否则程序换过底色之后，选区矩形与
+// 选中文字色会和周围格子对不上。
 //
-//   - 底色 = blend(bg-base, label-primary @ 0.3)（见 terminalSelectionAlpha）；
-//   - 字色 = bg-base；
+//   - 底色 = blend(background, foreground @ 0.3)（见 terminalSelectionAlpha）；
+//   - 字色 = background；
 //   - **失焦不换色**：官方把 selectionInactiveBackground 也设成 foreground，
 //     而 selectionForeground 在一帧里对焦点/失焦都生效（xterm byte 88032）。
-func terminalSelectionColors(theme *pluginapi.Theme) (fill, text ui.Color) {
-	if theme == nil {
-		return ui.Color{}, ui.Color{}
-	}
-	return terminalBlend(theme.BgBase, theme.LabelPrimary, terminalSelectionAlpha), theme.BgBase
+func terminalSelectionColors(foreground, background ui.Color) (fill, text ui.Color) {
+	return terminalBlend(background, foreground, terminalSelectionAlpha), background
 }
 
 // terminalBlend 是 xterm 的 `color.blend(background, foreground)`（byte 138965）：
@@ -442,11 +444,14 @@ func (p *Plugin) terminalSelectionText(env *pluginapi.Env, tabID string, cols in
 // `_selectionContainer` + byte 78634 的 CSS：`position:absolute;
 // background-color: selectionBackgroundOpaque`），它盖住格子自己的底色，
 // 字形再画在上面（字色换成 selectionForeground，byte 88032）。
-func (p *Plugin) paintTerminalSelection(canvas *gfx.Canvas, grid *vterm.Grid, line int, cols int, x0, top, cellW, cellH float32, sel vterm.Selection) {
+//
+// 两支颜色都跟着 `def` 走（程序 OSC 10/11 换过的默认色），见
+// terminalSelectionColors。
+func (p *Plugin) paintTerminalSelection(canvas *gfx.Canvas, grid *vterm.Grid, def vterm.Defaults, line int, cols int, x0, top, cellW, cellH float32, sel vterm.Selection) {
 	if canvas == nil || sel.Empty() {
 		return
 	}
-	fill, _ := terminalSelectionColors(p.theme)
+	fill, _ := terminalSelectionColors(p.defaultColors(def))
 	start := -1
 	for x := 0; x < cols; x++ {
 		if !sel.Contains(cols, x, line) {

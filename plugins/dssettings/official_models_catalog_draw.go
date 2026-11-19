@@ -397,8 +397,22 @@ func (p *Plugin) drawCatalogEditorModelRow(f ui.C, env *pluginapi.Env, t *plugin
 		return
 	}
 	position := strconv.Itoa(index + 1)
-	ui.Row(f).FillWidth().Pad(catalogEntryPad).Gap(catalogRowGap).Items(ui.Center).
-		Border(catalogEntryBorder, t.BorderL4).Radius(t.Radii.LG).Children(func() {
+	// 整行是**落点**（官方 `onDragOver`/`onDrop` 在 `.modelEntry` 上，ModelRow.tsx:81-101）。
+	// 落点要命中身份才声明得出来（viva `Box.DropTarget` 只认带 Hit 的盒子），名字留空：
+	// 这一行不是可点控件，不该多一个无障碍名。
+	drag := p.catalogDrag()
+	drag.markWritable(writable)
+	dropID := env.Tree.ID(env.Feat, catalogDropRowPrefix+key)
+	entry := ui.Row(f).FillWidth().Pad(catalogEntryPad).Gap(catalogRowGap).Items(ui.Center).
+		Border(catalogEntryBorder, t.BorderL4).Radius(t.Radii.LG).
+		Hit(dropID, "").DropTarget(&drag.state, drag.accept, drag.drop)
+	// 被拖的那一行半透明（官方 `.modelEntry[data-dragging]{opacity:.5}`，
+	// ModelsSection.module.css:558-560）；viva 的 Opacity 是"连同里面一起淡"（ui/style.go:207-214），
+	// 与官方那条 CSS 的作用范围一致。
+	if drag.draggingKey(key) {
+		entry = entry.Opacity(catalogDraggedFade)
+	}
+	entry.Children(func() {
 		p.drawCatalogDragHandle(f, env, t, key, position, writable)
 		p.catalogTextField(f, env, t, "settings-catalog-field-"+key+"-id", catalogCopy("modelId"),
 			ModelText(edit.drafts[index], "id"), catalogCopy("modelId"), writable,
@@ -424,40 +438,58 @@ func (p *Plugin) drawCatalogEditorModelRow(f ui.C, env *pluginapi.Env, t *plugin
 			p.catalogRemoveModel(env, key)
 		}
 	})
+	// 记下这一行的 Box：地址留给落点判定与插入线（`Box.Rect()` 是布局结果，
+	// 见 official_models_catalog_drag.go 的 catalogDragTarget）。
+	drag.declare(key, dropID, entry)
 }
 
-// drawCatalogDragHandle 画拖拽柄。
+// drawCatalogDragHandle 画拖拽柄。柄有两个入口，两个都在官方这件控件上：
 //
-// 官方是 HTML5 拖放 + `onKeyDown` 的 ↑/↓（ModelRow.tsx:103-127，`aria-keyshortcuts=
-// "ArrowUp ArrowDown"`），帮助文案也是"拖动排序，或使用上下方向键调整顺序"
-// （locales.ts:233）。本栈没有 HTML5 拖放，但有等价的两件东西：`ui.Control` 是
-// "可聚焦 + 收键盘"的元素（`ui/control.go:56-78`），而壳把按键**先**交给页面
-// （`cmd/app/main.go:2291-2298` 的 `m.view.Key(ev)`，对应 `ui/page.go:716-721`
-// 的"host routes its input with Key..."），页面再按焦点把键送给控件的
-// `Handlers.Key`（`ui/page.go:445-450`）。所以官方那半条入口（柄上按 ↑/↓）如实保留，
-// 由 TestModelsCatalogReorderHandleMovesDraftWithArrowKeys 用真按键钉住。
+//	① **方向键**（`ModelRow.tsx:119-124` 的 onKeyDown，`aria-keyshortcuts="ArrowUp ArrowDown"`）
+//	   已通：`ui.Control` 是"可聚焦 + 收键盘"的元素（`ui/control.go:56-78`），壳把按键**先**
+//	   交给页面（`cmd/app/main.go:2291-2298` 的 `m.view.Key(ev)`，对应 `ui/page.go:716-721`
+//	   的"host routes its input with Key..."），页面再按焦点把键送给控件的 `Handlers.Key`
+//	   （`ui/page.go:445-450`）。由 TestModelsCatalogReorderHandleMovesDraftWithArrowKeys 钉住。
+//	② **拖放**（`ModelRow.tsx:111-118` 的 `draggable={!disabled}`）：柄是**唯一**拖源，
+//	   用 viva 的原生 `Box.DragSource`（`viva@v0.6.4/ui/drag.go`）。可写才声明——
+//	   官方 `draggable={!disabled}` 就是"不可写时连拖都不该开始"。
+//
+// 方向键与拖放落到**同一个** `catalogEditor.moveRow`（见 official_models_catalog_drag.go），
+// 不存在第二份移动逻辑。
 func (p *Plugin) drawCatalogDragHandle(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, key, position string, writable bool) {
 	label := catalogCopy("reorderModel") + " " + position
-	handlers := &ui.Handlers{Key: func(event gfx.KeyEvent) gfx.EventResult {
-		if !writable {
+	drag := p.catalogDrag()
+	handlers := &ui.Handlers{
+		Key: func(event gfx.KeyEvent) gfx.EventResult {
+			if !writable {
+				return gfx.EventResult{}
+			}
+			offset := 0
+			switch event.Key {
+			case gfx.KeyUp:
+				offset = -1
+			case gfx.KeyDown:
+				offset = 1
+			default:
+				return gfx.EventResult{}
+			}
+			p.catalogMoveRow(env, key, offset)
+			return gfx.EventResult{Handled: true, Repaint: true}
+		},
+		// 按下的这一下是"拖源身份 ↔ 行"唯一能对上的地方：viva 的拖源身份是 Control
+		// 自己的 id（`ui/control.go:69` 的 `p.controlID`），而 Box 上没有读回它的入口。
+		// 只记录、不 Handled：焦点与点击仍走运行时默认那条路（柄可聚焦，方向键要它）。
+		Pointer: func(event gfx.PointerEvent) gfx.EventResult {
+			if event.Kind == gfx.PointerDown {
+				drag.press(key, event.X, event.Y)
+			}
 			return gfx.EventResult{}
-		}
-		offset := 0
-		switch event.Key {
-		case gfx.KeyUp:
-			offset = -1
-		case gfx.KeyDown:
-			offset = 1
-		default:
-			return gfx.EventResult{}
-		}
-		p.catalogMoveRow(env, key, offset)
-		return gfx.EventResult{Handled: true, Repaint: true}
-	}}
+		},
+	}
 	handle := ui.Control(f, label, handlers).Shrink(0).
 		Width(catalogIconButtonSize).Height(catalogIconButtonSize).Radius(t.Radii.SM)
 	if writable {
-		handle = handle.Hover(ui.Look{}.Background(t.Hover))
+		handle = handle.DragSource(&drag.state).Hover(ui.Look{}.Background(t.Hover))
 	} else {
 		handle = handle.Opacity(catalogDisabledFade)
 	}

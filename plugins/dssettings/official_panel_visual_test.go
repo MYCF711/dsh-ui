@@ -434,6 +434,16 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 		return gfx.EventResult{}
 	}
 	config.OnScroll = func(ev gfx.ScrollEvent) gfx.EventResult { return view.Wheel(ev) }
+	// 与真壳同一个次序（cmd/app/main.go 的 cfg.OnPointer）：整窗页面**先**接指针。
+	// 页面这层负责 viva 原生拖放的按下/移动/松手路由（ui/page.go:586-604），
+	// 少了它，DragSource/DropTarget 在测试里也永远收不到事件——测的就不是产品那条链路。
+	config.OnPointer = func(ev gfx.PointerEvent) gfx.EventResult {
+		result := view.Pointer(ev)
+		if result.Repaint {
+			h.invalidator.Invalidate()
+		}
+		return result
+	}
 	h.invalidator = &app.Invalidator{}
 	config.Invalidator = h.invalidator
 	// 文本输入必须登记（与产品壳 `newConfig` 同一条聚合路径），否则搜索框收不到键盘。

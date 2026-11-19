@@ -2260,6 +2260,33 @@ func newConfig(m *model) app.Config {
 		return m.view.Wheel(ev)
 	}
 
+	// 指针：整窗的 `ui.Page` 先接（与 OnKey 同一条契约）。
+	//
+	// 为什么必须由壳来调：viva 对"宿主把页面画进自己窗口"的形态写得很直白——
+	// "A host that draws a page this way routes its input with Key, Pointer, Wheel
+	// and TextInput; Config does that for a whole window"（`viva@v0.6.4/ui/page.go:716-721`）。
+	// 壳早就接了 Key / Wheel（见下面两条），Pointer 一直漏着，后果是**页面层的
+	// 指针路由整条没跑**：`Page.dropPointer`（`ui/page.go:586-604`）负责的正是
+	// viva 原生拖放——按到拖源上接管这次按下、跟指针解出落点、松手投递
+	// （`ui/drag.go` 的 press/pointer/targetAt/drop）。漏接这一条，
+	// `ui.DragSource`/`ui.DropTarget` 声明了也永远收不到事件（模型目录行的拖放
+	// 排序就卡在这里，见 `plugins/dssettings/official_models_catalog_drag.go`）。
+	//
+	// 为什么直接返回页面的结果（不像 OnKey 那样"没接就往下走"）：页面自己就是这么
+	// 设计的——它没接的（Handled=false）会由 painter 继续按默认路径投递
+	// （`app/painter.go:356-372`：onPointer 之后才 deliverPointer），所以
+	// 原样返回既不会吞掉点击，也不会丢掉页面的 Repaint 请求。
+	cfg.OnPointer = func(ev gfx.PointerEvent) gfx.EventResult {
+		if m.view == nil {
+			return gfx.EventResult{}
+		}
+		result := m.view.Pointer(ev)
+		if result.Repaint {
+			m.inv.Invalidate()
+		}
+		return result
+	}
+
 	cfg.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
 		if ev.Release {
 			return gfx.EventResult{}

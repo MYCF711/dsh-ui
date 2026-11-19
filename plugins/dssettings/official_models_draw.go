@@ -60,7 +60,11 @@ func (p *Plugin) drawModelsPage(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 }
 
 func (p *Plugin) drawModelsGroup(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, group PanelGroup, write WriteState) {
-	provider := len(group.Rows) > 0 && strings.HasPrefix(group.Rows[0].ID, "provider-edit-")
+	// 卡片形状（折叠行头 + 卡内编辑模块）由头行决定：provider 卡与模型目录编辑卡
+	// 都是"行头 + 展开内容"，共用同一套卡片几何（ModelsSection.module.css 的
+	// `.card`/`.editor`，:238-259）。
+	provider := len(group.Rows) > 0 &&
+		(strings.HasPrefix(group.Rows[0].ID, "provider-edit-") || group.Rows[0].ID == catalogCardRowID)
 	if group.Title != "" && !provider {
 		ui.Text(f, group.Title).FontSize(ModelsRowNameSize).LineHeight(ModelsRowNameLine).
 			Weight(NavTitleWeight).Color(t.LabelPrimary).Ellipsis()
@@ -140,7 +144,11 @@ func (p *Plugin) drawModelRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, ro
 		strings.HasSuffix(row.ID, "-cancel"), strings.HasSuffix(row.ID, "-apply"):
 		p.drawModelsActionRow(f, env, t, row)
 	case strings.HasPrefix(row.ID, "catalog-model-"):
+		// 只读的 `session.modelCatalog` 分组行（宿主能路由什么），与编辑器无关。
 		p.drawCatalogModelRow(f, t, row)
+	case strings.HasPrefix(row.ID, "catalog-"):
+		// 可写模型目录编辑卡（`models.catalog.*`，目录里存了什么）。
+		p.drawCatalogRow(f, env, t, row)
 	case row.NS == apiclient.SettingsNSLLM && (row.Kind == ItemStepper || row.Kind == ItemSelector):
 		p.drawModelEditorField(f, env, t, row)
 	default:
@@ -394,6 +402,11 @@ func (p *Plugin) drawCatalogModelRow(f ui.C, t *pluginapi.Theme, row PanelRow) {
 // activateModelsRow 分流 Models 的所有行。返回 false 表示不是 Models 行，交给
 // general 的既有写路径；retry 字段在这里只改草稿，绝不会落入 applyRowWrite。
 func (p *Plugin) activateModelsRow(row PanelRow) bool {
+	// 模型目录编辑卡的行先认领：它们不写设置文档，落进 applyRowWrite 会把一个
+	// 不存在的设置路径当字段去写（"看着成功、其实写错地方"）。
+	if p.activateModelsCatalogRow(row) {
+		return true
+	}
 	if strings.HasPrefix(row.ID, modelsKeyRowPrefix) {
 		// 密钥行不是按钮：输入由登记的 ui.Field 接键盘（Field 自己拿焦点），
 		// 点它不写任何东西。这里认领掉，免得落到 applyRowWrite 去。

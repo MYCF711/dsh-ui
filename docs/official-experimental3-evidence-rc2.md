@@ -92,3 +92,61 @@ sandbox 模式与 checkout 边界。**面板本体的主体（PR 卡 / checks / 
 **结论：HIDE**——界面本体（录音按钮 / 波形 / 麦克风选择 / 设置对话框）全部依赖上面三样，
 一样都没有就画不出真东西；等音频采集层落地再连同 `readiness` 流一起做。
 这是正确结论，不是失败：宿主那半边已经齐了，就差客户端采集这一层。
+
+---
+
+## 8. 2026-11-19（task-117）：cot-translation 的 pending 图标改成官方那一枚
+
+**改了什么**：pending 态原来用 Viva 的 `ui.Spinner`（16px、八根矩形辐条），官方是
+`<IconLoadingOutlineRegular size={14}/>` 外层套 `.spinner` 自转。现在图标本体是官方
+sprite 原文，旋转与时长逐条对齐官方 CSS。
+
+**素材出处（可复算）**：rc.2 安装态
+`dsh-web-frontend/dist/assets/index-ghOpC9uV.js`（sha256
+`061de8cefa15e1fbb87d301463ad4ebb79259b197ca08e83406f6997c1af8bb8`、1093231 字节）里
+`"loading-outline":{size:16,svg:…}` 条目，`d` 原文在字节偏移 **721120** 附近：
+
+```
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke-width="${e}">
+  <path d="M12.596 12.596C…3.40398" stroke="currentColor"></path>
+</svg>
+```
+
+`${e}` 由同一文件的权重表 `p7={regular:1,medium:pi}` 给：**Regular = 1**（与
+`plugins/dsassets/registry.go` 的 `regularStroke` 同值）。这条 path **没写**
+`stroke-linecap` / `stroke-linejoin`，按 SVG 1.1 取默认 butt/miter——正好是
+`gfx.Icon` 的零值，所以不需要 `CapSet`/`JoinSet`。
+
+**形状（测试逐条复算，不是拟合）**：以 (8,8) 为圆心、半径 **6.5** 的圆弧，起点
+45°（右下），8 段三次贝塞尔每段 **33.75°**，共 **270°**，缺口是正东那 **90°**；
+端点半径 6.4996–6.5000，控制点半径 6.6255–6.6258（三次贝塞尔逼近圆弧的外扩值），
+曲线与真圆弧的最大径向误差 **4.18e-4**（viewBox 单位）。
+
+**显示与动画（官方两处调用点）**：`size={14}`（`dsh-experimental-client-ui-cot-translation`
+`src/client/TranslationBody.tsx:55`）；`.spinner{animation:cot-translation-spin 1s linear
+infinite}` + `@keyframes … {to{transform:rotate(360deg)}}` + `@media
+(prefers-reduced-motion: reduce){.spinner{animation:none}}`（同包
+`src/client/Translation.module.css:17-21`）。本仓落成 `cotSpinnerSize=14`、
+`cotSpinnerAngle(now) = (now mod 1s)/1s × 2π`、`ui.Box.IconTransform`、
+`Canvas.RequestFrame` 排帧、reduce-motion/无时钟时停 0。
+
+**落点**：`plugins/dsassets/loading.go`（`LoadingOutline`，与 `market.go` 同档：
+**不登记进 `All()`**）、`plugins/dsconversation/cot_translation.go` 的
+`drawCotSpinner` / `cotSpinnerAngle`。
+
+**测试**：`plugins/dsassets/loading_test.go`
+（`TestLoadingOutlineCompilesEveryOfficialCommand`、
+`TestLoadingOutlineIsTheOfficialCircularArc`、
+`TestLoadingOutlineStaysInsideItsViewBox`）、
+`plugins/dsconversation/cot_translation_test.go`
+（`TestCotSpinnerAngleFollowsTheOfficialOneSecondTurn`）、
+`plugins/dsconversation/cot_translation_visual_test.go`
+（`TestCotTranslationPendingDrawsSpinner` 真 Viva 绘制后量圆环）。
+
+**变异 6 组全红**：path 改一位数（`12.596`→`12.696`）/ 显示尺寸 14→16 /
+退回 `ui.Spinner` / 转圈周期 1s→2s / 去掉 reduce-motion 分支 / 环的判定放宽。
+
+**仍未对齐的一处（已登记，不自造）**：官方把图标包在
+`<span role="status" aria-label={translating}>` 里；Viva 的非交互图标没有 a11y
+role/label 出口（`ui/paint.go:185-187` 只把节点 `label` 交给 Checkbox，
+`ui/box.go` 无 Role 设置器），所以 `translating` 这句无障碍名进不了无障碍树。

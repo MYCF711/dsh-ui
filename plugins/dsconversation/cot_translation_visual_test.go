@@ -12,6 +12,7 @@ package dsconversation
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -393,31 +394,6 @@ func TestCotTranslationShowsEntryWhenProviderUnavailable(t *testing.T) {
 	}
 }
 
-// TestCotTranslationPendingDrawsSpinner 钉住官方 pending 形状：
-// 是一个**转圈图标**（`OFF:TranslationBody.tsx:53-55`，
-// `IconLoadingOutlineRegular size=14` + `aria-label=translating`），不是一行文字。
-//
-// 本仓用 Viva 的 `ui.Spinner`（16px、八根辐条、逐帧转）；这里判"画布上出现了
-// spinner 的辐条图元"（见 hasSpinnerPrimitive），不判任何文案——
-// 旧版本画的是「正在翻译思考内容」一行字，那样也会通过文案判据。
-func TestCotTranslationPendingDrawsSpinner(t *testing.T) {
-	translator := &heldCotTranslator{}
-	act := translator.actions()
-	h := openCotHarness(t, 1182, 832, cotShotData(), act)
-	defer h.close()
-	h.expandThinking(1)
-	for i := 0; i < 5; i++ {
-		h.pump()
-	}
-	// pending 期间官方不画翻译文案，只画 spinner。
-	if h.session.HasText(cotLabelFailed) {
-		t.Fatalf("还在翻译却画了失败文案：%q", h.session.Texts())
-	}
-	if !hasSpinnerPrimitive(h.session.Snapshot()) {
-		t.Fatalf("pending 没有画 spinner 图元（官方 IconLoadingOutlineRegular 14px）")
-	}
-}
-
 // heldCotTranslator 是"请求永不完成"的 translator：用来停在 pending 态。
 type heldCotTranslator struct{ cotAutoTranslator }
 
@@ -429,23 +405,204 @@ func (a *heldCotTranslator) actions() pluginapi.Actions {
 				targetLanguage: targetLanguage, provider: provider})
 			return fmt.Sprintf("held-%d", len(a.calls))
 		},
-		CotTranslationResult: func(string) (pluginapi.CotTranslationResult, bool) { return pluginapi.CotTranslationResult{}, false },
+		CotTranslationResult: func(string) (pluginapi.CotTranslationResult, bool) {
+			return pluginapi.CotTranslationResult{}, false
+		},
 	}
 }
 
-// hasSpinnerPrimitive 判断这一帧有没有小尺寸的矩形图元（spinner 的辐条）。
+// 官方那枚 loading 图标的形状常量，全部由官方 path / 官方描边算得，不是量的：
 //
-// Viva 的 spinner 由 `PaintSpinner` 画成 8 根 2×4 / 4×2 的小矩形（16px 图标内），
-// 所以判据是"存在边长 ≤ 6px 的矩形图元"——本界面别处没有这种小方块。
-func hasSpinnerPrimitive(snapshot app.Snapshot) bool {
+//   - 圆弧半径 6.5、viewBox 16、Regular 描边 1（`dsassets.LoadingOutline`，
+//     sprite 原文 `"loading-outline":{size:16,...}` + 权重表 `{regular:1}`）；
+//   - 显示尺寸 14（`OFF:TranslationBody.tsx:55` 的 `size={14}`）。
+//
+// 按 14px 画：外半径 = (6.5+0.5)×14/16 = 6.125，内半径 = (6.5-0.5)×14/16 = 5.25。
+const (
+	cotSpinnerRadius     = 6.5
+	cotSpinnerStrokeHalf = 0.5
+	cotSpinnerViewBox    = 16
+	// cotSpinnerOfficialSize 是官方那处调用点的显示尺寸（`OFF:TranslationBody.tsx:55`
+	// 的 `size={14}`）。**写死在这里、不从被测常量反算**：否则把 `cotSpinnerSize`
+	// 改成 16，期望值会跟着变，这条就测不出尺寸错了。
+	cotSpinnerOfficialSize = 14
+	cotSpinnerOuter        = (cotSpinnerRadius + cotSpinnerStrokeHalf) * cotSpinnerOfficialSize / cotSpinnerViewBox
+	cotSpinnerInner        = (cotSpinnerRadius - cotSpinnerStrokeHalf) * cotSpinnerOfficialSize / cotSpinnerViewBox
+	// cotSpinnerTol 是抗锯齿羽化与浮点误差的余量（实测端点外扩 ≤ 0.05px）。
+	cotSpinnerTol = 0.25
+)
+
+// TestCotTranslationPendingDrawsSpinner 钉住官方 pending 形状：一枚**官方 14px
+// loading 图标**（`OFF:TranslationBody.tsx:55` 的 `IconLoadingOutlineRegular
+// size={14}`），既不是一行文字（改版前画的是「正在翻译思考内容」），
+// 也不是 Viva 那枚 16px 八辐条 `ui.Spinner`。
+//
+// 判据是几何，不是"画了点什么"：
+//   - 那簇描边图元的包围盒宽 = 外半径 + 外半径/√2（缺口在正东，所以最右点是
+//     45° 那个端点）、高 = 2×外半径；
+//   - 每个顶点到底圆圆心的距离都落在 [内半径, 外半径]；
+//   - 角度覆盖 270°，缺口 90° 且落在正东；
+//   - 同一包围盒里**没有矩形图元**——Viva 的旧 spinner 是 8 根小矩形辐条，
+//     这条让退回去必然红。
+func TestCotTranslationPendingDrawsSpinner(t *testing.T) {
+	translator := &heldCotTranslator{}
+	act := translator.actions()
+	h := openCotHarness(t, 1182, 832, cotShotData(), act)
+	defer h.close()
+	h.expandThinking(1)
+	for i := 0; i < 5; i++ {
+		h.pump()
+	}
+	if cotSpinnerSize != cotSpinnerOfficialSize {
+		t.Fatalf("图标显示尺寸=%v，官方那处是 %v", cotSpinnerSize, float32(cotSpinnerOfficialSize))
+	}
+	// pending 期间官方不画翻译文案，只画 spinner。
+	if h.session.HasText(cotLabelFailed) {
+		t.Fatalf("还在翻译却画了失败文案：%q", h.session.Texts())
+	}
+	_, angles, ok := cotSpinnerRing(h.session.Snapshot())
+	if !ok {
+		t.Fatalf("pending 没有画出官方 loading 图标的圆环（%v）", h.session.Snapshot().Primitives)
+	}
+	// 缺口：正东 90° 里不许有顶点。
+	for _, angle := range angles {
+		if angle > -40 && angle < 40 {
+			t.Fatalf("正东缺口里出现了顶点（%.2f°），官方那 90° 是空的", angle)
+		}
+	}
+	// 覆盖 270°：从 45° 到 315°，每 30° 一格都得有顶点（缺口那 90° 上面已判过）。
+	for want := 45.0; want <= 315; want += 30 {
+		found := false
+		for _, angle := range angles {
+			if math.Abs(normalizeAngle(angle)-want) < 15 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("%.0f° 附近没有顶点，说明圆弧没画全（角度集合 %v）", want, angles)
+		}
+	}
+}
+
+// normalizeAngle 把 atan2 的 (-180,180] 折算到 [0,360)。
+func normalizeAngle(angle float64) float64 {
+	for angle < 0 {
+		angle += 360
+	}
+	return angle
+}
+
+// cotSpinnerRing 在 snapshot 里找官方 loading 图标的圆环。
+//
+// 返回圆心与全部顶点相对圆心的角度（度）。判据同 `TestCotTranslationPendingDrawsSpinner`：
+// 把描边三角按包围盒邻接聚成一簇，取最大的一簇，按官方外半径反推圆心，
+// 再要求"所有顶点都在 [内半径, 外半径] 的环里"。找不到就 ok=false。
+func cotSpinnerRing(snapshot app.Snapshot) (gfx.Point, []float64, bool) {
+	type box struct{ minX, minY, maxX, maxY float32 }
+	var boxes []box
+	var points [][3]gfx.Point
+	for _, primitive := range snapshot.Primitives {
+		if primitive.Kind != app.TrianglePrimitive {
+			continue
+		}
+		b := box{minX: 1e9, minY: 1e9, maxX: -1e9, maxY: -1e9}
+		for _, point := range primitive.Points {
+			b.minX = min32(b.minX, point.X)
+			b.minY = min32(b.minY, point.Y)
+			b.maxX = max32(b.maxX, point.X)
+			b.maxY = max32(b.maxY, point.Y)
+		}
+		boxes = append(boxes, b)
+		points = append(points, primitive.Points)
+	}
+	parent := make([]int, len(boxes))
+	for i := range parent {
+		parent[i] = i
+	}
+	var find func(int) int
+	find = func(i int) int {
+		for parent[i] != i {
+			parent[i] = parent[parent[i]]
+			i = parent[i]
+		}
+		return i
+	}
+	for i := range boxes {
+		for j := i + 1; j < len(boxes); j++ {
+			a, b := boxes[i], boxes[j]
+			if a.minX <= b.maxX+1.2 && b.minX <= a.maxX+1.2 &&
+				a.minY <= b.maxY+1.2 && b.minY <= a.maxY+1.2 {
+				parent[find(i)] = find(j)
+			}
+		}
+	}
+	groups := map[int][]int{}
+	for i := range boxes {
+		root := find(i)
+		groups[root] = append(groups[root], i)
+	}
+	best := -1
+	for root, members := range groups {
+		if best < 0 || len(members) > len(groups[best]) {
+			best = root
+		}
+	}
+	if best < 0 {
+		return gfx.Point{}, nil, false
+	}
+	members := groups[best]
+	minX, minY, maxX, maxY := float32(1e9), float32(1e9), float32(-1e9), float32(-1e9)
+	for _, index := range members {
+		b := boxes[index]
+		minX = min32(minX, b.minX)
+		minY = min32(minY, b.minY)
+		maxX = max32(maxX, b.maxX)
+		maxY = max32(maxY, b.maxY)
+	}
+	// 官方圆弧：最左点 = 圆心 - 外半径（正西那个端点）；上下 = 圆心 ∓ 外半径；
+	// 最右点 = 圆心 + 外半径/√2（45° 那个外沿端点）。
+	wantWidth := float64(cotSpinnerOuter) + float64(cotSpinnerOuter)/math.Sqrt2
+	wantHeight := 2 * float64(cotSpinnerOuter)
+	if math.Abs(float64(maxX-minX)-wantWidth) > cotSpinnerTol ||
+		math.Abs(float64(maxY-minY)-wantHeight) > cotSpinnerTol {
+		return gfx.Point{}, nil, false
+	}
+	center := gfx.Point{X: minX + cotSpinnerOuter, Y: (minY + maxY) / 2}
+	var angles []float64
+	for _, index := range members {
+		for _, point := range points[index] {
+			r := math.Hypot(float64(point.X-center.X), float64(point.Y-center.Y))
+			if r < float64(cotSpinnerInner)-cotSpinnerTol || r > float64(cotSpinnerOuter)+cotSpinnerTol {
+				return gfx.Point{}, nil, false
+			}
+			angles = append(angles, math.Atan2(float64(point.Y-center.Y), float64(point.X-center.X))*180/math.Pi)
+		}
+	}
+	// 旧实现（Viva ui.Spinner）在同一块地方画的是 8 根小矩形辐条：有矩形就不是官方形状。
 	for _, primitive := range snapshot.Primitives {
 		if primitive.Kind != app.RectanglePrimitive {
 			continue
 		}
-		if primitive.Bounds.Width <= 6 && primitive.Bounds.Height <= 6 &&
-			primitive.Bounds.Width >= 1 && primitive.Bounds.Height >= 1 {
-			return true
+		b := primitive.Bounds
+		if b.X >= minX-cotSpinnerTol && b.Y >= minY-cotSpinnerTol &&
+			b.X+b.Width <= maxX+cotSpinnerTol && b.Y+b.Height <= maxY+cotSpinnerTol {
+			return gfx.Point{}, nil, false
 		}
 	}
-	return false
+	return center, angles, true
+}
+
+func min32(a, b float32) float32 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max32(a, b float32) float32 {
+	if a > b {
+		return a
+	}
+	return b
 }

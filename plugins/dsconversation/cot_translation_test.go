@@ -11,7 +11,9 @@ package dsconversation
 
 import (
 	"fmt"
+	"math"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
@@ -382,5 +384,51 @@ func TestCotSourceTextDropsSignature(t *testing.T) {
 	msg := apiclient.Message{Text: "<signature>c2ln</signature>\n真正的思考"}
 	if got := cotSourceText(msg); got != "真正的思考" {
 		t.Fatalf("待翻译文本=%q，期望去掉签名块", got)
+	}
+}
+
+// TestCotSpinnerAngleFollowsTheOfficialOneSecondTurn 钉住 pending 转圈的相位。
+//
+// 官方是 `.spinner{animation:cot-translation-spin 1s linear infinite}`
+// （`OFF:Translation.module.css:17-18`）+ `@keyframes … {to{transform:rotate(360deg)}}`：
+// 角度随时间是**线性的、一圈 1 秒、无缝回卷**。三条边界都是官方 CSS 直接给的：
+// 转一圈回到 0、`prefers-reduced-motion: reduce` 时 `animation:none` 停在 0、
+// 没有时钟（排不出下一帧）也停在 0。
+func TestCotSpinnerAngleFollowsTheOfficialOneSecondTurn(t *testing.T) {
+	cases := []struct {
+		now      time.Duration
+		rotation float64
+		want     float32
+	}{
+		{now: 0, want: 0},
+		{now: 250 * time.Millisecond, rotation: 1, want: float32(math.Pi / 2)},
+		{now: 500 * time.Millisecond, want: float32(math.Pi)},
+		{now: 750 * time.Millisecond, want: float32(3 * math.Pi / 2)},
+		// 满一圈回到 0：无限循环动画的接缝不能跳。
+		{now: time.Second, want: 0},
+		{now: 1250 * time.Millisecond, want: float32(math.Pi / 2)},
+		{now: 10*time.Second + 250*time.Millisecond, want: float32(math.Pi / 2)},
+	}
+	for _, c := range cases {
+		if got := cotSpinnerAngle(c.now, false, true); math.Abs(float64(got-c.want)) > 1e-6 {
+			t.Fatalf("now=%v 的角度=%v，期望 %v", c.now, got, c.want)
+		}
+	}
+	// 一圈确实是 1s：0.5s 的角度是 0.25s 的两倍（线性，不是缓动）。
+	quarter := cotSpinnerAngle(250*time.Millisecond, false, true)
+	half := cotSpinnerAngle(500*time.Millisecond, false, true)
+	if math.Abs(float64(half-2*quarter)) > 1e-6 {
+		t.Fatalf("角度不是线性的：0.25s=%v，0.5s=%v", quarter, half)
+	}
+	// reduce motion：官方 `@media (prefers-reduced-motion: reduce){.spinner{animation:none}}`。
+	if got := cotSpinnerAngle(250*time.Millisecond, true, true); got != 0 {
+		t.Fatalf("reduce motion 下角度=%v，官方这时不转", got)
+	}
+	// 没有时钟：排不出下一帧，只能停在第 0 帧（转一格就停会更糟）。
+	if got := cotSpinnerAngle(250*time.Millisecond, false, false); got != 0 {
+		t.Fatalf("没有时钟时角度=%v，应为 0", got)
+	}
+	if got := cotSpinnerAngle(-time.Second, false, true); got != 0 {
+		t.Fatalf("负时间角度=%v，应为 0", got)
 	}
 }

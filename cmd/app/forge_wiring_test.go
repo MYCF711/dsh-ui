@@ -461,3 +461,49 @@ func TestForgeStopCreationSendsOfficialMethod(t *testing.T) {
 		t.Fatal("停创建不许走 cancelWorktree（官方是两条不同动作）")
 	}
 }
+
+// TestForgeFollowDrivesEveryOfficialBlocker 钉住 `worktree.blocker` **逐字来自帧**：
+//
+//	dsh-go#85 起宿主按官方三条探测真填值（`HOST:cmd/dshd/serve_forge_state.go` 的
+//	`blockerOf`：`not-git` 压过一切 → 档位 `read-only` → 路径 `outside-writable-root`，
+//	任何一步拿不到事实 → null）。GUI 这一侧只做逐字透传（`forgeWorktreePanel`）：
+//	少一个词、把 `not-git` 过滤/改写掉、或者 null 帧没把旧值清掉，这里都会红。
+//
+// 三个词各自的**界面**表现（`not-git` 整块不画 / 另两个画出但禁用 + 官方浮条）
+// 由 `plugins/dsforge/progress_test.go` 的挡板用例钉着；两半合起来才是整条链。
+func TestForgeFollowDrivesEveryOfficialBlocker(t *testing.T) {
+	host, srv := newForgeHost(t)
+	host.followFeed = make(chan string, 8)
+	host.followStarted = make(chan struct{})
+	// 收尾先关帧源：follow 的 handler 才会返回，`srv.Close` 才不用等活跃请求。
+	t.Cleanup(func() { close(host.followFeed) })
+	m := newForgeModel(t, host, srv)
+	m.forgeFor() // 起会话：这会同时起 follow 订阅
+	select {
+	case <-host.followStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("follow 没有订阅（那样 worktree.blocker 就没有读出口）")
+	}
+
+	// 帧里的 `worktree.blocker` JSON 原文 → 折进界面态后必须逐字等于 want（"" = 官方 null）。
+	cases := []struct {
+		frame string
+		want  string
+	}{
+		{`"outside-writable-root"`, "outside-writable-root"},
+		{`"read-only"`, "read-only"},
+		{`"not-git"`, "not-git"},
+		{`null`, ""},
+	}
+	for _, tc := range cases {
+		frame, want := tc.frame, tc.want
+		host.followFeed <- forgePanelFrame(true, frame, "null", "null")
+		waitUntil(t, "blocker="+frame+" 落地", func() bool {
+			v := m.forgeFor()
+			return v != nil && v.Worktree.PanelKnown && v.Worktree.Blocker == want
+		})
+		if got := m.forgeFor().Worktree.Blocker; got != want {
+			t.Fatalf("帧 blocker=%s 折进来是 %q，want %q", frame, got, want)
+		}
+	}
+}

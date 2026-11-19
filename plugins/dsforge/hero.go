@@ -2,7 +2,7 @@
 //
 // # 官方形状（逐条）
 //
-//	OFF:…/src/client/WorktreeToggle.tsx:105-165   光标：分支芯片 + checkbox
+//	OFF:…/src/client/WorktreeToggle.tsx:121-165   光标：分支芯片 + checkbox
 //	OFF:…/src/client/WorktreeToggle.module.css:3-40
 //	  .root{inline-flex;gap:2px;align-items:center}
 //	  .toggle,.base,.current{height:28px;padding:0 8px;gap:6px;radius:sm;
@@ -21,6 +21,11 @@
 //	                                                       : `worktree.blocked.${blocker}`
 //	WorktreeToggle.tsx:152-161 `<label data-disabled>` + `<input type=checkbox disabled>`
 //
+// **`not-git` 没有挡板文案**：官方 `worktree.blocked.*` 只有两句
+// （`locales.ts:311-312`：`outside-writable-root` / `read-only`），因为 `not-git` 在
+// `optionOf` 的 `:104-105` 就整块否掉了，永远走不到 `:151` 那句 Tooltip。
+// 所以本仓也不给它编文案、更不画成"禁用 + 浮条"（见 `worktreeBlockerCopy`）。
+//
 // 这四样现在全部由 `forgePanel.follow` 的官方 `ForgePanelState` 供真值
 // （`pluginapi.ForgeWorktree.PanelKnown/Editable/Blocker/Creation`）。
 // 没有 follow 帧时（老宿主 / 测试）退回"checkout ready 才画"这条可证伪的弱判据，
@@ -30,7 +35,8 @@
 //
 //  1. **基准分支下拉菜单**（官方 `.base` 是一次 `branches()` + 菜单）。本仓没有菜单
 //     浮层可用，所以勾选始终按官方的默认语义发 `request(当前分支)`——官方 unchecked →
-//     checked 走的就是 `request(option.current)`（`WorktreeToggle.tsx:150-153`）。
+//     checked 走的就是 `request(option.current)`（`WorktreeToggle.tsx:134-137` 的
+//     `change()` + `:158` 的 onChange）。
 //     代价：选不到**别的**基准分支。
 package dsforge
 
@@ -61,7 +67,7 @@ const (
 	// 本仓用官方 `IconCheckOutlineRegular`，仍是官方素材）。
 )
 
-// 官方 WorktreeToggle 的中文文案（locales.ts:303-312，逐字）。
+// 官方 WorktreeToggle 的中文文案（locales.ts:309-312，逐字）。
 const (
 	copyWorktreeLabel         = "新建工作树"
 	copyWorktreeBase          = "基于 %s"
@@ -79,6 +85,9 @@ const (
 //
 // 官方是 `t(`worktree.blocked.${blocker}`)`（WorktreeToggle.tsx:151），键只有两条
 // （locales.ts:311-312）；未知值返回空串 = 不显示浮条，而不是编一句原因。
+//
+// **`not-git` 故意没有文案**：它在 `optionOf` 的 `:104-105` 就整块不画，官方那两句
+// 挡板文案里也就没有它（locales.ts:311-312 只有 outside-writable-root / read-only）。
 func worktreeBlockerCopy(blocker string) string {
 	switch blocker {
 	case pluginapi.ForgeWorktreeBlockerOutsideWritableRoot:
@@ -98,6 +107,10 @@ func worktreeBlockerCopy(blocker string) string {
 //	有 follow 帧且 blocker == not-git   → 整块不画（官方 :104-105）
 //	checkout 读成功                     → Kind == ready（官方 :106-107）
 //	壳接了动作面                        → Act.Forge != nil
+//
+// **这四条都是「整块不画」**，与下面「画出但禁用」是两件事：只有 blocker 落在
+// `outside-writable-root` / `read-only` 这两句有文案的值上时，官方才把勾选框画出来、
+// 加 `data-disabled` 并把浮条换成挡板原因（WorktreeToggle.tsx:128-129,151-152）。
 //
 // 没有 follow 帧（老宿主 / 测试）时不判前两条：`PanelKnown` 为零值，等于"宿主没
 // 说不能建"，退回 checkout ready 这条弱判据。

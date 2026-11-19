@@ -2931,14 +2931,17 @@ func main() {
 		ModelsPageSnapshot: m.modelsPageSnapshot,
 		ModelsPageRefresh:  m.modelsPageRefresh,
 		// 模型目录编辑器（宿主 models.catalog.*）：读走缓存 + 后台拉，写口同步返回错误，
-		// 因此插件必须在 goroutine 里调。没有 delete 钩子——宿主契约里没有删除入口
-		// （model_catalog.go:513-546 的 Reorder 要全排列）。
+		// 因此插件必须在 goroutine 里调。删除走 `models.catalog.replace`（整数组写入，
+		// 官方 splice 语义），reorder 只表达排序、表达不了删除。
 		ModelsCatalogSnapshot:  m.modelsCatalogSnapshot,
 		ModelsCatalogRefresh:   m.modelsCatalogRefresh,
 		ModelsCatalogUpsert:    m.modelsCatalogUpsert,
 		ModelsCatalogReorder:   m.modelsCatalogReorder,
+		ModelsCatalogReplace:   m.modelsCatalogReplace,
 		ModelsCatalogTest:      m.modelsCatalogTest,
 		ModelsCatalogSetActive: m.modelsCatalogSetActive,
+		// 模型发现（官方 llm.discoverModels）：问端点上有哪些模型。
+		LLMDiscoverModels: m.llmDiscoverModels,
 		// 模型覆盖：写宿主 <home>/state/session-model.json。
 		// **空串 = 清除覆盖**，回到宿主默认。异步、失败只写状态栏。
 		SetModel: func(modelID string) {

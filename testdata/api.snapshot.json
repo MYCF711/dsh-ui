@@ -2221,6 +2221,25 @@
       "req_note": "ids 必须是目录的**全排列**：数量不等/含重复/含目录外 id 都是 bad_request，空目录是 empty_catalog，空数组是 empty_order（HOST:internal/llm/model_catalog.go:513-546）。**没有 delete**：整组方法里没有删除入口，所以 UI 的行删除没有面（见 docs/official-parity.md #41）。",
       "resp_note": "回整份目录 + 新 revision。"
     },
+    "models.catalog.replace": {
+      "batch": 28,
+      "req": {
+        "models": [
+          "object"
+        ],
+        "expectedRevision": "int?"
+      },
+      "resp": {
+        "revision": "int",
+        "models": [
+          "object"
+        ],
+        "credentials": "object",
+        "active": "ModelCatalogActive"
+      },
+      "req_note": "`models` 是**整份数组**（官方删行 = 本地 splice + 整数组重写，OFF:DeepSeekModelsEditor.tsx:157-160 + operations.ts:86-91；宿主 HOST:internal/llm/model_catalog.go 的 Replace = 逐行规范化 + 重复 id 拒绝 + 乐观锁 + 整数组替换）。空数组合法（删到空）；`models:null` 与缺字段是 bad_request。",
+      "resp_note": "回整份目录 + 新 revision。"
+    },
     "models.catalog.test": {
       "batch": 28,
       "req": {
@@ -2251,10 +2270,35 @@
       },
       "req_note": "先校验 id 在目录里（不在回 not_found，HOST:cmd/dshd/serve_models.go:137-152），再写 W61 model 命名空间的 defaultModel；revision 是设置文档的乐观锁。",
       "resp_note": "activeModel/activeRevision 是设置文档的新值，revision 是目录当时的 revision。"
+    },
+    "llm.discoverModels": {
+      "batch": 28,
+      "req": {
+        "settingsNs": "string",
+        "request": {
+          "provider": "string?",
+          "baseURL": "string?",
+          "api": "string?",
+          "apiKey": "string?"
+        }
+      },
+      "resp": [
+        {
+          "id": "string",
+          "name": "string?",
+          "contextWindow": "int?",
+          "maxTokens": "int?",
+          "inputModalities": [
+            "string"
+          ]
+        }
+      ],
+      "req_note": "官方 llm.discoverModels（OFF:operations.ts:92-96）：settingsNs 必填，request 四字段全可选（缺就不发）。宿主 HOST:internal/transport/handlers_account_official.go:1326-1391 → cmd/dshd/serve_account_api.go:492-538 真发一次 GET <baseURL>/models。",
+      "resp_note": "缺字段 = 未知（宿主 omitempty 不发 0/空数组）；空数组 = 端点一个模型都没挂（确定真值）。"
     }
   },
   "counts": {
-    "total": 135,
+    "total": 137,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2281,7 +2325,7 @@
     "batch25": 5,
     "batch26": 1,
     "batch27": 1,
-    "batch28": 5
+    "batch28": 7
   },
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,

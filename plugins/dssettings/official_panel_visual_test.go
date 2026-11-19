@@ -133,16 +133,25 @@ type officialHarness struct {
 	// catalog 是模型目录编辑器（宿主 models.catalog.*）这一帧的快照。
 	// nil = 宿主没接这条能力（老壳）。
 	catalog *apiclient.ModelCatalogSnapshot
-	// catalogUpserts/catalogReorders 记录写口调用（顺序即调用顺序）。
+	// catalogUpserts/catalogReorders 记录旧写口调用（顺序即调用顺序）。
 	catalogUpserts  []catalogUpsertCall
 	catalogReorders []catalogReorderCall
-	// catalogUpsertErr/catalogReorderErr 让写口失败（验证失败保留草稿）。
+	// catalogReplaces 记录 `models.catalog.replace` 调用（编辑卡唯一写出口）。
+	catalogReplaces []catalogReplaceCall
+	// catalogUpsertErr/catalogReorderErr/catalogReplaceErr 让写口失败（验证失败保留草稿）。
 	catalogUpsertErr  error
 	catalogReorderErr error
+	catalogReplaceErr error
 	// catalogRevision 是替身目录的当前 revision（每次写自增）。
 	catalogRevision int64
 	// catalogRefresh 记录目录被要求重读了几次（写失败后的 recovery reload）。
 	catalogRefresh int
+	// discovered/discoverErr 是 `llm.discoverModels` 的替身答案；
+	// discoverCalls/discoverNamespaces 记录每次询问的入参。
+	discovered        []apiclient.DiscoveredModel
+	discoverErr       error
+	discoverCalls     []apiclient.ModelDiscoveryRequest
+	discoverNamespace []string
 }
 
 // catalogUpsertCall 记录一次 `models.catalog.upsert`。
@@ -154,6 +163,12 @@ type catalogUpsertCall struct {
 // catalogReorderCall 记录一次 `models.catalog.reorder`。
 type catalogReorderCall struct {
 	ids      []string
+	expected *int64
+}
+
+// catalogReplaceCall 记录一次 `models.catalog.replace`（整数组写入）。
+type catalogReplaceCall struct {
+	models   []string
 	expected *int64
 }
 
@@ -331,6 +346,35 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			h.catalogRevision++
 			return catalogDocumentWith(h.catalogRevision, string(model)), nil
 		},
+		// 编辑卡唯一的写出口：一次写入整份模型数组（官方删行 = splice + 整数组重写）。
+		ModelsCatalogReplace: func(models []json.RawMessage, expectedRevision *int64) (apiclient.ModelCatalogDocument, error) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			call := catalogReplaceCall{expected: cloneRevision(expectedRevision)}
+			for _, model := range models {
+				call.models = append(call.models, string(model))
+			}
+			h.catalogReplaces = append(h.catalogReplaces, call)
+			if h.catalogReplaceErr != nil {
+				return apiclient.ModelCatalogDocument{}, h.catalogReplaceErr
+			}
+			h.catalogRevision++
+			return apiclient.ModelCatalogDocument{
+				Revision: h.catalogRevision, Models: models,
+				Active: apiclient.ModelCatalogActive{ID: "alpha"},
+			}, nil
+		},
+		// 模型发现（官方 llm.discoverModels）：问端点上有哪些模型。
+		LLMDiscoverModels: func(settingsNS string, request apiclient.ModelDiscoveryRequest) ([]apiclient.DiscoveredModel, error) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.discoverNamespace = append(h.discoverNamespace, settingsNS)
+			h.discoverCalls = append(h.discoverCalls, request)
+			if h.discoverErr != nil {
+				return nil, h.discoverErr
+			}
+			return h.discovered, nil
+		},
 		ModelsCatalogReorder: func(ids []string, expectedRevision *int64) (apiclient.ModelCatalogDocument, error) {
 			h.mu.Lock()
 			defer h.mu.Unlock()
@@ -375,7 +419,14 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			}
 		}
 	}
+	// 与真壳同一个次序（cmd/app/main.go:2291-2298）：整窗页面**先**接按键
+	// （`Page.Key` → routeKey → 焦点控件的 Handlers.Key），页面没接才轮到插件。
+	// 少了这一步，测到的就不是产品里那条链路：控件的键盘入口永远收不到键。
 	config.OnKey = func(ev gfx.KeyEvent) gfx.EventResult {
+		if result := view.Key(ev); result.Handled || !result.Activate.IsZero() {
+			h.invalidator.Invalidate()
+			return result
+		}
 		if h.kernel.HandleKey(ev) {
 			h.invalidator.Invalidate()
 			return gfx.EventResult{Handled: true, Repaint: true}

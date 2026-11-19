@@ -150,6 +150,54 @@ func TestModelCatalogReorderNilIDsBecomeEmptyArray(t *testing.T) {
 	}
 }
 
+func TestModelCatalogReplaceSendsTheWholeArrayOnce(t *testing.T) {
+	var body map[string]any
+	srv := catalogServer(t, "/api/models.catalog.replace", catalogDocumentResult, &body)
+	defer srv.Close()
+
+	models := []json.RawMessage{
+		json.RawMessage(`{"id":"m-1","baseURL":"https://api.example.com/v1","api":"openai-completions"}`),
+	}
+	revision := int64(4)
+	doc, err := New(srv.URL).ModelCatalogReplace(context.Background(), models, &revision)
+	if err != nil {
+		t.Fatalf("应当成功：%v", err)
+	}
+	// 整数组写入：wire 上是 `models` 数组，不是逐条的 model 对象。
+	array, ok := body["models"].([]any)
+	if !ok || len(array) != 1 {
+		t.Fatalf("models 必须原样发出整份数组：%v", body)
+	}
+	first, _ := array[0].(map[string]any)
+	if first["id"] != "m-1" || first["baseURL"] != "https://api.example.com/v1" {
+		t.Fatalf("数组里那条模型被改写了：%v", first)
+	}
+	if got, ok := body["expectedRevision"].(float64); !ok || got != 4 {
+		t.Fatalf("expectedRevision 必须是数字 4：%v", body)
+	}
+	if doc.Revision != 7 || len(doc.Models) != 2 {
+		t.Fatalf("结果应原样解出宿主文档：%+v", doc)
+	}
+}
+
+func TestModelCatalogReplaceNilBecomesEmptyArray(t *testing.T) {
+	var body map[string]any
+	srv := catalogServer(t, "/api/models.catalog.replace", catalogDocumentResult, &body)
+	defer srv.Close()
+
+	if _, err := New(srv.URL).ModelCatalogReplace(context.Background(), nil, nil); err != nil {
+		t.Fatalf("应当成功：%v", err)
+	}
+	// `models:null` 会被宿主拒（serve_models.go 的 null 白名单）；删到空的合法 wire
+	// 形状是 `[]`。
+	if array, ok := body["models"].([]any); !ok || len(array) != 0 {
+		t.Fatalf("models 必须是空 JSON 数组而不是 null：%v", body)
+	}
+	if _, ok := body["expectedRevision"]; ok {
+		t.Fatalf("expectedRevision=nil 必须整键省略：%v", body)
+	}
+}
+
 func TestModelCatalogTestOmitsAbsentOverrides(t *testing.T) {
 	var body map[string]any
 	srv := catalogServer(t, "/api/models.catalog.test", `{"result":{"id":"m-1","ok":true,"model":"m-1","latencyMs":42}}`, &body)

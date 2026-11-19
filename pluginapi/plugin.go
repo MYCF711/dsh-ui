@@ -2090,9 +2090,11 @@ type Actions struct {
 	// 写口返回 error 原样交给界面（宿主的四字段错误，含 `revision_conflict`），
 	// 调用方必须在 goroutine 里调——绘制帧不能等 HTTP。
 	//
-	// **没有 delete 钩子，也不该有**：宿主 `model_catalog.go:513-546` 的 Reorder
-	// 要目录的全排列、整组方法里没有删除入口。行删除在这条契约下没有面，
-	// 不能拿 reorder 冒充（少一个 id 会被宿主 `bad_request` 拒）。
+	// **删除走 replace，不走 reorder**：宿主 `model_catalog.go:513-546` 的 Reorder
+	// 要目录的全排列、整组方法里没有删除入口；`models.catalog.replace` 才是官方
+	// 语义（整数组写入，`DeepSeekModelsEditor.tsx:157-160` 的 splice + 整数组重写），
+	// 所以删除/新增/排序一次写完，不许拿 reorder 少一个 id 冒充删除（那会被
+	// `bad_request` 拒）。
 	// ModelsCatalogSnapshot 同步返回壳缓存的那一份（Loading=true 表示首次读取还在飞）；
 	// nil = 壳没接（老壳），界面据此**不画**一个点了没反应的目录卡。
 	ModelsCatalogSnapshot func() *apiclient.ModelCatalogSnapshot
@@ -2103,10 +2105,18 @@ type Actions struct {
 	ModelsCatalogUpsert func(model json.RawMessage, credential *string, expectedRevision *int64) (apiclient.ModelCatalogDocument, error)
 	// ModelsCatalogReorder 按 ids 提交**全排列**；ids 少于目录会被宿主拒绝。
 	ModelsCatalogReorder func(ids []string, expectedRevision *int64) (apiclient.ModelCatalogDocument, error)
+	// ModelsCatalogReplace 一次写入整份模型数组（官方删行/排序/新增的唯一形态）。
+	// 空数组 = 删到空（宿主接受）；nil = 壳没接这条写口。
+	ModelsCatalogReplace func(models []json.RawMessage, expectedRevision *int64) (apiclient.ModelCatalogDocument, error)
 	// ModelsCatalogTest 对一条目录模型发一次真实探测（宿主走认证与目的地栅栏）。
 	ModelsCatalogTest func(id string) (apiclient.ModelCatalogTestResult, error)
 	// ModelsCatalogSetActive 把一条目录模型设成默认；宿主会先校验它在目录里。
 	ModelsCatalogSetActive func(id string, expectedRevision *int64) (apiclient.ModelCatalogSetActiveResult, error)
+	// LLMDiscoverModels 问一个端点上有哪些模型（官方 `llm.discoverModels`：
+	// `OFF:operations.ts:92-96` → 本仓 `../DSH-GO/internal/transport/
+	// handlers_account_official.go:1326-1391`）。nil = 壳没接；失败原样返回
+	// 宿主的四字段错误，界面据此说明"问不到"而不是"没有模型"。
+	LLMDiscoverModels func(settingsNS string, request apiclient.ModelDiscoveryRequest) ([]apiclient.DiscoveredModel, error)
 
 	// Goal 读这条会话当前在做的事（壳缓存，来自 session.load 的投影）。
 	// 空 = 没设过，插件据此不画目标条。

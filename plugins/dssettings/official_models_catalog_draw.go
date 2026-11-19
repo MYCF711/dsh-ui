@@ -18,10 +18,13 @@
 //
 // # 每个可交互控件的命中区（测试逐个断言，见 official_models_catalog_visual_test.go）
 //
-//	"调整模型顺序 N"（Control，键盘 ↑/↓ 各挪一格）       官方 ModelRow.tsx:103-127
-//	settings-catalog-field-<key>-id                      官方 ModelRow.tsx:64-77
+//	"调整模型顺序 N"（Control，键盘 ↑/↓ 各挪一格）       官方 ModelRow.tsx:104-130（含 :121-126 的方向键）
+//	settings-catalog-remove-<key>                        删一行，ModelRow.tsx:142-151
+//	settings-catalog-field-<key>-id                      官方 ModelRow.tsx:61-80
 //	settings-catalog-field-<key>-name                    同上（名称列）
-//	settings-catalog-toggle-<key>                        展开/收起，ModelRow.tsx:130-139
+//	settings-catalog-toggle-<key>                        展开/收起，ModelRow.tsx:132-141
+//	settings-catalog-field-<key>-baseURL                 API 地址，ProviderEditor.tsx:552-570
+//	settings-catalog-apicycle-<key>                      API 协议（官方 `<select>`，:575-595）
 //	settings-catalog-field-<key>-contextWindow / -maxTokens  两组容量，:154-169
 //	settings-catalog-input-text-<key> / -image-<key>     输入类型两个复选，ModelInputTypes.tsx:36-58
 //	settings-catalog-reason-<key>                        推理等级开关，ModelReasoningEfforts.tsx:171-176
@@ -30,10 +33,13 @@
 //	settings-catalog-effdel-<key>-<i>                    删档位，:219-228
 //	settings-row-catalog-effadd-<key>                    添加档位，:234-242
 //	settings-row-catalog-add                             添加模型，DeepSeekModelsEditor.tsx:245-253
+//	settings-row-catalog-fetch                           获取可用模型，ModelListEditor.tsx:326-346
+//	settings-catalog-cand-<i> / -candall                 候选勾选 / 全选，ModelListEditor.tsx:292-304
+//	settings-row-catalog-adopt / -candclose              更新列表 / 关闭，ModelListEditor.tsx:270-290
 //	settings-row-catalog-cancel / -catalog-apply         EditorFooter 两枚，EditorFooter.tsx:45-67
 //
-// 删除**故意没有命中区**：宿主目录契约没有删除方法（见 editor 文件顶部），
-// 画一个点得着却什么都不做的钮，比画一个明确禁用并写明原因的更坏。
+// 删除现在是**真按钮**：宿主 `dsh-go#82` 的 `models.catalog.replace` 给了整数组
+// 写入（官方删行就是 splice + 整数组重写），所以它能落地，不再是禁用态。
 package dssettings
 
 import (
@@ -75,15 +81,31 @@ const (
 	catalogNoteLine       float32 = 18
 )
 
-// catalogDeleteGapNote 是"删除没有面"的**可见**说明。
+// catalogAPIDeepSeek 是官方 DeepSeek 适配器那一族的 api 名。
 //
-// 不把它藏进注释：用户看到一枚灰掉的垃圾桶，必须有一行告诉他为什么灰。依据是宿主
-// 契约本身（`../DSH-GO/internal/llm/model_catalog.go:513-546` 的 Reorder 要全排列、
-// 整组方法里没有 delete），不是自造能力。
-const catalogDeleteGapNote = "删除模型暂不可用：宿主模型目录契约只有 list / upsert / reorder / test / set-active，没有删除方法（另开宿主单）。"
+// 官方 baseURL 的 placeholder 先按**家族**分支（`family === 'deepseek'` 走
+// `deepSeekBaseUrl`，ProviderEditor.tsx:558-560）；本卡是逐行编辑，家族由这一行
+// 声明的 api 决定——`deepseek-completions` 就是宿主的 DeepSeek 适配器
+// （`../DSH-GO/internal/llm/provider.go:37`）。
+const catalogAPIDeepSeek = "deepseek-completions"
 
-// catalogNoteRowID 是那行说明自己的行 id（紧随"添加模型"之后）。
-const catalogNoteRowID = "catalog-note"
+// 发现面（官方那个 Modal）在本卡里落成行：标题/说明/状态/候选/两枚动作。
+const (
+	catalogFetchRowID       = "catalog-fetch"        // 获取可用模型（官方 `.linkButton`）
+	catalogDiscoverTitleID  = "catalog-fetch-title"  // fetchTitle
+	catalogDiscoverDescID   = "catalog-fetch-desc"   // fetchDescription
+	catalogDiscoverStatusID = "catalog-fetch-status" // 失败/空列表说明
+	catalogCandidatePrefix  = "catalog-cand-"        // 一条候选，后缀 = 下标
+	catalogCandidateAllID   = "catalog-candall"      // 全选/取消全选
+	catalogAdoptRowID       = "catalog-adopt"        // 更新列表
+	catalogCandCloseID      = "catalog-candclose"    // 关闭
+)
+
+// catalogBasePrefix / catalogAPIPrefix 是行内两格新字段（API 地址 / API 协议）。
+const (
+	catalogBasePrefix = "catalog-base-"
+	catalogAPIPrefix  = "catalog-api-"
+)
 
 // catalogRowPath 是目录卡可点行的 Path 标记。它**不是设置路径**：目录行落到
 // `activateModelsCatalogRow` 就返回了，不会进 applyRowWrite；只是 PanelRow.Writable
@@ -144,6 +166,19 @@ func catalogRows(edit *catalogEditor, writable bool) []PanelRow {
 				Kind: ItemButton, Disabled: !writable, Revision: index + 1, Path: []string{catalogRowPath},
 			})
 		}
+		// API 地址 / API 协议：官方这两格在 provider 卡的"自定义设置"里
+		// （ProviderEditor.tsx:552-595），本仓宿主的 provider profile 只发布
+		// retryPolicy（settingsform/provider_schema.go:164-176），baseURL/api 的
+		// 真实消费点在**目录条目**上（internal/llm/model_catalog.go:1271-1290 +
+		// ResolveProvider），所以画在行里。
+		rows = append(rows, PanelRow{
+			ID: catalogBasePrefix + key, Title: catalogCopy("baseUrl"),
+			Kind: ItemButton, Disabled: !writable, Revision: index + 1, Path: []string{catalogRowPath},
+		})
+		rows = append(rows, PanelRow{
+			ID: catalogAPIPrefix + key, Title: catalogCopy("customApi"),
+			Kind: ItemButton, Disabled: !writable, Revision: index + 1, Path: []string{catalogRowPath},
+		})
 		rows = append(rows, PanelRow{
 			ID: catalogInputsPrefix + key, Title: catalogCopy("modelInputTypes"),
 			Kind: ItemSwitch, Disabled: !writable, Revision: index + 1,
@@ -168,11 +203,65 @@ func catalogRows(edit *catalogEditor, writable bool) []PanelRow {
 	}
 	rows = append(rows, PanelRow{ID: catalogAddRowID, Title: catalogCopy("addModel"), Kind: ItemButton,
 		Disabled: !writable, Path: []string{catalogRowPath}})
-	rows = append(rows, PanelRow{ID: catalogNoteRowID, Title: catalogDeleteGapNote, Kind: ItemVersion})
+	rows = append(rows, catalogFetchRows(edit, writable)...)
 	rows = append(rows,
 		PanelRow{ID: catalogCancelRowID, Title: zhEditorCancel, Kind: ItemButton, Path: []string{catalogRowPath}},
 		PanelRow{ID: catalogApplyRowID, Title: zhEditorApply, Kind: ItemButton, Disabled: !writable,
 			Path: []string{catalogRowPath}, Reason: catalogApplyReason(writable)},
+	)
+	return rows
+}
+
+// catalogFetchRows 是"获取可用模型"这一面（官方 `.linkButton` + Modal，
+// ModelListEditor.tsx:326-346、:391-457）落在行投影上的形状。
+//
+// 三档可见性照官方：
+//   - 常态只有那颗按钮（文案 fetchModels；在飞时 fetching）；
+//   - 有失败原文 → 多一行说明（上游拒绝/`fetchEmpty` 都走这里）；
+//   - 有候选 → 标题、说明、候选逐条、全选、更新列表、关闭。
+func catalogFetchRows(edit *catalogEditor, writable bool) []PanelRow {
+	_, _, askable := edit.askable()
+	title := catalogCopy("fetchModels")
+	if edit.discovering {
+		title = catalogCopy("fetching")
+	}
+	reason := ""
+	if !writable {
+		reason = "只读：壳未接 models.catalog.replace"
+	} else if !askable {
+		reason = catalogCopy("fetchNeedsBaseUrl")
+	}
+	rows := []PanelRow{{
+		ID: catalogFetchRowID, Title: title, Kind: ItemButton,
+		Disabled: !writable || !askable || edit.discovering, Path: []string{catalogRowPath}, Reason: reason,
+	}}
+	if edit.discoverError != "" {
+		rows = append(rows, PanelRow{ID: catalogDiscoverStatusID, Title: edit.discoverError, Kind: ItemVersion})
+	}
+	if edit.picker == nil || edit.candidates == nil {
+		return rows
+	}
+	rows = append(rows,
+		PanelRow{ID: catalogDiscoverTitleID, Title: catalogCopy("fetchTitle"), Kind: ItemVersion},
+		PanelRow{ID: catalogDiscoverDescID, Title: catalogCopy("fetchDescription"), Kind: ItemVersion},
+	)
+	for index, candidate := range edit.candidates {
+		id := ModelText(candidate, "id")
+		desc := ""
+		if name := ModelText(candidate, "name"); name != "" {
+			desc = name
+		}
+		rows = append(rows, PanelRow{
+			ID: catalogCandidatePrefix + strconv.Itoa(index), Title: id, Desc: desc,
+			Kind: ItemSwitch, Selected: strconv.FormatBool(edit.picker.Picked(id)), Revision: index + 1,
+		})
+	}
+	rows = append(rows, PanelRow{ID: catalogCandidateAllID, Title: catalogCopy("fetchSelectAll"), Kind: ItemButton})
+	rows = append(rows,
+		PanelRow{ID: catalogAdoptRowID, Title: catalogCopy("fetchAdopt"), Kind: ItemButton,
+			Path: []string{catalogRowPath}},
+		PanelRow{ID: catalogCandCloseID, Title: catalogCopy("close"), Kind: ItemButton,
+			Path: []string{catalogRowPath}},
 	)
 	return rows
 }
@@ -237,13 +326,31 @@ func (p *Plugin) drawCatalogRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, 
 			Radius(t.Radii.LG).Justify(ui.Center).Children(func() {
 			ui.Text(f, row.Title).FontSize(catalogMetaSize).LineHeight(catalogMetaLine).Color(t.LabelTertiary)
 		})
-	case row.ID == catalogNoteRowID:
-		ui.Text(f, row.Title).FontSize(catalogNoteSize).LineHeight(catalogNoteLine).
-			Color(t.LabelTertiary).FillWidth()
 	case strings.HasPrefix(row.ID, catalogRowPrefix):
 		p.drawCatalogEditorModelRow(f, env, t, row, edit, writable)
 	case strings.HasPrefix(row.ID, catalogCapacityPrefix):
 		p.drawCatalogCapacityRow(f, env, t, row, edit, writable)
+	case strings.HasPrefix(row.ID, catalogBasePrefix):
+		p.drawCatalogBaseURLRow(f, env, t, row, edit, writable)
+	case strings.HasPrefix(row.ID, catalogAPIPrefix):
+		p.drawCatalogAPIRow(f, env, t, row, edit, writable)
+	case row.ID == catalogFetchRowID:
+		p.drawCatalogLinkButton(f, env, t, row, !row.Disabled)
+	case row.ID == catalogDiscoverStatusID:
+		ui.Text(f, row.Title).FontSize(catalogMetaSize).LineHeight(catalogMetaLine).
+			Color(t.LabelTertiary).FillWidth()
+	case row.ID == catalogDiscoverTitleID:
+		ui.Text(f, row.Title).FontSize(catalogTitleSize).LineHeight(catalogTitleLine).
+			Weight(500).Color(t.LabelSecondary).FillWidth().Ellipsis()
+	case row.ID == catalogDiscoverDescID:
+		ui.Text(f, row.Title).FontSize(catalogMetaSize).LineHeight(catalogMetaLine).
+			Color(t.LabelTertiary).FillWidth()
+	case strings.HasPrefix(row.ID, catalogCandidatePrefix):
+		p.drawCatalogCandidateRow(f, env, t, row, edit)
+	case row.ID == catalogCandidateAllID:
+		p.drawCatalogLinkButton(f, env, t, row, true)
+	case row.ID == catalogAdoptRowID, row.ID == catalogCandCloseID:
+		p.drawCatalogSmallButton(f, env, t, row, true)
 	case strings.HasPrefix(row.ID, catalogInputsPrefix):
 		p.drawCatalogInputTypesRow(f, env, t, row, edit, writable)
 	case strings.HasPrefix(row.ID, catalogReasonPrefix):
@@ -293,10 +400,10 @@ func (p *Plugin) drawCatalogEditorModelRow(f ui.C, env *pluginapi.Env, t *plugin
 	ui.Row(f).FillWidth().Pad(catalogEntryPad).Gap(catalogRowGap).Items(ui.Center).
 		Border(catalogEntryBorder, t.BorderL4).Radius(t.Radii.LG).Children(func() {
 		p.drawCatalogDragHandle(f, env, t, key, position, writable)
-		p.catalogTextField(f, env, t, "settings-catalog-field-"+key+"-id",
+		p.catalogTextField(f, env, t, "settings-catalog-field-"+key+"-id", catalogCopy("modelId"),
 			ModelText(edit.drafts[index], "id"), catalogCopy("modelId"), writable,
 			func(text string) { p.catalogSetText(key, "id", text) })
-		p.catalogTextField(f, env, t, "settings-catalog-field-"+key+"-name",
+		p.catalogTextField(f, env, t, "settings-catalog-field-"+key+"-name", catalogCopy("modelName"),
 			ModelText(edit.drafts[index], "name"), catalogCopy("modelName"), writable,
 			func(text string) { p.catalogSetText(key, "name", text) })
 		// 展开/收起：官方那枚 chevron 钮（`aria-expanded`，ModelRow.tsx:130-139）。
@@ -306,13 +413,16 @@ func (p *Plugin) drawCatalogEditorModelRow(f ui.C, env *pluginapi.Env, t *plugin
 			}) {
 			p.catalogToggleExpanded(env, key)
 		}
-		// 删除：宿主没有删除方法 → 画禁用态、不挂命中区（见文件头）。
-		catalogIconButton(f, env, t, "settings-catalog-remove-"+key,
-			catalogCopy("removeModel")+" "+position, true, func() {
+		// 删除：真按钮（官方 `onRemove` → splice，ModelRow.tsx:142-151）。落地靠
+		// 宿主 `models.catalog.replace` 的整数组写入，见 editor 文件顶部。
+		if catalogIconButton(f, env, t, "settings-catalog-remove-"+key,
+			catalogCopy("removeModel")+" "+position, !writable, func() {
 				if icon, ok := dsassets.MarketTrashOutline(t.LabelTertiary); ok {
 					ui.Icon(f, icon).Size(catalogIconSize, catalogIconSize).Color(t.LabelTertiary)
 				}
-			})
+			}) {
+			p.catalogRemoveModel(env, key)
+		}
 	})
 }
 
@@ -320,9 +430,12 @@ func (p *Plugin) drawCatalogEditorModelRow(f ui.C, env *pluginapi.Env, t *plugin
 //
 // 官方是 HTML5 拖放 + `onKeyDown` 的 ↑/↓（ModelRow.tsx:103-127，`aria-keyshortcuts=
 // "ArrowUp ArrowDown"`），帮助文案也是"拖动排序，或使用上下方向键调整顺序"
-// （locales.ts:233）。本仓没有 HTML5 拖放，也没有"盒子上收键"的入口（viva 的
-// `Box.OnKey` 只对 TextField 开放），所以用 `ui.Control`：它是本栈里唯一
-// "可聚焦 + 收键盘"的元素（`ui/control.go:56-78`），把官方**另一半**入口如实保留。
+// （locales.ts:233）。本栈没有 HTML5 拖放，但有等价的两件东西：`ui.Control` 是
+// "可聚焦 + 收键盘"的元素（`ui/control.go:56-78`），而壳把按键**先**交给页面
+// （`cmd/app/main.go:2291-2298` 的 `m.view.Key(ev)`，对应 `ui/page.go:716-721`
+// 的"host routes its input with Key..."），页面再按焦点把键送给控件的
+// `Handlers.Key`（`ui/page.go:445-450`）。所以官方那半条入口（柄上按 ↑/↓）如实保留，
+// 由 TestModelsCatalogReorderHandleMovesDraftWithArrowKeys 用真按键钉住。
 func (p *Plugin) drawCatalogDragHandle(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, key, position string, writable bool) {
 	label := catalogCopy("reorderModel") + " " + position
 	handlers := &ui.Handlers{Key: func(event gfx.KeyEvent) gfx.EventResult {
@@ -358,6 +471,232 @@ func (p *Plugin) drawCatalogDragHandle(f ui.C, env *pluginapi.Env, t *pluginapi.
 	})
 }
 
+// catalogBaseURLPlaceholder 是 API 地址那格的占位文案（官方三个分支，
+// ProviderEditor.tsx:558-561 + locales.ts:236-241）：
+//
+//	DeepSeek 家族            → deepSeekBaseUrl（含默认端点与 DEEPSEEK_BASE_URL 说明）
+//	路由声明了默认端点       → baseUrlPlaceholder，`{url}` 换成那条端点
+//	路由只有环境变量         → baseUrlConfigured
+//	两者都没有               → baseUrlDefault（"没有默认地址"）
+//
+// 家族与路由事实都取宿主报的值（listConfigurableProviders 的 defaultBaseURL /
+// baseURLEnv，`../DSH-GO/internal/llm/provider_registry.go:35-40`），不猜。
+func catalogBaseURLPlaceholder(edit *catalogEditor, draft ModelDraft) string {
+	api := strings.TrimSpace(ModelText(draft, "api"))
+	if api == catalogAPIDeepSeek {
+		return catalogCopy("deepSeekBaseUrl")
+	}
+	if edit != nil {
+		if value := edit.providerDefault[api]; value != "" {
+			return strings.ReplaceAll(catalogCopy("baseUrlPlaceholder"), "{url}", value)
+		}
+		if len(edit.providerEnv[api]) > 0 {
+			return catalogCopy("baseUrlConfigured")
+		}
+	}
+	return catalogCopy("baseUrlDefault")
+}
+
+// drawCatalogBaseURLRow 画 API 地址（官方 `.field` + `.input`，ProviderEditor.tsx:552-570；
+// 几何同本卡其它字段：label 12/18 tertiary + 32 高输入框）。
+func (p *Plugin) drawCatalogBaseURLRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow,
+	edit *catalogEditor, writable bool) {
+	key := catalogRowKey(row.ID, catalogBasePrefix)
+	index := edit.indexOfKey(key)
+	if index < 0 {
+		return
+	}
+	ui.Column(f).FillWidth().Gap(catalogFieldGap).Children(func() {
+		ui.Text(f, row.Title).FontSize(catalogMetaSize).LineHeight(catalogMetaLine).Color(t.LabelTertiary)
+		// 官方 `aria-label={t('baseUrl')}`（ProviderEditor.tsx:563）。
+		p.catalogTextField(f, env, t, "settings-catalog-field-"+key+"-baseURL", row.Title,
+			ModelText(edit.drafts[index], "baseURL"), catalogBaseURLPlaceholder(edit, edit.drafts[index]),
+			writable, func(text string) { p.catalogSetBaseURL(key, text) })
+	})
+}
+
+// drawCatalogAPIRow 画 API 协议。官方是 `<select>`（ProviderEditor.tsx:575-595），
+// 候选 = 宿主注册的 wire 协议；未选择时显示官方 `customApiUnset`（"未选择"）。
+//
+// 本仓行词汇里"点一下换下一个候选"是同一种语义（与档位行 `settings-catalog-efflevel-*`
+// 同一手法，见 drawCatalogEffortRow）。
+func (p *Plugin) drawCatalogAPIRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow,
+	edit *catalogEditor, writable bool) {
+	key := catalogRowKey(row.ID, catalogAPIPrefix)
+	index := edit.indexOfKey(key)
+	if index < 0 {
+		return
+	}
+	if len(edit.protocols) == 0 {
+		return
+	}
+	current := strings.TrimSpace(ModelText(edit.drafts[index], "api"))
+	label := current
+	if label == "" {
+		label = catalogCopy("customApiUnset")
+	}
+	ui.Column(f).FillWidth().Gap(catalogFieldGap).Children(func() {
+		ui.Text(f, row.Title).FontSize(catalogMetaSize).LineHeight(catalogMetaLine).Color(t.LabelTertiary)
+		pill := ui.Row(f).Shrink(0).Height(catalogChoicesMinH).Radius(t.Radii.MD).
+			PadX(ModelsKeyPadX).Gap(SelectorGap).Items(ui.Center).Background(settingsModuleFill(t))
+		if writable {
+			pill = pill.Hit(env.Tree.ID(env.Feat, "settings-catalog-apicycle-"+key), row.Title)
+		} else {
+			pill = pill.Opacity(catalogDisabledFade)
+		}
+		pill.Children(func() {
+			ui.Text(f, protocolLabelText(label)).FontSize(ModelsRowNameSize).
+				LineHeight(ModelsRowNameLine).Color(t.LabelPrimary)
+			ui.Icon(f, chevronOutlineIcon()).Size(SelectorChevron, SelectorChevron).Color(t.LabelTertiary)
+		})
+		if writable && pill.Clicked() {
+			p.catalogCycleAPI(env, key)
+		}
+	})
+}
+
+// protocolLabelText 是协议名的产品名（官方 `protocolLabel`，protocol-label.ts:1-37）。
+//
+// 已命名四个之外的值原样返回 api 名——官方也是这条规则（"适配器先加的协议显示
+// 标识符"），因为 settings 里存的就是那个标识符。
+func protocolLabelText(api string) string {
+	switch api {
+	case "openai-completions":
+		return catalogCopy("protocolOpenAiCompletions")
+	case "openai-responses":
+		return catalogCopy("protocolOpenAiResponses")
+	case "anthropic-messages":
+		return catalogCopy("protocolAnthropicMessages")
+	case "google-generative-ai":
+		return catalogCopy("protocolGemini")
+	default:
+		return api
+	}
+}
+
+// drawCatalogLinkButton 画官方 `.linkButton`（ModelListEditor.tsx:326-346 的"获取可用模型"
+// 与 :288-302 的"全选"）。几何沿用本卡小按钮的 28 高/12/18，不加新数值。
+func (p *Plugin) drawCatalogLinkButton(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow, enabled bool) {
+	box := ui.Row(f).Shrink(0).Height(catalogAddHeight).Gap(catalogFieldGap).
+		PadSides(0, catalogAddPadX, 0, catalogAddPadX).Radius(t.Radii.SM).Items(ui.Center)
+	if enabled {
+		box = box.Hit(env.Tree.ID(env.Feat, "settings-row-"+row.ID), row.Title).Hover(ui.Look{}.Background(t.Hover))
+	} else {
+		box = box.Opacity(catalogDisabledFade)
+	}
+	box.Children(func() {
+		ui.Text(f, row.Title).FontSize(catalogAddSize).LineHeight(catalogAddLine).Color(t.BrandPrimary)
+	})
+	if enabled && box.Clicked() {
+		p.activateCatalogRow(row)
+	}
+}
+
+// drawCatalogCandidateRow 画一条候选（官方 Modal 里的复选框行，
+// ModelListEditor.tsx:391-440）。勾选态来自 ModelPicker（默认值随列表实时推）。
+func (p *Plugin) drawCatalogCandidateRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow, edit *catalogEditor) {
+	if edit.picker == nil {
+		return
+	}
+	index, err := strconv.Atoi(catalogRowKey(row.ID, catalogCandidatePrefix))
+	if err != nil || index < 0 || index >= len(edit.candidates) {
+		return
+	}
+	picked := edit.picker.Picked(ModelText(edit.candidates[index], "id"))
+	body := ui.Row(f).FillWidth().Gap(catalogRowGap).Items(ui.Center)
+	body = body.Hit(env.Tree.ID(env.Feat, "settings-catalog-cand-"+strconv.Itoa(index)), row.Title).
+		Hover(ui.Look{}.Background(t.Hover))
+	body.Children(func() {
+		mark := ui.Row(f).Shrink(0).Size(catalogCheckboxSide, catalogCheckboxSide).
+			Radius(t.Radii.SM).Items(ui.Center).Justify(ui.Center)
+		if picked {
+			mark = mark.Background(t.BrandPrimary)
+		} else {
+			mark = mark.Border(catalogEntryBorder, t.BorderL3)
+		}
+		mark.Children(func() {
+			if !picked {
+				return
+			}
+			if commands, ok := dsassets.CheckOutline(); ok {
+				ui.Icon(f, gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}).
+					Size(12, 12).Color(t.ButtonPrimaryFg)
+			}
+		})
+		ui.Text(f, row.Title).FontSize(ModelsRowNameSize).LineHeight(ModelsRowNameLine).
+			Color(t.LabelPrimary).Grow(1).Ellipsis()
+		if row.Desc != "" {
+			ui.Text(f, row.Desc).FontSize(catalogMetaSize).LineHeight(catalogMetaLine).
+				Color(t.LabelTertiary).Ellipsis()
+		}
+	})
+	if body.Clicked() {
+		p.catalogToggleCandidate(ModelText(edit.candidates[index], "id"))
+	}
+}
+
+// catalogRemoveModel 删一行草稿（真按钮的落点）。
+func (p *Plugin) catalogRemoveModel(env *pluginapi.Env, key string) {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	removed := false
+	if edit := o.modelsCatalog; edit != nil {
+		removed = edit.removeModel(key)
+	}
+	if removed {
+		// 行没了，它的输入框登记也必须忘掉：留着会把上一份文本灌到占用同一
+		// 前缀的另一行上（`resetCatalogFields` 是全清，这里只清该行的键）。
+		o.forgetCatalogRowFields(key)
+	}
+	o.mu.Unlock()
+	if removed {
+		catalogInvalidate(env)
+	}
+}
+
+// forgetCatalogRowFields 丢掉某一行的输入框登记（删行/换行身份时调）。
+func (o *officialPanel) forgetCatalogRowFields(key string) {
+	if o.catalogFields == nil || o.catalogSeen == nil {
+		return
+	}
+	suffix := "-" + key
+	for name := range o.catalogFields {
+		if strings.HasSuffix(name, suffix) || strings.Contains(name, suffix+"-") {
+			delete(o.catalogFields, name)
+			delete(o.catalogSeen, name)
+		}
+	}
+}
+
+// catalogCycleAPI 换一行的协议（官方 `<select>` 的等价动作）。
+func (p *Plugin) catalogCycleAPI(env *pluginapi.Env, key string) {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	changed := false
+	if edit := o.modelsCatalog; edit != nil {
+		if index := edit.indexOfKey(key); index >= 0 {
+			current := strings.TrimSpace(ModelText(edit.drafts[index], "api"))
+			if next, ok := edit.nextAPI(current); ok {
+				changed = edit.setAPI(key, next)
+			}
+		}
+	}
+	o.mu.Unlock()
+	if changed {
+		catalogInvalidate(env)
+	}
+}
+
+// catalogSetBaseURL 改一行的 API 地址（空白 = 删键，官方 ProviderEditor.tsx:565-567）。
+func (p *Plugin) catalogSetBaseURL(key, text string) {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	if edit := o.modelsCatalog; edit != nil {
+		edit.setBaseURL(key, text)
+	}
+	o.mu.Unlock()
+}
+
 // drawCatalogCapacityRow 画一组容量输入（label 12/18 + 32 高输入框，:274-281/:808-820）。
 func (p *Plugin) drawCatalogCapacityRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow, edit *catalogEditor, writable bool) {
 	key, field, ok := catalogSplitTail(catalogRowKey(row.ID, catalogCapacityPrefix))
@@ -377,7 +716,7 @@ func (p *Plugin) drawCatalogCapacityRow(f ui.C, env *pluginapi.Env, t *pluginapi
 	}
 	ui.Column(f).FillWidth().Gap(catalogFieldGap).Children(func() {
 		ui.Text(f, row.Title).FontSize(catalogMetaSize).LineHeight(catalogMetaLine).Color(t.LabelTertiary)
-		p.catalogTextField(f, env, t, "settings-catalog-field-"+key+"-"+field, current, placeholder, writable,
+		p.catalogTextField(f, env, t, "settings-catalog-field-"+key+"-"+field, row.Title, current, placeholder, writable,
 			func(text string) { p.catalogSetCapacity(key, field, text) })
 	})
 }
@@ -509,7 +848,7 @@ func (p *Plugin) drawCatalogEffortRow(f ui.C, env *pluginapi.Env, t *pluginapi.T
 		// API 参数值：off 那一档不可编辑（官方 `disabled={disabled || level === 'off'}`，
 		// :215）。
 		p.catalogTextField(f, env, t, "settings-catalog-field-"+key+"-effvalue-"+rawIndex,
-			valueText, placeholder, writable && entry.Level != "off",
+			row.Title, valueText, placeholder, writable && entry.Level != "off",
 			func(text string) { p.catalogSetEffortValue(env, key, index, text) })
 		if catalogIconButton(f, env, t, "settings-catalog-effdel-"+key+"-"+rawIndex,
 			catalogCopy("modelReasoningRemove")+" "+entry.Level, !writable, func() {
@@ -552,7 +891,11 @@ func (p *Plugin) drawCatalogSmallButton(f ui.C, env *pluginapi.Env, t *pluginapi
 //
 // 折回规则：**Field 是草稿文本的真值**，只有它变了才写回 editor（与
 // `modelsKeyLastDraft` 同一手法），所以用户打字的半截内容不会被每帧重算覆盖。
-func (p *Plugin) catalogTextField(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, name, current, placeholder string,
+//
+// label 是这枚输入框的无障碍名（官方每个 `<input>` 都带 `aria-label`，
+// 例如 `t('baseUrl')`，ProviderEditor.tsx:563）；占位文案会随宿主事实变化，
+// 不能拿来当名字。
+func (p *Plugin) catalogTextField(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, name, label, current, placeholder string,
 	writable bool, apply func(text string)) {
 	o := p.ensureOfficial()
 	o.mu.Lock()
@@ -573,7 +916,7 @@ func (p *Plugin) catalogTextField(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 		o.mu.Unlock()
 		apply(text)
 	}
-	box := ui.TextFieldID(f, env.Tree.ID(env.Feat, name), field, placeholder, placeholder).
+	box := ui.TextFieldID(f, env.Tree.ID(env.Feat, name), field, placeholder, label).
 		FillWidth().Height(ModelsInputMinHeight).FontSize(ModelsRowNameSize).LineHeight(ModelsRowNameLine).
 		PadX(ModelsKeyPadX).Border(catalogEntryBorder, t.BorderL4).Radius(t.Radii.MD).
 		Background(t.BgLayer1)

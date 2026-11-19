@@ -1,19 +1,22 @@
 // official_models_catalog_write.go —— 模型目录编辑卡的开关、行动作与唯一写出口。
 //
-// # 写入形状（与官方同语义、不同面）
+// # 写入形状：一次 `models.catalog.replace`（与官方同语义）
 //
 // 官方一次 `settings.mutate(ns, ops, revision)` 把整份 `models` 数组换掉
-// （`OFF:operations.ts:86-91` + ProviderEditor 的 applyOnce）。本仓宿主没有"整数组
-// 重写"，只有**逐条 upsert** 与**全排列 reorder**（`../DSH-GO/cmd/dshd/serve_models.go:28-34`），
-// 所以保存 = 对每一条草稿 upsert 一次，再（仅当顺序变了）reorder 一次：
+// （`OFF:operations.ts:86-91` + ProviderEditor 的 applyOnce；删行就是 splice 之后
+// 整数组重写，DeepSeekModelsEditor.tsx:157-160）。宿主侧的对等方法是
+// `models.catalog.replace`（`../DSH-GO/cmd/dshd/serve_models.go:33`、
+// `internal/llm/model_catalog.go` 的 Replace：逐行规范化 + 重复 id 拒绝 + 乐观锁
+// + 整数组替换），所以保存是**一次请求**：
 //
 //	① 校验（#178 五条 + 推理等级两条）——不合法一次请求都不发（官方 `submitDisabled` 的
 //	   等价门，DeepSeekModelsEditor.tsx:181-182 的"保存期点名"）；
-//	② 逐条 upsert，expectedRevision 跟着宿主回报往前走（乐观锁，冲突**不重试覆盖**，
-//	   官方 settings/conflict 同一条：`OFF:operations.ts:89-90`）；
-//	③ 顺序变了才 reorder；宿主要求 ids 是目录全排列，数量对不上时**不猜**，直接报失败。
+//	② 把所有草稿序列化成一份数组，带开卡 revision 一次 replace；冲突**不重试覆盖**
+//	   （官方 settings/conflict 同一条：`OFF:operations.ts:89-90`），失败保留草稿。
 //
-// 每一步失败都保留草稿（官方：冲突时保留编辑上下文），只有成功才关卡。
+// 为什么不是"逐条 upsert + 全排列 reorder"：那两段之间失败会留下半份目录，而且
+// reorder 要求 ids 是目录的**全排列**（`model_catalog.go` 的 Reorder），少一条
+// （= 删掉一行）就被 `bad_request` 拒——删除在那条契约下根本无法表达。
 package dssettings
 
 import (
@@ -87,6 +90,9 @@ func (p *Plugin) toggleModelsCatalogEditor() {
 		return
 	}
 	editor := newCatalogEditor(o.catalogSnapshot, o.catalogWritable)
+	if o.modelsPage != nil {
+		editor.applyRouteFacts(o.modelsPage.Configurable)
+	}
 	o.nextCatalogGeneration++
 	editor.generation = o.nextCatalogGeneration
 	o.modelsCatalog = editor
@@ -138,6 +144,21 @@ func (p *Plugin) activateCatalogRow(row PanelRow) {
 		p.catalogAddModel()
 	case strings.HasPrefix(row.ID, catalogEffortAddPrefix):
 		p.catalogAddEffort(catalogRowKey(row.ID, catalogEffortAddPrefix))
+	case row.ID == catalogFetchRowID:
+		// 询问会发 HTTP：必须离开绘制帧（官方 `void fetchModels()` 是 async）。
+		o := p.ensureOfficial()
+		o.mu.Lock()
+		busy := o.modelsCatalog != nil && o.modelsCatalog.discovering
+		o.mu.Unlock()
+		if !busy {
+			go p.catalogFetchModels()
+		}
+	case row.ID == catalogCandidateAllID:
+		p.catalogToggleAllCandidates()
+	case row.ID == catalogAdoptRowID:
+		p.catalogAdoptCandidates()
+	case row.ID == catalogCandCloseID:
+		p.catalogCloseCandidates()
 	}
 }
 
@@ -179,21 +200,24 @@ func (p *Plugin) activateModelsCatalogRow(row PanelRow) bool {
 		go func() { _ = p.applyCatalogEditor() }()
 	case strings.HasPrefix(row.ID, catalogEffortAddPrefix):
 		p.catalogAddEffort(catalogRowKey(row.ID, catalogEffortAddPrefix))
+	case row.ID == catalogFetchRowID, row.ID == catalogCandidateAllID,
+		row.ID == catalogAdoptRowID, row.ID == catalogCandCloseID:
+		p.activateCatalogRow(row)
 	}
-	// 其余（catalog-row-* / catalog-cap-* / catalog-input-* / catalog-reason-* /
-	// catalog-eff-*）：行内各自有命中区，这里只认领、不做事。
+	// 其余（catalog-row-* / catalog-base-* / catalog-api-* / catalog-cap-* /
+	// catalog-input-* / catalog-reason-* / catalog-eff-* / catalog-cand-*）：
+	// 行内各自有命中区，这里只认领、不做事。
 	return true
 }
 
-// applyCatalogEditor 是这张卡唯一的写出口：逐条 upsert，必要时 reorder。
+// applyCatalogEditor 是这张卡唯一的写出口：一次 `models.catalog.replace`。
 //
 // 必须在 goroutine 里调（会发 HTTP）。返回的 WriteState 已 `setWriteState`。
 func (p *Plugin) applyCatalogEditor() WriteState {
 	o := p.ensureOfficial()
 	o.mu.Lock()
 	editor := o.modelsCatalog
-	upsert := o.catalogUpsert
-	reorder := o.catalogReorder
+	replace := o.catalogReplace
 	o.mu.Unlock()
 	if editor == nil {
 		state := WriteState{Kind: WriteInvalid, NS: modelsCatalogNS,
@@ -207,9 +231,9 @@ func (p *Plugin) applyCatalogEditor() WriteState {
 		p.setWriteState(state)
 		return state
 	}
-	if upsert == nil {
+	if replace == nil {
 		state := WriteState{Kind: WriteFailed, NS: modelsCatalogNS,
-			Message: "壳未接 models.catalog.upsert：模型目录不能在界面上保存"}
+			Message: "壳未接 models.catalog.replace：模型目录不能在界面上保存"}
 		p.setWriteState(state)
 		return state
 	}
@@ -218,7 +242,8 @@ func (p *Plugin) applyCatalogEditor() WriteState {
 	count := len(editor.drafts)
 	revision := editor.revision
 	o.mu.Unlock()
-	var last apiclient.ModelCatalogDocument
+	// 一次请求写完：删除/新增/排序都在这一份数组里，不再有"写到一半"的中间态。
+	models := make([]json.RawMessage, 0, count)
 	for index := 0; index < count; index++ {
 		o.mu.Lock()
 		current := o.modelsCatalog
@@ -236,54 +261,17 @@ func (p *Plugin) applyCatalogEditor() WriteState {
 			p.setWriteState(state)
 			return state
 		}
-		document, err := upsert(payload, nil, revision)
-		if err != nil {
-			state := catalogWriteState(err)
-			state.Path = []string{"models", strconv.Itoa(index)}
-			p.setWriteState(state)
-			p.reloadCatalogAfterFailure()
-			return state
-		}
-		next := document.Revision
-		revision = &next
-		last = document
+		models = append(models, payload)
 	}
-
-	o.mu.Lock()
-	orderChanged := false
-	ids := []string(nil)
-	if current := o.modelsCatalog; current != nil {
-		ids = current.idsForWrite()
-		orderChanged = current.orderChanged()
+	document, err := replace(models, revision)
+	if err != nil {
+		state := catalogWriteState(err)
+		state.Path = []string{"models"}
+		p.setWriteState(state)
+		p.reloadCatalogAfterFailure()
+		return state
 	}
-	o.mu.Unlock()
-	if orderChanged {
-		if reorder == nil {
-			state := WriteState{Kind: WriteFailed, NS: modelsCatalogNS,
-				Message: "壳未接 models.catalog.reorder：模型顺序不能在界面上保存"}
-			p.setWriteState(state)
-			return state
-		}
-		// 宿主 Reorder 要的是**全排列**：数量对不上就别发（发了必然 bad_request，
-		// 而且会让用户以为保存成功了一半）。
-		if len(last.Models) != len(ids) {
-			state := WriteState{Kind: WriteInvalid, NS: modelsCatalogNS, Path: []string{"models", "ids"},
-				Code: apiclient.SettingsCodeBadRequest,
-				Message: "目录里有 " + strconv.Itoa(len(last.Models)) + " 个模型，草稿有 " +
-					strconv.Itoa(len(ids)) + " 条；宿主 reorder 要求完整排列，未提交顺序"}
-			p.setWriteState(state)
-			return state
-		}
-		document, err := reorder(ids, revision)
-		if err != nil {
-			state := catalogWriteState(err)
-			state.Path = []string{"models", "ids"}
-			p.setWriteState(state)
-			p.reloadCatalogAfterFailure()
-			return state
-		}
-		last = document
-	}
+	_ = document
 
 	state := WriteState{Kind: WriteSaved, NS: modelsCatalogNS, Path: []string{"models"}}
 	o.mu.Lock()
@@ -292,10 +280,125 @@ func (p *Plugin) applyCatalogEditor() WriteState {
 		o.resetCatalogFields()
 	}
 	o.mu.Unlock()
-	_ = last
 	p.setWriteState(state)
 	catalogInvalidateStored(o)
 	return state
+}
+
+// catalogFetchModels 问端点上有哪些模型（官方 `fetchModels`，
+// ModelListEditor.tsx:212-245），结果落成候选并打开挑模型的面。
+//
+// 必须在 goroutine 里调（会发 HTTP）。三条照官方：
+//   - 上游拒绝 → 失败原文当说明，**不打开**挑模型的面（:220-223）；
+//   - 一个模型都没列 → `fetchEmpty`，同样不开面（:230-233）；
+//   - 非空 → 清掉上一次的翻转，按 id 去重后开面（:234-245）。
+//
+// 端点取自草稿（`askable`），不替用户猜一个地址：猜错就是把别人的模型列表画出来。
+func (p *Plugin) catalogFetchModels() {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	editor := o.modelsCatalog
+	discover := o.catalogDiscover
+	askBase, askAPI := "", ""
+	if editor != nil {
+		askBase, askAPI, _ = editor.askable()
+		editor.discovering = true
+		editor.discoverError = ""
+		editor.discoverTarget = askBase
+	}
+	o.mu.Unlock()
+	catalogInvalidateStored(o)
+	if editor == nil {
+		return
+	}
+	if discover == nil {
+		o.mu.Lock()
+		if current := o.modelsCatalog; current != nil {
+			current.discovering = false
+			current.discoverError = "壳未接 llm.discoverModels：问不到端点上有哪些模型"
+		}
+		o.mu.Unlock()
+		catalogInvalidateStored(o)
+		return
+	}
+	if askBase == "" {
+		// 官方这时按钮本来就是禁用的（`askable` 判据，ModelListEditor.tsx:310-311），
+		// 走到这里说明状态在飞行中变了：按 fetchNeedsBaseUrl 说完就收。
+		o.mu.Lock()
+		if current := o.modelsCatalog; current != nil {
+			current.discovering = false
+			current.discoverError = catalogCopy("fetchNeedsBaseUrl")
+		}
+		o.mu.Unlock()
+		catalogInvalidateStored(o)
+		return
+	}
+	found, err := discover(apiclient.SettingsNSLLM, apiclient.ModelDiscoveryRequest{BaseURL: askBase, API: askAPI})
+	o.mu.Lock()
+	current := o.modelsCatalog
+	if current != nil && current.generation == editor.generation {
+		current.discovering = false
+		if err != nil {
+			current.discoverError = err.Error()
+		} else {
+			current.openCandidates(found)
+		}
+	}
+	o.mu.Unlock()
+	catalogInvalidateStored(o)
+}
+
+// catalogToggleCandidate 翻转一条候选的勾选（官方 `toggle`，ModelListEditor.tsx:276-282）。
+func (p *Plugin) catalogToggleCandidate(id string) {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	if editor := o.modelsCatalog; editor != nil {
+		editor.toggleCandidate(id)
+	}
+	o.mu.Unlock()
+	catalogInvalidateStored(o)
+}
+
+// catalogToggleAllCandidates 全选/取消全选当前可见候选（官方 `toggleVisibleCandidates`）。
+func (p *Plugin) catalogToggleAllCandidates() {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	if editor := o.modelsCatalog; editor != nil {
+		editor.toggleAllCandidates()
+	}
+	o.mu.Unlock()
+	catalogInvalidateStored(o)
+}
+
+// catalogAdoptCandidates 结算"更新列表"（官方 `adoptPicked`，ModelListEditor.tsx:270-274）。
+//
+// 被 `fetchKeepOne` 挡住时什么都不动，只把官方那句说明放到面上。
+func (p *Plugin) catalogAdoptCandidates() {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	adopted := false
+	if editor := o.modelsCatalog; editor != nil {
+		_, adopted = editor.adoptPicked()
+	}
+	o.mu.Unlock()
+	if adopted {
+		// 换了行身份/顺序：输入框登记按 key 记，留着会把上一份文本灌到别的行上。
+		o.mu.Lock()
+		o.resetCatalogFields()
+		o.mu.Unlock()
+	}
+	catalogInvalidateStored(o)
+}
+
+// catalogCloseCandidates 关掉挑模型的面（官方 `closePicker`，ModelListEditor.tsx:246-250）。
+func (p *Plugin) catalogCloseCandidates() {
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	if editor := o.modelsCatalog; editor != nil {
+		editor.closeCandidates()
+	}
+	o.mu.Unlock()
+	catalogInvalidateStored(o)
 }
 
 // reloadCatalogAfterFailure 在写失败后请求重读目录（官方"失败先 recovery reload"，

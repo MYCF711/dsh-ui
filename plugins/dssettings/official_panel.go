@@ -70,9 +70,15 @@ type officialPanel struct {
 	nextCatalogGeneration uint64
 	// catalogSnapshot 是这一帧的宿主目录快照（开卡时用它建草稿）。
 	catalogSnapshot *apiclient.ModelCatalogSnapshot
-	// catalogWritable 表示壳接上了目录写口（upsert 与 reorder 都要在）。
+	// modelsPage 是这一帧的三路只读目录快照（开卡时用它的 provider 事实算协议候选
+	// 与 baseURL 占位；不参与写入）。
+	modelsPage *apiclient.ModelsPageSnapshot
+	// catalogWritable 表示壳接上了目录写口（判据是 `replace` 在：它才是官方
+	// 整数组写入语义，删除/排序/新增都走它）。
 	catalogWritable bool
-	// 四个目录 DataPlane 钩子（nil = 老壳）。
+	// 目录 DataPlane 钩子（nil = 老壳）。
+	catalogReplace   func([]json.RawMessage, *int64) (apiclient.ModelCatalogDocument, error)
+	catalogDiscover  func(string, apiclient.ModelDiscoveryRequest) ([]apiclient.DiscoveredModel, error)
 	catalogUpsert    func(json.RawMessage, *string, *int64) (apiclient.ModelCatalogDocument, error)
 	catalogReorder   func([]string, *int64) (apiclient.ModelCatalogDocument, error)
 	catalogTest      func(string) (apiclient.ModelCatalogTestResult, error)
@@ -433,7 +439,7 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	if env.Act.ModelsCatalogSnapshot != nil {
 		catalogSnapshot = env.Act.ModelsCatalogSnapshot()
 	}
-	catalogWritable := env.Act.ModelsCatalogUpsert != nil && env.Act.ModelsCatalogReorder != nil
+	catalogWritable := env.Act.ModelsCatalogReplace != nil
 	o.mu.Lock()
 	modelsEdit := o.modelsEdit.clone()
 	catalogEdit := o.modelsCatalog
@@ -458,7 +464,10 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	o.roster = roster
 	o.agentPresetRefresh = refresh
 	o.catalogSnapshot = catalogSnapshot
+	o.modelsPage = modelsSnapshot
 	o.catalogWritable = catalogWritable
+	o.catalogReplace = env.Act.ModelsCatalogReplace
+	o.catalogDiscover = env.Act.LLMDiscoverModels
 	o.catalogUpsert = env.Act.ModelsCatalogUpsert
 	o.catalogReorder = env.Act.ModelsCatalogReorder
 	o.catalogTest = env.Act.ModelsCatalogTest

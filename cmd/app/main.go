@@ -228,6 +228,13 @@ type model struct {
 	modelsPageLoaded        bool
 	modelsPagePending       bool
 	modelsPageRefreshQueued bool
+	// modelCatalogCache 是模型目录编辑器（宿主 models.catalog.*）的同步快照缓存。
+	// 与 modelsPageCache 分开：那一路是三路**只读**目录的 join（能路由什么），
+	// 这一路是**可写**目录本身（存了什么），两者可以不一致。
+	modelCatalogCache         apiclient.ModelCatalogSnapshot
+	modelCatalogLoaded        bool
+	modelCatalogPending       bool
+	modelCatalogRefreshQueued bool
 	// settingsDescribe 是宿主 settings.describe 的缓存（设置面板的数据面）。
 	// nil = 还没拉到（界面显示「未知」，不编值）。
 	settingsDescribe *apiclient.SettingsDescribeResult
@@ -2923,6 +2930,15 @@ func main() {
 		// Models 页：三路官方目录同步读缓存，首读/显式刷新都在后台完成。
 		ModelsPageSnapshot: m.modelsPageSnapshot,
 		ModelsPageRefresh:  m.modelsPageRefresh,
+		// 模型目录编辑器（宿主 models.catalog.*）：读走缓存 + 后台拉，写口同步返回错误，
+		// 因此插件必须在 goroutine 里调。没有 delete 钩子——宿主契约里没有删除入口
+		// （model_catalog.go:513-546 的 Reorder 要全排列）。
+		ModelsCatalogSnapshot:  m.modelsCatalogSnapshot,
+		ModelsCatalogRefresh:   m.modelsCatalogRefresh,
+		ModelsCatalogUpsert:    m.modelsCatalogUpsert,
+		ModelsCatalogReorder:   m.modelsCatalogReorder,
+		ModelsCatalogTest:      m.modelsCatalogTest,
+		ModelsCatalogSetActive: m.modelsCatalogSetActive,
 		// 模型覆盖：写宿主 <home>/state/session-model.json。
 		// **空串 = 清除覆盖**，回到宿主默认。异步、失败只写状态栏。
 		SetModel: func(modelID string) {

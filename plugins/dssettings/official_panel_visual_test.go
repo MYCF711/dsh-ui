@@ -17,6 +17,7 @@ package dssettings
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -129,6 +130,31 @@ type officialHarness struct {
 	credentialUnsetErr error
 	// credentialUnsets 记录 `credentials.unset` 的引用名（顺序即调用顺序）。
 	credentialUnsets []string
+	// catalog 是模型目录编辑器（宿主 models.catalog.*）这一帧的快照。
+	// nil = 宿主没接这条能力（老壳）。
+	catalog *apiclient.ModelCatalogSnapshot
+	// catalogUpserts/catalogReorders 记录写口调用（顺序即调用顺序）。
+	catalogUpserts  []catalogUpsertCall
+	catalogReorders []catalogReorderCall
+	// catalogUpsertErr/catalogReorderErr 让写口失败（验证失败保留草稿）。
+	catalogUpsertErr  error
+	catalogReorderErr error
+	// catalogRevision 是替身目录的当前 revision（每次写自增）。
+	catalogRevision int64
+	// catalogRefresh 记录目录被要求重读了几次（写失败后的 recovery reload）。
+	catalogRefresh int
+}
+
+// catalogUpsertCall 记录一次 `models.catalog.upsert`。
+type catalogUpsertCall struct {
+	model    string
+	expected *int64
+}
+
+// catalogReorderCall 记录一次 `models.catalog.reorder`。
+type catalogReorderCall struct {
+	ids      []string
+	expected *int64
 }
 
 // credentialSetCall 记录一次 `credentials.set`（值要留原文才能断言 trim 语义）。
@@ -280,6 +306,42 @@ func openOfficialHarness(t *testing.T, width, height int) *officialHarness {
 			defer h.mu.Unlock()
 			h.credentialUnsets = append(h.credentialUnsets, ref)
 			return h.credentialUnsetErr
+		},
+		// 模型目录编辑器（宿主 models.catalog.*，第 4 条独立能力）。
+		ModelsCatalogSnapshot: func() *apiclient.ModelCatalogSnapshot {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			return h.catalog
+		},
+		ModelsCatalogRefresh: func() {
+			h.mu.Lock()
+			h.catalogRefresh++
+			h.mu.Unlock()
+			h.invalidator.Invalidate()
+		},
+		ModelsCatalogUpsert: func(model json.RawMessage, credential *string, expectedRevision *int64) (apiclient.ModelCatalogDocument, error) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.catalogUpserts = append(h.catalogUpserts, catalogUpsertCall{
+				model: string(model), expected: cloneRevision(expectedRevision),
+			})
+			if h.catalogUpsertErr != nil {
+				return apiclient.ModelCatalogDocument{}, h.catalogUpsertErr
+			}
+			h.catalogRevision++
+			return catalogDocumentWith(h.catalogRevision, string(model)), nil
+		},
+		ModelsCatalogReorder: func(ids []string, expectedRevision *int64) (apiclient.ModelCatalogDocument, error) {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			h.catalogReorders = append(h.catalogReorders, catalogReorderCall{
+				ids: append([]string(nil), ids...), expected: cloneRevision(expectedRevision),
+			})
+			if h.catalogReorderErr != nil {
+				return apiclient.ModelCatalogDocument{}, h.catalogReorderErr
+			}
+			h.catalogRevision++
+			return apiclient.ModelCatalogDocument{Revision: h.catalogRevision, Models: catalogModelsFor(ids), Active: apiclient.ModelCatalogActive{ID: ids[0]}}, nil
 		},
 	}
 

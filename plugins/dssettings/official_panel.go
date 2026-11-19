@@ -18,6 +18,7 @@ package dssettings
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,6 +63,28 @@ type officialPanel struct {
 	// 只有 Apply 行会经 writer 发一次 settings.mutate。
 	modelsEdit           *retryEditorState
 	nextModelsGeneration uint64
+	// modelsCatalog 是"模型目录"编辑卡的草稿（nil = 卡关闭）。
+	// 与 modelsEdit 分开：那张卡写的是 provider 的设置文档（retryPolicy/凭据），
+	// 这张卡写的是宿主的模型目录（`models.catalog.*`），两个库、两套 revision。
+	modelsCatalog         *catalogEditor
+	nextCatalogGeneration uint64
+	// catalogSnapshot 是这一帧的宿主目录快照（开卡时用它建草稿）。
+	catalogSnapshot *apiclient.ModelCatalogSnapshot
+	// catalogWritable 表示壳接上了目录写口（upsert 与 reorder 都要在）。
+	catalogWritable bool
+	// 四个目录 DataPlane 钩子（nil = 老壳）。
+	catalogUpsert    func(json.RawMessage, *string, *int64) (apiclient.ModelCatalogDocument, error)
+	catalogReorder   func([]string, *int64) (apiclient.ModelCatalogDocument, error)
+	catalogTest      func(string) (apiclient.ModelCatalogTestResult, error)
+	catalogSetActive func(string, *int64) (apiclient.ModelCatalogSetActiveResult, error)
+	catalogRefresh   func()
+	// catalogInvalidate 是同步时记下的 Invalidate：非绘制路径（点行头、写失败收尾）
+	// 要靠它要下一帧。
+	catalogInvalidate func()
+	// catalogFields/catalogSeen 是目录卡里的输入框登记与上一帧文本（窗口线程独有，
+	// 与 modelsKeyField 同一约束：Viva 的 Field 是输入法/光标/选区的宿主）。
+	catalogFields map[string]*ui.Field
+	catalogSeen   map[string]string
 	// credentialSet 是壳的 `credentials.set`（官方 `operations.storeCredential`，
 	// operations.ts:78-81）。nil = 壳没接：密钥行这时不画（不画点了没反应的框）。
 	//
@@ -403,13 +426,23 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	if env.Act.ModelsPageSnapshot != nil {
 		modelsSnapshot = env.Act.ModelsPageSnapshot()
 	}
+	// 模型目录编辑器是**第四条**独立能力：官方没有这条命名空间（官方写 provider
+	// profile 的 `models`，本仓宿主不发布它），等价真值是 `models.catalog.*`（#41）。
+	// nil = 老壳 → 那一卡整块不画（画一张"读取失败"的卡只会让人以为宿主坏了）。
+	var catalogSnapshot *apiclient.ModelCatalogSnapshot
+	if env.Act.ModelsCatalogSnapshot != nil {
+		catalogSnapshot = env.Act.ModelsCatalogSnapshot()
+	}
+	catalogWritable := env.Act.ModelsCatalogUpsert != nil && env.Act.ModelsCatalogReorder != nil
 	o.mu.Lock()
 	modelsEdit := o.modelsEdit.clone()
+	catalogEdit := o.modelsCatalog
 	o.mu.Unlock()
 	for index := range model.Sections {
 		if model.Sections[index].ID == "models" {
 			model.Sections[index] = buildModelsPage(model.Sections[index], describe, nil, modelsSnapshot, modelsEdit,
 				env.Act.CredentialStatus)
+			model.Sections[index] = appendModelsCatalogEditor(model.Sections[index], catalogSnapshot, catalogEdit, catalogWritable)
 		}
 		if model.Sections[index].Account != nil && account != nil {
 			model.Sections[index].Account = account
@@ -424,6 +457,14 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	o.credentialUnset = credentialUnset
 	o.roster = roster
 	o.agentPresetRefresh = refresh
+	o.catalogSnapshot = catalogSnapshot
+	o.catalogWritable = catalogWritable
+	o.catalogUpsert = env.Act.ModelsCatalogUpsert
+	o.catalogReorder = env.Act.ModelsCatalogReorder
+	o.catalogTest = env.Act.ModelsCatalogTest
+	o.catalogSetActive = env.Act.ModelsCatalogSetActive
+	o.catalogRefresh = env.Act.ModelsCatalogRefresh
+	o.catalogInvalidate = env.Act.Invalidate
 	o.hasSource = hasSource
 	o.model = model
 	if env.Act.Notify != nil {

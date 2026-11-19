@@ -488,44 +488,52 @@ func (p *ModelPicker) Adopt(models []ModelDraft, candidateIDs []string) ModelAdo
 // （dsh-client-ui-settings-models/src/client/locales.ts:203-257）。
 // 键名与官方一致，绘制层只按键取，不自己拼中文。
 var modelEditorCopy = map[string]string{
-	"models":                   "模型目录",                                // locales.ts:203
-	"modelsInherited":          "正在使用适配器默认模型",                         // :204
-	"modelsCustomized":         "已自定义模型目录",                            // :205
-	"resetModels":              "恢复默认模型",                              // :206
-	"modelId":                  "模型 ID",                               // :208
-	"modelName":                "显示名称",                                // :209
-	"contextWindow":            "上下文窗口",                               // :211
-	"contextWindowPlaceholder": "使用提供商默认值",                            // :212
-	"maxTokens":                "最大输出 token 数",                        // :213
-	"maxTokensPlaceholder":     "使用提供商默认值",                            // :214
-	"modelAdvanced":            "模型选项",                                // :215
-	"modelInputTypes":          "输入类型",                                // :216
-	"modelInputText":           "文本",                                  // :217
-	"modelInputImage":          "图片",                                  // :218
-	"addModel":                 "添加模型",                                // :230
-	"removeModel":              "删除模型",                                // :231
-	"reorderModel":             "调整模型顺序",                              // :232
-	"reorderModelHelp":         "拖动排序，或使用上下方向键调整顺序。",                  // :233
-	"modelsEmpty":              "模型选择器中将不显示任何模型；目录外 ID 仍可直接发送。",       // :234
-	"modelIdRequired":          "模型 ID 不能为空。",                         // :238
-	"modelIdDuplicate":         "模型 ID 不能重复。",                         // :239
-	"modelNameInvalid":         "显示名称不能为空。",                           // :240
-	"modelContextInvalid":      "上下文窗口必须是正数，例如 131072、256K 或 1M。",     // :241
-	"modelMaxTokensInvalid":    "最大输出 token 数必须是正数，例如 8192、64K 或 1M。", // :242
-	"fetchModels":              "获取可用模型",                              // :246
-	"fetching":                 "正在询问提供商…",                            // :247
-	"fetchNeedsBaseUrl":        "请先填写 API 地址，再获取。",                    // :248
-	"fetchEmpty":               "该提供商没有列出任何模型，请手动添加。",                 // :249
-	"fetchTitle":               "选择模型",                                // :250
-	"fetchDescription":         "以下是模型提供商的可用模型，勾选的模型即为模型列表。",          // :251
-	"fetchSearch":              "搜索模型",                                // :252
-	"fetchNoMatches":           "没有匹配的模型。",                            // :253
-	"fetchSelectAll":           "全选",                                  // :254
-	"fetchDeselectAll":         "取消全选",                                // :255
-	"fetchAdopt":               "更新列表",                                // :256
-	"fetchKeepOne":             "请至少保留一个勾选的模型。",                       // :257
-	"close":                    "关闭",                                  // :171
-	"cancel":                   "取消",                                  // :172
+	"models":                   "模型目录",         // locales.ts:203
+	"modelsInherited":          "正在使用适配器默认模型",  // :204
+	"modelsCustomized":         "已自定义模型目录",     // :205
+	"resetModels":              "恢复默认模型",       // :206
+	"modelId":                  "模型 ID",        // :208
+	"modelName":                "显示名称",         // :209
+	"contextWindow":            "上下文窗口",        // :211
+	"contextWindowPlaceholder": "使用提供商默认值",     // :212
+	"maxTokens":                "最大输出 token 数", // :213
+	"maxTokensPlaceholder":     "使用提供商默认值",     // :214
+	"modelAdvanced":            "模型选项",         // :215
+	"modelInputTypes":          "输入类型",         // :216
+	"modelInputText":           "文本",           // :217
+	"modelInputImage":          "图片",           // :218
+	// 推理等级那七条（ModelReasoningEfforts.tsx 用；中文逐字取 locales.ts:219-228）。
+	"modelReasoning":                    "推理等级",                                // :219
+	"modelReasoningLevel":               "档位",                                  // :220
+	"modelReasoningNeedsLevel":          "至少添加一个 Off 以外的档位；不需要思考请关闭推理等级。",      // :224
+	"modelReasoningValueRequired":       "Off 以外的档位都需要填写 API 参数值，且参数值不能为空字符串。", // :225
+	"modelReasoningAdd":                 "添加档位",                                // :226
+	"modelReasoningRemove":              "删除档位",                                // :227
+	"modelReasoningOffValuePlaceholder": "关闭思考",                                // :228
+	"addModel":                          "添加模型",                                // :230
+	"removeModel":                       "删除模型",                                // :231
+	"reorderModel":                      "调整模型顺序",                              // :232
+	"reorderModelHelp":                  "拖动排序，或使用上下方向键调整顺序。",                  // :233
+	"modelsEmpty":                       "模型选择器中将不显示任何模型；目录外 ID 仍可直接发送。",       // :234
+	"modelIdRequired":                   "模型 ID 不能为空。",                         // :238
+	"modelIdDuplicate":                  "模型 ID 不能重复。",                         // :239
+	"modelNameInvalid":                  "显示名称不能为空。",                           // :240
+	"modelContextInvalid":               "上下文窗口必须是正数，例如 131072、256K 或 1M。",     // :241
+	"modelMaxTokensInvalid":             "最大输出 token 数必须是正数，例如 8192、64K 或 1M。", // :242
+	"fetchModels":                       "获取可用模型",                              // :246
+	"fetching":                          "正在询问提供商…",                            // :247
+	"fetchNeedsBaseUrl":                 "请先填写 API 地址，再获取。",                    // :248
+	"fetchEmpty":                        "该提供商没有列出任何模型，请手动添加。",                 // :249
+	"fetchTitle":                        "选择模型",                                // :250
+	"fetchDescription":                  "以下是模型提供商的可用模型，勾选的模型即为模型列表。",          // :251
+	"fetchSearch":                       "搜索模型",                                // :252
+	"fetchNoMatches":                    "没有匹配的模型。",                            // :253
+	"fetchSelectAll":                    "全选",                                  // :254
+	"fetchDeselectAll":                  "取消全选",                                // :255
+	"fetchAdopt":                        "更新列表",                                // :256
+	"fetchKeepOne":                      "请至少保留一个勾选的模型。",                       // :257
+	"close":                             "关闭",                                  // :171
+	"cancel":                            "取消",                                  // :172
 }
 
 // ModelEditorCopy 按官方键取中文文案；未登记的键返回空串（绘制层据此不画，而不是画键名）。

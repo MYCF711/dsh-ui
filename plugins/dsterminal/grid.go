@@ -193,16 +193,31 @@ func (p *Plugin) paintGrid(d *ui.DrawContext, env *pluginapi.Env, tabID string, 
 		ydisp = view.resolve(scrollback)
 	}
 	p.wheelYdisp = ydisp
+
+	// 选区：几何来自这一帧（格宽格高/首行/列数），指针事件只带窗口坐标。
+	// 贴边续滚排在最前：滚完之后这一帧要画的窗口与指针落点都得用新的 ydisp。
+	geom := terminalGridGeometry{
+		hit: p.wheelHit, tabID: tabID, rect: p.wheelRect,
+		cellW: cellW, cellH: cellH, cols: cols, rows: rows,
+		first: ydisp, scrollback: scrollback, ydisp: ydisp,
+	}
+	if p.advanceTerminalDragScroll(tabID, geom, canvas) {
+		ydisp = p.scrollViewFor(tabID).ydisp
+		p.wheelYdisp, geom.first, geom.ydisp = ydisp, ydisp, ydisp
+	}
+	p.handleTerminalSelectionPointer(env, canvas, geom)
+	sel := p.selectionView(tabID)
+
 	if ydisp < scrollback {
 		if window := env.Act.TerminalScrollbackWindow(tabID, ydisp, rows); window != nil {
 			if windowRows := min(window.Height, rows); windowRows > 0 {
-				p.paintGridRows(canvas, window, 0, windowRows, cols, x0, y0, cellW, cellH)
+				p.paintGridRows(canvas, window, 0, windowRows, cols, x0, y0, cellW, cellH, ydisp, sel)
 				p.paintScrollbar(canvas, d.Rect, gutter, rows, scrollback+grid.Height, ydisp, cellH)
 				return
 			}
 		}
 	}
-	p.paintGridRows(canvas, grid, 0, rows, cols, x0, y0, cellW, cellH)
+	p.paintGridRows(canvas, grid, 0, rows, cols, x0, y0, cellW, cellH, ydisp, sel)
 	p.paintGridCursor(canvas, grid, cols, rows, x0, y0, cellW, cellH)
 	p.paintScrollbar(canvas, d.Rect, gutter, rows, scrollback+grid.Height, scrollback, cellH)
 }
@@ -237,11 +252,18 @@ func (p *Plugin) rememberWheelTarget(canvas *gfx.Canvas, env *pluginapi.Env, tab
 }
 
 // paintGridRows 把 source 的第 offset 行起共 rows 行画到 (x0,y0)。
-func (p *Plugin) paintGridRows(canvas *gfx.Canvas, source *vterm.Grid, offset, rows, cols int, x0, y0, cellW, cellH float32) {
+//
+// first 是这段窗口**第一行的绝对行号**（虚拟缓冲坐标），选区判断要用它把
+// 「第几行」对回用户选的位置；sel 是这一帧要画的选区（空选区什么都不改）。
+func (p *Plugin) paintGridRows(canvas *gfx.Canvas, source *vterm.Grid, offset, rows, cols int, x0, y0, cellW, cellH float32, first int, sel vterm.Selection) {
 	for y := 0; y < rows; y++ {
 		top := y0 + float32(y)*cellH
+		line := first + y
 		p.paintGridBackground(canvas, source, offset+y, cols, x0, top, cellW, cellH)
-		p.paintGridText(canvas, source, offset+y, cols, x0, top, cellW, cellH)
+		// 选中态是**独立的底层**：官方 xterm 把选区画成一层面板（byte 80805 的
+		// `_selectionContainer`、byte 78634 的 CSS），盖在格子底色上、字形之下。
+		p.paintTerminalSelection(canvas, source, line, cols, x0, top, cellW, cellH, sel)
+		p.paintGridText(canvas, source, offset+y, line, cols, x0, top, cellW, cellH, sel)
 	}
 }
 
@@ -290,7 +312,8 @@ func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, row, 
 //   - **全角字单独成 run**，跨 2 格，渲染器把它居中放在那两格里；
 //   - 宽字形的第二格（Width==0 的占位）**跳过**，否则全角后面会多出一格空白；
 //   - 相邻的半角同风格字合并成一个 run，长行不会碎成几十个 label。
-func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, row, cols int, x0, top, cellW, cellH float32) {
+func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, row, line, cols int, x0, top, cellW, cellH float32, sel vterm.Selection) {
+	_, selText := terminalSelectionColors(p.theme)
 	var value strings.Builder
 	runs := make([]gfx.TextRun, 0, 16)
 	var current terminalCellPaint
@@ -323,6 +346,11 @@ func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, row, cols i
 			continue // 宽字形的占位尾巴
 		}
 		paint := p.paintOf(cell.Style)
+		if sel.Contains(cols, x, line) {
+			// 选中的格子换成 selectionForeground（官方 theme 里就是 background，
+			// terminal-theme.ts:61），与 xterm 的 `_applyStyle` 换色同一处（byte 88032）。
+			paint.fg = selText
+		}
 		// 空格不画字形（渲染器画出来也只是一格空白），除非它自己有下划线/删除线
 		// —— vim 的下划线空白就是这种。空白**打断 run**：run 的列宽必须与实际
 		// 跨过的格子数一致，否则后面的字会整体错位。

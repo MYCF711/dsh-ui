@@ -1,4 +1,8 @@
-// forge.go —— 官方 `forgePanel.*` 的**A 档 14 个方法**的客户端（GUI 侧账本 #64a）。
+// forge.go —— 官方 `forgePanel.*` 的**A 档 14 个方法 + 1 条面板状态流**的客户端（GUI 账本 #64）。
+//
+// 第 15 条是 `ForgePanelFollow`（`forgePanel.follow`，官方 `mode:'stream'`）：宿主
+// dsh-go#84 起按官方形状发整帧 `ForgePanelState`（NDJSON 一行一帧），
+// `worktree.editable` / `blocker` / `creation` 的唯一读出口就是它。
 //
 // # 契约唯一来源是官方 rc.2 源码（不是我们的宿主，也不是推理）
 //
@@ -39,7 +43,16 @@
 // 全部提交）；这是未做的菜单，不再是对端忽略字段的限制。
 package apiclient
 
-import "context"
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
 
 // 官方 `ForgeLocalScope` 的四个 kind（OFF:…/src/types.ts 的 ForgeLocalScope 联合）。
 const (
@@ -369,6 +382,128 @@ func (c *Client) ForgeWorktreeCleanup(ctx context.Context, sessionID string, rev
 	}
 	return out, nil
 }
+
+// ── 面板状态流（官方 mode:'stream' 的 `forgePanel.follow`）──────────────
+
+// ForgePanelState 是官方 `ForgePanelState`（`OFF:…/lib/typert.host.js:1941-1942`）的投影。
+//
+// 只声明**本仓界面真的消费**的那几格：整帧七个键里，`directory` / `checkout` /
+// `repository` / `readiness` / `changeRequests` / `local` 都另有单点方法或整块 HIDE，
+// 这里不重复读（多解一份就多一处可能对不上的形状）。`worktree` 只取
+// editable / blocker / creation 三样，其余子字段（request/created/failure/missing/
+// restoration/waiting）宿主也会给真值，但本仓界面今天不消费（见 #64 账本行）。
+type ForgePanelState struct {
+	Directory string             `json:"directory"`
+	Worktree  ForgePanelWorktree `json:"worktree"`
+}
+
+// ForgePanelWorktree 是官方 `ForgePanelWorktree`（`OFF:…/lib/typert.host.js:1945-1946`）的三格投影。
+type ForgePanelWorktree struct {
+	// Editable 是官方 `worktree.editable`：还能请求/撤回工作树。
+	Editable bool `json:"editable"`
+	// Blocker 是官方 `worktree.blocker`（三值联合或 null）。
+	Blocker *string `json:"blocker"`
+	// Creation 是官方 `worktree.creation`：此刻正在跑的那次创建，或 null。
+	Creation *ForgeWorktreeCreation `json:"creation"`
+}
+
+// ForgeWorktreeCreation 是官方 `ForgeWorktreeCreation`（`OFF:…/src/types.ts:89-102`）。
+type ForgeWorktreeCreation struct {
+	// Phase 只有 prepare / checkout 两个官方词。
+	Phase string `json:"phase"`
+	// Branch 是这次尝试要创建的分支。
+	Branch string `json:"branch"`
+	// From 是基准分支；null = 基于 HEAD。
+	From *string `json:"from"`
+	// Held 表示有消息在等这次创建（只有这种创建可以停）。
+	Held bool `json:"held"`
+}
+
+// ForgePanelFollow 订阅 `forgePanel.follow`：每来一帧完整 `ForgePanelState` 调一次 fn。
+//
+// 这是官方 `mode:'stream'` 方法（`OFF:…/lib/typert.host.js:936` 的语义原文：
+// "the current state first, then each later state. Intermediate states may be
+// skipped when the reader is slower than the updates."），宿主按 NDJSON 一行一帧写
+// （`HOST:internal/transport/handlers_forge_panel_state.go:574-631`）。所以不能走
+// `Call`（它把整个 body 读完才返回）——这里自己起请求、逐行解。
+//
+// 首帧一定是**当前完整状态**（宿主 `OpenOfficialForgePanelFollowStream` 的首帧无条件发），
+// 所以 fn 至少被调用一次才可能返回 nil；`ctx` 取消即结束。
+//
+// 流里的错误帧（宿主在头已发出之后只能这样报错）解成四字段错误返回，
+// 不静默当成"没有更多状态"。
+func (c *Client) ForgePanelFollow(ctx context.Context, sessionID string, fn func(ForgePanelState) error) error {
+	body, err := json.Marshal(forgeSessionOnly(sessionID))
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Base+"/api/"+MethodForgePanelFollow, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/x-ndjson")
+	for _, cookie := range c.cookies {
+		req.AddCookie(cookie)
+	}
+	// 长连接不能继承普通一元调用的整体超时；取消只由 ctx 决定。
+	httpClient := *c.HTTP
+	httpClient.Timeout = 0
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("连不上 %s：%w", c.Base, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		var env envelope
+		if json.Unmarshal(raw, &env) == nil && len(env.Error) > 0 {
+			if apiErr := parseError(env.Error); apiErr != nil {
+				return apiErr
+			}
+		}
+		return fmt.Errorf("%s 返回 HTTP %d: %.200s", MethodForgePanelFollow, resp.StatusCode, raw)
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/x-ndjson") {
+		return fmt.Errorf("%s 必须返回 application/x-ndjson，拿到 %q", MethodForgePanelFollow, got)
+	}
+	sc := bufio.NewScanner(resp.Body)
+	// 一帧状态是几百字节到几 KB；给足余量（大仓库的 changeRequests 会长一点）。
+	sc.Buffer(make([]byte, 0, 4096), 1<<20)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		// 错误帧：宿主在流里写 `{"error":{code,message}}`（头已经发出）。
+		var errFrame struct {
+			Error json.RawMessage `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(line), &errFrame); err != nil {
+			return fmt.Errorf("forgePanel.follow 帧不是合法 JSON: %.200s", line)
+		}
+		if len(errFrame.Error) > 0 {
+			if apiErr := parseError(errFrame.Error); apiErr != nil {
+				return apiErr
+			}
+			return fmt.Errorf("forgePanel.follow 流里报告了错误: %.200s", line)
+		}
+		var state ForgePanelState
+		if err := json.Unmarshal([]byte(line), &state); err != nil {
+			return fmt.Errorf("forgePanel.follow 帧不是 ForgePanelState: %.200s", line)
+		}
+		if err := fn(state); err != nil {
+			return err
+		}
+	}
+	if err := sc.Err(); err != nil && ctx.Err() == nil {
+		return err
+	}
+	return nil
+}
+
+// MethodForgePanelFollow 是 follow 的方法名（官方 `forgePanel.follow`）。
+const MethodForgePanelFollow = "forgePanel.follow"
 
 // forgeSessionOnly 是"只有 sessionId 一个参数"的官方形状。
 func forgeSessionOnly(sessionID string) any {

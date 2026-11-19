@@ -48,6 +48,20 @@ func checkIcon() (gfx.Icon, bool) {
 	return gfx.Icon{ViewBox: 16, Stroke: 1, Commands: commands}, true
 }
 
+// chevronRightIcon 是官方 `IconChevronRightOutlineRegular`
+// （创建进度卡的"更多详情"披露箭头，`WorktreeProgress.tsx:166` size={12}）。
+// 素材已在 dsassets 登记（`chevron-right-outline`，viewBox 16）。
+func chevronRightIcon() (gfx.Icon, bool) {
+	return dsassets.PlanReviewChevron()
+}
+
+// closeIcon 是官方 `IconCloseOutlineRegular`
+// （`WorktreeProgress.tsx:86` 失败步骤 / `:178` "取消"按钮，size={14}）。
+// 同一路径已存于素材库（`assets/official/icons/settings/close-outline.jsx`）。
+func closeIcon(fill gfx.Color) (gfx.Icon, bool) {
+	return dsassets.ScheduleCloseOutline(fill)
+}
+
 // listPenIcon 复用官方 `IconListPenOutlineRegular` 的五条原始路径。
 // rc.2 sprite 的 `list-pen-outline` 与仓内 `PlanModeOutline` 图元逐条相同
 // （两条横线描边 + 页面/铅笔/下划线填充），因此直接复用，不另抄一份坐标。

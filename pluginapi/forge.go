@@ -4,13 +4,15 @@
 //
 // 官方面板的全部状态来自一条流：`forgePanel.follow`（官方 `mode:'stream'`，
 // 结果类型 `ForgePanelState`，见 `OFF:dsh-experimental-client-ui-forge/lib/typert.host.js:1752`）。
-// 本仓宿主的 `forgePanel.follow` 流的是**绑定清单帧**
-// （`{type:'baseline',value:{bindings}}` / `upsert` / `remove`，
-// `HOST:internal/transport/handlers_forge_panel_state.go:300-345`），
-// **不是** `ForgePanelState`——所以 checkout / worktree / local 这三块**没法**从
-// follow 拿到（gap G6，已登记到 `../DSH-GO/docs/transport-contract.md`）。
+// **宿主自 dsh-go#84 起按官方形状发整帧状态**（`HOST:internal/transport/handlers_forge_panel_state.go`
+// 的 `ServeOfficialForgePanelFollowHTTP`：每行一个 `ForgePanelState`），
+// 所以 `worktree.editable` / `worktree.blocker` / `worktree.creation` 三样**有真读出口**：
 //
-// 于是 A 档的数据只能来自那些**有真实现、且形状对得上官方**的单点方法：
+//	worktree.editable  ← 挂了 worktree 服务 ∧ 未开 turn ∧ 未创建（HOST:cmd/dshd/serve_forge_state.go:248）
+//	worktree.blocker   ← 同一处折叠出来的原因（not-git / outside-writable-root / read-only）
+//	worktree.creation  ← worktree.Service.Progress 的活进度（prepare/checkout + held）
+//
+// 其余 A 档数据仍走单点方法（形状与官方一致、宿主有真实现）：
 //
 //	checkout（分支/提交/分离）  ← forgePanel.branches（current:null 即分离）
 //	本地改动                    ← forgePanel.localDiff（四个 scope）
@@ -22,9 +24,9 @@
 //
 // # 明确**没有**的东西（不要照着官方形状编）
 //
-//   - `worktree.creation`（创建进行到哪一步）、`worktree.created`、`worktree.missing`、
-//     `worktree.restoration`、`worktree.editable` / `blocker`：宿主没有读出口。
-//     官方这三块卡（WorktreeProgress / MissingCard）因此**整块不画**，见 #64 账本行。
+//   - `worktree.created` / `missing` / `restoration` / `failure` / `waiting`：follow 帧里
+//     **宿主已经给了真值**，但本仓界面今天只消费 `editable` / `blocker` / `creation`
+//     三样；MissingCard / 失败态 / 恢复态三块**仍整块不画**（登记在 #64 账本行）。
 //   - `changeRequests[]` 及一切 CR 内容：G1/G2/G3 未解，见 #64b。
 package pluginapi
 
@@ -59,19 +61,48 @@ type ForgeCheckout struct {
 	Message string
 }
 
-// ForgeWorktree 是 `conversation.hero.options` 上那个勾选框需要的全部事实。
+// 官方 `ForgeWorktreeBlocker` 的三个取值（`OFF:…/src/types.ts:80-86`）。
+const (
+	// ForgeWorktreeBlockerNotGit 表示会话目录不在 Git checkout 里。
+	ForgeWorktreeBlockerNotGit = "not-git"
+	// ForgeWorktreeBlockerOutsideWritableRoot 表示 Git 数据在可写目录之外（例如工作区本身就是工作树）。
+	ForgeWorktreeBlockerOutsideWritableRoot = "outside-writable-root"
+	// ForgeWorktreeBlockerReadOnly 表示会话是只读的。
+	ForgeWorktreeBlockerReadOnly = "read-only"
+)
+
+// ForgeWorktreeCreation 是官方 `ForgeWorktreeCreation`（`OFF:…/src/types.ts:89-102`）的投影：
+// **此刻正在跑的那次创建**。nil = 没有在跑的创建。
+type ForgeWorktreeCreation struct {
+	// Phase 只有两个官方词：prepare（建分支）/ checkout（写文件）。
+	Phase string
+	// Branch 是这次尝试要创建的分支名。
+	Branch string
+	// From 是基准分支；空 = 基于 HEAD（官方 `from: null`）。
+	From *string
+	// Held 表示有消息在等这次创建完成（官方 `held`：只有这种创建可以停）。
+	Held bool
+}
+
+// 官方 `ForgeWorktreeCreation.phase` 的两个取值（`OFF:…/src/types.ts:91`）。
+const (
+	// ForgeCreationPrepare 是"校验并创建分支"那一步。
+	ForgeCreationPrepare = "prepare"
+	// ForgeCreationCheckout 是"检出文件"那一步。
+	ForgeCreationCheckout = "checkout"
+)
+
+// ForgeWorktree 是 `conversation.hero.options` 上那个勾选框需要的全部事实，
+// 外加 follow 帧里**工作树那一格**的官方真值。
 //
-// 它**只覆盖"请求"这一层**：官方 WorktreeToggle 的 `requested` 也来自
-// `state.worktree.request`（走的也是 follow），但"有没有请求"这件事本壳能自己
-// 记住（请求由本壳发出、取消由本壳发出），所以这一格是**本壳的乐观态**，
+// "有没有请求"这一格是**本壳的乐观态**：官方 WorktreeToggle 的 `requested` 来自
+// `state.worktree.request`（走的也是 follow），但请求由本壳发出、取消由本壳发出，
 // 与官方 `pending` 同一性质：成功回包前先照用户意图画，失败就退回并报错。
 //
-// ⚠ 官方那个勾选框在 `worktree.editable == false`（blocker: not-git /
-// outside-writable-root / read-only）时**整块不画**。本仓没有 blocker 的读出口，
-// 所以这里换成一个可证伪的判据：`Checkout.Kind == ready` 才画
-// （官方同样要求 checkout ready）。这比"宿主说能建"弱，但它是真的：
-// checkout 都读不到时请求一定建不出来。剩余差距（read-only / 外部可写根挡不住
-// 请求）登记在账本行里。
+// `PanelKnown` 为真时，下面四个字段就是官方 `ForgePanelWorktree` 的真值：
+// 可见性与禁用状态都按官方的判据算（见 `plugins/dsforge/hero.go`）。
+// 为假（还没有 follow 帧 / 老宿主 / 测试）时退回"checkout ready 才画"这条
+// 可证伪的弱判据，不拿零值当"宿主说不能建"。
 type ForgeWorktree struct {
 	// Requested 表示本壳发出过请求且用户没有撤回。
 	Requested bool
@@ -81,6 +112,19 @@ type ForgeWorktree struct {
 	Pending bool
 	// Err 是最近一次 worktree 动作的失败文本（空 = 没有失败）。
 	Err string
+
+	// ── 以下来自 `forgePanel.follow` 的官方真值 ──────────────────────────
+
+	// PanelKnown 表示至少收到过一帧官方 `ForgePanelState`。
+	PanelKnown bool
+	// Editable 是官方 `worktree.editable`：还能请求/撤回工作树
+	// （挂了 worktree 服务 ∧ 没开过 turn ∧ 还没创建过）。
+	Editable bool
+	// Blocker 是官方 `worktree.blocker`；空串 = 官方 `null`（没有挡板）。
+	// 取值见 ForgeWorktreeBlocker* 三个常量。
+	Blocker string
+	// Creation 是官方 `worktree.creation`；nil = 没有在跑的创建。
+	Creation *ForgeWorktreeCreation
 }
 
 // ForgeLocalSummary 是 `changes.local` 那张卡的全部数字（来自默认 `branch` 范围）。
@@ -173,4 +217,8 @@ type ForgeActions struct {
 	RequestWorktree func(from *string)
 	// CancelWorktree 撤回还没建的工作树请求。
 	CancelWorktree func()
+	// StopCreation 停掉**正在跑**的那次创建（官方 `stopCreation`）：只有
+	// `creation.held` 为真时官方才画那个按钮（`WorktreeProgress.tsx:176-180`），
+	// 停下之后消息继续等（官方注释原文 "the message keeps waiting"）。
+	StopCreation func()
 }

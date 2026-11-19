@@ -2811,6 +2811,7 @@ func main() {
 			LoadText:        m.forgeTextAction,
 			RequestWorktree: m.forgeRequestWorktreeAction,
 			CancelWorktree:  m.forgeCancelWorktreeAction,
+			StopCreation:    m.forgeStopCreationAction,
 		},
 		// #12 Cordis 面板的三个生命周期动词 + 一次手动重读。
 		// 三条都是**同步阻塞**的（会真的动宿主的插件进程），所以插件的点击回调

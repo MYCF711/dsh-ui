@@ -3,10 +3,12 @@
 //
 // # 它占哪几个座位（逐条对应官方注册）
 //
-//	conversation.hero.options      ← WorktreeToggle（勾选"新建工作树"）
+//	conversation.hero.options      ← WorktreeToggle（勾选"新建工作树" + blocker 挡板）
 //	                                  OFF:…/src/client/mount.ts:389-391
-//	conversation.input.dock        ← 官方这一格是 WorktreeProgress；本仓画
-//	                                  LocalChangesCard（理由见 dock.go 文件头）
+//	conversation.input.dock        ← 官方这一格是 WorktreeProgress（order 5）；本仓
+//	                                  同一槽里有两张：创建进度卡（order 4，官方那
+//	                                  张，progress.go）+ 本地变更卡（order 5，
+//	                                  LocalChangesCard 的搬家件，理由见 dock.go 头）
 //	                                  OFF:…/src/client/mount.ts:392-394
 //	sidebar.right.pane.tab(.title) ← Changes 视图（本地那一半）
 //	                                  OFF:…/src/client/mount.ts:364-369
@@ -69,7 +71,14 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		},
 		{
 			// 官方 `conversation.input.dock` id 'forge-panel.worktree' **order 5**
-			// （mount.ts:392-394）。本仓这一格画本地变更卡，见 dock.go。
+			// （mount.ts:392-394）上的官方卡片就是创建进度卡。order 5 已被本地变更卡
+			// 占着（本仓历史，见 dock.go），所以进度卡取 4 = 排在它之上；官方在该槽
+			// 只有一张卡，没有"本地卡在第几位"的证据，这条相对顺序已登记在账本行。
+			ID: "forge-creation-progress", Slot: uikernel.OffInputDock, Order: 4,
+			Draw: p.drawWorktreeProgress,
+		},
+		{
+			// 同槽的本地变更卡（官方在 ForgeTab 里，本仓搬到这里，见 dock.go 文件头）。
 			ID: "forge-local-card", Slot: uikernel.OffInputDock, Order: 5,
 			Draw: p.drawLocalCard,
 		},

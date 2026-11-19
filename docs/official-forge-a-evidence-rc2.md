@@ -246,3 +246,74 @@ Viva 的浮层固定 `gfx.ShadowMD`（`viva@v0.6.4/components/dropdown_menu.go:7
 | 6 | 创建进度卡 | 宿主（G6：`worktree.creation`） |
 | 7 | 已读只在本进程 | GUI（缺插件持久化 seam） |
 | 8 | 范围菜单面阴影/密度 | 渲染器（`gfx.ShadowMD` 写死；官方 elevation-prominent） |
+
+## 10. 2026-11-19 复核 + 收口（task-105：接上门禁 ⑤⑥）
+
+**前置已就位**：宿主 `dsh-go#84`（`0081922`）把 `forgePanel.follow` 从"绑定清单帧"改成
+官方 `ForgePanelState` 整帧流——`HOST:internal/transport/handlers_forge_panel_state.go:574-631`
+（NDJSON，头在首帧之前发；流内错误帧 `{"error":{code,message}}`）+
+`HOST:cmd/dshd/serve_forge_state.go:239-300`（`worktreeState` 九格：
+`editable = !TurnStarted && Created == nil`、`creation` 取 `worktree.Service.Progress`）。
+§8/§9 里的 **G6 因此关闭**，上一节表里的第 5、6 两条解除。
+
+### 10.1 两条差异的官方出处（逐条 file:line）
+
+**⑤ blocker 挡板 —— 官方 `WorktreeToggle`**
+
+| 判据 | 官方 |
+|---|---|
+| `!worktree.editable` 或 `blocker === 'not-git'` 或 `checkout !== 'ready'` → 整块不画 | `OFF:…/src/client/WorktreeToggle.tsx:97-109` |
+| `usable = blocker === null`；`disabled = held || pending !== null || (!usable && !requested)` | `:128-129` |
+| 芯片文案（`worktree.currentBranchTip` / `worktree.base` / `worktree.baseHead` / `worktree.detachedTip`） | `:130-133` |
+| 浮条＝`blocker === null ? 'worktree.hint' : 'worktree.blocked.<blocker>'`，`delayMs={500}` | `:151` |
+| `<label data-disabled>` + `<input type=checkbox disabled>`；`.toggle[data-disabled]{color:label-dimmed}` | `:152-161`、`WorktreeToggle.module.css:38-41` |
+| 文案（`worktree.hint` / `worktree.blocked.outside-writable-root` / `worktree.blocked.read-only`） | `OFF:…/src/client/locales.ts:310-312` |
+
+**⑥ 创建进度卡 —— 官方 `WorktreeProgress`**
+
+| 判据 | 官方 |
+|---|---|
+| 只在 `worktree.creation !== null` 时画（`creationOf`：creation→running；其余两支本轮不画） | `OFF:…/src/client/WorktreeProgress.tsx:252-280`、`:105-126` |
+| 卡片：flex column、`gap 6`、`max-width:card-max-4*inset`、`padding:10px 8px 6px 12px`、`radius md`、`bg:--dsw-specific-menu`、`box-shadow:--dsw-elevation-panel`、`13px/20px` | `WorktreeProgress.module.css:17-52` |
+| 头部：`gap 8`、`padding-right 4`；标题 `font-weight:500`；分支 `code 12px` + 省略号 | `:54-86` |
+| 步骤：`column; gap 2; padding-left 22`；`.step{gap 8; min-height 24; label-secondary}`、running→`label-primary` | `:88-111` |
+| 步骤字形：done=`IconCheck`(14, success)、running=`StateDot(ongoing,14)`、waiting=14×14 空环 `1.5px label-dimmed` | `WorktreeProgress.tsx:82-91`、`…module.css:113-134` |
+| 两步：`CREATION_STEPS = [prepare 创建分支, checkout 检出文件]`；`stepState` = current→running / 更早→done / 更晚→waiting | `WorktreeProgress.tsx:45-80` |
+| 详情（`open` 时）：`grid auto/minmax(0,1fr)`、`gap 2 12`、`margin 2px 0 0 22px`、`12px/18px` | `:109-128`、`…module.css:136-152` |
+| 页脚：`height 28`、`.disclosure{gap 4; padding 0 6; 12px}`、展开时箭头 `rotate(90deg)` | `…module.css:161-204` |
+| `creation.held` 才画「取消」（ghost sm + close 图标 14，动作 `stopCreation`） | `WorktreeProgress.tsx:163-181`、`:176-180` |
+| 文案（创建中/两步/更多详情/分支/基于/当前 HEAD/取消） | `locales.ts:319-332` |
+
+### 10.2 GUI 落点
+
+| 层 | 文件 | 内容 |
+|---|---|---|
+| 客户端 | `internal/apiclient/forge.go` | `ForgePanelFollow`（NDJSON 逐行整帧；错误帧→四字段；非 `application/x-ndjson` 直接报错）+ `ForgePanelState`/`ForgePanelWorktree`/`ForgeWorktreeCreation` |
+| 数据面 | `pluginapi/forge.go` | `ForgeWorktree.{PanelKnown,Editable,Blocker,Creation}` + `ForgeWorktreeCreation` + 三个 blocker 常量 + `ForgeCreation{Prepare,Checkout}` + `ForgeActions.StopCreation` |
+| 壳 | `cmd/app/forge_wiring.go` | `forgeFollow`（每会话一条流、世代守卫、断线 2s 重连、`not_implemented`/`bad_request` 不重试）、`forgeWorktreePanel`（纯函数投影）、`forgeStopCreationAction`；`cmd/app/main.go` 接动作面 |
+| 挡板 | `plugins/dsforge/hero.go` | 官方三层可见性 + `disabled` 判据 + 浮条（`ui.Tooltip`）+ 禁用态 `label-dimmed`；点击按 `disabled` 屏蔽 |
+| 进度卡 | `plugins/dsforge/progress.go` | 官方几何/文案/两步态/展开详情/held 取消；座位 `conversation.input.dock` **order 4**（本地卡仍占官方 order 5，同槽不许同序） |
+
+### 10.3 判据（三条都做了变异验证）
+
+| 测试 | 断言 | 变异（实测变红） |
+|---|---|---|
+| `plugins/dsforge/progress_test.go` 的 `TestProgressFollowsCreationPhase` | 只把 `creation.phase` 从 prepare 换成 checkout：`创建分支`/`检出文件` 两行颜色对翻，checkout 帧出现绿色 done 勾 | `stepState` 改成恒按 prepare 判 → 红（checkout 帧「创建分支」仍是 label-primary） |
+| 同上 `TestBlockerBaffleHidesToggleWhenNotEditable` / `…KeepsToggleDisabledWithOfficialCopy` | `editable=false`、`blocker=not-git` 不画；两块 blocker 照画但 `label-dimmed`、浮条逐字、点击零动作（`request=0 cancel=0`） | 可见性判据短路 → 红（editable=false 仍画了勾选框） |
+| `cmd/app/forge_wiring_test.go` 的 `TestForgeFollowDrivesEditableAndCreation` | 推帧 `editable true→false`、`creation prepare→checkout→null`，数据面逐帧跟着变 | `forgeWorktreePanel` 把 `Editable` 写死 true → 红（creation 在跑时仍说能建） |
+| `internal/apiclient/forge_test.go` | 三帧整帧流（含 `blocker:read-only`、`creation.prepare/checkout`、`from:null`）、流内错误帧、非 NDJSON 拒绝 | —— |
+
+### 10.4 宿主侧一处如实缺口（不擅改）
+
+`worktree.blocker` 今天**恒为 null**：宿主 `worktreeState`（`HOST:cmd/dshd/serve_forge_state.go:236-300`）只填 `editable` / `request` / `created` / `creation` / `failure` / `missing` / `restoration` / `waiting`，没有官方 `panel.ts:320-340` 的 `blockerOf()` 三条探测（沙箱能否写 Git 目录 / 是否在 checkout 里 / 会话是否只读）。
+
+后果：界面上官方 `:103`（`!editable` → 整块不画）这一条**真的生效**，而 `:104-105` + `:128-129` + `:151`（挡着时画出来但禁用、浮条换 `worktree.blocked.<blocker>`）**今天不可达**，因为宿主永远不会给出那两个值。两块挡板文案、禁用判据与用例都已按官方写好，宿主填值即生效；这条缺口归宿主线（本仓不擅改），不重复计进 GUI 的剩余差异。
+
+### 10.5 剩余差异：8 → 6 条
+
+消除 5、6 两条。**仍剩 6 条：1 座位 / 2 文件树左栏 / 3 左右对比+换行 / 4 分支图标 / 7 已读只在本进程 / 8 范围菜单面阴影与密度**
+（编号沿用 §9 表格，不重排）。
+
+本轮**没有**动、但值得记一笔的三支：`worktree.failure`（失败态）、`worktree.missing`（MissingCard）、
+`worktree.restoration`（恢复进度）——宿主 follow 帧里都已有真值，但本轮任务只接 `creation`，
+这三支仍整块不画（不画假卡），留给后续任务。

@@ -10,17 +10,28 @@
 //	  .checkbox{width:14px;height:14px}
 //	  .toggle[data-disabled]{color:label-dimmed}
 //
-// # 官方有、本仓没有的三样（都登记在账本行）
+// # 可见性与挡板（官方 `optionOf` 与 Tooltip，逐条）
 //
-//  1. `worktree.editable` / `blocker`（not-git / outside-writable-root / read-only）没有读出口。
-//     这里用**可证伪的替代判据**：`checkout.state == 'ready'` 才画（官方同样要求它）。
-//     少了的那一层是"能读 git、但沙箱写不进去"的挡板。
-//  2. **基准分支下拉菜单**（官方 `.base` 是一次 `branches()` + 菜单）。本仓没有菜单
+//	WorktreeToggle.tsx:103   !state.worktree.editable              → 整块不画
+//	WorktreeToggle.tsx:104-105 blocker === 'not-git'              → 整块不画
+//	WorktreeToggle.tsx:106-107 checkout.state !== 'ready'         → 整块不画
+//	WorktreeToggle.tsx:128-129 usable = blocker === null
+//	                            disabled = held(creation!=null) || pending || (!usable && !requested)
+//	WorktreeToggle.tsx:151   Tooltip label = blocker===null ? 'worktree.hint'
+//	                                                       : `worktree.blocked.${blocker}`
+//	WorktreeToggle.tsx:152-161 `<label data-disabled>` + `<input type=checkbox disabled>`
+//
+// 这四样现在全部由 `forgePanel.follow` 的官方 `ForgePanelState` 供真值
+// （`pluginapi.ForgeWorktree.PanelKnown/Editable/Blocker/Creation`）。
+// 没有 follow 帧时（老宿主 / 测试）退回"checkout ready 才画"这条可证伪的弱判据，
+// 不拿零值当"宿主说不能建"。
+//
+// # 官方有、本仓没有的一样（登记在账本行）
+//
+//  1. **基准分支下拉菜单**（官方 `.base` 是一次 `branches()` + 菜单）。本仓没有菜单
 //     浮层可用，所以勾选始终按官方的默认语义发 `request(当前分支)`——官方 unchecked →
 //     checked 走的就是 `request(option.current)`（`WorktreeToggle.tsx:150-153`）。
 //     代价：选不到**别的**基准分支。
-//  3. `creation`（正在创建/停在哪一步）没有读出口，所以勾上之后只显示"已请求"，
-//     不画"创建分支 / 检出文件"那两步（官方 WorktreeProgress，见 #64 行的 HIDE 说明）。
 package dsforge
 
 import (
@@ -57,32 +68,73 @@ const (
 	copyWorktreeBaseHead      = "基于当前 HEAD"
 	copyWorktreeCurrentBranch = "当前分支：%s"
 	copyWorktreeDetached      = "未在分支上"
+	// copyWorktreeHint 是 `worktree.hint`（locales.ts:310）：勾选框的默认浮条。
+	copyWorktreeHint = "在独立的工作树中运行本会话：发送后基于所选分支新建分支，修改和提交不影响项目目录"
+	// copyWorktreeBlocked 是两块**挡板**文案（locales.ts:311-312）。
+	copyWorktreeBlockedOutsideRoot = "这个工作区的 Git 数据不在可写目录中（例如工作区本身就是工作树），暂不支持使用工作树"
+	copyWorktreeBlockedReadOnly    = "只读模式下无法使用工作树"
 )
+
+// worktreeBlockerCopy 把官方 blocker 值翻成官方文案（`worktree.blocked.<blocker>`）。
+//
+// 官方是 `t(`worktree.blocked.${blocker}`)`（WorktreeToggle.tsx:151），键只有两条
+// （locales.ts:311-312）；未知值返回空串 = 不显示浮条，而不是编一句原因。
+func worktreeBlockerCopy(blocker string) string {
+	switch blocker {
+	case pluginapi.ForgeWorktreeBlockerOutsideWritableRoot:
+		return copyWorktreeBlockedOutsideRoot
+	case pluginapi.ForgeWorktreeBlockerReadOnly:
+		return copyWorktreeBlockedReadOnly
+	}
+	return ""
+}
 
 // drawWorktreeToggle 画 `conversation.hero.options` 上的工作树勾选。
 //
-// 可见性三层（官方同样三层，缺一层就整块不画）：
+// 可见性逐条照官方 `optionOf`（WorktreeToggle.tsx:97-109）：
 //
 //	Forge 数据面在、且属于当前会话      → forgeView
-//	checkout 读成功                    → Kind == ready
+//	有 follow 帧且 !editable            → 整块不画（官方 :103）
+//	有 follow 帧且 blocker == not-git   → 整块不画（官方 :104-105）
+//	checkout 读成功                     → Kind == ready（官方 :106-107）
 //	壳接了动作面                        → Act.Forge != nil
+//
+// 没有 follow 帧（老宿主 / 测试）时不判前两条：`PanelKnown` 为零值，等于"宿主没
+// 说不能建"，退回 checkout ready 这条弱判据。
 func (p *Plugin) drawWorktreeToggle(f ui.C, env *pluginapi.Env) {
 	view := forgeView(env)
 	if view == nil || env.Act.Forge == nil {
 		return
 	}
+	worktree := view.Worktree
+	if worktree.PanelKnown {
+		if !worktree.Editable {
+			return
+		}
+		if worktree.Blocker == pluginapi.ForgeWorktreeBlockerNotGit {
+			return
+		}
+	}
 	if view.Checkout.Kind != pluginapi.ForgeCheckoutReady {
 		return
 	}
 	t := p.themeOf(env)
-	worktree := view.Worktree
-	// 官方 `disabled = held || pending !== null || (!usable && !requested)` 的前两项：
-	// creation 在跑（held）本仓读不到，只能判 pending。第三项（blocker 挡着）同样
-	// 读不到，所以这里少了"被挡时禁止勾选"——登记为差异。
-	disabled := worktree.Pending
+	// 官方 :128-129：`usable = blocker === null`；
+	// `disabled = held || pending !== null || (!usable && !requested)`。
+	// held = 有创建在跑（官方 :126 `state.worktree.creation !== null`）。
+	usable := worktree.Blocker == ""
+	held := worktree.Creation != nil
+	disabled := held || worktree.Pending || (!usable && !worktree.Requested)
 	fg := t.LabelSecondary
 	if disabled {
 		fg = t.LabelDimmed
+	}
+	// 官方 :151：挡着时浮条换成那一句原因，否则是默认 hint。
+	tip := copyWorktreeHint
+	if !usable {
+		if blocked := worktreeBlockerCopy(worktree.Blocker); blocked != "" {
+			tip = blocked
+		}
 	}
 	current := view.Checkout.Branch
 	if view.Checkout.Detached {
@@ -113,14 +165,18 @@ func (p *Plugin) drawWorktreeToggle(f ui.C, env *pluginapi.Env) {
 					Weight(gfx.WeightMedium).Color(t.LabelTertiary).Ellipsis()
 			})
 
-		// 勾选行：整行可点（官方是 `<label>` 包 `<input type=checkbox>`，点标签同样生效）。
+		// 勾选行：官方是 `<label>` 包 `<input type=checkbox>`，点标签同样生效。
+		// 悬停底色只在**没被禁用**时出现（`.toggle:hover:not([data-disabled])`，
+		// WorktreeToggle.module.css:31-36）；但身份（Hit）始终挂着——官方的
+		// Tooltip 就包在这个 `<label>` 上，禁用态照样要能悬停看挡板原因。
 		box := ui.Row(f).Height(worktreeChipHeight).Shrink(0).
 			PadSides(0, worktreeChipPadX, 0, worktreeChipPadX).Gap(worktreeChipGap).
-			Items(ui.Center).Radius(t.Radii.SM)
+			Items(ui.Center).Radius(t.Radii.SM).
+			Hit(env.Tree.ID(env.Feat, "forge-worktree-toggle"), copyWorktreeLabel)
 		if !disabled {
-			box = box.Hover(ui.Look{}.Background(t.Hover)).
-				Hit(env.Tree.ID(env.Feat, "forge-worktree-toggle"), copyWorktreeLabel)
+			box = box.Hover(ui.Look{}.Background(t.Hover))
 		}
+		box = box.Tooltip(tip)
 		box.Children(func() {
 			p.drawCheckbox(f, env, worktree.Requested, disabled, fg)
 			ui.Text(f, copyWorktreeLabel).FontSize(worktreeFont).LineHeight(worktreeLine).

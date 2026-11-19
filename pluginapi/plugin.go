@@ -1164,12 +1164,14 @@ type Snapshot struct {
 	// nil = 壳没接这条能力（老壳 / 测试 / 插件单独渲染）：插件这时**一个字都不画**，
 	// 不画成"这个会话没有改动"——那是没有证据的断言。
 	//
-	// 它为什么不是一个 `follow` 流的快照：本仓宿主的 `forgePanel.follow` 流的是
-	// 绑定清单帧（`{type:'baseline',value:{bindings}}` / `upsert` / `remove`），
-	// **不是**官方 `ForgePanelState`（OFF:…/lib/typert.host.js:1752）。所以 checkout /
-	// worktree / local 三块改由有真实现的单点方法拼（逐条见 `pluginapi/forge.go`
-	// 文件头）；`creation` / `missing` / `changeRequests` 因此**没有读出口**，
-	// 相应的卡片整块不画（gap G6 已登记）。
+	// 它是**两条真读路径的合体**（逐条见 `pluginapi/forge.go` 文件头）：
+	//
+	//	checkout / local / 提交 / 基准   ← 单点方法（branches / localDiff / …）
+	//	worktree.editable/blocker/creation ← `forgePanel.follow` 的官方 ForgePanelState
+	//	                                  （宿主 dsh-go#84 起；`PanelKnown` 区分
+	//	                                  "还没收到帧"与"宿主说不能建"）
+	//
+	// 仍未消费的 `missing` / `restoration` / `failure`：三张卡整块不画（账本 #64 行）。
 	Forge *ForgeView
 
 	// Cordis 是官方 `dsh-client-ui-cordis` 的**清单数据面**（GUI 账本 #12）。

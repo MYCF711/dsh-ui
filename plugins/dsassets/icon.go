@@ -9,10 +9,13 @@ import (
 // fill 是**填充层**的颜色：官方这些图标用 `fill="currentColor"`，颜色由使用处决定，
 // 所以本包不写死色号。纯描边素材用不到它（颜色来自调用方的 `.Color()` 着色）。
 //
+// 三种图元都能编译：`<path d>` 直接解析；`<rect rx ry>` 与 `<circle>` / `<ellipse>`
+// 的弧换算成三次贝塞尔（arc.go / shapes.go）。换算的误差有数学上界，不是近似凑合。
+//
 // 返回 false 的三种情况：
 //
-//   - 素材本身标注了 Unsupported（`<rect rx>` / `<circle>` 这类需要弧的图元）；
-//   - 某条 `d` 用了 M/L/H/V/C/S/Z 之外的东西（弧、二次曲线）；
+//   - 素材本身标注了 Unsupported（今天一条都没有，字段仍保留）；
+//   - 某条 `d` 用了 M/L/H/V/C/S/A/Z 之外的东西（二次曲线）；
 //   - 同一枚图标里两处要求互相矛盾的线帽/线接（一个 gfx.Icon 只有一个 Cap/Join）。
 //
 // 返回 false 时调用方**必须**自己决定退回什么（保留旧实现、或干脆不画），
@@ -31,10 +34,7 @@ func Build(a Asset, fill gfx.Color) (gfx.Icon, bool) {
 		anyStrokeAt bool
 	)
 	for _, el := range a.Elements {
-		if el.Kind != PathElement || el.D == "" {
-			return gfx.Icon{}, false
-		}
-		commands, ok := ParsePath(el.D)
+		commands, ok := elementCommands(el)
 		if !ok {
 			return gfx.Icon{}, false
 		}
@@ -99,17 +99,15 @@ func Build(a Asset, fill gfx.Color) (gfx.Icon, bool) {
 	return icon, true
 }
 
-// CommandCount 返回素材解析后的命令总数（描边与填充都算）。
+// CommandCount 返回素材解析后的命令总数（描边与填充、路径与圆/矩形都算）。
 //
 // 测试用它盯住"整条路径都吃完了"：官方 `d` 里有多少段，这里就该有多少条命令，
-// 少一条＝截断，多一条＝把坐标当成了命令。
+// 少一条＝截断，多一条＝把坐标当成了命令。`<rect rx>` / `<circle>` 也算——
+// 它们的弧换算成 C 之后同样是命令，漏算就会让"命令数"这一列与屏幕上的形状脱节。
 func CommandCount(a Asset) int {
 	total := 0
 	for _, el := range a.Elements {
-		if el.Kind != PathElement {
-			continue
-		}
-		if commands, ok := ParsePath(el.D); ok {
+		if commands, ok := elementCommands(el); ok {
 			total += len(commands)
 		}
 	}
@@ -121,6 +119,9 @@ func CommandCount(a Asset) int {
 // 只统计端点与控制点——它不追求"紧包围盒"（三次曲线的极值点可能落在控制多边形
 // 内部），而是给测试一个稳定的外部边界：官方 16 viewBox 的图标，包围盒必须落在
 // [0,16] 之内，且不能是空的。越界就说明解析把坐标读错了（例如把相对命令当绝对）。
+//
+// 圆/圆角矩形也走同一条路：它们的端点与控制点同样必须落在 viewBox 内，越界说明
+// 弧换算把圆心或半径算错了。
 func Bounds(a Asset) (minX, minY, maxX, maxY float32, ok bool) {
 	first := true
 	add := func(x, y float32) {
@@ -143,10 +144,7 @@ func Bounds(a Asset) (minX, minY, maxX, maxY float32, ok bool) {
 		}
 	}
 	for _, el := range a.Elements {
-		if el.Kind != PathElement {
-			continue
-		}
-		commands, good := ParsePath(el.D)
+		commands, good := elementCommands(el)
 		if !good {
 			continue
 		}

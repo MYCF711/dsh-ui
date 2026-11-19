@@ -15,11 +15,11 @@
 | 图标 | 官方有没有 | 我们画的是不是官方 | 结论 |
 |---|---|---|---|
 | 发送（输入框主按钮） | 有（内联 path，359 字节） | **是**（逐命令一致） | replace |
-| 停止（运行态主按钮） | 有，但是 `<rect rx=3>` | **不是**（二次贝塞尔近似，角部偏 0.182） | skip |
+| 停止（运行态主按钮） | 有，但是 `<rect rx=3>` | **是**（四角换算成四段四分之一椭圆弧，径向误差 0.0273% of r） | exact |
 | 附件（回形针） | 有（1 条 path） | 界面上**还没有这个控件** | exact（待接） |
 | 权限四档 | 有（4 枚，同一面盾牌） | **是** | replace |
-| 复制 | 有，但含 `<rect rx=2>` | 界面用的是文字按钮"复制" | skip |
-| 分支 | 有，但含 2 枚 `<circle>` | 界面上**没有这个控件** | skip |
+| 复制 | 有，但含 `<rect rx=2>` | 素材**已能精确画**（描边 10 条 + 填充 14 条）；界面用的是文字按钮"复制" | 素材 exact / 界面未接 |
+| 分支 | 有，但含 2 枚 `<circle r=1.56962>` | 素材**已能精确画**（描边 24 条）；界面**没有这个控件** | 素材 exact / 界面未接 |
 | 反馈拇指 👍/👎 | 有（4 条不同路径） | 以前是**凭空画的**（👎 还是 👍 的镜像），现在**是官方** | replace |
 | 朗读 | **官方没有这个控件** | 我们也没有 | 缺失（不自造） |
 
@@ -36,7 +36,7 @@
 | 图标 | 官方包 | 文件 | 符号 | viewBox | 当前 Go 实现 | 状态 |
 |---|---|---|---|---|---|---|
 | 发送 | `@deepseek-ai/dsh-client-ui-conversation` | `dsh-client-ui-conversation/lib/client.js` | InputBar 主按钮内联 `<path>` | `0 0 16 16` | [`plugins/dscomposer/icons.go`](../plugins/dscomposer/icons.go) `primarySendIcon` → `dsassets.ComposerSend` | **exact** |
-| 停止 | 同上 | 同上 | InputBar 主按钮内联 `<rect x=3 y=3 width=10 height=10 rx=3>` | `0 0 16 16` | 同上 `primaryStopIcon`（自绘，未接素材） | **手绘近似**（偏差 0.182） |
+| 停止 | 同上 | 同上 | InputBar 主按钮内联 `<rect x=3 y=3 width=10 height=10 rx=3>` | `0 0 16 16` | 同上 `primaryStopRect` → `dsassets.ComposerStop`（Viva 原生圆角矩形，几何取自登记表） | **exact**（圆角 3，径向误差 0.0273% of r） |
 | 附件 | `@deepseek-ai/dsh-client-ui-primitives` | `dsh-web-frontend/dist/assets/index-BXV-oxvX.js` | `IconPaperclipOutlineRegular` | `0 0 16 16` | 无（宿主动作没接，加号不画） | **缺失**（素材已备，exact） |
 | 命令入口（加号） | primitives | 同上 | `IconPlusOutlineMedium` | `0 0 16 16` | [`plugins/dscomposer/composer.go`](../plugins/dscomposer/composer.go) `addButton` → `dsassets.ComposerAdd`（仅当 `ui.commands.open` 服务在、命令表非空） | **exact**（Medium 档 1.3） |
 | 权限·只读 | primitives | 同上 | `PermissionIconReadOnlyRegular` | `0 0 16 16` | [`plugins/dscomposer/icons.go`](../plugins/dscomposer/icons.go) `permissionIconFor("read-only")` | **exact** |
@@ -65,12 +65,12 @@
 | ID | 官方符号 | viewBox | 命令数 | 构建 |
 |---|---|---|---|---|
 | `composer-send` | InputBar 主按钮内联 path | 16 | 16 | ✅ |
-| `composer-stop` | InputBar 主按钮内联 rect | 16 | — | ❌ 需要弧 |
+| `composer-stop` | InputBar 主按钮内联 rect | 16 | 10 | ✅ |
 | `send-outline` | `IconSendOutlineRegular` | 16 | 12 | ✅ |
 | `paperclip` | `IconPaperclipOutlineRegular` | 16 | 17 | ✅ |
 | `composer-add` | `IconPlusOutlineMedium` | 16 | 4 | ✅ |
-| `copy` | `IconCopyOutlineRegular` | 16 | 14（只算 path；另有 1 枚 rect） | ❌ 需要弧 |
-| `branch` | `IconBranchOutlineRegular` | 16 | 12（只算两条支线；另有 2 枚圆） | ❌ 需要弧 |
+| `copy` | `IconCopyOutlineRegular` | 16 | 24（rect 10 + path 14） | ✅ |
+| `branch` | `IconBranchOutlineRegular` | 16 | 24（两条支线 12 + 两枚圆 12） | ✅ |
 | `thumb-up-outline` | `IconLikeOutlineRegular` | 16 | 18 | ✅ |
 | `thumb-up-fill` | `IconLikeFillRegular` | 16 | 18 | ✅ |
 | `thumb-down-outline` | `IconDislikeOutlineRegular` | 16 | 18 | ✅ |
@@ -130,8 +130,10 @@ M2 8H14
 
 ### 4.5 复制（`copy`，348 字节的 path + 一枚 `<rect>`）
 
-前面那张纸是 `<rect x=1.52075 y=4.07373 width=10.3932 height=10.3932 rx=2>`，
-**画不出来**（需要弧形圆角）；下面这条是后面那张纸（填充）：
+前面那张纸是 `<rect x=1.52075 y=4.07373 width=10.3932 height=10.3932 rx=2>`（描边），
+**能精确画**：四个圆角各是一条 `large-arc=0, sweep=1` 的四分之一椭圆弧，换算成三次贝塞尔
+后每段最大径向误差 0.0273% of r（`dsassets.TestRoundedRectCornersAreExactWithinCriterion`）。
+整枚 `copy` 编译成"描边 10 条 + 填充 14 条"。下面这条是后面那张纸（填充）：
 
 ```
 M11.9792 1.53296C13.36 1.53296 14.4792 2.65225 14.4792 4.03296V9.42847C14.4792 10.3756 13.9521 11.1987 13.1755 11.6228V10.3298C13.3652 10.0787 13.4792 9.7674 13.4792 9.42847V4.03296C13.4792 3.20453 12.8077 2.53296 11.9792 2.53296H6.58374C6.27966 2.53301 5.99684 2.6235 5.7605 2.77905H4.42358C4.85652 2.03463 5.66056 1.53304 6.58374 1.53296H11.9792Z
@@ -140,7 +142,9 @@ M11.9792 1.53296C13.36 1.53296 14.4792 2.65225 14.4792 4.03296V9.42847C14.4792 1
 ### 4.6 分支（`branch`，182 + 182 字节的两条支线 + 2 枚 `<circle>`）
 
 节点是 `<circle cx=12.4502 cy=3.3079 r=1.56962>` 与 `<circle cx=12.4502 cy=12.6921 r=1.56962>`，
-**画不出来**。两条支线原文：
+**能精确画**：每枚圆换成 `M + 4×C + Z`（四段四分之一圆弧，控制点系数
+`k = 4/3·tan(π/8) = 0.5522847498307936`，见 [`plugins/dsassets/arc.go`](../plugins/dsassets/arc.go) 文件头）。
+整枚 `branch` 是 24 条描边命令。两条支线原文：
 
 ```
 M1.01503 8.0001L5.6964 8.0001C6.41913 8.0001 6.78049 8.0001 7.12115 7.91951C7.4232 7.84804 7.71233 7.73014 7.97821 7.57C8.27809 7.38939 8.5364 7.13669 9.05303 6.63129L11.3281 4.40564
@@ -248,13 +252,18 @@ M12.6516 12.6696C12.6516 12.925 12.6516 13.1804 12.6516 13.4359C12.6952 13.4378 
 | [`plugins/dscomposer/icons.go`](../plugins/dscomposer/icons.go) | 发送箭头改成 `dsassets.ComposerSend`；权限四档改成 `dsassets.Permission*`；`ask`/`deny` 的盾牌改成 `dsassets.ShieldOutline()` | 逐命令一致（命令数 16 / 13 / 45 / 13 / 14 对得上） |
 | [`plugins/dsconversation/feedback.go`](../plugins/dsconversation/feedback.go) | 自绘拇指（`thumbCommands` + `mirrorY`）整段删除，改成官方四条路径 | 官方 👍/👎 是两条不同的路径，镜像关系不成立 |
 
-### skip（明确不换，写清原因）
+### skip（素材能画、但界面上明确不接，写清原因）
 
-| 素材 | 为什么不换 | 代价 |
+| 素材 | 为什么不接 | 代价 |
 |---|---|---|
-| `composer-stop` | 官方是 `<rect … rx=3>`，圆角是**四分之一圆弧**；viva 的 `PathCommand` 只有 M/L/Q/C/Z，没有弧 | 现用二次贝塞尔近似，`dscomposer.TestStopIconDeviationIsKnownAndBounded` 实测最大偏差 **0.182** viewBox 单位（16px 下约 0.18px） |
-| `copy` | 官方含 `<rect rx=2>` | 界面上是文字按钮「复制」，本来就没画图标 |
-| `branch` | 官方含 2 枚 `<circle r=1.56962>` | 界面上没有分支按钮 |
+| `copy` | 界面上是文字按钮「复制」，本来就没画图标 | 无；要用时 `dsassets.Build(dsassets.Copy, …)` 直接出 |
+| `branch` | 本包不含界面控件；分支图标该出现在 `plugins/dsforge` 的 worktree 开关/分支芯片（账本 #64 ④），那处接线不在本包 | 无；素材已可画（24 条描边命令），接一行就出 |
+
+> **2026-11-19 变更**：`composer-stop` 从这张表移出，`copy` / `branch` 的"不接"理由
+> 也不再是"画不出来"。三枚素材以前被标 `Unsupported` 的唯一理由是
+> `<rect rx>` / `<circle>` 的弧在 viva 的路径词汇里没有对应命令；现在
+> `plugins/dsassets` 实现了 **SVG 椭圆弧 → 三次贝塞尔**的标准换算
+> （`arc.go` 的 F.6.5/F.6.6 + `shapes.go` 的圆/椭圆/圆角矩形），15 条素材全部可画。
 
 ### 缺失
 
@@ -316,8 +325,12 @@ CGO_ENABLED=0 go test ./plugins/dsassets/ ./plugins/dscomposer/ ./plugins/dsconv
 1. **没有真机截图对照**：本次验收只做了无头渲染（`dscomposer.TestSendIconStatesPixels`、
    `dsconversation.TestThumbIconStatesPixels` 会把 PNG 落到临时目录），没有和官方客户端
    同尺寸截图做像素 diff。任务的约束是"不启动任何 GUI/真机窗口"，所以这一项留空。
-2. **`composer-stop` 的偏差只有数值，没有视觉判据**：0.182 是解析出的几何距离，不是
-   屏幕上的像素差（2x DPI 下的实际像素差异未测）。
+2. ~~`composer-stop` 的偏差只有数值，没有视觉判据~~ **2026-11-19 已不再适用**：那条
+   0.182 说的是二次贝塞尔近似，已经不存在了。圆角现在走"四段四分之一椭圆弧 → 三次贝塞尔"
+   的标准换算，每段最大径向误差 **2.73e-4·r**（16px 下 0.0044px，理论上界；
+   `dsassets.TestCircleRadialErrorStaysUnderCriterion` /
+   `TestRoundedRectCornersAreExactWithinCriterion` / `TestBuiltIconsMeetCriterion` 钉住）。
+   仍然没做的是**屏幕像素 diff**。
 3. **`ask` / `deny` 两枚自造图标**没有官方对照，形状是否合适需要设计确认。
 4. **官方深浅两套主题下的图标是否都只用 `currentColor`**：这份清单核对的是形状；
    颜色一律由调用方给（本仓用主题令牌），没有逐一比对官方各主题的最终色值。

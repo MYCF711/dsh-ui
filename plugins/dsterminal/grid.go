@@ -230,24 +230,20 @@ func (p *Plugin) paintGrid(d *ui.DrawContext, env *pluginapi.Env, tabID string, 
 	p.handleTerminalSelectionPointer(env, canvas, geom)
 	sel := p.selectionView(tabID)
 
+	// 整屏默认底色先铺：这一步**必须排在滚回分支之前**——xterm 把
+	// `theme.background` 画满整个 viewport，历史行所在的窗口同样落在它上面，
+	// 提前 return 掉了就只剩面板自己的 bg-base（见 paintGridBase）。
+	def := grid.Default
+	p.paintGridBase(canvas, def, cols, rows, x0, y0, cellW, cellH)
+
 	if ydisp < scrollback {
 		if window := env.Act.TerminalScrollbackWindow(tabID, ydisp, rows); window != nil {
 			if windowRows := min(window.Height, rows); windowRows > 0 {
-				p.paintGridRows(canvas, window, grid.Default, 0, windowRows, cols, x0, y0, cellW, cellH, ydisp, sel)
+				p.paintGridRows(canvas, window, def, 0, windowRows, cols, x0, y0, cellW, cellH, ydisp, sel)
 				p.paintScrollbar(canvas, d.Rect, gutter, rows, scrollback+grid.Height, ydisp, cellH)
 				return
 			}
 		}
-	}
-	def := grid.Default
-	// 程序用 OSC 11 换了默认背景时，整屏底色就是它（xterm 把 `theme.background`
-	// 画满整个 viewport）。默认背景不铺的话，没显式底色的格子会露出面板自己的
-	// bg-base，与程序要的颜色差一层。
-	if def.Bg.Set {
-		canvas.Fill(gfx.Rect{
-			X: x0, Y: y0,
-			Width: float32(cols) * cellW, Height: float32(rows) * cellH,
-		}, gridColor(def.Bg))
 	}
 	p.paintGridRows(canvas, grid, def, 0, rows, cols, x0, y0, cellW, cellH, ydisp, sel)
 	p.paintGridCursor(canvas, grid, def, p.screenFocused(canvas), cols, rows, x0, y0, cellW, cellH)
@@ -302,9 +298,28 @@ func (p *Plugin) paintGridRows(canvas *gfx.Canvas, source *vterm.Grid, def vterm
 		p.paintGridBackground(canvas, source, def, offset+y, cols, x0, top, cellW, cellH)
 		// 选中态是**独立的底层**：官方 xterm 把选区画成一层面板（byte 80805 的
 		// `_selectionContainer`、byte 78634 的 CSS），盖在格子底色上、字形之下。
-		p.paintTerminalSelection(canvas, source, line, cols, x0, top, cellW, cellH, sel)
+		p.paintTerminalSelection(canvas, source, def, line, cols, x0, top, cellW, cellH, sel)
 		p.paintGridText(canvas, source, def, offset+y, line, cols, x0, top, cellW, cellH, sel)
 	}
+}
+
+// paintGridBase 铺整屏默认底色（当前屏与滚回窗口共用）。
+//
+// xterm 把 `theme.background` 画满整个 viewport：渲染器给每条 row element 设的就是
+// 这个背景色，所以**空的默认格也落在它上面**，不只是有字的格子。程序用 OSC 11
+// 换掉默认背景之后（`def.Bg.Set`），整屏就该是这个色；不铺的话，没显式底色的格子
+// 会露出面板自己的 bg-base，与程序要的颜色差一层。
+//
+// 没被 OSC 改过时不铺：面板自己的 bg-base 已经在那儿了，和 `theme.background`
+// 是同一个色（defaultColors 就是从主题取的），再铺一层是纯浪费。
+func (p *Plugin) paintGridBase(canvas *gfx.Canvas, def vterm.Defaults, cols, rows int, x0, y0, cellW, cellH float32) {
+	if canvas == nil || cols <= 0 || rows <= 0 || !def.Bg.Set {
+		return
+	}
+	canvas.Fill(gfx.Rect{
+		X: x0, Y: y0,
+		Width: float32(cols) * cellW, Height: float32(rows) * cellH,
+	}, gridColor(def.Bg))
 }
 
 // paintGridBackground 画一行的背景块：同色相邻格合并成一个矩形，
@@ -356,7 +371,7 @@ func (p *Plugin) paintGridBackground(canvas *gfx.Canvas, grid *vterm.Grid, def v
 //   - 宽字形的第二格（Width==0 的占位）**跳过**，否则全角后面会多出一格空白；
 //   - 相邻的半角同风格字合并成一个 run，长行不会碎成几十个 label。
 func (p *Plugin) paintGridText(canvas *gfx.Canvas, grid *vterm.Grid, def vterm.Defaults, row, line, cols int, x0, top, cellW, cellH float32, sel vterm.Selection) {
-	_, selText := terminalSelectionColors(p.theme)
+	_, selText := terminalSelectionColors(p.defaultColors(def))
 	var value strings.Builder
 	runs := make([]gfx.TextRun, 0, 16)
 	var current terminalCellPaint

@@ -117,9 +117,21 @@ func (p *Plugin) drawModelsGroup(f ui.C, env *pluginapi.Env, t *pluginapi.Theme,
 }
 
 func (p *Plugin) drawModelRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow, write WriteState) {
-	if write.Kind == WriteSaving && (strings.HasPrefix(row.ID, "retry-") || strings.HasPrefix(row.ID, modelsKeyRowPrefix)) {
-		row.Disabled = true
-		row.Reason = "保存中…"
+	// 提交中：官方 EditorFooter 把 Cancel 禁用、把 commit 的文案换成 `applying`
+	// （EditorFooter.tsx:52,63；ProviderEditor.tsx:681-683 传的是 'applying'）。
+	// 卡片里其它可写行同时停手，理由写在行上。
+	footer := strings.HasSuffix(row.ID, "-cancel") || strings.HasSuffix(row.ID, "-apply")
+	if write.Kind == WriteSaving {
+		switch {
+		case footer:
+			row.Disabled = true
+			if strings.HasSuffix(row.ID, "-apply") {
+				row.Title = zhEditorApplying
+			}
+		case strings.HasPrefix(row.ID, "retry-") || strings.HasPrefix(row.ID, modelsKeyRowPrefix):
+			row.Disabled = true
+			row.Reason = zhEditorApplying
+		}
 	}
 	switch {
 	case row.Kind == ItemSecret:
@@ -150,8 +162,47 @@ func (p *Plugin) drawModelRow(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, ro
 //
 // 输入本身是 `officialPanel.modelsKeyField`（Viva 的 ui.Field 必须常驻窗口线程，
 // 不能每帧新建），这里只把 label / placeholder / 显隐状态挂上去。
+//
+// # 已存密钥那一态（官方 `saved`，ApiKeyInput.tsx:15-19,34-49）
+//
+// 官方只在"有已存密钥 **且** 没有草稿"时传 `saved`（ProviderEditor.tsx:492-497），
+// 那一刻：
+//
+//	:34      根节点带 `.savedKeyInput`，所以占位色是 label-primary 而不是 weak；
+//	:41      placeholder = saved.masked（服务端掩码，明文永远不上线）；
+//	:42-43   onCopy / onCut 被 preventDefault；
+//	:44-49   Backspace / Delete 被 preventDefault，然后 `saved.clear()`。
+//
+// 本仓对应：`.savedKeyInput` 的占位色由我们自己画（见下面的 `ui.Text`，理由在
+// 那一段注释里）；Backspace/Delete 与 onCopy/onCut 在 Viva 里收不到（平台文本
+// 系统先消费，见下面的注释），所以"删已存密钥"接的是官方**另一半**判据
+// `onChange === ”`（ProviderEditor.tsx:507-509）。
 func (p *Plugin) drawModelSecretField(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, row PanelRow) {
 	o := p.ensureOfficial()
+	// 草稿必须在本函数（窗口线程）读，见 official_panel.go 的 modelsKeyField 注释。
+	draft := o.modelsKeyField.Text()
+	// 官方 `saved` 属性只在"有已存密钥 **且** 没有草稿"时传（ProviderEditor.tsx:492-497）：
+	// 一旦有草稿或删除待办，`saved` 整块不传，掩码占位与那两条拦截同时失效。
+	saved := row.Saved && draft == ""
+	// 「有草稿 → 清空」这一帧 = 官方 `onChange` 的 `''` 分支
+	// （ProviderEditor.tsx:507-509）：`event.target.value === '' && savedCredential`
+	// → `setKeyDraft({ ref })`，也就是"请求清除已存密钥"。
+	//
+	// 为什么走这条路而不是按键：Viva 里聚焦输入框后 Backspace/Delete 由**平台
+	// 文本系统**消费（app/driver.go:679-685 → textKey → `TextDeleteBackward`），
+	// 应用层的 `Box.OnKey` 根本收不到（ui/field.go:236-262 的处理器只在非编辑
+	// 路由下才被调用）。官方那两条 `onKeyDown`（ApiKeyInput.tsx:44-49）因此在
+	// 本仓无法照抄；官方自己的另一个入口——把已存密钥那一格的草稿删空——可以，
+	// 而且判据完全一样（`saved.clear()`）。
+	o.mu.Lock()
+	previousDraft := o.modelsKeyLastDraft
+	o.modelsKeyLastDraft = draft
+	o.mu.Unlock()
+	if draft == "" && previousDraft != "" && row.Saved && !row.Disabled {
+		// 只读（或已删）时官方连 `saved.clear` 都不给（ProviderEditor.tsx:495-496
+		// 的展开是按 `writable`），所以这里同样要求可写。
+		p.requestModelsKeyRemoval(env, row)
+	}
 	ui.Column(f).FillWidth().Gap(ModelsFieldGap).Children(func() {
 		// `.fieldLabel`（12/18/500 + gap 10），后面跟着官方那枚 `?` 帮助钮
 		// （`.helpButton`：16×16、0.5px border-l3、圆、11/15、label-tertiary）。
@@ -175,6 +226,20 @@ func (p *Plugin) drawModelSecretField(f ui.C, env *pluginapi.Env, t *pluginapi.T
 		if placeholder == "" {
 			placeholder = zhModelsKeyPlaceholder
 		}
+		// 掩码占位由我们自己画（官方 `.savedKeyInput .input::placeholder`
+		// = `var(--dsw-alias-label-primary)`，ModelsSection.module.css:847-850）。
+		// 为什么不能交给 Field：Viva 的占位色是写死的 `theme.MutedForeground`
+		// （components/input.go:224-231），`InputSnapshot` 没有给调用方的旋钮
+		// （:16-67），而 ui 层的 TextField 也没有占位色链（ui/field.go:96-129）。
+		// 所以这里把 Field 的 placeholder 留空、用一枚**没有 Hit 的** Text 画在
+		// 同一位置：不给 `Hit()` 的 Text 不注册命中区（ui/paint.go:102-115），
+		// 点击仍然落到下面的输入框上，不会把光标挡掉。
+		maskedPlaceholder := ""
+		if saved && row.SavedMask != "" {
+			// 官方 `placeholder={saved.masked}`：宿主没给预览时是空串，不画。
+			maskedPlaceholder = row.SavedMask
+			placeholder = ""
+		}
 		// 显隐钮是 `Absolute().Right/Top`（官方 `.keyToggle{position:absolute}`），
 		// 它按**容器的 padding box** 定位，所以必须挂在一个「只包住输入框」的容器里，
 		// 否则会跑到整个 field 块（label + 输入 + 说明）的右上角。
@@ -187,10 +252,19 @@ func (p *Plugin) drawModelSecretField(f ui.C, env *pluginapi.Env, t *pluginapi.T
 			if row.Disabled {
 				fieldBox.Opacity(0.6)
 			}
+			if maskedPlaceholder != "" {
+				mask := ui.Text(f, maskedPlaceholder).Absolute().Inset(ModelsCardBorder).
+					PadX(ModelsKeyPadX).FontSize(ModelsRowNameSize).LineHeight(ModelsRowNameLine).
+					Color(t.LabelPrimary)
+				if row.Disabled {
+					// 输入框自己被压到 0.6（见上面 fieldBox.Opacity），掩码同一档。
+					mask.Opacity(0.6)
+				}
+			}
 			// 显隐钮：官方 `keyToggle` 只在**草稿非空**时可点（ApiKeyInput.tsx:31 的
 			// `canReveal = saved === undefined && value.length > 0 && !disabled`）。
 			// 这里的草稿就是 ui.Field 自己的文本；读它必须发生在窗口线程（本函数就是）。
-			if draft := o.modelsKeyField.Text(); draft != "" && !row.Disabled {
+			if draft != "" && !row.Disabled {
 				label := zhModelsKeyHide
 				if o.modelsKeyField.Secure {
 					label = zhModelsKeyReveal
@@ -207,15 +281,24 @@ func (p *Plugin) drawModelSecretField(f ui.C, env *pluginapi.Env, t *pluginapi.T
 				}
 			}
 		})
-		if row.Desc != "" {
+		// 说明行：官方三档（ProviderEditor.tsx:446-459）里有一档要看**草稿**，
+		// 而草稿只在窗口线程读得到，所以投影层给不出它——在这里补：
+		// `keyText.length > 0 && savedCredential` → 「保存以替换已保存的 API key。」，
+		// 语气取 `.advancedHint`（tertiary；官方那一行的 className 三元里
+		// `keyText.length > 0` 落在 advancedHint 分支，:513）。
+		desc, tone := row.Desc, row.Tone
+		if draft != "" && row.Saved && !row.Disabled {
+			desc, tone = zhModelsKeyReplacePending, panelToneOf(modelsKeyHintMuted)
+		}
+		if desc != "" {
 			color := t.LabelTertiary
-			switch row.Tone {
+			switch tone {
 			case PanelToneWarn:
 				color = t.Warn
 			case PanelToneSuccess:
 				color = t.Success
 			}
-			ui.Text(f, row.Desc).FontSize(ModelsRowTagSize).LineHeight(ModelsRowTagLine).Color(color)
+			ui.Text(f, desc).FontSize(ModelsRowTagSize).LineHeight(ModelsRowTagLine).Color(color)
 		}
 		if row.Reason != "" {
 			// Reason 这里只有「只读」与「保存中…」两种（校验失败走页级 WriteState 那行），
@@ -421,7 +504,38 @@ func (p *Plugin) discardModelsKeyDraft() {
 	o := p.ensureOfficial()
 	o.mu.Lock()
 	o.modelsKeyClearPending = true
+	// 换卡/关卡/写完都把"上一帧草稿"归零：否则清空动作会被下一次开卡的那一帧
+	// 误判成"用户刚刚删空了草稿"（见 drawModelSecretField 的注释）。
+	o.modelsKeyLastDraft = ""
 	o.mu.Unlock()
+}
+
+// requestModelsKeyRemoval 记下"清除已存密钥"的待办。
+//
+// 官方入口是 ApiKeyInput.tsx:44-49：已存密钥那一态里按 Backspace/Delete，
+// `preventDefault()` 之后调 `saved.clear()`，而 clear 是
+// `setKeyDraft({ ref: detected[0] })`（ProviderEditor.tsx:496）——**只翻状态**，
+// 不立刻发请求。真正删除在 Apply 里（:350-356），因为删掉的密钥撤不回来。
+//
+// row.ID 是 `key-<route>`（modelsKeyRowPrefix），route 用来确认还是那张开着的卡：
+// 用户可能在按键与重绘之间切了卡，这时不能把删除记到新卡上。
+func (p *Plugin) requestModelsKeyRemoval(env *pluginapi.Env, row PanelRow) {
+	provider := strings.TrimPrefix(row.ID, modelsKeyRowPrefix)
+	o := p.ensureOfficial()
+	o.mu.Lock()
+	edit := o.modelsEdit
+	changed := false
+	if edit != nil && edit.route == provider && !edit.keyRemovalApplied && edit.credentialRef != "" {
+		edit.requestKeyRemoval()
+		changed = true
+	}
+	o.mu.Unlock()
+	if !changed {
+		return
+	}
+	if env != nil && env.Act.Invalidate != nil {
+		env.Act.Invalidate()
+	}
 }
 
 // flushModelsKeyField 在绘制帧开头把待清空的草稿清掉（窗口线程）。
@@ -442,15 +556,23 @@ func (p *Plugin) applyModelsRetry() WriteState { return p.applyModelsEditor("") 
 
 // applyModelsEditor 是这张 provider 卡唯一的 Apply 出口。
 //
-// 官方顺序（ProviderEditor.tsx:326-382）照抄：**先 settings.mutate，再 storeCredential**。
-// 理由在官方注释里：密钥删掉是撤不回的，所以它排在设置写**之后**；而设置写失败时
-// 密钥根本不该落库。两笔都成功才关卡。
+// 官方顺序（ProviderEditor.tsx:326-382）照抄，三段不是同一个次序：
+//
+//	:350-356  先 removeCredential（删已存密钥）
+//	:358-365  再 settings.mutate（写设置文档）
+//	:366-369  最后 storeCredential（写新密钥）
+//
+// 为什么删排在最前：删掉的密钥**撤不回来**。设置写失败还能重试，密钥不会自己回来，
+// 所以官方先删、删成功就地记成 `removed:true`（:354），之后设置写失败时卡片不关、
+// Cancel 变 close、说明改成「密钥已清除，请重试保存以完成配置更新；此删除无法撤销」。
+// 写则相反：设置写失败时新密钥**根本不该落库**，所以它排在最后。
 func (p *Plugin) applyModelsEditor(keyText string) WriteState {
 	o := p.ensureOfficial()
 	o.mu.Lock()
 	edit := o.modelsEdit.clone()
 	writer := o.writer
 	setKey := o.credentialSet
+	unsetKey := o.credentialUnset
 	o.mu.Unlock()
 	if edit == nil {
 		state := WriteState{Kind: WriteInvalid, Code: apiclient.SettingsCodeBadRequest, Message: "重试策略编辑卡已关闭"}
@@ -479,6 +601,30 @@ func (p *Plugin) applyModelsEditor(keyText string) WriteState {
 		p.setWriteState(state)
 		return state
 	}
+	// ① 删除已存密钥（官方 :350-356）。nil = 壳没接这条能力：如实说，不许静默成功。
+	if edit.keyRemovalRef != "" && !edit.keyRemovalApplied {
+		if unsetKey == nil {
+			state := WriteState{Kind: WriteFailed, NS: credentialNS, Path: []string{edit.keyRemovalRef},
+				Message: "壳未接 credentials.unset：已保存的密钥不能在界面上删除"}
+			p.setWriteState(state)
+			return state
+		}
+		if err := unsetKey(edit.keyRemovalRef); err != nil {
+			state := ClassifyWriteError(credentialNS, []string{edit.keyRemovalRef}, err)
+			p.setWriteState(state)
+			return state
+		}
+		// 删除已落库：就地记成"已删"（官方 `setKeyDraft({...removed:true})`）。
+		// 这一步之后卡片即使留着也不会再发第二次 unset，且 footer 的 dismiss
+		// 文案变成「关闭」（ProviderEditor.tsx:683）。
+		edit.keyRemovalApplied = true
+		o.mu.Lock()
+		if o.modelsEdit != nil && o.modelsEdit.generation == edit.generation {
+			o.modelsEdit.keyRemovalRef = edit.keyRemovalRef
+			o.modelsEdit.keyRemovalApplied = true
+		}
+		o.mu.Unlock()
+	}
 	ops := edit.ops()
 	written := WriteState{Kind: WriteIdle}
 	if len(ops) == 0 && keyValue == "" {
@@ -487,7 +633,12 @@ func (p *Plugin) applyModelsEditor(keyText string) WriteState {
 			o.modelsEdit = nil
 		}
 		o.mu.Unlock()
+		// 什么都没改是 idle；只删了密钥则是"真的写成功了一笔"（官方 :367 走
+		// `onClose(true)`，卡片按已应用关闭），结果挂在凭据域上。
 		state := WriteState{Kind: WriteIdle}
+		if edit.keyRemovalApplied {
+			state = WriteState{Kind: WriteSaved, NS: credentialNS, Path: []string{edit.keyRemovalRef}}
+		}
 		p.setWriteState(state)
 		return state
 	}

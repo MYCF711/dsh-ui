@@ -17,6 +17,21 @@ import (
 
 const modelsIntro = "填入各提供商的 API 密钥即可使用其模型。"
 
+// 官方 EditorFooter 的四句文案（逐字，锚点 rc.2 随包 src 的 locales.ts）：
+//
+//	cancel   '取消'（locales.ts:208）  apply   '保存'（:209）
+//	close    '关闭'（:207）            applying '保存中…'（:210）
+//
+// `close` 不是另一颗按钮：密钥删掉之后官方把 dismiss 的 label 换成它
+// （ProviderEditor.tsx:683 的 `cancelLabelKey`），`applying` 则是 commit 在提交中
+// 的文案（EditorFooter.tsx:63 的 `submitBusyLabelKey`）。
+const (
+	zhEditorCancel   = "取消"
+	zhEditorClose    = "关闭"
+	zhEditorApply    = "保存"
+	zhEditorApplying = "保存中…"
+)
+
 // ModelsProvider 是目录 join 后的一行。Active 与 Configured 是两个事实，不能合并。
 type ModelsProvider struct {
 	Provider        string
@@ -259,11 +274,12 @@ func buildModelsPage(panel PanelSection, describe *apiclient.SettingsDescribeRes
 		if edit != nil && edit.route == provider.Provider {
 			// 官方卡片顺序：密钥字段（ApiKeyInput）→ 自定义设置折叠区 → EditorFooter。
 			// 本页折叠区里的可写面只有 retryPolicy 草稿，所以密钥行排在最前。
-			if keyRow, ok := modelsKeyRow(provider, edit.writable); ok {
+			if keyRow, ok := modelsKeyRow(provider, edit.writable, edit.keyRemovalState()); ok {
 				rows = append(rows, keyRow)
 			}
 			rows = append(rows, edit.rows()...)
-			rows = append(rows, retryFooterRows(provider.Provider, edit.writable)...)
+			rows = append(rows, retryFooterRows(provider.Provider, edit.writable,
+				edit.keyRemovalState() == modelsKeyRemovalApplied)...)
 		}
 		panel.Rows = append(panel.Rows, rows...)
 		panel.Groups = append(panel.Groups, PanelGroup{Title: provider.DisplayName, Rows: rows})
@@ -410,15 +426,31 @@ func appendPanelChoice(choices []PanelChoice, choice PanelChoice) []PanelChoice 
 	return append(choices, choice)
 }
 
-func retryFooterRows(route string, writable bool) []PanelRow {
+// retryFooterRows 是官方 EditorFooter（`OFF:EditorFooter.tsx:45-67`）的一行投影：
+// 左边 dismiss、右边 commit。
+//
+// 两处文案切换都照官方：
+//   - dismiss 的 label 来自 `cancelLabelKey`，密钥删掉之后官方传 'close'
+//     （ProviderEditor.tsx:683），所以是「关闭」而不是「取消」；
+//   - commit 的 label 在 busy 时换成 `submitBusyLabelKey`（EditorFooter.tsx:63 →
+//     默认 'applying'，ProviderEditor.tsx:682），中文是「保存中…」（locales.ts:210）。
+//     busy 是本帧的写状态，所以在绘制层换（`drawModelRow`），不钉进行里。
+//
+// busy 时 Cancel 也被禁用（EditorFooter.tsx:52 `disabled={props.busy}`），但**只**
+// 因为忙碌——官方注释特意写明：卡片不可写也必须能关掉（:10-11）。
+func retryFooterRows(route string, writable bool, keyRemoved bool) []PanelRow {
 	reason := ""
 	if !writable {
 		reason = "只读：llm 命名空间未开放写入"
 	}
+	cancelLabel := zhEditorCancel
+	if keyRemoved {
+		cancelLabel = zhEditorClose
+	}
 	return []PanelRow{
-		{ID: "retry-" + route + "-cancel", Title: "取消", Kind: ItemButton,
+		{ID: "retry-" + route + "-cancel", Title: cancelLabel, Kind: ItemButton,
 			NS: apiclient.SettingsNSLLM, Path: []string{"providers", route, "retryPolicy"}},
-		{ID: "retry-" + route + "-apply", Title: "保存", Kind: ItemButton,
+		{ID: "retry-" + route + "-apply", Title: zhEditorApply, Kind: ItemButton,
 			NS: apiclient.SettingsNSLLM, Path: []string{"providers", route, "retryPolicy"}, Disabled: !writable, Reason: reason},
 	}
 }

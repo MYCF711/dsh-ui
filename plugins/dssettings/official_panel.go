@@ -68,12 +68,20 @@ type officialPanel struct {
 	// 为什么单独一路而不是塞进 SettingsWriter：凭据与设置文档是**两个库、两套拒绝
 	// 语义**（设置只读时凭据仍可写），官方也是两条 Remote 命名空间。
 	credentialSet func(ref, value string) error
+	// credentialUnset 是壳的 `credentials.unset`（官方 `operations.removeCredential`，
+	// `OFF:operations.ts:82-85`）。nil = 壳没接 → 删除这一步报"壳未接"，
+	// **不**把删除静默当成成功（那会让用户以为密钥没了，其实还在库里）。
+	credentialUnset func(ref string) error
 	// modelsKeyClearPending 表示"这次 Apply 已经把密钥写进凭据库了，下一个窗口
 	// 线程帧把输入框清空"。
 	//
 	// 为什么不在写成功的 goroutine 里清：Viva 的 ui.Field 只能在窗口线程读写
 	// （`ui/field.go` 的 Field 注释），跨线程 SetText 是数据竞争。
 	modelsKeyClearPending bool
+	// modelsKeyLastDraft 是上一绘制帧读到的草稿，用来判"这一帧被清空了"——
+	// 官方 `onChange` 的 `''` 分支（ProviderEditor.tsx:507-509）就是"草稿变空
+	// 且已有本地存储密钥 → 请求清除"。只在绘制线程与加锁路径读写。
+	modelsKeyLastDraft string
 
 	// rows 是当前 section 的可点行（键盘光标用）。
 	rows   []PanelRow
@@ -365,6 +373,8 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	// 凭据域是**独立**的一路能力（官方 `remote.credentials` 与 `remote.settings`
 	// 两条命名空间）：设置写接上了不代表凭据也能写，所以单独判 nil。
 	credentialSet := env.Act.CredentialSet
+	// 删与写各判一次 nil：宿主可以只实现一半（见 Actions.CredentialUnset）。
+	credentialUnset := env.Act.CredentialUnset
 	// 内置插件页的数据面是**另一条**宿主能力（官方 `pluginInventory.list`），
 	// 与 describe 各自独立：describe 在、清单没接时，那一页显示"未知·宿主未接"。
 	if env.Act.PluginInventory != nil {
@@ -411,6 +421,7 @@ func (p *Plugin) syncPanel(env *pluginapi.Env) {
 	o.facts = facts
 	o.writer = writer
 	o.credentialSet = credentialSet
+	o.credentialUnset = credentialUnset
 	o.roster = roster
 	o.agentPresetRefresh = refresh
 	o.hasSource = hasSource

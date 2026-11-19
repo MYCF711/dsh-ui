@@ -1571,6 +1571,15 @@
       "req_note": "官方 rc.2 credentials.set（HOST:internal/transport/handlers_settings_official.go:577-624；官方行号在文件头 L186）。ref 同一道 grammar guard；value 是明文密钥，官方 min(1) 且宿主额外拒绝纯空白/首尾空白/含 NUL（既有存储会 trim 后当作删除）。错误串只提 ref、**绝不回显 value**。",
       "resp_note": "官方结果是 void；宿主成功信封是 {}（不含 null）。写完后客户端必须自己再 credentials.describe 一次才知道'是否已配置'——set 不回值。"
     },
+    "credentials.unset": {
+      "batch": 16,
+      "req": {
+        "ref": "string"
+      },
+      "resp": {},
+      "req_note": "官方 rc.2 credentials.unset（OFF:dsh-client-ui-settings-models/src/client/operations.ts:82-85 的 removeCredential；HOST:internal/transport/handlers_settings_official.go:625-651）。ref 必填且走同一道 grammar guard（^[A-Za-z_][A-Za-z0-9_]*$，≤64）。语义是**幂等**：删一个本来就没有的 ref 也成功；删的是本地凭据库那一层，环境变量 / dotenv 层不受影响，所以删完必须再 credentials.describe 一次才知道'现在还有没有'。宿主没挂凭据后端回 501 not_implemented。",
+      "resp_note": "官方结果是 void；宿主成功信封是 {}（不含 null）。官方在 Apply 里把这一步排在设置写**之前**（OFF:ProviderEditor.tsx:350-356）：删掉的密钥撤不回来，设置写失败可重试。"
+    },
     "workspaceFiles.readBytes": {
       "batch": 17,
       "req": {
@@ -2155,7 +2164,7 @@
     }
   },
   "counts": {
-    "total": 129,
+    "total": 130,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2171,7 +2180,7 @@
     "batch13": 4,
     "batch14": 3,
     "batch15": 2,
-    "batch16": 3,
+    "batch16": 4,
     "batch17": 1,
     "batch18": 1,
     "batch19": 5,

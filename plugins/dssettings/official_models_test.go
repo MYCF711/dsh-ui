@@ -158,7 +158,7 @@ func TestRetryPolicyCancelAndConflictKeepTruth(t *testing.T) {
 	if err := edit.change(edit.rows()[1]); err != nil {
 		t.Fatal(err)
 	}
-	plugin.activateModelsRow(retryFooterRows("deepseek", true)[0])
+	plugin.activateModelsRow(retryFooterRows("deepseek", true, false)[0])
 	if official.modelsEdit != nil || len(writer.mutateCalls) != 0 {
 		t.Fatal("Cancel 必须丢弃草稿且不发写")
 	}

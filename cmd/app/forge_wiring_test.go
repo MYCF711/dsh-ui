@@ -12,10 +12,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 )
@@ -33,6 +36,11 @@ type forgeHost struct {
 	failRequest bool
 	// notRepo 让 branches 回 400 not_a_repository。
 	notRepo bool
+
+	// followFeed 是 `forgePanel.follow` 的帧来源；nil = 一帧都不发、挂到客户端断开。
+	followFeed chan string
+	// followStarted 在 follow 请求真的到达时关闭（测试据此再推帧）。
+	followStarted chan struct{}
 }
 
 func (h *forgeHost) body(path string) map[string]any {
@@ -114,6 +122,42 @@ func newForgeHost(t *testing.T) (*forgeHost, *httptest.Server) {
 			_, _ = w.Write([]byte(`{}`))
 		case "/api/forgePanel.cancelWorktree":
 			_, _ = w.Write([]byte(`{}`))
+		case "/api/forgePanel.stopCreation":
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/forgePanel.follow":
+			// 官方 follow：NDJSON，一行一个完整 ForgePanelState。
+			w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			flusher, _ := w.(http.Flusher)
+			if host.followStarted != nil {
+				host.mu.Lock()
+				select {
+				case <-host.followStarted:
+				default:
+					close(host.followStarted)
+				}
+				host.mu.Unlock()
+			}
+			if host.followFeed == nil {
+				// 不推帧的用例：写完头就结束。客户端会按 `forgeFollowRetry` 重连，
+				// 但 handler 立刻返回——**不能**在这里挂住，否则 `httptest.Server.Close`
+				// 会一直等这条活跃请求，测试收尾就死了。
+				return
+			}
+			for {
+				select {
+				case frame, ok := <-host.followFeed:
+					if !ok {
+						return
+					}
+					_, _ = fmt.Fprintln(w, frame)
+					if flusher != nil {
+						flusher.Flush()
+					}
+				case <-r.Context().Done():
+					return
+				}
+			}
 		default:
 			t.Errorf("意外路径：%s", r.URL.Path)
 			http.NotFound(w, r)
@@ -319,3 +363,101 @@ const (
 	apiclientCheckoutReady   = "ready"
 	apiclientCheckoutNone    = "none"
 )
+
+// forgePanelFrame 拼一帧官方 `ForgePanelState`（七键齐全，worktree 九键齐全）。
+//
+// 形状逐字照 `OFF:…/lib/typert.host.js:1941-1946`：少一个可空键就是契约违规，
+// 所以这里连 `waiting` 都显式给 null。
+func forgePanelFrame(editable bool, blocker, creation, waiting string) string {
+	return `{"directory":"/repo","checkout":{"state":"none"},"repository":null,"readiness":null,` +
+		`"changeRequests":[],"local":null,` +
+		`"worktree":{"editable":` + strconv.FormatBool(editable) + `,"blocker":` + blocker + `,` +
+		`"request":null,"created":null,"creation":` + creation + `,` +
+		`"failure":null,"missing":null,"restoration":null,"waiting":` + waiting + `}}`
+}
+
+// TestForgeFollowDrivesEditableAndCreation 钉住**值不是常量**：
+//
+//	`worktree.editable` 与 `worktree.creation` 只能来自 `forgePanel.follow` 的帧；
+//	推一帧 editable=true、再推一帧 creation=prepare、再推一帧 creation=checkout，
+//	壳里的数据面必须逐帧跟着变（写死、只读一次、读错字段都会红）。
+func TestForgeFollowDrivesEditableAndCreation(t *testing.T) {
+	host, srv := newForgeHost(t)
+	host.followFeed = make(chan string, 8)
+	host.followStarted = make(chan struct{})
+	// 收尾先关帧源：follow 的 handler 才会返回，`srv.Close` 才不用等活跃请求。
+	t.Cleanup(func() { close(host.followFeed) })
+	m := newForgeModel(t, host, srv)
+	m.forgeFor() // 起会话：这会同时起 follow 订阅
+	select {
+	case <-host.followStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("follow 没有订阅（那样 worktree.editable / creation 就没有读出口）")
+	}
+
+	host.followFeed <- forgePanelFrame(true, `"read-only"`, "null", "null")
+	waitUntil(t, "首帧落地", func() bool {
+		v := m.forgeFor()
+		return v != nil && v.Worktree.PanelKnown
+	})
+	view := m.forgeFor()
+	if !view.Worktree.Editable {
+		t.Fatal("首帧 editable=true 没落地")
+	}
+	if view.Worktree.Blocker != "read-only" {
+		t.Fatalf("首帧 blocker = %q", view.Worktree.Blocker)
+	}
+	if view.Worktree.Creation != nil {
+		t.Fatalf("首帧没有创建，Creation 必须是 nil：%+v", view.Worktree.Creation)
+	}
+
+	host.followFeed <- forgePanelFrame(false, "null",
+		`{"phase":"prepare","branch":"dsh/feat","from":"main","held":true}`, `"creation"`)
+	waitUntil(t, "creation=prepare 落地", func() bool {
+		v := m.forgeFor()
+		return v != nil && v.Worktree.Creation != nil
+	})
+	creation := m.forgeFor().Worktree.Creation
+	if creation.Phase != "prepare" || !creation.Held || creation.Branch != "dsh/feat" ||
+		creation.From == nil || *creation.From != "main" {
+		t.Fatalf("prepare 帧的 creation = %+v", creation)
+	}
+	if m.forgeFor().Worktree.Editable {
+		t.Fatal("creation 在跑时 editable 应当已经是 false")
+	}
+
+	host.followFeed <- forgePanelFrame(false, "null",
+		`{"phase":"checkout","branch":"dsh/feat","from":null,"held":true}`, `"creation"`)
+	waitUntil(t, "creation=checkout 落地", func() bool {
+		v := m.forgeFor()
+		return v != nil && v.Worktree.Creation != nil && v.Worktree.Creation.Phase == "checkout"
+	})
+	if from := m.forgeFor().Worktree.Creation.From; from != nil {
+		t.Fatalf("from:null 必须解成 nil（基于 HEAD），实得 %q", *from)
+	}
+
+	// 创建结束：editable 仍旧 false（已经建过一次），creation 清空。
+	host.followFeed <- forgePanelFrame(false, "null", "null", "null")
+	waitUntil(t, "创建结束", func() bool {
+		v := m.forgeFor()
+		return v != nil && v.Worktree.Creation == nil
+	})
+	if m.forgeFor().Worktree.PanelKnown != true {
+		t.Fatal("PanelKnown 应当保持为真")
+	}
+}
+
+// TestForgeStopCreationSendsOfficialMethod：进度卡上的「取消」走 `stopCreation`
+// （官方 `WorktreeProgress.tsx:176-180` 的动作面），不是 cancelWorktree。
+func TestForgeStopCreationSendsOfficialMethod(t *testing.T) {
+	host, srv := newForgeHost(t)
+	m := newForgeModel(t, host, srv)
+	waitUntil(t, "会话就绪", func() bool { return m.forgeFor() != nil })
+	m.forgeStopCreationAction()
+	waitUntil(t, "stopCreation 发出", func() bool {
+		return host.count("/api/forgePanel.stopCreation") == 1
+	})
+	if host.count("/api/forgePanel.cancelWorktree") != 0 {
+		t.Fatal("停创建不许走 cancelWorktree（官方是两条不同动作）")
+	}
+}

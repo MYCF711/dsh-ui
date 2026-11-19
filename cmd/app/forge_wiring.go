@@ -9,10 +9,14 @@
 //	本分支提交                      ← forgePanel.localCommits  HOST:serve_forge_rc2.go:257
 //	工作树请求                      ← forgePanel.requestWorktree / cancelWorktree
 //	                                 HOST:cmd/dshd/serve_worktree_api.go:173
+//	工作树可编辑/挡板/创建进度      ← forgePanel.follow 的 ForgePanelState
+//	                                 HOST:cmd/dshd/serve_forge_state.go:239-300（dsh-go#84）
 //
-// **没有的**：`follow` 的 `ForgePanelState`（宿主流的是绑定清单帧）、
-// `worktree.creation/created/missing/restoration/editable`。所以 WorktreeProgress /
-// MissingCard 那两张卡整块不画（gap G6，见 ../DSH-GO/docs/transport-contract.md）。
+// 宿主自 dsh-go#84 起 `forgePanel.follow` 按官方形状发**整帧 ForgePanelState**
+// （每行一帧），所以 `worktree.editable` / `blocker` / `creation` 有真读出口，
+// 挡板与创建进度两张卡因此能画（见 `plugins/dsforge/hero.go` 与 `progress.go`）。
+// 仍未消费的：`created` / `missing` / `restoration` / `failure` / `waiting`
+// （MissingCard 与失败/恢复态整块不画，登记在账本 #64 行）。
 //
 // # 缓存与线程
 //
@@ -85,6 +89,12 @@ type forgeState struct {
 	// 本地摘要（`changes.local` 卡片）只认它：读到过且 0 个文件 = 真的没有改动。
 	branchRead bool
 
+	// followCancel 停掉当前会话的 `forgePanel.follow` 订阅（换会话时调）。
+	// 每个会话只有一条流；它把整帧官方 ForgePanelState 折进 worktree 那三格。
+	followCancel context.CancelFunc
+	// followStarted 表示这条会话的 follow 订阅已经起过（不重复起）。
+	followStarted bool
+
 	// cleanup 是归档清理的最近一次读取（官方结果允许 null）。
 	cleanup *apiclient.ForgeWorktreeCleanup
 }
@@ -104,17 +114,23 @@ func (m *model) forgeFor() *pluginapi.ForgeView {
 		return nil
 	}
 	if m.forge.session != cur {
-		// 换会话：整份作废（不把上一个会话的 diff 画到这一个里）。
+		// 换会话：整份作废（不把上一个会话的 diff 画到这一个里），并停掉旧会话的
+		// follow 流——否则上一个会话的状态帧会继续往这份缓存里写。
+		oldCancel := m.forge.followCancel
+		generation := m.forge.generation + 1
 		m.forge = forgeState{
 			session:    cur,
-			generation: m.forge.generation + 1,
+			generation: generation,
 			scope:      apiclient.ForgeScopeBranch,
 			checkout:   pluginapi.ForgeCheckout{Kind: pluginapi.ForgeCheckoutPending},
 		}
 		m.forge.diff = pluginapi.ForgeDiff{SessionID: cur, Scope: apiclient.ForgeScopeBranch}
-		start := m.forge.generation
 		m.mu.Unlock()
-		m.forgeRefresh(cur, start, "")
+		if oldCancel != nil {
+			oldCancel()
+		}
+		m.forgeRefresh(cur, generation, "")
+		go m.forgeFollow(cur, generation)
 		return m.forgeViewLocked(cur)
 	}
 	start := m.forge.generation
@@ -168,6 +184,115 @@ func forgeLocalSummary(diff pluginapi.ForgeDiff, branchRead bool) pluginapi.Forg
 		out.Deletions += f.Deletions
 	}
 	return out
+}
+
+// ── 面板状态流（`forgePanel.follow`）─────────────────────────────────────
+
+// forgeFollowRetry 是 follow 断线后的重连间隔。
+//
+// 宿主的 follow 是长连接（NDJSON 不关），断了只有两种可能：宿主重启 / 连接被
+// 掐断。两种情况都该重连，但不能空转，所以按固定间隔；会话换掉或壳退出时
+// ctx 取消，立刻返回。
+const forgeFollowRetry = 2 * time.Second
+
+// forgeFollow 订阅一个会话的官方 `ForgePanelState` 流，把每一帧折进界面态。
+//
+// 这是 `worktree.editable` / `blocker` / `creation` 的**唯一读出口**
+// （HOST:cmd/dshd/serve_forge_state.go:239-300 的 `forgePanelHost.state`）。
+// 每来一帧就叫一次 Invalidate：勾选框的挡板与创建进度卡下一帧即更新。
+func (m *model) forgeFollow(sessionID string, generation int) {
+	if m.cli == nil || sessionID == "" {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	m.mu.Lock()
+	if m.forge.session != sessionID || m.forge.generation != generation || m.forge.followStarted {
+		m.mu.Unlock()
+		return
+	}
+	m.forge.followCancel = cancel
+	m.forge.followStarted = true
+	m.mu.Unlock()
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		// 返回值只有"流结束/出错"两种；两种情况都按断线处理并重连（帧内容已经
+		// 在回调里落地了）。第一帧是宿主的当前完整状态，所以断开前一定收到过值。
+		err := m.cli.ForgePanelFollow(ctx, sessionID, func(state apiclient.ForgePanelState) error {
+			m.applyForgePanel(sessionID, generation, state)
+			return nil
+		})
+		if ctx.Err() != nil {
+			return
+		}
+		if forgeFollowFatal(err) {
+			// 老宿主没有这条流（not_implemented）/ 参数错：重连也不会好。
+			// 停下来，界面按 `PanelKnown == false` 退回弱判据，不刷屏重试。
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(forgeFollowRetry):
+		}
+	}
+}
+
+// forgeFollowFatal 报告"重连也不会好"的错误：宿主没接这条流（not_implemented）
+// 或参数错（bad_request）。
+func forgeFollowFatal(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *apiclient.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.Code == "not_implemented" || apiErr.Code == "bad_request"
+}
+
+// applyForgePanel 把一帧官方状态折进缓存（会话/世代对不上就丢掉）。
+func (m *model) applyForgePanel(sessionID string, generation int, state apiclient.ForgePanelState) {
+	m.mu.Lock()
+	if m.forge.session != sessionID || m.forge.generation != generation {
+		m.mu.Unlock()
+		return
+	}
+	forgeWorktreePanel(state, &m.forge.worktree)
+	m.mu.Unlock()
+	m.inv.Invalidate()
+}
+
+// forgeWorktreePanel 把官方 `ForgePanelState` 的工作树三格折进界面态。
+//
+// 纯函数（不碰 model），所以"值不是常量"可以被单测直接钉住：
+// 同一份 state 换成 `editable=false` / 换一个 creation.phase，输出必须跟着变。
+func forgeWorktreePanel(state apiclient.ForgePanelState, out *pluginapi.ForgeWorktree) {
+	if out == nil {
+		return
+	}
+	out.PanelKnown = true
+	out.Editable = state.Worktree.Editable
+	out.Blocker = ""
+	if state.Worktree.Blocker != nil {
+		out.Blocker = *state.Worktree.Blocker
+	}
+	out.Creation = nil
+	if creation := state.Worktree.Creation; creation != nil {
+		view := pluginapi.ForgeWorktreeCreation{
+			Phase:  creation.Phase,
+			Branch: creation.Branch,
+			Held:   creation.Held,
+		}
+		if creation.From != nil {
+			from := *creation.From
+			view.From = &from
+		}
+		out.Creation = &view
+	}
 }
 
 // ── 后台读 ───────────────────────────────────────────────────────────────
@@ -582,6 +707,44 @@ func (m *model) forgeCancelWorktreeAction() {
 		m.inv.Invalidate()
 		if err != nil {
 			m.setStatus("撤回工作树请求失败: " + forgeErrText(err))
+		}
+	}()
+}
+
+// forgeStopCreationAction 停掉一条消息正在等的那次创建（官方 `stopCreation`）。
+//
+// 与 cancel 不同：请求仍然开着、消息继续等（官方注释原文 "the message keeps
+// waiting"），所以这里**不动** Requested，只把在飞标记立起来并在回包后清掉。
+func (m *model) forgeStopCreationAction() {
+	m.mu.Lock()
+	sessionID := m.forge.session
+	if sessionID == "" || sessionID != m.cur || m.cli == nil {
+		m.mu.Unlock()
+		return
+	}
+	m.forge.worktree.Pending = true
+	m.mu.Unlock()
+	m.inv.Invalidate()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), forgeActionTimeout)
+		defer cancel()
+		err := m.cli.ForgeStopCreation(ctx, sessionID)
+		m.mu.Lock()
+		if m.forge.session != sessionID {
+			m.mu.Unlock()
+			return
+		}
+		m.forge.worktree.Pending = false
+		if err != nil {
+			m.forge.worktree.Err = forgeErrText(err)
+		} else {
+			m.forge.worktree.Err = ""
+		}
+		m.mu.Unlock()
+		m.inv.Invalidate()
+		if err != nil {
+			m.setStatus("停止创建工作树失败: " + forgeErrText(err))
 		}
 	}()
 }

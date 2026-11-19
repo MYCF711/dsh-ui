@@ -36,13 +36,14 @@ type (
 	// 官方 workspace registry 的一条工作区（#62）。
 	Workspace = pub.Workspace
 	// forge 面板 A 档的数据面与动作（#64a，pluginapi/forge.go）。
-	ForgeView         = pub.ForgeView
-	ForgeCheckout     = pub.ForgeCheckout
-	ForgeWorktree     = pub.ForgeWorktree
-	ForgeLocalSummary = pub.ForgeLocalSummary
-	ForgeDiff         = pub.ForgeDiff
-	ForgeCommit       = pub.ForgeCommit
-	ForgeActions      = pub.ForgeActions
+	ForgeView             = pub.ForgeView
+	ForgeCheckout         = pub.ForgeCheckout
+	ForgeWorktree         = pub.ForgeWorktree
+	ForgeWorktreeCreation = pub.ForgeWorktreeCreation
+	ForgeLocalSummary     = pub.ForgeLocalSummary
+	ForgeDiff             = pub.ForgeDiff
+	ForgeCommit           = pub.ForgeCommit
+	ForgeActions          = pub.ForgeActions
 	// Cordis 面板的只读数据面（#12，pluginapi/cordis.go）。
 	//
 	// 为什么必须在这里转发：壳（`cmd/app/cordis_wiring.go`）与插件
@@ -253,4 +254,12 @@ const (
 	ForgeCheckoutNone    = pub.ForgeCheckoutNone
 	ForgeCheckoutFailed  = pub.ForgeCheckoutFailed
 	ForgeCheckoutReady   = pub.ForgeCheckoutReady
+
+	// 官方 `ForgeWorktreeBlocker` 三值 + `ForgeWorktreeCreation.phase` 两值
+	// （pluginapi/forge.go 的转发，壳与插件各 import 一个路径）。
+	ForgeWorktreeBlockerNotGit              = pub.ForgeWorktreeBlockerNotGit
+	ForgeWorktreeBlockerOutsideWritableRoot = pub.ForgeWorktreeBlockerOutsideWritableRoot
+	ForgeWorktreeBlockerReadOnly            = pub.ForgeWorktreeBlockerReadOnly
+	ForgeCreationPrepare                    = pub.ForgeCreationPrepare
+	ForgeCreationCheckout                   = pub.ForgeCreationCheckout
 )

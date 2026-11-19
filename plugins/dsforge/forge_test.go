@@ -45,7 +45,18 @@ func TestSeatsMatchOfficialRegistrations(t *testing.T) {
 	if hero.Slot != uikernel.OffHeroOptions {
 		t.Fatalf("工作树勾选挂在 %q，官方是 %q", hero.Slot, uikernel.OffHeroOptions)
 	}
-	// 官方 mount.ts:392-394 —— conversation.input.dock order 5
+	// 官方 mount.ts:392-394 —— conversation.input.dock order 5 上那张**官方**卡是
+	// 创建进度卡（WorktreeProgress）；本地变更卡是同槽的搬家件，排在它下面。
+	progress, ok := byID["forge-creation-progress"]
+	if !ok {
+		t.Fatal("没有创建进度卡座位（官方 conversation.input.dock，mount.ts:392-394）")
+	}
+	if progress.Slot != uikernel.OffInputDock {
+		t.Fatalf("创建进度卡挂在 %q，官方是 %q", progress.Slot, uikernel.OffInputDock)
+	}
+	if progress.Order != 4 {
+		t.Fatalf("创建进度卡 order = %d，要 4（本地卡占着官方的 5，两卡同槽不许同序）", progress.Order)
+	}
 	dock, ok := byID["forge-local-card"]
 	if !ok {
 		t.Fatal("没有本地变更卡座位（官方 conversation.input.dock，mount.ts:392-394）")
@@ -78,8 +89,8 @@ func TestSeatsMatchOfficialRegistrations(t *testing.T) {
 	if changesTabKey != "@deepseek-ai/dsh-experimental-client-ui-forge/changes" {
 		t.Fatalf("tab key 必须逐字等于官方 CHANGES_ID，实得 %q", changesTabKey)
 	}
-	if len(painters) != 4 {
-		t.Fatalf("座位应当恰好 4 个（2 个 tab 槽 + 2 个 dock/hero），实得 %d", len(painters))
+	if len(painters) != 5 {
+		t.Fatalf("座位应当恰好 5 个（2 个 tab 槽 + 2 个 dock 卡 + 1 个 hero），实得 %d", len(painters))
 	}
 }
 

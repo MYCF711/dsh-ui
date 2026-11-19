@@ -124,6 +124,9 @@ type changesOpen struct {
 	viewed   map[string]map[string]string
 	selected map[string]string
 	menu     map[string]bool
+	// progress 是创建进度卡"更多详情"的展开态（官方 `useState(false)`，
+	// WorktreeProgress.tsx:100）。
+	progress map[string]bool
 }
 
 func newChangesOpen() changesOpen {
@@ -133,6 +136,7 @@ func newChangesOpen() changesOpen {
 		viewed:   map[string]map[string]string{},
 		selected: map[string]string{},
 		menu:     map[string]bool{},
+		progress: map[string]bool{},
 	}
 }
 
@@ -141,6 +145,13 @@ func (s *changesOpen) localExpanded(session string) bool { return s.local[sessio
 
 // toggleLocal 翻转本地卡的展开态。
 func (s *changesOpen) toggleLocal(session string) { s.local[session] = !s.local[session] }
+
+// progressExpanded 报告创建进度卡"更多详情"的展开态（默认收起，与官方
+// `WorktreeProgress.tsx:100` 的 `useState(false)` 一致）。
+func (s *changesOpen) progressExpanded(session string) bool { return s.progress[session] }
+
+// toggleProgress 翻转创建进度卡的展开态。
+func (s *changesOpen) toggleProgress(session string) { s.progress[session] = !s.progress[session] }
 
 // selectFile 记下"要看哪个文件"。
 func (s *changesOpen) selectFile(session, path string) { s.selected[session] = path }

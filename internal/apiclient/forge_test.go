@@ -15,6 +15,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -349,5 +350,127 @@ func TestForgeErrorsKeepOfficialCode(t *testing.T) {
 	}
 	if apiErr.Code != "not_a_repository" {
 		t.Fatalf("官方码要原样留下（界面据此画 checkout.none），实得 %q", apiErr.Code)
+	}
+}
+
+// TestForgePanelFollowStreamsWholeStates 钉住 follow 的**流形状**：
+//
+//	每行一个完整 `ForgePanelState`（不是 `{type,value}` 那种差异帧）
+//	worktree 三格（editable / blocker / creation）逐字段解出来
+//	body 只有 sessionId 一个参数（官方 `forgePanel.follow(sessionId)`）
+//
+// 这条判据的意义：宿主 dsh-go#84 之前流的是绑定清单帧，界面因此读不到
+// editable/creation（gap G6）。形状一旦回退，这条必红。
+func TestForgePanelFollowStreamsWholeStates(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/forgePanel.follow" {
+			t.Errorf("路径 = %q", r.URL.Path)
+		}
+		body = decodeBody(t, r)
+		w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		frames := []string{
+			// 第一帧：能建（editable=true）但没有创建在跑；blocker 是只读。
+			`{"directory":"/repo","checkout":{"state":"none"},"repository":null,"readiness":null,` +
+				`"changeRequests":[],"local":null,` +
+				`"worktree":{"editable":true,"blocker":"read-only","request":null,"created":null,` +
+				`"creation":null,"failure":null,"missing":null,"restoration":null,"waiting":null}}`,
+			// 第二帧：创建在跑（prepare，held），editable 变成 false、blocker 清空。
+			`{"directory":"/repo","checkout":{"state":"none"},"repository":null,"readiness":null,` +
+				`"changeRequests":[],"local":null,` +
+				`"worktree":{"editable":false,"blocker":null,"request":{"from":"main"},"created":null,` +
+				`"creation":{"phase":"prepare","branch":"dsh/feat","from":"main","held":true},` +
+				`"failure":null,"missing":null,"restoration":null,"waiting":"creation"}}`,
+			// 第三帧：前进到 checkout。
+			`{"directory":"/repo","checkout":{"state":"none"},"repository":null,"readiness":null,` +
+				`"changeRequests":[],"local":null,` +
+				`"worktree":{"editable":false,"blocker":null,"request":{"from":"main"},"created":null,` +
+				`"creation":{"phase":"checkout","branch":"dsh/feat","from":null,"held":true},` +
+				`"failure":null,"missing":null,"restoration":null,"waiting":"creation"}}`,
+		}
+		for _, frame := range frames {
+			_, _ = w.Write([]byte(frame + "\n"))
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var got []ForgePanelState
+	err := New(srv.URL).ForgePanelFollow(ctx, "s-1", func(state ForgePanelState) error {
+		got = append(got, state)
+		if len(got) == 3 {
+			cancel()
+			return context.Canceled
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("follow 不该报错：%v", err)
+	}
+	if body["sessionId"] != "s-1" || len(body) != 1 {
+		t.Fatalf("follow 的参数只该有 sessionId，实得 %v", body)
+	}
+	if len(got) != 3 {
+		t.Fatalf("应当收到 3 帧，实得 %d", len(got))
+	}
+	if !got[0].Worktree.Editable || got[0].Worktree.Blocker == nil || *got[0].Worktree.Blocker != "read-only" {
+		t.Fatalf("第一帧 worktree = %+v", got[0].Worktree)
+	}
+	if got[0].Worktree.Creation != nil {
+		t.Fatalf("第一帧没有创建，creation 必须是 nil：%+v", got[0].Worktree.Creation)
+	}
+	second := got[1].Worktree
+	if second.Editable || second.Blocker != nil {
+		t.Fatalf("第二帧应当 editable=false、blocker=null：%+v", second)
+	}
+	if second.Creation == nil || second.Creation.Phase != "prepare" || !second.Creation.Held ||
+		second.Creation.Branch != "dsh/feat" || second.Creation.From == nil || *second.Creation.From != "main" {
+		t.Fatalf("第二帧 creation = %+v", second.Creation)
+	}
+	third := got[2].Worktree
+	if third.Creation == nil || third.Creation.Phase != "checkout" {
+		t.Fatalf("第三帧应当前进到 checkout：%+v", third.Creation)
+	}
+	if third.Creation.From != nil {
+		t.Fatalf("from 为 null 时必须是 nil（基于 HEAD），实得 %q", *third.Creation.From)
+	}
+}
+
+// TestForgePanelFollowReportsStreamErrorFrame：宿主在头已发出之后只能在流里报错，
+// 客户端必须把它当四字段错误返回，不能静默当成"流正常结束"。
+func TestForgePanelFollowReportsStreamErrorFrame(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"error":{"code":"internal","message":"序列化 ForgePanelState 失败","hint":"","retryable":false}}` + "\n"))
+	}))
+	defer srv.Close()
+	err := New(srv.URL).ForgePanelFollow(context.Background(), "s-1", func(ForgePanelState) error { return nil })
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("流里的错误帧要解成 *APIError，实得 %T: %v", err, err)
+	}
+	if apiErr.Code != "internal" || apiErr.Message == "" {
+		t.Fatalf("错误必须原样保留四字段：%+v", apiErr)
+	}
+}
+
+// TestForgePanelFollowRequiresNdjson：宿主回 200 但不是 NDJSON 时立刻报错——
+// 否则一行都解不出来，界面会以为"宿主一直没有状态"。
+func TestForgePanelFollowRequiresNdjson(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result":{}}`))
+	}))
+	defer srv.Close()
+	err := New(srv.URL).ForgePanelFollow(context.Background(), "s-1", func(ForgePanelState) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "application/x-ndjson") {
+		t.Fatalf("非 NDJSON 应答必须报错并点明内容类型，实得 %v", err)
 	}
 }

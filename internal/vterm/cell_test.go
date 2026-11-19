@@ -252,3 +252,63 @@ func TestScrollbackEmptyWithoutScroll(t *testing.T) {
 		t.Fatal("空滚回的 (0,0) 必须越界")
 	}
 }
+
+// TestCursorShapeAtFourShapes 钉住「官方四形态 + 焦点两态」这张小表：
+//
+//	焦点在 → DECSCUSR 那三档（block / bar / underline）
+//	焦点不在 → 一律 outline（xterm 的 cursorInactiveStyle 默认值，官方没覆盖）
+//
+// 判据见 CursorShape / CursorInactiveShape 的注释（官方 asar 里 xterm 的
+// DEFAULT_OPTIONS 与渲染器那段 `isFocused ? … : cursorInactiveStyle`）。
+func TestCursorShapeAtFourShapes(t *testing.T) {
+	cases := []struct {
+		shape  CursorShape
+		focus  bool
+		want   CursorShape
+		reason string
+	}{
+		{CursorBlock, true, CursorBlock, "聚焦画程序选的 block"},
+		{CursorBar, true, CursorBar, "聚焦画程序选的 bar"},
+		{CursorUnderline, true, CursorUnderline, "聚焦画程序选的 underline"},
+		{CursorBlock, false, CursorOutline, "失焦一律 outline"},
+		{CursorBar, false, CursorOutline, "失焦一律 outline（bar 也变空心框）"},
+		{CursorUnderline, false, CursorOutline, "失焦一律 outline（underline 也变空心框）"},
+	}
+	for _, c := range cases {
+		if got := (Cursor{Shape: c.shape}).ShapeAt(c.focus); got != c.want {
+			t.Fatalf("%s：Shape=%v focus=%v 应是 %v，实际 %v", c.reason, c.shape, c.focus, c.want, got)
+		}
+	}
+}
+
+// TestCursorBlinkAtOnlyWhenFocused 钉住闪烁只在有焦点时成立
+// （xterm 把 `xterm-cursor-blink` 类只加在 isFocused 分支；动画规则也全挂在
+// `.xterm-rows.xterm-focus` 下）。
+func TestCursorBlinkAtOnlyWhenFocused(t *testing.T) {
+	if !(Cursor{Blink: true}).BlinkAt(true) {
+		t.Fatal("聚焦 + 程序要它闪 → 闪")
+	}
+	if (Cursor{Blink: true}).BlinkAt(false) {
+		t.Fatal("失焦 + 程序要它闪 → 不闪（官方那个类根本没加上）")
+	}
+	if (Cursor{Blink: false}).BlinkAt(true) {
+		t.Fatal("程序没要它闪时，聚焦也不该闪（DECSCUSR 的偶数档）")
+	}
+}
+
+// TestCursorShapeStrings 钉住 String()：日志与测试诊断靠它读，别静默漂成数字。
+func TestCursorShapeStrings(t *testing.T) {
+	for _, c := range []struct {
+		shape CursorShape
+		want  string
+	}{
+		{CursorBlock, "block"},
+		{CursorBar, "bar"},
+		{CursorUnderline, "underline"},
+		{CursorOutline, "outline"},
+	} {
+		if got := c.shape.String(); got != c.want {
+			t.Fatalf("%d 应读作 %q，实际 %q", uint8(c.shape), c.want, got)
+		}
+	}
+}

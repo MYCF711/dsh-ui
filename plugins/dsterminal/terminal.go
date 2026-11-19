@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
+	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
@@ -47,6 +48,16 @@ type Plugin struct {
 	// 本仓的屏幕在壳里，所以由界面记）。见 scrollback.go。
 	scroll map[string]*terminalScrollView
 
+	// selection 是每个 occurrence 的选区（官方那边由 xterm 的 SelectionService
+	// 持有）。见 selection.go。
+	selection map[string]*terminalSelection
+
+	// clipboard 是「把一段文本写进系统剪贴板」。默认是 Viva 的
+	// `app.SetClipboardText`（`viva@v0.6.4/app/system.go:139`；Windows 实现在
+	// `internal/platform/windows/system_windows.go:317`，无窗口时用 0 作为
+	// owner）。测试换成假的：单测不许往真剪贴板里写字。
+	clipboard func(value string) error
+
 	// 下面这几项是**最近一帧**留下的手势几何：滚轮事件只带指针坐标与命中 id，
 	// 要知道「落在哪个终端、一格多高、还能往上滚几行」得由绘制时记下来。
 	wheelHit        gfx.ID
@@ -66,6 +77,8 @@ func (*Plugin) Requires() []string {
 func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
+	// 复制走 Viva 自己的剪贴板 API，不自己写平台代码。
+	p.clipboard = app.SetClipboardText
 	return nil
 }
 
@@ -112,8 +125,10 @@ func (p *Plugin) CloseRightTab(sessionID, tabID, kind string, actions pluginapi.
 	if kind != RightTabTerminal {
 		return nil
 	}
-	// 这条 occurrence 没了：滚动位置不能留给下一次重开（新终端没有那段历史）。
+	// 这条 occurrence 没了：滚动位置与选区都不能留给下一次重开
+	//（新终端没有那段历史，也没有那段文本）。
 	p.forgetScroll(tabID)
+	p.forgetSelection(tabID)
 	if actions.TerminalCloseOfficial == nil {
 		return fmt.Errorf("用户终端 close 未接线")
 	}
@@ -147,6 +162,11 @@ func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
 		}
 		p.field.SetText("")
 		if p.currentTab != "" && p.act.TerminalWriteOfficial != nil {
+			// 用户一输入就清空选区：官方
+			// `_coreService.onUserInput(() => hasSelection && clearSelection())`
+			// （client.terminal.js byte 116835）。xterm 里这条挂在**真键盘输入**上，
+			// 本仓唯一的人员输入口就是这行命令，所以挂这里。
+			p.clearTerminalSelection(p.currentTab)
 			// F6 是真实人员输入，不是 xterm 的协议回复，因此 typed=true。
 			p.act.TerminalWriteOfficial(p.currentTab, line+"\n", true)
 			// 官方 `scrollOnUserInput: true`（DEFAULT_OPTIONS，官方没有覆盖它）：

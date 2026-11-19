@@ -443,17 +443,27 @@ func (p *Plugin) drawChangesHeader(f ui.C, env *pluginapi.Env, diff *pluginapi.F
 // （`MenuItem.Chosen` → `ui/menu.go:465-473` 的 checked）。为此**不再**把菜单画成
 // 头部下方的一列——那会占布局、把下面内容整体下推。
 //
-// 仍差一档：官方菜单面用 `--dsw-elevation-prominent`，而 Viva 的浮层固定
-// `gfx.ShadowMD`（`viva@v0.6.4/components/dropdown_menu.go:769-771`）。这一条是
-// 渲染器令牌缺口，已登记在账本 #64；手绘面板能换回官方阴影但会失去浮层，两害相权
-// 保留浮层（用户可见的是"菜单位置对不对"，不是阴影偏一档）。
+// 面与行由本插件画（`Unpainted` + `DrawPanel` + `DrawItem`，`ui/menu.go:377/382/389`）：
+// 官方菜单面是 `--dsw-elevation-prominent` + `border-l1`，而 Viva 的默认面把阴影写死
+// `gfx.ShadowMD`（`viva@v0.6.5/components/dropdown_menu.go:813`）。行为（命中、焦点、
+// 键盘、Esc、点外关闭、子菜单）仍归菜单自己——`ui/menu.go:369-376` 原文就是这么分的。
+// 面与行的几何/令牌出处见 `changes_menu.go` 文件头。
+//
+// 行高**不设**（不调 `RowHeight`）：官方 `Menu dense` 的每行读数在 rc.2 取不到，
+// 不自造 30/24（账本 #64 ⑧ 的行高半）。
 func (p *Plugin) drawScopeMenu(f ui.C, env *pluginapi.Env, diff *pluginapi.ForgeDiff, anchor ui.Box) {
 	session := diff.SessionID
 	open := p.open.menuOpen(session)
+	t := p.themeOf(env)
 	ui.Menu(f, anchor, &open, func(items *ui.MenuItems) {
 		if items == nil {
 			return
 		}
+		items.Unpainted().
+			DrawPanel(func(canvas *gfx.Canvas, bounds gfx.Rect, _ gfx.Theme) {
+				drawScopeMenuPanel(canvas, bounds, t)
+			}).
+			DrawItem(func(parts ui.MenuItemParts) { drawScopeMenuItem(parts, t) })
 		for _, scope := range []string{
 			apiclient.ForgeScopeUncommitted,
 			apiclient.ForgeScopeUnstaged,

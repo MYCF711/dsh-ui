@@ -253,6 +253,11 @@ type settingsItem struct {
 // settingsItemKindWebSearch 是 #47 那一页的形态标记。
 const settingsItemKindWebSearch = "web-search"
 
+// settingsItemKindVoiceInput 是 #66 ④「MicrophonePicker 设置页」的形态标记
+// （官方挂在 `plugins.bundle.config`，正文是麦克风选择器而不是字段表单，
+// 见 settings_voice.go 的文件头）。
+const settingsItemKindVoiceInput = "voice-input"
+
 // Namespaces 返回这张卡绑定的全部命名空间（`whileServed([...])` 的那一组）。
 func (it settingsItem) Namespaces() []string {
 	out := make([]string, 0, len(it.Sections))
@@ -262,10 +267,11 @@ func (it settingsItem) Namespaces() []string {
 	return out
 }
 
-// settingsItemLedger 是本批实现的 4 张卡（#39 / #45 / #46 上批 + #47 本批）。
+// settingsItemLedger 是本的卡片台账（#39 / #45 / #46 上批 + #47 + #66 ④ 本批）。
 //
-// 顺序按官方 order：subagent(10) → web-search(20) → agent-loop(30) → shell(40)。
-// **不按名字重排**：顺序是官方注册意图。
+// 顺序按官方 order：subagent(10) → web-search(20) → agent-loop(30) → shell(40)
+// → voice-input(50)。**不按名字重排**：顺序是官方注册意图（语音输入那一页官方在
+// `bundles` 组、本仓没有那个组，落在末尾，见 settings_voice.go）。
 func settingsItemLedger() []settingsItem {
 	return []settingsItem{
 		{
@@ -360,6 +366,10 @@ func settingsItemLedger() []settingsItem {
 				},
 			}},
 		},
+		// #66 ④「MicrophonePicker 设置页」：官方挂在 `plugins.bundle.config`
+		// （mount.ts:57-59），本仓没有 bundles 组，所以落在本组末尾按 Order 50。
+		// 标题/摘要/几何/文案全部是官方原文，见 settings_voice.go。
+		settingsVoiceItem(),
 	}
 }
 
@@ -616,12 +626,21 @@ type settingsItemCardState struct {
 	Web *settingsItemWebState
 	// Cot 是 #63 `plugins.bundle.config` 的 provider 清单快照；nil = 普通表单。
 	Cot *settingsCotState
+	// Voice 是 #66 ④ `plugins.bundle.config`（语音输入的麦克风选择页）的状态；
+	// nil = 这一帧不画那张卡（壳没接 `Act.Voice`，见 settings_voice.go）。
+	Voice *settingsVoiceState
 	// Model 是 #46 的模型选择 section；allowedModels 是对象数组，与标量 limits 并行投影。
 	Model *settingsSubagentModelState
 }
 
 // Available 报告这张卡这一帧有没有内容可画（= 至少一节被服务）。
 func (c settingsItemCardState) Available() bool {
+	if c.Voice != nil {
+		// #66：这一页的存在性由壳的 `Act.Voice` 决定（官方由 bundle 注入决定
+		// 这个槽有没有占用方），与 settings 命名空间无关；设备不可用时页面照样画
+		// （官方此时画一条 unavailable 的系统默认行，:87/:133）。
+		return true
+	}
 	if c.Web != nil {
 		return c.Web.webAvailable
 	}

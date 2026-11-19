@@ -85,10 +85,23 @@ func sampleView() *pluginapi.ForgeView {
 // 三块共用一张画布是故意的：它同时验证"三块能同时存在而不互相顶掉"。
 func drawOnce(t *testing.T, view *pluginapi.ForgeView, cur string) app.Snapshot {
 	t.Helper()
+	return drawOncePrepared(t, view, cur, nil)
+}
+
+// drawOncePrepared 同 drawOnce，另在首帧之前给测试一步改插件内部态的机会。
+//
+// 需要它的是**浮层菜单**：Viva 的弹层条目由框架自己持有身份（`MenuItems.Item`
+// 内部分配 scope），测试点不到那一条，所以只能直接把"菜单已打开"这个界面态摆好，
+// 再看这一帧画出了什么。
+func drawOncePrepared(t *testing.T, view *pluginapi.ForgeView, cur string, prepare func(*Plugin)) app.Snapshot {
+	t.Helper()
 	theme := dscore.Dark()
 	p := &Plugin{}
 	if err := p.Register(testContext{theme: theme}); err != nil {
 		t.Fatal(err)
+	}
+	if prepare != nil {
+		prepare(p)
 	}
 	tree := &gfx.Tree{}
 	feat := tree.Feature("forge-headless")
@@ -275,6 +288,101 @@ func TestCheckedWorktreeShowsHeadWhenNoBase(t *testing.T) {
 	if !strings.Contains(text, "基于当前 HEAD") {
 		t.Fatalf("基于 HEAD 的请求要画官方那句：\n%s", text)
 	}
+}
+
+// TestScopeMenuIsAnOverlayWithOfficialOrder 钉住范围菜单的两条官方形状。
+//
+// ① **它是浮层**：官方 `ScopeMenu` 是 `portal: true` 的 `primitives.Menu`
+// （`OFF:lib/client.js:6436-6479`：`portal`/`align:"start"`/`selectedId`），打开时
+// 不占布局。本仓以前把它画成头部下方的一列，会把工具栏与文件卡整体下推——这一条
+// 就是那个差异的判据。
+// ② **条目顺序**：未提交 → 未暂存 → 已暂存 → 分隔线 → 分支（同一个 items 数组；
+// 分支单独一组，它比整段分支范围）。
+func TestScopeMenuIsAnOverlayWithOfficialOrder(t *testing.T) {
+	closed := drawOnce(t, sampleView(), "s-1")
+	opened := drawOncePrepared(t, sampleView(), "s-1", func(p *Plugin) {
+		p.open.menu["s-1"] = true
+	})
+
+	// ① 打开菜单不许动到下面的内容：同一句正文（hunk 头）的 Y 必须一格不差。
+	closedY, okClosed := labelY(closed, "@@ -1,2 +1,3 @@")
+	openY, okOpen := labelY(opened, "@@ -1,2 +1,3 @@")
+	if !okClosed || !okOpen {
+		t.Fatalf("两帧里都该画 hunk 头（closed=%v opened=%v）", okClosed, okOpen)
+	}
+	if closedY != openY {
+		t.Fatalf("范围菜单占用了布局：hunk 头 Y 从 %v 变成 %v（官方是浮层，不许下推内容）", closedY, openY)
+	}
+
+	// ② 关着的时候菜单条目一句都不该出现（"未提交"除外：未跟踪文件的徽标就是这四个字）。
+	closedText := drawnText(closed)
+	for _, absent := range []string{"未暂存", "已暂存"} {
+		if strings.Contains(closedText, absent) {
+			t.Fatalf("菜单没开却画了 %q：\n%s", absent, closedText)
+		}
+	}
+
+	// ③ 打开后四个条目按官方顺序出现。取**最后一次**出现：它们是弹层里那几条，
+	// 画在页面内容之后（"未提交"还会作为文件卡徽标先出现一次）。
+	openText := drawnText(opened)
+	prev := -1
+	for _, want := range []string{"未提交", "未暂存", "已暂存", "分支"} {
+		at := strings.LastIndex(openText, want)
+		if at < 0 {
+			t.Fatalf("打开的菜单缺条目 %q：\n%s", want, openText)
+		}
+		if at <= prev {
+			t.Fatalf("菜单条目顺序不是官方的：%q 落在 %d，前一条在 %d\n%s", want, at, prev, openText)
+		}
+		prev = at
+	}
+
+	// ④ **位置**：浮层画在锚点（范围芯片）**下方**、不遮住它——官方 `anchor` 是那个
+	// `.select` 按钮、`align:"start"`、`portal:true`（`OFF:lib/client.js:6474-6485`）。
+	// 芯片文字是这一帧里第一个"分支"（它先于弹层画），菜单条目排在它后面。
+	// （两条要求互补：`items.Above()` 在本帧会因为面板上沿没空间而**翻回下方**，
+	// 所以这里钉的是「浮层在芯片下方、不盖住芯片」，不是"绝不向上翻"。）
+	chipY, okChip := labelY(opened, "分支")
+	if !okChip {
+		t.Fatalf("范围芯片的文字没了（菜单没有可锚的东西）")
+	}
+	menuY, okMenu := labelY(opened, "未暂存")
+	if !okMenu {
+		t.Fatalf("打开的菜单里找不到条目“未暂存”：\n%s", openText)
+	}
+	if menuY <= chipY {
+		t.Fatalf("范围菜单没画在芯片下方：菜单 Y=%v，芯片 Y=%v（官方是锚在 .select 下方的浮层）", menuY, chipY)
+	}
+}
+
+// TestChooseScopeSendsTheScope 钉住菜单选中之后那一步（官方
+// `onSelect={(id) => { setOpen(false); choose(id) }}`，`OFF:lib/client.js:6477-6480`）：
+// 选中哪个就发哪个；没有动作面时静默返回而不是崩。
+func TestChooseScopeSendsTheScope(t *testing.T) {
+	p := &Plugin{}
+	var got []string
+	env := &pluginapi.Env{Act: pluginapi.Actions{Forge: &pluginapi.ForgeActions{
+		LoadScope: func(scope string) { got = append(got, scope) },
+	}}}
+	p.chooseScope(env, apiclient.ForgeScopeStaged)
+	if len(got) != 1 || got[0] != apiclient.ForgeScopeStaged {
+		t.Fatalf("选中范围要发 LoadScope(%q)，实际 %v", apiclient.ForgeScopeStaged, got)
+	}
+	// 没有动作面（`Forge == nil`）：静默返回，不许 panic。
+	p.chooseScope(&pluginapi.Env{}, apiclient.ForgeScopeBranch)
+	if len(got) != 1 {
+		t.Fatalf("没有动作面时不该发出请求，实际 %v", got)
+	}
+}
+
+// labelY 找一句画出来的文字的 Y（用来判"有没有被下推"）。
+func labelY(snapshot app.Snapshot, value string) (float32, bool) {
+	for _, label := range snapshot.Labels {
+		if label.Value == value {
+			return label.Bounds.Y, true
+		}
+	}
+	return 0, false
 }
 
 // hasHitLabel 判断这一帧有没有那个命中区标签。

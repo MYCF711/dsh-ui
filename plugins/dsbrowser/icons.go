@@ -17,7 +17,7 @@
 //	  "globe-outline":{size:14,…}          ← IconGlobeOutlineRegular
 //
 // 同一份 bundle 里 `ICON_REGULAR_STROKE` 的取值是 `RR`、`RR=1`，与本仓
-// `plugins/dsassets/registry.go:93` 的 `regularStroke = 1` 是同一个数，所以
+// `plugins/dsassets/registry.go:101` 的 `regularStroke = 1` 是同一个数，所以
 // 这里把 `d` 原文交给 dsassets 的路径编译器（`dsassets.Build`），不重新描坐标。
 //
 // # 为什么放插件里，不进 dsassets 的登记表

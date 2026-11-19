@@ -159,10 +159,15 @@ func (p *Plugin) drawWorktreeProgress(f ui.C, env *pluginapi.Env) {
 				// ── .header ──
 				ui.Row(f).FillWidth().Gap(progressHeaderGap).Items(ui.Center).
 					PadSides(0, progressHeaderPadRight, 0, 0).Children(func() {
-					// `.glyph` 是官方 `IconBranchOutlineRegular size={14}`
-					// （WorktreeProgress.tsx:221）；那枚素材含两枚 `<circle>`，viva 路径
-					// 词汇没有弧，素材库登记为 Unsupported（dsassets/registry.go），
-					// 所以**不画残图**——与账本 #64 ④（分支图标）同一条差异。
+					// `.glyph`：官方 `<IconBranchOutlineRegular size={14} className={css.glyph} />`
+					// （WorktreeProgress.tsx:156 创建卡 / :221 恢复卡）。`.glyph{flex:none;
+					// color:label-tertiary}`（WorktreeProgress.module.css:62-65），与标题、分支名
+					// 之间是 `.header{gap:8px}`（同文件 :54-60）。素材走 dsassets.Build 编译
+					// （`Branch` 的两枚 `<circle>` 已按三次贝塞尔换算），编译不出来时只省这一枚。
+					if icon, ok := branchIcon(); ok {
+						ui.Icon(f, icon).Size(progressGlyphSize, progressGlyphSize).
+							Shrink(0).Color(t.LabelTertiary)
+					}
 					ui.Text(f, copyCreationTitle).FontSize(progressFont).LineHeight(progressLine).
 						Weight(gfx.WeightMedium).Color(t.LabelPrimary).Shrink(0)
 					ui.Text(f, creation.Branch).FontSize(progressCodeFont).

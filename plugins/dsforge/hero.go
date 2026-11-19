@@ -52,6 +52,9 @@ const (
 	worktreeChipHeight float32 = 28
 	worktreeChipPadX   float32 = 8
 	worktreeChipGap    float32 = 6
+	// `.current` 里先画 `<IconBranchOutlineRegular size={14} />`（WorktreeToggle.tsx:146），
+	// 图标本身是 `flex:none`（`.current svg`，WorktreeToggle.module.css:55-57）。
+	worktreeChipGlyphSize float32 = 14
 	// `.root{gap:2px}`。
 	worktreeRootGap float32 = 2
 	// `.checkbox{width:14px;height:14px}`。
@@ -172,8 +175,17 @@ func (p *Plugin) drawWorktreeToggle(f ui.C, env *pluginapi.Env) {
 		// 分支芯片：官方这里是**按钮**（点开基准菜单）。本仓没有菜单浮层，
 		// 所以画成同一几何的只读芯片，不画成按钮（画成按钮却点不开更糟）。
 		ui.Row(f).Height(worktreeChipHeight).Shrink(0).MaxWidth(worktreeChipMaxW).
-			PadSides(0, worktreeChipPadX, 0, worktreeChipPadX).Items(ui.Center).
+			PadSides(0, worktreeChipPadX, 0, worktreeChipPadX).Gap(worktreeChipGap).
+			Items(ui.Center).
 			Children(func() {
+				// 官方 `.current` 里先画 `<IconBranchOutlineRegular size={14} />`、再画分支名
+				// （WorktreeToggle.tsx:146-147），两者之间是 `.toggle,.base,.current{gap:6px}`
+				// （WorktreeToggle.module.css:11-29）。墨色跟随这枚芯片自己的文字色：
+				// 本仓它是只读近似件（见上一条注释），不是官方的按钮。
+				if icon, ok := branchIcon(); ok {
+					ui.Icon(f, icon).Size(worktreeChipGlyphSize, worktreeChipGlyphSize).
+						Shrink(0).Color(t.LabelTertiary)
+				}
 				ui.Text(f, chipText).FontSize(worktreeFont).LineHeight(worktreeLine).
 					Weight(gfx.WeightMedium).Color(t.LabelTertiary).Ellipsis()
 			})

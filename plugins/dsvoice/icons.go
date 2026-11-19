@@ -27,7 +27,7 @@ package dsvoice
 //
 // 官方那枚 `rect rx=3` 的圆角是**椭圆弧**，而 viva 的路径词汇只有
 // M/L/Q/C/Z（`viva/gfx/path.go:9-14`）。拿三次贝塞尔去凑就是"看起来差不多"，
-// 本仓已经为停止键踩过这个坑（`plugins/dsassets/registry.go:112-121`）。
+// 本仓已经为停止键踩过这个坑（`plugins/dsassets/registry.go:129-131`）。
 // 所以胶囊用 viva 的**原生圆角矩形**（`Box.Radius + Box.Border`）画——
 // 那条 `<rect>` 的几何原样搬过来（x/y/width/height/rx 乘显示缩放），
 // 括号与支架走官方 path，两者叠在同一个 16×16 的坐标系里。

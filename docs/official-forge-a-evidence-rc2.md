@@ -102,9 +102,10 @@ Shell 侧：`cmd/app/forge_wiring.go`（缓存 + 异步读 + 动作 + 会话/世
    本仓 `pluginapi/theme.go` **没有**任何 diff 色令牌，只染符号与文字（+ 绿 / − 红）。
 6. **刷新按钮是文字 `↻`**：官方那枚 `IconRefreshOutlineRegular` 在本仓只有
    `plugins/dsbrowser` 的**包内**常量（不跨包）；复制一份等于多一处会漂的官方坐标。
-7. **分支图标不画**：官方 `IconBranchOutlineRegular` 含两枚 `<circle>`，viva 路径词汇只有
-   M/L/Q/C/Z；素材库已登记为 `Unsupported`（`plugins/dsassets/registry.go:174-186`）。
-   分支名用代码体文字表达。
+7. **分支图标**（2026-11-19 已画，原文保留）：官方 `IconBranchOutlineRegular` 含两枚 `<circle>`，
+   viva 路径词汇只有 M/L/Q/C/Z，当时素材库把 `Branch` 登记为 `Unsupported`（那条登记已随
+   dsh-ui#190 的弧→贝塞尔换算消失，现在的 `Branch` 在 `plugins/dsassets/registry.go:187-202`，
+   24 条描边命令、可画）。接线见 `plugins/dsforge/icons.go` 的 `branchIcon()`。
 8. **blocker 挡板缺失**：官方 `worktree.editable === false`（not-git / outside-writable-root / read-only）
    时整块不画勾选；本仓只能判 `checkout.state == 'ready'`（官方同样要求），
    "能读 git 但沙箱写不进去"那一层挡不住 —— 请求会被宿主拒绝并回滚（测试
@@ -179,18 +180,23 @@ Viva 的浮层固定 `gfx.ShadowMD`（`viva@v0.6.4/components/dropdown_menu.go:7
 且官方 `dense` 的行高/内边距在可用证据里取不到（`primitives` 包源码不在
 本机的官方包 dump 里）。手绘面板能换回官方阴影但会失去浮层，两害相权保留浮层。
 
-### 9.2 分支图标：素材有、渲染词汇没有（不是"缺素材"）
+### 9.2 分支图标：素材有、渲染词汇没有（不是"缺素材"）——2026-11-19 已闭合
 
 - 官方素材：`assets/official/icons/messages/branch.jsx`（sha256
   `5090854ac51aa941cdd4d84ce37a39df0bb36638f90ab334af7a642f3558798b`，605 B，
   `viewBox=0 0 16 16`）= 两条支线 `<path>` + **两枚 `<circle>`**
   （`cx 12.4502 / cy 3.3079` 与 `cy 12.6921`，`r 1.56962`）。
-- 挡在哪：Viva 的路径词汇只有 `Move/Line/Quad/Cubic/Close`（`gfx/path.go:9-12`），
-  没有弧，也没有圆的图元可放进 `gfx.Icon`；`plugins/dsassets/registry.go:170-182`
-  因此把它登记成 `Unsupported`（"圆需要椭圆弧"）。
-- 结论：**不画**。官方两条支线的原文已在 `plugins/dsassets/paths.go:51-52`，
-  但缺了两枚端点圆的分支图标是残图，比不画更糟——`gfx.Icon` 里补圆要先有弧。
-  分支名继续用代码体文字表达（`plugins/dsforge/hero.go` 的 `基于 X`）。
+- 原挡点（历史）：Viva 的路径词汇只有 `Move/Line/Quad/Cubic/Close`（`gfx/path.go:9-12`），
+  没有弧，也没有圆的图元可放进 `gfx.Icon`；`plugins/dsassets/registry.go` 当时把 `Branch`
+  登记成 `Unsupported`（"圆需要椭圆弧"）。
+- **2026-11-19 已闭合**（task-108 素材层 + task-109 接线）：`plugins/dsassets/arc.go` 按
+  SVG 1.1 F.6.5/F.6.6 把椭圆弧换算成三次贝塞尔，`plugins/dsassets/registry.go:187-202` 的
+  `Branch` 已是可画素材（24 条描边命令、viewBox 16、描边 1、包围盒逐项等于官方 `cx±r / cy±r`）；
+  `plugins/dsforge/icons.go` 的 `branchIcon()` 直接 `dsassets.Build(dsassets.Branch, …)`，
+  创建进度卡头部（`WorktreeProgress.tsx:156,221`，14px `.glyph`、label-tertiary、header gap 8）与
+  分支芯片（`WorktreeToggle.tsx:146`，14px、gap 6）都画出这枚图标。判据
+  `plugins/dsforge/icons_branch_test.go`：墨迹包围盒逐边等于官方值 × 14/16、图标矩形内零文字、
+  三角化条数与 `dsassets.Build(Branch)` 产物一致。
 
 ### 9.3 第二档（会动布局）的评估结论：这一轮不做
 
@@ -312,7 +318,8 @@ Viva 的浮层固定 `gfx.ShadowMD`（`viva@v0.6.4/components/dropdown_menu.go:7
 ### 10.5 剩余差异：8 → 6 条
 
 消除 5、6 两条。**仍剩 6 条：1 座位 / 2 文件树左栏 / 3 左右对比+换行 / 4 分支图标 / 7 已读只在本进程 / 8 范围菜单面阴影与密度**
-（编号沿用 §9 表格，不重排）。
+（编号沿用 §9 表格，不重排）。**2026-11-19（task-109）更新**：4 分支图标已接线闭合（见 §9.2），
+本章口径随之变成 **仍剩 5 条：1 / 2 / 3 / 7 / 8**。
 
 本轮**没有**动、但值得记一笔的三支：`worktree.failure`（失败态）、`worktree.missing`（MissingCard）、
 `worktree.restoration`（恢复进度）——宿主 follow 帧里都已有真值，但本轮任务只接 `creation`，

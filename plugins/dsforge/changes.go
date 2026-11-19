@@ -218,12 +218,8 @@ func (p *Plugin) drawChangesBody(f ui.C, env *pluginapi.Env) {
 		return
 	}
 	t := p.themeOf(env)
-	session := diff.SessionID
 	ui.Column(f).FillWidth().FillHeight().Background(t.BgBase).Children(func() {
 		p.drawChangesHeader(f, env, diff)
-		if p.open.menuOpen(session) {
-			p.drawScopeMenu(f, env, diff)
-		}
 		p.drawChangesToolbar(f, env, diff)
 		p.drawChangesNotices(f, env, diff)
 		p.drawChangesFiles(f, env, diff)
@@ -263,39 +259,64 @@ func (p *Plugin) drawChangesHeader(f ui.C, env *pluginapi.Env, diff *pluginapi.F
 		if selectBox.Clicked() {
 			p.open.toggleMenu(session)
 		}
+		// 菜单锚在这个芯片上：官方 `anchor` 就是 `.select` 这个按钮本身
+		// （`OFF:lib/client.js:6474-6485`），所以两者必须在同一次声明里。
+		p.drawScopeMenu(f, env, diff, selectBox)
 	})
 }
 
-// drawScopeMenu 画官方的范围菜单（`.menuRow` / `.menuList`）。本仓把它画成头部下方的
-// 行内一列（没有浮层容器）——**位置**差异登记在账本行；条目与文案是官方的。
-func (p *Plugin) drawScopeMenu(f ui.C, env *pluginapi.Env, diff *pluginapi.ForgeDiff) {
-	t := p.themeOf(env)
+// drawScopeMenu 画官方的范围菜单：**锚在范围芯片下方的浮层**。
+//
+// 官方形状（`OFF:lib/client.js:6436-6479` 的 `ScopeMenu`）：`primitives.Menu`
+// 带 `portal: true` / `align: "start"` / `dense` / `autoFocus` / `selectedId`，
+// 锚点是那个 `.select` 按钮；条目顺序是 **未提交 → 未暂存 → 已暂存 → 分隔线 → 分支**
+// （分支单独一组：它比的是整段分支范围，前三个比的是工作区/索引）。
+//
+// 本仓用 Viva 的 `ui.Menu`：同样是锚定浮层（`popup.BelowBox(anchor, 4, Start)`，
+// `ui/menu.go:126-131`）、点外部或 Esc 关闭、键盘可走、选中项打勾
+// （`MenuItem.Chosen` → `ui/menu.go:465-473` 的 checked）。为此**不再**把菜单画成
+// 头部下方的一列——那会占布局、把下面内容整体下推。
+//
+// 仍差一档：官方菜单面用 `--dsw-elevation-prominent`，而 Viva 的浮层固定
+// `gfx.ShadowMD`（`viva@v0.6.4/components/dropdown_menu.go:769-771`）。这一条是
+// 渲染器令牌缺口，已登记在账本 #64；手绘面板能换回官方阴影但会失去浮层，两害相权
+// 保留浮层（用户可见的是"菜单位置对不对"，不是阴影偏一档）。
+func (p *Plugin) drawScopeMenu(f ui.C, env *pluginapi.Env, diff *pluginapi.ForgeDiff, anchor ui.Box) {
 	session := diff.SessionID
-	ui.Column(f).FillWidth().PadSides(4, 6, 4, 6).Border(0.5, t.BorderL3).Children(func() {
+	open := p.open.menuOpen(session)
+	ui.Menu(f, anchor, &open, func(items *ui.MenuItems) {
+		if items == nil {
+			return
+		}
 		for _, scope := range []string{
-			apiclient.ForgeScopeBranch, apiclient.ForgeScopeUncommitted,
-			apiclient.ForgeScopeUnstaged, apiclient.ForgeScopeStaged,
+			apiclient.ForgeScopeUncommitted,
+			apiclient.ForgeScopeUnstaged,
+			apiclient.ForgeScopeStaged,
 		} {
-			label := scopeLabel(scope)
-			color := t.LabelPrimary
-			if scope == diff.Scope {
-				color = t.BrandPrimary
-			}
-			row := ui.Row(f).FillWidth().Height(changesSelectH).Items(ui.Center).
-				PadSides(0, changesSelectPadR, 0, changesSelectPadL).Radius(t.Radii.SM).
-				Hover(ui.Look{}.Background(t.Hover)).
-				Hit(env.Tree.ID(env.Feat, "forge-scope:"+scope), label)
-			row.Children(func() {
-				ui.Text(f, label).FontSize(changesFont).LineHeight(changesLine).Color(color)
-			})
-			if row.Clicked() {
-				if scope != diff.Scope {
-					env.Act.Forge.LoadScope(scope)
-				}
-				p.open.toggleMenu(session)
+			if items.Item(scopeLabel(scope)).Chosen(scope == diff.Scope).Clicked() {
+				p.chooseScope(env, scope)
 			}
 		}
+		items.Separator()
+		if items.Item(scopeLabel(apiclient.ForgeScopeBranch)).
+			Chosen(diff.Scope == apiclient.ForgeScopeBranch).Clicked() {
+			p.chooseScope(env, apiclient.ForgeScopeBranch)
+		}
 	})
+	p.open.menu[session] = open
+}
+
+// chooseScope 是选中一个范围之后的动作（官方 `onSelect={(id) => { setOpen(false); choose(id) }}`，
+// `OFF:lib/client.js:6477-6480`）。
+//
+// 单独一个方法是**测试接缝**：Viva 的弹层条目由框架自己持有身份（`MenuItems.Item`
+// 内部按 scope 分配），仓里的测试点不到它；所以"选中之后发什么"要有一条能直接
+// 调用的真路径（`plugins/dscreationreco` 的 `chooseLocation` 同一做法）。
+func (p *Plugin) chooseScope(env *pluginapi.Env, scope string) {
+	if env.Act.Forge == nil || env.Act.Forge.LoadScope == nil {
+		return
+	}
+	env.Act.Forge.LoadScope(scope)
 }
 
 // drawChangesToolbar 画 `.toolbar`：总增删 + 刷新。

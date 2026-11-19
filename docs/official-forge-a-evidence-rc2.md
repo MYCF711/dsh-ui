@@ -144,3 +144,105 @@ python scripts/scripts-index.py --check                         → PASS
    已有客户端与测试但没有界面落点（`forgeCleanupAction` 只给测试/未来的归档入口用）。
 5. **`branches` 不回 commit**：官方 `checkout.commit`（分离 HEAD 时的 `worktree.detachedTip`
    `{commit}`）因此为空，分离 HEAD 只能显示"未在分支上"。
+
+## 9. 2026-11-19 复核（task-103：只做不依赖宿主的那一档）
+
+先纠正 **§6 里三条已经过期的差异**——它们不是"没做"，是账本没跟着代码更新：
+
+| §6 条 | 原文结论 | 现在的事实（带出处） |
+|---|---|---|
+| 5 | "本仓 `pluginapi/theme.go` 没有任何 diff 色令牌" | **不成立**：`pluginapi/theme.go:132-142` 有六档 `FileDiff{Added,Deleted}{Bg,Gutter,Marker}`；取值 `plugins/dscore/dscore.go:227-232`（暗）/`:329-334`（亮），逐条注释 `design-platform.css:281-286`/`:433-438`；消费 `plugins/dsforge/changes.go:602-640`（`.add`/`.del` 铺 bg、`.number` 铺 gutter 且文字用 marker）；双钉测试 `plugins/dsforge/diff_colors_test.go:26-37` |
+| 6 | "刷新按钮是文字 `↻`" | **不成立**：`plugins/dsforge/changes.go:336-346` 画的是 `dsassets.MarketRefreshOutline`，15px（官方 `.THWGDq_tool svg{width:15px;height:15px}`，`OFF:lib/client.js:4466` 的 ChangesTab 模块 CSS）；官方素材 viewBox `0 0 16 16`、`stroke-width` 由调用方给（`OFF:index-ghOpC9uV.js:129`，sha256 `061de8cefa15e1fbb87d301463ad4ebb79259b197ca08e83406f6997c1af8bb8`）；路径逐字在 `plugins/dsassets/market.go:15-20` |
+| 2 | "范围菜单画在行内（`.menuRow`），官方是浮层" | **位置已改**：现在用 `ui.Menu` 锚在范围芯片下方（见下）；另纠正一处**认错类名**：官方 `.menuRow`/`.menuList`/`.menuPath` 在 ChangesTab 模块 CSS 里**没有任何使用点**（`grep menuRow lib/client.js` 只有 CSS 与 class map 两处），不是范围菜单的样式 |
+
+### 9.1 本轮唯一的代码改动：范围菜单改成官方浮层
+
+官方 `ScopeMenu`（`OFF:lib/client.js:6436-6479`）是 `primitives.Menu`：
+`portal: true` / `align: "start"` / `dense` / `autoFocus` / `selectedId`，`anchor` 就是那个
+`.select` 按钮；条目顺序 **未提交 → 未暂存 → 已暂存 → 分隔线 → 分支**。
+
+本仓 `plugins/dsforge/changes.go` 的 `drawScopeMenu` 改为 `ui.Menu(f, anchor, …)`：
+锚定浮层（`popup.BelowBox(anchor, 4, Start)`，`viva@v0.6.4/ui/menu.go:126-131`）、
+点外部/Esc 关、键盘可走、选中项 `Chosen` 打勾（`ui/menu.go:465-473`）；
+条目顺序与分隔线按官方，选中动作走新加的 `chooseScope`（测试接缝，同
+`plugins/dscreationreco` 的 `chooseLocation`）。**不再**把菜单画成头部下方的一列。
+
+判据（`plugins/dsforge/visual_test.go`）：
+
+- `TestScopeMenuIsAnOverlayWithOfficialOrder` — ① 打开菜单时 hunk 头的 Y **一格不动**
+  （行内菜单会从 154 推到 266，实测变异红）；② 关着时不出现菜单条目；
+  ③ 打开后四条按官方顺序出现。
+- `TestChooseScopeSendsTheScope` — 选中哪个发哪个；`env.Act.Forge == nil` 时静默返回不崩。
+
+**仍差一档（新登记，替代原"位置不同"）**：官方菜单面是 `--dsw-elevation-prominent`，
+Viva 的浮层固定 `gfx.ShadowMD`（`viva@v0.6.4/components/dropdown_menu.go:769-771`），
+且官方 `dense` 的行高/内边距在可用证据里取不到（`primitives` 包源码不在
+本机的官方包 dump 里）。手绘面板能换回官方阴影但会失去浮层，两害相权保留浮层。
+
+### 9.2 分支图标：素材有、渲染词汇没有（不是"缺素材"）
+
+- 官方素材：`assets/official/icons/messages/branch.jsx`（sha256
+  `5090854ac51aa941cdd4d84ce37a39df0bb36638f90ab334af7a642f3558798b`，605 B，
+  `viewBox=0 0 16 16`）= 两条支线 `<path>` + **两枚 `<circle>`**
+  （`cx 12.4502 / cy 3.3079` 与 `cy 12.6921`，`r 1.56962`）。
+- 挡在哪：Viva 的路径词汇只有 `Move/Line/Quad/Cubic/Close`（`gfx/path.go:9-12`），
+  没有弧，也没有圆的图元可放进 `gfx.Icon`；`plugins/dsassets/registry.go:170-182`
+  因此把它登记成 `Unsupported`（"圆需要椭圆弧"）。
+- 结论：**不画**。官方两条支线的原文已在 `plugins/dsassets/paths.go:51-52`，
+  但缺了两枚端点圆的分支图标是残图，比不画更糟——`gfx.Icon` 里补圆要先有弧。
+  分支名继续用代码体文字表达（`plugins/dsforge/hero.go` 的 `基于 X`）。
+
+### 9.3 第二档（会动布局）的评估结论：这一轮不做
+
+| 差异 | 官方要什么 | 卡在哪 |
+|---|---|---|
+| 文件树左栏 | `FileTreePane.module.css`（`OFF:lib/client.js:5902` 起）：`.pane` 只在 `@container (width>=760px)` 里 `display:block`；宽度**可拖**（`MIN_WIDTH=200` / `MAX_WIDTH=600` / `DIFF_MIN_WIDTH=320`，`OFF:lib/client.js:5919-5921`），拖手 `.resize{width:8px;cursor:col-resize}` | ① Viva 没有**容器查询**（`ui.C` 只有整页尺寸，`pluginapi.Env.Geometry` 给的是侧栏/主列宽度）；② 仓内与 Viva 都没有**可拖宽分栏**（`grep SplitPane\|WidthHandle\|Resizable` 零命中，`.resize` 这种 8px 抓手的拖动/光标要自建） |
+| 左右对比 / 换行 | `.code[data-split]` 的双 `.cell` 网格（`.pair{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}`、`.cell+.cell{border-left:.5px}`）每格自带行号列且**各自横向滚动**（`.code{overflow-x:auto}` + `white-space:pre`），`data-wrap` 换 `pre-wrap`+`overflow-wrap:anywhere` | Viva 的横向滚动只有 `ui.List` 的 `RowWidth`（整行滚），没有"格内独立横向滚动 + 其余列固定"；两态并存（`data-split`/`data-wrap`）要求同一棵子树两种宽度语义 |
+
+结论：两条都要先有渲染器能力（容器查询 / 可拖宽分栏 / 格内横向滚动），本单不动布局。
+按官方形状"缺就 HIDE"而不是画一个假的树/假的分栏。
+
+### 9.4 第三档：宿主具体缺什么（GUI 侧不再改）
+
+**G6 仍然成立，且已用宿主当前源码复核**：`forgePanel.follow` 发的第一帧是
+`{type:'baseline', value:{bindings}}`（`HOST:internal/transport/handlers_forge_panel_state.go:318-321`），
+之后是 upsert/remove 的绑定清单帧；官方结果类型是 `ForgePanelState`
+（`OFF:lib/typert.host.js:1752`，含 `directory/checkout/repository/readiness/worktree/local/changeRequests`）。
+宿主自己那份缺口表也写着这条（`HOST:internal/transport/handlers_forge_liveshare_official.go:295-302`：
+"本仓没有 panel 状态机；开一条只发空帧的流就是假流式"）。
+
+要让下面两张卡落地，宿主二选一：
+
+1. 把 `follow` 的帧改成官方 `ForgePanelState`（首帧全量 + 后续 union）；**或**
+2. 在 `session.projections` 里发布 `forgeWorktree` 投影——`internal/worktree.Fold` 的
+   `Service.State` 本来就在，缺的只是出口。
+
+依赖它的两条（宿主补齐即可真画，GUI 侧不需要再改）：
+
+- **blocker 挡板**（§6 条 8）：官方 `worktree.editable === false`（`not-git` /
+  `outside-writable-root` / `read-only`）时整块不画勾选。本仓现在只能判
+  `checkout.state == 'ready'`，"能读 git 但沙箱写不进去"那一层判不了——`worktree.editable`
+  正是 `ForgePanelState.worktree` 里的字段。
+- **创建进度卡**（§6 条 9）：官方 `WorktreeProgress` 要 `worktree.creation`
+  （`prepare`/`checkout` 到哪一步）、`branch`、`held`；`internal/worktree.Service.State`
+  有这些阶段，缺的同样是读出口。
+
+**已读只在本进程**（§6 条 10）不是宿主缺口：官方存 `localStorage`（`viewed-files.ts`），
+本仓插件内存；三态（未读/已读/已变更，按 digest 比）与官方一致。要做持久化得先有
+插件级存储 seam，属另一单。
+
+### 9.5 复核后的剩余清单（10 → 8）
+
+10 条里 **3 条本轮/前一轮已消除**：`无 diff 底色令牌`（2026-11-17 已落地）、
+`刷新图标`（已落地）、`范围菜单位置`（本轮改成浮层）。剩下 **8 条**：
+
+| # | 剩余差异 | 归属 |
+|---|---|---|
+| 1 | 座位（`conversation.session.header.utilities` 的"创建变更请求"按钮 + `shell.overlay` 的归档清理 toast） | CR 面（G1/G2/G3）与 GUI 无归档入口 |
+| 2 | 文件树左栏（可拖宽 200–600，容器 ≥760 才显示） | 渲染器（容器查询 + 可拖宽分栏） |
+| 3 | 左右对比 + 换行（`data-split`/`data-wrap`） | 渲染器（格内横向滚动） |
+| 4 | 分支图标（两枚圆） | 渲染器（路径词汇无弧） |
+| 5 | blocker 挡板 | 宿主（G6：`worktree.editable`） |
+| 6 | 创建进度卡 | 宿主（G6：`worktree.creation`） |
+| 7 | 已读只在本进程 | GUI（缺插件持久化 seam） |
+| 8 | 范围菜单面阴影/密度 | 渲染器（`gfx.ShadowMD` 写死；官方 elevation-prominent） |

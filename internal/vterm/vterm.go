@@ -46,6 +46,13 @@ type Emulator struct {
 	// （`Screen.SetScrollback(nil)` 要未导出的 scrs，`SetMaxLines(<=0)` 直接 return），
 	// 所以这里记住「关掉了」，由本包的投影层报 0 行。
 	scrollbackOff bool
+	// osc 是程序通过 OSC 10/11/12 写进来的默认色（Set=false = 没改过）。
+	//
+	// 上游自己也存一份（`ForegroundColor` 等），但它的 getter 分不出「改过又复位」
+	// 与「从没改过」——复位做的是 `fgColor = defaultFg`，取值与全新模拟器一样
+	// （探针 2026-11-19）。这两种在官方是不同结果，所以这里只记「有没有被改过」，
+	// 见 osc.go。
+	osc Defaults
 }
 
 // New 造一块 w×h 的终端屏幕。
@@ -57,7 +64,11 @@ func New(w, h int) *Emulator {
 		h = 24
 	}
 	inner := vt.NewSafeEmulator(w, h)
-	return &Emulator{inner: inner}
+	e := &Emulator{inner: inner}
+	// OSC 观察者/派发器在构造时挂一次：上游的 handlers 表不带锁，只适合
+	// 单线程写入点（见 osc.go）。
+	e.registerOSC()
+	return e
 }
 
 // Write 把 pty 的原始字节喂进去。

@@ -47,8 +47,22 @@ func emulatorGrid(t *testing.T, w, h int, writes ...string) *vterm.Grid {
 	return e.Grid()
 }
 
-// terminalGridCanvas 把终端的右栏面板画到无头画布上。
+// terminalGridCanvas 把终端的右栏面板画到无头画布上，并在**焦点落在终端屏幕上**
+// 的状态下画——官方只有 `.xterm-focus` 时才画程序给的实心光标（见 grid.go 的
+// screenFocused）。要看失焦那一档用 terminalGridCanvasUnfocused。
 func terminalGridCanvas(t *testing.T, grid *vterm.Grid, clock func() time.Duration) (*gfx.Canvas, *pluginapi.Theme) {
+	t.Helper()
+	return terminalGridCanvasFocus(t, grid, clock, true)
+}
+
+// terminalGridCanvasUnfocused 在同一块面板上把焦点放在别处（不在终端上），
+// 画出官方 `.xterm-focus` 缺席时的那一档：outline 空心框、不闪。
+func terminalGridCanvasUnfocused(t *testing.T, grid *vterm.Grid, clock func() time.Duration) (*gfx.Canvas, *pluginapi.Theme) {
+	t.Helper()
+	return terminalGridCanvasFocus(t, grid, clock, false)
+}
+
+func terminalGridCanvasFocus(t *testing.T, grid *vterm.Grid, clock func() time.Duration, focusOnScreen bool) (*gfx.Canvas, *pluginapi.Theme) {
 	t.Helper()
 	theme := dscore.Dark()
 	tree := &gfx.Tree{}
@@ -82,6 +96,13 @@ func terminalGridCanvas(t *testing.T, grid *vterm.Grid, clock func() time.Durati
 		},
 	}
 	p := &Plugin{theme: theme}
+	// 焦点状态在 paint 之前记录（viva 的 SetInteraction 就是这个次序：runtime
+	// 记好指针与焦点，组件在 paint 里只读）。
+	focused := gfx.Item(9999) // 焦点在别处
+	if focusOnScreen {
+		focused = tree.ID(tree.Feature("terminal-grid"), "terminal-screen")
+	}
+	canvas.SetInteraction(gfx.ID{}, gfx.ID{}, focused, false)
 	pageTheme := dscore.VivaTheme(theme)
 	page := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
 	page.Draw(canvas, gfx.Rect{Width: gridTestPageW, Height: gridTestPageH}, func(f ui.C) {
@@ -598,5 +619,190 @@ func TestGridFallsBackToTextWithoutGrid(t *testing.T) {
 	joined := strings.Join(got, "|")
 	if !found || !strings.Contains(joined, "hello") {
 		t.Fatalf("没有网格时应按行画文本投影，实际 %q", joined)
+	}
+}
+
+// cursorCellRect 是光标所在格在画布上的矩形（列 col、行 row，宽 width 格）。
+func cursorCellRect(col, row, width int) gfx.Rect {
+	x, y := gridTestOrigin()
+	return gfx.Rect{
+		X: x + float32(col)*gridTestCellW, Y: y + float32(row)*gridTestCellH,
+		Width: float32(width) * gridTestCellW, Height: gridTestCellH,
+	}
+}
+
+// cursorOutlineRects 是失焦态那四条 1px 边：上、左、右、下，**都在格子里面**
+// （xterm 的 `outline:1px … ; outline-offset:-1px`）。
+//
+// 这里的 1 是**字面量**而不是 terminalCursorOutlineWidth：期望值若跟着被测常量
+// 一起变，把常量改成 2px 测试照样绿（变异实测如此），等于没钉。1px 来自官方
+// xterm 那条规则本身，不是我们选的数。
+func cursorOutlineRects(cell gfx.Rect) []gfx.Rect {
+	const w float32 = 1
+	return []gfx.Rect{
+		{X: cell.X, Y: cell.Y, Width: cell.Width, Height: w},
+		{X: cell.X, Y: cell.Y, Width: w, Height: cell.Height},
+		{X: cell.X + cell.Width - w, Y: cell.Y, Width: w, Height: cell.Height},
+		{X: cell.X, Y: cell.Y + cell.Height - w, Width: cell.Width, Height: w},
+	}
+}
+
+// TestGridCursorOutlineWhenUnfocused 钉住第四种形态：**失焦**时是格内 1px 空心框
+// （官方 terminal.module.css:15 `outline-color:var(--terminal-cursor)`，宽度来自
+// xterm 的 `outline:1px solid …; outline-offset:-1px`）。
+//
+// 三件事一起钉：
+//   - 四条 1px 边都在，且颜色都是光标色；
+//   - 整格填充**没有**（实心块是聚焦态的样子）；
+//   - 格子里的字**不重画**（空心框只改框色，官方那条规则没有 color 声明）。
+func TestGridCursorOutlineWhenUnfocused(t *testing.T) {
+	// steady block：聚焦时是实心块，用来对照「同一份程序状态、换焦点就换形态」。
+	grid := emulatorGrid(t, 10, 2, "abc\x1b[1;3H\x1b[2 q")
+	canvas, theme := terminalGridCanvasUnfocused(t, grid, nil)
+
+	cell := cursorCellRect(2, 0, 1)
+	if fills := gridFillsAt(canvas, cell); len(fills) != 0 {
+		t.Fatalf("失焦时不该画实心块：%+v", fills)
+	}
+	fill, _ := terminalCursorColors(theme.LabelPrimary, theme.BgBase)
+	want := cursorOutlineRects(cell)
+	var got []gfx.Rect
+	for _, rect := range canvas.Rectangles() {
+		// 只收光标格范围内的填充（面板别处还有背景块）。
+		if rect.Bounds.X < cell.X || rect.Bounds.X >= cell.X+cell.Width ||
+			rect.Bounds.Y < cell.Y || rect.Bounds.Y >= cell.Y+cell.Height {
+			continue
+		}
+		got = append(got, rect.Bounds)
+		if rect.Color != fill {
+			t.Fatalf("空心框的边应是光标色 %+v，实际 %+v（%+v）", fill, rect.Color, rect.Bounds)
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("失焦光标应是 %d 条边，实际 %d：%+v", len(want), len(got), got)
+	}
+	for _, edge := range want {
+		if len(gridFillsAt(canvas, edge)) != 1 {
+			t.Fatalf("缺了空心框的这条边 %+v，实际图元：%+v", edge, got)
+		}
+	}
+	for _, text := range canvas.Texts() {
+		if text.Bounds == cell {
+			t.Fatalf("空心框不该重画格子里的字：%+v", text)
+		}
+	}
+}
+
+// TestGridCursorShapeFollowsFocus 钉住「形状由焦点二选一」：
+// 聚焦画 DECSCUSR 那一档，失焦一律 outline。
+func TestGridCursorShapeFollowsFocus(t *testing.T) {
+	cases := []struct {
+		name string
+		seq  string // DECSCUSR
+		// 聚焦时该有的那一块填充（整格或 1px 条）。
+		focused gfx.Rect
+	}{
+		{"block", "\x1b[2 q", cursorCellRect(2, 0, 1)},
+		{
+			"bar", "\x1b[6 q",
+			gfx.Rect{
+				X: cursorCellRect(2, 0, 1).X, Y: cursorCellRect(2, 0, 1).Y,
+				Width: terminalCursorBarWidth, Height: gridTestCellH,
+			},
+		},
+		{
+			"underline", "\x1b[4 q",
+			gfx.Rect{
+				X: cursorCellRect(2, 0, 1).X, Y: cursorCellRect(2, 0, 1).Y + gridTestCellH - terminalCursorUnderlineHeight,
+				Width: gridTestCellW, Height: terminalCursorUnderlineHeight,
+			},
+		},
+	}
+	for _, c := range cases {
+		seq := "abc\x1b[1;3H" + c.seq
+		focusedCanvas, _ := terminalGridCanvas(t, emulatorGrid(t, 10, 2, seq), nil)
+		if len(gridFillsAt(focusedCanvas, c.focused)) != 1 {
+			t.Fatalf("%s：聚焦时应画 %+v，实际 %+v", c.name, c.focused, focusedCanvas.Rectangles())
+		}
+		unfocusedCanvas, _ := terminalGridCanvasUnfocused(t, emulatorGrid(t, 10, 2, seq), nil)
+		cell := cursorCellRect(2, 0, 1)
+		if len(gridFillsAt(unfocusedCanvas, cell)) != 0 {
+			t.Fatalf("%s：失焦时不该还画 %s 那一档", c.name, c.name)
+		}
+		for _, edge := range cursorOutlineRects(cell) {
+			if len(gridFillsAt(unfocusedCanvas, edge)) != 1 {
+				t.Fatalf("%s：失焦时应画 outline 的边 %+v，实际 %+v", c.name, edge, unfocusedCanvas.Rectangles())
+			}
+		}
+	}
+}
+
+// TestGridCursorBlinkOnlyWhenFocused 钉住「闪烁看焦点」：
+// 官方的动画规则全部挂在 `.xterm-rows.xterm-focus` 下（terminal.module.css:18，
+// xterm 自己生成的三条 keyframes 也是同一个选择器），所以
+//   - 聚焦 + 闪烁：按 1s 相位闪（0ms 画、600ms 不画、并预约下一帧）；
+//   - 失焦 + 闪烁（程序要它闪）：**不闪**，而且形态换成 outline——
+//     两个相位画出来的图元必须一模一样。
+func TestGridCursorBlinkOnlyWhenFocused(t *testing.T) {
+	blinking := func() *vterm.Grid {
+		return emulatorGrid(t, 10, 2, "abc\x1b[1;3H\x1b[1 q") // 1 = blinking block
+	}
+	cell := cursorCellRect(2, 0, 1)
+
+	// 聚焦：相位 0ms 画、600ms 不画。
+	on, _ := terminalGridCanvas(t, blinking(), func() time.Duration { return 0 })
+	if len(gridFillsAt(on, cell)) != 1 {
+		t.Fatalf("聚焦 + 闪烁：相位 0ms 应画实心块，实际 %+v", on.Rectangles())
+	}
+	off, _ := terminalGridCanvas(t, blinking(), func() time.Duration { return 600 * time.Millisecond })
+	if fills := gridFillsAt(off, cell); len(fills) != 0 {
+		t.Fatalf("聚焦 + 闪烁：相位 600ms 应淡出，实际 %+v", fills)
+	}
+
+	// 失焦：两个相位都是同一组 outline 边，不闪。
+	first, _ := terminalGridCanvasUnfocused(t, blinking(), func() time.Duration { return 0 })
+	second, _ := terminalGridCanvasUnfocused(t, blinking(), func() time.Duration { return 600 * time.Millisecond })
+	for _, edge := range cursorOutlineRects(cell) {
+		if len(gridFillsAt(first, edge)) != 1 || len(gridFillsAt(second, edge)) != 1 {
+			t.Fatalf("失焦时光标不该闪：两个相位都应画 outline 的边 %+v", edge)
+		}
+	}
+	if _, asked := second.NextFrame(); asked {
+		t.Fatal("失焦时不该预约闪烁帧（那会让静态画面每秒重画两次）")
+	}
+}
+
+// TestGridProgramDefaultColors 钉住 OSC 10 / 11 / 12 真的画到画布上：
+// 默认字色、整屏底色、光标色三样各换各的。
+func TestGridProgramDefaultColors(t *testing.T) {
+	grid := emulatorGrid(t, 10, 2,
+		"A\x1b[1;1H",
+		"\x1b]10;#ff0000\x1b\\", "\x1b]11;#112233\x1b\\", "\x1b]12;#00ff00\x1b\\",
+	)
+	canvas, _ := terminalGridCanvas(t, grid, nil)
+
+	x, y := gridTestOrigin()
+	// 整屏底色 = OSC 11 那个色（xterm 把 theme.background 画满 viewport）。
+	if fills := gridFillsAt(canvas, gfx.Rect{
+		X: x, Y: y, Width: float32(grid.Width) * gridTestCellW, Height: float32(grid.Height) * gridTestCellH,
+	}); len(fills) != 1 || fills[0].Color != gfx.RGB(0x11, 0x22, 0x33) {
+		t.Fatalf("OSC 11 定的默认背景应铺满整屏 #112233，实际 %+v", fills)
+	}
+	// 默认字色 = OSC 10。
+	runs := gridRuns(canvas, 0)
+	if len(runs) == 0 || runs[0].value != "A" {
+		t.Fatalf("第 0 行应画到字母 A，实际 %+v", runs)
+	}
+	if want := gfx.RGB(0xff, 0x00, 0x00); runs[0].color != want {
+		t.Fatalf("OSC 10 定的默认前景应画 %+v，实际 %+v", want, runs[0].color)
+	}
+	// 光标色 = OSC 12（对比度够，不会被换成黑白）。
+	cell := cursorCellRect(0, 0, 1)
+	fills := gridFillsAt(canvas, cell)
+	if len(fills) != 1 {
+		t.Fatalf("光标格应有一块填充，实际 %+v", canvas.Rectangles())
+	}
+	if want := gfx.RGB(0x00, 0xff, 0x00); fills[0].Color != want {
+		t.Fatalf("OSC 12 定的光标色应是 %+v，实际 %+v", want, fills[0].Color)
 	}
 }

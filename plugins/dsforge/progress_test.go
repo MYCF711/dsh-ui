@@ -410,3 +410,90 @@ func TestToggleRequestsWithCurrentBranchWithoutBlocker(t *testing.T) {
 		t.Fatalf("基准分支 = %v，官方 unchecked→checked 是 request(option.current)=feat/base", from)
 	}
 }
+
+// TestNotGitHidesTheWholeOptionAndHasNoBanner 钉住官方对 `not-git` 的处理 ——
+// 它与另外两个 blocker 值**不是同一种表现**：
+//
+//	WorktreeToggle.tsx:104-105  blocker === 'not-git' → optionOf 返回 undefined（整块不画）
+//	locales.ts:311-312          `worktree.blocked.*` 只有两句，**没有 not-git 那句**
+//
+// 因为它在 `:104-105` 就被否掉，永远走不到 `:151` 那句 Tooltip；所以本仓也不给它
+// 编文案、更不许画成"禁用 + 浮条"。
+func TestNotGitHidesTheWholeOptionAndHasNoBanner(t *testing.T) {
+	if copy := worktreeBlockerCopy(pluginapi.ForgeWorktreeBlockerNotGit); copy != "" {
+		t.Fatalf("官方 locales.ts:311-312 没有 `worktree.blocked.not-git`，但这里给它编了一句：%q", copy)
+	}
+	if copy := worktreeBlockerCopy("some-future-word"); copy != "" {
+		t.Fatalf("未知 blocker 值不许编挡板文案（官方只有两句），实得 %q", copy)
+	}
+	// editable=true 时 not-git 仍然整块不画（官方 :104-105，压过 :106-107）。
+	notGit := newForgeCardsFixture(t, creationView(pluginapi.ForgeWorktree{
+		PanelKnown: true, Editable: true, Blocker: pluginapi.ForgeWorktreeBlockerNotGit,
+	}), "s-1", drawToggleOnly)
+	if notGit.hasText("新建工作树") {
+		t.Fatal("blocker=not-git 时官方整块不画（WorktreeToggle.tsx:104-105）")
+	}
+	// 对照：同一份夹具换成有文案的那个值，必须「画出来但禁用」——否则上面那条
+	// 「不画」可能因为别的原因（例如 checkout 没画出来）假绿。
+	blocked := newForgeCardsFixture(t, creationView(pluginapi.ForgeWorktree{
+		PanelKnown: true, Editable: true, Blocker: pluginapi.ForgeWorktreeBlockerReadOnly,
+	}), "s-1", drawToggleOnly)
+	if !blocked.hasText("新建工作树") {
+		t.Fatal("对照失败：blocker=read-only 时官方是「画出来但禁用」，不是隐藏")
+	}
+}
+
+// TestNullBlockerKeepsToggleUsableWithOfficialHint 是挡板的**反向对照**：
+// `blocker === null` 时浮条是官方默认 hint（`WorktreeToggle.tsx:151` → `locales.ts:310`），
+// 文案色是 label-secondary（没被 `.toggle[data-disabled]` 改成 label-dimmed，
+// `WorktreeToggle.module.css:38-41`），两句挡板文案一句都不许出现。
+func TestNullBlockerKeepsToggleUsableWithOfficialHint(t *testing.T) {
+	f := newForgeCardsFixture(t, creationView(pluginapi.ForgeWorktree{
+		PanelKnown: true, Editable: true,
+	}), "s-1", drawToggleOnly)
+	if color, ok := f.textColor("新建工作树"); !ok || color != f.theme.LabelSecondary {
+		t.Fatalf("null blocker 时文案颜色 = %v，官方是 label-secondary（没被禁用）", color)
+	}
+	toggle, ok := f.hit("forge-worktree-toggle")
+	if !ok {
+		t.Fatal("null blocker 时勾选框必须有身份（浮条挂得上）")
+	}
+	f.moveTo(toggle.Bounds.X+toggle.Bounds.Width/2, toggle.Bounds.Y+toggle.Bounds.Height/2)
+	if err := f.session.Wait(300 * time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	f.pump()
+	if !f.hasWrappedText(copyWorktreeHint) {
+		t.Fatal("null blocker 的浮条应当是官方 `worktree.hint`（locales.ts:310）")
+	}
+	for _, blocked := range []string{copyWorktreeBlockedOutsideRoot, copyWorktreeBlockedReadOnly} {
+		if f.hasWrappedText(blocked) {
+			t.Fatalf("null blocker 时不该出现挡板文案：%q", blocked)
+		}
+	}
+}
+
+// TestBlockedToggleNeverLeaksPastTheHiddenGates 钉住官方 `optionOf` 的**判序**：
+// 三条「整块不画」的条件都排在「画出但禁用」之前 —— 命中任意一条时，连挡板浮条
+// 都不许露出来（`WorktreeToggle.tsx:103`、`:106-107`）。
+func TestBlockedToggleNeverLeaksPastTheHiddenGates(t *testing.T) {
+	// :103 `!editable` 先于 blocker：整块不画（不是禁用、也没有浮条）。
+	notEditable := newForgeCardsFixture(t, creationView(pluginapi.ForgeWorktree{
+		PanelKnown: true, Editable: false, Blocker: pluginapi.ForgeWorktreeBlockerReadOnly,
+	}), "s-1", drawToggleOnly)
+	if notEditable.hasText("新建工作树") {
+		t.Fatal("editable=false 时官方整块不画（:103 压在 blocker 之前）")
+	}
+	// :106-107 checkout 不是 ready：同样整块不画。
+	notReady := newForgeCardsFixture(t, &pluginapi.ForgeView{
+		SessionID: "s-1",
+		Checkout:  pluginapi.ForgeCheckout{Kind: pluginapi.ForgeCheckoutPending},
+		Worktree: pluginapi.ForgeWorktree{
+			PanelKnown: true, Editable: true,
+			Blocker: pluginapi.ForgeWorktreeBlockerOutsideWritableRoot,
+		},
+	}, "s-1", drawToggleOnly)
+	if notReady.hasText("新建工作树") {
+		t.Fatal("checkout 不是 ready 时官方整块不画（:106-107）")
+	}
+}

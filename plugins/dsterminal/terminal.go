@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/MYCF711/dsh-ui/internal/vterm"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/app"
 	"github.com/vivaui/viva/gfx"
@@ -52,6 +53,10 @@ type Plugin struct {
 	// 持有）。见 selection.go。
 	selection map[string]*terminalSelection
 
+	// mouse 是每个 occurrence 的鼠标上报簿记（按住的键、报过按下的键、上一帧
+	// 发出去的事件）。官方那份在 CoreMouseService 里。见 mouse.go。
+	mouse map[string]*terminalMouseState
+
 	// clipboard 是「把一段文本写进系统剪贴板」。默认是 Viva 的
 	// `app.SetClipboardText`（`viva@v0.6.4/app/system.go:139`；Windows 实现在
 	// `internal/platform/windows/system_windows.go:317`，无窗口时用 0 作为
@@ -63,9 +68,15 @@ type Plugin struct {
 	wheelHit        gfx.ID
 	wheelTab        string
 	wheelCellH      float32
+	wheelCellW      float32
+	wheelCols       int
+	wheelRows       int
 	wheelScrollback int
 	wheelYdisp      int
 	wheelRect       ui.Rect
+	// wheelMouse 是这一帧的鼠标上报状态：滚轮要不要转成序列写回 PTY 由它决定
+	// （见 mouse.go 的 reportTerminalMouseWheel）。
+	wheelMouse vterm.MouseState
 }
 
 func (*Plugin) ID() string         { return "ds-terminal" }
@@ -129,14 +140,16 @@ func (p *Plugin) CloseRightTab(sessionID, tabID, kind string, actions pluginapi.
 	//（新终端没有那段历史，也没有那段文本）。
 	p.forgetScroll(tabID)
 	p.forgetSelection(tabID)
+	p.forgetMouse(tabID)
 	if actions.TerminalCloseOfficial == nil {
 		return fmt.Errorf("用户终端 close 未接线")
 	}
 	return actions.TerminalCloseOfficial(tabID)
 }
 
-// HandleScroll 接住落在终端上的滚轮：官方那边是 xterm viewport 的滚动条与
-// 滚轮（`scrollSensitivity:1`），本仓按同一套换算自己滚（见 scrollback.go）。
+// HandleScroll 接住落在终端上的滚轮：鼠标上报开着时它归 PTY（见 mouse.go），
+// 否则官方那边是 xterm viewport 的滚动条与滚轮（`scrollSensitivity:1`），
+// 本仓按同一套换算自己滚（见 scrollback.go）。
 //
 // 只在指针命中终端时接手；返回 Handled 之后壳不再把这次手势交给页面滚动
 // ——官方 xterm 同样是 `preventDefault`，滚到头也不让页面动。
@@ -146,6 +159,11 @@ func (p *Plugin) HandleScroll(ev gfx.ScrollEvent) gfx.EventResult {
 	}
 	if ev.DeltaY == 0 {
 		return gfx.EventResult{}
+	}
+	// 滚轮写在本地滚回之前判：鼠标上报开着时这一下是给程序的，官方那条
+	// `wheel` 监听器会把事件吃掉（byte 26995），本地滚回不动。
+	if p.reportTerminalMouseWheel(ev) {
+		return gfx.EventResult{Handled: true}
 	}
 	return gfx.EventResult{Handled: true, Repaint: p.scrollTerminal(ev)}
 }

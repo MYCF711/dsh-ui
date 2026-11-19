@@ -1370,6 +1370,20 @@ type TerminalViewState struct {
 	// 它与 Grid 的口径一致：**不含当前屏**（ScrollbackLen()==0 时用户无处可滚，
 	// 官方这时 scrollback 选项为 0，连 14px 滚动条槽都不会留）。
 	ScrollbackLen int
+	// Mouse 是这条终端**当前**的鼠标上报状态（协议 + 坐标编码）。
+	//
+	// 程序在 PTY 那头用 DECSET 打开它：9=X10 / 1000=VT200 / 1002=DRAG /
+	// 1003=ANY，1006/1016 换坐标编码（官方 `setModePrivate`，bundle byte
+	// 180614-181187）。零值 = 没打开，指针手势归本仓的本地选区。
+	//
+	// 为什么状态要在这里露出来：模式是**程序写进 PTY 的字节**解出来的，只有壳里
+	// 那块 VT 屏幕知道（`internal/vterm` 从上游的派发回调接，见该包 mouse.go）；
+	// 而决定"这一下按下归谁"的是界面那一层（官方 `bindMouse`：上报开着且没按
+	// Shift 就上报给程序，否则走选区）。两边的判据必须来自同一个状态，否则会出现
+	// "界面以为在选字、程序以为在收鼠标"的错位。
+	//
+	// 类型来自 internal/vterm（与 Grid 同一个内部契约包），上游 uv/vt 的类型不外泄。
+	Mouse vterm.MouseState
 	// Issue 是官方 `TerminalViewState.issue` 的投影：终端视图自身的问题分类，
 	// 文案由界面按官方 locale 渲染（不是 Host 抛来的自由文本）。
 	//

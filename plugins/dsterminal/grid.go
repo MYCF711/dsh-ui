@@ -205,7 +205,7 @@ func (p *Plugin) paintGrid(d *ui.DrawContext, env *pluginapi.Env, tabID string, 
 		return
 	}
 	x0, y0 := d.Rect.X, d.Rect.Y
-	p.rememberWheelTarget(canvas, env, tabID, cols, rows, cellW, cellH, gutter, d.Rect, state.ScrollbackLen)
+	p.rememberWheelTarget(canvas, env, tabID, cols, rows, cellW, cellH, gutter, d.Rect, state.ScrollbackLen, state.Mouse)
 
 	// 滚回：只有壳给了窗口才滚得动（老壳没有那条动作，界面按「没有历史」画）。
 	scrollback := max(state.ScrollbackLen, 0)
@@ -222,6 +222,7 @@ func (p *Plugin) paintGrid(d *ui.DrawContext, env *pluginapi.Env, tabID string, 
 		hit: p.wheelHit, tabID: tabID, rect: p.wheelRect,
 		cellW: cellW, cellH: cellH, cols: cols, rows: rows,
 		first: ydisp, scrollback: scrollback, ydisp: ydisp,
+		mouse: state.Mouse,
 	}
 	if p.advanceTerminalDragScroll(tabID, geom, canvas) {
 		ydisp = p.scrollViewFor(tabID).ydisp
@@ -252,13 +253,19 @@ func (p *Plugin) paintGrid(d *ui.DrawContext, env *pluginapi.Env, tabID string, 
 
 // rememberWheelTarget 记下这一帧的滚轮几何，并声明命中区。
 //
+// 除了滚回换算要用的格高/滚回长度，还记了格宽、列数、行数与**鼠标上报状态**：
+// 鼠标模式开着时滚轮要变成 `CSI < 64/65 ; … M` 写回 PTY（见 mouse.go 的
+// reportTerminalMouseWheel），那次换算同样需要「一格多宽、一共几列几行」。
+//
 // 命中区是**整块终端**（官方 xterm 在整块上 `preventDefault` 吃掉滚轮，
 // 不只是文字行），这样 HandleScroll 用 `event.Target` 就能判「手势落在我身上」。
-func (p *Plugin) rememberWheelTarget(canvas *gfx.Canvas, env *pluginapi.Env, tabID string, cols, rows int, cellW, cellH, gutter float32, rect ui.Rect, scrollback int) {
+func (p *Plugin) rememberWheelTarget(canvas *gfx.Canvas, env *pluginapi.Env, tabID string, cols, rows int, cellW, cellH, gutter float32, rect ui.Rect, scrollback int, mouse vterm.MouseState) {
 	if env != nil && env.Tree != nil {
 		p.wheelHit = env.Tree.ID(env.Feat, "terminal-screen")
 	}
 	p.wheelTab, p.wheelCellH = tabID, cellH
+	p.wheelCellW, p.wheelCols, p.wheelRows = cellW, cols, rows
+	p.wheelMouse = mouse
 	p.wheelScrollback = max(scrollback, 0)
 	if p.wheelHit.IsZero() || p.wheelCellH <= 0 {
 		return

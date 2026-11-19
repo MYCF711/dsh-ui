@@ -29,6 +29,7 @@ package vterm
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/x/vt"
 )
@@ -46,6 +47,18 @@ type Emulator struct {
 	// （`Screen.SetScrollback(nil)` 要未导出的 scrs，`SetMaxLines(<=0)` 直接 return），
 	// 所以这里记住「关掉了」，由本包的投影层报 0 行。
 	scrollbackOff bool
+	// mouse 是**当前鼠标上报状态**（程序用 DECSET 9/1000/1002/1003 打开、
+	// 1006/1016 换编码）。零值 = 不报。
+	//
+	// 为什么要自己存一份：上游把状态放在未导出的 `e.modes` 里（`csi_mode.go:109-113`
+	// 的 `isModeSet`），只给了派发回调没有 getter；而界面要在每帧的视图快照里问
+	// 「现在要不要把指针交给 PTY」。取值与拒绝规则见 mouse.go 的文件头。
+	//
+	// 锁：写入在 `Write` 的调用栈里（上游持着自己的写锁），读在绘制帧里，
+	// 两把锁互不相干，不会与上游的 `SafeEmulator` 锁互相等待。
+	mouseMu sync.RWMutex
+	mouse   MouseState
+
 	// osc 是程序通过 OSC 10/11/12 写进来的默认色（Set=false = 没改过）。
 	//
 	// 上游自己也存一份（`ForegroundColor` 等），但它的 getter 分不出「改过又复位」
@@ -68,6 +81,8 @@ func New(w, h int) *Emulator {
 	// OSC 观察者/派发器在构造时挂一次：上游的 handlers 表不带锁，只适合
 	// 单线程写入点（见 osc.go）。
 	e.registerOSC()
+	// 鼠标模式的派发同理（见 mouse.go 的文件头）。
+	e.registerMouse()
 	return e
 }
 

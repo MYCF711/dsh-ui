@@ -78,6 +78,51 @@ func closeIcon(fill gfx.Color) (gfx.Icon, bool) {
 	return dsassets.ScheduleCloseOutline(fill)
 }
 
+// compareSplitIcon 是官方 `IconCompareSplitOutlineRegular`（视图开关里的
+// "切换为左右对比"，ChangesTab.tsx:1221-1225）。
+//
+// 素材来自官方图标 sprite `"compare-split-outline"`：
+// `dsh-web-frontend/dist/assets/index-ghOpC9uV.js`（rc.2 安装包内，
+// sprite 定义在 byte 723552 附近；`size:16`、`stroke-width` 由调用方给，
+// Regular 档 = 1）。两条 `<path>` 是两个圆角矩形，**描边不填充**。
+func compareSplitIcon() (gfx.Icon, bool) {
+	return dsassets.Build(dsassets.Asset{
+		ID: "compare-split-outline", Title: "左右对比", ViewBox: 16, StrokeWidth: 1,
+		Elements: []dsassets.Element{
+			{Kind: dsassets.PathElement, D: `M6 1.5H2.5C1.94772 1.5 1.5 1.94772 1.5 2.5V13.5C1.5 14.0523 1.94772 14.5 2.5 14.5H6C6.55228 14.5 7 14.0523 7 13.5V2.5C7 1.94772 6.55228 1.5 6 1.5Z`, Stroke: true},
+			{Kind: dsassets.PathElement, D: `M13.5 1.5H10C9.44772 1.5 9 1.94772 9 2.5V13.5C9 14.0523 9.44772 14.5 10 14.5H13.5C14.0523 14.5 14.5 14.0523 14.5 13.5V2.5C14.5 1.94772 14.0523 1.5 13.5 1.5Z`, Stroke: true},
+		},
+	}, gfx.Color{})
+}
+
+// nowrapFillIcon / wrapFillIcon 是官方 `IconNowrapFillRegular` / `IconWrapFillRegular`
+// （ChangesTab.tsx:1227-1230：wrap 开着时画 nowrap，表示"点它关闭换行"）。
+//
+// 素材来自官方 sprite `"nowrap-fill"` / `"wrap-fill"`
+// （`dsh-web-frontend/dist/assets/index-ghOpC9uV.js`，byte 722560 / 722991 附近；
+// `size:16`，纯 `fill="currentColor"`，无描边）。颜色由调用方给。
+func nowrapFillIcon(color gfx.Color) (gfx.Icon, bool) {
+	return dsassets.Build(dsassets.Asset{
+		ID: "nowrap-fill", Title: "关闭自动换行", ViewBox: 16,
+		Elements: []dsassets.Element{
+			{Kind: dsassets.PathElement, D: `M2 15H1V1H2V15Z`, Fill: true},
+			{Kind: dsassets.PathElement, D: `M12.3535 7.64645C12.5487 7.84171 12.5487 8.15829 12.3535 8.35355L9.85352 10.8535L9.14648 10.1465L10.793 8.5H3.5V7.5H10.793L9.14648 5.85352L9.85352 5.14648L12.3535 7.64645Z`, Fill: true},
+			{Kind: dsassets.PathElement, D: `M15 15H14V1H15V15Z`, Fill: true},
+		},
+	}, color)
+}
+
+func wrapFillIcon(color gfx.Color) (gfx.Icon, bool) {
+	return dsassets.Build(dsassets.Asset{
+		ID: "wrap-fill", Title: "开启自动换行", ViewBox: 16,
+		Elements: []dsassets.Element{
+			{Kind: dsassets.PathElement, D: `M10.9999 8C10.9999 6.89543 10.1046 6 9 6H4.5V5H9C10.6568 5 11.9999 6.34315 11.9999 8C11.9999 9.65685 10.6568 11 9 11H6.20703L6.85351 11.6465L6.14648 12.3535L4.64652 10.8536C4.45126 10.6583 4.45126 10.3417 4.64652 10.1464L6.14648 8.64648L6.85351 9.35352L6.20703 10H9C10.1046 10 10.9999 9.10457 10.9999 8Z`, Fill: true},
+			{Kind: dsassets.PathElement, D: `M2 15H1V1H2V15Z`, Fill: true},
+			{Kind: dsassets.PathElement, D: `M15 15H14V1H15V15Z`, Fill: true},
+		},
+	}, color)
+}
+
 // listPenIcon 复用官方 `IconListPenOutlineRegular` 的五条原始路径。
 // rc.2 sprite 的 `list-pen-outline` 与仓内 `PlanModeOutline` 图元逐条相同
 // （两条横线描边 + 页面/铅笔/下划线填充），因此直接复用，不另抄一份坐标。

@@ -10,8 +10,10 @@
 //
 // 几何取到的都在下面常量里，逐条对得上 CSS；**没取到/做不到**的一律不做，登记在账本 #64 行：
 //
-//	文件树左栏（`.treePane` / `--forge-tree-width`）——本仓没有可拖宽的分栏视图
-//	左右对比（`data-split`）与换行开关（`data-wrap`）——Viva 单元格宽度不可控
+//	文件树左栏（`.treePane` / `--forge-tree-width`）—— 2026-11-19（task-112）已实现，
+//	                                   见 changes_tree.go（ui.Splitter + 读宽度分支）
+//	左右对比（`data-split`）与换行开关（`data-wrap`）—— 2026-11-19（task-112）已实现，
+//	                                   见 changes_split.go（嵌套 BeginScrollArea）
 //	行内评论 / 评审队列（`ReviewComposer` 等）——走 CR 面（#64b）
 //
 // # 状态放哪
@@ -23,9 +25,12 @@
 package dsforge
 
 import (
+	"math"
+
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/MYCF711/dsh-ui/plugins/dsassets"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -108,6 +113,11 @@ const (
 	copyViewedUnviewed    = "未读"
 	copyViewedViewed      = "已读"
 	copyViewedChanged     = "已变更"
+	// 官方 locales.ts:269-274 的视图开关文案（逐字）。
+	copyDiffSplit   = "切换为左右对比"
+	copyDiffUnified = "切换为单栏对比"
+	copyDiffWrap    = "开启自动换行"
+	copyDiffNowrap  = "关闭自动换行"
 )
 
 // 已读三态（官方 `viewed-files.ts` 的 `viewedStateOf`）。
@@ -127,16 +137,32 @@ type changesOpen struct {
 	// progress 是创建进度卡"更多详情"的展开态（官方 `useState(false)`，
 	// WorktreeProgress.tsx:100）。
 	progress map[string]bool
+	// 以下是 #64 ②③ 的界面态：树栏折叠/宽度、左右对比与换行开关、每列滚动偏移。
+	// 官方把每 tab 的选择放 changes-store（`split`/`wrap` 默认 true，
+	// `changes-store.ts:81-86` 的 `navigated` 初值），这里同样只在内存。
+	treeFolds map[string]map[string]bool
+	treeWidth map[string]*ui.SplitterState
+	split     map[string]bool
+	wrap      map[string]bool
+	scrolls   map[diffScrollKey]*changesDiffScroll
+	// layouts 是左右对比的排版缓存（键见 splitLayout；内容/宽度/折行变了才重排）。
+	layouts map[string]*changesDiffLayout
 }
 
 func newChangesOpen() changesOpen {
 	return changesOpen{
-		local:    map[string]bool{},
-		files:    map[string]map[string]bool{},
-		viewed:   map[string]map[string]string{},
-		selected: map[string]string{},
-		menu:     map[string]bool{},
-		progress: map[string]bool{},
+		local:     map[string]bool{},
+		files:     map[string]map[string]bool{},
+		viewed:    map[string]map[string]string{},
+		selected:  map[string]string{},
+		menu:      map[string]bool{},
+		progress:  map[string]bool{},
+		treeFolds: map[string]map[string]bool{},
+		treeWidth: map[string]*ui.SplitterState{},
+		split:     map[string]bool{},
+		wrap:      map[string]bool{},
+		scrolls:   map[diffScrollKey]*changesDiffScroll{},
+		layouts:   map[string]*changesDiffLayout{},
 	}
 }
 
@@ -212,6 +238,70 @@ func (s *changesOpen) menuOpen(session string) bool { return s.menu[session] }
 // toggleMenu 翻转范围菜单。
 func (s *changesOpen) toggleMenu(session string) { s.menu[session] = !s.menu[session] }
 
+// treeSplit 取会话的文件树宽度状态；第一次用时初始化成官方初始宽 240
+// （FileTreePane.tsx:29 的 `useState(240)`）。
+func (s *changesOpen) treeSplit(session string) *ui.SplitterState {
+	state := s.treeWidth[session]
+	if state == nil {
+		state = &ui.SplitterState{Pos: changesTreeDefaultWidth}
+		s.treeWidth[session] = state
+	}
+	return state
+}
+
+// treeCollapsed 报告一个目录是否收起（默认展开，与官方 `collapsed[path] !== true` 相反）。
+func (s *changesOpen) treeCollapsed(session, path string) bool {
+	byPath := s.treeFolds[session]
+	return byPath != nil && byPath[path]
+}
+
+// toggleTreeDir 翻转一个目录的展开态。
+func (s *changesOpen) toggleTreeDir(session, path string) {
+	if s.treeFolds[session] == nil {
+		s.treeFolds[session] = map[string]bool{}
+	}
+	s.treeFolds[session][path] = !s.treeFolds[session][path]
+}
+
+// splitOn 报告左右对比是否开启（官方默认 true，`changes-store.ts:81-86`）。
+func (s *changesOpen) splitOn(session string) bool {
+	if value, ok := s.split[session]; ok {
+		return value
+	}
+	return true
+}
+
+// toggleSplit 翻转左右对比。
+func (s *changesOpen) toggleSplit(session string) { s.split[session] = !s.splitOn(session) }
+
+// wrapOn 报告自动换行是否开启（官方默认 true）。
+func (s *changesOpen) wrapOn(session string) bool {
+	if value, ok := s.wrap[session]; ok {
+		return value
+	}
+	return true
+}
+
+// toggleWrap 翻转自动换行。
+func (s *changesOpen) toggleWrap(session string) { s.wrap[session] = !s.wrapOn(session) }
+
+// diffScrollKey 是一份文件的滚动状态键（路径里可能有任何字符，用结构体键最稳）。
+type diffScrollKey struct {
+	session string
+	path    string
+}
+
+// diffScroll 取一份文件的左右列滚动状态。
+func (s *changesOpen) diffScroll(session, path string) *changesDiffScroll {
+	key := diffScrollKey{session: session, path: path}
+	state := s.scrolls[key]
+	if state == nil {
+		state = &changesDiffScroll{}
+		s.scrolls[key] = state
+	}
+	return state
+}
+
 // drawChangesTitle 画 tab 芯片上的标题（官方 `changesTitle` → `diff.tab` = 变更）。
 func (p *Plugin) drawChangesTitle(f ui.C, env *pluginapi.Env) {
 	t := p.themeOf(env)
@@ -222,19 +312,66 @@ func (p *Plugin) drawChangesTitle(f ui.C, env *pluginapi.Env) {
 }
 
 // drawChangesBody 画变更视图的本地那一半。
+//
+// 结构照官方 `ChangesTab.module.css:4-16`：`.root` 是纵向 flex，下面是 header /
+// toolbar / notice / `.body`。`.body{display:flex}` 在宽 ≥760 时把文件树栏
+// （`FileTreePane`）放在 diff 左边（`FileTreePane.module.css:4` 的 `order:-1`），
+// 否则只有 diff。宽度的判据见 changes_tree.go 文件头（容器查询 → 读宽度分支）。
 func (p *Plugin) drawChangesBody(f ui.C, env *pluginapi.Env) {
 	diff := forgeDiffOf(env)
 	if diff == nil || env.Act.Forge == nil {
 		// 数据面没准备好 / 没有动作面：不画（画一个空壳会让人以为"这里没有改动"）。
+		p.frame = changesFrame{}
 		return
 	}
 	t := p.themeOf(env)
-	ui.Column(f).FillWidth().FillHeight().Background(t.BgBase).Children(func() {
+	p.frame = changesFrame{}
+	root := ui.Column(f).FillWidth().FillHeight().Background(t.BgBase)
+	p.frame.root = root
+	root.Children(func() {
 		p.drawChangesHeader(f, env, diff)
 		p.drawChangesToolbar(f, env, diff)
 		p.drawChangesNotices(f, env, diff)
-		p.drawChangesFiles(f, env, diff)
+		p.drawChangesContent(f, env, diff)
 	})
+}
+
+// drawChangesContent 画官方 `.body`：宽 ≥760 时是「文件树 | 可拖宽分栏 | diff」，
+// 否则只有 diff。
+func (p *Plugin) drawChangesContent(f ui.C, env *pluginapi.Env, diff *pluginapi.ForgeDiff) {
+	available := p.changesBodyWidth(env)
+	if !changesTreeVisible(available) || diff.Err != "" || len(diff.Files) == 0 {
+		p.frame.diffWidth = available
+		p.drawChangesFiles(f, env, diff)
+		return
+	}
+	session := diff.SessionID
+	state := p.open.treeSplit(session)
+	p.splitter = state
+	width := treeWidthOf(state, available)
+	state.Pos = width
+	// Viva 的分栏厚度是 8px（ui/splitter.go:8），diff 栏就是剩下的部分。
+	p.frame.diffWidth = available - width - changesTreeSplitterThickness
+	firstMin, secondMin := changesSplitterMins(available)
+	ui.Row(f).FillWidth().Grow(1).Shrink(1).MinHeight(0).Children(func() {
+		ui.Column(f).Width(width).FillHeight().Shrink(0).Children(func() {
+			p.drawFileTree(f, env, diff)
+		})
+		ui.Splitter(f, state).Mins(firstMin, secondMin)
+		ui.Column(f).Grow(1).Shrink(1).MinHeight(0).Children(func() {
+			p.drawChangesFiles(f, env, diff)
+		})
+	})
+}
+
+// HandleKey 把键盘交给文件树分栏（官方 `.resize` 的 ArrowLeft/Right、Home/End，
+// FileTreePane.tsx 的 onKeyDown 同一组键）。分成 16px 一档由 Viva 的 SplitterState.Key
+// 负责（OFF:viva@v0.6.5/ui/splitter.go:9 的 splitterStep）；没聚焦时它自己返回空。
+func (p *Plugin) HandleKey(event gfx.KeyEvent) bool {
+	if p.splitter == nil {
+		return false
+	}
+	return p.splitter.Key(event).Handled
 }
 
 // drawChangesHeader 画 `.header`：HEAD → 基准（branch 范围）/ 范围名（其余范围）。
@@ -358,7 +495,74 @@ func (p *Plugin) drawChangesToolbar(f ui.C, env *pluginapi.Env, diff *pluginapi.
 		if tool.Clicked() {
 			env.Act.Forge.Refresh()
 		}
+		// 官方 `.tools` 的顺序是 refresh → expand → split → wrap（ChangesTab.tsx:1210-1232）。
+		p.drawViewToggles(f, env, diff)
 	})
+}
+
+// drawViewToggles 画官方 `.tools` 里的两个视图开关（ChangesTab.tsx:1221-1232）：
+// 左右对比（`IconCompareSplitOutlineRegular`，pressed=split，图标按 CSS 逆时针 90°）
+// 与自动换行（`IconNowrapFillRegular`/`IconWrapFillRegular`，pressed=wrap）。
+//
+// 几何取官方 `ChangesTab.module.css:235-276`：`.tool` 28×28、radius sm、图标 15px；
+// pressed 时 `.tool[aria-pressed='true']{background:interactive-bg-hover;color:label-primary}`。
+// 文案取官方 locales.ts:269-274 逐字（tooltip 是"点下去做什么"）。
+func (p *Plugin) drawViewToggles(f ui.C, env *pluginapi.Env, diff *pluginapi.ForgeDiff) {
+	t := p.themeOf(env)
+	session := diff.SessionID
+
+	splitOn := p.open.splitOn(session)
+	splitColor := t.LabelSecondary
+	splitButton := ui.Row(f).Width(changesToolSize).Height(changesToolSize).Shrink(0).
+		Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM)
+	if splitOn {
+		splitColor = t.LabelPrimary
+		splitButton = splitButton.Background(t.Hover)
+	} else {
+		splitButton = splitButton.Hover(ui.Look{}.Background(t.Hover))
+	}
+	splitTip := copyDiffSplit
+	if splitOn {
+		splitTip = copyDiffUnified
+	}
+	splitButton = splitButton.Hit(env.Tree.ID(env.Feat, "forge-diff-split"), splitTip)
+	splitButton.Children(func() {
+		if icon, ok := compareSplitIcon(); ok {
+			box := ui.Icon(f, icon).Size(changesRefreshSize, changesRefreshSize).Color(splitColor)
+			if splitOn {
+				box.IconTransform(gfx.IconTransform{Rotate: math.Pi / 2})
+			}
+		}
+	})
+	if splitButton.Clicked() {
+		p.open.toggleSplit(session)
+	}
+
+	wrapOn := p.open.wrapOn(session)
+	wrapColor := t.LabelSecondary
+	wrapButton := ui.Row(f).Width(changesToolSize).Height(changesToolSize).Shrink(0).
+		Items(ui.Center).Justify(ui.Center).Radius(t.Radii.SM)
+	if wrapOn {
+		wrapColor = t.LabelPrimary
+		wrapButton = wrapButton.Background(t.Hover)
+	} else {
+		wrapButton = wrapButton.Hover(ui.Look{}.Background(t.Hover))
+	}
+	wrapTip := copyDiffWrap
+	wrapIcon := wrapFillIcon
+	if wrapOn {
+		wrapTip = copyDiffNowrap
+		wrapIcon = nowrapFillIcon
+	}
+	wrapButton = wrapButton.Hit(env.Tree.ID(env.Feat, "forge-diff-wrap"), wrapTip)
+	wrapButton.Children(func() {
+		if icon, ok := wrapIcon(wrapColor); ok {
+			ui.Icon(f, icon).Size(changesRefreshSize, changesRefreshSize)
+		}
+	})
+	if wrapButton.Clicked() {
+		p.open.toggleWrap(session)
+	}
 }
 
 // drawChangesNotices 画 `.notice`：被略掉的未跟踪文件数。
@@ -391,7 +595,9 @@ func (p *Plugin) drawChangesFiles(f ui.C, env *pluginapi.Env, diff *pluginapi.Fo
 	}
 	files := diff.Files
 	session := diff.SessionID
-	ui.Scroll(f).FillWidth().Grow(1).Shrink(1).MinHeight(0).Children(func() {
+	scroll := ui.Scroll(f).FillWidth().Grow(1).Shrink(1).MinHeight(0)
+	p.frame.filesScroll = scroll
+	scroll.Children(func() {
 		ui.Column(f).FillWidth().Pad(changesFilesInset).Gap(12).Children(func() {
 			for _, file := range files {
 				p.drawFileCard(f, env, session, file)
@@ -473,7 +679,13 @@ func (p *Plugin) drawFileCard(f ui.C, env *pluginapi.Env, session string, file a
 				p.drawNoteLine(f, t, copyDiffFileTooLarge)
 				return
 			}
-			p.drawHunks(f, env, file)
+			// 官方 `DiffFile.tsx:191`：`columns = split && additions>0 && deletions>0`。
+			// 只有单侧增/删的文件即使开了左右对比也仍是单栏。
+			if p.open.splitOn(session) && file.Additions > 0 && file.Deletions > 0 && len(file.Hunks) > 0 {
+				p.drawSplitHunks(f, env, file)
+				return
+			}
+			p.drawHunks(f, env, file, p.open.wrapOn(session))
 		})
 	})
 }
@@ -485,7 +697,7 @@ func (p *Plugin) drawFileCard(f ui.C, env *pluginapi.Env, session string, file a
 // 行号由 hunk 坐标现算，与官方 `hunkRows()` 同一口径
 // （`OFF:src/client/diff-rows.ts:53-68`）：上下文两边都数、删行只数旧侧、
 // 加行只数新侧、`\ No newline at end of file` 不是一行。
-func (p *Plugin) drawHunks(f ui.C, env *pluginapi.Env, file apiclient.ForgeDiffFile) {
+func (p *Plugin) drawHunks(f ui.C, env *pluginapi.Env, file apiclient.ForgeDiffFile, wrap bool) {
 	t := p.themeOf(env)
 	// 行号列宽是**整份 diff** 共用的（官方 `maxDiffLineNo` 一次算出
 	// `--forge-number-width`，见 changesDiffLineNo）。这里按本文件算是个近似：
@@ -519,7 +731,7 @@ func (p *Plugin) drawHunks(f ui.C, env *pluginapi.Env, file apiclient.ForgeDiffF
 			if row.new != nil {
 				newNo++
 			}
-			p.drawDiffRow(f, t, numbers, singleSide, row)
+			p.drawDiffRow(f, t, numbers, singleSide, row, wrap)
 			drawn++
 		}
 		prevNewEnd = hunk.NewStart + hunk.NewLines
@@ -610,7 +822,7 @@ func changesDigitsOf(n int) int {
 //	.context .text { color: --dsw-alias-label-secondary }        :694-696
 //
 // 六档令牌在 `pluginapi.Theme.FileDiff*`（值来自 design-platform.css 亮 281-286 / 暗 433-438）。
-func (p *Plugin) drawDiffRow(f ui.C, t *pluginapi.Theme, numberW float32, singleSide string, row changesRow) {
+func (p *Plugin) drawDiffRow(f ui.C, t *pluginapi.Theme, numberW float32, singleSide string, row changesRow, wrap bool) {
 	textColor := t.LabelSecondary
 	numberColor := t.LabelTertiary
 	background := ui.Color{} // 零值 = 不铺底（上下文行官方也只有文字色）
@@ -633,6 +845,9 @@ func (p *Plugin) drawDiffRow(f ui.C, t *pluginapi.Theme, numberW float32, single
 		gutter = t.FileDiffDeletedGutter
 	}
 	line := ui.Row(f).FillWidth().Height(changesLineH)
+	if wrap {
+		line = ui.Row(f).FillWidth().MinHeight(changesLineH)
+	}
 	if isAdd || isDel {
 		line = line.Background(background)
 	}
@@ -648,8 +863,16 @@ func (p *Plugin) drawDiffRow(f ui.C, t *pluginapi.Theme, numberW float32, single
 		}
 		ui.Text(f, row.sign).FontSize(t.Fonts.Code).LineHeight(changesLineH).Color(numberColor).
 			Width(changesSignEm * t.Fonts.Code)
-		ui.Text(f, row.text).FontSize(t.Fonts.Code).LineHeight(changesLineH).Color(textColor).
-			PadSides(0, changesTextPadR, 0, changesTextPadL).Ellipsis()
+		text := ui.Text(f, row.text).FontSize(t.Fonts.Code).LineHeight(changesLineH).Color(textColor).
+			PadSides(0, changesTextPadR, 0, changesTextPadL)
+		if wrap {
+			// 官方 `data-wrap`：`white-space:pre-wrap` + `overflow-wrap:anywhere`
+			// （ChangesTab.module.css:657-664）。`MaxLines(0)` 就是 Viva 的
+			// 「按可用宽度折成任意多行」。
+			text.Grow(1).Shrink(1).MaxLines(0)
+		} else {
+			text.Ellipsis()
+		}
 	})
 }
 

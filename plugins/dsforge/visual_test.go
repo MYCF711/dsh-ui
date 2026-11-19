@@ -151,6 +151,11 @@ func drawOncePrepared(t *testing.T, view *pluginapi.ForgeView, cur string, prepa
 				})
 			})
 		})
+		// 布局已定：跑插件的 AfterDraw（#64 ③ 的左右对比正文在 canvas 上画）。
+		// 走 Painter 里接好的那个钩子，顺带钉住「AfterDraw 不许漏接」。
+		if after := painterAfterDraw(p, "forge-changes-tab"); after != nil {
+			after(canvas, env)
+		}
 	}
 	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
 	if err != nil {

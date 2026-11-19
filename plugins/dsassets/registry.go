@@ -9,11 +9,13 @@ import "github.com/vivaui/viva/gfx"
 type ElementKind uint8
 
 const (
-	// PathElement 是 `<path d=…>`：viva 能逐命令精确表达（M/L/H/V/C/S/Z 及相对形式）。
+	// PathElement 是 `<path d=…>`：viva 能逐命令精确表达
+	// （M/L/H/V/C/S/A/Z 及相对形式；弧在解析时换算成三次贝塞尔，见 arc.go）。
 	PathElement ElementKind = iota
-	// RectElement 是 `<rect>`：`rx>0` 时圆角是**椭圆弧**，viva 的路径词汇里没有弧。
+	// RectElement 是 `<rect>`：`rx>0` 时圆角是四条四分之一椭圆弧，
+	// 换算成三次贝塞尔后误差有数学上界（每段 < 0.03% of r），见 shapes.go。
 	RectElement
-	// CircleElement 是 `<circle>` / `<ellipse>`：同样需要弧。
+	// CircleElement 是 `<circle>` / `<ellipse>`：同样换算成四段三次贝塞尔。
 	CircleElement
 )
 
@@ -31,9 +33,11 @@ type Element struct {
 	CapSet  bool
 	Join    gfx.StrokeJoin
 	JoinSet bool
-	// Rect 专属。
-	X, Y, Width, Height, RX float32
-	// Circle 专属。
+	// Rect 专属。RX/RY 是圆角半径；**RY 为 0 表示官方没写**，按 SVG 1.1 §9.2 取 RX
+	// （官方现有两枚 rect 都只写了 rx，所以这里绝大多数情况是"取 RX"）。
+	X, Y, Width, Height, RX, RY float32
+	// Circle 专属。`<circle>` 用 R；`<ellipse>` 用 RX/RY（任一 >0 即按椭圆处理，
+	// 此时 R 不参与）。官方现有两枚都是 `<circle r>`。
 	CX, CY, R float32
 }
 
@@ -55,6 +59,10 @@ type Asset struct {
 	Elements []Element
 	// Unsupported 非空表示这枚素材**不能被精确画出来**，内容是原因。
 	// Build 对它返回 false，调用方不许自己找替代形状（那正是本包要消灭的事）。
+	//
+	// 2026-11-19 起本表**没有一条**是 Unsupported：`<rect rx>` / `<circle>` 需要的
+	// 椭圆弧已经能换算成三次贝塞尔（arc.go），15 条全部可画。字段保留是因为
+	// "说不出来的不可画"仍要能被登记——`registry_test.go` 会双向核对声明与实现。
 	Unsupported string
 }
 
@@ -109,17 +117,23 @@ var (
 		Elements: []Element{{Kind: PathElement, D: composerSendPath, Fill: true}},
 	}
 
-	// ComposerStop 是输入框运行态的停止方块。**画不出来**：官方是
+	// ComposerStop 是输入框运行态的停止方块。官方是
 	// `<rect x=3 y=3 width=10 height=10 rx=3 fill="currentColor">`，rx=3 的圆角
-	// 在浏览器里是真正的四分之一圆弧，而 viva 的 PathCommand 只有 M/L/Q/C/Z——
-	// 用二次贝塞尔去凑（本仓 2026-11-04 之前就是这么干的）实测角部最多偏 0.182
-	// 个 viewBox 单位（16px 图标下约 0.18px），那是"看起来差不多"，不是官方形状。
+	// 是真正的四分之一圆弧。
+	//
+	// **能精确画**：`Build` 把它换算成"四段四分之一弧 + 四条直边"的路径（10 条命令），
+	// 每段径向误差 < 0.03% of r（`TestRoundedRectCornersAreExactWithinCriterion`）。
+	// 而 `dscomposer` 走的是另一条同样精确的路——Viva 原生圆角矩形
+	// （`mustOfficialNativeRect`），几何取自本登记项、不补画路径。
+	//
+	// 历史：2026-11-04 之前用二次贝塞尔凑角，实测角部最多偏 0.182 个 viewBox 单位
+	// （16px 下约 0.18px）；那是"看起来差不多"，与这里的弧→贝塞尔换算不是一回事——
+	// 后者每段误差 2.7e-4·r（16px 下 0.0043px），差两个数量级。
 	ComposerStop = Asset{
 		ID: "composer-stop", Title: "停止键方块",
 		Source:  srcComposerSymbol("InputBar 主按钮内联 rect"),
 		ViewBox: 16, Size: 16,
-		Elements:    []Element{{Kind: RectElement, X: 3, Y: 3, Width: 10, Height: 10, RX: 3, Fill: true}},
-		Unsupported: "官方是 <rect rx=3>：圆角需要椭圆弧（SVG A），viva 路径词汇只有 M/L/Q/C/Z",
+		Elements: []Element{{Kind: RectElement, X: 3, Y: 3, Width: 10, Height: 10, RX: 3, Fill: true}},
 	}
 
 	// SendOutline 是图标集里的发送箭头（机尾填充 + 机身前段描边），14px。
@@ -156,7 +170,10 @@ var (
 		},
 	}
 
-	// Copy 是复制图标。**画不出来**：前面那张纸是 `<rect rx=2>`。
+	// Copy 是复制图标：前面那张纸是 `<rect rx=2>`（描边），后面那张是填充路径。
+	//
+	// **能精确画**：rect 的四个圆角换算成四段四分之一椭圆弧（10 条命令），
+	// 与填充那条路径合成一个 `Stroke=1` + 一个填充层的 gfx.Icon。
 	Copy = Asset{
 		ID: "copy", Title: "复制",
 		Source:  srcPrimitivesSymbol("IconCopyOutlineRegular"),
@@ -165,10 +182,13 @@ var (
 			{Kind: RectElement, X: 1.52075, Y: 4.07373, Width: 10.3932, Height: 10.3932, RX: 2, Stroke: true},
 			{Kind: PathElement, D: copyBackPath, Fill: true},
 		},
-		Unsupported: "官方含 <rect rx=2>：圆角需要椭圆弧，viva 路径词汇只有 M/L/Q/C/Z",
 	}
 
-	// Branch 是分支图标。**画不出来**：两个端点节点是 <circle r=1.56962>。
+	// Branch 是分支图标：两条支线（描边）+ 两枚端点节点 `<circle r=1.56962>`（描边）。
+	//
+	// **能精确画**：圆换算成四段四分之一圆弧（每枚 6 条命令：M + 4C + Z），
+	// 与两条支线合成一条描边命令流（24 条命令）。语义与官方 `branch.jsx` 逐项一致：
+	// 圆心 (12.4502, 3.3079) / (12.4502, 12.6921)、半径 1.56962、viewBox 16、描边 1。
 	Branch = Asset{
 		ID: "branch", Title: "分支",
 		Source:  srcPrimitivesSymbol("IconBranchOutlineRegular"),
@@ -179,7 +199,6 @@ var (
 			{Kind: CircleElement, CX: 12.4502, CY: 3.3079, R: 1.56962, Stroke: true},
 			{Kind: CircleElement, CX: 12.4502, CY: 12.6921, R: 1.56962, Stroke: true},
 		},
-		Unsupported: "官方含两枚 <circle>：圆需要椭圆弧，viva 路径词汇只有 M/L/Q/C/Z",
 	}
 
 	// ThumbUpOutline / ThumbUpFill / ThumbDownOutline / ThumbDownFill：

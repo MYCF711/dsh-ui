@@ -15,10 +15,16 @@ import (
 // （见跟这次改动一起提交的 docs/official-assets.md「命令数」一列）。
 func TestParseCommandCounts(t *testing.T) {
 	want := map[string]int{
-		"composer-send":              16,
-		"send-outline":               12,
-		"paperclip":                  17,
-		"composer-add":               4,
+		"composer-send": 16,
+		// 停止键：官方 `<rect rx=3>` → M + 4L + 4C（四角各一段四分之一弧）+ Z。
+		"composer-stop": 10,
+		"send-outline":  12,
+		"paperclip":     17,
+		"composer-add":  4,
+		// 复制：`<rect rx=2>` 10 条（描边）+ 后面那张纸 14 条（填充）。
+		"copy": 24,
+		// 分支：两条支线各 6 条 + 两枚 `<circle r=1.56962>` 各 6 条（M+4C+Z）。
+		"branch":                     24,
 		"thumb-up-outline":           18,
 		"thumb-up-fill":              18,
 		"thumb-down-outline":         18,
@@ -40,8 +46,10 @@ func TestParseCommandCounts(t *testing.T) {
 			t.Errorf("%s 命令数 = %d，want %d", a.ID, got, expect)
 		}
 	}
-	if len(want) != len(All())-3 {
-		t.Errorf("期望表里有 %d 条可构建素材，All() 里是 %d 条（3 条不可构建）", len(want), len(All()))
+	// 15 条素材全部可构建之后，期望表必须**一条不少**：漏一条就意味着某个素材的
+	// 命令数没人盯着，弧换算改坏了也不会红。
+	if len(want) != len(All()) {
+		t.Errorf("期望表里有 %d 条素材，All() 里是 %d 条（每条都必须登记命令数）", len(want), len(All()))
 	}
 }
 
@@ -125,18 +133,27 @@ func TestParseSReflectsPreviousCubic(t *testing.T) {
 	}
 }
 
-// TestParseRejectsUnsupportedCommands：弧和二次曲线**整条作废**，不画一半。
+// TestParseRejectsUnsupportedCommands：**只剩二次曲线**整条作废，不画一半。
 //
-// viva 的 PathCommand 没有弧/二次曲线；把它们近似成贝塞尔就是"看着差不多"，
-// 所以这里要求硬失败——将来某条官方素材真用了弧，调用方会立刻发现。
+// 2026-11-19 之前这条也把 `A`（椭圆弧）算在"不支持"里——那是因为转换器还没实现
+// 弧→贝塞尔，不是 viva 给不了。现在弧已经能精确换算（见 arc_test.go 的精度判据），
+// 所以 `A` 从这份拒绝清单里移出去，改由 `TestParseArcCommandExpandsToCubics` 正着验。
+//
+// 仍然拒绝的是 Q/q/T/t：viva **有** `gfx.QuadTo`，所以这不是"viva 缺能力"，而是
+// 本包还没接二次曲线（登记为缺口）。宁可整条作废也不画一半——官方现有素材一条都
+// 没用到，将来真用到时这里会明着失败。
 func TestParseRejectsUnsupportedCommands(t *testing.T) {
 	for _, d := range []string{
-		"M0 0A1 1 0 0 1 2 2Z",
 		"M0 0Q1 1 2 2Z",
+		"M0 0q1 1 2 2Z",
 		"M0 0T2 2Z",
+		"M0 0t2 2Z",
 		"",
 		"M0 0 foo",
 		"M",
+		// 残缺的弧：少一个参数 / 标志不是 0-1。
+		"M0 0A1 1 0 0 1 2",
+		"M0 0A1 1 0 2 1 2 0",
 	} {
 		if _, ok := ParsePath(d); ok {
 			t.Errorf("ParsePath(%q) 应该失败（不支持的命令/残缺路径）", d)

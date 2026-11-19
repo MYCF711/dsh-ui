@@ -84,6 +84,9 @@ type terminalGridGeometry struct {
 	cellW, cellH      float32
 	cols, rows, first int
 	scrollback, ydisp int
+	// mouse 是这一帧终端的鼠标上报状态（协议 + 编码）。指针手势归谁由它决定：
+	// 上报开着且没按 Shift 时按下归 PTY，否则归本地选区（见 mouse.go 的文件头）。
+	mouse vterm.MouseState
 }
 
 // posAt 把窗口坐标换成虚拟缓冲坐标；x 夹进 [0,cols) 并躲开宽字尾巴，
@@ -196,25 +199,58 @@ func (p *Plugin) handleTerminalSelectionPointer(env *pluginapi.Env, canvas *gfx.
 		return
 	}
 	state := p.selectionFor(geom.tabID)
+	mouse := p.mouseFor(geom.tabID)
+	// 官方 `shouldForceSelection`（byte 120764）：非 mac 上就是 Shift。
+	// 本产品只做 Windows，所以取这一支（见 mouse.go 的文件头第 3 条）。
+	forced := event.Modifiers&gfx.ModifierShift != 0
+	// 官方 bindMouse 的 mousedown（byte 27559）：鼠标上报开着、且这一下没被
+	// Shift 强制扣下时，按下归 PTY，本地选区不参与。
+	sending := geom.mouse.Reporting() && !forced
 	switch event.Kind {
 	case gfx.PointerDown:
+		// 按住的键先记上：官方的 `event.buttons` 与"有没有上报"无关
+		// （见 mouse.go 的 holdTerminalMouse）。
+		holdTerminalMouse(mouse, event.Button, true)
+		if sending {
+			// 官方那一支是 `i(e); …; this.cancel(e)`——**不看上报的返回值**：
+			// 只要鼠标模式开着且没被 Shift 强制，这一下就归 PTY（哪怕某个序列
+			// 因为装不下而被编码器丢掉），本地选区不参与。
+			p.reportTerminalMousePress(geom, mouse, event)
+			canvas.Consume()
+		}
 		switch event.Button {
 		case gfx.PointerButtonPrimary, gfx.PointerButtonNone:
+			if sending {
+				return
+			}
 			p.beginTerminalSelection(env, canvas, geom, state, event)
 		case gfx.PointerButtonSecondary:
 			// 官方 Windows 的右键 = 弹出原生编辑菜单（app.asar byte 207130469），
 			// 那个菜单里的「复制」才是剪贴板的入口。本仓没有原生菜单，所以
 			// 右键有选区就直接复制（见文件头）。
+			//
+			// 鼠标上报开着时**两件事都做**：官方 `_initGlobal` 挂的 contextmenu
+			// 处理器不看鼠标模式（byte 17027），而 bindMouse 那边右键照样上报。
 			if p.copyTerminalSelection(env, geom, state) {
 				canvas.Consume()
 			}
 		}
 	case gfx.PointerMove:
+		// 官方的移动上报**不看 Shift**：DRAG/ANY 的 mousemove 监听器只看
+		// buttons（byte 27240 / 26842），所以 Shift 强制选区拖起来时 motion
+		// 照发。这里照抄，不是自造。
+		if geom.mouse.Reporting() {
+			p.reportTerminalMouseMotion(geom, mouse, event)
+		}
 		if !state.pressing {
 			return
 		}
 		p.dragTerminalSelection(env, canvas, geom, state, event)
 	case gfx.PointerUp:
+		holdTerminalMouse(mouse, event.Button, false)
+		if geom.mouse.Reporting() {
+			p.reportTerminalMouseRelease(geom, mouse, event)
+		}
 		if !state.pressing {
 			return
 		}

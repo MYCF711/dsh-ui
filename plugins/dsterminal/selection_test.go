@@ -31,6 +31,8 @@ type selectionFixture struct {
 	rect    gfx.Rect
 	hit     gfx.ID
 	clipped []string
+	// wrote 是插件写给 PTY 的字节（鼠标上报那条路，见 mouse_test.go）。
+	wrote []terminalWrite
 }
 
 func newSelectionFixture(t *testing.T, w, h int, writes ...string) *selectionFixture {
@@ -62,6 +64,7 @@ func newSelectionFixture(t *testing.T, w, h int, writes ...string) *selectionFix
 			Phase: "connected", Writable: true,
 			Grid:          grid,
 			ScrollbackLen: emu.ScrollbackLen(),
+			Mouse:         emu.MouseState(),
 			Info:          &apiclient.TerminalInfo{Title: "终端 1", State: "running", Cols: grid.Width, Rows: grid.Height},
 		}
 	}
@@ -80,10 +83,12 @@ func newSelectionFixture(t *testing.T, w, h int, writes ...string) *selectionFix
 			TerminalSnapshot:         func(string) pluginapi.TerminalViewState { return state() },
 			TerminalScrollbackWindow: func(_ string, first, lines int) *vterm.Grid { return emu.Window(first, lines) },
 			TerminalRetry:            func(string) {},
-			TerminalWriteOfficial:    func(string, string, bool) {},
-			OpenRightTab:             func(string) {},
-			CloseRightTab:            func(string) {},
-			Notify:                   func(string) {},
+			TerminalWriteOfficial: func(tabID, data string, typed bool) {
+				fixture.wrote = append(fixture.wrote, terminalWrite{tabID: tabID, data: data, typed: typed})
+			},
+			OpenRightTab:  func(string) {},
+			CloseRightTab: func(string) {},
+			Notify:        func(string) {},
 		},
 	}
 	return fixture

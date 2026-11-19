@@ -146,6 +146,10 @@ func (m *model) terminalSnapshot(tabID string) pluginapi.TerminalViewState {
 		// 「还能不能再往上滚」都靠它。整块滚回**不**在这里取，见
 		// terminalScrollbackWindow 的成本说明。
 		out.ScrollbackLen = state.emu.ScrollbackLen()
+		// 鼠标上报状态：程序用 DECSET 9/1000/1002/1003 打开、1006/1016 换编码
+		// （`internal/vterm/mouse.go`）。界面据此决定指针手势归 PTY 还是归本地选区，
+		// 判据与官方的 `bindMouse` 一致（见 `plugins/dsterminal/mouse.go`）。
+		out.Mouse = state.emu.MouseState()
 	}
 	if state.public.Info != nil {
 		info := *state.public.Info

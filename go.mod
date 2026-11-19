@@ -26,7 +26,7 @@ require (
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/klauspost/compress v1.20.3
-	github.com/vivaui/viva v0.6.4
+	github.com/vivaui/viva v0.6.5
 )
 
 replace example.com/dsh-hello => ../dsh-ui-plugins/hello

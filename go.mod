@@ -36,4 +36,4 @@ replace example.com/dsh-hello => ../dsh-ui-plugins/hello
 // pseudo-version instead of waiting on upstream review.
 // Retire this replace once vivaui/viva#355 merges: drop it, then
 // `go get github.com/vivaui/viva@<merged-tag>` and `go mod tidy`.
-replace github.com/vivaui/viva => github.com/MYCF711/viva v0.6.6-0.20261119123539-854dcf475230
+replace github.com/vivaui/viva => github.com/MYCF711/viva v0.6.6-0.20261119223403-183013a381da

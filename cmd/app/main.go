@@ -1885,6 +1885,23 @@ func newWindowPage(theme *ui.Theme, tree *gfx.Tree) *ui.Page {
 	return ui.NewPage(ui.PageConfig{Tree: tree, Root: pageRoot, Theme: theme})
 }
 
+// filesOnPointer 把一次指针事件交给文件列表插件，返回它是否消费。
+//
+// 拖出必须在窗口线程上、在页面绘制之外发起（`app.StartFileDrag` 会阻塞到用户
+// 松手），所以插件不认识窗口、壳不认识文件行：壳转发事件，插件按上一帧记下的
+// 行身份判"这是不是一次从文件行开始的拖拽"（见 plugins/dsfiles/drag_files.go）。
+func (m *model) filesOnPointer(ev gfx.PointerEvent) bool {
+	if m == nil || m.kernel == nil {
+		return false
+	}
+	for _, pl := range m.kernel.Plugins() {
+		if f, ok := pl.(*dsfiles.Plugin); ok {
+			return f.OnPointer(ev)
+		}
+	}
+	return false
+}
+
 func newConfig(m *model) app.Config {
 	if m.web == nil {
 		m.web = &app.WebHost{}
@@ -2279,7 +2296,17 @@ func newConfig(m *model) app.Config {
 	// 设计的——它没接的（Handled=false）会由 painter 继续按默认路径投递
 	// （`app/painter.go:356-372`：onPointer 之后才 deliverPointer），所以
 	// 原样返回既不会吞掉点击，也不会丢掉页面的 Repaint 请求。
+	// 官方 `dsh-client-ui-file-drag` 的**拖出**（#19，方向与 OnFileDrop 相反）：
+	// 插件认识"按在哪个文件行上"，壳认识窗口线程，两边都不跨界——壳把事件转给
+	// 插件，插件在越过阈值时调 `app.StartFileDrag`（会一直阻塞到用户松手，所以
+	// 必须在绘制之外、在窗口线程上，也就是这里）。见
+	// `plugins/dsfiles/drag_files.go` 与 `viva@app/drag_files.go`。
+	// 排页面之前：页面自己不认文件行为拖源，而拖出抢占的是一次已经越过阈值的移动。
 	cfg.OnPointer = func(ev gfx.PointerEvent) gfx.EventResult {
+		if m.filesOnPointer(ev) {
+			m.inv.Invalidate()
+			return gfx.EventResult{Handled: true, Repaint: true}
+		}
 		if m.view == nil {
 			return gfx.EventResult{}
 		}

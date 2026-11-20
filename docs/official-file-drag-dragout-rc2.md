@@ -63,3 +63,25 @@
 （`feedback.tsx:18-25`）、以及 `prepare` 在无桌面桥时的 `readSource` 分支
 （`transfers.ts:89-100`：URL/blob → `File`）都还没有对应实现。
 今天的结论是：**没有拖拽手势，这一整套没有触发入口**，所以不做半截。
+
+## 7. 2026-11-20 更新：阻断点已消失（本文 §3 的两个前提都做到了）
+
+§3 开出的两个前提 —— ① Viva 暴露窗口层的 drag-source 入口、② 由它在窗口线程
+跑 OLE 拖拽循环 —— **已经自己做出来了**，不再等上游：
+
+- Viva 侧：`app.StartFileDrag(paths, effects)`（`viva-ole/app/drag_files.go`）+
+  `internal/platform/windows/drag_windows.go`（`IDataObject` 以 CF_HDROP 交出文件、
+  `IDropSource` 管松手/Esc 与光标、`DoDragDrop` 在窗口线程跑）。公开 API 直接收
+  路径列表，**不需要**暴露 HWND —— 句柄留在窗口层内部，插件侧只给路径。
+  macOS / Linux / Web 三档是**明确不支持**桩（返回 `ErrUnsupported` 并写明缺什么），
+  不是缺席。PR：**vivaui/viva#360**。
+- 本仓侧：`plugins/dsfiles/drag_files.go`（press=prepare → 越 4px=start →
+  松手/离开=release/cancel）+ 壳 `cmd/app/main.go` 的 `cfg.OnPointer` 发起
+  （窗口线程、页面绘制之外）。
+
+**真机验证到什么程度**（不夸大）：Windows 上注入真鼠标按下→移动→松手，
+同完整级跨进程实测 `DoDragDrop` 返回 `DROPEFFECT_COPY`，目标进程收到真实路径；
+**把文件拖进 Explorer 窗口那一步没验成功** —— 本会话进程是 elevated、Explorer 是
+medium，OLE 不跨完整级送 drop（与 `drop_windows.go` 记录的入向限制同一条），
+在非提权会话里应能补齐。§6 列的三项（浏览器 DownloadURL 通道、`file-drag.feedback`
+的 Toast 形态、从聊天附件拖出）仍未做，所以本包记 🟡 而不是 ✅。

@@ -106,6 +106,9 @@ type model struct {
 	draft  ui.Field
 	search ui.Field // 侧栏过滤（按标题 + cwd 匹配）
 	inv    app.Invalidator
+	// uiState 是界面状态（官方 Electron `Local Storage` 的等价物）的缓存，
+	// 见 ui_state_wiring.go。零值可用；锁是它自己的，不与 m.mu 混用。
+	uiState uiStateCache
 	// web 是本窗口的网页宿主（官方右栏浏览器那一层的载具）。
 	// 零值可用；窗口建好后才可 Open（`app.WebHost.OnReady` 之后）。
 	// 无头驱动下它永远不会 ready，插件据此整块降级。
@@ -2801,6 +2804,13 @@ func main() {
 	wireDirPicker(m)
 	wireOfficialPanels(m)
 	m.actions = pluginapi.Actions{
+		// 界面状态（官方 Electron `Local Storage` 的等价物，宿主 `uiState.*`）。
+		// 读同步走缓存、写异步落地；实现与理由见 ui_state_wiring.go。
+		UIState: &pluginapi.UIStateActions{
+			Get:    m.uiStateGet,
+			Set:    m.uiStateSet,
+			Delete: m.uiStateDelete,
+		},
 		// #64a forge 面板 A 档的动作面（读一律异步，写落地成 goroutine）。
 		// 每条都指向 forge_wiring.go 里的实现；插件只认这里，不碰 apiclient。
 		Forge: &pluginapi.ForgeActions{

@@ -623,6 +623,9 @@ func (p *Plugin) drawChangesFiles(f ui.C, env *pluginapi.Env, diff *pluginapi.Fo
 	}
 	files := diff.Files
 	session := diff.SessionID
+	// 已读标记：官方在挂载时读一次 Local Storage；本仓按帧绘制，所以在第一次画到
+	// 这个 (会话, diff 源) 时读一次（见 viewed_store.go）。
+	p.syncViewed(env, diff)
 	scroll := ui.Scroll(f).FillWidth().Grow(1).Shrink(1).MinHeight(0)
 	p.frame.filesScroll = scroll
 	scroll.Children(func() {
@@ -693,6 +696,8 @@ func (p *Plugin) drawFileCard(f ui.C, env *pluginapi.Env, session string, file a
 			})
 			if mark.Clicked() {
 				p.open.markViewed(session, file.Path, file.Digest, state != viewedDone)
+				// 写回宿主（官方 mark() 同时写 Local Storage）。
+				p.persistViewed(env, nil)
 			}
 		})
 		if !expanded {

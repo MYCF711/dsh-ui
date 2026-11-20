@@ -23,6 +23,7 @@
 package dsfiles
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
@@ -49,6 +50,11 @@ type Plugin struct {
 	sel     string // 当前预览的文件名（空 = 没选）
 	content string // 读到的内容（只取前 maxPreviewBytes）
 	err     string // 读取失败的原因（原样给用户看，不翻译成"加载失败"）
+	// draggable 是上一帧每个文件行的命中身份 → 绝对路径，press 是按下还没越过阈值的
+	// 那一次，dragErr 是拖出失败的原因（原样给用户看）。见 drag_files.go。
+	draggable map[gfx.ID]string
+	press     filePress
+	dragErr   string
 }
 
 func (*Plugin) ID() string { return "ds-files" }
@@ -123,6 +129,7 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 	// 首次问某个目录返回空是**正常的**（壳在后台拉），不是"这个目录没东西"。
 	// 所以这里什么都不画，等下一帧——不能写"空目录"，那是在编。
 	if len(names) == 0 {
+		p.dragRows(nil) // 这一帧没有行，就没有可拖的东西
 		return
 	}
 
@@ -155,6 +162,7 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 				p.sel = ""
 			}
 		}
+		draggable := make(map[gfx.ID]string, len(shown))
 		for _, e := range shown {
 			e := e
 			active := !e.IsDir && e.Name == p.sel
@@ -163,6 +171,12 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 				ui.Text(f, e.Name).FontSize(t.Fonts.Secondary).LineHeight(fileRowLineHeight).
 					Color(t.LabelPrimary).Ellipsis().Grow(1)
 			}).Hit(env.Tree.ID(env.Feat, "file-"+e.Name), "")
+			// 只有普通文件能拖出窗口（目录在 CF_HDROP 里也是合法的，但把一整个目录
+			// 拖到别的应用是另一个承诺——官方 file target 的 `read` 家族同样只认普通
+			// 文件，这里取同一口径）。
+			if !e.IsDir {
+				draggable[env.Tree.ID(env.Feat, "file-"+e.Name)] = filepath.Join(dir, e.Name)
+			}
 			// 文件行是官方 `file` target 的生产方（#18）：身份是
 			// (会话, 工作区相对路径)，**不是**"当前选中"——菜单打开后用户可能
 			// 已经切走会话或进别的目录（官方 types.ts:30 的 sessionId + path）。
@@ -192,9 +206,18 @@ func (p *Plugin) drawList(f ui.C, env *pluginapi.Env) {
 				p.open(env, dirPath(env.Data.CWD, p.curDir), e.Name)
 			}
 		}
+		// 记下本帧可拖的行，壳的 OnPointer 用它把按下变成一次真的 OS 拖出。
+		p.dragRows(draggable)
 		if more > 0 {
 			ui.Row(f).FillWidth().PadSides(fileNotePadY, fileNotePadX, fileNotePadY, fileNotePadX).Children(func() {
 				ui.Text(f, "还有 "+itoa(more)+" 个").FontSize(fileNoteFontSize).Color(t.LabelTertiary)
+			})
+		}
+		// 拖出失败要说出来：官方 `file-drag.feedback`（feedback.tsx:18-25）是同一个
+		// 意思的 Toast，本仓没有 Toast 服务，就落在列表下面一行，原样给原因。
+		if p.dragErr != "" {
+			ui.Row(f).FillWidth().PadSides(fileNotePadY, fileNotePadX, fileNotePadY, fileNotePadX).Children(func() {
+				ui.Text(f, "拖出失败: "+p.dragErr).FontSize(fileNoteFontSize).Color(t.LabelTertiary).Ellipsis()
 			})
 		}
 	})

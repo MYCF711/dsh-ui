@@ -34,6 +34,7 @@ type voiceStub struct {
 	cancelled  int
 	retried    int
 	devices    []int
+	inserted   int
 }
 
 func (v *voiceStub) actions() *pluginapi.VoiceActions {
@@ -44,7 +45,7 @@ func (v *voiceStub) actions() *pluginapi.VoiceActions {
 		Stop:       func() { v.stopped++ },
 		Cancel:     func() { v.cancelled++ },
 		Retry:      func() { v.retried++ },
-		Insert:     func() {},
+		Insert:     func() { v.inserted++ },
 		SelectDevice: func(id int) {
 			v.devices = append(v.devices, id)
 		},
@@ -348,4 +349,71 @@ func countTriangles(primitives []app.Primitive) int {
 		}
 	}
 	return n
+}
+
+// TestFeedbackWithPendingPaintsInsertAction：有暂存文字时，官方把「重新录音」换成
+// 「插入文字」（`VoiceInput.tsx:175-178`：`pending ? <Button>{t('insert')}</Button>
+// : <圆钮 retryRecording>`），并把关钮的无障碍名换成 `discard`（`locales.ts:82`）。
+func TestFeedbackWithPendingPaintsInsertAction(t *testing.T) {
+	stub := availableStub("feedback", 0)
+	stub.state.Message = "草稿已被修改。识别文字已保留，可在当前光标位置插入。"
+	stub.state.Pending = "你好世界"
+	session, _ := paintVoice(t, stub)
+	snapshot := session.Driver().Snapshot()
+
+	// 圆钮只剩「取消」一枚：重试圆钮换成文字按钮了。
+	rounds := 0
+	for _, p := range snapshot.Primitives {
+		if p.Kind == app.RectanglePrimitive && near(p.Bounds.Width, roundButton) &&
+			near(p.Bounds.Height, roundButton) && near(p.Radius, float32(gfx.RadiusFull)) {
+			rounds++
+		}
+	}
+	if rounds != 1 {
+		t.Fatalf("pending 时圆钮 %d 枚，期望 1（只剩取消）", rounds)
+	}
+
+	inserted := false
+	for _, text := range snapshot.Texts {
+		switch text.Value {
+		case insertLabel:
+			inserted = true
+		case "重新录音":
+			t.Fatal("pending 非空时不该画「重新录音」")
+		}
+	}
+	if !inserted {
+		t.Fatalf("pending 非空时必须画 %q", insertLabel)
+	}
+}
+
+// TestVoiceInsertButtonCallsAction：点「插入文字」要真的调到 Voice.Insert
+// （那是"把保住的文字插到当前光标处"的唯一入口）。
+func TestVoiceInsertButtonCallsAction(t *testing.T) {
+	stub := availableStub("feedback", 0)
+	stub.state.Pending = "你好世界"
+	stub.state.Message = "草稿已被修改。识别文字已保留，可在当前光标位置插入。"
+	session, driver := paintVoice(t, stub)
+
+	var bounds gfx.Rect
+	found := false
+	for _, text := range session.Driver().Snapshot().Texts {
+		if text.Value == insertLabel {
+			bounds, found = text.Bounds, true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("找不到「%s」的文案", insertLabel)
+	}
+	cx, cy := bounds.X+bounds.Width/2, bounds.Y+bounds.Height/2
+	if _, hit := driver.HitTest(cx, cy); !hit {
+		t.Fatalf("(%.1f,%.1f) 没有命中目标：「%s」不可点", cx, cy, insertLabel)
+	}
+	if err := driver.Click(cx, cy); err != nil {
+		t.Fatal(err)
+	}
+	if stub.inserted != 1 {
+		t.Fatalf("Insert 调用 %d 次，期望 1", stub.inserted)
+	}
 }

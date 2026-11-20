@@ -109,6 +109,14 @@ type voiceWiring struct {
 	seconds   float64
 	gen       int
 	rec       audio.Recorder
+	// span 是**采集开始那一刻**的光标/选区快照（官方 `active.span =
+	// inputActions.captureInsertion()`，VoiceInput.tsx:131-134）。
+	// spanOK=false 表示 composer 没提供插入能力（老壳 / 没装插件）→ 退回追加到末尾。
+	span   pluginapi.InsertionSpan
+	spanOK bool
+	// pending 是 `insertText` 没插进去时**保住的**识别文字（官方 `setPending`，
+	// VoiceInput.tsx:122）。空串 = 没有待插入的文字。
+	pending string
 }
 
 // voiceCapability 是 `VoiceActions.Capability`：同步返回缓存，首次问触发后台读取。
@@ -175,6 +183,10 @@ func (m *model) voiceState() pluginapi.VoiceState {
 		Error:   m.voice.errText,
 		Level:   m.voice.level,
 		Seconds: m.voice.seconds,
+		// Pending 是官方的 `pending`：`insertText` 因为草稿变过而没插进去时
+		// **保住的**那段识别文字。界面据此把「重新录音」换成「插入文字」
+		// （VoiceInput.tsx:175-178）。
+		Pending: m.voice.pending,
 	}
 	recording := m.voice.phase == voicePhaseRecording
 	startedAt := m.voice.startedAt
@@ -278,6 +290,13 @@ func (m *model) voiceBegin() {
 	m.voice.errText = ""
 	m.voice.level = 0
 	m.voice.seconds = 0
+	// 官方在 `start()` 里就把光标快照存进 active.span（VoiceInput.tsx:131-134），
+	// 之后整段识别都用它——识别要几秒，中途用户可能挪了光标，插的位置必须还是
+	// "他按下麦克风时那个位置"。本仓这一句与 dsvoice 的点击**同一帧**（点击在
+	// 绘制里处理），所以这里拿到的是真光标，不是上一帧的残影。
+	m.voice.span, m.voice.spanOK = m.captureInsertionSpan()
+	// 新一次采集清掉上一次的待插入文字（官方 `setPending('')`，同处 :136）。
+	m.voice.pending = ""
 	m.mu.Unlock()
 	m.inv.Invalidate()
 
@@ -417,8 +436,13 @@ func (m *model) voiceStop() {
 		}
 		// 草稿是 Viva editor 的状态，只有 UI 线程能写（见 wpc1_send.go 的注释），
 		// 所以这里只排队。
+		//
+		// 与官方同一语义（VoiceInput.tsx:122-123）：先试**插到采集时的光标处**，
+		// 插不进去就把文字留在 pending 并进 feedback —— 不许丢、也不许硬塞到旧位置。
+		// 真正的插入在 `applyPendingInsert`（UI 线程）里做。
 		m.mu.Lock()
-		m.pendingDraft = &draftRestoreRequest{text: text, policy: pluginapi.DraftInsert}
+		req := &draftInsertRequest{text: text, span: m.voice.span, spanOK: m.voice.spanOK}
+		m.pendingInsert = req
 		m.mu.Unlock()
 		m.inv.Invalidate()
 	}()
@@ -454,9 +478,69 @@ func (m *model) voiceRetry() {
 	m.voiceBegin()
 }
 
-// voiceInsert 是 `VoiceActions.Insert`。本仓没有暂存文字（见 VoiceState.Pending），
-// 所以这是空动作；保留它是为了让官方那枚「插入」按钮有对称入口而不是 nil 分支。
-func (m *model) voiceInsert() {}
+// voiceInsert 是 `VoiceActions.Insert`：官方「插入文字」按钮
+// （`VoiceInput.tsx:175-178`）。
+//
+// 官方那一下是 `insertText(pending, captureInsertion())`——**重新采一次光标**，
+// 不沿用采集时那个 span（那个多半已经过期了，否则当初就插进去了）。成功才清
+// pending 并回 idle；失败就什么都不动（文字还在 pending 里，按钮还在）。
+func (m *model) voiceInsert() {
+	m.mu.Lock()
+	text := m.voice.pending
+	m.mu.Unlock()
+	if text == "" {
+		return
+	}
+	if m.insertDraftAtSpan(text) {
+		m.mu.Lock()
+		m.voice.pending = ""
+		m.voice.message = ""
+		m.voice.phase = voicePhaseIdle
+		m.mu.Unlock()
+		m.inv.Invalidate()
+	}
+}
+
+// voiceConflictMessage 是官方 `conflict` 的 zh 原文
+// （`OFF:dsh-experimental-client-ui-voice-input/src/client/locales.ts:100`）。
+const voiceConflictMessage = "草稿已被修改。识别文字已保留，可在当前光标位置插入。"
+
+// draftInsertion 取 composer 交出的草稿插入能力（nil = 没装/老壳）。
+func (m *model) draftInsertion() pluginapi.DraftInsertion {
+	if m.kernel == nil {
+		return nil
+	}
+	if service, ok := m.kernel.Get(pluginapi.KeyDraftInsertion).(pluginapi.DraftInsertion); ok {
+		return service
+	}
+	return nil
+}
+
+// captureInsertionSpan 取当前光标 / 选区快照（**UI 线程**）。
+func (m *model) captureInsertionSpan() (pluginapi.InsertionSpan, bool) {
+	if service := m.draftInsertion(); service != nil {
+		return service.CaptureInsertion()
+	}
+	return pluginapi.InsertionSpan{}, false
+}
+
+// insertDraftAtSpan 把一段文字插到**现在**的光标处，返回是否插进去了（**UI 线程**）。
+//
+// composer 没提供能力时退回 `insertDraftInline`（追加到末尾）：宁可位置不对，
+// 也不许把用户刚说的话丢掉。这条兜底只在"没装 ds-composer"时才会走到。
+func (m *model) insertDraftAtSpan(text string) bool {
+	service := m.draftInsertion()
+	if service == nil {
+		m.insertDraftInline(text)
+		return true
+	}
+	span, ok := service.CaptureInsertion()
+	if !ok {
+		m.insertDraftInline(text)
+		return true
+	}
+	return service.InsertText(text, span)
+}
 
 // voiceSelectDevice 换一只麦克风。只影响**下一次** Begin。
 func (m *model) voiceSelectDevice(deviceID int) {

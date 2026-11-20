@@ -1412,14 +1412,16 @@ const (
 	DraftReplace = "replace"
 	DraftAppend  = "append"
 	DraftKeep    = "keep"
-	// DraftInsert 是"追加到草稿末尾"（听写结果用这一档）。
+	// DraftInsert 是"追加到草稿末尾"（**没有**光标快照时的兜底）。
 	//
 	// 与 DraftAppend 的区别：Append 是官方 `appendDraft` 的**段落**语义
 	// （两段之间空一行，`cmd/app/wpc1_send.go` 的 appendDraftParagraph），
 	// 而听写是往现有句子里续话，段落分隔会把一句话拆成两段。
 	//
-	// 它对应的官方动作是 `inputActions.insertText(text, span)`（插在采集时的
-	// 光标处）；本仓没有光标快照，只能追加到末尾，见 VoiceState.Pending 的注释。
+	// 正式的官方语义是 `inputActions.insertText(text, span)`（插在**采集时光标处**），
+	// 由 composer 经 `pluginapi.KeyDraftInsertion` 提供（`InsertionSpan` /
+	// `DraftInsertion`，见 `pluginapi/draft_insertion.go`）。本档只在
+	// "composer 没提供该能力"时兜底使用——宁可追加到末尾，也不许把识别结果丢掉。
 	DraftInsert = "insert"
 )
 
@@ -1778,6 +1780,20 @@ type Actions struct {
 	// nil = 壳没接（老宿主 / 没有 apiclient）→ 插件按"可用"画，
 	// 这条差异登记在 `docs/official-parity.md` #18。
 	WorkspaceFileStat func(sessionID, path string) bool
+
+	// AttachmentGet 取回一份已登记附件的元数据与**原始字节**（宿主 `attachment.get`）。
+	//
+	// 这是消息区图片面唯一的取数入口（`#18` ②③）：官方 `<img>` 靠一个受授权的 URL
+	// 直接渲染（`OFF:dsh-client-ui-attachment/src/MessageImage.tsx:11-13`），
+	// 本仓没有浏览器 URL 层，等价物是"取字节 → 解码 → `ui.Image(gfx.Bitmap)`"。
+	//
+	// **同步阻塞**：调用方必须是插件起的 goroutine（消息区在绘制帧里不能等 HTTP）。
+	// 壳给的实现必须带**有上限**的超时，并按失败返回 ok=false——界面据此画官方的
+	// 失败态（`图片加载失败，点击重试`），不许把 0 字节当成"这张图本来就没有内容"。
+	//
+	// nil = 壳没接（老壳 / 无 apiclient）→ 图片面画官方 loading 文案后不再前进
+	// （不画假图，也不假装成功）。
+	AttachmentGet func(id string) (AttachmentBlob, bool)
 
 	// FileReferences 列 `@` 之后的文件候选（宿主 `fileReferences.list`）。
 	//
@@ -2422,10 +2438,11 @@ type VoiceActions struct {
 	Cancel func()
 	// Retry 在失败反馈之后重来一次。**异步**。
 	Retry func()
-	// Insert 把 feedback 阶段暂存的文字插进草稿。**异步**。
+	// Insert 把 feedback 阶段暂存的文字插进草稿（官方 `VoiceInput.tsx:175-178`
+	// 的「插入文字」按钮：`insertText(pending, captureInsertion())`）。**异步**。
 	//
-	// 本仓**恒无**暂存文字（理由见 VoiceState.Pending），留这个动作是为了
-	// 官方那枚「插入」按钮有对称入口，而不是画一个 nil 判断的分支。
+	// 与官方同一判据：它在**当前光标处**重新采集一次 span（不是沿用采集时那个），
+	// 所以「草稿已被修改」之后仍然能用。插入成功才清空 Pending。
 	Insert func()
 	// SelectDevice 换一只麦克风（`deviceId` 是 audio.Device.ID）。**异步**：
 	// 下一次 Begin 生效；正在录的时候不打断当前这一次。
@@ -2478,13 +2495,13 @@ type VoiceState struct {
 	Phase string
 	// Message 是 feedback 阶段的用户可见文案（已本地化）。
 	Message string
-	// Pending 是官方 `pending`：`insertText` 因草稿并发改动而失败时暂存的文字。
+	// Pending 是官方 `pending`：`insertText` 因草稿并发改动而**没插进去**时暂存的文字。
 	//
-	// 本仓**恒为空**：官方按"采集时光标位置"做 span 冲突检测
-	// （`client.js:1929` 的 `inputActions.captureInsertion()`），而 Viva 的
-	// `ui.Field` 只公开 `Text/SetText`（`viva/ui/field.go:82-95`），
-	// composer 的 editor 不经 `pluginapi` 暴露 → 本仓直接追加到草稿末尾，
-	// 没有"位置失效"这种状态。这是**已知差异**，见账本 #66 行。
+	// 官方判据（`VoiceInput.tsx:122`）：`if (!inputActions.insertText(text, active.span))
+	// { setPending(text); feedback(t('conflict')) }` —— 文字留着，光标处重插的机会
+	// 由「插入文字」按钮（`VoiceActions.Insert`）提供。本仓照同一条路：
+	// composer 经 `pluginapi.KeyDraftInsertion` 提供 `InsertText`，版本号对不上就返回
+	// false，壳把文字放进这里而不是丢掉。
 	Pending string
 	// Level 是最近一块的 RMS 电平（0..1），波形按它画。
 	Level float64

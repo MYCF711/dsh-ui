@@ -37,6 +37,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/vivaui/viva/components"
 	"github.com/vivaui/viva/gfx"
+	"github.com/vivaui/viva/text"
 	"github.com/vivaui/viva/ui"
 )
 
@@ -145,6 +146,19 @@ type Plugin struct {
 	// 只用来记"用户点了哪一项"，一行一次，不进绘制热路径。
 	logf func(format string, args ...any)
 
+	// editor 是草稿编辑器本体，由本插件持有并 Bind 给 field（见 Register）。
+	//
+	// 为什么自己持有：官方草稿的 `selection` / `caret` / `rev` 全在会话输入门面上
+	// （`SessionInputShell`），听写的 `captureInsertion()` 读的就是它。Viva 的
+	// `ui.Field` 只公开 `Text/SetText`（`viva/ui/field.go:82-95`），光标在内部
+	// editor 上——不 Bind 出来就没有第二个出口。nil = 还没 Register。
+	editor *text.Editor
+	// draftRev 是草稿版本号（官方 `SessionInputShell.rev`）。每次草稿内容变化 +1，
+	// 听写的 span 靠它做并发守卫：版本对不上就不许插（insertion.go 的 InsertText）。
+	draftRev int64
+	// lastText 是上一次同步版本号时的草稿内容，用来判断"这一帧草稿变了吗"。
+	lastText string
+
 	// mentionRows / mentionRef 是上一帧算出来的 `@` 候选（见 mention.go）。
 	//
 	// 为什么按键路径要靠上一帧：HandleKey 没有 env，而候选要靠 FSList（在 Actions 里）。
@@ -167,7 +181,10 @@ type Plugin struct {
 func (*Plugin) ID() string { return "ds-composer" }
 
 // Provides 实现 pluginapi.Plugin。
-func (*Plugin) Provides() []string { return nil }
+//
+// 交出「草稿插入」能力（官方 `inputActions.captureInsertion/insertText`）：
+// 听写要插在**采集时的光标处**，而草稿编辑器在本插件手里。见 insertion.go。
+func (*Plugin) Provides() []string { return []string{pluginapi.KeyDraftInsertion} }
 
 // Requires 实现 pluginapi.Plugin。
 func (*Plugin) Requires() []string {
@@ -179,6 +196,13 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	p.theme = ctx.Inject(pluginapi.KeyTheme).(*pluginapi.Theme)
 	p.prims = ctx.Inject(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	p.logf = ctx.Logf
+	// 草稿编辑器由自己持有并 Bind 给 Field：viva 的 `Field.Bind` 接的正是"程序自己
+	// 也要读的那个 editor"（`ui/field.go:61-80` 的注释：*the field is the page's
+	// handle on that editor, not a copy*）。不 Bind 就拿不到光标/选区，
+	// 听写只能追加到末尾。必须在**第一次 Text()/SetText 之前**做，否则 Field 会先
+	// `ensure()` 出自己的 editor，Bind 时那份内容就丢了。
+	p.bindDraftEditor()
+	ctx.Provide(pluginapi.KeyDraftInsertion, draftInsertion{p: p})
 	return nil
 }
 
@@ -249,6 +273,9 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 func (p *Plugin) drawLegacyComposerChildren(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	p.lastData = env.Data
 	p.lastAct = env.Act
+	// 草稿版本号每帧同步一次（官方 `SessionInputShell.rev`）：听写的 span 靠它
+	// 判断"采集中/识别期间草稿被改过没有"。见 insertion.go 的 syncDraftRev。
+	p.syncDraftRev()
 	// 中栏内容宽度：壳算好的 Geometry.MainWidth 优先，退到 Env.MainWidth。
 	column := composerColumn(env)
 	extra := float32(composerClearance - shellMainPad)

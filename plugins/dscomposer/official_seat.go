@@ -101,6 +101,9 @@ func (p *Plugin) drawOfficialComposer(f ui.C, env *pluginapi.Env) {
 func (p *Plugin) drawOfficialComposerChildren(f ui.C, env *pluginapi.Env, drawSlot func(pluginapi.Slot)) {
 	p.lastData = env.Data
 	p.lastAct = env.Act
+	// 草稿版本号每帧同步一次（官方 `SessionInputShell.rev`）：听写的 span 靠它
+	// 判断"采集中/识别期间草稿被改过没有"。见 insertion.go 的 syncDraftRev。
+	p.syncDraftRev()
 	column := composerColumn(env)
 	ui.Column(f).FillWidth().Gap(composerStackGap).Children(func() {
 		// 接管项：审批卡（Approval == nil 时 drawApproval 自己整条不画）。

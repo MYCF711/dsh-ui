@@ -84,8 +84,20 @@ type TranscriptAttachment struct {
 	Name string
 	// Meta 是元信息（大小 / 类型）。空 = 未知（不编 0 字节）。
 	Meta string
-	// Image 报告这是不是图片块（图片走 64×64 瓦片，文件走 240×64 卡片）。
+	// Image 报告这是不是图片块（图片走图片面，文件走 240×64 卡片）。
 	Image bool
+	// ID 是宿主登记的附件 id（块里的 `attachmentId`）。空 = 取不到字节。
+	//
+	// 图片面唯一的取数入口就是它（`pluginapi.Actions.AttachmentGet`）。空 id 时
+	// 图片面画官方 loading 文案而不是失败态：没有 id 不是"加载失败"，是"没东西可加载"。
+	ID string
+	// Width / Height 是**原始像素尺寸**（宿主 `attachment` 块里的 width/height，
+	// 由 Put 时按真实字节校验过）。0 = 宿主没给（非图片，或块里没带）。
+	//
+	// 图片面用它算官方 `singleFit`（MessageImage.tsx:36-48）；0 时走官方
+	// "尺寸未知" 那一档（240×240 方裁，:96-98）。
+	Width  int
+	Height int
 }
 
 // TranscriptUsage 是一条 assistant 消息携带的 token 用量。
@@ -484,11 +496,14 @@ type transcriptBlock struct {
 	Arguments string `json:"arguments"`
 	ID        string `json:"id"`
 	// 附件块（官方 image / file / 宿主 attachment）的字段。
-	FileName  string `json:"filename"`
-	MediaType string `json:"mediaType"`
-	Size      *int64 `json:"size"`
-	MIME      string `json:"mime"`
-	ByteSize  *int64 `json:"byteSize"`
+	FileName     string `json:"filename"`
+	MediaType    string `json:"mediaType"`
+	Size         *int64 `json:"size"`
+	MIME         string `json:"mime"`
+	ByteSize     *int64 `json:"byteSize"`
+	AttachmentID string `json:"attachmentId"`
+	Width        int    `json:"width"`
+	Height       int    `json:"height"`
 }
 
 type transcriptMessage struct {
@@ -565,9 +580,12 @@ func (f transcriptFrame) attachmentsOf() []TranscriptAttachment {
 		switch b.Type {
 		case "image":
 			out = append(out, TranscriptAttachment{
-				Name:  firstNonEmpty(b.Text, b.Name, b.FileName),
-				Meta:  b.MediaType,
-				Image: true,
+				Name:   firstNonEmpty(b.Text, b.Name, b.FileName),
+				Meta:   b.MediaType,
+				Image:  true,
+				ID:     b.AttachmentID,
+				Width:  b.Width,
+				Height: b.Height,
 			})
 		case "file":
 			meta := b.MediaType
@@ -593,9 +611,12 @@ func (f transcriptFrame) attachmentsOf() []TranscriptAttachment {
 				meta += itoa64(*b.ByteSize) + " B"
 			}
 			out = append(out, TranscriptAttachment{
-				Name:  b.Name,
-				Meta:  meta,
-				Image: strings.HasPrefix(b.MIME, "image/"),
+				Name:   b.Name,
+				Meta:   meta,
+				Image:  strings.HasPrefix(b.MIME, "image/"),
+				ID:     b.AttachmentID,
+				Width:  b.Width,
+				Height: b.Height,
 			})
 		}
 	}

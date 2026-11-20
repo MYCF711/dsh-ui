@@ -133,6 +133,12 @@ type OfficialTranscriptView struct {
 	// Boxes 是上一帧的几何（每帧 Draw 开头重置）。
 	Boxes TranscriptBoxes
 
+	// messageImages 是附件图片的取数 + 解码 + 裁切缓存（`#18` ②③）。
+	//
+	// 挂在视图上而不是投影里：字节是运行期资源（HTTP + 位图），不是 journal 事实。
+	// 放进投影会让"重放同一批帧"的产物依赖网络，投影层最忌这个。
+	messageImages *messageImageCache
+
 	// codeBlocks 是本帧**布局阶段占位、覆画阶段才真画**的代码块。
 	//
 	// 为什么要两段：`mdlite.CodeBlock` 要的是**真实矩形**，而布局阶段
@@ -181,7 +187,7 @@ type pendingCodeBlock struct {
 
 // NewOfficialTranscriptView 造一个渲染器。
 func NewOfficialTranscriptView(theme *pluginapi.Theme, prims pluginapi.Primitives) *OfficialTranscriptView {
-	return &OfficialTranscriptView{Theme: theme, Prims: prims}
+	return &OfficialTranscriptView{Theme: theme, Prims: prims, messageImages: newMessageImageCache()}
 }
 
 // Draw 画完整 transcript：容器链 + 逐条节点。
@@ -345,9 +351,12 @@ func (v *OfficialTranscriptView) drawUser(f ui.C, env *pluginapi.Env, e Transcri
 			}
 			// 附件行（.attachmentRow：右对齐、wrap、gap 8）
 			if len(e.Data.Attachments) > 0 {
+				// 官方 `compactImages = attachments.length > 1`（UserContent.tsx:18）：
+				// **按附件总数**判，不是按图片数——一张图 + 一个文件也走 64×64 瓦片档。
+				compact := len(e.Data.Attachments) > 1
 				ui.Row(f).Justify(ui.End).Gap(AttachmentRowGap).Children(func() {
-					for _, attachment := range e.Data.Attachments {
-						v.drawAttachment(f, attachment)
+					for index, attachment := range e.Data.Attachments {
+						v.drawAttachment(f, env, e, attachment, index, compact)
 					}
 				})
 			}
@@ -355,12 +364,25 @@ func (v *OfficialTranscriptView) drawUser(f ui.C, env *pluginapi.Env, e Transcri
 	})
 }
 
-// drawAttachment 画一个附件：图片走 64×64 瓦片，文件走 240×64 卡片。
-func (v *OfficialTranscriptView) drawAttachment(f ui.C, attachment TranscriptAttachment) {
+// drawAttachment 画一个附件：图片走官方图片面（`MessageImage`），文件走 240×64 卡片。
+//
+// 图片**不再画空占位**：老实现是一个 64×64 的空 `ui.Slot`，无论单图还是多图、
+// 无论加载成功与否都是同一个空框（`#18` ②③ 的直接缺口）。现在按官方三档走：
+//
+//	单图（且只有这一个附件）  singleFit 大图，长边 240、比例夹 [0.25,4]、不放大
+//	多附件/compact            64×64 方裁瓦片
+//	加载中 / 失败             官方 loading 文案 / 官方 `.error` 失败态（可点重试）
+func (v *OfficialTranscriptView) drawAttachment(f ui.C, env *pluginapi.Env, entry TranscriptEntry,
+	attachment TranscriptAttachment, index int, compact bool) {
 	t := v.Theme
 	if attachment.Image {
-		// 图片瓦片（MessageImage.tile）：64×64，多图时降级。
-		ui.Slot(f).Size(ImageTileSize, ImageTileSize).Radius(t.Radii.SM).Border(0.5, t.BorderL2)
+		variant := messageImageVariantFor(1, compact)
+		hit := gfx.ID{}
+		if env != nil && env.Tree != nil {
+			// 官方重试按钮的交互名字就是 `loadFailed` 那一句（MessageImage.tsx:124-126）。
+			hit = env.Tree.ID(env.Feat, "message-image-retry-"+entry.Key+"-"+itoa(index))
+		}
+		v.drawMessageImage(f, env, attachment, variant, hit)
 		return
 	}
 	card := ui.Row(f).Size(FileCardWidth, FileCardMinHeight).Gap(FileCardGap).Radius(t.Radii.LG).

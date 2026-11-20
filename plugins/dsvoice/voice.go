@@ -83,6 +83,14 @@ const (
 	waveformBaseAlpha float32 = 0.25
 	waveformAlphaStep float32 = 1.0 / 120
 
+	// `.inlineAction` 的几何：官方 CSS 只写 `flex:none`，外观来自 primitives 的
+	// `Button size="sm"`。四档取本仓既有的官方 `size="sm"` 推导
+	// （`plugins/dsactioncards/cards.go:174-177`：28 / 10 / 12 / 18）。
+	inlineActionHeight     float32 = 28
+	inlineActionPadX       float32 = 10
+	inlineActionFontSize   float32 = 12
+	inlineActionLineHeight float32 = 18
+
 	// 本包在座位里的顺序。single 槽只有一个占用方，顺序不影响位置；
 	// 给 10 只是与 dscomposer 自己的输入卡片同档，便于日志里按 Order 读。
 	voiceOrder = 10
@@ -101,6 +109,15 @@ type Plugin struct {
 	// phase 用来判"新的一次录音"，跨次把波形清空。
 	phase string
 }
+
+// 官方 zh 文案（`locales.ts`）。逐字取，不改写：
+//
+//	insert  → 「插入文字」（:94，pending 非空时那枚文字按钮）
+//	discard → 「丢弃识别文字」（:82，pending 非空时关钮的无障碍名）
+const (
+	insertLabel  = "插入文字"
+	discardLabel = "丢弃识别文字"
+)
 
 // ID 实现 pluginapi.Plugin。
 func (p *Plugin) ID() string { return "ds-voice" }
@@ -192,7 +209,13 @@ func (p *Plugin) drawCaptureRow(f ui.C, env *pluginapi.Env, st pluginapi.VoiceSt
 	t := p.theme
 	row := ui.Row(f).Items(ui.Center).Gap(captureGap).Height(captureMinHeight).Grow(1).Clip()
 	row.Children(func() {
-		p.roundButton(f, env, "voice-cancel", "取消", func() { drawClose(f, roundCloseIcon, t.LabelSecondary) }, act.Cancel)
+		// 关钮的无障碍名随 pending 变：有暂存文字时官方叫 `discard`（丢弃识别文字），
+		// 否则叫 `cancel`（`VoiceInput.tsx:166`，`locales.ts:82` zh 原文「丢弃识别文字」）。
+		cancelLabel := "取消"
+		if st.Pending != "" {
+			cancelLabel = discardLabel
+		}
+		p.roundButton(f, env, "voice-cancel", cancelLabel, func() { drawClose(f, roundCloseIcon, t.LabelSecondary) }, act.Cancel)
 
 		if st.Phase == "recording" {
 			p.drawWaveform(f, t)
@@ -204,9 +227,42 @@ func (p *Plugin) drawCaptureRow(f ui.C, env *pluginapi.Env, st pluginapi.VoiceSt
 			p.roundButton(f, env, "voice-stop", "停止并识别", func() { drawStop(f, roundStopIcon, t.LabelSecondary) }, act.Stop)
 		}
 		if st.Phase == "feedback" {
+			if st.Pending != "" {
+				// 官方：pending 非空时不画「重新录音」，改画「插入文字」
+				// （`VoiceInput.tsx:175-178`）——那一下是把保住的文字插到**当前**
+				// 光标处，不是重录。
+				p.inlineAction(f, env, "voice-insert", insertLabel, act.Insert)
+				return
+			}
 			p.roundButton(f, env, "voice-retry", "重新录音", func() { drawMicrophone(f, triggerIcon, t.LabelSecondary) }, act.Retry)
 		}
 	})
+}
+
+// inlineAction 画官方 `.inlineAction` 那一枚文字按钮（`VoiceInput.module.css:12`
+// 只有 `flex:none`，外观全部来自 primitives 的 `Button size="sm"`）。
+//
+// 几何取本仓既有的官方 `Button size="sm"` 推导（`plugins/dsactioncards/cards.go:174-177`
+// 的 smallButtonHeight/PadX/FontSize/LineH：28 / 10 / 12 / 18），外观用 `ButtonBase`
+// 的默认文字态 + 官方 hover 令牌——**不新造颜色**。
+//
+// 一处如实登记：官方这里没写 `variant`（取 primitives 的默认变体），而 primitives
+// 的默认变体取值本仓没有素材可核，所以按官方「文字按钮」的既有推导画（透明底 +
+// hover 令牌 + label-primary 文字）。登记在 `docs/official-parity.md` #66 行。
+func (p *Plugin) inlineAction(f ui.C, env *pluginapi.Env, name, label string, on func()) {
+	t := p.theme
+	id := env.Tree.ID(env.Feat, name)
+	button := ui.ButtonBase(f, label).Height(inlineActionHeight).PadX(inlineActionPadX).
+		Radius(t.Radii.SM).Items(ui.Center).Justify(ui.Center).Self(ui.Start).
+		Hover(ui.Look{}.Background(t.Hover))
+	clicked := button.HitWith(id, label, gfx.HitOptions{Role: gfx.RoleButton, SkipFocus: true}).
+		Children(func() {
+			ui.Text(f, label).FontSize(inlineActionFontSize).
+				LineHeight(inlineActionLineHeight).Color(t.LabelPrimary)
+		}).Clicked()
+	if clicked && on != nil {
+		on()
+	}
 }
 
 // roundButton 是官方的 `.roundButton`（32×32 圆钮）：底色 `--dsw-specific-selector`，

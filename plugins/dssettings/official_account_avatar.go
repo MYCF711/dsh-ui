@@ -29,18 +29,15 @@
 package dssettings
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"image"
-	_ "image/gif"  // 官方浏览器解 GIF；Go 侧同样注册
-	_ "image/jpeg" // 同上
-	_ "image/png"  // 同上
 	"io"
 	"net/http"
 	"strings"
 	"sync"
 
+	"github.com/MYCF711/dsh-ui/internal/imgdecode"
 	"github.com/vivaui/viva/gfx"
 )
 
@@ -269,12 +266,15 @@ func (l *accountAvatarLoader) fetch(url string) (gfx.Bitmap, error) {
 //
 // 只接受 image/png、image/jpeg、image/gif（浏览器 `<img>` 对这三类都能解）；
 // 不认识的格式**如实失败**，返回零位图。
+//
+// 实现在 `internal/imgdecode`：解码格式集合与 BGRA 像素布局是**同一个事实**，
+// 消息区图片面（`#18`）用的是同一份，不许各写一份再慢慢漂。
 func DecodeAccountAvatar(body []byte) (gfx.Bitmap, error) {
-	decoded, _, err := image.Decode(bytes.NewReader(body))
-	if err != nil {
-		return gfx.Bitmap{}, err
+	bitmap, err := imgdecode.Decode(body)
+	if errors.Is(err, imgdecode.ErrEmpty) {
+		return gfx.Bitmap{}, errAvatarEmpty
 	}
-	return BitmapFromImage(decoded)
+	return bitmap, err
 }
 
 // BitmapFromImage 把 `image.Image` 转成 viva 的 BGRA 位图。
@@ -282,25 +282,11 @@ func DecodeAccountAvatar(body []byte) (gfx.Bitmap, error) {
 // gfx.Bitmap 的 Pix 顺序是 B,G,R,A（见 viva gfx/bitmap_test.go 的夹具：
 // `0,0,255,255` 是纯蓝像素），Stride = Width*4。
 func BitmapFromImage(source image.Image) (gfx.Bitmap, error) {
-	bounds := source.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	if width <= 0 || height <= 0 {
+	bitmap, err := imgdecode.Bitmap(source)
+	if errors.Is(err, imgdecode.ErrEmpty) {
 		return gfx.Bitmap{}, errAvatarEmpty
 	}
-	stride := width * 4
-	pixels := make([]byte, stride*height)
-	for y := 0; y < height; y++ {
-		row := pixels[y*stride : (y+1)*stride]
-		for x := 0; x < width; x++ {
-			red, green, blue, alpha := source.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
-			index := x * 4
-			row[index] = byte(blue >> 8)
-			row[index+1] = byte(green >> 8)
-			row[index+2] = byte(red >> 8)
-			row[index+3] = byte(alpha >> 8)
-		}
-	}
-	return gfx.Bitmap{Pix: pixels, Width: width, Height: height, Stride: stride}, nil
+	return bitmap, err
 }
 
 // detachLocked 是官方 `detach`（account-avatar.ts:84-91）：释放位图、掐断回调。

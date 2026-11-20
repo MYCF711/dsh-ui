@@ -413,11 +413,14 @@ type model struct {
 	// 读它就已经是数据竞争。背景 goroutine 只排队，由 applyPendingDraft 消费。
 	// 上游缺陷说明见 docs/viva-upstream-editor-string-race.md。
 	pendingDraft *draftRestoreRequest
-	pendingSmoke *string
-	sessions     []apiclient.Session
-	cur          string
-	msgs         []apiclient.Message
-	usage        apiclient.Usage
+	// pendingInsert 是听写的"插到采集时光标处"请求（官方 inputActions.insertText）。
+	// 与 pendingDraft 同一线程约束：真正插入要动 `*text.Editor`，只能在 UI 线程做。
+	pendingInsert *draftInsertRequest
+	pendingSmoke  *string
+	sessions      []apiclient.Session
+	cur           string
+	msgs          []apiclient.Message
+	usage         apiclient.Usage
 	// 宿主 §12 H1/H4/H5：累计用量、当前上下文、模型名、审批策略。
 	// 零值/空串 = 不知道，界面据此整段不画（绝不拿 0 或 mode 冒充）。
 	usageTotal    apiclient.Usage
@@ -3172,6 +3175,9 @@ func main() {
 		// 官方 file 菜单 resolve 的 stat 预取（OFF:context-menus.tsx:50-60）：
 		// 只决定"置不置灰"，不决定画不画。见 file_actions.go 的 workspaceFileStat。
 		WorkspaceFileStat: m.workspaceFileStat,
+		// 消息区图片面的取数入口（`#18` ②③）：宿主 `attachment.get` 的真字节。
+		// **同步**，调用方（消息区）自己起 goroutine；见 attachment_bytes.go。
+		AttachmentGet: m.attachmentGetAction,
 		// `@` / `/` 候选：同步读壳缓存，首次问触发后台拉取（见 reference_wiring.go）。
 		FileReferences:             m.fileReferences,
 		SessionReferenceCandidates: m.sessionReferenceCandidates,

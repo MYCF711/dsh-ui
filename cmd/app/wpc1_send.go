@@ -177,16 +177,34 @@ func (m *model) queueSmokeSend(text string) {
 	m.inv.Invalidate()
 }
 
-// applyPendingDraft 消费排队的草稿写回与 smoke 发送。
+// draftInsertRequest 是一次"插到指定 span"的草稿写请求（听写结果）。
+//
+// 为什么单独一条队列而不是复用一个 policy：官方的 insertText 带**位置**和
+// **版本号**，判据（成功/冲突）会回头影响听写状态机（pending + feedback）。
+// 塞进 `draftRestoreRequest` 会让"写草稿"这条老路径也背上位置的语义。
+type draftInsertRequest struct {
+	// text 是识别结果（**已经 trim**，空串在调用方就拦掉了）。
+	text string
+	// span 是**采集时**的光标快照；spanOK=false 表示 composer 没给出（退回追加）。
+	span   pluginapi.InsertionSpan
+	spanOK bool
+}
+
+// applyPendingDraft 消费排队的草稿写回、听写插入与 smoke 发送。
 // **必须在 UI 线程（Paint）里调。**
 func (m *model) applyPendingDraft() {
 	m.mu.Lock()
 	req := m.pendingDraft
 	m.pendingDraft = nil
+	insert := m.pendingInsert
+	m.pendingInsert = nil
 	smoke := m.pendingSmoke
 	m.pendingSmoke = nil
 	cur := m.cur
 	m.mu.Unlock()
+	if insert != nil {
+		m.applyPendingInsert(insert)
+	}
 	if req != nil && (req.session == "" || req.session == cur) {
 		if req.policy == pluginapi.DraftAppend {
 			m.appendDraft(req.text)
@@ -202,6 +220,35 @@ func (m *model) applyPendingDraft() {
 		m.writeDraft(*smoke, true)
 		m.send()
 	}
+}
+
+// applyPendingInsert 把一次听写插入落到 composer 的草稿上（**UI 线程**）。
+//
+// 官方那一段（`VoiceInput.tsx:122-123`）：
+//
+//	if (!inputActions.insertText(result.value.text, active.span)) {
+//	    setPending(result.value.text); feedback(t('conflict')); return }
+//
+// 也就是三件事：插进采集时的位置 / 插不进就保住文字 / 插不进时报"草稿已被修改"。
+// 本仓的 `InsertText` 已经在 composer 里做了版本号守卫（见 dscomposer/insertion.go），
+// 这里只负责把两种结果翻到听写状态机上。
+func (m *model) applyPendingInsert(req *draftInsertRequest) {
+	service := m.draftInsertion()
+	if service == nil || !req.spanOK {
+		// 没有插入能力（老壳 / 没装 ds-composer）：退回追加到末尾，绝不丢字。
+		m.insertDraftInline(req.text)
+		return
+	}
+	if service.InsertText(req.text, req.span) {
+		return
+	}
+	m.mu.Lock()
+	m.voice.pending = req.text
+	m.voice.message = voiceConflictMessage
+	m.voice.phase = voicePhaseFeedback
+	m.voice.errText = ""
+	m.mu.Unlock()
+	m.inv.Invalidate()
 }
 
 // writeDraft 是**唯一**允许写草稿的地方，只能在 UI 线程上调用。

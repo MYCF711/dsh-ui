@@ -182,6 +182,27 @@ const (
 	ImageThumbnailSize float32 = 48
 	// ImageSingleMaxEdge 是单图变体长边（MessageImage.tsx:36-48）。
 	ImageSingleMaxEdge float32 = 240
+	// ImageSingleRatioMin 是单图比例夹的下界（`Math.max(.25, natural)`，MessageImage.tsx:40）。
+	ImageSingleRatioMin = 0.25
+	// ImageSingleRatioMax 是单图比例夹的上界（`Math.min(4, …)`，MessageImage.tsx:40）。
+	ImageSingleRatioMax = 4
+	// ImageStateFontSize / ImageStateLineHeight 是 `.loading` 与 `.error` 的字号/行高
+	// （MessageImage.module.css:44-49 的 `.loading,.error{font-size:12px;line-height:18px}`）。
+	ImageStateFontSize   float32 = 12
+	ImageStateLineHeight float32 = 18
+	// ImageErrorPadX / ImageErrorPadY 是 `.error` 的内边距（`padding:10px 12px`，
+	// MessageImage.module.css:44-49）。
+	ImageErrorPadX float32 = 12
+	ImageErrorPadY float32 = 10
+	// ImageErrorTilePad 是 `.error[data-variant=tile]{padding:4px}`（同处 :50-56）。
+	ImageErrorTilePad float32 = 4
+	// ImageErrorThumbPad 是 `.error[data-variant=thumbnail]{padding:2px}`（同处 :58-66）。
+	ImageErrorThumbPad float32 = 2
+	// ImageErrorIconSize 是失败态 tile/thumbnail 档那枚刷新图标的边长。
+	//
+	// 官方 `<IconRefreshOutlineRegular />` 没有显式 size → 取 primitives 的默认 16
+	// （与 `dsh-client-ui-primitives` 其余 `Icon*` 同档）。
+	ImageErrorIconSize float32 = 16
 
 	// ContextBodyWidthInset 是上下文展开体宽度扣减基数
 	// （`calc(100% - 22px - delta)`，ContextInjectionRow.module.css:50-64）。
@@ -738,6 +759,22 @@ var officialTranscriptGeometry = []uikernel.GeoRow{
 	{Node: "UserContent.referenceSummary", Prop: "font-size", Official: ReferenceSummaryFontSize, Impl: ReferenceSummaryFontSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "MessageItem.module.css:22-26"},
 	{Node: "MessageImage.tile", Prop: "size", Official: ImageTileSize, Impl: ImageTileSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:32-37"},
 	{Node: "MessageImage.thumbnail", Prop: "size", Official: ImageThumbnailSize, Impl: ImageThumbnailSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:76-79"},
+	{Node: "MessageImage.frame", Prop: "border-width", Official: 0.5, Impl: 0.5, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:5-13"},
+	{Node: "MessageImage.frame", Prop: "radius", Official: 20, Impl: 20, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:5-13"},
+	{Node: "MessageImage.frame", Prop: "min-size", Official: 44, Impl: 44, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:5-13", Formula: "min-width:44px;min-height:44px；本仓两档 variant（single/tile）都不小于 44，故按框尺寸取，不另设下限"},
+	{Node: "MessageImage.single", Prop: "max-edge", Official: ImageSingleMaxEdge, Impl: ImageSingleMaxEdge, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.tsx:36-48"},
+	{Node: "MessageImage.single", Prop: "ratio-min", Official: ImageSingleRatioMin, Impl: ImageSingleRatioMin, Unit: uikernel.UnitRatio, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.tsx:40"},
+	{Node: "MessageImage.single", Prop: "ratio-max", Official: ImageSingleRatioMax, Impl: ImageSingleRatioMax, Unit: uikernel.UnitRatio, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.tsx:40"},
+	{Node: "MessageImage.loading", Prop: "font-size", Official: ImageStateFontSize, Impl: ImageStateFontSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:44-49"},
+	{Node: "MessageImage.loading", Prop: "line-height", Official: ImageStateLineHeight, Impl: ImageStateLineHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:44-49"},
+	{Node: "MessageImage.error", Prop: "padding-inline", Official: ImageErrorPadX, Impl: ImageErrorPadX, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:44-49"},
+	{Node: "MessageImage.error", Prop: "padding-block", Official: ImageErrorPadY, Impl: ImageErrorPadY, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:44-49"},
+	{Node: "MessageImage.error", Prop: "max-width", Official: 240, Impl: 240, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:44-49"},
+	{Node: "MessageImage.error", Prop: "radius", Official: 12, Impl: 12, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:44-49"},
+	{Node: "MessageImage.error[tile]", Prop: "padding", Official: ImageErrorTilePad, Impl: ImageErrorTilePad, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:50-56"},
+	{Node: "MessageImage.error[tile]", Prop: "size", Official: ImageTileSize, Impl: ImageTileSize, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:50-56"},
+	{Node: "MessageImage.error[thumbnail]", Prop: "padding", Official: ImageErrorThumbPad, Impl: ImageErrorThumbPad, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:58-66"},
+	{Node: "MessageImage.gallery", Prop: "gap", Official: 10, Impl: 10, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "dsh-client-ui-attachment/src/MessageImage.module.css:1-4"},
 
 	// ── 助手正文（§5.6）───────────────────────────────────────────
 	{Node: "AssistantNodeView.root", Prop: "font-size", Official: 14, Impl: 14, Unit: uikernel.UnitPx, Status: uikernel.GeoAligned, Anchor: "AssistantMarkdown.module.css:9-15"},

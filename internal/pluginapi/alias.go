@@ -133,6 +133,12 @@ type (
 	VoiceProvider   = pub.VoiceProvider
 	VoiceDevice     = pub.VoiceDevice
 	VoiceState      = pub.VoiceState
+	// 草稿插入的快照类型（`InsertionSpan`）与提供方接口（`DraftInsertion`）。
+	// 键 `KeyDraftInsertion` 在下面的 const 块里（与其余服务键同一处）。
+	InsertionSpan  = pub.InsertionSpan
+	DraftInsertion = pub.DraftInsertion
+	// 消息区图片面的取数结果（Actions.AttachmentGet 的返回值，#18 ②③）。
+	AttachmentBlob = pub.AttachmentBlob
 )
 
 const (
@@ -156,6 +162,9 @@ const (
 	DraftAppend             = pub.DraftAppend
 	DraftKeep               = pub.DraftKeep
 	DraftInsert             = pub.DraftInsert
+	// 草稿插入能力（官方 `inputActions.captureInsertion/insertText`，#66 ①）。
+	// 漏转发的后果与 CordisView 那次同类：插件（dscomposer）编译得动、壳编译不动。
+	KeyDraftInsertion = pub.KeyDraftInsertion
 
 	// context menu 的 target kind（官方 `ContextMenuTargetMap` 的判别键，
 	// OFF:ui-context-menu/src/client/types.ts:29-40 + open-in-app 的 workspace 扩展）。

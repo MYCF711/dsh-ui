@@ -152,26 +152,6 @@ func TestGlobeEquatorSquareCapExtendsByHalfTheStroke(t *testing.T) {
 	}
 }
 
-// TestGlobeTitleEquatorExtendsOnlyTheFarEnd 是标题行那一枚的推导：
-//
-// 起点保持官方原文（那半截交给 `Cap = gfx.CapSquare` 真画），**远端**那半截写进
-// 坐标（viva 现在只给起点画 square 帽，见 TestVivaSquareCapOnlyGrowsAtTheContourStart）。
-// 两端合起来 = 官方 [1.84619, 14.1538]。
-func TestGlobeTitleEquatorExtendsOnlyTheFarEnd(t *testing.T) {
-	officialLeft, officialRight := globeEquatorEnds(t, pathGlobeEquator)
-	stubLeft, stubRight := globeEquatorEnds(t, pathGlobeEquatorEndCap)
-	const epsilon = 1e-5
-	if stubLeft != officialLeft {
-		t.Fatalf("标题行赤道的起点被挪了：%+v，官方是 %+v（那半截应当由 CapSquare 画）", stubLeft, officialLeft)
-	}
-	if got := float64(stubRight.X) - float64(officialRight.X); math.Abs(got-float64(globeSquareCapExtend)) > epsilon {
-		t.Fatalf("远端外推量 = %.6f，应当是 StrokeWidth/2 = %.6f", got, globeSquareCapExtend)
-	}
-	if stubRight.Y != officialRight.Y {
-		t.Fatalf("远端外推改了 y：%+v", stubRight)
-	}
-}
-
 // TestGlobeChipBakesTheEquatorAndStaysButt 是芯片那一枚的结构判据：
 //
 //   - 赤道那一笔 = 方帽等价几何（逐命令等于 pathGlobeEquatorSquareCap）；
@@ -214,8 +194,8 @@ func TestGlobeTitleIconsAreButtPlusASquareCappedEquator(t *testing.T) {
 	if equator.Cap != gfx.CapSquare {
 		t.Fatalf("赤道图标 Cap = %v，官方 stroke-linecap=\"square\"", equator.Cap)
 	}
-	if !sameGlobeCommands(equator.Commands, globeCommands(t, pathGlobeEquatorEndCap)) {
-		t.Fatalf("赤道图标应当就是 pathGlobeEquatorEndCap：%+v", equator.Commands)
+	if !sameGlobeCommands(equator.Commands, globeCommands(t, pathGlobeEquator)) {
+		t.Fatalf("赤道图标应当就是官方原文的 pathGlobeEquator（上游修好 square cap 后无需绕法）：%+v", equator.Commands)
 	}
 	if equator.ViewBox != 16 || equator.Stroke != globeStrokeWidth {
 		t.Fatalf("赤道图标 viewBox=%v stroke=%v，官方 16 / %v", equator.ViewBox, equator.Stroke, globeStrokeWidth)
@@ -437,63 +417,6 @@ func TestGlobeEquatorInkMatchesTheOfficialEndpoints(t *testing.T) {
 	assertGlobeAt(t, "赤道左端外侧", snapshot, color, globePointAt(globeBox, globeBox, 1.7, 8), false)
 	assertGlobeAt(t, "赤道右端内侧", snapshot, color, globePointAt(globeBox, globeBox, 14.1, 8), true)
 	assertGlobeAt(t, "赤道右端外侧", snapshot, color, globePointAt(globeBox, globeBox, 14.3, 8), false)
-}
-
-// TestVivaSquareCapOnlyGrowsAtTheContourStart 是 ④：把**当前** viva 的 square 帽
-// 行为钉住，标题行"只把远端写进坐标"这条推导才有据可依，而不是一句传说。
-//
-// 实测依据（gfx/path.go:435-437）：起点传 `direction(points[1], first)`（指向轮廓外），
-// 末端传 `negate(outLast)`（被取反成指向描边内部）→ 末端方帽落在已填充的描边里，
-// 墨迹只长起点那半截。round 帽是对称圆盘，所以 round 看不出这条。
-//
-// **上游把 `negate` 去掉之后这条会先红**：那时把 pathGlobeEquatorEndCap 换回
-// pathGlobeEquator，并删掉本条。
-func TestVivaSquareCapOnlyGrowsAtTheContourStart(t *testing.T) {
-	theme := dscore.Dark()
-	color := theme.LabelSecondary
-	scale := iconSizeTitle / 16
-	left, right := globeEquatorEnds(t, pathGlobeEquator)
-
-	square := buildIcon(strokeAsset("IconGlobeOutlineRegular", iconSizeTitle, pathGlobeEquator), gfx.Color{})
-	square.Cap = gfx.CapSquare
-	butt := buildIcon(strokeAsset("IconGlobeOutlineRegular", iconSizeTitle, pathGlobeEquator), gfx.Color{})
-	butt.Cap = gfx.CapButt
-	for _, tc := range []struct {
-		name string
-		icon gfx.Icon
-		want gfx.Rect
-	}{
-		{
-			name: "square 帽",
-			icon: square,
-			// 起点那半截画出来了，末端没有。
-			want: gfx.Rect{
-				X:      globeBox + (left.X-globeStrokeWidth/2)*scale,
-				Y:      globeBox + (left.Y-globeStrokeWidth/2)*scale,
-				Width:  (right.X - left.X + globeStrokeWidth/2) * scale,
-				Height: globeStrokeWidth * scale,
-			},
-		},
-		{
-			name: "butt 帽",
-			icon: butt,
-			want: gfx.Rect{
-				X:      globeBox + left.X*scale,
-				Y:      globeBox + (left.Y-globeStrokeWidth/2)*scale,
-				Width:  (right.X - left.X) * scale,
-				Height: globeStrokeWidth * scale,
-			},
-		},
-	} {
-		snapshot := openGlobeFrame(t, func(c ui.C) {
-			ui.Icon(c, tc.icon).Size(iconSizeTitle, iconSizeTitle).Color(color)
-		})
-		got, count := globeInk(snapshot, color, globeWholeFrame())
-		if count == 0 {
-			t.Fatalf("%s：赤道一个三角形都没画出来", tc.name)
-		}
-		assertGlobeEdges(t, tc.name, got, tc.want)
-	}
 }
 
 // TestGlobeChipAndTitleStackPaintTheSameInk 是 ③「两处必须视觉一致」：

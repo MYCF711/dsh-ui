@@ -12,19 +12,36 @@ import (
 // ── 假载具 ──────────────────────────────────────────────────────────────
 
 // fakePage 是 pluginapi.WebPage 的假实现：只记调用，不开窗口。
+//
+// 后四个字段摆的是**引擎事实**（官方 `element.getTitle()/canGoBack()/
+// canGoForward()/isLoading()`，ElectronWebViewImpl.ts:220,224-226）：
+// 用例直接改它们来表示"引擎此刻这么答"，不经过任何状态机会员。
 type fakePage struct {
 	id     gfx.NativeViewID
 	loaded []string
 	closed bool
+
+	title      string
+	canBack    bool
+	canForward bool
+	loading    bool
+
+	backs    int
+	forwards int
 }
 
 func (p *fakePage) ID() gfx.NativeViewID { return p.id }
 func (p *fakePage) Load(url string)      { p.loaded = append(p.loaded, url) }
 func (p *fakePage) Reload()              { p.loaded = append(p.loaded, "<reload>") }
-func (p *fakePage) Back()                {}
-func (p *fakePage) Forward()             {}
+func (p *fakePage) Back()                { p.backs++ }
+func (p *fakePage) Forward()             { p.forwards++ }
 func (p *fakePage) Focus()               {}
 func (p *fakePage) Close()               { p.closed = true }
+
+func (p *fakePage) Title() string      { return p.title }
+func (p *fakePage) CanGoBack() bool    { return p.canBack }
+func (p *fakePage) CanGoForward() bool { return p.canForward }
+func (p *fakePage) IsLoading() bool    { return p.loading }
 
 // fakeHost 是 pluginapi.WebHost 的假实现。
 type fakeHost struct {
@@ -263,14 +280,9 @@ func TestTitleFallsBackToTheOfficialTypeLabel(t *testing.T) {
 	}
 }
 
-// titleLabelFor 复算 drawTitle 选的文案（drawTitle 把文案直接画进树里，
-// 这里取同一个判据，避免为"读文字"再造一套夹具）。
-func titleLabelFor(p *Plugin) string {
-	if target, ok := currentTarget(p.nav.value); ok {
-		return target.Title
-	}
-	return browserTypeLabel
-}
+// titleLabelFor 取 drawTitle 用的那份文案：**直接调生产判据**，不再在测试里
+// 复制一份回退链（复制过的那一版在"标题来自引擎"之后就必然漂移）。
+func titleLabelFor(p *Plugin) string { return p.currentTitle() }
 
 func TestToolbarIconSizesMatchOfficialSprite(t *testing.T) {
 	for _, tc := range []struct {

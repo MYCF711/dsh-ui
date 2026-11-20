@@ -24,6 +24,7 @@ package pluginapi
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/vterm"
@@ -793,10 +794,10 @@ type WebHost interface {
 // WebOpenOptions 是打开一个页面时给的选项。
 //
 // 为什么 OnLoad 只能在这里给、不能事后订阅：Viva 的 `OnLoad` 是
-// `WebViewConfig` 的一个字段（OFF:viva@v0.6.4/app/web.go:107），页面开出来之后
-// 就没有再挂监听的口子了（`*WebView` 上只有 Load/Reload/Back/Forward/Eval/
-// PostMessage/Focus/Close，见 :277-306）。契约照这个形状写，插件就不会以为
-// 自己能中途换订阅。
+// `WebViewConfig` 的一个字段（OFF:viva@0.6.8-webstate/app/web.go:107），页面开出来
+// 之后就没有再挂监听的口子了（`*WebView` 上只有 Load/Reload/Back/Forward/
+// Title/CanGoBack/CanGoForward/IsLoading/Eval/PostMessage/Focus/Close，见同文件
+// :328-369）。契约照这个形状写，插件就不会以为自己能中途换订阅。
 type WebOpenOptions struct {
 	// URL 是初始地址；空表示先不开导航（官方 `start(undefined)`）。
 	URL string
@@ -835,10 +836,96 @@ const (
 	WebLoadDone
 )
 
-// WebLoad 是一次导航事件（官方 `BrowserLoadError` / `location` 观察的合并面）。
+// WebLoadError 是一次导航失败的原因（官方 `did-fail-load` 的 `errorCode`）。
+//
+// 为什么是分类而不是数字：官方 Electron 载具拿的是 Chromium 的负数错误码
+// （`-105` 这种，`OFF:…/electron/ElectronWebViewImpl.ts:179-181`），三个引擎
+// 各报各的号码；Viva 把它归一成下面这组**同一含义同一取值**的分类
+// （`OFF:viva@0.6.8-webstate/internal/platform/web_load_error.go:8-40`，
+// `app/web.go:189-219` 原样转出），所以本仓契约也按分类走，名字逐字同上游
+// 的 `String()`（同文件 `:43-75`），不自己编一套。
+type WebLoadError uint8
+
+const (
+	// WebLoadNoError 是加载成功的导航（零值）。
+	WebLoadNoError WebLoadError = iota
+	// WebLoadUnknownError 是引擎报了失败但没给出 Viva 认识的分类。
+	WebLoadUnknownError
+	// WebLoadCancelled 是被停掉的导航：引擎自己停的，或策略打断了它所在的那次加载。
+	// 官方把 Chromium 的 `-3`（ERR_ABORTED）整条跳过、不当失败（`ElectronWebViewImpl.ts:180`），
+	// 这里同义。
+	WebLoadCancelled
+	// WebLoadTimeout 是服务器没在时限内应答。
+	WebLoadTimeout
+	// WebLoadHostNotFound 是域名没解析出来。
+	WebLoadHostNotFound
+	// WebLoadServerUnreachable 是主机连不上：没有路由，或连接被拒。
+	WebLoadServerUnreachable
+	// WebLoadConnectionLost 是页面传输过程中连接断了，或整台机器没网。
+	WebLoadConnectionLost
+	// WebLoadBadServerResponse 是引擎读不出 HTTP 形状的应答。
+	WebLoadBadServerResponse
+	// WebLoadBadCertificate 是引擎拒绝的 TLS 证书，或服务器拒绝的客户端证书。
+	WebLoadBadCertificate
+	// WebLoadRedirectFailed 是引擎跟不下去的跳转。
+	WebLoadRedirectFailed
+	// WebLoadAuthenticationRequired 是服务器或代理要凭据而引擎没有。
+	WebLoadAuthenticationRequired
+)
+
+// String 给失败一个可读的名字（逐字同 Viva `WebLoadError.String()`，
+// `OFF:viva@0.6.8-webstate/internal/platform/web_load_error.go:43-75`）。
+// 官方 `load.failed.detail` 的 `{code}` 插的就是它：官方插的是 Chromium 数字码，
+// 本仓插分类名——数字码在 Viva 契约里不存在，而分类名比数字更能说明问题。
+func (e WebLoadError) String() string {
+	switch e {
+	case WebLoadNoError:
+		return "no error"
+	case WebLoadUnknownError:
+		return "unknown error"
+	case WebLoadCancelled:
+		return "cancelled"
+	case WebLoadTimeout:
+		return "timed out"
+	case WebLoadHostNotFound:
+		return "host name not found"
+	case WebLoadServerUnreachable:
+		return "server unreachable"
+	case WebLoadConnectionLost:
+		return "connection lost"
+	case WebLoadBadServerResponse:
+		return "bad server response"
+	case WebLoadBadCertificate:
+		return "certificate refused"
+	case WebLoadRedirectFailed:
+		return "redirect failed"
+	case WebLoadAuthenticationRequired:
+		return "authentication required"
+	}
+	return "web load error " + strconv.FormatUint(uint64(e), 10)
+}
+
+// WebLoad 是一次导航事件（官方 `BrowserFrameState` / `page-title-updated` /
+// `did-fail-load` 的合并面）。
 type WebLoad struct {
 	URL   string
 	Phase WebLoadPhase
+	// Title 是**这一步**引擎持有的文档标题（官方 `element.getTitle()`，
+	// `OFF:…/ElectronWebViewImpl.ts:220`）。语义逐字同 Viva：
+	// 页面还没有标题时为空；`WebLoadStart` 报的还是**正要离开**那一页的标题
+	// （`OFF:viva@0.6.8-webstate/app/web.go:226-229`），所以只有 Committed/Done
+	// 报来的标题才能算新页面的。
+	Title string
+	// Code 是这次导航失败的原因（官方 `did-fail-load` 的 `errorCode`，
+	// `OFF:…/ElectronWebViewImpl.ts:178-183`）：只有 `WebLoadDone` 且页面没加载
+	// 时非零，其余步骤都是 `WebLoadNoError`（`app/web.go:230-236`）。
+	Code WebLoadError
+	// Description 是引擎自己那句失败消息（官方 `errorDescription`）。
+	// **引擎不给就是空串**：Windows 的 WebView2 只给状态码、没有文本
+	// （`OFF:viva@0.6.8-webstate/internal/platform/web_windows.go:391`），
+	// macOS/Linux 有 NSError/GError 的原文（`darwin/web_darwin.go:345`、
+	// `linux/gtk_web_linux.go:678`）。
+	Description string
 }
 
 // WebPage 是一个已经打开的网页。
@@ -847,6 +934,13 @@ type WebLoad struct {
 // 对齐：`loadUrl` / `goBack` / `goForward` / `reload` / `dispose`，加上
 // `<webview>` 才有的 `Focus`。**历史与地址栏策略都不在这里**——它们在插件里
 // （官方 `BrowserNavigation` / `parseBrowserAddress`），载具只负责"给个地址就导航"。
+//
+// 后四个查询（Title / CanGoBack / CanGoForward / IsLoading）是官方**桌面载具**
+// 才有的那三样观测（`OFF:…/electron/ElectronWebViewImpl.ts:220,224-226`），
+// web 载具（iframe）没有对等物、只能靠应用自己记。Viva v0.6.8-webstate 起
+// `*app.WebView` 上有了同名的四个方法（`OFF:viva@0.6.8-webstate/app/web.go:344-355`），
+// 所以本仓的载具两者都有，契约就必须两边都给——**查询归查询，策略仍归插件**，
+// 载具不替插件决定"按钮该不该亮"。
 type WebPage interface {
 	// ID 交给 `canvas.NativeView`（或 `ui.Box.NativeView`）把页面摆进某个矩形。
 	ID() gfx.NativeViewID
@@ -860,6 +954,18 @@ type WebPage interface {
 	Forward()
 	// Focus 把键盘交给页面（官方 `<webview>` 的 `focus()`）。
 	Focus()
+	// Title 是引擎**此刻**持有的文档标题（官方 `element.getTitle()`，
+	// `OFF:…/ElectronWebViewImpl.ts:173-176,220`）：没有标题、页面还没文档、
+	// 页面已关都是空串。官方强调它"在 `WebLoadFinished` 之后还会变"，所以是
+	// **每次画那一帧时问一次**的即时查询，不是缓存值。
+	Title() string
+	// CanGoBack / CanGoForward 是引擎历史里两个方向有没有入口——官方后退/前进
+	// 按钮的 `disabled` 判据（`OFF:…/BrowserBody.tsx:82-83` ← `:225-226`）。
+	CanGoBack() bool
+	CanGoForward() bool
+	// IsLoading 是引擎正在加载一次导航：从它开始到完成或失败
+	// （官方 `element.isLoading()`，`OFF:…/ElectronWebViewImpl.ts:224`）。
+	IsLoading() bool
 	// Close 关掉页面；之后它的 ID 不再能被摆到任何矩形里。
 	Close()
 }

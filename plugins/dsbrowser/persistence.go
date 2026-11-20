@@ -29,8 +29,12 @@ type browserSessionStore struct {
 // browserInstance 是一个 occurrence 的独立运行态。Plugin 当前显示的字段在
 // 切换时与这里交换；未选中的 WebPage 保留但不再 NativeView 声明。
 type browserInstance struct {
-	nav          browserNavigation
-	page         pluginapi.WebPage
+	nav  browserNavigation
+	page pluginapi.WebPage
+	// frame 是这个 occurrence 自己的引擎侧四档（loading / 历史 / 错误）。它**不持久化**：
+	// 恢复出来的 canGoBack 一定是假的、loading 一定是假的（官方同样只持久化
+	// BrowserTabState，BrowserPersistence.ts:17-24）。
+	frame        browserFrame
 	openErr      error
 	failure      addressFailure
 	addressDraft string
@@ -100,6 +104,7 @@ func (p *Plugin) activate(env *pluginapi.Env) *browserInstance {
 		if refreshed {
 			p.nav = instance.nav
 			p.page = instance.page
+			p.frame = instance.frame
 			p.openErr = instance.openErr
 			p.failure = instance.failure
 			p.address.SetText(instance.addressDraft)
@@ -121,6 +126,11 @@ func (p *Plugin) activate(env *pluginapi.Env) *browserInstance {
 	p.currentKey = key
 	p.nav = instance.nav
 	p.page = instance.page
+	p.frame = instance.frame
+	// 切回一个已开过页的 occurrence：引擎那几档可能在这一段时间里变了（它的页还在跑），
+	// 所以先向它自己对一次表（官方 observeReady，ElectronWebViewImpl.ts:224-226）。
+	// 这是"切 tab 时对表"，不是每帧都问——每帧问会把请求那一刻的乐观 loading 立刻抹掉。
+	p.frame.observe(p.page)
 	p.openErr = instance.openErr
 	p.failure = instance.failure
 	p.content = ui.Box{}
@@ -144,6 +154,7 @@ func (p *Plugin) saveActive() {
 	}
 	instance.nav = p.nav
 	instance.page = p.page
+	instance.frame = p.frame
 	instance.openErr = p.openErr
 	instance.failure = p.failure
 	instance.addressDraft = p.address.Text()
@@ -239,20 +250,15 @@ func (p *Plugin) persistSession(env *pluginapi.Env, sessionID string) error {
 	return nil
 }
 
-// RightTabTitle 实现官方 BrowserTitle：当前 hostname 优先，否则类型名。
+// RightTabTitle 实现官方 BrowserTitle：真实标题优先，其次地址解析出的主机名，
+// 最后类型名（官方 `entry?.title ?? tab.title`，BrowserTitle.tsx:15-17）。
 func (p *Plugin) RightTabTitle(sessionID, tabID string) string {
 	key := browserInstanceKey(sessionID, tabID)
 	if key == p.currentKey {
-		if target, ok := currentTarget(p.nav.value); ok {
-			return target.Title
-		}
-		return browserTypeLabel
+		return p.currentTitle()
 	}
 	if instance := p.instances[key]; instance != nil {
-		if target, ok := currentTarget(instance.nav.value); ok {
-			return target.Title
-		}
-		return browserTypeLabel
+		return titleOf(instance.nav, instance.page)
 	}
 	if tabID == RightTabBrowser {
 		return browserTypeLabel
@@ -299,6 +305,7 @@ func (p *Plugin) CloseRightTab(sessionID, tabID, kind string, actions pluginapi.
 		p.currentKey = ""
 		p.nav = newBrowserNavigation()
 		p.page = nil
+		p.frame = browserFrame{}
 		p.openErr = nil
 		p.failure = ""
 		p.address.SetText("")

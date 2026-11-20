@@ -92,6 +92,7 @@ type (
 	WebOpenOptions = pub.WebOpenOptions
 	WebLoad        = pub.WebLoad
 	WebLoadPhase   = pub.WebLoadPhase
+	WebLoadError   = pub.WebLoadError
 	Primitives     = pub.Primitives
 	Env            = pub.Env
 	Geometry       = pub.Geometry
@@ -243,6 +244,19 @@ const (
 	WebLoadStart     = pub.WebLoadStart
 	WebLoadCommitted = pub.WebLoadCommitted
 	WebLoadDone      = pub.WebLoadDone
+
+	// 网页加载失败分类（官方 did-fail-load 的 errorCode 面，取值逐字同 Viva）。
+	WebLoadNoError                = pub.WebLoadNoError
+	WebLoadUnknownError           = pub.WebLoadUnknownError
+	WebLoadCancelled              = pub.WebLoadCancelled
+	WebLoadTimeout                = pub.WebLoadTimeout
+	WebLoadHostNotFound           = pub.WebLoadHostNotFound
+	WebLoadServerUnreachable      = pub.WebLoadServerUnreachable
+	WebLoadConnectionLost         = pub.WebLoadConnectionLost
+	WebLoadBadServerResponse      = pub.WebLoadBadServerResponse
+	WebLoadBadCertificate         = pub.WebLoadBadCertificate
+	WebLoadRedirectFailed         = pub.WebLoadRedirectFailed
+	WebLoadAuthenticationRequired = pub.WebLoadAuthenticationRequired
 
 	ViewChat       = pub.ViewChat
 	ViewTrajectory = pub.ViewTrajectory

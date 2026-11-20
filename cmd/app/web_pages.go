@@ -73,7 +73,17 @@ func (w webPages) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, err
 	}
 	if options.OnLoad != nil {
 		config.OnLoad = func(load app.WebLoad) {
-			options.OnLoad(pluginapi.WebLoad{URL: load.URL, Phase: webPhase(load.Phase)})
+			// 三个新字段逐条转出：`Title` 是这一步引擎持有的文档标题，`Code`/`Description`
+			// 是 `did-fail-load` 的 code/description（官方 ElectronWebViewImpl.ts:173-183）。
+			// **不在这里做取舍**：官方那三条判据（只在 observed 时采纳标题、-3 不算失败、
+			// 两个字段都在才画 detail）都在插件里，载具只报事实。
+			options.OnLoad(pluginapi.WebLoad{
+				URL:         load.URL,
+				Phase:       webPhase(load.Phase),
+				Title:       load.Title,
+				Code:        webLoadError(load.Code),
+				Description: load.Description,
+			})
 		}
 	}
 	page, err := w.host.Open(config)
@@ -99,6 +109,13 @@ func (p *webPage) Forward()             { p.page.Forward() }
 func (p *webPage) Focus()               { p.page.Focus() }
 func (p *webPage) Close()               { p.page.Close() }
 
+// 四个查询直接落到 Viva 的同名方法（OFF:viva@0.6.8-webstate/app/web.go:344-355），
+// 一个字节的判断都不在这里做：官方那三处判据在插件里。
+func (p *webPage) Title() string      { return p.page.Title() }
+func (p *webPage) CanGoBack() bool    { return p.page.CanGoBack() }
+func (p *webPage) CanGoForward() bool { return p.page.CanGoForward() }
+func (p *webPage) IsLoading() bool    { return p.page.IsLoading() }
+
 // webPhase 把 Viva 的相位翻成契约相位。
 func webPhase(phase app.WebLoadPhase) pluginapi.WebLoadPhase {
 	switch phase {
@@ -108,4 +125,39 @@ func webPhase(phase app.WebLoadPhase) pluginapi.WebLoadPhase {
 		return pluginapi.WebLoadCommitted
 	}
 	return pluginapi.WebLoadDone
+}
+
+// webLoadError 把 Viva 的失败分类翻成契约分类。
+//
+// 逐条列举而不是 `pluginapi.WebLoadError(code)` 强转：两份枚举的**顺序**现在一致，
+// 但契约不许依赖上游的数值（上游插一个值就会静默错位），所以这里显式对齐每一个名字，
+// 认不出的一律 `WebLoadUnknownError`——那正是 Viva 自己对未知状态码的处理
+// （OFF:viva@0.6.8-webstate/internal/platform/web_load_error.go:119-122）。
+// `cmd/app/web_pages_test.go` 用一张全量表钉住两边取值逐一相等。
+func webLoadError(code app.WebLoadError) pluginapi.WebLoadError {
+	switch code {
+	case app.WebLoadNoError:
+		return pluginapi.WebLoadNoError
+	case app.WebLoadUnknownError:
+		return pluginapi.WebLoadUnknownError
+	case app.WebLoadCancelled:
+		return pluginapi.WebLoadCancelled
+	case app.WebLoadTimeout:
+		return pluginapi.WebLoadTimeout
+	case app.WebLoadHostNotFound:
+		return pluginapi.WebLoadHostNotFound
+	case app.WebLoadServerUnreachable:
+		return pluginapi.WebLoadServerUnreachable
+	case app.WebLoadConnectionLost:
+		return pluginapi.WebLoadConnectionLost
+	case app.WebLoadBadServerResponse:
+		return pluginapi.WebLoadBadServerResponse
+	case app.WebLoadBadCertificate:
+		return pluginapi.WebLoadBadCertificate
+	case app.WebLoadRedirectFailed:
+		return pluginapi.WebLoadRedirectFailed
+	case app.WebLoadAuthenticationRequired:
+		return pluginapi.WebLoadAuthenticationRequired
+	}
+	return pluginapi.WebLoadUnknownError
 }

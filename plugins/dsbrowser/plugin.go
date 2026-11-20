@@ -52,6 +52,8 @@
 package dsbrowser
 
 import (
+	"strings"
+
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/ui"
@@ -125,6 +127,9 @@ type Plugin struct {
 
 	// nav 是应用侧历史（官方 BrowserNavigation）。
 	nav browserNavigation
+	// frame 是引擎侧四档观测（标题之外的 loading / canGoBack / canGoForward / error，
+	// 官方 BrowserFrameState 里"来处是引擎"的那一半，见 frame.go）。
+	frame browserFrame
 
 	// page 是已打开的网页；nil = 还没开（官方 `BrowserController.start` 只在
 	// 有 initialUrl 时才导航，保存的地址**不会**自己开页）。
@@ -227,6 +232,9 @@ const (
 	copyRestoreAction   = "恢复页面"
 	copyLoadFailed      = "页面加载失败；请刷新重试或在系统浏览器中打开。"
 	copyAddressUnknown  = "页面已跳转；当前载体无法读取新的 URL。"
+	// 官方 `load.failed.detail`（locales.ts:27，中文逐字）。两个占位符原样保留，
+	// 由 frame.go 的 loadFailureDetail 填 `{code}` / `{description}`。
+	copyLoadFailedDetail = "页面加载失败 ({code}): {description}"
 )
 
 // addressFailureCopy 是官方 `sidebarBrowser.error.*`（locales.ts:17-21，中文逐字）。
@@ -270,6 +278,13 @@ func (p *Plugin) drawBody(f ui.C, env *pluginapi.Env) {
 		if p.openErr != nil {
 			p.drawStatusRow(f, copyLoadFailed)
 		}
+		// 载具报的加载失败（官方 `frame.error` → `.failure` 那一行，
+		// BrowserBody.tsx:112-114）。它与上面那条「这台机器放不了网页」、
+		// 下面那条「地址被拒」是三件不同的事，三者可以同时存在两张以上，
+		// 顺序与官方一致：error 在前、addressFailure 在后。
+		if copy := p.frame.copy(); copy != "" {
+			p.drawStatusRow(f, copy)
+		}
 		if copy := addressFailureCopy(p.failure); copy != "" {
 			p.drawStatusRow(f, copy)
 		}
@@ -297,10 +312,13 @@ func (p *Plugin) drawToolbar(f ui.C, env *pluginapi.Env) {
 	ui.Row(f).FillWidth().Height(toolbarHeight-hairline).
 		PadSides(toolbarPadY, toolbarPadX, toolbarPadY, toolbarPadX).
 		Items(ui.Center).Gap(toolbarGap).Children(func() {
+		// 后退/前进的可用性 = **引擎历史**（官方 `disabled={!frame.canGoBack}`，
+		// BrowserBody.tsx:82-83 ← ElectronWebViewImpl.ts:225-226），不再拿应用自己
+		// 记的那条地址栈去猜：那条栈只在 iframe 载具里才等于历史（IframeImpl.ts:96）。
 		p.drawToolButton(f, env, "browser-back", copyBack, iconChevronLeft, iconSizeChevron,
-			p.nav.canGoBack(), func() { p.goBack(env) })
+			p.frame.canGoBack, func() { p.goBack(env) })
 		p.drawToolButton(f, env, "browser-forward", copyForward, iconChevronRight, iconSizeChevron,
-			p.nav.canGoForward(), func() { p.goForward(env) })
+			p.frame.canGoForward, func() { p.goForward(env) })
 		_, hasTarget := currentTarget(p.nav.value)
 		p.drawToolButton(f, env, "browser-reload", copyReload, iconRefresh, iconSizeTool,
 			hasTarget, func() { p.reload(env) })
@@ -468,10 +486,12 @@ func (p *Plugin) drawContentState(f ui.C, env *pluginapi.Env) {
 			return
 		}
 	}
-	copy := copyStart
-	if p.nav.value.Navigation.State == navLoading {
-		copy = copyLoading
+	// 官方 `:126` 的占位还有一条前置判据 `error === undefined`：载具已经报过失败
+	// 时只剩上面那条错误行，不再叠一句"输入地址开始浏览"。
+	if p.frame.failed {
+		return
 	}
+	copy := p.contentPlaceholder()
 	ui.Row(f).FillWidth().FillHeight().Pad(startPad).Items(ui.Center).Justify(ui.Center).
 		Children(func() {
 			ui.Paragraph(f, copy, 2).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
@@ -479,15 +499,62 @@ func (p *Plugin) drawContentState(f ui.C, env *pluginapi.Env) {
 		})
 }
 
-// drawTitle 画 tab 标题：官方 `BrowserTitle` = 地球图标 + 当前主机名，
+// currentTitle 是官方 `BrowserTitle` 的文案（`entry?.title ?? tab.title`，
+// OFF:…/view/BrowserTitle.tsx:15-17），回退链见 titleOf。
+func (p *Plugin) currentTitle() string { return titleOf(p.nav, p.page) }
+
+// titleOf 复算官方那条**三段**回退链：
+//
+//	没有目标（还没导航过 / 空 tab） → tab 类型名（官方 `tab.title`，locales `type.label`）
+//	引擎有标题                    → 用它（官方 `element.getTitle()`，ElectronWebViewImpl.ts:220）
+//	引擎没标题                    → 地址解析出的主机名（官方同一行的 `|| parsed.target.title`）
+//
+// 为什么"引擎有标题"那条是**即时问一次**、不是缓存：官方那句 `getTitle()` 在
+// `page-title-updated` 里反复重跑（:173-176），也就是说标题在加载完成之后还会变；
+// Viva 没有独立的标题变更事件（`WebLoad` 的三个相位才带 Title），
+// 但 `WebView.Title()` 是活的即时查询，Viva 自己的注释就写着「toolbar reads it on the
+// paint it draws for」（OFF:viva@0.6.8-webstate/app/web.go:343-345）。所以这一条按帧问，
+// 结论比"等事件"新，不会出现"页面标题变了、tab 还是旧的"。
+func titleOf(nav browserNavigation, page pluginapi.WebPage) string {
+	target, ok := currentTarget(nav.value)
+	if !ok {
+		return browserTypeLabel
+	}
+	if page != nil && nav.value.Navigation.State == navKnown {
+		if title := strings.TrimSpace(page.Title()); title != "" {
+			return title
+		}
+		// 引擎手里这份文档没有标题：官方那一步是 `getTitle() || parsed.target.title`，
+		// 也就是**重新退回地址解析出来的主机名**，而不是留着上一次观测到的标题
+		// （上一页的标题在这时已经不是真相了）。
+		if parsed := parseBrowserAddress(target.URL, ""); parsed.OK {
+			return parsed.Target.Title
+		}
+	}
+	if target.Title != "" {
+		return target.Title
+	}
+	return browserTypeLabel
+}
+
+// contentPlaceholder 是官方内容区那两条占位文案的选法
+// （`aria-busy={frame.loading}` + `target === undefined ? 'start' : 'loading'`，
+// BrowserBody.tsx:116,127）：**加载态只有一个出处，就是引擎的 IsLoading()**。
+// 应用侧的导航档位（navLoading）仍然是"地址可读性"的记录，但不再参与这里——
+// 两套状态各说一套，正是上一版会出现「已经加载完了还写着正在打开」的原因。
+func (p *Plugin) contentPlaceholder() string {
+	if p.frame.loading {
+		return copyLoading
+	}
+	return copyStart
+}
+
+// drawTitle 画 tab 标题：官方 `BrowserTitle` = 地球图标 + 当前标题，
 // 没有目标时退回 tab 类型名（`entry?.title ?? tab.title`，BrowserTitle.tsx:15-17）。
 func (p *Plugin) drawTitle(f ui.C, env *pluginapi.Env) {
 	p.activate(env)
 	t := p.theme
-	label := browserTypeLabel
-	if target, ok := currentTarget(p.nav.value); ok {
-		label = target.Title
-	}
+	label := p.currentTitle()
 	ui.Row(f).Items(ui.Center).Gap(browserTitleGap).Children(func() {
 		// 官方 BrowserTitle.tsx:3 画的是**一枚** svg，其中赤道那一笔写
 		// `stroke-linecap="square"`、其余三条没写（= butt）。viva 一枚 `gfx.Icon`
@@ -529,41 +596,58 @@ func (p *Plugin) submit(env *pluginapi.Env) {
 	} else if p.nav.navigate(parsed.Target) == nil {
 		return
 	}
+	// 官方 loadUrl 一发出就 `loading: true, error: undefined`（:82），不等引擎回话。
+	p.frame.begin()
 	p.openPage(env, parsed.Target)
 }
 
-// goBack / goForward / reload 都走同一条"应用历史 → 载具"的路。
+// goBack / goForward 走**引擎历史**，不再用应用自己记的地址栈拼地址。
+//
+// 官方链路（OFF:…/browser/BrowserController.ts:118-120 →
+// ElectronWebViewImpl.ts:89-96）：
+//
+//	BrowserController.goBack  → frame.goBack
+//	Element.goBack            → if (!snapshot.canGoBack) return; navigate('goBack')
+//	navigate('goBack')        → revision++、loading=true、error=undefined、element.goBack()
+//
+// 所以"能不能后退"和"后退到哪一页"都由引擎回答；本仓的 browserNavigation 只
+// 在 Committed 时把**引擎告诉我们的地址**记回当前历史项（navigation.go 的 commit）。
 func (p *Plugin) goBack(env *pluginapi.Env) {
+	p.stepHistory(env, false)
+}
+
+func (p *Plugin) goForward(env *pluginapi.Env) {
+	p.stepHistory(env, true)
+}
+
+// stepHistory 是 goBack / goForward 的共同实现（官方同一个 `navigate(command)`）。
+func (p *Plugin) stepHistory(env *pluginapi.Env, forward bool) {
 	p.activate(env)
 	// 官方 `command()` 每次命令都清 addressFailure（BrowserController.ts:163-168），
 	// 否则被拒的红行会一直挂在屏幕上。
 	p.failure = ""
-	request := p.nav.back()
-	if request == nil {
+	page := p.page
+	if page == nil {
+		// 没有载具就没有引擎历史：官方这一档 `frame.canGoBack` 恒 false，按钮本身是禁用的
+		// （emptyBrowserFrame，BrowserFrame.ts:48-51），这里再判一次不让键盘路径漏过去。
 		return
 	}
-	p.address.SetText(request.Target.URL)
-	if p.page == nil {
-		p.openPage(env, request.Target)
+	if forward {
+		if !page.CanGoForward() {
+			return
+		}
+	} else if !page.CanGoBack() {
 		return
 	}
-	p.page.Load(request.Target.URL)
-	p.persistActive(env)
-}
-
-func (p *Plugin) goForward(env *pluginapi.Env) {
-	p.activate(env)
-	p.failure = ""
-	request := p.nav.forward()
-	if request == nil {
-		return
+	// 换代：官方 navigate() 也 `this.revision++`，于是上一代导航晚到的 Done 会被丢掉
+	// （同一个判据在 navigation.go 的 frameLoaded 里）。
+	p.nav.started()
+	p.frame.begin()
+	if forward {
+		page.Forward()
+	} else {
+		page.Back()
 	}
-	p.address.SetText(request.Target.URL)
-	if p.page == nil {
-		p.openPage(env, request.Target)
-		return
-	}
-	p.page.Load(request.Target.URL)
 	p.persistActive(env)
 }
 
@@ -580,6 +664,8 @@ func (p *Plugin) reload(env *pluginapi.Env) {
 	}
 	p.nav.reload()
 	p.address.SetText(target.URL)
+	// 官方 reload 走 navigate('reload')：loading=true、error=undefined（:99-109,126）。
+	p.frame.begin()
 	p.page.Reload()
 	p.persistActive(env)
 }
@@ -674,6 +760,8 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 	if env.Web == nil {
 		// 这个部署没有窗口级网页宿主（无头驱动 / 非桌面）。
 		// **不假装加载成功**：记下原因，界面画官方那条失败行。
+		// 乐观 loading 也得收回来——没有引擎，这次导航永远不会完成。
+		p.frame = browserFrame{}
 		p.openErr = pluginapi.ErrWebUnsupported
 		p.persistActive(env)
 		return
@@ -692,6 +780,7 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 			},
 		})
 		if err != nil {
+			p.frame = browserFrame{}
 			p.openErr = err
 			p.persistActive(env)
 			return
@@ -699,29 +788,32 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 		p.openErr = nil
 		p.page = page
 	}
+	// 开出新页也算"请求一次导航"：官方在 loadUrl 里就把 loading 置真（:82）。
+	p.frame.begin()
 	p.page.Load(target.URL)
 	p.persistActive(env)
 }
 
-// handleLoad 把载具的导航事件翻成应用侧状态。三档都在用：
+// handleLoad 把载具的导航事件落进两份状态：
 //
-//	WebLoadStart     → 页面自己发起的导航也进 loading 态（navigation.go 的 started）
-//	WebLoadCommitted → 采纳**已提交的地址**（官方 `address='observed'`，commit）
-//	WebLoadDone      → `frameLoaded(revision)`，仍只认当前这一代（revision 守卫）
+//	引擎侧  browserFrame.apply（frame.go）—— loading / canGoBack / canGoForward / error
+//	应用侧  applyWebLoad（navigation.go）—— 地址记录档位、已提交地址、标题
 //
-// 官方 `IframeImpl.handleLoaded(revision)` 只认"当前这一代请求"的 load；这里一样：
-// Done 回来时取**当前**请求的 revision 交给状态机，由它按 `navigation.revision !==
-// revision` 自己丢弃过期的（navigation.go 的 frameLoaded）。
+// 两份都只认同一个 occurrence：旁路 tab 的事件落在它自己的实例上，不碰当前这份。
+// 官方 `IframeImpl.handleLoaded(revision)` 那条 revision 守卫原样保留。
 //
-// 官方 ElectronWebViewImpl.ts:159-186 还有五处事件，其中三样在 Viva 契约里**拿不到**：
+// 官方 ElectronWebViewImpl.ts:159-186 的七个页面事件，现在对得上的是：
 //
-//	page-title-updated 的真实标题   `element.getTitle()` —— 无对应字段
-//	did-fail-load 的 code/description  —— 无错误码（`WebLoad` 只有 Phase/URL）
-//	canGoBack / canGoForward          —— `*app.WebView` 没有这两个查询
+//	dom-ready / did-stop-loading         → WebLoadDone + IsLoading()（frame.go 的 observe）
+//	did-navigate / did-navigate-in-page  → WebLoadCommitted（采纳地址，官方 address='observed'）
+//	did-start-navigation（主框架）        → WebLoadStart（loading=true）
+//	did-start-loading / did-stop-loading → IsLoading() 的每次刷新
+//	page-title-updated                   → WebLoad.Title + Committed/Done 时采纳，
+//	                                       并按官方判据只在 address 已 observed 时才算数
+//	did-fail-load                        → WebLoad.Code / Description（-3 那条跳过）
 //
-// 依据：`app.WebLoad` 只有 `Phase`/`URL` 两个字段（OFF:viva@v0.6.5/app/web.go:187-190）、
-// `*app.WebView` 的方法表只有 ID/Load/LoadHTML/Reload/Back/Forward/Eval/PostMessage/
-// Focus/Close（同文件 :278-303）。所以这三样不许用"猜一个"顶上，
+// **仍然没有对等物的一条**：render-process-gone / destroyed（引擎进程崩了）。
+// Viva 的 `WebLoad` 与 `WebView` 都不报这件事，所以本仓不伪造这一档，
 // 已登记在 docs/official-parity.md 的 #50 行。
 func (p *Plugin) handleLoad(env *pluginapi.Env, load pluginapi.WebLoad) {
 	sessionID, tabID := browserEnvIdentity(env)
@@ -733,6 +825,7 @@ func (p *Plugin) handleLoad(env *pluginapi.Env, load pluginapi.WebLoad) {
 		}
 		// 旁路 occurrence 的事件只能落在它自己身上（三档都一样）：别的 tab 的
 		// Start/Committed 不许污染当前 occurrence 的状态机与地址栏。
+		instance.frame.apply(instance.page, load)
 		committed, changed := applyWebLoad(&instance.nav, load)
 		if !changed {
 			return
@@ -746,8 +839,12 @@ func (p *Plugin) handleLoad(env *pluginapi.Env, load pluginapi.WebLoad) {
 		}
 		return
 	}
+	p.frame.apply(p.page, load)
 	committed, changed := applyWebLoad(&p.nav, load)
 	if !changed {
+		// 状态机没动也要落盘：引擎那几档（loading / 历史 / 错误）是切走再切回时的现场，
+		// 丢了就会出现"切回来还挂着上一帧的正在打开"。
+		p.saveActive()
 		return
 	}
 	if committed != nil {
@@ -773,6 +870,12 @@ func applyWebLoad(nav *browserNavigation, load pluginapi.WebLoad) (*browserTarge
 			return nil, false
 		}
 		target := parsed.Target
+		// 官方 `observeReady`：`target = { ...parsed.target, title: element.getTitle() ||
+		// parsed.target.title }`（ElectronWebViewImpl.ts:220）——引擎这一刻有标题就用它，
+		// 没有就退回地址解析出来的主机名（**不是空串**，也不是"猜一个"）。
+		if title := strings.TrimSpace(load.Title); title != "" {
+			target.Title = title
+		}
 		return &target, nav.commit(target)
 	case pluginapi.WebLoadDone:
 		request := nav.value.Request
@@ -780,6 +883,13 @@ func applyWebLoad(nav *browserNavigation, load pluginapi.WebLoad) (*browserTarge
 			return nil, false
 		}
 		nav.frameLoaded(request.Revision)
+		// 官方 `page-title-updated`（ElectronWebViewImpl.ts:173-176）只认
+		// `address === 'observed'` 之后的标题：**导航进行中的标题不算数**。frameLoaded 刚
+		// 把这一代推进 known，所以这里正是"已观察"之后的第一刻；之后引擎再改标题由
+		// 标题那一侧的即时查询跟上（currentTitle 读 page.Title()）。
+		if title := strings.TrimSpace(load.Title); title != "" {
+			nav.adoptTitle(title)
+		}
 		return nil, true
 	}
 	return nil, false

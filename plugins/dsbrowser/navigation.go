@@ -16,6 +16,18 @@
 //	:91   `back()` / :102 `forward()` / :112 `reload()`
 //	:124  `frameLoaded(revision)`：loading → known；known → unknown（**只认同一 revision**）
 //	:140  `request()`：revision 单调 +1、status 置 loading、清 failure
+
+// # 为什么 back()/forward() 还在、却不再驱动工具栏
+//
+// 官方两个载具共用这一份状态机，但用法不同：
+//
+//	iframe 载具（`IframeImpl.ts:59-61,96`）  后退/前进 = 走**应用记的**地址栈
+//	桌面载具（`ElectronWebViewImpl.ts:89-96,225-226`）  后退/前进 = 走**引擎历史**
+//
+// 本仓的载具是原生网页视图（WebView2 / WKWebView / WebKitGTK），属于后者：工具栏的
+// 可用性与动作都改成问引擎（plugin.go 的 stepHistory），不再拿这里的 index 去猜。
+// `back()` / `forward()` 保留下来是因为它们就是官方 iframe 载具那一支的行为，
+// 也是持久化模型（entries/index）自己的语义，删掉等于把官方两个载具里的一个丢掉。
 //
 // 为什么"known → unknown"要单独一档：iframe 里页面自己跳到别的地址之后，
 // 应用**读不到**新地址（跨源）。这时候地址栏里那条旧地址就不再是真相，
@@ -190,6 +202,29 @@ func (n *browserNavigation) started() bool {
 	}
 	basis := n.value
 	n.request(target, basis)
+	return true
+}
+
+// adoptTitle 把引擎报来的**真实标题**写回当前应用历史项。
+//
+// 官方 `observeReady`（ElectronWebViewImpl.ts:209-232）在 `page-title-updated` 时重跑，
+// 那一步把 target 换成 `{...parsed.target, title: element.getTitle() || parsed.target.title}`；
+// 本仓 entries[index] 就是那个 target 的落点，所以这里原地改标题、**不动 entries 结构**。
+// 返回值 = 真的改了（调用方据此决定要不要写持久化 checkpoint）。
+func (n *browserNavigation) adoptTitle(title string) bool {
+	if title == "" {
+		return false
+	}
+	if _, ok := currentTarget(n.value); !ok {
+		return false
+	}
+	if n.value.Entries[n.value.Index].Title == title {
+		return false
+	}
+	entries := make([]browserTarget, len(n.value.Entries))
+	copy(entries, n.value.Entries)
+	entries[n.value.Index].Title = title
+	n.value.Entries = entries
 	return true
 }
 

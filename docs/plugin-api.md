@@ -773,3 +773,21 @@ INFO 插件已装配 id=ds-decl provides=[] requires="[ui.theme ui.primitives]"
   Viva 的 `ui.Box` 不导出该身份，而自定义官方几何菜单需要它接收右键事件。
 - 菜单面与行样式归 `plugins/dscontextmenu`，数值唯一证据是官方 primitives 的
   `_70kcw_` / `_1w4el_` CSS；不得回退成 Viva 内建菜单的 32px 行、16px 图标或 ShadowMD。
+
+## 19. 网页载具的引擎侧观测（2026-11-20）
+
+Viva `v0.6.8-webstate` 给 `*app.WebView` 补了四个查询、给 `WebLoad` 补了三个字段
+（`OFF:viva@0.6.8-webstate/app/web.go:224-237,344-355`），本仓契约照抄成下面三条。
+改这里的形状之前先读账本 #50 行：那四条能力官方有 `file:line`，不许用"猜一个"顶。
+
+- `pluginapi.WebPage` 新增 `Title()/CanGoBack()/CanGoForward()/IsLoading()`：引擎的
+  **即时事实**，画那一帧时问一次即可；**不许缓存、不许持久化**（重启后引擎历史是空的，
+  恢复出来的 `canGoBack` 一定是假的）。官方同样只持久化 `BrowserTabState`。
+- `pluginapi.WebLoad` 新增 `Title`/`Code`/`Description`：导航事件自带的三样。
+  `Title` 在 `Start` 时是**正要离开**那一页的标题；`Code` 是**分类**不是 Chromium 数字码；
+  `Description` 在 Windows 上恒空（WebView2 只给状态码，`internal/platform/web_windows.go:391`）。
+- `pluginapi.WebLoadError`：11 档分类，名字逐字同上游 `WebLoadError.String()`。壳
+  `cmd/app/web_pages.go` 只做翻译（11 case 显式 switch + 未知归 `WebLoadUnknownError`），
+  **官方那三条判据都在插件里**：`-3`（`WebLoadCancelled`）不算失败、`page-title-updated`
+  只在 `address==='observed'` 之后采纳标题、`load.failed.detail` 要 code 与 description
+  两个都在（缺一个就退回官方 `load.failed`，`BrowserBody.tsx:112-114`）。

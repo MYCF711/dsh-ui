@@ -68,6 +68,10 @@ mkdir -p "$OUT"
 # 进程表里 34 个进程就分不清谁是谁（用户就是这么被坑的）。区分实例靠 `--home`。
 BIN="$OUT/bin"
 mkdir -p "$BIN"
+# 绝对化：宿主是从 ../DSH-GO 里构建的，`-o ../dsh-ui/$SERVE` 只有在 OUT 是
+# 相对路径时才成立。OUT 给绝对路径（例如把二进制放到 C: 证据目录）时，
+# 那个拼接会变成一个不存在的路径，构建静默落到别处、宿主 exe 永远不产生。
+BIN="$(cd "$BIN" && pwd)"
 SERVE="$BIN/dshgo.exe"
 APP="$BIN/DSH GUI GO.exe"
 pass=0
@@ -133,7 +137,9 @@ trap cleanup EXIT
 
 step "构建（两个二进制都重建：验的必须是当前源码）"
 CGO_ENABLED=0 go build -o "$APP" ./cmd/app || { echo "界面构建失败"; exit 1; }
-(cd ../DSH-GO && CGO_ENABLED=0 go build -o "../dsh-ui/$SERVE" ./cmd/dshd) || {
+# $SERVE 已经是绝对路径（见 BIN 的绝对化），这里不能再加 "../dsh-ui/" 前缀：
+# 加了就会拼成 ../dsh-ui//c/... 这种不存在的路径，宿主永远构建不出来。
+(cd ../DSH-GO && CGO_ENABLED=0 go build -o "$SERVE" ./cmd/dshd) || {
   echo "宿主构建失败（若提示「文件被占用」，是上一轮的宿主没被回收：scripts 的 cleanup 按端口杀；也可先 tasklist 查 dshgo.exe 的 --home 再只杀自己那个）"
   exit 1
 }
@@ -210,6 +216,21 @@ else
   ok "界面收到审批请求 $RID"
   POST "$OUT/approve.json" session.approve "{\"requestId\":\"$RID\",\"optionId\":\"allow_once\"}"
   chk "审批回传被接受（accepted=true 且回显 optionId）" "${PROBE[@]}" accepted "$OUT/approve.json"
+  # 后续请求也要应答。工具一旦失败（例如 bash 会话被结束），模型会**重试**，
+  # 于是又发一条审批请求；只应答第一条的话，重试那条没人接 → 宿主按拒绝处理，
+  # 断言看到的就是「用户拒绝了 bash」，指向错误的方向。
+  # 这里在等界面退出期间持续扫新 requestId，只应答没答过的。
+  answered=" $RID "
+  for _ in $(seq 1 600); do
+    kill -0 "$APP2" 2>/dev/null || break
+    for NEWRID in $(grep -o 'requestId=perm-[a-z0-9-]*' "$OUT/app2.log" 2>/dev/null | cut -d= -f2 | sort -u); do
+      case "$answered" in *" $NEWRID "*) continue;; esac
+      answered="$answered$NEWRID "
+      POST "$OUT/approve-retry.json" session.approve "{\"requestId\":\"$NEWRID\",\"optionId\":\"allow_once\"}"
+      echo "  INFO 已应答后续审批请求 $NEWRID"
+    done
+    sleep 0.2
+  done
   wait "$APP2" 2>/dev/null
   APP2RC=$?
   chk "界面进程 exit 0" test "$APP2RC" -eq 0

@@ -71,7 +71,6 @@ const (
 	// **逐字未改**，是全文件两份派生几何的唯一来源：
 	//
 	//	pathGlobeEquatorSquareCap  两端各外推半描边（芯片：整枚 butt）
-	//	pathGlobeEquatorEndCap     只外推远端那半截（标题行：起点交给 CapSquare）
 	pathGlobeEquator = "M2.34619 8H13.6538"
 	// pathGlobeEquatorSquareCap 是赤道那一笔的**方帽等价几何**（芯片用）。
 	//
@@ -85,22 +84,6 @@ const (
 	// 这是**精确等价**（butt 端头 + 外推的半截描边 = square 端头），不是近似、
 	// 不是手绘：`icons_globe_test.go` 用 `globeSquareCapExtend` 逐端钉住这份推导。
 	pathGlobeEquatorSquareCap = "M1.84619 8H14.1538"
-	// pathGlobeEquatorEndCap 是赤道那一笔**只把远端那半截写进坐标**的形状（标题行用）。
-	//
-	// 为什么只有远端：viva 的 `gfx.CapSquare` 目前只在轮廓**起点**画出方帽。
-	// `gfx/path.go:435-437` 给起点传的是 `direction(points[1], first)`（指向轮廓外，
-	// 正确），给末端传的却是 `negate(outLast)`——方向被取反成**指向描边内部**，
-	// 于是末端方帽画在已填充的描边里，看不见。round 端帽是对称圆盘，所以这条
-	// 缺陷在 round 上看不出来，只有 square 暴露（实测：官方赤道带 square 帽在
-	// 14px 下墨迹是 [1.84619, 13.6538]，右端一点没长；见
-	// icons_globe_test.go 的 TestVivaSquareCapOnlyGrowsAtTheContourStart）。
-	//
-	// 所以标题行那一枚：起点那半截交给 `Cap = gfx.CapSquare` 真画，
-	// **远端**这半截写进坐标（13.6538 + 0.5 = 14.1538），合起来正好是官方的
-	// [1.84619, 14.1538]，与芯片那一枚（两端都写进坐标、整枚 butt）逐像素一致。
-	// 上游把 `negate` 去掉之后，这里换回 `pathGlobeEquator` 即可——届时
-	// TestGlobeEquatorInkMatchesTheOfficialEndpoints 会先红。
-	pathGlobeEquatorEndCap = "M2.34619 8H14.1538"
 	// pathGlobeMeridianWest 是官方 IconGlobeOutlineRegular 的西经线。
 	pathGlobeMeridianWest = "M7.99976 14.0889C9.23509 14.0889 10.1743 11.3629 10.1743 8.00006C10.1743 4.63739 " +
 		"9.23509 1.91138 7.99976 1.91138"
@@ -127,8 +110,9 @@ const (
 	// （SVG 1.1 F.11 "square ... extend by half the stroke width"）。
 	//
 	// 两处都要把它落成墨迹：芯片那一枚单图标只有一个 Cap，所以**两端**都写进坐标
-	// （pathGlobeEquatorSquareCap）；标题行那一枚只把**远端**写进坐标
-	// （pathGlobeEquatorEndCap），起点那半截由 `gfx.CapSquare` 真画。
+	// （pathGlobeEquatorSquareCap）；标题行那一枚直接用官方原文的 pathGlobeEquator，
+	// 两端各由 `gfx.CapSquare` 真画 —— 上游合并 vivaui/viva#358 之后两端都会长，
+	// 原来「只写远端」的绕法已删。
 	globeSquareCapExtend = globeStrokeWidth / 2
 )
 
@@ -224,17 +208,19 @@ func iconGlobeOutline(color gfx.Color) gfx.Icon {
 
 // iconGlobeEquator 是标题行地球的**赤道那一笔**，`Cap = gfx.CapSquare`。
 //
-// 几何是官方原文的起点 + 远端那半截方帽（`pathGlobeEquatorEndCap`）：viva 的
-// square cap 现在只画在轮廓起点（原因与依据见该常量的注释），所以远端那 0.5
-// 写进坐标、起点那 0.5 交给 `gfx.CapSquare`（OFF:viva@v0.6.5/gfx/path.go:73-74）。
-// 两端合起来正好是官方的墨迹 [1.84619, 14.1538]。
+// 几何就是官方原文的 `pathGlobeEquator`，两端各由 `gfx.CapSquare` 外推 0.5，
+// 合起来正好是官方的墨迹 [1.84619, 14.1538]。
+//
+// 2026-11-20：上游已合并我们对 square cap 的修复（vivaui/viva#358）——
+// `gfx/path.go` 的末端不再传 `negate(outLast)`，两端都长。所以原来那套
+// 「远端写进坐标、起点交给 CapSquare」的绕法不再需要，已换回官方原文路径。
 //
 // 为什么要在 Build 之后手写 Cap：`dsassets.Build` 的 Cap 映射只认 Round / Butt
 // （plugins/dsassets/icon.go:44-49），`CapSquare` 没有分支，声明了也会被当成
 // "没写"。`gfx.Icon.Cap` 是导出字段（OFF:viva@v0.6.5/gfx/icon.go:30），
 // 所以在这里补上，不需要改 dsassets（也不该为一个用例改素材编译器）。
 func iconGlobeEquator(color gfx.Color) gfx.Icon {
-	icon := buildIcon(strokeAsset("IconGlobeOutlineRegular", iconSizeTitle, pathGlobeEquatorEndCap), color)
+	icon := buildIcon(strokeAsset("IconGlobeOutlineRegular", iconSizeTitle, pathGlobeEquator), color)
 	icon.Cap = gfx.CapSquare
 	return icon
 }

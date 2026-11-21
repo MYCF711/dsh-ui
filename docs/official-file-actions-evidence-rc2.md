@@ -34,6 +34,7 @@
 | 两段菜单贡献 | `plugins/dsfileactions/plugin.go` |
 | 原始字节（`workspaceFiles.readBytes`） | `internal/apiclient/workspace_files.go` |
 | `desktop.save`（原生另存 / 下载） | `cmd/app/file_actions.go`（壳侧，走 `pluginapi.Actions.SaveWorkspaceFile`） |
+| `navigator.clipboard.write(ClipboardItem)`（复制图片） | `cmd/app/copy_image.go`（壳侧，走 `pluginapi.Actions.CopyWorkspaceImage` + viva `app.SetClipboardImage`） |
 
 ---
 
@@ -75,13 +76,14 @@ image: { sessionId?: SessionId; url: string; name?: string; mediaType?: string; 
 
 | 目标 | 官方 | 本仓 |
 |---|---|---|
-| 图片文件 | 复制图片 · 下载 · 另存为… | **下载 · 另存为…** |
+| 图片文件 | 复制图片 · 下载 · 另存为… | **复制图片 · 下载 · 另存为…**（2026-11-21 起） |
 | 非图片文件 | 另存为… | **另存为…** |
 
 ### 2.2 `image`（`OFF:fa/src/client/context-menus.tsx:85-104`）
 
-官方三项：`copy` / `download` / `canSaveAs` 时的 `saveAs`。本仓同样少 `copy`；
-并且**只在 (sessionId, path) 都在时给动作**（没有它们就只能靠 `source.url` fetch，
+官方三项：`copy` / `download` / `canSaveAs` 时的 `saveAs`。本仓 `#18` ① 闭合（2026-11-21）后
+**同样三项**，id 也逐字照官方（`copy`，不是 file 族的 `copyImage`）；
+但仍然**只在 (sessionId, path) 都在时给动作**（没有它们就只能靠 `source.url` fetch，
 本仓没有浏览器那一层，§4 第 3 条）。
 
 ### 2.3 文案（`OFF:fa/src/client/locales.ts:5-16` 的 zh 字典，逐字）
@@ -90,7 +92,7 @@ image: { sessionId?: SessionId; url: string; name?: string; mediaType?: string; 
 |---|---|---|
 | `menu.download` | `下载` | `plugins/dsfileactions/plugin.go` 的 `zhDownload` |
 | `menu.saveAs` | `另存为…` | 同上 `zhSaveAs` |
-| `menu.copyImage` | `复制图片` | **不画**（§4 第 1 条） |
+| `menu.copyImage` | `复制图片` | `plugins/dsfileactions/plugin.go` 的 `zhCopyImage`（两族共用同一文案，§4 第 1 条） |
 | `menu.saved` | `已保存` | `cmd/app/file_actions.go` 的 `zhFileSaved` |
 | `menu.downloaded` | `下载完成` | 同上 `zhFileDownloaded` |
 | `menu.saveFailed` | `无法保存文件，请检查源文件和目标位置后重试` | 同上 `zhFileSaveFailed` |
@@ -134,20 +136,42 @@ counts.total 76 → 77，与 methods 条数一致）；**2026-11-17 再加 `work
 
 ## 4. 与官方的差异（照实登记，不假装搬了）
 
-1. **「复制图片」不画**（唯一平台阻断项）：官方走
-   `navigator.clipboard.write([new ClipboardItem({'image/png': …})])`
-   （`OFF:fa/src/client/files.ts:65-89`，非 PNG 还要经 `<canvas>` 转码）。
-   viva v0.6.4 的剪贴板**只有读图片**：`app.ClipboardImagePNG()` / `HasClipboardImage()`
-   （`app/clipboard_image.go:22-58`），平台层的图像助手也只有**解码侧**
-   （`internal/platform/clipboard_image.go` 的 `CheckClipboardPNG` / `TrimClipboardPNG`、
-   `clipboard_dib_windows.go` 的 DIB→PNG）。**写图片**在整个 module 里只存在于测试 Driver
-   （`app/driver_system.go:531` `(*Driver).SetClipboardImage`，只在 headless 驱动上）；
-   `app.SetClipboardText/HTML/Files` 都不是图片，`SetClipboardFiles` 是"复制文件"，
-   语义不同，**不许冒充**。
-   能补的条件（唯一一条）：上游 viva 导出生产级"写图片到剪贴板"（Windows 侧要
-   `RegisterClipboardFormat("PNG")` 或 `CF_DIBV5`）。按本仓 Viva 线纪律（`AGENTS.md` §0）
-   顺序应是：隔离 worktree 写最小复现 → 上游 issue → 能小改就提 PR（Windows 优先）→
-   上游明确不做才做带标注的兜底。**不做本地 Win32 shim 冒充**。
+1. **「复制图片」——原先是唯一平台阻断项，2026-11-21 已闭合**。
+   **当时的阻断**：官方走 `navigator.clipboard.write([new ClipboardItem({'image/png': …})])`
+   （`OFF:fa/src/client/files.ts:65-89`，非 PNG 还要经 `<canvas>` 转码），而 viva v0.6.4/0.6.5
+   的剪贴板**只有读图片**（`app.ClipboardImagePNG` / `HasClipboardImage`），图片的**写**
+   只活在测试 Driver 上（`(*Driver).SetClipboardImage`，仅 headless 驱动）。
+   `SetClipboardFiles` 是"复制文件"，语义不同，**不许冒充**——当时宁可不画。
+   **怎么解封的**：`dsh-ui/go.mod` 把 viva 指到 `github.com/MYCF711/viva v0.6.10-clip`
+   （`replace github.com/vivaui/viva => …v0.6.10-clip`），上游导出了生产级写入口——
+   `app.SetClipboardImage(png []byte) error`（`app/clipboard_image.go:74-90`）与
+   `app.SetClipboardImageAsync`；校验复用 `platform.CheckClipboardPNG`
+   （`internal/platform/clipboard_image.go:32-42`：空 / 非 PNG 魔数 / 超
+   `MaxClipboardImageBytes`=32 MiB 一律报错，且**不动剪贴板**）。Windows 侧
+   `internal/platform/windows/clipboard_image_windows.go:31` 同时写注册的 `"PNG"` 格式与
+   `CF_DIB`（透明区合成白底），并带 5×10 ms 的剪贴板占用重试——比"只写 PNG"更兼容
+   只认位图的阅读器。
+   **本仓落点**（三层，与保存链同构）：
+
+   | 层 | 落点 | 官方依据 |
+   |---|---|---|
+   | 菜单项 | `plugins/dsfileactions/plugin.go` 的 `copyAction`；file 族 `copyImage`（带 `separatorBefore`）、image 族 `copy` | `OFF:context-menus.tsx:69-72`、`:99` |
+   | 壳动作 | `pluginapi.Actions.CopyWorkspaceImage` → `cmd/app/copy_image.go` | `OFF:context-menus.tsx:44-47` 的 `copy` |
+   | 转码 | `internal/imgdecode.ToPNG`（PNG 原样透传、其它格式解码重编） | `OFF:files.ts:67-86` 的 canvas 那一步 |
+   | 写入口 | `app.SetClipboardImage`（替换点 `clipboardSetImage`，测试不碰真剪贴板） | — |
+
+   **一处刻意的优于官方**：官方按 `blob.type === 'image/png'` 判要不要转码，而 blob 的
+   type 来自**路径扩展名**——一个改了后缀的 JPEG 会被它原样塞进 `ClipboardItem`，
+   粘出来是坏图。本仓按 **PNG 魔数**判（`imgdecode.IsPNG`），错后缀的图会被**转码**
+   成正牌 PNG 再写。零代价，所以做（`AGENTS.md` 铁律 13）。
+   **反馈**：官方成功后 `ctx.contextMenus.notify(t('menu.copied'), true)`（"已复制"，浮条），
+   失败由菜单项的 `failureLabel: t('menu.copyFailed')` 显示。本仓没有浮条服务（本节第 2 条），
+   两种都落状态栏：成功 `已复制`、失败 `无法复制，请检查内容是否可用后重试：<原因>`
+   ——文案逐字来自 `OFF:locales.ts:8,12`。
+   **没做的边界（照实登记）**：① 超过 32 MiB 的 PNG 被写入口拒（上游常量
+   `MaxClipboardImageBytes`），状态栏如实报错；② WebP 没有解码器（`internal/imgdecode`
+   只注册 png/jpeg/gif），复制 WebP 会失败并带原因；③ 动图 GIF 只复制第一帧（官方 canvas
+   `drawImage` 同样只有第一帧，**不是**我们的简化）。
 2. **反馈落在状态栏，不是"带后续动作的浮条"**：官方成功后
    `ctx.contextMenus.notify(text, success, {label, failureLabel, run})`
    （`OFF:fa/src/client/context-menus.tsx:30-42`）。本仓 context menu 服务**没有** notify
@@ -200,7 +224,7 @@ counts.total 76 → 77，与 methods 条数一致）；**2026-11-17 再加 `work
    有 `app.SaveFile`（`SaveFileOptions{SuggestedName}`，取消返回 `app.ErrCanceled`），
    所以走的是 Desktop 那一档。
 7. **没有 `line` / `paneId` 的消费方**：`file` target 的这两个可选字段已进结构体，
-   但今天唯一的动作（保存字节）不用它们；「在侧栏打开并定位到第 N 行」属于
+   但现有三条动作（复制图片 / 下载 / 另存为）都不用它们；「在侧栏打开并定位到第 N 行」属于
    `open-in-app` 的 `openIn('sidebar')`，本仓右栏还没有文件视图，故不下发。
 
 ---
@@ -210,11 +234,14 @@ counts.total 76 → 77，与 methods 条数一致）；**2026-11-17 再加 `work
 | 层 | 文件 | 钉住它的测试 |
 |---|---|---|
 | 契约（kind + 字段） | `pluginapi/context_menu.go` | `plugins/dsfileactions/plugin_test.go`（两段贡献的 id/target/order） |
-| 菜单判据 | `plugins/dsfileactions/plugin.go` | 同上：图片 → `[download saveAs]`、非图片 → `[saveAs]`、缺身份/缺壳动作 → 0 项、Run 交出的四个字段是**捕获值** |
+| 菜单判据 | `plugins/dsfileactions/plugin.go` | 同上：图片 file → `[copyImage download saveAs]`（copyImage 带 `separatorBefore`）、非图片 file → `[saveAs]`、image → `[copy download saveAs]`、缺身份/缺壳动作 → 0 项、Run 交出的是**捕获值** |
+| 复制项的两族差异 | 同上（`copyAction`） | 同上：file 族 id `copyImage` + 分隔线 + 吃 stat 置灰；image 族 id `copy`、无分隔线、永不置灰 |
 | target 生产方 | `plugins/dsfiles/files.go`（`Attach`）、`plugins/dsfiles/paths.go`（`relPath`） | `plugins/dsfiles/file_target_test.go`（真布局渲染 + 记录 Attach；目录行不挂、无会话不挂） |
 | 数据面 | `internal/apiclient/workspace_files.go` | `cmd/app/file_actions_test.go`（假宿主的真实 wire 形状） |
 | 壳侧动作 | `cmd/app/file_actions.go`、`cmd/app/main.go`（`SaveWorkspaceFile` 接线） | 同上：另存 / 下载 / 取消静默 / 参数不全；写盘字节是**原始字节** |
+| 复制图片 | `cmd/app/copy_image.go`、`cmd/app/main.go`（`CopyWorkspaceImage` 接线）、`internal/imgdecode/to_png.go` | `cmd/app/copy_image_test.go`（字节**逐字节**交给写入口 / 非 PNG 转码 / 写入口失败报原因 / 读失败不碰剪贴板 / 0 字节算失败 / 参数不全）＋ `internal/imgdecode/to_png_test.go`（魔数判据 / PNG 透传 / JPEG 转码保尺寸） |
 | 装配顺序 | `cmd/app/main.go` 的 import 与 `pluginapi.Builtin()` | `cmd/app/file_actions_assembly_test.go`（产品装配路径下两个 target 都挂上） |
+| 真渲染 | `plugins/dsfileactions/vr3_capture_test.go` | 右键展开 → 数菜单行：图片 file = `[复制图片 下载 另存为…]`（stat 探测一次）、image = `[复制图片 下载 另存为…]`（不 stat、不置灰）；点第一行交出捕获的 (sessionId, path) |
 
 装配顺序是本行唯一的"看不见的坑"：`dsfileactions` **不把** `KeyContextMenus` 写进
 `Requires`（用户可以在插件页停用 `ds-contextmenu`，那时整棵树不该起不来），所以

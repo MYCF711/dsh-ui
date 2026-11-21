@@ -12,6 +12,10 @@
 // 消息区图片面（`plugins/dsconversation/official_message_image.go`）。它们**不是**
 // 两份逻辑：解码格式集合与像素布局是同一个事实，重复实现迟早会漂。
 //
+// 第三个使用方是**反方向**的：`#18` ①「复制图片」要把字节写进系统剪贴板，而 viva
+// 的写入口只收 PNG（`app.SetClipboardImage`），所以非 PNG 的图要先转码——
+// 见 `to_png.go`。它复用同一套解码器注册，理由同上：格式集合只许有一份。
+//
 // # 认哪些格式
 //
 // 官方 `<img>` 能解 PNG / JPEG / GIF / WebP；`session.attachment` 的宿主门也只放

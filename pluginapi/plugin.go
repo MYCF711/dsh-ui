@@ -1940,6 +1940,32 @@ type Actions struct {
 	// nil = 壳没接 → 插件**不画**下载/另存为（死按钮比没有更坏）。
 	SaveWorkspaceFile func(sessionID, path, name, mode string)
 
+	// CopyWorkspaceImage 把工作区里的一张图片**写进系统剪贴板**
+	// （官方 `fileActions.copyImage(source)`，OFF:ui-file-actions/src/client/files.ts:65-89；
+	// 两处菜单入口 OFF:context-menus.tsx:69-72 的 `copyImage` 与 :99 的 `copy`）。
+	//
+	//	sessionID / path  官方 file / image target 的 (sessionId, path)，原样转发：
+	//	                  字节由壳走 `workspaceFiles.readBytes` 取（宿主按会话解析工作区根，
+	//	                  插件不许自己拼绝对路径）
+	//
+	// 官方那一步是 `navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])`，
+	// 不是 PNG 的图先过 `<canvas>` 转码（files.ts:67-86）。本仓的等价物是 viva 的
+	// `app.SetClipboardImage(png []byte) error`（只收 PNG，且空/非 PNG/超 32 MiB 都
+	// 报错并**不动剪贴板**）＋ `internal/imgdecode.ToPNG`（转码那一步）。
+	//
+	// **同步、阻塞、由壳写反馈**——与 SaveWorkspaceFile 同一条理由：原生剪贴板写入
+	// 只能在 UI 线程上做，而插件的动作回调就在那一帧里（官方是 async Promise）。
+	// 成功后壳写官方 zh 文案 `已复制`（OFF:locales.ts:8 的 `menu.copied`），失败写
+	// `无法复制，请检查内容是否可用后重试`（:12 的 `menu.copyFailed`）。
+	//
+	// 反馈落点**是差异不是缺口**：官方成功走 `ctx.contextMenus.notify(...)`（浮条，
+	// 成功一条、无后续动作；失败由菜单项的 `failureLabel` 显示），本仓没有浮条服务，
+	// 两种都落状态栏——与保存链同一条既有登记（`docs/official-parity.md` #18 ④）。
+	//
+	// nil = 壳没接（老壳 / 无头 / 测试）→ 插件**不画**「复制图片」：
+	// 画一个点了必然失败的项，比不画更坏。
+	CopyWorkspaceImage func(sessionID, path string)
+
 	// WorkspaceFileStat 报告一个工作区文件**现在是否可用**
 	// （官方 file 菜单 resolve 里的 `workspaceFiles.stat` 预取：
 	// OFF:ui-file-actions/src/client/context-menus.tsx:50-60）。

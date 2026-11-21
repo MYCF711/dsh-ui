@@ -54,6 +54,7 @@ type vr3Frame struct {
 	plugin   *Plugin
 	dir      string
 	saved    []string
+	copied   []string
 	statCall int
 }
 
@@ -90,9 +91,16 @@ func vr3Open(t *testing.T, dir string, width, height int, target pluginapi.Conte
 			}
 			return stat(sessionID, path)
 		},
+		// 「复制图片」的壳动作（`#18` ①）。真壳在这里会去读字节、转码、写剪贴板；
+		// 真装配测试只验"菜单把**捕获的** (sessionId, path) 交回来了"，
+		// 写剪贴板那一段在 cmd/app/copy_image_test.go（那里按替换点，不碰真剪贴板）。
+		CopyWorkspaceImage: func(sessionID, path string) {
+			frame.copied = append(frame.copied, sessionID+"|"+path)
+		},
 	}
 	if save == nil {
 		act.SaveWorkspaceFile = nil
+		act.CopyWorkspaceImage = nil
 	}
 	rowID := tree.ID(feat, "vr3-file-row")
 	config := app.Config{
@@ -221,12 +229,13 @@ func TestVR3FileMenuOnlySaveAsForNonImage(t *testing.T) {
 	}
 }
 
-// ── ② image target：下载 + 另存为（复制图片是登记缺口）────────────────────────
+// ── ② image target：copy + 下载 + 另存为（官方三项，逐条对齐）─────────────────
 
-// TestVR3ImageMenuShowsDownloadAndSaveAs image 菜单（order 100，偏移 33364653）：
-// 官方给 `[copyImage, download, saveAs]`，本仓按登记的缺口 1 **不画 copyImage**——
-// 这里钉住"画出来的那两项对"，并把缺口显式记进日志。
-func TestVR3ImageMenuShowsDownloadAndSaveAs(t *testing.T) {
+// TestVR3ImageMenuShowsCopyDownloadSaveAs image 菜单（order 100，偏移 33364653）：
+// 官方给 `[copy, download, saveAs]`（:98-105），本仓 `#18` ① 闭合后**同样三项**。
+// 这里钉住三件事：行数与顺序、三行都可点（这一族没有 disabled）、点「复制图片」
+// 交回的是**打开菜单时捕获的** (sessionId, path)。
+func TestVR3ImageMenuShowsCopyDownloadSaveAs(t *testing.T) {
 	dir := vr3CaptureDir(t)
 	frame := vr3Open(t, dir, 900, 700, pluginapi.ContextMenuTarget{
 		Kind: pluginapi.TargetImage, SessionID: "s-vr3", Path: "assets/logo.png",
@@ -239,15 +248,10 @@ func TestVR3ImageMenuShowsDownloadAndSaveAs(t *testing.T) {
 	frame.shot("fileactions-image-menu.png")
 
 	got := frame.labels()
-	if !vr3Contains(got, "下载") || !vr3Contains(got, "另存为…") {
-		t.Fatalf("image 菜单=%v，want 至少 [下载 另存为…]", got)
+	if len(got) != 3 || got[0] != "复制图片" || got[1] != "下载" || got[2] != "另存为…" {
+		t.Fatalf("image 菜单=%v，want [复制图片 下载 另存为…]（官方 :98-105 的顺序）", got)
 	}
-	if vr3Contains(got, "复制图片") {
-		t.Logf("image 菜单出现了「复制图片」——本包登记的缺口 1 是「不画」，请核对是否已闭合")
-	} else {
-		t.Logf("（登记缺口 1：官方 image 菜单第一项是 copyImage，本仓不画，见 plugin.go:37-42）")
-	}
-	// image 族官方**没有 disabled**（偏移 33364653 全文无 disabled），所以两行都可点。
+	// image 族官方**没有 disabled**（偏移 33364653 全文无 disabled），所以三行都可点。
 	for _, item := range frame.items() {
 		if item.Disabled {
 			t.Errorf("image 菜单行 %q 被置灰，官方 image 族没有 disabled 判据", item.Label)
@@ -256,6 +260,53 @@ func TestVR3ImageMenuShowsDownloadAndSaveAs(t *testing.T) {
 	// stat 不该被 image 族调用（官方 image 的 resolve 里没有 stat）。
 	if frame.statCall != 0 {
 		t.Errorf("image 菜单调了 %d 次 stat，官方 image 族不 stat", frame.statCall)
+	}
+	// 点第一行「复制图片」：必须把捕获的 (sessionId, path) 交回壳。
+	item := frame.items()[0]
+	if err := frame.session.Click(item.Bounds.X+item.Bounds.Width/2, item.Bounds.Y+item.Bounds.Height/2); err != nil {
+		t.Fatal(err)
+	}
+	frame.pump()
+	if len(frame.copied) != 1 {
+		t.Fatalf("点「复制图片」后壳动作调用=%d 次，want 1（%v）", len(frame.copied), frame.copied)
+	}
+	if want := "s-vr3|assets/logo.png"; frame.copied[0] != want {
+		t.Errorf("复制图片交回的是 %q，want 捕获的 %q", frame.copied[0], want)
+	}
+	if len(frame.saved) != 0 {
+		t.Errorf("点「复制图片」不该触发保存动作：%v", frame.saved)
+	}
+}
+
+// TestVR3FileMenuImageOffersCopyImage file 族的图片目标：官方三段展开条件在
+// canSaveAs=true 下给 `[copyImage(separatorBefore), download, saveAs]`（:69-80）。
+//
+// 这一条与本包单测的区别是**真渲染**：行真的画进了菜单（不是 Resolve 的返回值）。
+func TestVR3FileMenuImageOffersCopyImage(t *testing.T) {
+	dir := vr3CaptureDir(t)
+	frame := vr3Open(t, dir, 900, 700, pluginapi.ContextMenuTarget{
+		Kind: pluginapi.TargetFile, SessionID: "s-vr3", Path: "assets/logo.png",
+	}, func(string, string, string, string) {}, nil)
+	if err := frame.session.RightClick(400, 300); err != nil {
+		t.Fatal(err)
+	}
+	frame.pump()
+	frame.shot("fileactions-file-menu-image.png")
+
+	got := frame.labels()
+	if len(got) != 3 || got[0] != "复制图片" || got[1] != "下载" || got[2] != "另存为…" {
+		t.Fatalf("图片 file 菜单=%v，want [复制图片 下载 另存为…]", got)
+	}
+	if frame.statCall == 0 {
+		t.Error("图片 file 菜单没有先探测 stat（官方 resolve 里先 await workspaceFiles.stat）")
+	}
+	item := frame.items()[0]
+	if err := frame.session.Click(item.Bounds.X+item.Bounds.Width/2, item.Bounds.Y+item.Bounds.Height/2); err != nil {
+		t.Fatal(err)
+	}
+	frame.pump()
+	if len(frame.copied) != 1 || frame.copied[0] != "s-vr3|assets/logo.png" {
+		t.Fatalf("点「复制图片」后壳收到 %v，want [s-vr3|assets/logo.png]", frame.copied)
 	}
 }
 

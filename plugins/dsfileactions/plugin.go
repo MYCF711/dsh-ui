@@ -24,17 +24,21 @@
 // 服务），而动作要用**每帧传入**的 `env.Act`——所以这里挂一个什么都不画的
 // painter 到 overlay，只为每帧刷新 `act` 一份（不建 Box、不占位、没有命中区）。
 //
-// # 三处照实登记的缺口（见 docs/official-file-actions-evidence-rc2.md）
+// # 一条历史阻断（已闭合）+ 两处照实登记的缺口（见 docs/official-file-actions-evidence-rc2.md）
 //
-//  1. **「复制图片」不画**：官方 `copyImage` 走 `navigator.clipboard.write(ClipboardItem)`
-//     （OFF:files.ts:105-138）。viva v0.6.4 只导出 `ClipboardImagePNG`（**读**）与
-//     `SetClipboardText`；图片的**写**只有测试 Driver 上有。`SetClipboardFiles` 是
-//     "复制文件"，语义不同，不许冒充。
+//  1. **「复制图片」原先是平台阻断项，2026-11-21 已闭合**：官方 `copyImage` 走
+//     `navigator.clipboard.write(ClipboardItem)`（OFF:files.ts:65-89）。此前 viva 的
+//     剪贴板**只有读图片**；`dsh-ui` 的 `go.mod` 把 viva 升到 `v0.6.10-clip` 之后，
+//     上游导出了生产级 `app.SetClipboardImage(png []byte) error`
+//     （`app/clipboard_image.go:74-90`，Windows 侧同时提供注册 "PNG" 格式与 CF_DIB，
+//     `internal/platform/windows/clipboard_image_windows.go:31`）。本包因此照官方两处
+//     入口都画上：file 族 `copyImage`（带分隔线）、image 族 `copy`。
+//     **不是**拿 `SetClipboardFiles`（复制文件、语义不同）冒充的。
 //  2. **`canSaveAs` 恒为 true**，所以 file target 上「下载」只在图片上出现——这正是
 //     官方的判据 `mediaType.startsWith('image/') || !actions.canSaveAs`
-//     （OFF:context-menus.tsx:68-80）在 canSaveAs=true 下的结果，不是我们的简化。
+//     （OFF:context-menus.tsx:73-76）在 canSaveAs=true 下的结果，不是我们的简化。
 //  3. **image target 只在有 (sessionId, path) 时给动作**：官方没有 path 时可以靠
-//     `source.url` 走 fetch（OFF:files.ts:41-52）。本仓没有浏览器那一层，取不到
+//     `source.url` 走 fetch（OFF:files.ts:23-36）。本仓没有浏览器那一层，取不到
 //     URL 的原始字节，所以宁可不画动作（返回 nil = 菜单不弹），也不画一个必失败的项。
 package dsfileactions
 
@@ -58,21 +62,30 @@ const (
 	imageContributionOrd = 100
 )
 
-// 官方动作 id（OFF:context-menus.tsx:71,76,82）。
+// 官方动作 id（OFF:context-menus.tsx:70,74,78 与 :99-103）。
+//
+// 注意**两处入口的 id 不同**：file 族叫 `copyImage`（:70），image 族叫 `copy`（:99）。
+// 这不是笔误，逐字照官方——菜单 id 参与去重，两边同名会在同一张菜单里撞车。
 const (
 	actionCopyImage = "copyImage"
+	actionCopy      = "copy"
 	actionDownload  = "download"
 	actionSaveAs    = "saveAs"
 )
 
 // 文案：逐字来自 OFF:locales.ts:9-10 的 zh 字典。
 //
-//	menu.copyImage  '复制图片'  ← 不画（见包注释缺口 1）
+//	menu.copyImage  '复制图片'
 //	menu.download   '下载'
 //	menu.saveAs     '另存为…'
+//
+// 失败文案（`menu.copyFailed` / `menu.saveFailed`）不在插件这一层：本仓的
+// `Run` 是同步无返回值的 `func()`，成败由壳写状态栏（official 那边是菜单项的
+// `failureLabel`）。见 pluginapi.Actions.CopyWorkspaceImage 的注释。
 const (
-	zhDownload = "下载"
-	zhSaveAs   = "另存为…"
+	zhCopyImage = "复制图片"
+	zhDownload  = "下载"
+	zhSaveAs    = "另存为…"
 )
 
 // Plugin 只有注册表与一份"本帧的 Actions"。
@@ -175,8 +188,8 @@ func (p *Plugin) registerMenus(ctx pluginapi.Context) error {
 //	...mediaType.startsWith('image/') || !actions.canSaveAs ? [download] : [],
 //	...actions.canSaveAs ? [saveAs] : [],
 //
-// 本仓：copyImage 不画（缺口 1），canSaveAs 恒 true（缺口 2）→ 只剩下
-// 「图片：下载 + 另存为」与「非图片：另存为」。
+// 本仓：canSaveAs 恒 true（缺口 2）→ 图片上是「复制图片 + 下载 + 另存为」，
+// 非图片上只剩「另存为」——与官方三段展开条件的结果逐项一致。
 //
 // # 可用性（`disabled: !available`，官方 :50-60、:71/:75/:79）
 //
@@ -200,18 +213,22 @@ func (p *Plugin) resolveFile(target pluginapi.ContextMenuTarget) []pluginapi.Con
 	name := fileName(target.Path)
 	var out []pluginapi.ContextMenuAction
 	if strings.HasPrefix(mediaTypeOf(target.Path), "image/") {
+		// 官方顺序就是 copyImage → download → saveAs（:69-80）。
+		if copyImage, ok := p.copyAction(target, actionCopyImage, true, available); ok {
+			out = append(out, copyImage)
+		}
 		out = append(out, p.saveAction(target, actionDownload, zhDownload, pluginapi.FileDownload, name, available))
 	}
 	out = append(out, p.saveAction(target, actionSaveAs, zhSaveAs, pluginapi.FileSaveAs, name, available))
 	return out
 }
 
-// resolveImage 是官方 image 菜单（OFF:context-menus.tsx:85-104）的判据投影。
+// resolveImage 是官方 image 菜单（OFF:context-menus.tsx:85-107）的判据投影。
 //
-// 官方那段的三项：copyImage、download、canSaveAs 时的 saveAs。本仓少 copyImage；
-// 且没有 (sessionId, path) 就整段不给（缺口 3）。
+// 官方那段的三项：copy（id 就是 `copy`）、download、canSaveAs 时的 saveAs；
+// 本仓 canSaveAs 恒 true，所以三项都在。没有 (sessionId, path) 就整段不给（缺口 3）。
 //
-// **image 这一族没有 stat、也没有 disabled**（官方 :86-105 全文没有任何
+// **image 这一族没有 stat、也没有 disabled**（官方 :86-106 全文没有任何
 // `disabled:`/`available`）——所以这里一律 available=true，与 file 族区分开：
 // 图片可能是**流内附件**（没有落盘路径），拿 file 的 stat 去判会把它们误置灰。
 func (p *Plugin) resolveImage(target pluginapi.ContextMenuTarget) []pluginapi.ContextMenuAction {
@@ -222,10 +239,53 @@ func (p *Plugin) resolveImage(target pluginapi.ContextMenuTarget) []pluginapi.Co
 	if name == "" {
 		name = fileName(target.Path)
 	}
-	return []pluginapi.ContextMenuAction{
+	out := make([]pluginapi.ContextMenuAction, 0, 3)
+	if copyItem, ok := p.copyAction(target, actionCopy, false, true); ok {
+		out = append(out, copyItem)
+	}
+	out = append(out,
 		p.saveAction(target, actionDownload, zhDownload, pluginapi.FileDownload, name, true),
 		p.saveAction(target, actionSaveAs, zhSaveAs, pluginapi.FileSaveAs, name, true),
+	)
+	return out
+}
+
+// copyAction 造一条「把这张图写进系统剪贴板」的菜单项（官方 `copy` / `copyImage`）。
+//
+// 两处入口除 id 与分隔线之外逐字相同（OFF:context-menus.tsx:70 与 :99）：
+//
+//	file  族 :70  { id:'copyImage', icon:'file-actions.copy', separatorBefore:true,
+//	                 failureLabel:'menu.copyFailed', label:'menu.copyImage', disabled:!available }
+//	image 族 :99  { id:'copy',      icon:'file-actions.copy',
+//	                 failureLabel:'menu.copyFailed', label:'menu.copyImage' }
+//
+// `failureLabel` 与本仓的差异：官方那条是给菜单框架看的（run 抛出时显示它），
+// 本仓的 `Run` 是同步无返回值，成败由壳写状态栏（同一条既有登记，#18 ④）。
+//
+// 返回 ok=false 的唯一情况：壳没接 `Actions.CopyWorkspaceImage`（老壳 / 无头）。
+// 那时**不画**——画出来就是点了没反应的死项；与保存链（`SaveWorkspaceFile == nil`
+// 时整张菜单不出）同一口径。
+func (p *Plugin) copyAction(target pluginapi.ContextMenuTarget, id string, separatorBefore, available bool) (pluginapi.ContextMenuAction, bool) {
+	if p.act.CopyWorkspaceImage == nil {
+		return pluginapi.ContextMenuAction{}, false
 	}
+	sessionID, relativePath := target.SessionID, target.Path
+	return pluginapi.ContextMenuAction{
+		ID:    id,
+		Label: zhCopyImage,
+		// 官方两处都用同一枚图标键（`file-actions.copy`，OFF:context-menus.tsx:70,99），
+		// 本仓在 plugins/dsassets/context_menu.go 已接（IconCopy）。
+		Icon:            "file-actions.copy",
+		SeparatorBefore: separatorBefore,
+		// 与官方同一条：file 族 is disabled by `!available`，image 族从不需要它。
+		Disabled: !available,
+		Run: func() {
+			if p.act.CopyWorkspaceImage == nil {
+				return
+			}
+			p.act.CopyWorkspaceImage(sessionID, relativePath)
+		},
+	}, true
 }
 
 // saveAction 造一条"把原始字节保存出去"的菜单项。

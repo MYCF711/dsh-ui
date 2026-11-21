@@ -25,6 +25,10 @@ type fakePage struct {
 	canBack    bool
 	canForward bool
 	loading    bool
+	// crash 是引擎"这一页的进程没了"的假事实：`IsCrashed()`/`ProcessFailure()`
+	// 直接答它（对应 Viva 的 `WebView.IsCrashed/ProcessFailure`，
+	// OFF:viva@0.6.9-procfail/app/web.go:399-409）。
+	crash pluginapi.WebProcessFailure
 
 	backs    int
 	forwards int
@@ -38,10 +42,12 @@ func (p *fakePage) Forward()             { p.forwards++ }
 func (p *fakePage) Focus()               {}
 func (p *fakePage) Close()               { p.closed = true }
 
-func (p *fakePage) Title() string      { return p.title }
-func (p *fakePage) CanGoBack() bool    { return p.canBack }
-func (p *fakePage) CanGoForward() bool { return p.canForward }
-func (p *fakePage) IsLoading() bool    { return p.loading }
+func (p *fakePage) Title() string                               { return p.title }
+func (p *fakePage) CanGoBack() bool                             { return p.canBack }
+func (p *fakePage) CanGoForward() bool                          { return p.canForward }
+func (p *fakePage) IsLoading() bool                             { return p.loading }
+func (p *fakePage) IsCrashed() bool                             { return p.crash != pluginapi.WebProcessNoFailure }
+func (p *fakePage) ProcessFailure() pluginapi.WebProcessFailure { return p.crash }
 
 // fakeHost 是 pluginapi.WebHost 的假实现。
 type fakeHost struct {
@@ -50,6 +56,9 @@ type fakeHost struct {
 	openErr error
 	lastOn  func(pluginapi.WebLoad)
 	onLoads []func(pluginapi.WebLoad)
+	// onProcessFailures 是每次 Open 交进去的 `OnProcessFailed`；用例拿它模拟
+	// "引擎报页面进程没了"（官方 render-process-gone / destroyed）。
+	onProcessFailures []func(pluginapi.WebProcessFailure)
 	// lastNewWindow 是本次 Open 交进去的 `OnNewWindow`（官方 BrowserPageOptions.openRequested
 	// 的等价物）；用例用它模拟"页面自己 window.open 了一个地址"。
 	lastNewWindow func(url string) bool
@@ -59,6 +68,7 @@ func (h *fakeHost) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, er
 	h.opened++
 	h.lastOn = options.OnLoad
 	h.onLoads = append(h.onLoads, options.OnLoad)
+	h.onProcessFailures = append(h.onProcessFailures, options.OnProcessFailed)
 	h.lastNewWindow = options.OnNewWindow
 	if h.openErr != nil {
 		return nil, h.openErr

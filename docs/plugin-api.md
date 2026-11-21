@@ -791,3 +791,25 @@ Viva `v0.6.8-webstate` 给 `*app.WebView` 补了四个查询、给 `WebLoad` 补
   **官方那三条判据都在插件里**：`-3`（`WebLoadCancelled`）不算失败、`page-title-updated`
   只在 `address==='observed'` 之后采纳标题、`load.failed.detail` 要 code 与 description
   两个都在（缺一个就退回官方 `load.failed`，`BrowserBody.tsx:112-114`）。
+
+## 20. 网页进程崩溃观测（2026-11-21）
+
+Viva `v0.6.9-procfail` 补上了"页面进程没了"这件事（`OFF:viva@v0.6.9-procfail/app/web.go:108-115,399-409`，
+原因码在 `internal/platform/web_process_failure.go:11-75`），本仓契约为它加了三条。
+官方那条事件是 `render-process-gone` / `destroyed`（`OFF:dsh-client-ui-sidebar-browser/
+src/client/electron/ElectronWebViewImpl.ts:184-186`）；改这里的形状之前先读账本 #50 行。
+
+- `pluginapi.WebProcessFailure`：六档（`NoFailure/Crashed/Killed/Unresponsive/LaunchFailed/Unknown`），
+  名字逐字同上游 `WebProcessFailure.String()`。**不许在中间塌成 bool**：要不要提醒
+  "可能丢输入"取决于原因——渲染进程崩了要提醒，被系统在内存压力下回收的页面什么都没做错。
+- `pluginapi.WebOpenOptions.OnProcessFailed`：与 `OnLoad` 一样的"开页时一次性订阅"
+  （Viva 的 `WebViewConfig` 字段）。**它不是一次加载失败**：插件里 `failed` 与 `crashed`
+  是两档，崩溃时 `failed=false`，只有新一次导航（`begin()` / `WebLoadStart`）才清崩溃态。
+- `pluginapi.WebPage.IsCrashed()/ProcessFailure()`：引擎即时事实，画那一帧时问一次；
+  崩溃后引擎历史**不许**再当真（官方 `dropGuest()` 后 `ready=false`，两个按钮都灭，
+  `ElectronWebViewImpl.ts:240-245,252-256`）。
+
+官方把崩溃画成 `load.failed`（同一行同一句）；本仓独立文案（`plugins/dsbrowser/frame.go`
+的 `processFailureCopy`），因为用户必须分得开"页面进程没了"与"网络/服务端失败"。
+动作面照抄官方：历史两键灭、刷新仍可点（重开入口，Viva 的 `Reload` 就是重新加载）、
+地址栏保留目标、崩溃帧不摆 native view（官方 `dropGuest()` 的等价物）。

@@ -17,7 +17,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.50.0 // indirect
 )
 
 require (
@@ -27,6 +26,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/klauspost/compress v1.20.3
 	github.com/vivaui/viva v0.6.5
+	golang.org/x/sys v0.50.0
 )
 
 replace example.com/dsh-hello => ../dsh-ui-plugins/hello

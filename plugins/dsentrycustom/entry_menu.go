@@ -46,12 +46,16 @@
 //
 // # HIDE（登记在案，不是"以后再说"）
 //
-//  1. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 本仓还没有
-//     宿主（guide 面未落地，`docs/official-parity.md` 的 #53），注册了也没有派发方。
-//  2. **键盘模态那半边（`html[data-input-modality='keyboard'] … :focus-within`）不画**：
-//     它挂在同一串 CSS 里（OFF:EntryMenu.module.css:29,31），但本仓没有"全局输入模态"
-//     这一位，而且它是 `:focus-within`（行内任一后代有焦点），与 viva 的
-//     `FocusVisible()==id` 不是同一个判据，不冒充。
+//  1. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 的派发点在
+//     `internal/uikernel/shell_skeleton.go:1193`，但那是一行**裸座位**——官方的形状是
+//     一张 380px 的 `.moreAnchor` 卡片 + 贴在它上面的 Menu 面（GuideBody.tsx:99-117、
+//     160-172，`.moreAnchor{width:380px}` / `.moreMenu`），而本仓 guide 面只画入口卡列
+//     （`internal/uikernel/view_guide.go:124-152`）。补它要新画卡片 + 新挂菜单宿主 +
+//     新资产（GuideMoreIcon），见 docs/official-parity.md #17 ② 的代价。
+//  2. ~~键盘模态那半边不画~~ —— **2026-11-21 已落地**：viva v0.6.12-ow 的
+//     `Canvas.FocusVisible()` 本身就是「键盘模态 ∧ 焦点在本身份」的合成（见
+//     `sidebarEntryKeyboardFocus`），所以 `:focus-within` 那一半不必新增 pluginapi 位，
+//     也不再是"与 FocusVisible 不同判据"——行里可停靠的只有行本身与固定按钮。
 //
 // # 悬停三态（2026-11-17 本轮补上，值全取官方）
 //
@@ -253,8 +257,9 @@ func (p *Plugin) drawConversationRows(f ui.C, env *pluginapi.Env) {
 //
 // 行尾那一格是**二选一**（官方同一块 CSS 里对勾与固定按钮互斥）：
 //
-//	静止    固定按钮 opacity 0（`.pinAnchor{opacity:0}` :26）、对勾 opacity 1（:27）
-//	行悬停  固定按钮 opacity 1（`:hover .pinAnchor` :28）、对勾 opacity 0（:30）
+//	静止                        固定按钮 opacity 0（`.pinAnchor{opacity:0}` :26）、对勾 opacity 1（:27）
+//	行悬停                      固定按钮 opacity 1（`:hover .pinAnchor` :28）、对勾 opacity 0（:30）
+//	键盘焦点落在这一行内部      同上（`:focus-within` 那两行 :29/:31，不看指针在哪）
 func (p *Plugin) drawSidebarEntryRow(f ui.C, env *pluginapi.Env, props *pluginapi.EntryMenuProps, entry pluginapi.EntryMenuEntry) {
 	t := p.theme
 	// 这一行的两个命中身份：行本身与行尾固定按钮。官方的 `.sidebarEntry:hover` 是
@@ -262,7 +267,11 @@ func (p *Plugin) drawSidebarEntryRow(f ui.C, env *pluginapi.Env, props *pluginap
 	rowID := env.Tree.ID(env.Feat, "entry-open-"+entry.ID)
 	pinID := env.Tree.ID(env.Feat, "entry-pin-"+entry.ID)
 	rowHovered, pinHovered := sidebarEntryHovered(env, rowID, pinID)
-	hovered := rowHovered || pinHovered
+	// 官方的第二条同效规则（OFF:EntryMenu.module.css:29、:31）：
+	//   `html[data-input-modality='keyboard'] .sidebarEntry:focus-within .pinAnchor{opacity:1}`
+	//   `html[data-input-modality='keyboard'] .sidebarEntry:focus-within .activeMark{opacity:0}`
+	// 即「焦点在这一行内部」且「最近一次输入来自键盘」——**与指针在哪无关**。
+	hovered := rowHovered || pinHovered || sidebarEntryKeyboardFocus(env, rowID, pinID)
 	// 外层这一圈就是官方 `div.sidebarEntry{position:relative}`（OFF:EntryMenuContent.tsx:41）：
 	// 它不参与额外几何，只给绝对定位的 `.pinAnchor` / `.activeMark` 当参照物。
 	ui.Row(f).FillWidth().Items(ui.Center).Children(func() {
@@ -389,6 +398,32 @@ func sidebarEntryHovered(env *pluginapi.Env, rowID, pinID gfx.ID) (row, pin bool
 		return false, false
 	}
 	return hovered == rowID, hovered == pinID
+}
+
+// sidebarEntryKeyboardFocus 报告「键盘焦点是否落在这一行内部」——官方
+// `html[data-input-modality='keyboard'] .sidebarEntry:focus-within`（OFF:EntryMenu.module.css:29,31）
+// 那个判据的等价物，不看指针在哪。
+//
+// 两条都成立才算真：①最近一次输入是键盘（viva 的 `FocusVisible()` 只在键盘模态下非零，
+// 见函数体注释）；②焦点身份是这一行里可停靠的两个命中之一（行本身 / 固定按钮）。
+// `env.Canvas` 为 nil（无头/最小装配）时按"没有键盘焦点"处理，不让绘制路径 panic。
+func sidebarEntryKeyboardFocus(env *pluginapi.Env, rowID, pinID gfx.ID) bool {
+	if env == nil || env.Canvas == nil {
+		return false
+	}
+	// `Canvas.FocusVisible()` 已经把官方那两个条件合起来了：viva 只在**键盘模态**
+	// 下把 focus 画成可见（`app/painter.go:617` 的 `SetKeyboardFocus` 由 Tab 置位，
+	// `internal/interaction/focus.go:79-84` 的 `PaintTarget` 回的是
+	// `(focused, keyboardFocus)`），所以它非零 ⇔ `html[data-input-modality='keyboard']`。
+	//
+	// `:focus-within` 那一半：这一行里可停靠的命中身份只有「行本身」与「固定按钮」
+	// 两个（对勾没有 Hit，官方也是 `pointer-events:none`），比对这两个就是
+	// 「行内任一后代有焦点」的等价判据。别的行拿到焦点时这里为假（≠ 整个面板）。
+	visible := env.Canvas.FocusVisible()
+	if visible.IsZero() {
+		return false
+	}
+	return visible == rowID || visible == pinID
 }
 
 // drawConversationEntryRow 画会话头的一条折起来的 view：`[标题][对勾]`。

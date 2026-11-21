@@ -65,7 +65,10 @@ func (f *terminalHostFixture) handler(w http.ResponseWriter, r *http.Request) {
 		// create 出来的 tab1 判成「不在名单里」-> closed + missingTerminal。
 		// 本地等待条件先成立看不出；CI 时序相反就必红（2026-11-18 dsh-ui#159 实测
 		// phase="closed" screen 已含 hello info=running）。
-		// 真实宿主的 terminal.watch roster 一定包含已建终端，空数组不真实。
+		// 真实宿主的每一帧都是**它那一刻**的整份集合：这一帧（create 之后才算）
+		// 必然包含 tab1；而 create 之前算的旧快照同样真实，却不含它——那一支由
+		// reconcileTerminalViews 的「见过没」判据挡住，见
+		// TestTerminalWatchStaleRosterDoesNotCloseFreshlyCreatedView。
 		fmt.Fprintln(w, `[{"id":"tab1","shell":{"path":"/bin/bash","args":[]},"cwd":"/work","cols":80,"rows":24,"state":"running","origin":"user","control":"user"}]`)
 		flushTerminalTest(w)
 		<-r.Context().Done()
@@ -302,4 +305,181 @@ func TestTerminalWiringResizeSendsOfficialShape(t *testing.T) {
 		watch.cancel()
 	}
 	m.mu.Unlock()
+}
+
+// ---------------------------------------------------------------------------
+// roster 对账：「还没见过」不是「已消失」
+// ---------------------------------------------------------------------------
+
+// terminalRosterTab1JSON 是 roster 里的一条 tab1。
+//
+// cols/rows 由调用方给：帧里才有的值（120×40）是"这一帧真的被壳处理过"的证据——
+// create 的响应和 attach 的快照都只报 80×24，别处造不出 120。
+func terminalRosterTab1JSON(cols, rows int) string {
+	return fmt.Sprintf(`{"id":"tab1","title":"bash","shell":{"path":"/bin/bash","args":[],"name":"bash"},`+
+		`"cwd":"/work","cols":%d,"rows":%d,"state":"running","exitCode":null,"origin":"user","control":"user"}`,
+		cols, rows)
+}
+
+// terminalRosterScript 是"roster 帧由测试逐帧放行"的假宿主。
+//
+// 为什么需要单独一个 fixture：真宿主的 `terminal.watch` 是 whole-set 差分推送，
+// 帧里**没有版本号/序号**（官方 result 只有整份 terminals）。所以"这一帧没有某条
+// 终端"本身不构成"它没了"的证据——它也可能只是"这一帧比视图知道的那一刻更早"。
+// 这个 fixture 让那个交错确定性地发生：帧只在测试放行后才写，于是"create 的响应
+// 已经落地（视图 Info 已设）、而更早算好的快照才刚送到"不靠 sleep 去碰运气。
+//
+// 每一帧都是**它那一刻真实**的集合：create 之前那一帧是空集合，之后那一帧含 tab1。
+type terminalRosterScript struct {
+	frames  []string
+	release []chan struct{}
+}
+
+func newTerminalRosterScript(frames ...string) *terminalRosterScript {
+	script := &terminalRosterScript{frames: frames}
+	for range frames {
+		script.release = append(script.release, make(chan struct{}))
+	}
+	return script
+}
+
+// releaseFrame 放行第 i 帧（每个测试只放行一次）。
+func (s *terminalRosterScript) releaseFrame(i int) { close(s.release[i]) }
+
+func (s *terminalRosterScript) handler(w http.ResponseWriter, r *http.Request) {
+	switch method := strings.TrimPrefix(r.URL.Path, "/api/"); method {
+	case "terminal.environment":
+		writeTerminalTestResult(w, `{"cwd":"/work","maxInputBytes":65536,"maxBufferedBytes":65536,"maxCols":500,"maxRows":200,"scrollback":1000}`)
+	case "terminal.shells":
+		writeTerminalTestResult(w, `[{"path":"/bin/bash","args":[],"name":"bash"}]`)
+	case "terminal.list":
+		// 真宿主这份名单与 watch 读的是同一个 registry（DSH-GO/cmd/dshd/terminal_pty.go:655）：
+		// terminal.create 之前这个会话确实一条终端都没有。
+		writeTerminalTestResult(w, `[]`)
+	case "terminal.create":
+		writeTerminalTestResult(w, terminalRosterTab1JSON(80, 24))
+	case "terminal.retain":
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"type":"retained"}`)
+		flushTerminalTest(w)
+		<-r.Context().Done()
+	case "terminal.attach":
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		// 与既有 fixture 同一形状（`\r\n` 必须是 JSON 转义：原始 CR 会让解码直接报
+		// invalid character）。这里用 raw string + Fprintln 拼，省掉手写转义。
+		snapshot := fmt.Sprintf(`{"type":"snapshot","sequence":0,"screen":"ready\r\n","info":%s,"writable":true}`,
+			terminalRosterTab1JSON(80, 24))
+		fmt.Fprintln(w, snapshot)
+		fmt.Fprintln(w, `{"type":"output","sequence":1,"data":"hello\r\n"}`)
+		flushTerminalTest(w)
+		<-r.Context().Done()
+	case "terminal.watch":
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		for i, frame := range s.frames {
+			select {
+			case <-s.release[i]:
+			case <-r.Context().Done():
+				return
+			}
+			fmt.Fprintln(w, frame)
+			flushTerminalTest(w)
+		}
+		<-r.Context().Done()
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// cancelTerminalTestState 收掉本测试起的 watch / attach goroutine（幂等）。
+func cancelTerminalTestState(m *model) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, watch := range m.terminalWatchers {
+		watch.cancel()
+	}
+	for _, view := range m.terminalViews {
+		if view.cancel != nil {
+			view.cancel()
+		}
+	}
+}
+
+// TestTerminalWatchStaleRosterDoesNotCloseFreshlyCreatedView 钉住「还不知道 ≠ 已消失」。
+//
+// 时序（真宿主同样可以出现）：`terminal.watch` 每帧只推"当时整份集合"，帧本身
+// 没有序号；壳刚拿到 `terminal.create` 的响应（视图 Info 已设），而一帧在 create
+// **之前**算好的快照才送到——那一帧里当然没有这条新终端。旧判据把缺席当"终端消失"：
+// Phase=closed、issue=missingTerminal、cancel 掉 attach，界面上就是终端内容突然没了
+// （官方 `terminal.tsx` 对 closed 是终态，连 retry 都不给）。正确判据是"没见过 → 什么
+// 都不知道 → 不动"，等它出现在某一帧里再谈消失。
+func TestTerminalWatchStaleRosterDoesNotCloseFreshlyCreatedView(t *testing.T) {
+	script := newTerminalRosterScript(
+		`[]`, // 帧 0：create 之前算好的快照（陈旧）
+		`[`+terminalRosterTab1JSON(120, 40)+`]`, // 帧 1：create 之后的真快照
+	)
+	srv := httptest.NewServer(http.HandlerFunc(script.handler))
+	defer closeStreamingServer(srv)
+	m := &model{cli: apiclient.New(srv.URL), cur: "s1"}
+	defer cancelTerminalTestState(m)
+
+	m.terminalEnsure("tab1")
+	waitTerminalConditionDump(t, func() bool {
+		state := m.terminalSnapshot("tab1")
+		return state.Info != nil && state.Phase == "connected" && strings.Contains(state.Screen, "hello")
+	}, func() string { return terminalWiringDump(m, "tab1") })
+
+	script.releaseFrame(0) // 陈旧帧：名单里没有 tab1
+	script.releaseFrame(1) // 真帧：名单里有 tab1
+	waitTerminalConditionDump(t, func() bool {
+		info := m.terminalSnapshot("tab1").Info
+		return info != nil && info.Cols == 120 && info.Rows == 40
+	}, func() string { return terminalWiringDump(m, "tab1") })
+
+	state := m.terminalSnapshot("tab1")
+	if state.Phase != "connected" || state.Issue != "" || !state.Writable {
+		t.Fatalf("陈旧快照把刚建好的视图判成终态：%s", terminalWiringDump(m, "tab1"))
+	}
+}
+
+// TestTerminalWatchRosterDropAfterSightingClosesView 钉住另一半：**见过之后**从名单里
+// 消失就是真的消失，视图照旧进终态并 cancel attach（这条路径一点没变慢）。
+func TestTerminalWatchRosterDropAfterSightingClosesView(t *testing.T) {
+	script := newTerminalRosterScript(
+		`[`+terminalRosterTab1JSON(120, 40)+`]`, // 帧 0：真快照，名单里有 tab1
+		`[]`, // 帧 1：新快照，名单里没有 → 真的消失
+	)
+	srv := httptest.NewServer(http.HandlerFunc(script.handler))
+	defer closeStreamingServer(srv)
+	m := &model{cli: apiclient.New(srv.URL), cur: "s1"}
+	defer cancelTerminalTestState(m)
+
+	m.terminalEnsure("tab1")
+	waitTerminalConditionDump(t, func() bool {
+		state := m.terminalSnapshot("tab1")
+		return state.Info != nil && state.Phase == "connected" && strings.Contains(state.Screen, "hello")
+	}, func() string { return terminalWiringDump(m, "tab1") })
+
+	script.releaseFrame(0)
+	// 等 Info 变成帧里的值：只此一处能证明这一帧被处理过 → 从此"见过"。
+	waitTerminalConditionDump(t, func() bool {
+		info := m.terminalSnapshot("tab1").Info
+		return info != nil && info.Cols == 120 && info.Rows == 40
+	}, func() string { return terminalWiringDump(m, "tab1") })
+
+	script.releaseFrame(1)
+	waitTerminalConditionDump(t, func() bool {
+		return m.terminalSnapshot("tab1").Phase == "closed"
+	}, func() string { return terminalWiringDump(m, "tab1") })
+
+	state := m.terminalSnapshot("tab1")
+	if state.Issue != terminalIssueMissingTerminal || state.Writable || state.Info == nil || state.Info.ID != "tab1" {
+		t.Fatalf("见过之后消失的终端没进终态：%s", terminalWiringDump(m, "tab1"))
+	}
+}
+
+// terminalWiringDump 是这两个测试超时/失败时的真实状态打印。
+func terminalWiringDump(m *model, tabID string) string {
+	state := m.terminalSnapshot(tabID)
+	return fmt.Sprintf("phase=%q issue=%q error=%q screen=%q writable=%v info=%v",
+		state.Phase, state.Issue, state.Error, state.Screen, state.Writable, state.Info)
 }

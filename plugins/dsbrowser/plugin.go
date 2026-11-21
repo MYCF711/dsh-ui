@@ -769,6 +769,10 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 	if p.page == nil {
 		loadEnv := *env // 固定本次 occurrence；壳下一帧会复用并改写原 Env。
 		page, err := env.Web.Open(pluginapi.WebOpenOptions{
+			// 存储账号（官方 `browserWorkspace()`）：同一个 workspace 的多个 tab 共用
+			// 一套 cookies，不同 workspace 互不可见；没有身份时是空串，壳那边
+			// **一个字都不下发**，行为与这条线出现之前完全一致（storage.go）。
+			StorageAccount: browserStorageAccount(env),
 			OnLoad: func(load pluginapi.WebLoad) {
 				p.handleLoad(&loadEnv, load)
 			},

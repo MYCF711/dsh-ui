@@ -62,10 +62,15 @@ type fakeHost struct {
 	// lastNewWindow 是本次 Open 交进去的 `OnNewWindow`（官方 BrowserPageOptions.openRequested
 	// 的等价物）；用例用它模拟"页面自己 window.open 了一个地址"。
 	lastNewWindow func(url string) bool
+	// lastStorageAccount 是本次 Open 交进去的**存储账号**（官方
+	// `bridge.acquire(workspace)` 的那个 workspace 入参，`src/types.ts:22`）。
+	// 壳拿它换分区名（`cmd/app/web_pages.go` 的 webPartitionCache）。
+	lastStorageAccount string
 }
 
 func (h *fakeHost) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, error) {
 	h.opened++
+	h.lastStorageAccount = options.StorageAccount
 	h.lastOn = options.OnLoad
 	h.onLoads = append(h.onLoads, options.OnLoad)
 	h.onProcessFailures = append(h.onProcessFailures, options.OnProcessFailed)

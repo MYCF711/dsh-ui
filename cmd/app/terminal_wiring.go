@@ -460,13 +460,13 @@ func (m *model) runTerminalView(ctx context.Context, sessionID, tabID string, ge
 	m.mu.Unlock()
 	m.inv.Invalidate()
 
-	retain, err := m.cli.TerminalRetain(ctx, sessionID, info.ID)
-	if err != nil {
-		fail(err)
-		return
-	}
-	defer retain.Close()
-	if err := retain.NextRetained(); err != nil {
+	// 官方视图的 retain **就是窗口级 hold**：`view(..., (signal) =>
+	// this.hold(sessionId, id).ready(signal))`（OFF:dsh-api-terminal-controller
+	// /src/client/index.ts:1007-1010），attach 前等它的 `retained` ack。
+	// 所以这里不开自己的 retain 寿命流——hold 的寿命跟着 **tab** 走，不跟视图走；
+	// 关 tab 才释放（`syncTerminalHolds` 的差集），这正是 #54 条 `retainTabs`
+	// 全量保命面的那一半，见 terminal_holds.go。
+	if err := m.awaitTerminalHold(ctx, sessionID, info.ID); err != nil {
 		fail(err)
 		return
 	}

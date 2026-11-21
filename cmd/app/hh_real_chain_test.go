@@ -408,9 +408,9 @@ func hhWaitLink(t *testing.T, m *model, want pluginapi.LinkState, timeout time.D
 		time.Sleep(50 * time.Millisecond)
 	}
 	m.mu.Lock()
-	got := linkStateOf(wsUp, wsDown, wsConnecting)
-	up, down, connecting := wsUp, wsDown, wsConnecting
+	got := m.connLinkLocked()
+	cur, hasSub, up, down, connecting := connFactsLocked(m)
 	m.mu.Unlock()
-	t.Fatalf("%s 内连接态没变成 %v（当前 %v：wsUp=%v wsDown=%v wsConnecting=%v）",
-		timeout, want, got, up, down, connecting)
+	t.Fatalf("%s 内连接态没变成 %v（当前 %v：会话=%q 有订阅=%v up=%v down=%v connecting=%v）",
+		timeout, want, got, cur, hasSub, up, down, connecting)
 }

@@ -103,6 +103,57 @@ func linkStateOf(up, down, connecting bool) pluginapi.LinkState {
 	}
 }
 
+// connLinkLocked 把**当前会话**（`m.cur`）的连接事实压成 `Snapshot.Link`。
+// 调用方必须持有 m.mu。
+//
+// 为什么按会话取，而不是取一枚进程级的事实：一条 WS 只属于一个会话（H14），
+// 后台会话的订阅失败不是"宿主连不上"的证据。早先用全局变量时，最后写的那条
+// 会话说了算——后台（或刚删掉的那条在取消前最后一次尝试）一次失败，前台明明
+// 连着也翻成「连接异常」。
+//
+// 三种输入按这个顺序落地：
+//
+//	① 当前会话自己的确定事实（up / down）——最优先，这就是"指示器只说这条会话"；
+//	② 还没有确定事实、但这次尝试在飞行中：只在**从来没有过确定事实**时（启动首连）
+//	   报 `LinkConnecting`；否则沿用 `connLast`（切会话不闪，官方那颗胶囊描述的是
+//	   同一条连接，切会话本来就不该动它）；
+//	③ 没有会话（`cur` 空）= 没有流 = `LinkUnknown`：不沿用上一条的结论。
+//
+// 零值 `LinkUnknown` 的规矩照旧：不知道就不许断言「已连接」。
+func (m *model) connLinkLocked() pluginapi.LinkState {
+	if sub := m.subs[m.cur]; sub != nil {
+		switch {
+		case sub.down:
+			return pluginapi.LinkDown
+		case sub.up:
+			return pluginapi.LinkConnected
+		case sub.connecting && m.connLast == pluginapi.LinkUnknown:
+			return pluginapi.LinkConnecting
+		}
+	}
+	if m.cur == "" {
+		return pluginapi.LinkUnknown
+	}
+	return m.connLast
+}
+
+// connLink 是 connLinkLocked 的取锁版本（给测试与帧外读用）。
+func (m *model) connLink() pluginapi.LinkState {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.connLinkLocked()
+}
+
+// switchCurLocked 把前台会话换成 id，并把"离开时这一帧显示的事实"留在
+// `connLast` 里。调用方必须持有 m.mu。
+//
+// 抽成方法而不是在 openSession 里写两行：这条交接是**指示器切会话不闪**的唯一
+// 来源，值得能被单测直接盯住（`TestConnSwitchCarriesDisplayedFact`）。
+func (m *model) switchCurLocked(id string) {
+	m.connLast = m.connLinkLocked()
+	m.cur = id
+}
+
 // shellOptionsFor 把壳的真实状态压成骨架的一帧输入。
 //
 // 这里只许读真值：会话、右栏开关、侧栏宽度偏好都来自 model；未知一律按

@@ -146,8 +146,14 @@ func (m *model) rightTabsFor(frames []apiclient.Frame) []pluginapi.Tab {
 	surface := m.rightTabSurfaces[sessionID]
 	var restoreErr error
 	merged := false
+	// membersChanged 标记"右栏成员表这一帧变了"（这一会话的布局**首次**装载/播种），
+	// 出去以后要对一次终端 hold 的全量账（官方 `openTabs.subscribe(sync)`，
+	// OFF:dsh-client-ui-sidebar-terminal/src/client/index.ts:34-39）。
+	// 只有一次性的装载算变化：每帧都算会把一次 hold 失败放大成持续请求。
+	membersChanged := false
 	if !m.rightTabLoaded[sessionID] && uiConfig != nil {
 		m.rightTabLoaded[sessionID] = true
+		membersChanged = true
 		saved, err := decodeRightTabSurface(sessionID, uiConfig[rightSidebarConfigKey(sessionID)])
 		if err != nil {
 			restoreErr = err
@@ -168,9 +174,13 @@ func (m *model) rightTabsFor(frames []apiclient.Frame) []pluginapi.Tab {
 	if surface == nil {
 		surface = defaultRightTabSurface(types)
 		m.rightTabSurfaces[sessionID] = surface
+		membersChanged = true
 	}
 	tabs := projectRightTabs(types, surface)
 	m.mu.Unlock()
+	if membersChanged {
+		m.syncTerminalHolds()
+	}
 	if merged {
 		m.persistRightTabSurface(sessionID)
 	}
@@ -462,6 +472,10 @@ func (m *model) openRightTabAt(kind, address string, params pluginapi.RightTabPa
 	m.rightbarSessions[sessionID] = rightbarSessionState{open: true, explicit: true}
 	m.mu.Unlock()
 	m.persistRightTabSurface(sessionID)
+	// 成员表变了（新开了一枚 occurrence）：重对一次终端 hold 全量账。
+	// 官方这条由 `openTabs.subscribe(sync)` 承担
+	// （OFF:dsh-client-ui-sidebar-terminal/src/client/index.ts:34-39）。
+	m.syncTerminalHolds()
 	m.inv.Invalidate()
 }
 
@@ -528,6 +542,9 @@ func (m *model) closeRightTab(key string) {
 	}
 	m.dropRightTabLocked(sessionID, surface, key)
 	m.mu.Unlock()
+	// 成员表少了一枚：全量对账的差集会把它那条 retain 寿命流释放掉
+	// （官方 `reconcileHolds` 的第二段；不释放就是 retain 泄漏）。
+	m.syncTerminalHolds()
 	m.persistRightTabSurface(sessionID)
 	m.inv.Invalidate()
 }
@@ -561,6 +578,9 @@ func (m *model) forgetRightTab(sessionID, tabID string) {
 	}
 	m.dropRightTabLocked(sessionID, surface, tabID)
 	m.mu.Unlock()
+	// 同上：这条 occurrence 一消失就要释放它的 retain，否则终端被保活、
+	// 界面上却没有它的 tab（官方同样是对账差集释放）。
+	m.syncTerminalHolds()
 	m.persistRightTabSurface(sessionID)
 	m.inv.Invalidate()
 }

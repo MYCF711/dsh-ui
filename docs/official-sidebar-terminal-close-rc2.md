@@ -295,7 +295,10 @@ OFF:…/locales.ts:9   'shortcut.noSession': '请先选择会话'
 - 空态里那枚 36×36 终端插画未画（只存在于官方产物，无可登记素材）。
 - `close` 语义：官方 handler 同步 void + 后台重试队列（`TerminalCleanup.tsx` 那一组），本仓返回
   error 阻止关 tab。
-- `retainTabs` 的全量保命面未接（官方 `index.ts:34-39` 的 `window-holds`）。
+- `retainTabs` 的全量保命面**已于 2026-11-21 闭合**（`feat/terminal-retain-all-tabs`：
+  `cmd/app/terminal_holds.go` + `cmd/app/terminal_holds_test.go`；官方 `index.ts:34-39` 的
+  `window-holds` 两段——订阅面与 `reconcileHolds` 差集释放——都照抄落地）。本小节是
+  2026-11-18 的快照，其余三条仍成立；当前口径见 `docs/official-parity.md` #54 行。
 
 ## 7. 本轮门禁
 

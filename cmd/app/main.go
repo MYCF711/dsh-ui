@@ -222,6 +222,10 @@ type model struct {
 	// 长连接。键分别为 session+"\x00"+occurrence 与 session；见 terminal_wiring.go。
 	terminalViews    map[string]*terminalViewState
 	terminalWatchers map[string]*terminalWatchState
+	// terminalHolds 是官方 `window-holds`（`retainTabs` 全量保命面）的持有凭证：
+	// 一枚打开着的 terminal tab 一条 retain 寿命流，跟 tab 走、不跟视图走。
+	// 键 = session+"\x00"+宿主终端 id；见 terminal_holds.go。
+	terminalHolds map[string]*terminalHold
 
 	// models 是可选模型清单（宿主 models.list 的投影），启动拉一次。
 	models []pluginapi.Model
@@ -531,6 +535,12 @@ func (m *model) refreshList() {
 		m.mu.Lock()
 		uiConfig = cfg
 		m.mu.Unlock()
+
+		// 官方 `window-holds` 的 `sync()` 首调：布局一到就把**所有**打开的 terminal
+		// tab（含没被展示的 dormant Session）交给 retain 保活
+		// （OFF:dsh-client-ui-sidebar-terminal/src/client/index.ts:34-39 的 `sync();`）。
+		// 放在这里是因为右栏布局的唯一来源就是这份 ui-config。
+		m.syncTerminalHolds()
 
 		// 上次在命令面板里选的主题：没有显式 `-theme` 就恢复它。
 		// 只排队（不落盘）——这是"读回来"，再写回去只会多一次无意义的写。
@@ -3356,7 +3366,12 @@ func main() {
 	}
 
 	var canvas gfx.Canvas
-	if err := app.RunCanvas(newConfig(m), &canvas); err != nil {
-		log.Fatal(err)
+	runErr := app.RunCanvas(newConfig(m), &canvas)
+	// 官方 effect 拆除时 `retainTabs([])`：窗口关了就把所有终端 hold 放掉
+	// （OFF:dsh-client-ui-sidebar-terminal/src/client/index.ts:34-39 的 cleanup 分支）。
+	// 本仓没有组件卸载这一层，落点在这里。
+	m.releaseAllTerminalHolds()
+	if runErr != nil {
+		log.Fatal(runErr)
 	}
 }

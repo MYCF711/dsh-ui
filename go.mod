@@ -33,4 +33,4 @@ replace example.com/dsh-hello => ../dsh-ui-plugins/hello
 
 // OLE 拖出（vivaui/viva#360）尚未随上游发版；本仓先用自家 fork 的标签版，
 // 待上游合并并发版后按 docs/ 里的撤销步骤改回 go get 上游版本。
-replace github.com/vivaui/viva => github.com/MYCF711/viva v0.6.10-clip
+replace github.com/vivaui/viva => github.com/MYCF711/viva v0.6.11-part

@@ -10,18 +10,24 @@ import (
 )
 
 func TestAccountMenuEntriesFollowSignedState(t *testing.T) {
-	signedOut := accountMenuEntries(AccountState{SignedIn: false}, false)
+	// contact 是否出现由壳有没有接 OpenExternal 决定（2026-11-21 起「意见反馈」已接线，
+	// 见 contact.go）；这里两个开关都钉住，不放过「画了却点不动」。
+	signedOut := accountMenuEntries(AccountState{SignedIn: false}, false, false)
 	if len(signedOut) != 2 || signedOut[0].id != "settings" || signedOut[1].id != "signin" {
 		t.Fatalf("登出菜单 = %+v", signedOut)
 	}
-	signedIn := accountMenuEntries(AccountState{SignedIn: true}, false)
+	signedIn := accountMenuEntries(AccountState{SignedIn: true}, false, false)
 	if len(signedIn) != 2 || signedIn[1].id != "signout" {
 		t.Fatalf("登录菜单 = %+v", signedIn)
 	}
 	for _, entry := range signedIn {
 		if entry.label == "意见反馈" || entry.label == "添加 API Key" {
-			t.Fatalf("未接线的动作不该画：%+v", entry)
+			t.Fatalf("没接 OpenExternal 时不该画反馈行：%+v", entry)
 		}
+	}
+	wired := accountMenuEntries(AccountState{SignedIn: true}, false, true)
+	if len(wired) != 3 || wired[1].id != "contact" || wired[1].label != "意见反馈" {
+		t.Fatalf("接了 OpenExternal 的菜单 = %+v", wired)
 	}
 }
 

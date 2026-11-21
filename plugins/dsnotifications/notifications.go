@@ -81,6 +81,9 @@ type Plugin struct {
 	// settings 是"打开设置浮层"的可选能力（`plugins/dssettings` 的 ui.settings.open）。
 	// nil = 没装设置面板：点账号启动器要**如实说没有**，不假装跳转。
 	settings func() bool
+	// deviceInfo 是「意见反馈」要报的设备描述；nil = 走真实系统读数
+	// （contact_device_*.go）。测试用替身钉住交出去的 URL，绝不碰真实硬件。
+	deviceInfo func() string
 
 	// AccountMenu 的本地交互态；网络完成位由 accountUIMu 保护。
 	accountUIMu          sync.Mutex

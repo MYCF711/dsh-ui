@@ -1,5 +1,5 @@
-// account_menu.go —— AccountMenu 的登录/登出动作与官方两个确认对话框。
-// 通知卡片仍在 notifications.go；本文件只补账号生命周期，不伪造 contact/onboarding。
+// account_menu.go —— AccountMenu 的登录/登出动作、官方两个确认对话框，以及
+// 「意见反馈」（`contactUs`，见 contact.go）。通知卡片仍在 notifications.go。
 package dsnotifications
 
 import (
@@ -22,9 +22,16 @@ type accountMenuEntry struct {
 	disabled bool
 }
 
-// accountMenuEntries 只声明真实接通的项目；contact / addApiKey 尚未接线，按规则 HIDE。
-func accountMenuEntries(state AccountState, busy bool) []accountMenuEntry {
+// accountMenuEntries 只声明真实接通的项目。
+//
+// 官方顺序（AccountMenu.tsx:74-78）是 settings → contact → (signout | signin)：
+// 「意见反馈」**不看登录态**（未登录也能提反馈）。它只在壳接了 `OpenExternal` 时
+// 才画——画一行点了没反应的菜单，比不画更坏。addApiKey 仍未接线，继续不画。
+func accountMenuEntries(state AccountState, busy bool, contact bool) []accountMenuEntry {
 	out := []accountMenuEntry{{id: "settings", label: zhAccountSettings}}
+	if contact {
+		out = append(out, accountMenuEntry{id: "contact", label: zhAccountContact})
+	}
 	if state.SignedIn {
 		out = append(out, accountMenuEntry{id: "signout", label: zhAccountSignOut, disabled: busy})
 	} else {
@@ -49,11 +56,14 @@ func (p *Plugin) drawAccountMenu(f ui.C, anchor ui.Box, env *pluginapi.Env, stat
 	open := p.accountMenuOpen
 	busy := p.accountSignInBusy || p.accountSignOutBusy
 	p.accountUIMu.Unlock()
+	// 「意见反馈」要有地方可开才画（官方那行背后是 `window.open`，永远可开；
+	// 本仓的等价物是壳的 `OpenExternal`，没接就退回不画）。
+	contact := env != nil && env.Act.OpenExternal != nil
 	ui.Menu(f, anchor, open, func(items *ui.MenuItems) {
 		if items == nil {
 			return
 		}
-		for _, entry := range accountMenuEntries(state, busy) {
+		for _, entry := range accountMenuEntries(state, busy, contact) {
 			entry := entry
 			if items.Item(entry.label).Disabled(entry.disabled).Clicked() && !entry.disabled {
 				p.chooseAccountMenu(entry.id, env)
@@ -85,6 +95,10 @@ func (p *Plugin) chooseAccountMenu(id string, env *pluginapi.Env) {
 	switch id {
 	case "settings":
 		p.LauncherOpenSettings(env)
+	case "contact":
+		// 官方 `onSelect` 的顺序是「先关菜单、再打开问卷」（AccountMenu.tsx:83）：
+		// closeAccountMenu 已经在上面做了。
+		p.openContactUs(env)
 	case "signin":
 		p.beginAccountSignIn(env)
 	case "signout":

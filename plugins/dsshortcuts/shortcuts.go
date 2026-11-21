@@ -71,6 +71,7 @@ var bindings = []Binding{
 	{Key: "F12", Does: "收起 / 展开右上角的插件提示条", Where: "plugins/dsdemo"},
 	{Key: "Tab / Shift+Tab", Does: "设置面板打开时在面板内循环焦点（模态层陷阱）", Where: "plugins/dssettings/official_modal.go"},
 	{Key: "Ctrl+`", Does: "新建终端标签（官方 terminal.new）", Where: "cmd/app/terminal_shortcut.go（OnShortcut 层，不是 HandleKey）"},
+	{Key: "Ctrl+T", Does: "新建浏览器标签（官方 browser.new）", Where: "cmd/app/terminal_shortcut.go（OnShortcut 层，不是 HandleKey）"},
 	{Key: "Ctrl+O", Does: "添加工作区（打开本次组合的目录选择器）", Where: "cmd/app/dirpicker_wiring.go（OnShortcut 层，不是 HandleKey）"},
 	// 官方 context menu 工厂文档原文（rc.2 asar）："It handles right-click,
 	// Shift+F10, the ContextMenu key, viewport coordinates, and focus without

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/MYCF711/dsh-ui/internal/uikernel"
+	"github.com/MYCF711/dsh-ui/plugins/dsbrowser"
 	"github.com/MYCF711/dsh-ui/plugins/dscore"
 	"github.com/MYCF711/dsh-ui/plugins/dsterminal"
 	"github.com/vivaui/viva/gfx"
@@ -168,8 +169,144 @@ func TestShortcutKeysCatalog(t *testing.T) {
 			t.Fatalf("terminal.new keys[%d] = %q，want %q", i, got[i], want[i])
 		}
 	}
-	if other := m.shortcutKeys("browser.new"); other != nil {
+	// `browser.new` 也登记了：桌面档 `{code:'KeyT', modifiers:['primary']}`
+	// （`sidebar-browser/src/client/index.ts:49-55`）。
+	got = m.shortcutKeys(browserNewCommandID)
+	want = []string{"Ctrl", "+", "T"}
+	if len(got) != len(want) {
+		t.Fatalf("browser.new keys = %v，want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("browser.new keys[%d] = %q，want %q", i, got[i], want[i])
+		}
+	}
+	if other := m.shortcutKeys("workspace.add"); other != nil {
 		t.Fatalf("没登记的命令应返回 nil，实际 %v", other)
+	}
+}
+
+// browserShortcutModel 是带浏览器 tab 类型的壳（`openRightTab('browser')` 要能找到
+// 注册类型，否则 `openRightTabAt` 会静默返回、判据变成永远绿）。
+func browserShortcutModel(t *testing.T, sessionID string) *model {
+	t.Helper()
+	kernel := uikernel.New("browser-shortcut")
+	if err := kernel.Load(&dscore.Plugin{Dark: true}, &dsterminal.Plugin{}, &dsbrowser.Plugin{}); err != nil {
+		t.Fatalf("装配内核：%v", err)
+	}
+	m := &model{kernel: kernel}
+	if sessionID != "" {
+		m.cur = sessionID
+		m.rightTabLoaded = map[string]bool{sessionID: true}
+	}
+	return m
+}
+
+// browserTabs 是这个会话里 kind 为 `browser` 的右栏 tab id。
+func browserTabs(m *model, sessionID string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	surface := m.rightTabSurfaces[sessionID]
+	if surface == nil {
+		return nil
+	}
+	var out []string
+	for _, tab := range surface.Tabs {
+		if tab.Kind == dsbrowser.RightTabBrowser {
+			out = append(out, tab.ID)
+		}
+	}
+	return out
+}
+
+// TestBrowserNewShortcutOpensBrowserTab 钉住官方
+// `run: openTabFromTarget('browser', target)`（`sidebar-browser/src/client/index.ts:63`）。
+func TestBrowserNewShortcutOpensBrowserTab(t *testing.T) {
+	m := browserShortcutModel(t, "s1")
+	m.rightTabsFor(nil) // 触发布局投影（播种产品入口那枚）
+	before := len(browserTabs(m, "s1"))
+	ev := gfx.KeyEvent{Key: gfx.KeyUnknown, Modifiers: gfx.ModifierControl, Text: "t"}
+	if !m.handleBrowserNewShortcut(ev) {
+		t.Fatal("Ctrl+T 没被 browser.new 吃掉")
+	}
+	if got := len(browserTabs(m, "s1")); got != before+1 {
+		t.Fatalf("Ctrl+T 没新建浏览器 tab：%d → %d", before, got)
+	}
+	// 浏览器是 multiple:true（`definition.tsx:15`）：再按一次再多一枚。
+	if !m.handleBrowserNewShortcut(ev) {
+		t.Fatal("Ctrl+T 第二次没被吃掉")
+	}
+	if got := len(browserTabs(m, "s1")); got != before+2 {
+		t.Fatalf("浏览器 tab 是 multiple:true，每按一次 +1：%d → %d", before+1, got)
+	}
+}
+
+// TestBrowserNewShortcutIsOnlyCtrlT 钉住键位边界：桌面档只有 primary 一档
+// （`desktop:windows/macos/linux` 都是 `{code:'KeyT', modifiers:['primary']}`），
+// 而 `terminal.new`（Ctrl+Backquote）与 `workspace.add`（Ctrl+O）不能被它抢走。
+func TestBrowserNewShortcutIsOnlyCtrlT(t *testing.T) {
+	cases := []struct {
+		name string
+		ev   gfx.KeyEvent
+	}{
+		{"Ctrl+` 归 terminal.new", gfx.KeyEvent{Key: gfx.KeyUnknown, Modifiers: gfx.ModifierControl, Text: "`"}},
+		{"Ctrl+O 归 workspace.add", gfx.KeyEvent{Key: gfx.KeyUnknown, Modifiers: gfx.ModifierControl, Text: "o"}},
+		{"不带修饰的 t 是普通输入", gfx.KeyEvent{Key: gfx.KeyUnknown, Text: "t"}},
+		{"Ctrl+Shift+T 不是这个 chord", gfx.KeyEvent{Key: gfx.KeyUnknown, Modifiers: gfx.ModifierControl | gfx.ModifierShift, Text: "t"}},
+		{"Ctrl+Alt+T 不是这个 chord", gfx.KeyEvent{Key: gfx.KeyUnknown, Modifiers: gfx.ModifierControl | gfx.ModifierAlt, Text: "t"}},
+		{"具名键不走这一层", gfx.KeyEvent{Key: gfx.KeyF5, Modifiers: gfx.ModifierControl}},
+		{"抬起不算重复处理", gfx.KeyEvent{Key: gfx.KeyUnknown, Modifiers: gfx.ModifierControl, Text: "t", Release: true}},
+	}
+	m := browserShortcutModel(t, "s1")
+	m.rightTabsFor(nil)
+	before := len(browserTabs(m, "s1"))
+	for _, one := range cases {
+		if m.handleBrowserNewShortcut(one.ev) {
+			t.Fatalf("%s：不该被 browser.new 吃掉", one.name)
+		}
+	}
+	if got := len(browserTabs(m, "s1")); got != before {
+		t.Fatalf("这些 chord 不该开 tab，实际 %d → %d", before, got)
+	}
+}
+
+// TestBrowserNewShortcutBlockedWithoutSession 钉住官方
+// `if (target === undefined) return { status:'blocked', reason: t('shortcut.noSession') }`
+// （`index.ts:61`）：没有会话时**不静默**，把理由显示出来。
+func TestBrowserNewShortcutBlockedWithoutSession(t *testing.T) {
+	m := browserShortcutModel(t, "")
+	if !m.handleBrowserNewShortcut(gfx.KeyEvent{Key: gfx.KeyUnknown, Modifiers: gfx.ModifierControl, Text: "t"}) {
+		t.Fatal("没有会话时 Ctrl+T 也该被吃掉（不能漏给下面的输入处理）")
+	}
+	if m.status != terminalNewShortcutNoSession {
+		t.Fatalf("没有会话时的提示 = %q，官方 shortcut.noSession 是 %q", m.status, terminalNewShortcutNoSession)
+	}
+}
+
+// TestShortcutHandlerWiresBrowserNew 与 `TestShortcutHandlerWiresTerminalNew` 同一条理由：
+// 只测 handler 而不测接线，把 `shortcutHandler` 里那一行删掉照样全绿。
+func TestShortcutHandlerWiresBrowserNew(t *testing.T) {
+	m := browserShortcutModel(t, "s1")
+	m.rightTabsFor(nil)
+	before := len(browserTabs(m, "s1"))
+	result := m.shortcutHandler(gfx.KeyEvent{Key: gfx.KeyUnknown, Modifiers: gfx.ModifierControl, Text: "t"})
+	if !result.Handled || !result.Repaint {
+		t.Fatalf("Ctrl+T 经 shortcutHandler 未被处理：%+v", result)
+	}
+	if got := len(browserTabs(m, "s1")); got != before+1 {
+		t.Fatalf("shortcutHandler 没把 Ctrl+T 落到 browser.new：%d → %d", before, got)
+	}
+	// 真窗口那条接线。
+	cfg := newConfig(m)
+	if cfg.OnShortcut == nil {
+		t.Fatal("newConfig 没接 OnShortcut")
+	}
+	before = len(browserTabs(m, "s1"))
+	if result := cfg.OnShortcut(gfx.KeyEvent{Key: gfx.KeyUnknown, Modifiers: gfx.ModifierControl, Text: "t"}); !result.Handled {
+		t.Fatalf("cfg.OnShortcut 没处理 Ctrl+T：%+v", result)
+	}
+	if got := len(browserTabs(m, "s1")); got != before+1 {
+		t.Fatalf("cfg.OnShortcut 没把 Ctrl+T 落到 browser.new：%d → %d", before, got)
 	}
 }
 

@@ -228,10 +228,12 @@ func TestGuideMenuPaintsOfficialMenuSurface(t *testing.T) {
 	})
 	surface := menuSurface(t, snapshot, theme)
 
-	// ① 圆角 md（`.cell` 与面都用 `--dsw-radius-md`）。
+	// ① 面的圆角是 `--dsw-radius-lg`（16），不是行的 `--dsw-radius-md`（12）：
+	// `._surface_1w4el_1{border-radius:var(--dsw-radius-lg)}`（byte 19622），
+	// 只有 compact 档才落到 md（`._compact_1w4el_6`，byte 19693）。
 	for _, prim := range rectPrimsByRGB(snapshot, theme.Menu) {
-		if prim.Radius != theme.Radii.MD {
-			t.Fatalf("菜单面圆角 = %v，官方 --dsw-radius-md = %v", prim.Radius, theme.Radii.MD)
+		if prim.Radius != 16 {
+			t.Fatalf("菜单面圆角 = %v，官方 --dsw-radius-lg = 16（.5px 描边那条读同一处）", prim.Radius)
 		}
 	}
 	// ② 官方 prominent 的两层柔光：比 (offsetY, blur) —— 浮层进场时驱动会把

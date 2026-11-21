@@ -23,15 +23,20 @@
 //
 // # 为什么这一支画的是"孤立的一枚 trigger"而不是整张向导卡
 //
-// 向导卡里那枚 trigger **现在拿不到指针**：卡片自己的点击面是
+// 这一支量的是**画笔本身**的悬停态（20×20 悬停底 + 圆角 4 + ghost 的 `:active` +
+// chevron 字色恒定），与卡片点击面无关；单独画一枚，判据就只随画笔变，不会被卡片的
+// 命中区/几何变化带红。
+//
+// 曾经这里还有第二个理由——卡片里那枚 trigger **拿不到指针**：卡片点击面是
 // `ui.Row(f).Absolute().Inset(0)`，而 Viva 的绝对元素「is painted after the in-flow
 // children in the order declared, and so **wins pointer hits over them**」
 // （`viva@v0.6.12-ow/base/absolute.go:5-11` 原文）——绝对层恒赢流内子元素，与声明
-// 先后无关。实测：指针停在 trigger 中心时 `Snapshot.Hovered` 是**卡片**的身份，
-// 点下去也打不开菜单（`menu.go:225-227` 那句「先声明它才能让后面的 trigger 拿到
-// 自己的点击」是错的）。这是既存的**可达性缺陷**，不属于本次 C 类零代价改动
-// （修它要动卡片布局/锚点，见账本登记），所以这里把 trigger 单独画在一页上，
-// 钉住**画笔本身**的悬停行为；可达性另有登记。
+// 先后无关；实测指针停在 trigger 中心时 `Snapshot.Hovered` 是**卡片**的身份，点下去
+// 只开终端、菜单打不开（旧注释 `guide.go:225-227` 那句「先声明它才能让后面的 trigger
+// 拿到自己的点击」是反的）。**该缺陷已修**：卡片点击面改成登记在**卡片本体**上
+// （`base/paint.go:88,150` 先登记本体命中区、再画子元素，所以本体在最底层），
+// 几何用 `HitOutset` 负值收回到官方 `inset:0` 的 padding box；可达性判据在
+// `plugins/dsterminal/guide_hit_test.go`（点 trigger 开菜单 / 点卡片空白开终端）。
 //
 // # 判据（每条都能被一个改动单独弄红）
 //

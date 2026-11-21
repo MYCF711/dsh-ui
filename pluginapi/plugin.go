@@ -1254,6 +1254,12 @@ type Snapshot struct {
 	// `runSubscription`：订阅成功 = LinkConnected，订阅失败 = LinkDown，未拿过
 	// 任何事实 = LinkUnknown）。
 	//
+	// **它描述的是这一帧那个会话（`Cur`）的流**，不是进程里"随便哪条连接"的
+	// 结论：一条 WS 只属于一个会话（H14），后台会话的失败不会改写它。当前会话
+	// 还没拿到确定事实的那一小段（冷载 / 刚拨号）沿用最后一条已显示的确定事实，
+	// 所以切会话不会让指示器闪回「未知」；只有从没有过任何确定事实时才是
+	// `LinkUnknown`。改会话后重读本字段即可，不需要额外事件。
+	//
 	// 零值 = `LinkUnknown`：**不知道就不许写「已连接」**，写「未知」。
 	Link LinkState
 	// DesktopUpdate 是壳对"桌面更新"的**事实呈现**（官方 `DesktopUpdateIndicator`

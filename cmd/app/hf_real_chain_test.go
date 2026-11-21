@@ -9,7 +9,7 @@ package main
 //	① 真 `dshd serve`（临时 home + `--addr 127.0.0.1:0`）+ 真 apiclient（/connect 换 cookie）；
 //	② 真会话 + 真 `session.setGoal`（宿主读回一致）；
 //	③ **连接事实来自真 apiclient**：跑壳自己的 `model.runSubscription`，
-//	   真 `Mux.Subscribe` 成功 → `wsUp` → `linkStateOf` = `LinkConnected`；
+//	   真 `Mux.Subscribe` 成功 → 当前会话的连接事实翻成 `LinkConnected`；
 //	   另用一个连不上的 Base 做一次真订阅 → 失败 → `linkStateOf(false,true)` = `LinkDown`；
 //	④ `-shell official` 的产品形状下（旧 sidebar 还在、整列兼容桥开着）：连接指示画在
 //	   **侧栏 footer 的官方位置**；另起一帧"官方骨架独占左栏"证明 `sidebar.settings`
@@ -159,25 +159,22 @@ func hfTextHas(texts []string, want string) bool {
 	return false
 }
 
-// hfWaitLink 轮询壳里的连接三态（globals 在 m.mu 里写，这里也在锁里读）。
+// hfWaitLink 轮询壳里的连接三态（事实挂在会话的订阅对象上，按当前会话读）。
 func hfWaitLink(t *testing.T, m *model, want pluginapi.LinkState, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		m.mu.Lock()
-		got := linkStateOf(wsUp, wsDown, wsConnecting)
-		m.mu.Unlock()
-		if got == want {
+		if m.connLink() == want {
 			return
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	m.mu.Lock()
-	got := linkStateOf(wsUp, wsDown, wsConnecting)
-	up, down, connecting := wsUp, wsDown, wsConnecting
+	got := m.connLinkLocked()
+	cur, hasSub, up, down, connecting := connFactsLocked(m)
 	m.mu.Unlock()
-	t.Fatalf("%s 内连接态没变成 %v（当前 %v：wsUp=%v wsDown=%v wsConnecting=%v）",
-		timeout, want, got, up, down, connecting)
+	t.Fatalf("%s 内连接态没变成 %v（当前 %v：会话=%q 有订阅=%v up=%v down=%v connecting=%v）",
+		timeout, want, got, cur, hasSub, up, down, connecting)
 }
 
 // TestRealChainHFConnectionGoalIcon 真宿主 + 真 apiclient + 官方座位 + 官方 sprite。
@@ -208,7 +205,7 @@ func TestRealChainHFConnectionGoalIcon(t *testing.T) {
 	}
 	t.Logf("真宿主：session=%s goal=%q", sessionID, load.Goal)
 
-	// ── ② 真连接事实（连着）：跑壳自己的订阅循环，成功即 wsUp。
+	// ── ② 真连接事实（连着）：跑壳自己的订阅循环，成功即当前会话 LinkConnected。
 	m := newRealModel(client, mux, sessionID)
 	subCtx, subCancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

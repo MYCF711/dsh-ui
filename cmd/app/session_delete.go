@@ -22,12 +22,13 @@ import (
 //
 // 订阅是**per-session 一直活着**的（切走不退订，见 subscribe 的注释）。删掉的
 // 会话如果留着那条订阅，`runSubscription` 会拿一个已经不存在的 topic 无限重连：
-// 1s→2s→…→30s 退避，每次尝试都改写全局 `wsUp/wsDown/wsConnecting` 并重绘——
-// 用户当前会话明明连着，连接指示器却隔一会儿翻成"重新连接中"。而且这条
-// goroutine 与 socket 再也不会有人收（`m.subs` 里没有别的入口删它）。
+// 1s→2s→…→30s 退避，每次尝试都写连接事实并重绘（连接事实现在挂在订阅对象上，
+// 写进的是这一代 `muxSub`，`releaseSession` 一删订阅就跟着没了——但那条
+// goroutine 与 socket 仍然没人收，白耗重连和日志，所以要在这里取消）。
 //
-// per-session 的其余状态（水位 / 世代 / 原始帧 / 流状态 / 温缓存 / 待审批）同理：
-// 会话已经不在宿主上了，留着只会在下一帧被当成真值画出来（僵尸审批条就是这么来的）。
+// per-session 的其余状态（水位 / 世代 / 原始帧 / 流状态 / 温缓存 / 待审批 /
+// 连接事实）同理：会话已经不在宿主上了，留着只会在下一帧被当成真值画出来
+// （僵尸审批条就是这么来的；连接事实留着还会让指示器停在一个死会话的结论上）。
 func (m *model) deleteSession(id string) {
 	if id == "" {
 		return
@@ -57,6 +58,9 @@ func (m *model) deleteSession(id string) {
 func (m *model) releaseSession(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// 订阅对象里同时挂着这个会话的连接事实：删订阅 = 那三枚布尔一起消失，
+	// 于是指示器不会再停在一个已经不存在的会话的结论上（删掉的正是当前会话时，
+	// 下面把 cur 清空，`connLinkLocked` 自然回到「未知」）。
 	if sub := m.subs[id]; sub != nil {
 		if sub.cancel != nil {
 			sub.cancel()

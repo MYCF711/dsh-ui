@@ -464,11 +464,11 @@ func TestHHReconnectCancelsAndResubscribes(t *testing.T) {
 	}
 }
 
-// hhLinkState 在锁里读连接三事实（与壳的写入点同一把锁，-race 门禁）。
+// hhLinkState 在锁里读当前会话的连接三事实（与壳的写入点同一把锁，-race 门禁）。
 func hhLinkState(m *model) pluginapi.LinkState {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return linkStateOf(wsUp, wsDown, wsConnecting)
+	return m.connLinkLocked()
 }
 
 // TestHHAssemblyOrderPutsDialogsBeforeComposer 是第 5 件的**装配顺序**断言。

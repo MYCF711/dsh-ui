@@ -200,7 +200,15 @@ type model struct {
 	// marketDetails 是按 (url, 包名, 版本, 语言) 的市场条目详情缓存
 	// （官方 `pluginMarket.readEntryDetail`，见 cmd/app/market_detail.go）。
 	//
-	// nil = 一次都没问过（懒初始化）；`resetMarketDetails` 在连接重置时整表作废。
+	// nil = 一次都没问过（懒初始化）。**没有**整表作废的钩子：这里早先的注释
+	// 写着「`resetMarketDetails` 在连接重置时整表作废」，而那个函数全仓不存在
+	// ——唯一的作废入口是 `marketEntryDetailRetry` 的单条重读。整表清空是有意
+	// 不做的（理由见 market_detail.go 的「为什么没有连接重置就作废详情缓存」：
+	// 官方清它是因为重启后的 document id 会失效，而本仓那个 id 只用于一条不存在
+	// 的 detail-file 路由）。
+	//
+	// 副作用要认：条目只增不删，基数 = 用户打开过详情的市场条目数（每项含
+	// README）。没有容量上限，也没有 LRU；这条是登记过的缺口，不是"已经清空"。
 	marketDetails map[marketDetailKey]*marketDetailRead
 	// market 是官方「发现」tab 的壳侧状态（索引源、列表、写回），见
 	// cmd/app/market_discover.go。零值即"还没读过"。
@@ -364,6 +372,17 @@ type model struct {
 	// **切会话不退订**：后台会话的连接照收，只是不前台渲染。
 	mux  *apiclient.Mux
 	subs map[string]*muxSub
+	// connLast 是**已经显示过的最后一条确定连接事实**（`LinkConnected` / `LinkDown`）。
+	//
+	// 它只用来填"当前会话还没有确定事实"的那一小段窗口——冷开一个会话的载入窗口、
+	// 刚建订阅还没拨完号的窗口。官方那颗胶囊在切会话时不会跳（它描述的是同一条
+	// 连接），所以这段时间沿用它，而不是闪一帧「未知」或「重新连接中…」（后者会
+	// 被官方 800ms 最小可见撑成一次假警报，见 plugins/dsstatusbar/connection.go）。
+	//
+	// **后台会话写不进来**：只有当前会话（`id == m.cur`）的确定事实才更新它，
+	// 见 connUpLocked / connFailedLocked；换会话时由 openSession 把"离开时那一帧
+	// 显示的事实"带过来。这就是"后台（或刚删掉）会话一次失败不翻前台指示器"的边界。
+	connLast pluginapi.LinkState
 	// seqs 是**每会话**已消费到哪一段（切走不丢）。
 	//
 	// 为什么必须独立存：subs 里那份会在切会话时被删掉（为的是重订重放），
@@ -687,7 +706,8 @@ func (m *model) openSession(id string) {
 	m.mdH = m.mdH[:0]
 
 	m.mu.Lock()
-	m.cur = id
+	// 换会话时把"这一帧显示的事实"带过去：新会话冷载/拨号的窗口里沿用它。
+	m.switchCurLocked(id)
 	m.pendingScroll = id
 	// 反馈是宿主 sidecar，可能在别处改过；每次打开会话重新拉一次，
 	// 顺带清掉上一次的失败抑制（否则一次网络抖动会让这条会话永远不再加载反馈）。
@@ -1096,7 +1116,10 @@ func (m *model) subscribe(id string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// 用 m.lastSeq（openSession 刚按目标会话设过），而不是 subs 里那份——
 	// 切回来时旧 sub 已被删掉，水位只在 m.lastSeq 里。
-	sub := &muxSub{cancel: cancel, lastSeq: m.lastSeq}
+	//
+	// connecting 从建订阅这一刻就是真：`Mux.Subscribe` 紧接着就会拨号。
+	// 等 goroutine 起来再置会把"已经开始的尝试"漏成一帧 `LinkUnknown`。
+	sub := &muxSub{cancel: cancel, lastSeq: m.lastSeq, connecting: true}
 	if m.subs == nil {
 		m.subs = map[string]*muxSub{}
 	}
@@ -1116,8 +1139,9 @@ func (m *model) subscribe(id string) {
 //	   的退避等于点了没反应；
 //	③ 水位沿用 `m.lastSeq`（已经收到的帧不重放）。
 //
-// 连接事实由 `runSubscription` 自己写：新尝试一开始就是 `LinkConnecting`
-// （界面「重新连接中」），出结果再变 connected / down。
+// 连接事实挂在**新的一代订阅**上：`subscribe` 建订阅即置 connecting（界面
+// 「重新连接中」），出结果再变 connected / down。旧代 goroutine 的写入按指针
+// 比对丢弃，所以点了重连不会出现"旧尝试的失败盖住新尝试"那一帧。
 //
 // 幂等：没有当前会话时只重绘一帧（按钮仍然"点得动"，但没东西可连）。
 func (m *model) reconnectNow() {
@@ -1142,10 +1166,61 @@ func (m *model) reconnectNow() {
 	m.inv.Invalidate()
 }
 
-// muxSub 是一个会话的订阅状态。
+// muxSub 是一个会话的订阅状态，也挂着**这一个会话自己**的连接事实。
+//
+// 为什么三枚布尔必须挂在这里，而不是包级变量：一条 WS 只属于一个会话
+// （H14：一个会话一条连接），所以"连不上"是**这条会话的流**的事实，不是
+// 进程的事实。早先它们是三个包级全局，任何一条会话的失败都会改写前台的
+// 指示器——后台会话（或刚删掉的那条在取消前最后一次尝试）一次失败，用户
+// 当前会话明明连着，界面上也照样翻成「连接异常」/「重新连接中」。
+//
+// 挂到订阅上以后：读的人按 `m.cur` 取当前会话的那一份，写的人只写自己这
+// 一代订阅；`reconnectNow` 换掉订阅时旧代 goroutine 即使再写一次，指针比对
+// （`m.subs[id] != sub`）会把它丢掉，不会盖住新代的事实。
 type muxSub struct {
 	cancel  context.CancelFunc
 	lastSeq int
+	// up 是"这条会话的 WS 订阅已经建起来"的唯一成功证据（`linkStateOf` 的 up）。
+	up bool
+	// down 是"这条会话的订阅当前连不上"（失败后正在退避重试）。
+	down bool
+	// connecting 是"这条会话有一次订阅尝试正在飞行中"（首连 / 退避到点 /
+	// 用户点了立即重连）。`subscribe` 建订阅时就置真：尝试是从那一刻开始的。
+	connecting bool
+}
+
+// connAttemptLocked 记"这一代订阅的一次尝试开始了"。调用方必须持有 m.mu。
+func (m *model) connAttemptLocked(id string, sub *muxSub) {
+	if m.subs[id] != sub {
+		return // 这一代已被换掉：事实没人读，写进去只会制造假象
+	}
+	sub.connecting = true
+}
+
+// connFailedLocked 记"这一代订阅的一次尝试失败了"。调用方必须持有 m.mu。
+//
+// 连过又断也是**已经拿到事实**，只是结论是"断"：up 一起清掉。
+// 只有**当前会话**的结论会更新 `connLast`（显示用的最后一条确定事实）：
+// 后台会话的失败只留在它自己的订阅对象上，等切过去时再如实报「断」。
+func (m *model) connFailedLocked(id string, sub *muxSub) {
+	if m.subs[id] != sub {
+		return
+	}
+	sub.up, sub.down, sub.connecting = false, true, false
+	if id == m.cur {
+		m.connLast = pluginapi.LinkDown
+	}
+}
+
+// connUpLocked 记"这一代订阅真的建起来了"。调用方必须持有 m.mu。
+func (m *model) connUpLocked(id string, sub *muxSub) {
+	if m.subs[id] != sub {
+		return
+	}
+	sub.up, sub.down, sub.connecting = true, false, false
+	if id == m.cur {
+		m.connLast = pluginapi.LinkConnected
+	}
 }
 
 // runSubscription 跑一条会话的流，断了就带水位重连。
@@ -1153,6 +1228,20 @@ type muxSub struct {
 // 重连不做退避上限之外的花活：1s→2s→4s→…封顶 30s，ctx 取消就退出。
 // 目的只有一个——**别让用户在切回来时才发现流早就断了**。
 func (m *model) runSubscription(ctx context.Context, id string, since int) {
+	// 认领**这一代**订阅的事实对象。正常路径上 `subscribe` 刚建好并置了
+	// connecting；直接调本函数的入口（测试）没有那个对象，就地补一个，
+	// 否则连接事实没地方落，读的人永远看到「未知」。
+	m.mu.Lock()
+	sub := m.subs[id]
+	if sub == nil {
+		if m.subs == nil {
+			m.subs = map[string]*muxSub{}
+		}
+		sub = &muxSub{lastSeq: since}
+		m.subs[id] = sub
+	}
+	m.mu.Unlock()
+
 	backoff := time.Second
 	authNotified := false // 凭据失效只提示一次，别刷屏
 	for {
@@ -1167,7 +1256,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 		// 一次订阅尝试**开始**：官方 connecting 态（「重新连接中」）就是这一刻。
 		// 写事实与读数同一把锁（-race 门禁）；订阅是同步调用，拿到结果立刻改写。
 		m.mu.Lock()
-		wsConnecting = true
+		m.connAttemptLocked(id, sub)
 		m.mu.Unlock()
 		m.inv.Invalidate()
 		ch, err := m.mux.Subscribe(connCtx, "session:"+id, since)
@@ -1190,9 +1279,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 			// 事实本身必须写：早先这里只 log、连接事实从不变，于是宿主被杀 33 秒后
 			// 界面还写着「已连接 · 就绪」——UI 在说谎。
 			m.mu.Lock()
-			wsDown = true
-			wsUp = false         // 连过又断：断线也是"已经拿到事实"，但结论是"断"
-			wsConnecting = false // 这次尝试已经出结果（失败），不再处于 connecting
+			m.connFailedLocked(id, sub)
 			m.mu.Unlock()
 			m.inv.Invalidate()
 			select {
@@ -1209,9 +1296,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 		m.mu.Lock()
 		ep := m.epochs[id]
 		// 订阅真的建起来了：这是"连着"的**唯一证据**（不是"没报错所以算连上"）。
-		wsUp = true
-		wsDown = false
-		wsConnecting = false // 尝试出结果（成功）：connecting 态结束，success 态入场
+		m.connUpLocked(id, sub)
 		m.mu.Unlock()
 		log.Printf("mux 已订阅 session:%s since=%d epoch=%d", id, since, ep)
 
@@ -1846,28 +1931,13 @@ var (
 	// themeExplicit：用户显式给了 -theme。给了就不再被 ui-config 里的 ui.theme 覆盖——
 	// 命令行是"这一次我要这样"，配置文件是"上次我选过这样"，前者优先。
 	themeExplicit bool
-	renderLimit   int    // 0 = 不限制
-	forceSession  string // 非空则启动后直接打开
-	tailCount     int    // session.load 的 tailMessages
-	wsDown        bool   // WS 订阅当前连不上（Snapshot.Disconnected / Link == LinkDown）
-	// wsUp 是"WS 订阅已经建起来"的**唯一成功证据**。与 wsDown 相反方向：
-	// 两个都为假 = 壳还没拿到任何连接事实 = `LinkUnknown`（界面必须写「未知」，
-	// 不许写「已连接」）。写入点只有 runSubscription 的两处：订阅成功 / 订阅失败，
-	// 都在 m.mu 里写，读数也在 m.mu 里取（-race 干净是这个仓的门禁）。
-	wsUp bool
-	// wsConnecting 是"有一次订阅尝试正在飞行中"（首连 / 退避到点 / 用户点立即重连）。
-	//
-	// 它是官方 `ConnectionIndicator` 的 `connecting` 态的唯一事实来源：真实
-	// apiclient 的 `Mux.Subscribe` 是同步调用（拨号 + 握手），调用前写 true、
-	// 拿到结果（成功或失败）立刻写 false。**不许**拿"还没结果"当"连着"。
-	//
-	// 三个事实（wsUp / wsDown / wsConnecting）同一把锁里写、同一把锁里读，
-	// 由 `linkStateOf` 压成一个 `LinkState`（顺序见那个函数）。
-	wsConnecting bool
-	uiConfig     map[string]string // 宿主 config.get 的缓存（插件同步读，壳后台刷新）
-	demoTool     bool              // 在消息列表里插假的工具卡
-	smokeSend    bool              // 启动后自动发一条
-	promptText   string            // -prompt 覆盖 smoke 文本
+	renderLimit   int               // 0 = 不限制
+	forceSession  string            // 非空则启动后直接打开
+	tailCount     int               // session.load 的 tailMessages
+	uiConfig      map[string]string // 宿主 config.get 的缓存（插件同步读，壳后台刷新）
+	demoTool      bool              // 在消息列表里插假的工具卡
+	smokeSend     bool              // 启动后自动发一条
+	promptText    string            // -prompt 覆盖 smoke 文本
 )
 
 // drawSlot 把一个槽位上的插件按序画出来。
@@ -2092,9 +2162,10 @@ func newConfig(m *model) app.Config {
 		// 一帧一份快照：锁内拷好，插件里不用加锁，也就没法在绘制期发请求。
 		m.mu.Lock()
 		busy := m.turnBusy
-		// 连接三态与 busy 同一把锁里取：runSubscription 写 wsUp/wsDown 也在锁里，
-		// 分开取会在 `-race` 下变成真的数据竞争。
-		link := linkStateOf(wsUp, wsDown, wsConnecting)
+		// 连接三态与 busy 同一把锁里取（-race 门禁）。事实按**当前会话**取：
+		// 同一条 WS 只属于一个会话，后台会话的失败不该改写这一帧的指示器；
+		// 当前会话还没订上（冷开的第一帧）就如实报「未知」，不沿用别人的结论。
+		link := m.connLinkLocked()
 		m.mu.Unlock()
 		approvalView := (*pluginapi.Approval)(nil)
 		if approval != nil {

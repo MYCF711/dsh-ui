@@ -74,6 +74,16 @@ type cotEntry struct {
 	original bool
 	// source 是上一次算分段的输入，用来判断"文本没变就不重算"。
 	source string
+	// lang / provider 是 cache 里那批译文**为哪套偏好翻的**。
+	//
+	// 为什么必须记：缓存键是**原文片段**（与官方同一口径），不含目标语言与
+	// 服务商。用户在设置里把目标语言从 zh 改成 en、或换一个翻译服务之后，
+	// 同一段原文照样命中旧条目——工具栏、按钮、provider 文案全是新的，正文却还是
+	// 上一门语言的译文。这种错不报错、也不崩，只是"设置改了界面没反应"。
+	//
+	// 空串 = 这条缓存还没落过账（第一次推进时按当时偏好记账）。
+	lang     string
+	provider string
 }
 
 // cotFragments 把思考正文切成可翻译片段（官方 reasoningFragments 的逐条移植）。
@@ -255,6 +265,24 @@ func cotSourceText(msg apiclient.Message) string { return reasoningDisplayText(m
 func (p *Plugin) cotAdvance(act pluginapi.Actions, sessionID, key string, source string,
 	running bool, limits apiclient.CotTranslationLimits) *cotEntry {
 	entry := p.cotEntryFor(key)
+
+	// 0）偏好变了（换了目标语言或翻译服务）：已翻好的那批**就地作废**。
+	//
+	// 缓存键是原文片段，不含这两维；不在这里清，用户改完设置回来看到的是
+	// 上一门语言的译文（工具栏已经是新的，正文还是旧的——不报错，只是不对）。
+	//
+	// 三条配套判据：
+	//   - 在飞那次请求按**旧偏好**翻，所以它的落地目标 jobText 清掉（结果照旧
+	//     被取走，不会留在壳的 cotResults 里）；`pending` 保持，本帧不叠新请求；
+	//   - `failed` 也作废：失败可能是某个 provider 的问题，换了偏好就该再试一次；
+	//   - 分段（fragments/source）**不动**：它只跟原文正文有关，与偏好无关。
+	lang, provider := cotTargetLanguage(limits.Preferences), limits.Preferences.Provider
+	if entry.lang != lang || entry.provider != provider {
+		entry.cache = map[string]string{}
+		entry.lang, entry.provider = lang, provider
+		entry.jobText = ""
+		entry.failed = false
+	}
 
 	// 文本变了（流式还在写）就重算分段；官方同样每次 update 都重算。
 	// 但**只在没有请求在飞时**重算：在飞的那一段的原文以 jobText 为准，

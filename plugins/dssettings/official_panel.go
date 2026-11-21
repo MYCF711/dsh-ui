@@ -31,6 +31,14 @@ import (
 	"github.com/vivaui/viva/ui"
 )
 
+// 键盘焦点环的几何：官方 `:focus-visible{outline:var(--dsw-focus-ring-width)
+// solid …; outline-offset:2px}`（`index-CSAdOBx6.css`）。viva 的
+// `RoundedOutline` 画在矩形上、没有 outline-offset，所以按 offset 把矩形外扩。
+const (
+	SettingsFocusRingWidth  float32 = 2
+	SettingsFocusRingOffset float32 = 2
+)
+
 // panelWriteTimeout 是一次设置写的上限：宿主写盘 + 重读，8 秒足够；
 // 超时按传输层失败处理（可重试），**不阻塞绘制线程**。
 const panelWriteTimeout = 8 * time.Second
@@ -163,6 +171,15 @@ type officialPanel struct {
 	// 只在绘制线程读写，所以不走 mu。
 	card      ui.Box
 	cardShown bool
+	// pendingFocus 是"模态层的 Tab 已经算出下一个可聚焦 id，但那份账只有插件
+	// 认得"的交接位：`ModalLayer.Focused()` 给的是插件侧字符串 id，而真正把
+	// 焦点画出来、让 Enter/Space 落到它身上的，是渲染器的焦点
+	// （`gfx.Canvas.RequestFocus`）。所以 Tab 之后把 id 放在这里，下一帧
+	// `drawOfficialPanel` 提交给渲染器。
+	//
+	// 套 mu：写它的是**按键线程**（`handleOfficialKey`），读它的是**绘制线程**；
+	// 与 model/activeID 同一档，不套就是 -race 门禁下的数据竞争。
+	pendingFocus string
 	// catalogDrag 是模型目录行的拖放状态（official_models_catalog_drag.go）。
 	// 与 card 同一档：只有窗口线程的绘制/指针/AfterDraw 读写它，故意不套 mu。
 	catalogDrag catalogDragState
@@ -629,9 +646,46 @@ func (p *Plugin) drawOfficialPanel(f ui.C, env *pluginapi.Env) {
 	o.titleID = "settings-panel-title"
 	o.mu.Unlock()
 
+	// 模态层 Tab 的落点交给渲染器：不交的话 Tab 只改了一个没人读的字符串，
+	// 焦点在画面上完全看不出来（2026-11-22 实测：Tab 后 `Snapshot().Focused`
+	// 仍是零，整块面板没有焦点环）。
+	o.mu.Lock()
+	pending := o.pendingFocus
+	o.pendingFocus = ""
+	o.mu.Unlock()
+	if pending != "" {
+		id := env.Tree.ID(env.Feat, pending)
+		if canvas := f.Canvas(); canvas != nil && !id.IsZero() {
+			canvas.RequestFocus(id)
+		}
+	}
+
 	// ① 遮罩（createPortal 到 body 级的等价物：整窗、z-index 1000、拦截点击）。
-	ui.Row(f).Absolute().Inset(0).Background(ui.RGBA(0, 0, 0, 0.24)).
-		Hit(env.Tree.ID(env.Feat, "settings-mask"), "").Children(func() {
+	//
+	// 模态层的**焦点**语义由渲染器承担，不只是插件自己的 Tab 计数：
+	// `ModalLayer` 只记录「焦点该在哪个 id 上」，而键盘 Traversal 是 viva 的
+	// `Router` 在驱动（Tab 根本不进 `kernel.HandleKey`）。所以这里必须像
+	// 右键菜单（`dscontextmenu/context_menu.go:328-336`）那样把这一层推进
+	// 一个 focus scope 并 `TrapFocus`，否则 Tab 会走到遮罩**背后**的侧栏行上
+	// （实测：设置打开后 Tab 1..14 全在背后，见 official_modal_trap_test.go）。
+	//
+	// 遮罩自己 `SkipFocus`：它是整窗的关闭面，不该成为 Tab 的停靠点；`Backdrop`
+	// 表明它盖住窗口但不挡窗口拖动，与右键菜单的 scrim 同一语义。
+	scope := env.Tree.ID(env.Feat, "settings-modal")
+	mask := ui.Row(f).Absolute().Inset(0).Background(ui.RGBA(0, 0, 0, 0.24)).
+		HitWith(env.Tree.ID(env.Feat, "settings-mask"), "关闭设置", gfx.HitOptions{
+			Role: gfx.RoleButton, SkipFocus: true, Backdrop: true,
+		})
+	if !scope.IsZero() {
+		mask = mask.
+			Draw(func(d *ui.DrawContext) {
+				d.Canvas.PushFocusScope(scope)
+				d.Canvas.TrapFocus(scope)
+				d.Canvas.ReturnFocus(scope)
+			}).
+			DrawOver(func(d *ui.DrawContext) { d.Canvas.PopFocusScope() })
+	}
+	mask.Children(func() {
 		// ② 卡片：四区网格的相对坐标（children 坐标相对卡片 padding box）。
 		// 阴影 = 官方 `--dsw-elevation-prominent`，描边走默认档 `border-l4`：
 		// `SettingsRoot.module.css:110`
@@ -694,6 +748,28 @@ func (p *Plugin) afterOfficialPanel(canvas *gfx.Canvas, env *pluginapi.Env) {
 	// 自己那个盒子**外面**，Draw 钩子里的会被 viva 的逐元素裁剪吃掉
 	// （official_models_catalog_drag.go 的 paintCatalogDragOverlay）。
 	p.paintCatalogDragOverlay(canvas, env, t, rect)
+	// 键盘焦点环：官方 `:focus-visible{outline:var(--dsw-focus-ring-width) solid
+	// var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}`
+	// （`index-CSAdOBx6.css`）。面板里的行有很多种画法（选择器/开关/cube 网格/
+	// 按钮/版本/模型目录），逐行挂 `Focus(...)` 一定会漏掉某一种；这里按
+	// **命中区矩形**统一画一圈，任何能聚焦的控件都覆盖到，且只在键盘可见时画
+	// （`FocusVisible` 就是 `:focus-visible`，鼠标点出来的焦点不画环）。
+	if id := canvas.FocusVisible(); !id.IsZero() {
+		for _, hit := range canvas.Hits() {
+			if hit.ID != id || hit.Bounds.Width <= 0 || hit.Bounds.Height <= 0 {
+				continue
+			}
+			cx, cy := hit.Bounds.X+hit.Bounds.Width/2, hit.Bounds.Y+hit.Bounds.Height/2
+			if cx < rect.X || cy < rect.Y || cx >= rect.X+rect.Width || cy >= rect.Y+rect.Height {
+				continue // 焦点不在面板里（例如面板刚关）：别在别处画环
+			}
+			b := hit.Bounds
+			ring := gfx.Rect{X: b.X - SettingsFocusRingOffset, Y: b.Y - SettingsFocusRingOffset,
+				Width: b.Width + 2*SettingsFocusRingOffset, Height: b.Height + 2*SettingsFocusRingOffset}
+			canvas.RoundedOutline(ring, t.Radii.MD, SettingsFocusRingWidth, t.Link)
+			break
+		}
+	}
 }
 
 // relArea 把绝对矩形转成卡片内相对矩形。
@@ -1119,6 +1195,12 @@ func (p *Plugin) handleOfficialKey(ev gfx.KeyEvent) bool {
 	}
 	// 模态层：Escape / Tab / Shift+Tab。
 	if o.modal.HandleKey(ev) {
+		if ev.Key == gfx.KeyTab {
+			// Tab 只算出"下一个可聚焦 id"，画面上要真的看得见：交给渲染器。
+			o.mu.Lock()
+			o.pendingFocus = o.modal.Focused()
+			o.mu.Unlock()
+		}
 		return true
 	}
 	if ev.Modifiers != 0 {

@@ -803,6 +803,16 @@ type WebOpenOptions struct {
 	URL string
 	// OnLoad 收导航事件；nil 表示不关心。
 	OnLoad func(WebLoad)
+	// OnProcessFailed 收页面进程没了这件事：它崩了、被系统或引擎停了、或者根本没起来。
+	// **这不是一次加载失败**——页面本来在，进程没了；它画的最后一帧没了、用户敲进去
+	// 还没保存的东西可能也丢了，要等到重新加载才有进程（Viva 的 `Reload` 就是这件事）。
+	// 官方是同一条路：`render-process-gone` / `destroyed` → `dropGuest()` + `failed()`
+	// （OFF:dsh-client-ui-sidebar-browser/src/client/electron/ElectronWebViewImpl.ts:184-186）。
+	//
+	// 与 `OnLoad` 一样只能在这里给：Viva 的 `OnProcessFailed` 是 `WebViewConfig` 的
+	// 一个字段（OFF:viva@0.6.9-procfail/app/web.go:108-115），页面开出来之后没有
+	// 再挂监听的口子。
+	OnProcessFailed func(WebProcessFailure)
 	// OnNewWindow 收页面自己发起的 `window.open` / `target=_blank`（官方
 	// `BrowserPageOptions.openRequested`，OFF:dsh-client-ui-sidebar-browser/src/client/
 	// browser/BrowserPage.ts:8-12）。
@@ -928,6 +938,54 @@ type WebLoad struct {
 	Description string
 }
 
+// WebProcessFailure 是页面进程为什么没了（与 Viva `app.WebProcessFailure` 同序同义，
+// OFF:viva@0.6.9-procfail/internal/platform/web_process_failure.go:11-75）。
+//
+// 为什么不是"一个 crashes 布尔"：官方那两条事件（`render-process-gone` / `destroyed`）
+// 只说"没了"，而用户**要不要被警告丢输入**取决于原因——Viva 的原话说得很直：
+// 渲染进程崩掉的页面可能丢了用户敲进去的东西，值得在重新加载之前提醒；
+// 被系统在内存压力下回收的页面什么都没做错，重新加载就够了。
+// 所以原因码必须从载具一层层带到界面上，不许在中间塌成 bool。
+type WebProcessFailure uint8
+
+const (
+	// WebProcessNoFailure 是页面进程还在（零值）：页面能画，没有这一档要说的坏消息。
+	WebProcessNoFailure WebProcessFailure = iota
+	// WebProcessCrashed 是没有任何人要求它就停掉的进程：页面或引擎自己的故障，
+	// 页面里没保存的东西跟着没了。
+	WebProcessCrashed
+	// WebProcessKilled 是被系统或引擎停掉的进程：内存压力、OOM 之类。
+	// 页面跟着没了，但不是页面做错了什么，重新加载一般就回来了。
+	WebProcessKilled
+	// WebProcessUnresponsive 是停止应答、被引擎结束掉的进程。
+	WebProcessUnresponsive
+	// WebProcessLaunchFailed 是根本没起来的进程：页面一次都没跑过。
+	WebProcessLaunchFailed
+	// WebProcessUnknown 是引擎报了进程没了、但原因不在本包分类里的情况，
+	// 包括引擎一个字都不说。
+	WebProcessUnknown
+)
+
+// String 给这一档一个可读的名字（逐字同 Viva `WebProcessFailure.String()`，
+// OFF:viva@v0.6.9-procfail/internal/platform/web_process_failure.go:34-48）。
+func (f WebProcessFailure) String() string {
+	switch f {
+	case WebProcessNoFailure:
+		return "no failure"
+	case WebProcessCrashed:
+		return "crashed"
+	case WebProcessKilled:
+		return "killed"
+	case WebProcessUnresponsive:
+		return "unresponsive"
+	case WebProcessLaunchFailed:
+		return "launch failed"
+	case WebProcessUnknown:
+		return "unknown failure"
+	}
+	return "web process failure " + strconv.FormatUint(uint64(f), 10)
+}
+
 // WebPage 是一个已经打开的网页。
 //
 // 方法集合刻意与官方 `BrowserFrame`（src/client/browser/BrowserFrame.ts:30-45）
@@ -941,6 +999,11 @@ type WebLoad struct {
 // `*app.WebView` 上有了同名的四个方法（`OFF:viva@0.6.8-webstate/app/web.go:344-355`），
 // 所以本仓的载具两者都有，契约就必须两边都给——**查询归查询，策略仍归插件**，
 // 载具不替插件决定"按钮该不该亮"。
+//
+// `IsCrashed` / `ProcessFailure` 是同一台引擎 v0.6.9-procfail 新增的进程崩溃观测
+// （`OFF:viva@0.6.9-procfail/app/web.go:399-409`）：与上面四个一样是**即时事实**，
+// 但语义是"这一页的进程还在不在"，不是"这次导航成不成"——两者在界面上必须分开画
+// （见 frame.go / plugin.go 的 processFailed 与 copy），不许混成一句"加载失败"。
 type WebPage interface {
 	// ID 交给 `canvas.NativeView`（或 `ui.Box.NativeView`）把页面摆进某个矩形。
 	ID() gfx.NativeViewID
@@ -966,6 +1029,16 @@ type WebPage interface {
 	// IsLoading 是引擎正在加载一次导航：从它开始到完成或失败
 	// （官方 `element.isLoading()`，`OFF:…/ElectronWebViewImpl.ts:224`）。
 	IsLoading() bool
+	// IsCrashed 报告页面的进程是不是已经没了（崩了 / 被停掉 / 没起来）：这样的页面
+	// 画不出东西，输入也丢了，所以宿主应当画自己的提示，而不是留一块引擎的空白。
+	// 与 `OnProcessFailed` 是同一件事的两个面：事件先把人叫醒，这个查询随后仍答得上来
+	// （`OFF:viva@0.6.9-procfail/app/web.go:405-409`）。
+	IsCrashed() bool
+	// ProcessFailure 是进程没了的**原因**：`IsCrashed()` 为假时是
+	// `WebProcessNoFailure`，否则是 `OnProcessFailed` 报过的那个值，
+	// 直到页面重新开始一次导航才清掉（`OFF:viva@0.6.9-procfail/app/web.go:399-402`）。
+	// 界面上"要不要提醒丢输入"由它决定，不由 `IsCrashed` 决定。
+	ProcessFailure() WebProcessFailure
 	// Close 关掉页面；之后它的 ID 不再能被摆到任何矩形里。
 	Close()
 }

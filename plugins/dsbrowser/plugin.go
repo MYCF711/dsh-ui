@@ -772,6 +772,13 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 			OnLoad: func(load pluginapi.WebLoad) {
 				p.handleLoad(&loadEnv, load)
 			},
+			// 进程没了：官方两条事件 `render-process-gone` / `destroyed` 走
+			// `dropGuest()` + `failed()`（ElectronWebViewImpl.ts:184-186），
+			// 本仓走自己的 `handleProcessFailed`——**不折进 OnLoad**，因为
+			// "页面进程没了"与"这次导航失败"不是一件事（见 frame.go 文件头）。
+			OnProcessFailed: func(failure pluginapi.WebProcessFailure) {
+				p.handleProcessFailed(&loadEnv, failure)
+			},
 			// 页面自己 `window.open` / `target=_blank`：官方载具把它交给
 			// `BrowserController.openRequested`（BrowserController.ts:54-59），
 			// 再由 `BrowserBody.tsx:66` 开成应用内新标签。这里同一条路。
@@ -811,10 +818,8 @@ func (p *Plugin) openPage(env *pluginapi.Env, target browserTarget) {
 //	page-title-updated                   → WebLoad.Title + Committed/Done 时采纳，
 //	                                       并按官方判据只在 address 已 observed 时才算数
 //	did-fail-load                        → WebLoad.Code / Description（-3 那条跳过）
-//
-// **仍然没有对等物的一条**：render-process-gone / destroyed（引擎进程崩了）。
-// Viva 的 `WebLoad` 与 `WebView` 都不报这件事，所以本仓不伪造这一档，
-// 已登记在 docs/official-parity.md 的 #50 行。
+//	render-process-gone / destroyed      → **不走这里**：OnProcessFailed →
+//	                                       handleProcessFailed（它与导航是两件事）
 func (p *Plugin) handleLoad(env *pluginapi.Env, load pluginapi.WebLoad) {
 	sessionID, tabID := browserEnvIdentity(env)
 	key := browserInstanceKey(sessionID, tabID)
@@ -852,6 +857,32 @@ func (p *Plugin) handleLoad(env *pluginapi.Env, load pluginapi.WebLoad) {
 		p.address.SetText(committed.URL)
 	}
 	p.persistActive(env)
+}
+
+// handleProcessFailed 把"页面进程没了"落进对应 occurrence 的引擎侧状态。
+//
+// 官方在 `createGuest` 里给同一个 guest 挂两条事件（ElectronWebViewImpl.ts:184-186），
+// 本仓每个 occurrence 的 Open 各带一份 `OnProcessFailed` 闭包（固定那一次的 Env），
+// 所以这里与 handleLoad 同一套分流：**旁路 occurrence 的崩溃只落在它自己身上**，
+// 不会把当前正在看的 tab 画成崩溃。
+//
+// 只改 `frame`（crashed / crash / loading / 历史可用性），**不改应用侧导航状态**：
+// 官方 `failed()` 也不碰 checkpoint——地址栏与历史记录项保留，用户还能刷新或另开
+// 地址（ElectronWebViewImpl.ts:240-245）。也**不落盘**：`frame` 本来就不持久化
+// （重启后引擎进程根本不存在，恢复出来的一定是假的），崩溃现场只在这一次进程里
+// 有意义；写一次没变的 ui-config 只是白白多一次 IO。
+func (p *Plugin) handleProcessFailed(env *pluginapi.Env, failure pluginapi.WebProcessFailure) {
+	sessionID, tabID := browserEnvIdentity(env)
+	key := browserInstanceKey(sessionID, tabID)
+	if key != p.currentKey {
+		instance := p.instances[key]
+		if instance == nil || instance.page == nil {
+			return
+		}
+		instance.frame.processFailed(failure)
+		return
+	}
+	p.frame.processFailed(failure)
 }
 
 // applyWebLoad 把一个载具事件落进某一份 occurrence 的导航状态。
@@ -907,6 +938,14 @@ func (p *Plugin) afterDraw(canvas *gfx.Canvas, env *pluginapi.Env) {
 	// 本帧没画 tab 体（右栏收起 / 切到别的 tab）→ 什么都不声明，网页自然隐藏。
 	p.drawn = false
 	if !drawn || page == nil || canvas == nil {
+		return
+	}
+	// 进程没了 → 不摆 native view。官方在 `render-process-gone` / `destroyed` 里
+	// `dropGuest()` 把 guest 元素直接摘掉（ElectronWebViewImpl.ts:184-186,252-256），
+	// 一个死掉的引擎视图只会是一块空白，还会盖住 Viva 自己画的东西；刷新会重新
+	// 加载页面（Viva 说 `Reload` 就是"loaded again"的唯一入口，
+	// OFF:viva@0.6.9-procfail/app/web.go:405-409）。
+	if p.frame.crashed {
 		return
 	}
 	rect := box.Rect()

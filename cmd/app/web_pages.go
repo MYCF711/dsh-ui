@@ -55,6 +55,22 @@ func (w webPages) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, err
 	if w.host == nil {
 		return nil, pluginapi.ErrWebUnsupported
 	}
+	page, err := w.host.Open(webViewConfig(options))
+	if err != nil {
+		if errors.Is(err, app.ErrUnsupported) {
+			return nil, pluginapi.ErrWebUnsupported
+		}
+		return nil, err
+	}
+	return &webPage{page: page}, nil
+}
+
+// webViewConfig 把契约选项翻成 Viva 的窗口配置，是**唯一**产生配置的地方。
+//
+// 为什么单拎出来：两个回调（导航 / 进程崩溃）就是"事件接没接上"的全部，而 `Open`
+// 要一个真 `app.WebHost` 才能跑；把配置放进纯函数，壳这一层的接线就能在不需要
+// 引擎的单测里钉住（cmd/app/web_pages_test.go 的进程崩溃那三条）。
+func webViewConfig(options pluginapi.WebOpenOptions) app.WebViewConfig {
 	config := app.WebViewConfig{
 		URL: options.URL,
 		// 插件接了 `OnNewWindow`（官方 `BrowserController.openRequested`）时，那个地址
@@ -86,14 +102,15 @@ func (w webPages) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, err
 			})
 		}
 	}
-	page, err := w.host.Open(config)
-	if err != nil {
-		if errors.Is(err, app.ErrUnsupported) {
-			return nil, pluginapi.ErrWebUnsupported
+	if options.OnProcessFailed != nil {
+		config.OnProcessFailed = func(failure app.WebProcessFailure) {
+			// 进程没了是**另一件事**，不折进 OnLoad：官方也是两条独立事件
+			// （`did-fail-load` 与 `render-process-gone`，ElectronWebViewImpl.ts:178-186），
+			// 载具不许替插件决定"这两个看起来一样"。
+			options.OnProcessFailed(webProcessFailure(failure))
 		}
-		return nil, err
 	}
-	return &webPage{page: page}, nil
+	return config
 }
 
 // webPage 是 pluginapi.WebPage 的实现。
@@ -115,6 +132,13 @@ func (p *webPage) Title() string      { return p.page.Title() }
 func (p *webPage) CanGoBack() bool    { return p.page.CanGoBack() }
 func (p *webPage) CanGoForward() bool { return p.page.CanGoForward() }
 func (p *webPage) IsLoading() bool    { return p.page.IsLoading() }
+
+// 崩溃观测同理，只翻译：`IsCrashed` 与 `ProcessFailure` 都是 Viva 的即时查询
+// （OFF:viva@0.6.9-procfail/app/web.go:399-409），插件在画那一帧时问一次。
+func (p *webPage) IsCrashed() bool { return p.page.IsCrashed() }
+func (p *webPage) ProcessFailure() pluginapi.WebProcessFailure {
+	return webProcessFailure(p.page.ProcessFailure())
+}
 
 // webPhase 把 Viva 的相位翻成契约相位。
 func webPhase(phase app.WebLoadPhase) pluginapi.WebLoadPhase {
@@ -160,4 +184,29 @@ func webLoadError(code app.WebLoadError) pluginapi.WebLoadError {
 		return pluginapi.WebLoadAuthenticationRequired
 	}
 	return pluginapi.WebLoadUnknownError
+}
+
+// webProcessFailure 把 Viva 的进程失败原因翻成契约原因。
+//
+// 与 webLoadError 同一套规矩：逐条列举、不强转（两份枚举现在同序，但契约不许依赖
+// 上游数值）、认不出的归 `WebProcessUnknown`——那正是 Viva 自己对没分类原因的处理
+// （OFF:viva@v0.6.9-procfail/internal/platform/web_process_failure.go:98-117）。
+// 零值必须落到 `WebProcessNoFailure`：那是"进程还在"，不能因为翻译漏一档就把
+// 一次正常页面变成一个崩溃提示。
+func webProcessFailure(failure app.WebProcessFailure) pluginapi.WebProcessFailure {
+	switch failure {
+	case app.WebProcessNoFailure:
+		return pluginapi.WebProcessNoFailure
+	case app.WebProcessCrashed:
+		return pluginapi.WebProcessCrashed
+	case app.WebProcessKilled:
+		return pluginapi.WebProcessKilled
+	case app.WebProcessUnresponsive:
+		return pluginapi.WebProcessUnresponsive
+	case app.WebProcessLaunchFailed:
+		return pluginapi.WebProcessLaunchFailed
+	case app.WebProcessUnknown:
+		return pluginapi.WebProcessUnknown
+	}
+	return pluginapi.WebProcessUnknown
 }

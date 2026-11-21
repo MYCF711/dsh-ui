@@ -465,17 +465,44 @@ func (p *Plugin) drawContentState(f ui.C, env *pluginapi.Env) {
 	}
 	// 官方 .restore：checkpoint 仍在、但本进程尚未请求页面时，显示保存的
 	// title/url 和显式「恢复页面」按钮；不能把它当成普通 start 自动开页。
+	//
+	// 容器照官方 `.restore`（`Browser.module.css:151-161`）：
+	//
+	//	position:absolute; inset:0; display:flex; flex-direction:column;
+	//	align-items:center; gap:10px; padding:24px; overflow:auto; text-align:center
+	//
+	// `overflow:auto` 与下面两段文本的 `overflow-wrap:anywhere` 是**一套**：文本按
+	// 容器宽度断行（`.restoreTitle`/`.restoreUrl` 两块的 `max-width:100%`，`:170`
+	// `:178`），总高可以超过一屏，超过就滚。所以这里用 `ui.Scroll`（Viva 的
+	// overflow:auto，`OFF:viva@v0.6.12-ow/base/frame.go:566`）而不是纯 Column：
+	// 装得下时两枚 `Grow(1)` 空行把它竖向居中（官方是 `.restoreLabel{margin:auto 0 0}`
+	// `:164` 与 `.restore>:last-child{margin-bottom:auto}` `:185-188` 那两个 auto 边距），
+	// 装不下时滚动——否则超长地址会把「恢复页面」按钮顶到裁剪区外，点不到。
 	if p.page == nil && p.openErr == nil {
 		if target, ok := currentTarget(p.nav.value); ok {
-			ui.Column(f).FillWidth().FillHeight().Pad(startPad).Gap(10).Items(ui.Center).Children(func() {
+			ui.Scroll(f).FillWidth().FillHeight().Pad(startPad).Gap(10).Items(ui.Center).Children(func() {
 				ui.Row(f).Grow(1).Items(ui.Center).Justify(ui.Center).Children(func() {
 					ui.Text(f, copyRestorePrevious).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
 						Color(t.LabelTertiary)
 				})
-				ui.Paragraph(f, target.Title, 3).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
-					Weight(gfx.WeightMedium).TextCenter().FillWidth()
-				ui.Paragraph(f, target.URL, 4).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
-					Color(t.LabelSecondary).TextCenter().FillWidth()
+				// `.restoreTitle`（`Browser.module.css:169-175`）全部属性：
+				// `max-width:100%` / `margin:0` / `overflow-wrap:anywhere` /
+				// `font:var(--dsw-font-xs-13)` / `font-weight:500`。
+				// **没有** `word-break`、`white-space`、`text-overflow`、行数上限，
+				// 所以这里也不写死行数：之前的 `FillWidth()` + 3 行截断是本仓自己加的
+				// 补丁（Viva 当年没有 overflow-wrap 的等价物），官方形状里不存在。
+				// `OverflowWrap(Anywhere)` 就是 CSS 那条的等价物——Viva 原文
+				// 「the width the Text asks for is then the room it is given rather than
+				// its widest line」(`OFF:viva@v0.6.12-ow/base/text_wrap.go:92-100`)，
+				// 恰好等于官方 `max-width:100%` 的效果，因此不写 `FillWidth()`
+				// （写了就等于把 `max-width` 换成 `width`，盒子宽度语义与官方不同）。
+				ui.Paragraph(f, target.Title, 0).FontSize(t.Fonts.Secondary).LineHeight(t.Fonts.SecondaryLine).
+					Weight(gfx.WeightMedium).TextCenter().OverflowWrap(ui.OverflowWrapAnywhere)
+				// `.restoreUrl`（`Browser.module.css:177-183`）全部属性：
+				// `max-width:100%` / `margin:0` / `overflow-wrap:anywhere` /
+				// `color:var(--dsw-alias-label-secondary)` / `font:var(--dsw-font-xxs-12)`。
+				ui.Paragraph(f, target.URL, 0).FontSize(t.Fonts.Caption).LineHeight(t.Fonts.CaptionLine).
+					Color(t.LabelSecondary).TextCenter().OverflowWrap(ui.OverflowWrapAnywhere)
 				button := ui.Button(f, copyRestoreAction).Small().Background(t.ButtonPrimaryFill).
 					Color(t.ButtonPrimaryFg)
 				if button.Clicked() {

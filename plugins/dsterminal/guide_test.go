@@ -40,16 +40,20 @@ func TestOfficialTerminalGuideGeometry(t *testing.T) {
 		{"trigger size", guideTriggerSize, 20},
 		{"trigger radius", guideTriggerRadius, 4},
 		{"trigger chevron", guideChevronSize, 14},
+		// `.icon` 里 `PluginArtworkTerminal size={description === undefined ? 22 : 26}`
+		// （TerminalGuide.tsx:58）：没有描述时官方画 22。
+		{"icon box (no description)", guideIconBoxCompact, 22},
 	}
 	for _, check := range checks {
 		if check.got != check.want {
 			t.Errorf("%s = %v，官方值 %v", check.name, check.got, check.want)
 		}
 	}
-	// `.menu{display:flex;flex:none}`（:11）面的度量取仓库已冻结的官方菜单档，
-	// 这里钉住"没有另编一套数"这件事。
-	if guideMenuPad != 4 || guideMenuRowH != 34 || guideMenuFont != 13 {
-		t.Errorf("菜单面度量漂了：pad=%v row=%v font=%v", guideMenuPad, guideMenuRowH, guideMenuFont)
+	// `.menu{display:flex;flex:none}`（:11）：面与行都是 primitives `Menu` 的，
+	// 读数只有一份（`plugins/dscore/menu.go`），这里钉住"没有另编一套数"。
+	if guideMenuRowPadX != 8 || guideMenuFont != 13 || guideMenuLine != 20 || guideCheckSize != 16 {
+		t.Errorf("菜单行度量漂了：padX=%v font=%v line=%v check=%v（官方 .cell 8 / 13 / 20 / sprite 16）",
+			guideMenuRowPadX, guideMenuFont, guideMenuLine, guideCheckSize)
 	}
 	// 卡片图标是官方 `PluginArtworkTerminal` 的 36-box / 3.5 stroke，不是本包自画的
 	// 16-box 终端字形（`dsh-web-frontend/dist/assets/index-ghOpC9uV.js` 的 xK 组件）。

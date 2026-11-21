@@ -151,6 +151,12 @@ func countShadowTokenCalls(t *testing.T, fset *token.FileSet, dir string) int {
 			if strings.HasPrefix(sel.Sel.Name, "PaintShadow") ||
 				strings.HasPrefix(sel.Sel.Name, "PaintElevation") {
 				count++
+				return true
+			}
+			// 共享画笔同一个道理：它内部就是 PaintElevationOverlay，档位由
+			// `TestElevationDecisionTablePerSite` 的实现文件那一行钉住。
+			if _, shared := sharedShadowPainters[sel.Sel.Name]; shared {
+				count++
 			}
 			return true
 		})

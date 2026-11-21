@@ -34,9 +34,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/vivaui/viva/ui"
 )
 
 // hitsIdentityHelpers 是"调用方传 id、函数体内挂命中区"的辅助函数。
@@ -47,6 +50,15 @@ var hitsIdentityHelpers = map[string]string{
 	"SectionHeader":       "plugins/dscore/primitives.go 的 SectionHeader：`.Hit(id, \"\")` 与 ListRow 同一类（身份由调用方 id 给）",
 	"chromeButton":        "plugins/dsrightbar/rightbar.go 的 chromeButton：`.Hit(env.Tree.ID(env.Feat, name), label)`",
 	"workspaceIconButton": "plugins/dssidebar/frame.go 的 workspaceIconButton：内部 `Hit(id, label)`",
+}
+
+// hitsFrameworkIdentities 是"身份由框架声明、调用方不挂 .Hit"的来源。
+//
+// 与 hitsIdentityHelpers 的区别：那些是本仓的辅助函数（id 由调用方传），这些是
+// **viva 原语自己**给元素分配身份。反向判据见 TestHitsFrameworkIdentitiesStillExist。
+var hitsFrameworkIdentities = map[string]string{
+	"items.Item(": "viva `MenuItems.Item`：行身份 = `menu.scope.At(MenuRowsPart+i)`，" +
+		"`MenuItem.ID()`（base/menu.go:546）与 `MenuItem.Clicked()`（:550-559）用的就是它",
 }
 
 // hitsClickedRe 匹配 `.Clicked()` 的接收者表达式。
@@ -191,6 +203,16 @@ func TestClickedHasIdentity(t *testing.T) {
 			// 创建，本函数看不见它的链，交给调用方的判定。
 			continue
 		}
+		framework := false
+		for declarer := range hitsFrameworkIdentities {
+			if strings.Contains(s.decl, declarer) {
+				framework = true
+				break
+			}
+		}
+		if framework {
+			continue
+		}
 		bad = append(bad, s)
 	}
 	if len(bad) > 0 {
@@ -234,6 +256,28 @@ func TestHitsIdentityHelpersStillExist(t *testing.T) {
 		}
 		if !found {
 			t.Fatalf("登记表里的辅助函数 %q 在代码里找不到（改名了？）：%s", name, why)
+		}
+	}
+}
+
+// TestHitsFrameworkIdentitiesStillExist 是 hitsFrameworkIdentities 的反向判据：
+// 登记表必须还指着**真实存在**的框架 API，否则那条放行就退化成"关键词一出现就放行"。
+func TestHitsFrameworkIdentitiesStillExist(t *testing.T) {
+	if len(hitsFrameworkIdentities) == 0 {
+		t.Fatal("hitsFrameworkIdentities 为空——判据②会退化成『什么都放行』")
+	}
+	for declarer, why := range hitsFrameworkIdentities {
+		name := strings.TrimSuffix(strings.TrimPrefix(declarer, "items."), "(")
+		if name != "Item" {
+			t.Fatalf("登记表里的 %q 不在本测试的认识范围内（新增条目要同时在这里核 API）：%s",
+				declarer, why)
+		}
+		if _, ok := reflect.PointerTo(reflect.TypeOf(ui.MenuItems{})).MethodByName(name); !ok {
+			t.Fatalf("登记表说 `%s` 由框架声明命中，但 ui.MenuItems 没有 %s 方法：%s",
+				declarer, name, why)
+		}
+		if _, ok := reflect.TypeOf(ui.MenuItem{}).MethodByName("Clicked"); !ok {
+			t.Fatalf("登记表说菜单行自带身份，但 ui.MenuItem 没有 Clicked 方法：%s", why)
 		}
 	}
 }

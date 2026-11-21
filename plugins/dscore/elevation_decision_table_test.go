@@ -19,6 +19,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -46,7 +47,13 @@ var elevationSites = map[string]elevationSite{
 	"dsshortcuts/shortcuts.go":             {"Lv3", ""},               // Reference .dialog（lv3 无描边层）
 	"dssidebar/workspace_actions.go":       {"Prominent", "BorderL4"}, // 对话框原语
 	"dsstatusbar/official_stats_dialog.go": {"Prominent", "BorderL1"}, // stat-dialog .panel
-	"dsterminal/guide.go":                  {"Prominent", "BorderL1"}, // 菜单原语
+	"dsterminal/guide.go":                  {"Prominent", "BorderL1"}, // 菜单原语（走 PaintMenuPanel）
+
+	// —— 共享画笔自己那一处 ——
+	// `PaintMenuPanel` 是"菜单原语的面"的唯一实现（forge 范围菜单与终端 shell 菜单
+	// 都走它）。它的档位必须在这一行钉住，否则上面的 `dsterminal/guide.go` 与
+	// `dsforge` 那两处调用就等于没有判据。
+	"dscore/menu.go": {"Prominent", "BorderL1"}, // 菜单原语 Menu.module.css 面
 
 	// —— 5 处手抄了同一套数值的（改成令牌，数值不变）——
 	"dsattachment/rail.go":          {"Panel", ""},             // AttachmentRail .arrow（l2-darkmode-thin）
@@ -54,6 +61,15 @@ var elevationSites = map[string]elevationSite{
 	"dsdirpicker/browse.go":         {"Prominent", "BorderL4"}, // 对话框原语
 	"dsgoal/official_seat.go":       {"Panel", "BorderL1"},     // GoalBar .bar
 	"dsquestions/plan_review.go":    {"Panel", "BorderL2"},     // PlanReviewPanel .card
+}
+
+// sharedShadowPainters 是「一把画完一处浮层」的共享画笔：调用方只说"画菜单面"，
+// 具体档位由实现文件决定，**不许**在调用点再写一遍档次。
+//
+// 值是那一档在 elevationSites 里的键（= 实现文件），所以档位只有一份读数：
+// 改 `PaintMenuPanel` 里的 Shadows.X，`dscore/menu.go` 那一行立刻红。
+var sharedShadowPainters = map[string]string{
+	"PaintMenuPanel": "dscore/menu.go",
 }
 
 // TestElevationDecisionTablePerSite 扫源码，逐处核对「档位 + 描边色」。
@@ -76,6 +92,15 @@ func TestElevationDecisionTablePerSite(t *testing.T) {
 			if !ok {
 				return true
 			}
+			// 同包内的直接调用：`dscore/menu.go` 这类**实现文件**自己就在这个包里，
+			// 它写的是 `PaintElevationOverlay(...)` 而不是 `dscore.PaintElevationOverlay(...)`。
+			if ident, ok := call.Fun.(*ast.Ident); ok {
+				if strings.HasPrefix(ident.Name, "PaintElevation") ||
+					strings.HasPrefix(ident.Name, "PaintShadow") {
+					found = append(found, siteOfCall(call))
+				}
+				return true
+			}
 			sel, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok {
 				return true
@@ -87,6 +112,18 @@ func TestElevationDecisionTablePerSite(t *testing.T) {
 			switch sel.Sel.Name {
 			case "PaintElevation", "PaintElevationOverlay", "PaintShadow", "PaintShadowOverlay":
 			default:
+				// 共享画笔：档位取它实现文件在表里的那一行（单一读数）。
+				key, shared := sharedShadowPainters[sel.Sel.Name]
+				if !shared {
+					return true
+				}
+				want, ok := elevationSites[key]
+				if !ok {
+					t.Errorf("%s: 共享画笔 dscore.%s 的档位没有登记（缺 %q 这一行）",
+						rel, sel.Sel.Name, key)
+					return true
+				}
+				found = append(found, want)
 				return true
 			}
 			found = append(found, siteOfCall(call))

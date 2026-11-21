@@ -65,11 +65,18 @@ func actionIDs(actions []pluginapi.ContextMenuAction) []string {
 }
 
 // newPlugin 造一个已接上菜单服务、且拿到壳动作的插件。
+//
+// 两条壳动作一起给：`SaveWorkspaceFile`（下载/另存为）与 `CopyWorkspaceImage`
+// （复制图片，`#18` ①）。真壳两个总是一起接的；"只有其中一个"的老壳由
+// TestMenusOmitCopyWithoutShellAction 单独钉。
 func newPlugin(save func(sessionID, path, name, mode string)) (*Plugin, *fakeMenus) {
 	menus := &fakeMenus{}
 	p := &Plugin{menus: menus}
 	if save != nil {
-		p.act = pluginapi.Actions{SaveWorkspaceFile: save}
+		p.act = pluginapi.Actions{
+			SaveWorkspaceFile:  save,
+			CopyWorkspaceImage: func(string, string) {},
+		}
 	}
 	if err := p.registerMenus(fakeContext{}); err != nil {
 		panic(err)
@@ -104,21 +111,22 @@ func TestRegistersOfficialTargets(t *testing.T) {
 	}
 }
 
-// TestFileMenuKeepsImageDownload 钉住官方的三段展开条件在 canSaveAs=true 下的结果：
+// TestFileMenuMatchesOfficialSequence 钉住官方的三段展开条件在 canSaveAs=true 下的结果：
 //
-//	图片 → download + saveAs
+//	图片   → copyImage + download + saveAs（官方顺序，OFF:context-menus.tsx:69-80）
 //	非图片 → 只有 saveAs（官方 download 只在 image/ 或 !canSaveAs 时出现）
-//
-// copyImage 本仓不画（viva 没有剪贴板图片写入口），所以这里**只应有**这两项。
-func TestFileMenuKeepsImageDownload(t *testing.T) {
+func TestFileMenuMatchesOfficialSequence(t *testing.T) {
 	_, menus := newPlugin(func(string, string, string, string) {})
 	target := pluginapi.ContextMenuTarget{Kind: pluginapi.TargetFile, SessionID: "s1", Path: "docs/a.png"}
 
 	got := actionIDs(menus.resolve(pluginapi.TargetFile, target))
-	if len(got) != 2 || got[0] != actionDownload || got[1] != actionSaveAs {
-		t.Fatalf("图片 file target 的动作 = %v，want [download saveAs]（copyImage 按缺口不画）", got)
+	if len(got) != 3 || got[0] != actionCopyImage || got[1] != actionDownload || got[2] != actionSaveAs {
+		t.Fatalf("图片 file target 的动作 = %v，want [copyImage download saveAs]", got)
 	}
-	if labels := []string{menus.resolve(pluginapi.TargetFile, target)[0].Label, "下载"}; labels[0] != labels[1] {
+	if labels := []string{menus.resolve(pluginapi.TargetFile, target)[0].Label, "复制图片"}; labels[0] != labels[1] {
+		t.Fatalf("复制图片文案 = %q，want 官方 zh 字典的 %q", labels[0], labels[1])
+	}
+	if labels := []string{menus.resolve(pluginapi.TargetFile, target)[1].Label, "下载"}; labels[0] != labels[1] {
 		t.Fatalf("下载文案 = %q，want 官方 zh 字典的 %q", labels[0], labels[1])
 	}
 
@@ -147,16 +155,21 @@ func TestFileMenuNeedsIdentityAndShellAction(t *testing.T) {
 	}
 }
 
-// TestImageMenuUsesCapturedTarget 钉住三件事：
+// TestImageMenuUsesCapturedTarget 钉住四件事：
 //   - image target 需要 (sessionId, path)，只有 url 时不给动作（本仓取不到 URL 字节）；
+//   - 三项的顺序与官方一致：copy → download → saveAs（OFF:context-menus.tsx:98-105）；
 //   - name 优先用 target.Name，缺了才退回路径最后一段；
-//   - Run 交给壳的四个字段是**打开菜单时捕获的**，不是"当前选中"。
+//   - 三条 Run 交给壳的字段都是**打开菜单时捕获的**，不是"当前选中"。
 func TestImageMenuUsesCapturedTarget(t *testing.T) {
 	var got [][4]string
 	calls := func(sessionID, path, name, mode string) {
 		got = append(got, [4]string{sessionID, path, name, mode})
 	}
-	_, menus := newPlugin(calls)
+	var copied [][2]string
+	p, menus := newPlugin(calls)
+	p.act.CopyWorkspaceImage = func(sessionID, path string) {
+		copied = append(copied, [2]string{sessionID, path})
+	}
 
 	urlOnly := pluginapi.ContextMenuTarget{Kind: pluginapi.TargetImage, URL: "https://example/a.png"}
 	if actions := menus.resolve(pluginapi.TargetImage, urlOnly); len(actions) != 0 {
@@ -167,13 +180,21 @@ func TestImageMenuUsesCapturedTarget(t *testing.T) {
 		Kind: pluginapi.TargetImage, SessionID: "s7", Path: "img/shot.png", Name: "截图.png",
 	}
 	actions := menus.resolve(pluginapi.TargetImage, target)
-	if ids := actionIDs(actions); len(ids) != 2 || ids[0] != actionDownload || ids[1] != actionSaveAs {
-		t.Fatalf("image target 的动作 = %v，want [download saveAs]", ids)
+	ids := actionIDs(actions)
+	if len(ids) != 3 || ids[0] != actionCopy || ids[1] != actionDownload || ids[2] != actionSaveAs {
+		t.Fatalf("image target 的动作 = %v，want [copy download saveAs]", ids)
 	}
 	actions[0].Run()
 	actions[1].Run()
+	actions[2].Run()
+	if len(copied) != 1 {
+		t.Fatalf("复制图片调用了 %d 次壳动作，want 1", len(copied))
+	}
+	if copied[0] != [2]string{"s7", "img/shot.png"} {
+		t.Fatalf("复制图片参数 = %v，want 捕获的 s7|img/shot.png（剪贴板不需要文件名）", copied[0])
+	}
 	if len(got) != 2 {
-		t.Fatalf("Run 调用了 %d 次壳动作，want 2", len(got))
+		t.Fatalf("Run 调用了 %d 次保存动作，want 2", len(got))
 	}
 	if got[0] != [4]string{"s7", "img/shot.png", "截图.png", pluginapi.FileDownload} {
 		t.Fatalf("download 参数 = %v", got[0])
@@ -190,10 +211,10 @@ func TestImageMenuFallsBackToPathName(t *testing.T) {
 	actions := menus.resolve(pluginapi.TargetImage, pluginapi.ContextMenuTarget{
 		Kind: pluginapi.TargetImage, SessionID: "s1", Path: `pics\a b.png`,
 	})
-	if len(actions) == 0 {
-		t.Fatal("有 (sessionId, path) 的 image target 必须给动作")
+	if len(actions) != 3 {
+		t.Fatalf("有 (sessionId, path) 的 image target 必须给三条动作，实际 %d", len(actions))
 	}
-	actions[1].Run()
+	actions[2].Run() // saveAs
 	if name != "a b.png" {
 		t.Fatalf("建议文件名 = %q，want %q（反斜杠也要认）", name, "a b.png")
 	}
@@ -212,17 +233,22 @@ func TestPainterRefreshesActions(t *testing.T) {
 	}
 	// 空 env 不 panic（壳在某些装配里可能给 nil）。
 	painter.Draw(nil, nil)
-	var called bool
+	var saved, copied bool
 	painter.Draw(nil, &pluginapi.Env{Act: pluginapi.Actions{
-		SaveWorkspaceFile: func(string, string, string, string) { called = true },
+		SaveWorkspaceFile:  func(string, string, string, string) { saved = true },
+		CopyWorkspaceImage: func(string, string) { copied = true },
 	}})
 	actions := menus.resolve(pluginapi.TargetFile, pluginapi.ContextMenuTarget{SessionID: "s1", Path: "a.png"})
-	if len(actions) != 2 {
-		t.Fatalf("刷新后动作数 = %d，want 2", len(actions))
+	if len(actions) != 3 {
+		t.Fatalf("刷新后动作数 = %d，want 3（copyImage/download/saveAs）", len(actions))
 	}
-	actions[1].Run()
-	if !called {
-		t.Fatal("Run 没有调用本帧注入的壳动作")
+	actions[0].Run()
+	if !copied {
+		t.Fatal("复制图片的 Run 没有调用本帧注入的壳动作")
+	}
+	actions[2].Run()
+	if !saved {
+		t.Fatal("另存为的 Run 没有调用本帧注入的壳动作")
 	}
 }
 
@@ -258,8 +284,8 @@ func TestFileMenuDisabledWhenStatFails(t *testing.T) {
 				Kind: pluginapi.TargetFile, SessionID: "s1", Path: "docs/a.png",
 			}
 			actions := menus.resolve(pluginapi.TargetFile, target)
-			if len(actions) != 2 {
-				t.Fatalf("动作数 = %d，want 2（stat 失败也必须照样列出，只是置灰）", len(actions))
+			if len(actions) != 3 {
+				t.Fatalf("动作数 = %d，want 3（copyImage/download/saveAs；stat 失败也必须照样列出，只是置灰）", len(actions))
 			}
 			for _, action := range actions {
 				if action.Disabled != tc.wantDisabled {
@@ -283,12 +309,100 @@ func TestImageMenuNeverDisabled(t *testing.T) {
 		Kind: pluginapi.TargetImage, SessionID: "s1", Path: "img/a.png", Name: "a.png",
 	}
 	actions := menus.resolve(pluginapi.TargetImage, target)
-	if len(actions) != 2 {
-		t.Fatalf("image 动作数 = %d，want 2", len(actions))
+	if len(actions) != 3 {
+		t.Fatalf("image 动作数 = %d，want 3（copy/download/saveAs）", len(actions))
 	}
 	for _, action := range actions {
 		if action.Disabled {
 			t.Fatalf("image 动作 %s 被置灰：官方 image 菜单没有 stat/disabled（只有 file 族有）", action.ID)
 		}
 	}
+}
+
+// TestCopyImageMatchesOfficial 钉住**两处入口的复制项**逐字段对齐官方：
+//
+//	file  族 OFF:context-menus.tsx:70  id=copyImage · icon=file-actions.copy · separatorBefore=true
+//	image 族 OFF:context-menus.tsx:99  id=copy      · icon=file-actions.copy · 无分隔线
+//
+// 两处文案同为 `menu.copyImage`（'复制图片'，OFF:locales.ts:9），disabled 只有
+// file 族有（image 族整段没有 stat/available，见 TestImageMenuNeverDisabled）。
+func TestCopyImageMatchesOfficial(t *testing.T) {
+	_, menus := newPlugin(func(string, string, string, string) {})
+	target := pluginapi.ContextMenuTarget{Kind: pluginapi.TargetFile, SessionID: "s1", Path: "docs/图 1.png"}
+
+	fileActions := menus.resolve(pluginapi.TargetFile, target)
+	copyImage := fileActions[0]
+	if copyImage.ID != "copyImage" {
+		t.Fatalf("file 族的复制项 id = %q，want %q（官方 :70）", copyImage.ID, "copyImage")
+	}
+	if copyImage.Icon != "file-actions.copy" {
+		t.Fatalf("file 族复制项图标 = %q，want %q", copyImage.Icon, "file-actions.copy")
+	}
+	if !copyImage.SeparatorBefore {
+		t.Fatal("file 族的复制项缺分隔线（官方 `separatorBefore: true`，:70）")
+	}
+	if copyImage.Label != "复制图片" {
+		t.Fatalf("复制项文案 = %q，want 官方 zh 的 %q", copyImage.Label, "复制图片")
+	}
+
+	imageActions := menus.resolve(pluginapi.TargetImage, pluginapi.ContextMenuTarget{
+		Kind: pluginapi.TargetImage, SessionID: "s1", Path: "img/a.png", Name: "a.png",
+	})
+	copyItem := imageActions[0]
+	if copyItem.ID != "copy" {
+		t.Fatalf("image 族的复制项 id = %q，want %q（官方 :99，两族 id 不同）", copyItem.ID, "copy")
+	}
+	if copyItem.Icon != "file-actions.copy" || copyItem.Label != "复制图片" {
+		t.Fatalf("image 族复制项 = %q/%q，want 图标 file-actions.copy、文案 复制图片", copyItem.Icon, copyItem.Label)
+	}
+	if copyItem.SeparatorBefore {
+		t.Fatal("image 族的复制项不该有分隔线（官方 :99 没有 separatorBefore）")
+	}
+}
+
+// TestFileMenuCopyImageDisabledByStat 钉住 file 族复制项**同样吃 stat 判据**：
+// 官方 `disabled: !available` 挂在这一条上（:71），stat 失败时它必须灰。
+//
+// 与 image 族区分开：那一族永远不灰（没有 stat）。
+func TestFileMenuCopyImageDisabledByStat(t *testing.T) {
+	p, menus := newPlugin(func(string, string, string, string) {})
+	p.act.WorkspaceFileStat = func(string, string) bool { return false }
+	actions := menus.resolve(pluginapi.TargetFile, pluginapi.ContextMenuTarget{SessionID: "s1", Path: "a.png"})
+	if len(actions) != 3 {
+		t.Fatalf("动作数 = %d，want 3", len(actions))
+	}
+	if !actions[0].Disabled {
+		t.Fatal("stat 失败时复制图片仍可点：官方是 `disabled: !available`（:71）")
+	}
+}
+
+// TestMenusOmitCopyWithoutShellAction 钉住"不给死按钮"：壳没接
+// `Actions.CopyWorkspaceImage`（老壳 / 无头）时，复制项**不画**——
+// 画出来就是点了没反应的项。另外两条保存项照旧（它们只依赖 SaveWorkspaceFile）。
+func TestMenusOmitCopyWithoutShellAction(t *testing.T) {
+	p, menus := newPlugin(func(string, string, string, string) {})
+	p.act.CopyWorkspaceImage = nil
+
+	fileIDs := actionIDs(menus.resolve(pluginapi.TargetFile, pluginapi.ContextMenuTarget{SessionID: "s1", Path: "a.png"}))
+	if len(fileIDs) != 2 || fileIDs[0] != actionDownload || fileIDs[1] != actionSaveAs {
+		t.Fatalf("壳没接复制图片时 file 族 = %v，want [download saveAs]", fileIDs)
+	}
+	imageIDs := actionIDs(menus.resolve(pluginapi.TargetImage, pluginapi.ContextMenuTarget{
+		SessionID: "s1", Path: "img/a.png", Name: "a.png",
+	}))
+	if len(imageIDs) != 2 || imageIDs[0] != actionDownload || imageIDs[1] != actionSaveAs {
+		t.Fatalf("壳没接复制图片时 image 族 = %v，want [download saveAs]", imageIDs)
+	}
+}
+
+// TestCopyRunReadsHookAtCallTime 钉住 Run 里对 `p.act` 的 nil 复查：
+//
+// 菜单打开后壳侧动作面可能被换掉（painter 每帧覆盖 `p.act`，装配拆除时清空）。
+// 那时 Run 必须**什么都不做**，而不是 panic —— 菜单项是用户已经点下去的回调，
+// 崩在这里等于一次空指针崩溃。
+func TestCopyRunReadsHookAtCallTime(t *testing.T) {
+	p, menus := newPlugin(func(string, string, string, string) {})
+	actions := menus.resolve(pluginapi.TargetFile, pluginapi.ContextMenuTarget{SessionID: "s1", Path: "a.png"})
+	p.act.CopyWorkspaceImage = nil // 菜单已弹出，壳侧动作面被清空
+	actions[0].Run()               // 不该 panic
 }

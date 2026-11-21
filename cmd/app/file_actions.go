@@ -5,6 +5,7 @@
 //	plugins/dsfileactions   菜单项（哪个 target、什么顺序、什么文案）→ 只调 Actions
 //	internal/apiclient      workspaceFiles.readBytes（原始字节）
 //	本文件                  真正写盘的那一步：原生另存对话框 / 系统下载目录
+//	copy_image.go           「复制图片」写剪贴板那一步（同一条读字节链的另一端）
 //
 // 为什么写盘在壳里而不是插件里：插件拿不到 `*apiclient.Client`，也拿不到 viva 的
 // `app`（R2/R7）；原生另存对话框还必须在 UI 线程上开，而插件的菜单回调正好在那一桢。

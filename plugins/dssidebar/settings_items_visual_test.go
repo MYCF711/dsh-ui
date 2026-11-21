@@ -20,8 +20,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/MYCF711/dsh-ui/internal/apiclient"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
@@ -241,8 +243,16 @@ func (h *settingsItemHarness) clickText(label string) {
 // 为什么不能点完立刻断言：保存是 `go applySettingsItemSave(...)`（绘制线程不能等 HTTP），
 // 新 goroutine 未必已被调度。断言本身一点没放松，只是等它落地。
 func (h *settingsItemHarness) waitMutate(want int) bool {
-	for i := 0; i < 400 && h.spy.count() < want; i++ {
+	// 有界等待：**按时间**且有**调度让出**。
+	//
+	// 旧写法是 `for i := 0; i < 400; i++ { h.pump() }` —— 400 次紧凑循环只花微秒，
+	// 而 pump() 不让出调度，取消/写盘那条 goroutine 在负载下可能一次机会都没拿到，
+	// 于是等待必然在次数用完时落空、报成「没发出请求」。那是测试自己把等待写成空转，
+	// 不是被测行为。这里换成时间上限 + runtime.Gosched()，断言强度不变。
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && h.spy.count() < want {
 		h.pump()
+		runtime.Gosched()
 	}
 	return h.spy.count() >= want
 }
@@ -266,8 +276,10 @@ func (h *settingsItemHarness) waitDraftClear() (map[string]settingsItemDraft, bo
 // （CI 上偶发：texts 里已是设置页但还没有 saveFailed）。
 // 断言强度不变——400 次 pump 之后仍没出现就还是失败。
 func (h *settingsItemHarness) waitText(want string) bool {
-	for i := 0; i < 400 && !h.hasText(want); i++ {
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && !h.hasText(want) {
 		h.pump()
+		runtime.Gosched()
 	}
 	return h.hasText(want)
 }

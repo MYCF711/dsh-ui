@@ -221,15 +221,27 @@ func (p *Plugin) drawGuideEntry(f ui.C, env *pluginapi.Env) {
 			Gap(guideEntryGap).Items(ui.Center).
 			Background(t.BgLayer1).Border(guideEntryBorder, t.BorderL3).
 			Radius(t.Radii.XL).Clip()
+		// `.main{position:absolute;inset:0}`：整张卡片的点击面（官方那枚 ghost 按钮
+		// **垫在内容下面**，所以点标题/空白都算「打开终端」，而 `.trigger` 排在它上面、
+		// 点 trigger 打开菜单）。
+		//
+		// 这里**不能**用 `Absolute().Inset(0)` 复刻：Viva 的绝对元素「is painted after
+		// the in-flow children in the order declared, and so **wins pointer hits over
+		// them**」（`viva@0.6.12-ow/base/absolute.go:5-11` 原文）——绝对层恒赢流内子元素，
+		// 与声明先后无关，所以绝对层会连 trigger 那 20×20 一起吞掉（实测指针停在 trigger
+		// 中心时 `Hovered` 是卡片身份、点下去只开终端、菜单打不开）。
+		//
+		// 卡片**本体**的命中区才是垫在内容下面的那一块：`base/paint.go:88,150` 先登记
+		// 本体命中区、再画子元素，于是子元素（trigger）在它前面。几何按官方 `inset:0`
+		// 落的是 padding box（`solveAbsolute` 从 `origin+border` 起、宽高各减 2×border），
+		// 所以用 `HitOutset` 的负值把边框那一圈削掉，命中区**逐像素等同**原来的绝对层。
+		// 菜单展开时不接卡片点击（那一下只用来关菜单，与旧行为一致）。
+		cardClickable := !p.guideMenuOpen
+		if cardClickable {
+			card.Hit(cardID, props.Title).
+				HitOutset(-guideEntryBorder, -guideEntryBorder, -guideEntryBorder, -guideEntryBorder)
+		}
 		card.Children(func() {
-			// `.main{position:absolute;inset:0}`：整张卡片的点击面（官方是覆盖在卡片上的
-			// ghost 按钮，所以点标题/空白都算「打开终端」）。**必须先声明**：viva 同层内
-			// 后声明的赢，先声明它才能让后面的 trigger 拿到自己的点击。
-			if !p.guideMenuOpen {
-				if hit := (ui.Row(f).Absolute().Inset(0).Hit(cardID, props.Title)); hit.Clicked() {
-					p.guideOpenTerminal(env, "")
-				}
-			}
 			// `.icon`（:4）：26×26；官方 `size={description === undefined ? 22 : 26}`
 			// （TerminalGuide.tsx:58），没有描述时画 22。官方 `PluginArtworkTerminal`
 			// 是固定色 #679EFE 的 36-box 描边字形（见 dsassets.PluginArtworkTerminal 的出处）。
@@ -261,6 +273,11 @@ func (p *Plugin) drawGuideEntry(f ui.C, env *pluginapi.Env) {
 			// `.shortcut{position:relative;pointer-events:none}`（:12）：卡片最右。
 			p.drawGuideShortcut(f, env, t)
 		})
+		// 卡片本体的点击（`Clicked` 只认打给 cardID 的那一下，所以点 trigger 时这里是
+		// false）：与官方的 ghost 按钮一样，「点标题/空白 = 打开终端」。
+		if cardClickable && card.Clicked() {
+			p.guideOpenTerminal(env, "")
+		}
 	})
 }
 

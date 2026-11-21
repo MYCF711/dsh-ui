@@ -1344,7 +1344,7 @@ func (m *model) runSubscription(ctx context.Context, id string, since int) {
 							//
 							// **必须重连**：这条连接的读循环还拿旧 since 当基线，
 							// 新 journal 的 seq 从 1 起，会被它当"重复帧"静默丢光。
-							if strings.Contains(err.Error(), "stale_epoch") {
+							if gapFillEpochRotated(err) {
 								m.mu.Lock()
 								oldSeq, oldEpoch := since, m.epochs[id]
 								since = m.onJournalResetLocked(id)

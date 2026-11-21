@@ -541,3 +541,28 @@ func journalEvictedError(err error) bool {
 	// 只删一处会留下"新宿主走结构、老宿主走文本"的半吊子双轨。
 	return strings.Contains(err.Error(), "滑出内存")
 }
+
+// gapFillEpochRotated 报告一次补洞失败是不是「journal 换代」——只有换代才该
+// 清水位、重建基线。
+//
+// **必须走结构化判据。** 宿主对两种 409 用同一个码 `stale_epoch`
+// （`DSH-GO/internal/transport/server.go` handleSessionHistory）：
+//
+//	① details.reason = "stale_epoch"     换代 / 水位超前  → 重建基线
+//	② details.reason = "history_evicted" 已滑出内存 journal → 这就是「到头了」
+//
+// 而 `apiclient.APIError.Error()` 的第一段就是 `code`，所以
+// `strings.Contains(err.Error(), "stale_epoch")` 对 ① 和 ② **都会命中**：
+// 一次「没有更多历史」会被当成换代——三份水位全清、整页重载、transcript
+// 原始帧丢弃，只为了让一段本来就补不回来的历史「看起来刷新了」。
+//
+// 判据顺序固定：**先排除「到头了」，再认换代**。反过来的话，老宿主（没有
+// `details.reason`）的「滑出内存」文案里同样带着码 `stale_epoch`，
+// 会被 `staleEpochError` 的文本兜底一并命中——这正是两条判据唯一的差别所在。
+// `finishOlder` 的两个 case 也是这个顺序，两处不许各写一套。
+func gapFillEpochRotated(err error) bool {
+	if journalEvictedError(err) {
+		return false
+	}
+	return staleEpochError(err)
+}

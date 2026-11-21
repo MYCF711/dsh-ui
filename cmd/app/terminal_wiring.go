@@ -27,6 +27,20 @@ type terminalViewState struct {
 	generation uint64
 	cancel     context.CancelFunc
 
+	// seenInRoster 记录「这条视图绑定的宿主终端**在某一帧 roster 里出现过**」。
+	//
+	// 为什么需要它：watch 每帧只推"当前整份集合"，帧里**没有版本号/序号**
+	// （官方 result 只有整份 terminals，没有 from/seq）。所以"这一帧没有它"本身
+	// 不构成"它没了"的证据——它也可能只是"这一帧比视图知道的那一刻更早"：
+	// terminal.create 的响应已经落地（Info 已设），而一帧在 create 之前算好的
+	// 快照才刚送到。只有**之前某一帧里确实有它**，缺席才构成"从有到无"。
+	//
+	// 官方那侧同样不拿缺席当消失：roster 缺席只摘**名单缓存**
+	// （TerminalInventory.reconcile，OFF:dsh-api-terminal-controller/src/client
+	// /inventory.ts:93-99），视图只在显式 close、自己的 stream 报错
+	// （model.ts:408-410）或 info.state==='exited'（model.ts:395）时结束。
+	seenInRoster bool
+
 	// emu 是这条终端的 VT 屏幕，snapshot 帧建屏、output 帧喂**原始字节**
 	// （不是剥过序列的 Screen）。官方在这里做的是同一件事：snapshot 时
 	// `xterm.reset(); xterm.resize(cols, rows)` 再 write，之后逐帧 write
@@ -655,36 +669,56 @@ func (m *model) runTerminalWatch(ctx context.Context, sessionID string) {
 			}
 			return
 		}
-		m.mu.Lock()
-		byID := map[string]apiclient.TerminalInfo{}
-		for _, info := range roster {
-			byID[info.ID] = info
-		}
-		var cancelMissing []context.CancelFunc
-		for key, state := range m.terminalViews {
-			if !strings.HasPrefix(key, sessionID+"\x00") || state.public.Info == nil {
-				continue
-			}
-			if info, ok := byID[state.public.Info.ID]; ok {
-				copy := info
-				state.public.Info = &copy
-			} else {
-				state.public.Phase = "closed"
-				state.public.Issue = terminalIssueMissingTerminal
-				state.public.Writable = false
-				if state.cancel != nil {
-					cancelMissing = append(cancelMissing, state.cancel)
-				}
-			}
-		}
-		m.mu.Unlock()
-		for _, cancel := range cancelMissing {
-			cancel()
-		}
+		m.reconcileTerminalViews(sessionID, roster)
 		// 官方 `AgentTerminalOpener` 的两支（index.ts:103-126）：Agent 新开的终端
 		// 自动变成一枚右栏 tab，Agent 结束掉的受控终端把它的 tab 关掉。
 		m.syncAgentTerminals(sessionID, roster)
 		m.inv.Invalidate()
+	}
+}
+
+// reconcileTerminalViews 把一帧 whole-set roster 落到本会话的视图上。
+//
+// 判据把两种「名单里没有」分开：
+//
+//	名单里有它              → 用帧里的真值刷新 Info，并记下"见过"（seenInRoster）
+//	名单里没有，但见过它    → 真的消失了：置终态 + 取消 attach（与原行为逐字一致）
+//	名单里没有，也从没见过  → **还不知道**：什么都不做，等它出现
+//
+// 第三种就是"create 的响应已经落地、而更早算好的快照才送到"那个窗口。它不需要
+// 宽限期或延迟：真消失那条路一帧都没多等（帧一到就判，同原来），未知那条路本来
+// 就没有证据可判——帧里没有序号，缺席只能与"自己之前亲眼见过它"比较。
+func (m *model) reconcileTerminalViews(sessionID string, roster []apiclient.TerminalInfo) {
+	m.mu.Lock()
+	byID := map[string]apiclient.TerminalInfo{}
+	for _, info := range roster {
+		byID[info.ID] = info
+	}
+	var cancelMissing []context.CancelFunc
+	for key, state := range m.terminalViews {
+		if !strings.HasPrefix(key, sessionID+"\x00") || state.public.Info == nil {
+			continue
+		}
+		if info, ok := byID[state.public.Info.ID]; ok {
+			copy := info
+			state.public.Info = &copy
+			state.seenInRoster = true
+			continue
+		}
+		if !state.seenInRoster {
+			// 从没见过它：这一帧只是比视图知道的那一刻更早，不是"它没了"。
+			continue
+		}
+		state.public.Phase = "closed"
+		state.public.Issue = terminalIssueMissingTerminal
+		state.public.Writable = false
+		if state.cancel != nil {
+			cancelMissing = append(cancelMissing, state.cancel)
+		}
+	}
+	m.mu.Unlock()
+	for _, cancel := range cancelMissing {
+		cancel()
 	}
 }
 

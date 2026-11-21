@@ -217,6 +217,14 @@ type Transcript struct {
 	entries []TranscriptEntry
 	// seqOf 记录每个 key 的序号，用于同 key 更新（官方 start/update）。
 	seqOf map[string]int
+	// consumed 记录**已经投影过**的 seq。
+	//
+	// 为什么不能只看 `lastSeq`：journal 是 append-only，但界面拿到帧的**时序**
+	// 不是。首屏只拉尾窗（`frameTailWindow`），之后「加载更早」补回来的是水位
+	// **之下**的一页，断号补洞补回来的是水位**中间**那一段。按 `seq <= lastSeq`
+	// 判重会把这些帧全部当成"重放"静默丢掉——界面不报错，只是点了「加载更早」
+	// 什么都没多出来、补洞补回来的那几行永远不出现。
+	consumed map[int]bool
 	// rebuilt 记录上一次操作是否重建过基线（诊断/测试用）。
 	rebuilt bool
 	// workflows 是 `tool-workflow/*` 四类帧的**折叠状态**（官方 `WorkflowState`）。
@@ -267,7 +275,7 @@ type workflowMemberFold struct {
 
 // NewTranscript 造一个空投影。
 func NewTranscript() *Transcript {
-	t := &Transcript{seqOf: map[string]int{}}
+	t := &Transcript{seqOf: map[string]int{}, consumed: map[int]bool{}}
 	t.resetWorkflows()
 	return t
 }
@@ -293,9 +301,35 @@ func (t *Transcript) Entries() []TranscriptEntry {
 func (t *Transcript) Reset() {
 	t.entries = t.entries[:0]
 	t.seqOf = map[string]int{}
+	t.consumed = map[int]bool{}
 	t.lastSeq = 0
 	t.epoch = 0
 	t.resetWorkflows()
+}
+
+// rebuild 用**整段快照**重新投影（不换世代，只是帧集合变了）。
+//
+// 只在"水位之下出现了没消费过的帧"时走：journal 快照是**升序全量**，那些帧
+// 必须排到已有节点**前面**；而增量路径只会往后追加。整段重投影一次（用户点一次
+// 「加载更早」/补一次洞各一次），比给行表加"按 seq 插入 + 下标重映射"简单得多，
+// 也不会留下两套排序判据。
+//
+// 与 `ApplyHistory` 的换代重建是两件事：那个换的是**序号域**（epoch 变），
+// 这个只是同一代里补回来一段帧，所以 `rebuilt` 语义不掺进来。
+func (t *Transcript) rebuild(frames []apiclient.Frame) int {
+	prevLast := t.lastSeq
+	t.entries = t.entries[:0]
+	t.seqOf = map[string]int{}
+	t.consumed = map[int]bool{}
+	t.lastSeq = 0
+	t.resetWorkflows()
+	applied := t.applyFrames(frames)
+	// 快照理论上覆盖了已消费的全部帧，所以 lastSeq 会自己长回来；只有"调用方
+	// 拿了个更小的子集"时才需要保底（否则水位倒退，下一帧会把旧帧再吃一遍）。
+	if t.lastSeq < prevLast {
+		t.lastSeq = prevLast
+	}
+	return applied
 }
 
 // resetWorkflows 丢弃全部工作流折叠状态（与 Reset 同生命周期）。
@@ -334,6 +368,7 @@ func (t *Transcript) ApplyHistory(res *apiclient.HistoryResult) (applied int, re
 		// 只清水位不清条目 = 新旧两代混排，界面上表现为"消息偶尔跳一下"。
 		t.entries = t.entries[:0]
 		t.seqOf = map[string]int{}
+		t.consumed = map[int]bool{}
 		t.lastSeq = 0
 		t.resetWorkflows()
 		t.rebuilt = true
@@ -357,12 +392,34 @@ func (t *Transcript) ApplyFrames(frames []apiclient.Frame) int {
 	return t.applyFrames(frames)
 }
 
+// applyFrames 消费一批帧。
+//
+// 两条路径：
+//
+//	① 全部是"水位之上"的新帧（正常的 append-only 推进）→ 逐帧增量；
+//	② 水位**之下**还有没消费过的帧（「加载更早」补回的前窗、断号补洞补回的
+//	   中间一段）→ 整段重投影（`rebuild`）。
+//
+// 为什么 ② 必须重投影而不是"插进去"：快照是**升序全量**，补回来的老帧要排在
+// 已有节点前面；增量路径只会往后追加，直接追加会把老内容贴到最新一条下面。
+// 也正因为要重来，这里不能像以前那样只看 `seq <= lastSeq` 判重——那样补回来的
+// 帧会被当成"重放"静默丢掉，界面上一行都不多出来（按钮却已经变成「已到会话开头」）。
 func (t *Transcript) applyFrames(frames []apiclient.Frame) int {
+	if t.consumed == nil {
+		// 零值兜底：这条路径跑在绘制线程上，panic 等于整个主区消失。
+		// `NewTranscript` 是正道，但一张 nil 表在这里只是一次 Initialize。
+		t.consumed = map[int]bool{}
+	}
 	applied := 0
 	for _, frame := range frames {
-		if frame.Seq > 0 && frame.Seq <= t.lastSeq {
-			// 已经消费过：journal 是 append-only，重复帧只能是重放。
-			continue
+		if frame.Seq > 0 {
+			if t.consumed[frame.Seq] {
+				// 已经消费过：journal 是 append-only，重复帧只能是重放。
+				continue
+			}
+			if frame.Seq < t.lastSeq {
+				return t.rebuild(frames)
+			}
 		}
 		if entry, ok := t.project(frame); ok {
 			if entry.Streaming {
@@ -371,6 +428,9 @@ func (t *Transcript) applyFrames(frames []apiclient.Frame) int {
 				t.upsert(entry)
 			}
 			applied++
+		}
+		if frame.Seq > 0 {
+			t.consumed[frame.Seq] = true
 		}
 		if frame.Seq > t.lastSeq {
 			t.lastSeq = frame.Seq

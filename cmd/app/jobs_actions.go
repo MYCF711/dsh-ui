@@ -31,6 +31,17 @@ import (
 // 不静默丢：把 Truncated 置真，让界面显示"较早的输出已丢弃"。
 const jobOutputCap = 512 * 1024
 
+// jobOutputRetryEvery 是**失败后自动重试**的最小间隔。
+//
+// 为什么要限流：失败分支会 Invalidate，下一帧插件又来问一次，于是
+// 「失败 → 清 err → 重发 → 失败 → 重画」会跟着重绘一直跑下去。一个
+// `jobs.output` 稳定失败的场景（任务 owner 已经不在了、子进程退出后宿主回 404）
+// 就是**每帧一次 HTTP 请求**，界面上还错误/加载一闪一闪。
+//
+// 是变量而不是内联常量，只为让用例把它压到毫秒级（生产值不变）。人点插件上那个
+// 「重试」按钮的间隔远大于 1s，所以这条限流对显式重试是透明的。
+var jobOutputRetryEvery = time.Second
+
 // jobOutputCache 是一个任务输出的**累计视图**（不是单页）。
 //
 // loaded 是已经加载到的 rune 游标；插件按"累计视图"整段重绘，
@@ -47,6 +58,8 @@ type jobOutputCache struct {
 	err         string
 	// fetching 是正在请求的游标 + 1；0 = 空闲。防同一页重复发请求。
 	fetching int
+	// retryAfter 是下一次允许自动重试的时刻（err 非空时才有意义）。
+	retryAfter time.Time
 }
 
 // jobOutputKey 是缓存键：同一 id 在不同会话里是两条任务，不能合并。
@@ -86,11 +99,17 @@ func (m *model) jobOutput(sessionID, id string, cursor int) (pluginapi.JobOutput
 	if c.err != "" {
 		out := c.view(sessionID, id)
 		out.Err = c.err
-		c.err = ""
-		// 报过错这一帧之后自动重试一次；重试用 0 从开头读，避免游标错位。
+		// 自动重试**按时间限流**（见 jobOutputRetryEvery）：不是"每帧一次"。
+		// 不能改成"只重试一次就永远不再试"——插件那个「重试」按钮不只是重画，
+		// 它清的是插件侧的缓存与游标，请求还得从这条入口发出去；真哑了按钮就
+		// 只会在错误态里打转。所以窗口内**保留 err**（错误稳定显示、不闪），
+		// 到点才清掉重发。
 		start := false
-		if c.fetching == 0 {
-			c.fetching = 1
+		now := time.Now()
+		if c.fetching == 0 && !now.Before(c.retryAfter) {
+			c.err = ""
+			c.fetching = 1 // 重试用 0 从开头读，避免游标错位
+			c.retryAfter = now.Add(jobOutputRetryEvery)
 			start = true
 		}
 		m.mu.Unlock()

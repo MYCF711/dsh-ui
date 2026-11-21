@@ -207,7 +207,12 @@ func (m *model) modelsCatalogSetActive(id string, expectedRevision *int64) (apic
 	if err != nil {
 		return apiclient.ModelCatalogSetActiveResult{}, err
 	}
-	go m.refreshModelCatalog()
+	// **走 single-flight 入口，不要直接 go refreshModelCatalog()**：
+	// set-active 只回 revision，目录本体还得重读一次，而这次重读必须和
+	// `modelsCatalogSnapshot` / 其它写口共用一份"在飞就排队"的协议。
+	// 绕过它的后果是两条 list 同时在飞，**后回来的那份可能是更早的快照**——
+	// 缓存被旧目录覆盖，界面上"设了默认模型又跳回原来那个"，且不报错。
+	m.modelsCatalogRefresh()
 	return result, nil
 }
 

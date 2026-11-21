@@ -432,3 +432,89 @@ func TestCotSpinnerAngleFollowsTheOfficialOneSecondTurn(t *testing.T) {
 		t.Fatalf("负时间角度=%v，应为 0", got)
 	}
 }
+
+// TestCotAdvancePreferenceChangeDropsOldTranslations 钉住"换语言/换服务 → 旧译文作废"。
+//
+// 缓存键是**原文片段**（官方同一口径），不含目标语言与 provider。不清的话，
+// 用户把目标语言从 zh 改成 en 之后回来，同一段思考照样命中旧条目：工具栏、
+// 按钮、provider 文案全是新偏好，正文却还是中文——不报错、也不崩，只是
+// "设置改了界面没反应"。这类"不报错但结果错"只能靠用例钉。
+func TestCotAdvancePreferenceChangeDropsOldTranslations(t *testing.T) {
+	p := newStreamingMarkdownTestPlugin()
+	fake := newCotFakeActions()
+	act := fake.actions()
+	source := "一段话"
+
+	// ① 按默认偏好把这段翻好（auto → zh-CN）。
+	entry := p.cotAdvance(act, "sess-1", "k1", source, false, fake.limits)
+	fake.reply(t)
+	p.cotAdvance(act, "sess-1", "k1", source, false, fake.limits)
+	if got := entry.cache["一段话"]; got != "T(一段话)" {
+		t.Fatalf("首次译文 = %q，想要 T(一段话)", got)
+	}
+	if len(fake.calls) != 1 {
+		t.Fatalf("首次翻译发了 %d 个请求，想要 1", len(fake.calls))
+	}
+
+	// ② 用户在设置里把目标语言改成 en：下一帧必须重新翻，而不是继续用 zh 那份。
+	fake.limits.Preferences.TargetLanguage = "en"
+	p.cotAdvance(act, "sess-1", "k1", source, false, fake.limits)
+	if got := cotDisplayText(entry.fragments, entry.cache); got != source {
+		t.Fatalf("换语言后仍在显示旧译文 %q（应退回原文 %q 等新译文）", got, source)
+	}
+	if len(fake.calls) != 2 {
+		t.Fatalf("换语言后只发了 %d 个请求，想要 2（旧缓存没作废，直接命中）", len(fake.calls))
+	}
+	if lang := fake.calls[1].targetLanguage; lang != "en" {
+		t.Fatalf("换语言后的请求 targetLanguage = %q，想要 en", lang)
+	}
+
+	// ③ 换翻译服务同样作废（不同 provider 的结果不该混用）。
+	fake.reply(t)
+	p.cotAdvance(act, "sess-1", "k1", source, false, fake.limits)
+	if got := entry.cache["一段话"]; got != "T(一段话)" {
+		t.Fatalf("en 译文 = %q", got)
+	}
+	fake.limits.Preferences.Provider = apiclient.CotTranslationProviderAccount
+	p.cotAdvance(act, "sess-1", "k1", source, false, fake.limits)
+	if len(fake.calls) != 3 {
+		t.Fatalf("换 provider 后只发了 %d 个请求，想要 3", len(fake.calls))
+	}
+	if got := fake.calls[2].provider; got != apiclient.CotTranslationProviderAccount {
+		t.Fatalf("换 provider 后的请求 provider = %q", got)
+	}
+}
+
+// TestCotAdvancePreferenceChangeDiscardsInflightResult 钉住"在飞时换偏好"。
+//
+// 在飞那次请求是按**旧偏好**翻的；它的结果不能落进新偏好的缓存，否则界面上
+// 又会出现"设置已是 en、正文仍是 zh"。结果是照旧被取走的（不清壳的 cotResults）。
+func TestCotAdvancePreferenceChangeDiscardsInflightResult(t *testing.T) {
+	p := newStreamingMarkdownTestPlugin()
+	fake := newCotFakeActions()
+	act := fake.actions()
+	source := "一段话"
+
+	entry := p.cotAdvance(act, "sess-1", "k1", source, false, fake.limits)
+	if !entry.pending {
+		t.Fatal("发起后必须 pending")
+	}
+	// 在飞期间用户把语言改成 en。
+	fake.limits.Preferences.TargetLanguage = "en"
+	p.cotAdvance(act, "sess-1", "k1", source, false, fake.limits)
+
+	// 旧请求回包：结果取出但**不入缓存**。
+	fake.reply(t)
+	p.cotAdvance(act, "sess-1", "k1", source, false, fake.limits)
+	if got, ok := entry.cache["一段话"]; ok {
+		t.Fatalf("旧偏好的译文落进了新缓存：%q", got)
+	}
+	// 下一帧按新偏好重新发起。
+	p.cotAdvance(act, "sess-1", "k1", source, false, fake.limits)
+	if len(fake.calls) != 2 {
+		t.Fatalf("发了 %d 个请求，想要 2（新偏好那一次）", len(fake.calls))
+	}
+	if lang := fake.calls[1].targetLanguage; lang != "en" {
+		t.Fatalf("重发请求 targetLanguage = %q，想要 en", lang)
+	}
+}

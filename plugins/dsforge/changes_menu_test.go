@@ -38,6 +38,21 @@ import (
 // 否则"这一帧里哪个矩形是菜单面"只能靠猜。
 func paintDirect(t *testing.T, size gfx.Rect, paint func(canvas *gfx.Canvas)) app.Snapshot {
 	t.Helper()
+	return paintDirectAtScale(t, 1, size, paint)
+}
+
+// paintDirectAtScale 是 paintDirect 的显式缩放版。
+//
+// 为什么需要：`Fill`/`Rounded` 会把边吸附到设备像素网格
+// （`viva@gfx/canvas.go:1274` 的 `snapRect` → `:1294` 的 `snapSpan`），而
+// **逻辑像素 ≤ 2 的矩形走 hairline 分支**（`hairline = 2`，`:1267`）：
+//
+//	borderWidth(w) = max(floor(w*scale+1e-3), 1) / scale      （`:1311-1313`）
+//
+// 于是 scale 1 下 0.5 与 1 都吸附成 1（区分不了），scale 2 下分别是 0.5 与 1。
+// 官方的 `.5px` 分隔线要在 scale 2 才可证伪，所以这个入口必须存在。
+func paintDirectAtScale(t *testing.T, scale float64, size gfx.Rect, paint func(canvas *gfx.Canvas)) app.Snapshot {
+	t.Helper()
 	var invalidator app.Invalidator
 	config := app.Config{
 		Title: "forge-menu", Width: int(size.Width), Height: int(size.Height),
@@ -47,7 +62,7 @@ func paintDirect(t *testing.T, size gfx.Rect, paint func(canvas *gfx.Canvas)) ap
 			paint(canvas)
 		},
 	}
-	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
+	session, err := headless.Open(config, nil, headless.Options{Scale: scale})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,8 +206,11 @@ func TestScopeMenuPanelPaintsOfficialElevation(t *testing.T) {
 	if len(surface) == 0 {
 		t.Fatalf("菜单面没有铺 `--dsw-specific-menu`（t.Menu=%v）", theme.Menu)
 	}
-	if surface[0].Radius != theme.Radii.MD {
-		t.Fatalf("菜单面圆角 = %v，官方是 --dsw-radius-md = %v", surface[0].Radius, theme.Radii.MD)
+	// 官方 `._surface_1w4el_1{border-radius:var(--dsw-radius-lg)}`（byte 19622）、
+	// `--dsw-radius-lg: 16px`（`dsh-client-ui-theme/src/styles/base.css:21`）。
+	// 这里写**字面量 16**，不拿 `theme.Radii.LG` 比常量（否则改常量两边一起动）。
+	if surface[0].Radius != 16 {
+		t.Fatalf("菜单面圆角 = %v，官方 --dsw-radius-lg = 16", surface[0].Radius)
 	}
 	if surface[0].Bounds.Width < panel.Width || surface[0].Bounds.Height < panel.Height {
 		t.Fatalf("菜单面没盖住 bounds：面 %+v，bounds %+v", surface[0].Bounds, panel)
@@ -264,54 +282,121 @@ func TestScopeMenuRowPaintsOfficialCell(t *testing.T) {
 			Label: "分支", Selected: true, Foreground: theme.LabelPrimary,
 		}, theme)
 	})
-	// ④ 打了勾的行：墨迹落在行右缘的 16px 勾框里（`.cell` 的 padding-inline 8）。
-	if scopeMenuCheckSize != 16 {
-		t.Fatalf("勾的尺寸常量 = %v，官方 sprite 是 16", scopeMenuCheckSize)
-	}
+	// ④ 打了勾的行：官方 `._check_70kcw_265{width:14px;height:14px}`（CSS byte 16474），
+	// 渲染 14、viewBox 仍是 16。勾框右缘贴 `._item{padding:6px 8px}` 的 8。
 	checkBox := gfx.Rect{
-		X: row.X + row.Width - scopeMenuRowPadX - scopeMenuCheckSize, Y: row.Y,
-		Width: scopeMenuCheckSize, Height: row.Height,
+		X: row.X + row.Width - 8 - 14, Y: row.Y,
+		Width: 14, Height: row.Height,
 	}
 	ink, count := rgbTriangleInk(chosen, theme.LabelPrimary, checkBox)
 	if count == 0 {
 		t.Fatalf("选中行右缘没有勾的墨迹（官方 Menu 的 selectedId 打勾）")
 	}
-	// 勾的墨迹只能是那一枚 16px 的官方素材：横向几何 4..20 缩到 16 → 约 10.5px，
-	// 加上描边 1 的两侧各 0.5；这里钉"不是别的形状、且没越框"。
-	if ink.Width < 8 || ink.Width > 13 || ink.Height < 8 || ink.Height > 13 {
-		t.Fatalf("勾的墨迹尺寸不像官方 16px 的 IconCheckOutlineRegular：%+v", ink)
+	// ① 尺寸：把同一枚素材单独按 **14** 与 **16** 画，与行里那枚比墨迹宽度。
+	//    这两条都是字面量，不拿 `scopeMenuCheckSize` 比常量（否则改常量两边一起动）。
+	inkAt := func(size float32) gfx.Rect {
+		snapshot := paintDirect(t, frame, func(canvas *gfx.Canvas) {
+			icon, ok := scopeMenuCheckIcon()
+			if !ok {
+				t.Fatalf("官方勾素材取不到（dsassets.CheckOutline）")
+			}
+			canvas.DrawIcon(icon, gfx.Rect{X: 200, Y: 120, Width: size, Height: size}, theme.LabelPrimary)
+		})
+		box, n := rgbTriangleInk(snapshot, theme.LabelPrimary, frame)
+		if n == 0 {
+			t.Fatalf("按 %v 画官方勾素材没出墨迹", size)
+		}
+		return box
 	}
-	if ink.X < checkBox.X-0.5 || ink.X+ink.Width > checkBox.X+checkBox.Width+0.5 {
-		t.Fatalf("勾画出勾框了：墨迹 %+v，框 %+v", ink, checkBox)
+	at14, at16 := inkAt(14), inkAt(16)
+	if math.Abs(float64(ink.Width-at14.Width)) > 0.6 {
+		t.Fatalf("勾的墨迹宽 = %v，官方素材按 14 画是 %v（按 16 画才是 %v）——"+
+			"渲染尺寸不是 ._check_70kcw_265 的 14", ink.Width, at14.Width, at16.Width)
 	}
-	// ⑤ 勾就是官方素材的产物：三角化条数与 `dsassets.CheckOutline()` 单独画一致。
+	if at16.Width-at14.Width < 1 {
+		t.Fatalf("14 与 16 两档画出来一样宽（%v / %v），这条判据区分不了尺寸", at14.Width, at16.Width)
+	}
+	// ② 竖直居中：官方 `._item{align-items:center}`（byte 15091），勾的墨迹中心要落在行的中心。
+	if got, want := ink.Y+ink.Height/2, row.Y+row.Height/2; math.Abs(float64(got-want)) > 0.6 {
+		t.Fatalf("勾的墨迹中心 Y = %v，行的中心是 %v（官方 .item align-items:center）", got, want)
+	}
+	// ③ 横向上不许越过 8 的右内边距。
+	if ink.X+ink.Width > checkBox.X+checkBox.Width+0.5 {
+		t.Fatalf("勾越过右内边距 8：墨迹右缘 %v，上限 %v", ink.X+ink.Width, checkBox.X+checkBox.Width)
+	}
+	// ⑤ 标签与勾之间隔 `._item{display:flex;align-items:center;gap:6px}`（byte 15091）的 6：
+	// 标签是 `flex:1`、勾是 `flex:none`，所以标签占满到「勾框左缘 - 6」。
+	if rowLabel, ok := firstLabel(chosen, "分支"); ok {
+		if got, want := rowLabel.Bounds.X+rowLabel.Bounds.Width, checkBox.X-6; got != want {
+			t.Fatalf("标签右缘 = %v，官方 .item gap:6px → 勾框左缘 - 6 = %v", got, want)
+		}
+	}
+	// ⑥ 勾就是官方素材的产物：三角化条数与 `dsassets.CheckOutline()` 单独画一致。
 	if want := checkIconTriangles(t, theme, frame); count != want {
 		t.Fatalf("勾的三角化条数 = %d，官方素材单独画是 %d（说明不是同一枚素材）", count, want)
 	}
 }
 
-// TestScopeMenuSeparatorKeepsMenuOwnGeometry 钉住分隔线：菜单自己的那一档
-// （`viva@v0.6.5/components/dropdown_menu.go:974-978`：`Fill(y+4, h=1, theme.Border)`），
-// 颜色取菜单给的 Foreground（`addSeparator` 传的就是 `theme.Border`）。
-func TestScopeMenuSeparatorKeepsMenuOwnGeometry(t *testing.T) {
+// TestScopeMenuSeparatorMatchesPrimitive 钉住分隔线的官方读数：
+// `._separator_70kcw_157{height:.5px;margin:3px 8px;background:var(--dsw-alias-border-l2)}`
+// （`dsh-web-frontend/dist/assets/index-CSAdOBx6.css` byte 17672）。
+//
+// 四条各自可证伪：
+//   - 高 **0.5**（不是 1）——只在 scale 2 可辨，见 `paintDirectAtScale` 的注释；
+//   - 左右各内缩 **8**（不是整行宽）；
+//   - 颜色取 `--dsw-alias-border-l2`，**不看**菜单给的行字色 —— 这里故意把
+//     `Foreground` 传成 label-primary，线仍必须是 border-l2；
+//   - 竖向是「线在自己的 margin box 里居中」：官方 margin box 6.5 时必须落在 +3。
+func TestScopeMenuSeparatorMatchesPrimitive(t *testing.T) {
 	theme := dscore.Dark()
+	paintSep := func(scale float64, row gfx.Rect) app.Snapshot {
+		return paintDirectAtScale(t, scale, gfx.Rect{Width: 320, Height: 200}, func(canvas *gfx.Canvas) {
+			drawScopeMenuItem(ui.MenuItemParts{
+				Canvas: canvas, Theme: dscore.VivaTheme(theme), Rect: row,
+				Separator: true, Foreground: theme.LabelPrimary,
+			}, theme)
+		})
+	}
+	// ① scale 2（Retina，headless 的默认档）下高度必须是 0.5，不是 1。
+	//    Viva 的真实槽高是 9（`components/dropdown_menu.go` 的 `menuSeparatorHeight`）。
 	row := gfx.Rect{X: 40, Y: 60, Width: 180, Height: 9}
-	snapshot := paintDirect(t, gfx.Rect{Width: 320, Height: 200}, func(canvas *gfx.Canvas) {
-		drawScopeMenuItem(ui.MenuItemParts{
-			Canvas: canvas, Theme: dscore.VivaTheme(theme), Rect: row,
-			Separator: true, Foreground: theme.BorderL2,
-		}, theme)
-	})
+	snapshot := paintSep(2, row)
 	lines := rectPrimsByColor(snapshot, theme.BorderL2)
 	if len(lines) != 1 {
-		t.Fatalf("分隔线应该正好一条，画了 %d 条", len(lines))
+		t.Fatalf("分隔线应该正好一条 border-l2，画了 %d 条", len(lines))
 	}
 	line := lines[0]
-	if scopeMenuSeparatorHeight != 1 || line.Bounds.Height != scopeMenuSeparatorHeight {
-		t.Fatalf("分隔线高 = %v，菜单自己那一档是 1px", line.Bounds.Height)
+	if scopeMenuSeparatorHeight != 0.5 || line.Bounds.Height != 0.5 {
+		t.Fatalf("分隔线高 = %v（常量 %v），官方 .5px", line.Bounds.Height, scopeMenuSeparatorHeight)
 	}
-	if scopeMenuSeparatorTop != 4 || line.Bounds.Y != row.Y+scopeMenuSeparatorTop {
-		t.Fatalf("分隔线 Y = %v，菜单自己那一档是行顶 +4 → %v", line.Bounds.Y, row.Y+scopeMenuSeparatorTop)
+	if line.Bounds.X != row.X+8 || line.Bounds.Width != row.Width-16 {
+		t.Fatalf("分隔线横向 = [%v,%v]，官方 margin:3px 8px → [%v,%v]",
+			line.Bounds.X, line.Bounds.X+line.Bounds.Width, row.X+8, row.X+row.Width-8)
+	}
+	if want := row.Y + (row.Height-0.5)/2; math.Abs(float64(line.Bounds.Y-want)) > 0.6 {
+		t.Fatalf("分隔线 Y = %v，槽 %v 里居中应为 %v", line.Bounds.Y, row.Height, want)
+	}
+	// 否定判据：官方这条线自己写死 border-l2，不看行字色。
+	if n := len(rectPrimsByColor(snapshot, theme.LabelPrimary)); n != 0 {
+		t.Fatalf("分隔线用了行字色 label-primary（%d 条），官方写死 --dsw-alias-border-l2", n)
+	}
+
+	// ② 官方 margin box 高 6.5 时，居中结果必须逐像素等于官方 `margin-top: 3px`。
+	official := gfx.Rect{X: 40, Y: 60, Width: 180, Height: 6.5}
+	lines = rectPrimsByColor(paintSep(2, official), theme.BorderL2)
+	if len(lines) != 1 {
+		t.Fatalf("6.5 的槽里应该正好一条 border-l2，画了 %d 条", len(lines))
+	}
+	if got := lines[0].Bounds.Y; got != official.Y+3 {
+		t.Fatalf("官方 margin box（6.5）里线的顶端 = %v，官方 margin-top:3px → %v", got, official.Y+3)
+	}
+
+	// ③ scale 1（普通屏）下 `.5px` 按浏览器规则折成一整条设备像素线
+	//    （`borderWidth`：floor(.5*1)=0 → 至少 1）。这里钉住"画得出来"，不是消失。
+	lines = rectPrimsByColor(paintSep(1, row), theme.BorderL2)
+	if len(lines) != 1 || lines[0].Bounds.Height != 1 {
+		t.Fatalf("scale 1 下 0.5px 应折成 1 设备像素的一条线，实际 %d 条 / 高 %v",
+			len(lines), lines[0].Bounds.Height)
 	}
 }
 
@@ -346,8 +431,8 @@ func TestOpenScopeMenuDrawsRowsAndOfficialSurface(t *testing.T) {
 	if len(surface) == 0 {
 		t.Fatalf("打开的菜单面没铺 `--dsw-specific-menu`（DrawPanel 没接上）")
 	}
-	if surface[0].Radius != theme.Radii.MD {
-		t.Fatalf("菜单面圆角 = %v，官方 --dsw-radius-md = %v", surface[0].Radius, theme.Radii.MD)
+	if surface[0].Radius != 16 {
+		t.Fatalf("菜单面圆角 = %v，官方 --dsw-radius-lg = 16", surface[0].Radius)
 	}
 
 	// ③ 官方 prominent 柔光在真菜单这一帧也在；且没有退回 ShadowMD。

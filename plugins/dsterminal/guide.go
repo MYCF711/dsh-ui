@@ -102,12 +102,15 @@ const (
 	// shell 菜单的行几何：官方 `.menu` 只有 `display:flex;flex:none`
 	// （TerminalGuide.module.css:11），面与行都是 primitives `Menu` 的，
 	// 读数与画笔在 `plugins/dscore/menu.go`（forge 范围菜单同一套）。
-	// 行高**不设**：原语 `Menu.module.css` 不在 rc.5 解包树内，不自造数值
-	// （账本 #64 ⑧ 的行高半同一条判定）。
+	// 行高**不设**：读数取得到（dense 30 / base 34），但 Viva 的
+	// `DropdownMenuOptions` 没有行高出口（`ui/menu_paint.go` 的 `rowExtent`
+	// 只在右键菜单分支读 `GetRowSize()`），改它要动上游共享契约。
+	// 账本 #54 ② 与 #64 ⑧-a 是同一条判定。
 	guideMenuRowPadX = dscore.MenuRowPadX
 	guideMenuFont    = dscore.MenuRowFont
 	guideMenuLine    = dscore.MenuRowLine
 	guideCheckSize   = dscore.MenuCheckSize
+	guideMenuGap     = dscore.MenuRowGap
 )
 
 // terminalNewCommandID 是官方终端快捷键的命令 id（`index.ts:56` 的
@@ -320,24 +323,40 @@ func (p *Plugin) guideOpenTerminal(env *pluginapi.Env, shellPath string) bool {
 	return false
 }
 
-// drawGuideTrigger 画 `.trigger`（:9-10）：20×20、圆角 4、14px 的 chevron、三级字色。
+// drawGuideTrigger 画 `.trigger`（TerminalGuide.module.css:9-10）：20×20、圆角 4、
+// 14px 的 chevron、三级字色。
 //
 // 返回它自己的 `ui.Box`：官方 `Menu` 的 `anchor` 就是这个按钮（TerminalGuide.tsx:73-76），
 // 调用方拿它当浮层锚点。
+//
+// # 悬停态是原语 ghost Button 的，不是自造的
+//
+// 官方那个 anchor 是 primitives 的 `<Button variant="ghost" className={css.trigger}>`
+// （TerminalGuide.tsx:73），而 `.trigger` 自己**没有**任何 hover/active 规则
+// （`TerminalGuide.module.css` 全文 12 行，只有 `flex/height/width/padding/border-radius`
+// 与 `.trigger svg` 的静态 `color: label-tertiary`）。悬停底来自 primitives：
+//
+//	._ghost_1ulci_46:hover:not(:disabled)  { background: var(--dsw-alias-interactive-bg-hover) }   ← byte 8644
+//	._ghost_1ulci_46:active:not(:disabled) { background: var(--dsw-alias-interactive-bg-active) }  ← byte 8732
+//
+// 两项本仓都有等价令牌（`t.Hover` 就是 `--dsw-alias-interactive-bg-hover`、
+// `t.InteractiveActive` 就是 `--dsw-alias-interactive-bg-active`），所以复用，
+// 不新造。原先这里还会把 chevron 从 label-tertiary 换成 label-primary —— 官方
+// `.trigger svg` 的字色是**静态**的，没有这条，已回正。
 func (p *Plugin) drawGuideTrigger(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) ui.Box {
 	var id gfx.ID
 	if env.Tree != nil {
 		id = env.Tree.ID(env.Feat, "terminal-guide-shell")
 	}
-	color := t.LabelTertiary
-	if env.Canvas != nil && (env.Canvas.Hovered() == id || env.Canvas.Pressed() == id) {
-		color = t.LabelPrimary
-	}
 	button := ui.Row(f).Width(guideTriggerSize).Height(guideTriggerSize).Shrink(0).
 		Radius(guideTriggerRadius).Items(ui.Center).Justify(ui.Center).
-		Hover(ui.Look{}.Background(t.Hover)).Hit(id, zhGuideShell)
+		Hover(ui.Look{}.Background(t.Hover)).
+		Pressed(ui.Look{}.Background(t.InteractiveActive)).
+		Hit(id, zhGuideShell)
 	button.Children(func() {
-		ui.Icon(f, terminalChevronDownIcon()).Size(guideChevronSize, guideChevronSize).Color(color)
+		// `.trigger svg{width:14px;height:14px;color:var(--dsw-alias-label-tertiary)}`
+		// （TerminalGuide.module.css:10）：字色恒定，不随悬停换。
+		ui.Icon(f, terminalChevronDownIcon()).Size(guideChevronSize, guideChevronSize).Color(t.LabelTertiary)
 	})
 	if button.Clicked() {
 		p.guideMenuOpen = !p.guideMenuOpen

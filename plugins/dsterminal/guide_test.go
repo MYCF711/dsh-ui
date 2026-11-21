@@ -51,9 +51,12 @@ func TestOfficialTerminalGuideGeometry(t *testing.T) {
 	}
 	// `.menu{display:flex;flex:none}`（:11）：面与行都是 primitives `Menu` 的，
 	// 读数只有一份（`plugins/dscore/menu.go`），这里钉住"没有另编一套数"。
-	if guideMenuRowPadX != 8 || guideMenuFont != 13 || guideMenuLine != 20 || guideCheckSize != 16 {
-		t.Errorf("菜单行度量漂了：padX=%v font=%v line=%v check=%v（官方 .cell 8 / 13 / 20 / sprite 16）",
-			guideMenuRowPadX, guideMenuFont, guideMenuLine, guideCheckSize)
+	// 勾是 14（`._check_70kcw_265{width:14px;height:14px}`，CSS byte 16474），
+	// 与 sprite 的 viewBox 16 不是一回事。
+	if guideMenuRowPadX != 8 || guideMenuFont != 13 || guideMenuLine != 20 ||
+		guideCheckSize != 14 || guideMenuGap != 6 {
+		t.Errorf("菜单行度量漂了：padX=%v font=%v line=%v check=%v gap=%v（官方 .item 8 / 13 / 20 / 14 / 6）",
+			guideMenuRowPadX, guideMenuFont, guideMenuLine, guideCheckSize, guideMenuGap)
 	}
 	// 卡片图标是官方 `PluginArtworkTerminal` 的 36-box / 3.5 stroke，不是本包自画的
 	// 16-box 终端字形（`dsh-web-frontend/dist/assets/index-ghOpC9uV.js` 的 xK 组件）。

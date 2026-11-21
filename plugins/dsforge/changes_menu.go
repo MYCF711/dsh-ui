@@ -48,11 +48,13 @@ const (
 	// `.cell{font-size:13px;line-height:20px}`（:353-354）。
 	scopeMenuRowFont = dscore.MenuRowFont
 	scopeMenuRowLine = dscore.MenuRowLine
-	// 选中项的勾：primitives 的 `IconCheckOutlineRegular`，sprite `size:16`。
+	// 选中项的勾：primitives 的 `IconCheckOutlineRegular`，渲染 14×14
+	// （`._check_70kcw_265`，viewBox 仍 16）。
 	scopeMenuCheckSize = dscore.MenuCheckSize
-	// 分隔线的几何沿用菜单自己那一档（`viva@v0.6.5/components/dropdown_menu.go:974-978`）。
-	scopeMenuSeparatorTop    = dscore.MenuSeparatorTop
+	// 分隔线：`._separator_70kcw_157{height:.5px;margin:3px 8px;
+	// background:var(--dsw-alias-border-l2)}`。
 	scopeMenuSeparatorHeight = dscore.MenuSeparatorHeight
+	scopeMenuSeparatorInset  = dscore.MenuSeparatorInset
 )
 
 // drawScopeMenuPanel 画官方菜单面：`--dsw-elevation-prominent` + `border-l1` + 面材质。

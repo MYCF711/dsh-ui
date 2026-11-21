@@ -282,6 +282,13 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 	// 「需要审批 bash」——两个入口、两套按钮，用户不知道该点哪个。
 }
 
+// standaloneTranscriptMinHeight 是**没有壳几何表时**正文滚动区的高度下限。
+//
+// 产品骨架里正文区是有界的（跟着窗口高），下限必须是 0（见 draw 里的注释）；
+// 只有"插件被单独放进一个无高度父容器"的装配（单测/最小装配）才需要它，
+// 否则 Grow 拿不到空间、整块正文不布局。
+const standaloneTranscriptMinHeight float32 = 160
+
 // draw 是布局阶段。
 func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// 消息反馈：每帧开头消费壳的终态（成功关弹窗/toast，失败留弹窗）。
@@ -397,7 +404,23 @@ func (p *Plugin) draw(f ui.C, env *pluginapi.Env) {
 	// v0.6.0：滚动状态由**声明方**持有（没有 ID→ScrollState 查表），所以先声明
 	// 滚动区、立刻取状态，再把子元素挂上去。取到的 Offset 是上一帧布局的值——
 	// 与旧 `env.Scroll(id)` 的时序完全一致，虚拟化不需要改判断。
-	p.bodyBox = ui.Scroll(f.Key(bodyKey)).WidthPercent(100).Grow(1).MinHeight(160).Gap(6).Follow(true).Clip()
+	// 正文滚动区的下限分两档，判据是**壳给没给几何表**（`env.Geometry`）：
+	//
+	//	① 真产品骨架：壳给了几何表，正文区在一个有界高度的列里（跟着窗口高
+	//	   变化）。这里必须让 `min-height:0`——官方 `overflow:auto` 的正文就是
+	//	   这样，审批卡把 composer 撑高时被压缩的应该是正文滚动区，不是底栏。
+	//	   自造的 `MinHeight(160)` 会在最小窗口（760×520、审批卡 ≈172）时
+	//	   把 composer 整块顶出窗底：输入框下半截、上下文读数、轮次都看不见
+	//	   （2026-11-22 实测 composerSeat 底边 580.5 > 520）。
+	//	② 最小装配 / 单测：没有几何表，父容器高度是**无界**的（插件被单独放进
+	//	   一个不带高度的 column），`Grow` 拿不到空间，只能靠下限把内容布出来。
+	//	   这一档保留 160，既有守卫（usertext_visual_test / feedback_visual_test）
+	//	   就是用它证明"插件单独画也能出字和命中区"。
+	bodyMin := float32(standaloneTranscriptMinHeight)
+	if env.Geometry.Width > 0 || env.Geometry.Height > 0 {
+		bodyMin = 0
+	}
+	p.bodyBox = ui.Scroll(f.Key(bodyKey)).WidthPercent(100).Grow(1).Shrink(1).MinHeight(bodyMin).Gap(6).Follow(true).Clip()
 	scrollState := p.bodyBox.ScrollState()
 	if p.jumpReady {
 		// Turn 导航的 ←/→ 是"声明期排队、滚动区一出就落位"：按钮在滚动区之前

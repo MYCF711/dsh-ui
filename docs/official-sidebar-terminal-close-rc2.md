@@ -22,7 +22,7 @@
 | ② | 芯片双击改名 | **已闭合** | 见 §2；`internal/uikernel/view_tabs_rename_test.go` + `cmd/app/terminal_shortcut_test.go` + `plugins/dsterminal/rename_test.go` |
 | ③ | VT 面（光标 / 调色 / selection / scrollback） | **仍缺（本质差异，不是 Viva 限制）** | 见 §3；缺 VT 解析器 + 单元格网格 |
 | ④ | `resize`（`write` 同理） | **仍缺（客户端没有官方 mux 上行）** | 见 §4；`internal/apiclient` 没有 `/api/remote.mux` 客户端 |
-| ⑤ | `TerminalGuide` 向导卡 | **部分闭合（2/3：图标 + 快捷键条）** | 见 §5；菜单载体仍是手绘占布局面板——Viva 不向插件导出 Popup，`ui.Menu` 又把阴影硬编码成 `gfx.ShadowMD`（Viva 限制，outbox 草案 `vivaui-viva-popup-menu-shadow.md`） |
+| ⑤ | `TerminalGuide` 向导卡 | **已闭合（3/3：图标 + 快捷键条 + 菜单载体）** | 见 §5；菜单是 `ui.Menu` 浮层（`Unpainted` + `DrawPanel` + `DrawItem`），面/行由 `plugins/dscore/menu.go` 一支画笔出，`selectedId` 按 `shell.path` 打勾。旧账「Viva 限制」在 v0.6.5 之后只对了一半，更正与剩余两条差异见 §5.1 |
 | ⑥ | 快捷键 / `.status` 折行 | **a 已闭合、b 已接；仍无快捷键注册表** | 见 §6；`ui.Flow` 双向断言；`Ctrl+Backquote` 已进窗口级 chord |
 
 ## 1. ① Agent / 沙箱徽标（已闭合）
@@ -185,7 +185,7 @@ additive 方法，因此完全缺。
 256 KiB 上行配额 + 单 socket 约束），然后把 `write` 与 `resize` 一起搬上去。这是一整块
 独立工作量，与 ③ 无关，两者可以并行。
 
-## 5. ⑤ `TerminalGuide` 向导卡（部分闭合：2/3）
+## 5. ⑤ `TerminalGuide` 向导卡（已闭合：3/3，2026-11-21）
 
 官方卡片与它的三段外围（`TerminalGuide.tsx:32-83`）：
 
@@ -202,32 +202,60 @@ additive 方法，因此完全缺。
 
 | 处 | 落点 | 说明 |
 |---|---|---|
-| 图标素材 | `plugins/dsassets/terminal.go` | `PluginArtworkTerminal()` 两条 path 逐字来自官方 bundle；卡片 `plugins/dsterminal/guide.go:175` 的 `guideIcon()` 按官方 26px 画，素材解析失败才退回旧 16-box 字形 |
-| 快捷键条 | `plugins/dsterminal/guide.go:242` `drawGuideShortcut` + `pluginapi.Actions.ShortcutKeys` + `cmd/app/terminal_shortcut.go:117` | 键序 `{"Ctrl","+","反引号"}` 来自官方 `terminal.new` 默认值（`index.ts:57-63`）；`"+"` 单独成元素（bundle `Sp` 的 separator） |
+| 图标素材 | `plugins/dsassets/terminal.go` | `PluginArtworkTerminal()` 两条 path 逐字来自官方 bundle；卡片 `plugins/dsterminal/guide.go:290` 的 `guideIcon()` 按官方 `size={description === undefined ? 22 : 26}`（`TerminalGuide.tsx:58`，即 `guideIconBox` / `guideIconBoxCompact`）画，素材解析失败才退回旧 16-box 字形 |
+| 快捷键条 | `plugins/dsterminal/guide.go:269` `drawGuideShortcut` + `pluginapi.Actions.ShortcutKeys` + `cmd/app/terminal_shortcut.go:117` | 键序 `{"Ctrl","+","反引号"}` 来自官方 `terminal.new` 默认值（`index.ts:57-63`）；`"+"` 单独成元素（bundle `Sp` 的 separator） |
+| 菜单载体 | `plugins/dsterminal/guide.go:368` `drawGuideMenu`（`ui.Menu` 浮层）+ `plugins/dscore/menu.go` 的面/行画笔 | 见 §5.1：`Unpainted` + `DrawPanel` + `DrawItem`，行为归菜单自己；`selectedId` 按 `shell.path` 打勾（原实现按 label 比，勾永不出现） |
 
-### 5.1 菜单载体仍是差异（**Viva 限制**，已写 outbox 草案）
+### 5.1 菜单载体已闭合（2026-11-21，`feat/gui-advance`）
 
-官方 `Menu` 是 portal 到窗口层的原语。Viva v0.6.4 的两个入口都不合用：
+**官方是什么**：`Menu` 是 primitives 原语，`open={open} portal autoFocus align="end"`，
+锚点是 `.trigger` 那个 ghost 按钮，`items` 由三态投影、`selectedId` 给当前 shell 打勾，
+面是 `--dsw-elevation-prominent` + `--dsw-elevation-stroke-color: border-l1`
+（`OFF:dsh-client-ui-sidebar-terminal/src/client/TerminalGuide.tsx:62-77`；
+面的令牌由 `ModelSelect.module.css:109-117` 那段复刻品的原文注释确认
+「Surface tokens match the Menu primitive card (ui-primitives Menu.module.css)」）。
 
-1. **`frame.Popup()` 不导出到 `ui.C`**：`Popup()` 是 `*frame` 的方法
-   （`viva@v0.6.4/ui/frame.go:507-517`），`ui.Ctx` 只导出
-   `Key/KeyInt/Part/After/Theme/Bounds/Canvas/ID/PopupLayer`（`ui/page.go:72-119`）；
-   插件声明 `ui.Popup()` 是编译错误（实测 `undefined: ui.Popup`，见 §5.2 复现 A）。
-2. **`ui.Menu` 的菜单面阴影硬编码 `gfx.ShadowMD`**
-   （`viva@v0.6.4/components/dropdown_menu.go:772-774`），没有 `Look`/`Options`
-   覆盖口。用它就等于把官方 `--dsw-elevation-prominent` + `--dsw-alias-border-l1`
-   退回 Tailwind 预设——`plugins/dscore` 的阴影守卫会红（正确）。
+**我们以前是什么**：`drawGuideMenu` 把菜单画成卡片列的**子元素**（手绘面板 + 官方阴影令牌）。
+代价两条：① 打开时把下面内容整体下推；② 没有方向键、点外部/Esc 都不关闭。
+当时判成「Viva 限制」（`ui.Popup()` 不导出 + `ui.Menu` 面阴影写死 `gfx.ShadowMD`）——
+**这两句在 v0.6.5 之后只对了一半**：`ui.Menu` 的默认面确实还是 `ShadowMD`，但 v0.6.5 起
+`MenuItems.Unpainted()` + `DrawPanel` + `DrawItem`（`viva@v0.6.5/ui/menu.go:377/382/389`，
+底层 `components/dropdown_menu.go:157-162`）把**面与行**交给调用方，行为仍归菜单
+（`ui/menu.go:369-376` 原文「Hits, focus, the keyboard, dismissal and submenu opening
+stay the menu's」）。所以载体换成 `ui.Menu` 之后，官方阴影令牌也保得住。
 
-所以本仓保留手绘面板，并**用官方令牌画阴影**
-（`dscore.PaintElevation(…, Shadows.Prominent, BorderL1)`，`plugins/dsterminal/guide.go`
-的 `drawGuideMenu`），代价是：① 面板作为卡片列的子元素会占布局，打开时把下面内容
-往下推；② 没有 `ui.Menu` 自带的方向键/外部点击关闭/Esc。
+**现在是什么**：`plugins/dsterminal/guide.go` 的 `drawGuideMenu` 用
+`ui.Menu(f, anchor, &p.guideMenuOpen, …)` 声明，锚点就是 `.trigger` 那个 20×20 按钮
+（`drawGuideTrigger` 返回自己的 `ui.Box`），面与行交给 `plugins/dscore` 的
+`PaintMenuPanel` / `PaintMenuItem`（`plugins/dscore/menu.go`）。同一个画笔也被
+forge 的范围菜单用（`plugins/dsforge/changes_menu.go` 只剩转发），所以「官方菜单长什么样」
+这件事全仓只有一份读数。
 
-**解除条件**：Viva 导出 `Popup`（或给 `Menu` 一个阴影/描边覆盖口）后，把面板换成
-popup 载体，行为与几何即可一并按官方补齐。复现与 issue 草稿：
-`$DSH_HOME/outbox/vivaui-viva-popup-menu-shadow.md`（**未发上游**）。
+顺带修掉一处真 bug：`selectedId` 的判据。官方 `items` 的 id 是 **`shell.path`**、
+`selectedId` 也是 path（`dsh-api-terminal-controller/src/client/index.ts:169-191` 的
+`selectedShell: result.value.find(s => s.path === previous)?.path`），本仓原来拿
+`choices.Selected == row.label` 比 —— 宿主回的 `Selected` 是 path，`name ≠ path`
+（`PowerShell` / `C:\…\powershell.exe`）时勾**永远不出现**。现按 path 比。
 
-### 5.2 复现（实测）
+**仍是差异的两条（都已登记，无代价可补）**：
+
+1. **`align="end"` 的对齐**：官方菜单面右对齐锚点；Viva 的 `MenuItems` 只有
+   `Above()` / `Beside()`（`viva@v0.6.8-webstate/base/menu.go:414-431`），没有横向对齐出口，
+   所以本仓的浮层是默认（左对齐锚点）。要补得给上游加一个 alignment 出口。
+2. **每行行高**：primitives `Menu.module.css` 不在 rc.5 解包树里（338 个包逐个数过，
+   只有消费方），所以不调 `RowHeight`、不自造 30/24 —— 与账本 #64 ⑧ 的行高半同一条判定。
+   行内文字照官方 `.cell`（13px / 20px / `padding-inline:8`）画，行盒由主题布、文字居中。
+
+另有一条**契约层**的小差异（不在本项判定面）：官方每次打开菜单都会重新枚举 shell
+（`useEffect` 依赖 `[open, attempt]`，锚点 `onClick` 里先 `setState({phase:'loading'})`），
+本仓 `Actions.TerminalLaunchShells` 是壳侧缓存（ready 档 TTL 60s、failed 档 2s），
+所以 60 秒内重开会直接命中缓存。补它要给 `pluginapi.Actions` 加一条"强制重拉"的入口。
+
+### 5.2 复现（历史：`ui.Popup` 确实没有，但结论已过期）
+
+> 2026-11-21 更正：下面这条复现证明的是「插件拿不到 `ui.Popup`」，**不是**「做不成浮层菜单」。
+> v0.6.5 起 `ui.Menu` + `Unpainted`/`DrawPanel`/`DrawItem` 已经够用（§5.1），
+> `$DSH_HOME/outbox/vivaui-viva-popup-menu-shadow.md` 因此**不需要发**。
 
 ```go
 // tmp/GO8-RC2/_t54f/viva-popup-repro/main.go —— 在 dsh-ui 工作树里 go build
@@ -246,6 +274,16 @@ tmp/GO8-RC2/_t54f/viva-popup-repro/main.go:14:9: undefined: ui.Popup   (exit 1)
 
 `plugins/dsterminal/guide_test.go::TestTerminalGuideCardDrawsOfficialShortcutKeys`、
 `TestOfficialTerminalGuideGeometry`、`TestTerminalGuideMenuDrawsShellStates`；
+菜单载体（2026-11-21 新增，headless 真绘制）`plugins/dsterminal/guide_menu_test.go`：
+`TestGuideMenuIsAnOverlayNotAnExtraRow`（打开前后下一张卡片的 Y 一格不动 + 菜单行不在卡片矩形内）、
+`TestGuideMenuPaintsOfficialMenuSurface`（`--dsw-specific-menu` + 圆角 md + prominent 两层柔光 +
+否定判据「出现负 spread 即退回 ShadowMD」）、`TestGuideMenuRowsUseOfficialCell`（13px / label-primary /
+左缘 = 面 4 + `.cell` 8）、`TestGuideMenuChecksOnlyTheSelectedShellByPath`（勾只在 selectedId 那行，
+且按 path 比）、`TestGuideIconSizeFollowsDescription`（26:22 的墨迹比）。
+共享画笔的档位由 `plugins/dscore` 的 `TestElevationDecisionTablePerSite`（`dscore/menu.go` 那一行）
+与 `TestConvertedPluginsUseOfficialShadowTokens` 钉住；**变异 6 组全红**
+（去掉 Unpainted/DrawPanel / `Chosen(false)` / 勾按 label 比 / 菜单改回占布局 /
+`PaintMenuPanel` 换 Panel 档 / 描边换 border-l2）。
 `cmd/app/terminal_shortcut_test.go::TestShortcutKeysCatalog`；
 `plugins/dsassets/terminal_test.go`（36 / 3.5 / 两条 path / #679EFE）。
 

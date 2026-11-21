@@ -47,13 +47,17 @@ package dsterminal
 // # 本仓的边界（如实登记）
 //
 //   - 官方那枚 `PluginArtworkTerminal` 已登记：`plugins/dsassets.PluginArtworkTerminal`
-//     的 path/viewBox/stroke 逐字取自 rc.2 前端 bundle，卡片按官方 26px 画。
-//   - 官方的 shell 菜单是 primitives `Menu`（portal 到窗口层）。Viva v0.6.4 有两个
-//     入口都不合用：`frame.Popup()` 不导出到 `ui.C`（插件无法声明 popup），
-//     `ui.Menu` 又把菜单面阴影硬编码成 `gfx.ShadowMD`（会丢掉官方
-//     `--dsw-elevation-prominent` + `border-l1`）。所以仍手绘面板并用官方令牌画阴影；
-//     代价（占布局、无方向键/外部点击关闭）与 Viva issue 草稿见
-//     `docs/official-sidebar-terminal-close-rc2.md` §5。
+//     的 path/viewBox/stroke 逐字取自官方前端 bundle，卡片按官方 26px 画
+//     （`TerminalGuide.tsx:58` 的 `size={description === undefined ? 22 : 26}`：
+//     没有描述时官方只画 22，本仓按同一个判据取 `guideIconSize`）。
+//   - 官方的 shell 菜单是 primitives `Menu`（`TerminalGuide.tsx:62-77`，
+//     `open={open} portal autoFocus align="end"`）。本仓用 Viva 的 `ui.Menu`：
+//     同样是不占布局的浮层，点外部/Esc 关闭、键盘可走（`ui/menu.go:369-376` 原文
+//     「Hits, focus, the keyboard, dismissal and submenu opening stay the menu's」）。
+//     面与行由 `plugins/dscore` 画（`Unpainted` + `DrawPanel` + `DrawItem`）：官方菜单面
+//     是 `--dsw-elevation-prominent` + `border-l1`，而 Viva 的默认面把阴影写死
+//     `gfx.ShadowMD`。仍缺的两处读数登记在 `docs/official-sidebar-terminal-close-rc2.md`
+//     §5.1：`align="end"` 的对齐（Viva 无此出口）与每行行高（原语 CSS 不在解包树内）。
 
 import (
 	"fmt"
@@ -84,6 +88,10 @@ const (
 	guideTriggerRadius  float32 = 4  // `.trigger{border-radius:4px}`
 	guideChevronSize    float32 = 14 // `.trigger svg{width:14px;height:14px}`
 
+	// `.icon` 里那枚 `PluginArtworkTerminal size={description === undefined ? 22 : 26}`
+	// （TerminalGuide.tsx:58）：有描述画 26，没有描述画 22。
+	guideIconBoxCompact float32 = 22
+
 	// 卡片右下的 `ShortcutKeys`（TerminalGuide.tsx:81）plain 档：
 	// `._keys_38b9q_1{display:inline-flex;gap:3px;color:label-tertiary;
 	// font-size:12px;line-height:16px;white-space:nowrap}`
@@ -91,18 +99,15 @@ const (
 	guideShortcutFont float32 = 12 // `.keys{font-size:12px}`
 	guideShortcutLine float32 = 16 // `.keys{line-height:16px}`
 
-	// shell 菜单面的度量：官方 `.menu` 只有 `display:flex;flex:none`
-	// （TerminalGuide.module.css:11），面本身是 primitives 的 `Menu`——
-	// 面 padding 4 / 行高 34 / 行 padding-inline 8 / 13px-20 取仓库已冻结的官方菜单档
-	// （internal/uikernel/official_model_menu.go:64-80），锚点间距 4（官方 anchor+4）。
-	guideMenuPad       float32 = 4
-	guideMenuGap       float32 = 4
-	guideMenuRowH      float32 = 34
-	guideMenuRowPadX   float32 = 8
-	guideMenuRowGap    float32 = 6
-	guideMenuFont      float32 = 13
-	guideMenuLine      float32 = 20
-	guideMenuAnchorGap float32 = 4
+	// shell 菜单的行几何：官方 `.menu` 只有 `display:flex;flex:none`
+	// （TerminalGuide.module.css:11），面与行都是 primitives `Menu` 的，
+	// 读数与画笔在 `plugins/dscore/menu.go`（forge 范围菜单同一套）。
+	// 行高**不设**：原语 `Menu.module.css` 不在 rc.5 解包树内，不自造数值
+	// （账本 #64 ⑧ 的行高半同一条判定）。
+	guideMenuRowPadX = dscore.MenuRowPadX
+	guideMenuFont    = dscore.MenuRowFont
+	guideMenuLine    = dscore.MenuRowLine
+	guideCheckSize   = dscore.MenuCheckSize
 )
 
 // terminalNewCommandID 是官方终端快捷键的命令 id（`index.ts:56` 的
@@ -112,9 +117,10 @@ const terminalNewCommandID = "terminal.new"
 // ── shell 菜单 ───────────────────────────────────────────────────────────
 //
 // 官方 `.menu` 只有 `display:flex;flex:none`（TerminalGuide.module.css:11），面本身是
-// primitives 的 `Menu`（portal 到窗口层）。Viva 的内部 popup 与 `ui.Menu` 都不可直接
-// 用于"插件 + 官方阴影令牌"：前者不导出，后者阴影写死 `gfx.ShadowMD`。本仓保留手绘
-// 面板，度量取仓库已冻结的官方菜单档，阴影用 `dscore.PaintElevation` 的官方令牌。
+// primitives 的 `Menu`：`open={open} portal autoFocus align="end"`，锚点是 `.trigger`
+// 那个 ghost 按钮，`items` 由三态投影而来、`selectedId` 给当前 shell 打勾
+// （TerminalGuide.tsx:62-77）。本仓用 `ui.Menu` 复刻同一形状，面与行由
+// `plugins/dscore` 的官方画笔接管（见该文件头）。
 
 // 官方文案（OFF:…/sidebar-terminal/src/client/locales.ts，中文逐字）。
 const (
@@ -144,7 +150,9 @@ const guideEntryPainterKey = RightTabTerminal
 type guideMenuRow struct {
 	label    string
 	disabled bool
-	pick     func()
+	// chosen 对应官方 `Menu` 的 `selectedId`：当前记住的那个 shell（按 path 比）。
+	chosen bool
+	pick   func()
 }
 
 // RightTabBadge 实现官方 TerminalTitle 里那枚 `Tag`。
@@ -219,20 +227,28 @@ func (p *Plugin) drawGuideEntry(f ui.C, env *pluginapi.Env) {
 					p.guideOpenTerminal(env, "")
 				}
 			}
-			// `.icon`（:4）：26×26。官方 `PluginArtworkTerminal` 是固定色 #679EFE 的
-			// 36-box 描边字形（见 dsassets.PluginArtworkTerminal 的出处）。
+			// `.icon`（:4）：26×26；官方 `size={description === undefined ? 22 : 26}`
+			// （TerminalGuide.tsx:58），没有描述时画 22。官方 `PluginArtworkTerminal`
+			// 是固定色 #679EFE 的 36-box 描边字形（见 dsassets.PluginArtworkTerminal 的出处）。
+			iconBox := guideIconBox
+			if props.Description == "" {
+				iconBox = guideIconBoxCompact
+			}
 			ui.Row(f).Width(guideIconBox).Height(guideIconBox).Shrink(0).
 				Items(ui.Center).Justify(ui.Center).Children(func() {
-				ui.Icon(f, p.guideIcon()).Size(guideIconBox, guideIconBox).
+				ui.Icon(f, p.guideIcon()).Size(iconBox, iconBox).
 					Color(dsassets.TerminalArtworkStroke())
 			})
 			// `.text`（:5）：flex:1 的竖列。
 			ui.Column(f).Grow(1).Shrink(1).Gap(guideTextGap).Children(func() {
-				// `.titleRow`（:6）：标题 + 展开菜单的小箭头。
+				// `.titleRow`（:6）：标题 + 展开菜单的小箭头。官方 `Menu` 的 `anchor`
+				// 就是这个 `.trigger` 按钮（TerminalGuide.tsx:73-76），所以浮层必须在
+				// 同一次声明里锚在它身上。
 				ui.Row(f).FillWidth().Items(ui.Center).Gap(guideTitleRowGap).Children(func() {
 					ui.Text(f, props.Title).FontSize(guideTitleFont).LineHeight(guideTitleLine).
 						MaxLines(1).Ellipsis().Grow(1).Color(t.LabelPrimary)
-					p.drawGuideTrigger(f, env, t)
+					trigger := p.drawGuideTrigger(f, env, t)
+					p.drawGuideMenu(f, env, t, trigger)
 				})
 				if props.Description != "" {
 					ui.Text(f, props.Description).FontSize(guideDescFont).
@@ -242,9 +258,6 @@ func (p *Plugin) drawGuideEntry(f ui.C, env *pluginapi.Env) {
 			// `.shortcut{position:relative;pointer-events:none}`（:12）：卡片最右。
 			p.drawGuideShortcut(f, env, t)
 		})
-		// 官方的 Menu 是 portal（TerminalGuide.tsx:62-77）；本仓的手绘面板排在卡片
-		// 正下方（占布局），原因与 Viva 限制见 drawGuideMenu 的注释。
-		p.drawGuideMenu(f, env, t)
 	})
 }
 
@@ -308,7 +321,10 @@ func (p *Plugin) guideOpenTerminal(env *pluginapi.Env, shellPath string) bool {
 }
 
 // drawGuideTrigger 画 `.trigger`（:9-10）：20×20、圆角 4、14px 的 chevron、三级字色。
-func (p *Plugin) drawGuideTrigger(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
+//
+// 返回它自己的 `ui.Box`：官方 `Menu` 的 `anchor` 就是这个按钮（TerminalGuide.tsx:73-76），
+// 调用方拿它当浮层锚点。
+func (p *Plugin) drawGuideTrigger(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) ui.Box {
 	var id gfx.ID
 	if env.Tree != nil {
 		id = env.Tree.ID(env.Feat, "terminal-guide-shell")
@@ -326,85 +342,63 @@ func (p *Plugin) drawGuideTrigger(f ui.C, env *pluginapi.Env, t *pluginapi.Theme
 	if button.Clicked() {
 		p.guideMenuOpen = !p.guideMenuOpen
 	}
+	return button
 }
 
-// drawGuideMenu 画官方的 shell 菜单面。
+// drawGuideMenu 画官方的 shell 菜单：**锚在 `.trigger` 上的浮层**。
 //
-// 官方是 primitives 的 `Menu`：portal 到窗口层、`align="end"`、选中项打勾、
-// 四态 loading / ready / failed+retry / empty（TerminalGuide.tsx:50-54,62-77）。
+// 官方形状（TerminalGuide.tsx:62-77）：
 //
-// 本仓为什么仍然手绘：Viva v0.6.4 有两个现成入口，都不合用——
+//	<Menu open portal autoFocus align="end" className={css.menu}
+//	      items={…} selectedId={state.choices.selectedShell} onClose onSelect
+//	      anchor={<Button variant="ghost" className={css.trigger}>…</Button>} />
 //
-//   - `frame.Popup()` 能把菜单变成不占布局的浮层，但它是 frame 内部方法，
-//     插件拿到的 `ui.C` 上**没有**对应导出（`ui/page.go` 的 Ctx 只导出
-//     Key/KeyInt/Part/After/Theme/Bounds/Canvas/ID/PopupLayer），插件无法声明。
-//   - `ui.Menu` 能用，但它的菜单面把阴影**硬编码**成 `gfx.ShadowMD`
-//     （`viva@v0.6.4/components/dropdown_menu.go:772-774`，Tailwind 阶梯），
-//     官方这一档是 `--dsw-elevation-prominent` + `--dsw-alias-border-l1`；
-//     用它就等于把官方阴影令牌静默退回 Viva 预设（`plugins/dscore` 的阴影守卫
-//     会红，红得对）。
+// 三态投影与官方 `items` 逐条一致（`TerminalGuide.tsx:64` 的 `items.length === 0` 也算）：
 //
-// 所以保持手绘面板：材质/圆角/行高逐条取仓库已冻结的官方菜单档，阴影用
-// `dscore.PaintElevation(…, Shadows.Prominent, BorderL1)`（官方菜单原语的
-// `--dsw-elevation-prominent` + `--dsw-alias-border-l1`）。代价是它作为卡片列的
-// 子元素会占布局（打开时把下面内容往下推），且没有 `ui.Menu` 自带的方向键/
-// 外部点击关闭——这两点登记在 #54 的"仍未闭合"里。
-func (p *Plugin) drawGuideMenu(f ui.C, env *pluginapi.Env, t *pluginapi.Theme) {
-	if !p.guideMenuOpen || env.Act.TerminalLaunchShells == nil {
+//	ready   → 每枚 shell 一行（`{id: shell.path, label: shell.name}`）；空表 = `shellEmpty` 禁用行
+//	failed  → 错误行（禁用）+ `retry` 行
+//	其余    → `shellLoading` 禁用行
+//
+// `selectedId` 比的是 **shell.path**（官方 `items` 的 id 就是 `shell.path`），
+// 所以打勾判据是 `choices.Selected == shell.Path`，不是标签相等。
+//
+// 面与行交给 `plugins/dscore`（`Unpainted` + `DrawPanel` + `DrawItem`）：官方菜单面是
+// `--dsw-elevation-prominent` + `border-l1`，Viva 的默认面把阴影写死 `gfx.ShadowMD`。
+// 行为（命中、焦点、键盘、Esc、点外关闭）仍归菜单自己（`ui/menu.go:369-376` 原文）。
+func (p *Plugin) drawGuideMenu(f ui.C, env *pluginapi.Env, t *pluginapi.Theme, anchor ui.Box) {
+	if env.Act.TerminalLaunchShells == nil {
 		return
 	}
 	choices := env.Act.TerminalLaunchShells()
 	rows := guideMenuRows(choices, env, p)
-	panel := ui.Column(f).Shrink(0).Pad(guideMenuPad).Gap(guideMenuGap).
-		MarginSides(guideMenuAnchorGap, 0, 0, 0).
-		Background(t.Menu).Radius(t.Radii.MD).
-		Draw(func(d *ui.DrawContext) {
-			dscore.PaintElevation(d, t.Radii.MD, t.Shadows.Prominent, t.BorderL1)
-		})
-	if width, ok := guideMenuWidth(env, rows, choices.Selected); ok {
-		panel = panel.Width(width)
-	} else {
-		panel = panel.FillWidth()
-	}
-	panel.Children(func() {
+	ui.Menu(f, anchor, &p.guideMenuOpen, func(items *ui.MenuItems) {
+		if items == nil {
+			return
+		}
+		items.Unpainted().
+			DrawPanel(func(canvas *gfx.Canvas, bounds gfx.Rect, _ gfx.Theme) {
+				dscore.PaintMenuPanel(canvas, bounds, t)
+			}).
+			DrawItem(func(parts ui.MenuItemParts) { dscore.PaintMenuItem(parts, t) })
 		for _, row := range rows {
 			row := row
-			color := t.LabelPrimary
-			if row.disabled {
-				color = t.LabelTertiary
-			}
-			var id gfx.ID
-			if env.Tree != nil && !row.disabled {
-				id = env.Tree.ID(env.Feat, "terminal-guide-shell-"+row.label)
-			}
-			item := ui.Row(f).FillWidth().Height(guideMenuRowH).Shrink(0).
-				PadSides(0, guideMenuRowPadX, 0, guideMenuRowPadX).
-				Gap(guideMenuRowGap).Items(ui.Center)
-			if !row.disabled {
-				item = item.Hover(ui.Look{}.Background(t.Hover)).Hit(id, row.label)
-			}
-			item.Children(func() {
-				// 官方 Menu 的 `selectedId` 给选中项打勾（MenuSurface 的选中标记）。
-				if choices.Phase == pluginapi.TerminalShellsReady && choices.Selected != "" &&
-					choices.Selected == row.label {
-					ui.Icon(f, terminalCheckIcon()).Size(guideChevronSize, guideChevronSize).
-						Color(t.LabelPrimary)
-				}
-				ui.Text(f, row.label).FontSize(guideMenuFont).LineHeight(guideMenuLine).
-					MaxLines(1).Ellipsis().Color(color)
-			})
-			if !row.disabled && item.Clicked() && row.pick != nil {
+			item := items.Item(row.label).Chosen(row.chosen).Disabled(row.disabled)
+			if !row.disabled && row.pick != nil && item.Clicked() {
 				row.pick()
 			}
 		}
 	})
 }
 
-// guideMenuRows 把三态投影成官方 Menu 的 items[]（TerminalGuide.tsx:50-54）：
+// guideMenuRows 把三态投影成官方 Menu 的 items[]（TerminalGuide.tsx:50-54,64）：
 //
 //	ready   → 每枚 shell 一行；空表 = `shellEmpty` 禁用行
 //	failed  → 错误行（禁用）+ `retry` 行
 //	其余    → `shellLoading` 禁用行
+//
+// `chosen` 是官方 `selectedId` 的投影：官方 `items` 的 id 是 `shell.path`、
+// `selectedId` 也是 path（`dsh-api-terminal-controller/src/client/index.ts:169-191`
+// 的 `selectedShell: …find(s => s.path === previous)?.path`），所以按 path 比。
 func guideMenuRows(choices pluginapi.TerminalShellChoices, env *pluginapi.Env, p *Plugin) []guideMenuRow {
 	switch choices.Phase {
 	case pluginapi.TerminalShellsReady:
@@ -413,16 +407,21 @@ func guideMenuRows(choices pluginapi.TerminalShellChoices, env *pluginapi.Env, p
 			shell := shell
 			label := shell.Name
 			if label == "" {
+				// 官方直接用 `shell.name`；宿主没给名字时本仓退回 path，好过一行空白。
 				label = shell.Path
 			}
-			rows = append(rows, guideMenuRow{label: label, pick: func() {
-				// 官方先 `selectShell(path)`（记住选择），再带 `shellPath` 打开新标签
-				// （TerminalGuide.tsx:69-71）。
-				if env.Act.TerminalSelectShell != nil {
-					env.Act.TerminalSelectShell(shell.Path)
-				}
-				p.guideOpenTerminal(env, shell.Path)
-			}})
+			rows = append(rows, guideMenuRow{
+				label:  label,
+				chosen: choices.Selected != "" && choices.Selected == shell.Path,
+				pick: func() {
+					// 官方先 `selectShell(path)`（记住选择），再带 `shellPath` 打开新标签
+					// （TerminalGuide.tsx:69-71）。
+					if env.Act.TerminalSelectShell != nil {
+						env.Act.TerminalSelectShell(shell.Path)
+					}
+					p.guideOpenTerminal(env, shell.Path)
+				},
+			})
 		}
 		if len(rows) == 0 {
 			return []guideMenuRow{{label: zhGuideShellEmpty, disabled: true}}
@@ -445,32 +444,6 @@ func guideMenuRows(choices pluginapi.TerminalShellChoices, env *pluginapi.Env, p
 		}
 	}
 	return []guideMenuRow{{label: zhGuideShellLoad, disabled: true}}
-}
-
-// guideMenuWidth 按官方 `width:max-content` 的语义量出菜单面宽度
-// （primitives MenuSurface：宽度随内容，没有固定值）：
-//
-//	最长一行的文字宽 + 行左右内边距 + 面左右内边距
-//
-// ok=false 表示这一帧量不到（没有 canvas），调用方退回铺满那一列。
-func guideMenuWidth(env *pluginapi.Env, rows []guideMenuRow, selected string) (float32, bool) {
-	if env == nil || env.Canvas == nil || len(rows) == 0 {
-		return 0, false
-	}
-	widest := float32(0)
-	for _, row := range rows {
-		width := env.Canvas.TextWidth(row.label, guideMenuFont)
-		if selected != "" && selected == row.label {
-			width += guideChevronSize + guideMenuRowGap
-		}
-		if width > widest {
-			widest = width
-		}
-	}
-	if widest <= 0 {
-		return 0, false
-	}
-	return widest + 2*guideMenuRowPadX + 2*guideMenuPad, true
 }
 
 // RightTabRename 实现官方 TerminalTitle 的 write 那一半：双击芯片改名。

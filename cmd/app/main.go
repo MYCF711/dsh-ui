@@ -115,6 +115,13 @@ type model struct {
 	web   *app.WebHost
 	cli   *apiclient.Client
 	cache map[string]*cachedSession
+
+	// webPartitions 是网页**存储账号 → 分区名**的缓存（官方
+	// `DesktopBrowserGuests.partitions`，`app.asar:lib/main.js:18093`）。必须活一次
+	// 进程：`webPages` 每帧新建，缓存挂在它上面就变成"每帧重新随机"，同一个
+	// workspace 的两个 tab 会分到两套 cookies。锁是它自己的
+	// （`webPartitionCache.mu`），不与 m.mu 混用。
+	webPartitions webPartitionCache
 	// cwd 是当前会话的工作目录（来自 session.load.cwd）。插件拼文件路径要用它，
 	// 空串表示不知道——那时它们不该拼。
 	cwd string
@@ -2094,7 +2101,7 @@ func newConfig(m *model) app.Config {
 			Theme: m.theme,
 			// 网页宿主：nil 的 host 也照样放进去（webPages.Open 会回
 			// ErrWebUnsupported），插件因此只需要认一个错误值。
-			Web: webPages{host: m.web},
+			Web: webPages{host: m.web, partitions: &m.webPartitions},
 			Data: pluginapi.Snapshot{
 				Sessions: sessions, Workspaces: workspaces, WorkspacesKnown: workspacesKnown,
 				PendingWorkspaceID: workspaceSelectionPending, DirectoryBusy: directoryBusy,

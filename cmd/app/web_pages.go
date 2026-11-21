@@ -20,7 +20,10 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"sync"
 
 	"github.com/MYCF711/dsh-ui/pluginapi"
 	"github.com/vivaui/viva/app"
@@ -28,7 +31,15 @@ import (
 )
 
 // webPages 是 pluginapi.WebHost 的实现，包住 Viva 的窗口级 WebHost。
-type webPages struct{ host *app.WebHost }
+type webPages struct {
+	host *app.WebHost
+	// partitions 是本窗口的存储分区名缓存（官方 `DesktopBrowserGuests.partitions`）。
+	//
+	// **必须跨帧活着**：`webPages` 是每帧新建的值，缓存不能挂在它上面，否则每帧都
+	// 新造一批分区名（那就变成"每次随机"，同一个 workspace 的两个 tab 会分到两套
+	// cookies）。指针由 model 持有（`main.go` 的 `m.webPartitions`）。
+	partitions *webPartitionCache
+}
 
 var _ pluginapi.WebHost = webPages{}
 
@@ -47,15 +58,15 @@ var _ pluginapi.WebHost = webPages{}
 //	无 allow-downloads → Download 一律拒绝（页面的下载不会落盘）
 //	无 allow-top-navigation → 见下面的 Navigate
 //
-// **不设 `Ephemeral`**：官方 web 载具的 iframe 与页面同源、共用存储；桌面载具才
-// 按 workspace 分存储分区（`src/client/electron/workspace.ts`）。本仓是原生窗口、
-// 没有 workspace 分区这一层，所以用引擎默认 profile，并在
-// docs/official-parity.md 的 #50 行登记这条差异。
+// **不设 `Ephemeral`（账号为空时）**：那时的行为与这条线出现之前一致——用引擎默认
+// profile。官方 web 载具的 iframe 与页面同源、共用存储；桌面载具才按 workspace 分
+// 存储分区（`src/client/electron/workspace.ts`）。本仓是原生窗口，分区那条线走
+// `webPartitionCache`（见下），没有账号时**一个字都不下发**。
 func (w webPages) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, error) {
 	if w.host == nil {
 		return nil, pluginapi.ErrWebUnsupported
 	}
-	page, err := w.host.Open(webViewConfig(options))
+	page, err := w.host.Open(w.config(options))
 	if err != nil {
 		if errors.Is(err, app.ErrUnsupported) {
 			return nil, pluginapi.ErrWebUnsupported
@@ -65,7 +76,122 @@ func (w webPages) Open(options pluginapi.WebOpenOptions) (pluginapi.WebPage, err
 	return &webPage{page: page}, nil
 }
 
-// webViewConfig 把契约选项翻成 Viva 的窗口配置，是**唯一**产生配置的地方。
+// config 是一页的窗口配置：翻译（`webViewConfig`）+ 分区（`webPartitionCache`）。
+//
+// 单拎出来是为了让"分区真的进了配置"这条接线能在没有引擎的单测里钉住——`Open`
+// 必须先有 `app.WebHost` 才能跑，而配置本身是纯数据。
+func (w webPages) config(options pluginapi.WebOpenOptions) app.WebViewConfig {
+	config := webViewConfig(options)
+	w.partitions.apply(&config, options.StorageAccount)
+	return config
+}
+
+// ── 存储分区（官方 `lib/main.js` 的 DesktopBrowserGuests）─────────────────
+
+// webPartitionPrefix 是分区名前缀（官方 `dsh-sidebar-browser-${randomUUID()}`，
+// OFF:app.asar:lib/main.js:18109）。**21 + 36 = 57 字符**，在 WebView2 的 64
+// 字符上限内（`viva@v0.6.11-part/app/web.go:306-309` 的 `webPartitionNameLength`），
+// 字符集也全在它那张表里（字母数字 + `-`）。
+const webPartitionPrefix = "dsh-sidebar-browser-"
+
+// webPartitionCache 按**存储账号**缓存分区名，是官方
+// `DesktopBrowserGuests.partitions`（`lib/main.js:18093` 的 `partitions = new Map()`）
+// 的对等物。进程内活一次：分区名一旦发给某个账号就不再变，同账号后来的 tab 拿到的
+// 是同一个名字——这正是"同一 workspace 的两个 tab 共用 cookies"的唯一实现方式。
+//
+// 锁是它自己的（不与 `m.mu` 混用）：网页事件在窗口线程、`Open` 也可能从别处来，
+// `-race` 下必须自己守住。
+type webPartitionCache struct {
+	mu    sync.Mutex
+	names map[string]string
+	// newID 造一个分区名里的 UUID 文本；nil = `randomUUID`。
+	//
+	// 留这个口子只为**钉住那条安全分支**：铸不出名字时必须不下发分区，而不是让
+	// 所有账号共用一个名字。crypto/rand 事实上不会失败，那条分支用真随机源测不到，
+	// 而它一旦错了就是"看起来隔离、其实共用一套 cookies"。
+	newID func() string
+}
+
+// mint 造一个新的 UUID 文本（测试可以替换 newID）。
+func (c *webPartitionCache) mint() string {
+	if c.newID != nil {
+		return c.newID()
+	}
+	return randomUUID()
+}
+
+// apply 给一份窗口配置写上分区（名字 + `Ephemeral`）。
+//
+//   - 账号为空 → **什么都不写**。零值 `Partition`/`Ephemeral` 就是引擎默认 profile，
+//     与这条线出现之前逐字节相同（这是硬边界：没有身份时绝不静默造一个全局共享分区，
+//     也不许把页面塞进别人的分区）。
+//   - 账号非空 → 取（或铸）这个名字，并置 `Ephemeral`。**官方浏览器侧是内存会话**
+//     （`partition` 没有 `persist:` 前缀 = 进程内 session，
+//     `lib/main.js:18109` 与 Electron session 语义），所以这里也必须 `Ephemeral`：
+//     `Partition` 单给是**持久**的（`viva@v0.6.11-part/app/web.go:136-152`），
+//     那会把官方"进程结束就没了"的内存会话变成写盘，多出官方没有的磁盘残留。
+func (c *webPartitionCache) apply(config *app.WebViewConfig, account string) {
+	if name := c.name(account); name != "" {
+		config.Partition = name
+		config.Ephemeral = true
+	}
+}
+
+// name 返回账号的分区名（空账号 → 空串）。第一次见到的账号铸一个新名字并记住。
+//
+// 为什么名字里不含账号：名字会落进 WebView2 的 profile 元数据（`Ephemeral` 只是把
+// cookies/缓存放内存，profile 的登记仍在 user-data 目录里，
+// `viva@v0.6.11-part/internal/platform/windows/web_windows.go:226-229`），把
+// `cwd:<工作区路径>` 拼进名字等于把本机路径写进磁盘。官方用随机 UUID 就是为了这个，
+// 我们也用随机的——账号只当 Map 的键，不进名字。
+//
+// 为什么**不**像官方那样给账号加 4096 字符上限（`lib/main.js:18106` 抛
+// "a workspace storage identity is required"）：那条校验是为跨 IPC 的入参把关，
+// 而这里账号全程在进程内、又只当键用（名字是定长 UUID），加个上限只会让一个长
+// 工作区路径的会话退回默认 profile——那是**更坏**的结果（与他人共用存储）。
+func (c *webPartitionCache) name(account string) string {
+	// nil 缓存或空账号 = 没有可用的分区依据 → 不下发。零值 `webPages{}`（测试夹具、
+	// 老调用方）因此保持这条线出现之前的行为，不会因为少接一根线而 panic。
+	if c == nil || account == "" {
+		return ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if name, ok := c.names[account]; ok {
+		return name
+	}
+	id := c.mint()
+	if id == "" {
+		// 铸不出名字就不下发（见 randomUUID 的注释）：**不缓存**，下一次还能成功。
+		return ""
+	}
+	name := webPartitionPrefix + id
+	if c.names == nil {
+		c.names = map[string]string{}
+	}
+	c.names[account] = name
+	return name
+}
+
+// randomUUID 造一个 v4 UUID 的小写文本（官方 `randomUUID()` 同形）。
+//
+// 为什么不用 `math/rand`：分区名是跨账号隔离的**边界**，两台机器/两次运行撞名不该
+// 由"种子一样"决定。crypto/rand 失败时退回时间戳+计数器没有意义（撞名比报错更坏），
+// 所以这里让名字退化成空，调用方就不下发分区——宁可退回默认 profile，也不给两个
+// 账号同一个名字。
+func randomUUID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return ""
+	}
+	b[6] = b[6]&0x0f | 0x40 // version 4
+	b[8] = b[8]&0x3f | 0x80 // variant 10xx
+	text := hex.EncodeToString(b[:])
+	return text[0:8] + "-" + text[8:12] + "-" + text[12:16] + "-" + text[16:20] + "-" + text[20:32]
+}
+
+// webViewConfig 把契约选项翻成 Viva 的窗口配置，是**唯一**翻译配置的地方
+// （唯一产生最终配置的是它上面那层 `webPages.config`：翻译之后补存储分区）。
 //
 // 为什么单拎出来：两个回调（导航 / 进程崩溃）就是"事件接没接上"的全部，而 `Open`
 // 要一个真 `app.WebHost` 才能跑；把配置放进纯函数，壳这一层的接线就能在不需要

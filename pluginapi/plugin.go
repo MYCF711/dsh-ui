@@ -801,6 +801,22 @@ type WebHost interface {
 type WebOpenOptions struct {
 	// URL 是初始地址；空表示先不开导航（官方 `start(undefined)`）。
 	URL string
+	// StorageAccount 是这一页的**存储账号**：同一个账号的页面共用一套 cookies /
+	// localStorage / IndexedDB / 缓存，不同账号互相看不见。空串 = **不要分区**，
+	// 沿用引擎默认 profile——也就是本字段出现之前的行为，一个字节都不变。
+	//
+	// 值的形状照官方 `browserWorkspace()` 的返回值
+	// （OFF:dsh-client-ui-sidebar-browser/src/client/electron/workspace.ts:31-32）：
+	//
+	//	cwd:<工作区路径>   会话属于某个工作区 → 同工作区的多个 tab 共用登录态
+	//	session:<会话 id>  不属于任何工作区 → 官方原文「ungrouped Sessions remain isolated」
+	//
+	// **插件不该自己编分区名**，只报账号：官方也是主进程批一个分区名再回给渲染端
+	// （`src/types.ts:22` 的 `acquire(workspace)` → `DesktopBrowserReservation{lease, partition}`），
+	// 名字的生成与缓存都在壳里（`cmd/app/web_pages.go` 的 `webPartitionCache`）。
+	// 为什么这层分开值得保留：分区名会落进 WebView2 的 profile 元数据，把工作区路径
+	// 拼进名字等于把本机路径写进磁盘；官方用随机 UUID 就是为了这一点，我们照做。
+	StorageAccount string
 	// OnLoad 收导航事件；nil 表示不关心。
 	OnLoad func(WebLoad)
 	// OnProcessFailed 收页面进程没了这件事：它崩了、被系统或引擎停了、或者根本没起来。

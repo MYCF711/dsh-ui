@@ -68,11 +68,34 @@ type Mux struct {
 	// Cookies 是 /connect 换来的会话 cookie。WS 与 HTTP 同一套认证语义，
 	// 不带上就是 401（H14 §11.4）。
 	Cookies []*http.Cookie
-	// EpochOf 返回某个 topic 当前 journal 世代（壳从 session.load 的
+	// epochOf 返回某个 topic 当前 journal 世代（壳从 session.load 的
 	// journalEpoch 拿到）。用回调而不是改 Subscribe 签名：订阅点很多，
 	// 而世代是"壳每帧都可能刷新"的东西，回调能随时取最新值。
 	// nil 或返回 0 = 不知道，按首次订阅处理。
-	EpochOf func(topic string) int64
+	//
+	// 读写一律走 SetEpochOf / epochLookup：壳装回调的位置（newSession 的
+	// goroutine）与每个会话订阅 goroutine 里的读取是**并发**的，裸字段就是
+	// 一处数据竞争（旧写法实测会读到 nil 或旧闭包，sub 帧带上 epoch=0）。
+	epochMu sync.RWMutex
+	epochOf func(topic string) int64
+}
+
+// SetEpochOf 装/换"topic 的 journal 世代"回调；可与订阅并发调用。
+func (m *Mux) SetEpochOf(fn func(topic string) int64) {
+	m.epochMu.Lock()
+	m.epochOf = fn
+	m.epochMu.Unlock()
+}
+
+// epochLookup 取当前世代回调并求值；没装回调时按"不知道"返回 0。
+func (m *Mux) epochLookup(topic string) int64 {
+	m.epochMu.RLock()
+	fn := m.epochOf
+	m.epochMu.RUnlock()
+	if fn == nil {
+		return 0
+	}
+	return fn(topic)
 }
 
 // NewMux 用和 Client 同一个 base 建流客户端。
@@ -154,10 +177,7 @@ func (m *Mux) Subscribe(ctx context.Context, topic string, sinceSeq int) (<-chan
 	}
 
 	// 订阅帧必须是最先发出去的。
-	var epoch int64
-	if m.EpochOf != nil {
-		epoch = m.EpochOf(topic)
-	}
+	epoch := m.epochLookup(topic)
 	sub, _ := json.Marshal(clientFrame{T: "sub", Topic: topic, SinceSeq: sinceSeq, JournalEpoch: epoch})
 	if err := conn.Write(ctx, websocket.MessageText, sub); err != nil {
 		conn.CloseNow()

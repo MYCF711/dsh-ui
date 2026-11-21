@@ -333,6 +333,13 @@ type model struct {
 	desktopUpdateAt time.Time
 	// jobsPending 防重入：刷新在途时不再发第二次请求（每帧都可能问）。
 	jobsPending bool
+	// pollOnce 保证"后台轮询 ticker"整进程只起一份。
+	// refreshList 有十来个调用点（新建/派生/删除会话、切工作区、导入…）；
+	// 每次调用各起一个 ticker 的话，goroutine 与轮询请求会随操作次数单调增长，
+	// 且循环体内没有退出路径——那是真泄漏，不是"多点了几下"。
+	pollOnce sync.Once
+	// pollRuns 只用于诊断与用例断言：后台轮询 goroutine 的启动次数（只该是 1）。
+	pollRuns int
 	// jobOutputs 是后台任务输出的按需缓存（键 = sessionID + "\x00" + id）。
 	// 只在用户展开某个任务时才有条目；插件拿的是**累计视图**（见 jobs_actions.go）。
 	jobOutputs map[string]*jobOutputCache
@@ -519,6 +526,11 @@ func (m *model) toggleRightbar() {
 	}
 }
 
+// jobsPollEvery 是后台任务/终端轮询的间隔。
+//
+// 是变量而不是内联常量，只为让用例把它压到毫秒级（生产值不变）。
+var jobsPollEvery = 5 * time.Second
+
 func (m *model) refreshList() {
 	// 官方任务目录：与 schedule.list 一样在启动/新会话入口拉一次（见
 	// schedule_catalog.go）。这里不阻塞 refreshList 的既有链路。
@@ -587,20 +599,28 @@ func (m *model) refreshList() {
 		}
 		// 后台任务是**轮询**的：宿主那边的数据靠子进程推上来，不会主动通知界面。
 		// 5 秒一次——够快让用户看到起止，又不会把宿主问烦。只有内容变了才重绘。
-		go func() {
-			t := time.NewTicker(5 * time.Second)
-			defer t.Stop()
-			for range t.C {
+		//
+		// 只起一份（pollOnce）：调用 refreshList 的地方有很多，每次各起一个
+		// ticker 就是"每个入口一套轮询 + 一个永不退出的 goroutine"。
+		m.pollOnce.Do(func() {
+			go func() {
 				m.mu.Lock()
-				pending := m.jobsPending
+				m.pollRuns++
 				m.mu.Unlock()
-				if !pending {
-					m.refreshJobs()
+				t := time.NewTicker(jobsPollEvery)
+				defer t.Stop()
+				for range t.C {
+					m.mu.Lock()
+					pending := m.jobsPending
+					m.mu.Unlock()
+					if !pending {
+						m.refreshJobs()
+					}
+					// 终端和后台任务同一个 ticker：都是"隔一会儿问一次"的形状。
+					m.refreshTerminal()
 				}
-				// 终端和后台任务同一个 ticker：都是"隔一会儿问一次"的形状。
-				m.refreshTerminal()
-			}
-		}()
+			}()
+		})
 	}()
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -858,13 +878,13 @@ func (m *model) newSession() {
 		id := created.SessionID
 
 		// 订阅时带上 journal 世代（H14）：宿主换代后发 session/reset，界面据重建基线。
-		m.mux.EpochOf = func(topic string) int64 {
+		m.mux.SetEpochOf(func(topic string) int64 {
 			id := strings.TrimPrefix(topic, "session:")
 			m.mu.Lock()
 			e := m.epochs[id]
 			m.mu.Unlock()
 			return e
-		}
+		})
 		m.refreshList()
 
 		m.openSession(id)
@@ -880,7 +900,11 @@ func (m *model) refreshTerminal() {
 	id := m.termID
 	since := m.termNext
 	pending := m.termPending
-	if !pending {
+	// **只有真要发请求时才置在途标记**。
+	// 反例（修之前）：id 为空也先置 true 再 return，而复位只发生在请求返回之后——
+	// 启动时 termID 还是零值，第一个 tick 就把标记永久焊死，之后用户开终端、
+	// 显式 refresh 全部走 `pending` 分支直接返回，终端正文一次都拉不到。
+	if id != "" && !pending {
 		m.termPending = true
 	}
 	m.mu.Unlock()

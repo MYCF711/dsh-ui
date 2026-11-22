@@ -20,21 +20,34 @@
 //	失败                  `图片无法预览 · alt||目的地`
 //	成功                  `<img>`，几何按上面两条 CSS
 //
+// # 官方为什么是"行内"
+//
+// `._image_13jw0_300{display:block}` 说的是 `<button>` **里面**那张图；外面那层
+// `._imageButton_13jw0_471{display:inline-block;vertical-align:middle}` 才是它
+// 在段落里的身份 —— 一个 inline-level 原子盒，与前后文字同排。chat 里这层**恒有**
+// （`fileImages` 由 `MarkdownDelegateProvider` 注入），所以官方正文的图是行内的。
+//
+// 尺寸仍是那两条 max-*：`min(100%, 640px)` × `360px`，从不放大
+// （`mdlite.FitMarkdownImage`）。
+//
 // # 本仓怎么画
 //
-// 本仓主区的正文是自绘的块级渲染器（`OfficialTranscriptView.drawMarkdown`），
+// 本仓主区的正文是自绘渲染器（`OfficialTranscriptView.drawMarkdown`），
 // 旧实现把一段 spans 拍平成一行文字，图片只能退成 alt。这里换成"先切段再各画各的"：
 //
-//	mdlite.SplitMarkdownInline 把 spans 按原文顺序切成「文字段 / 图片段」
-//	文字段 仍走原来的 Wrap（**没有图片时逐像素与旧路径完全一致**）
-//	图片段 走 drawMarkdownImage：三态 + 官方几何
+//	mdlite.SplitMarkdownInline   把 spans 按原文顺序切成「文字段 / 图片段」
+//	mdlite.LayoutMarkdownInline  行内混排的行切分与宽度（纯几何，`#18` (b) ①）
 //
-// 已知差异（如实登记，不假装没有）：官方图片是**行内**元素，一段文字中间夹一张图
-// 会与文字同排；本仓切成块级后图会独占一行（附图两侧的文字各成一段）。这与
-// 官方在"图片单独成段"这个主流写法下**完全一致**，只是"图夹在句中"这一种少见写法
-// 会多一次换行。要做成严格行内，需要给正文换一套带内联原子排版的渲染器
-// （viva 的 `MarkdownView` 就是这个形状），那是整条正文渲染路径的替换，
-// 不属于"补一条图片"的范围。
+// 三条路，判据在 `drawMarkdownInline`：
+//
+//	没有图片    老路径：一次 `Wrap`（**逐像素与旧实现完全一致**）
+//	图单独成段  老路径：图片段整块画（**行盒里只有图时 A+D 正好是 H**，官方这一种
+//	            写法的正确结果，本轮一个像素都不动）
+//	图夹在句中  行内排版：图与前后文字同一行，垂直按 `vertical-align:middle` 对齐
+//	            （`official_markdown_inline.go`）
+//
+// 三档态的**画法**没变（alt 文本 / `图片无法预览 · alt||目的地` / 位图），
+// 只是"图没出来"那两档在混排里也是**行内文字**，不再把段落拆成块。
 
 package dsconversation
 
@@ -99,16 +112,46 @@ func markdownImageRedraw(env *pluginapi.Env) func() {
 
 // drawMarkdownInline 按官方顺序画一段行内内容：文字段照旧、图片段出图。
 //
-// textRun 由调用方给（段落 / 标题 / 列表项的正文样式各不相同）。
+// textRun 由调用方给（段落 / 标题 / 列表项的正文样式各不相同），它建**一条**文字盒
+// 并返回；行内混排（图夹在句中）时由 `drawMarkdownInlineLayout` 决定宽度与基线偏移。
 // 没有图片时它只会被调一次、且文本与旧的 `spansText` 逐字节相同——
 // 这条是既有正文渲染的唯一路径，不许因为"顺手支持图片"改动它的任何一个像素。
+//
+// 三条路（`#18` (b) ①）：
+//
+//	没有图片     老路径：一次 textRun（逐像素不变）
+//	图单独成段   老路径：图片段整块画（`drawMarkdownInlineBlock`，逐像素、行为都不变）
+//	图夹在句中   `drawMarkdownInlineLayout`：官方行内流（图与前后文字同一行）
 //
 // key 是这一块的稳定渲染键（`drawMarkdown` 的 entry key + 块序号）：正文图那张
 // `<button>` 的交互 id 由它派生（官方每次重渲都拿同一个 `<button>`，id 变了
 // 焦点/悬停会在两帧之间丢）。
 func (v *OfficialTranscriptView) drawMarkdownInline(f ui.C, env *pluginapi.Env, spans []markdown.Span,
-	allowPath bool, key string, textRun func(string, bool)) {
+	allowPath bool, key string, font markdownInlineFont, textRun func(string, bool) ui.Box) {
 	runs := mdlite.SplitMarkdownInline(spans)
+	if !markdownSpansHaveImage(spans) {
+		if len(runs) > 0 {
+			textRun(runs[0].Text, runs[0].Mono)
+		}
+		return
+	}
+	slots, mixed := v.markdownInlineSlots(env, runs, allowPath)
+	// 混排要按宽度量字：没有画布（老壳/离线工具）时退回块级，宁可少一次行内，
+	// 也不拿估算宽度画正文。
+	if !mixed || env == nil || env.Canvas == nil {
+		v.drawMarkdownInlineBlock(f, env, runs, allowPath, key, textRun)
+		return
+	}
+	v.drawMarkdownInlineLayout(f, env, slots, key, font, textRun)
+}
+
+// drawMarkdownInlineBlock 是"图单独成段"的块级路径（本轮**行为与像素都不动**）。
+//
+// 图独占一行、两侧文字各成一段：官方在"图片单独成段"这个主流写法下就是这个形状
+// （行盒里只有那张图时，图的 A+D 正好是 H），所以这条路径不是"凑合"，而是官方
+// 那一种写法的正确结果。
+func (v *OfficialTranscriptView) drawMarkdownInlineBlock(f ui.C, env *pluginapi.Env, runs []mdlite.MarkdownInlineRun,
+	allowPath bool, key string, textRun func(string, bool) ui.Box) {
 	images := 0
 	for i := range runs {
 		run := runs[i]
@@ -154,28 +197,49 @@ func (v *OfficialTranscriptView) drawMarkdownImage(f ui.C, env *pluginapi.Env, d
 			drawMarkdownImageText(f, mdlite.MarkdownImageFailedText(alt, destination), t)
 			return
 		}
-		// `.image`：radius = --dsw-radius-md、底 = --dsw-alias-bg-base、等比 contain。
-		// 尺寸已经在 FitMarkdownImage 里按两条 max-* 算好（ui.Image 的缩放是
-		// object-fit:fill，直接交给它会把极端比例的图拉变形）。
-		row := ui.Row(f).Size(width, height).Radius(t.Radii.MD).Background(t.BgBase).Clip()
-		// 官方的 `cursor:zoom-in`（viva 的 PointerCursor 没有这一档，用可点手型，
-		// 见 official_image_lightbox.go 的差异 ①）。
-		if id := markdownImageHitID(env, key); !id.IsZero() {
-			row = row.HitWith(id, markdownImageOpenLabel(alt), gfx.HitOptions{
-				Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand,
-			})
-		}
-		row.Children(func() {
-			ui.Image(f, image.Bitmap).Size(width, height)
-		})
-		if row.Clicked() {
-			v.openMarkdownLightbox(env, destination, alt, image)
-		}
+		v.drawMarkdownImageBox(f, env, &mdlite.MarkdownInlineImage{
+			Destination: destination, Alt: alt, Width: width, Height: height, Bitmap: image.Bitmap,
+		}, key)
 	case mdlite.MarkdownImageFailed:
 		drawMarkdownImageText(f, mdlite.MarkdownImageFailedText(alt, destination), t)
 	default: // Pending / Unresolved：官方这两档都只是 alt 文本
 		drawMarkdownImageText(f, mdlite.MarkdownImageAltText(alt, destination), t)
 	}
+}
+
+// drawMarkdownImageBox 画一张 Ready 态的正文图（官方 `.image` 盒 + `_imageButton` 的
+// 「查看大图」命中区），返回它的盒子。
+//
+// 块级路径（图单独成段）与行内路径（图夹在句中）**共用这一份**：盒子的几何、
+// 圆角、底色、命中区与灯箱入口只有一处实现，两种路径不会各画一套。
+func (v *OfficialTranscriptView) drawMarkdownImageBox(f ui.C, env *pluginapi.Env,
+	image *mdlite.MarkdownInlineImage, key string) ui.Box {
+	t := v.Theme
+	if t == nil && env != nil {
+		t = env.Theme
+	}
+	if image == nil || image.Width <= 0 || image.Height <= 0 {
+		return ui.Box{}
+	}
+	// `.image`：radius = --dsw-radius-md、底 = --dsw-alias-bg-base、等比 contain。
+	// 尺寸已经按两条 max-* 算好（ui.Image 的缩放是 object-fit:fill，
+	// 直接交给它会把极端比例的图拉变形）。
+	row := ui.Row(f).Size(image.Width, image.Height).Radius(t.Radii.MD).Background(t.BgBase).Clip()
+	// 官方的 `cursor:zoom-in`（viva 的 PointerCursor 没有这一档，用可点手型，
+	// 见 official_image_lightbox.go 的差异 ①）。
+	if id := markdownImageHitID(env, key); !id.IsZero() {
+		row = row.HitWith(id, markdownImageOpenLabel(image.Alt), gfx.HitOptions{
+			Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand,
+		})
+	}
+	row.Children(func() {
+		ui.Image(f, image.Bitmap).Size(image.Width, image.Height)
+	})
+	if row.Clicked() {
+		v.openMarkdownLightbox(env, image.Destination, image.Alt,
+			mdlite.MarkdownImage{State: mdlite.MarkdownImageReady, Bitmap: image.Bitmap})
+	}
+	return row
 }
 
 // markdownImageHitID 造正文图那枚"查看大图"按钮的交互 id。

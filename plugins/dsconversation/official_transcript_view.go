@@ -628,9 +628,11 @@ func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *
 		return
 	}
 	v.drawQuoted(f, block.Quote, func() {
-		v.drawMarkdownInline(f, env, spans, allowPath, key, func(text string, mono bool) {
+		v.drawMarkdownInline(f, env, spans, allowPath, key, markdownInlineFont{
+			Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code,
+		}, func(text string, mono bool) ui.Box {
 			if text == "" {
-				return
+				return ui.Box{}
 			}
 			// Wrap 而不是 Text：官方正文会按列宽折行（`white-space` 默认 normal）。
 			// 用 Text 的话长段落会被右边缘硬切——真机上表现成"回答只显示一行"。
@@ -638,6 +640,7 @@ func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *
 			if mono {
 				box.Mono().FontSize(t.Fonts.Code)
 			}
+			return box
 		})
 	})
 }
@@ -655,11 +658,13 @@ func (v *OfficialTranscriptView) drawHeading(f ui.C, env *pluginapi.Env, doc *ma
 	}
 	heading := MarkdownHeadingFor(block.Level)
 	v.drawQuoted(f, block.Quote, func() {
-		v.drawMarkdownInline(f, env, spans, allowPath, key, func(text string, _ bool) {
+		v.drawMarkdownInline(f, env, spans, allowPath, key, markdownInlineFont{
+			Size: heading.Size, Line: heading.Line, Weight: gfx.WeightSemibold,
+		}, func(text string, _ bool) ui.Box {
 			if text == "" {
-				return
+				return ui.Box{}
 			}
-			ui.Wrap(f, text).FontSize(heading.Size).LineHeight(heading.Line).
+			return ui.Wrap(f, text).FontSize(heading.Size).LineHeight(heading.Line).
 				Weight(gfx.WeightSemibold).Color(v.Theme.LabelPrimary)
 		})
 	})
@@ -697,14 +702,17 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *m
 				return
 			}
 			ui.Column(f).FillWidth().Children(func() {
-				v.drawMarkdownInline(f, env, spans, allowPath, key, func(text string, mono bool) {
+				v.drawMarkdownInline(f, env, spans, allowPath, key, markdownInlineFont{
+					Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code,
+				}, func(text string, mono bool) ui.Box {
 					if text == "" {
-						return
+						return ui.Box{}
 					}
 					box := ui.Wrap(f, text).FillWidth().FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
 					if mono {
 						box.Mono().FontSize(t.Fonts.Code)
 					}
+					return box
 				})
 			})
 		})

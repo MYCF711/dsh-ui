@@ -32,6 +32,9 @@ type forgeCardCalls struct {
 	requested []*string
 	cancelled int
 	stopped   int
+	// branches 数调用了几次 `LoadBranches`：官方 `show()` 每展开基准菜单一次就重读
+	// 一遍分支（`WorktreeToggle.tsx:52-64`），这条计数器就是那个判据。
+	branches int
 }
 
 // forgeCardsFixture 是一块只画目标卡片的画布（与 visual_test 的整页夹具分开：
@@ -104,7 +107,7 @@ func (f *forgeCardsFixture) env(view *pluginapi.ForgeView, cur string) *pluginap
 		SelectRightTab: func(string) {},
 		Forge: &pluginapi.ForgeActions{
 			Refresh:      func() {},
-			LoadBranches: func() {},
+			LoadBranches: func() { f.calls.branches++ },
 			LoadScope:    func(string) {},
 			LoadBases:    func(string) {},
 			LoadText:     func(string) {},

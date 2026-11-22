@@ -122,7 +122,85 @@ func PaintMenuPanel(canvas *gfx.Canvas, bounds gfx.Rect, t *pluginapi.Theme) {
 //
 // **例外是分隔线**：官方 `._separator_70kcw_157` 自己写死
 // `background:var(--dsw-alias-border-l2)`，不看行的字色，所以那一条用 `t.BorderL2`。
+//
+// 它是 `PaintMenuItemRuns` 的单段形态（一段 = 行自己的 `Label`，13px、行墨色、可压缩）：
+// 行内容拆成多段时（forge 基准分支菜单的名字 + 「当前分支」注记）走那个函数，画笔仍只有
+// 这一份。
 func PaintMenuItem(parts ui.MenuItemParts, t *pluginapi.Theme) {
+	PaintMenuItemRuns(parts, t, []MenuRun{{Text: parts.Label, Size: MenuRowFont, Flex: true}})
+}
+
+// MenuRun 是菜单行里的一段文字。
+//
+// 原语 `Menu` 的行内容可以是一个节点而不是一句话，forge 的基准分支菜单就用到了这一点：
+// `WorktreeToggle.tsx:69-72` 把当前分支那一行拆成 `<span class=option>` 里的两段
+// `optionName` 与 `optionNote`。所以行画笔要能画若干段，而不是只画一个 `Label`。
+type MenuRun struct {
+	// Text 是这一段的文字。
+	Text string
+	// Size 是这一段的字号（官方 `.optionName`/`.optionNote` 都是 12px，
+	// `WorktreeToggle.module.css:99-110`）。
+	Size float32
+	// Mono 走等宽面：官方 `.optionName{font-family:var(--ds-font-family-code)}`。
+	Mono bool
+	// Color 是这一段的墨色；零值 = 用行自己的 `Foreground`。
+	Color gfx.Color
+	// Flex 表示这一段可压缩并省略：官方 `.optionName{min-width:0;overflow:hidden;
+	// text-overflow:ellipsis}`。false = `flex:none`（`.optionNote` 不缩、不吃剩余宽度）。
+	Flex bool
+}
+
+// 各段之间的间距：官方 `.option{display:inline-flex;align-items:baseline;gap:8px}`
+// （`WorktreeToggle.module.css:99-106`）。
+//
+// **基线不在这里模拟**：官方是 `align-items:baseline`，本层把各段放进同一个行盒顶对齐。
+// forge 基准菜单那两段同为 12px，同号就是同一条基线，所以这一档没有差；跨字号的行
+// 按顶对齐画，读数补到之前不假装自己做了基线对齐。
+const MenuRunGap float32 = 8
+
+// 菜单分组标题（官方原语 `._label_70kcw_214`）：
+//
+//	._label_70kcw_214{padding:6px 8px;font-size:11px;line-height:15px;
+//	                   color:var(--dsw-alias-label-tertiary)}
+//
+// 出处在 `index-CSAdOBx6.css`（class hash `70kcw`，文件头已给该 CSS 的 sha256）；
+// `dense` 档只把 `padding-block` 改成 3（`._denseList_70kcw_209 ._label_70kcw_214`）。
+const (
+	MenuLabelPadX float32 = 8
+	MenuLabelPadY float32 = 6
+	MenuLabelFont float32 = 11
+	MenuLabelLine float32 = 15
+)
+
+// PaintMenuLabel 画一行菜单分组标题（`MenuItemParts.GroupLabel` 为真的行）。
+//
+// 颜色用 `t.LabelTertiary`（官方 `--dsw-alias-label-tertiary`），**不用**菜单给的那一档：
+// 原语 `MenuItemPaint.Foreground` 在这一档传的是 viva 主题的 `MutedForeground`，
+// 而官方分组标题的令牌出自 primitives 自己的 CSS。与 `PaintMenuItem` 里分隔线用
+// `t.BorderL2` 是同一条理由。
+func PaintMenuLabel(parts ui.MenuItemParts, t *pluginapi.Theme) {
+	canvas := parts.Canvas
+	if canvas == nil || t == nil {
+		return
+	}
+	row := parts.Rect
+	lineY := row.Y + MenuLabelPadY
+	width := max(row.Width-2*MenuLabelPadX, 0)
+	label := parts.Label
+	style := gfx.TextStyle{Size: MenuLabelFont, Weight: gfx.WeightRegular, Color: t.LabelTertiary}
+	if canvas.TextWidthStyle(label, style) > width {
+		label = fitRun(canvas, label, style, width)
+	}
+	canvas.Label(label, gfx.Rect{
+		X: row.X + MenuLabelPadX, Y: lineY, Width: width, Height: MenuLabelLine,
+	}, style)
+}
+
+// PaintMenuItemRuns 是 `PaintMenuItem` 的多段版：行里的文字由若干段组成。
+//
+// 面、悬停底、内边距、选中勾、分隔线与行自己的墨色都仍是这一处读数；调用方只说
+// "这一行有哪几段、各自什么字号/字体/墨色、哪段可压缩"。
+func PaintMenuItemRuns(parts ui.MenuItemParts, t *pluginapi.Theme, runs []MenuRun) {
 	canvas := parts.Canvas
 	if canvas == nil || t == nil {
 		return
@@ -148,32 +226,135 @@ func PaintMenuItem(parts ui.MenuItemParts, t *pluginapi.Theme) {
 		canvas.Rounded(row, t.Radii.MD, t.Hover)
 	}
 	chosen := parts.Checked || parts.Selected
-	labelWidth := max(row.Width-2*MenuRowPadX, 0)
-	checkY := lineY
+	avail := max(row.Width-2*MenuRowPadX, 0)
 	if chosen {
 		// 官方 `.item{display:flex;align-items:center;gap:6px}`（byte 15091）：
 		// 标签与勾之间隔 `MenuRowGap`，勾在行里**竖直居中**（不是与 20 的行盒顶对齐）。
-		labelWidth = max(labelWidth-MenuCheckSize-MenuRowGap, 0)
-		checkY = lineY + max((MenuRowLine-MenuCheckSize)/2, 0)
+		avail = max(avail-MenuCheckSize-MenuRowGap, 0)
 	}
-	label := parts.Label
-	if canvas.TextWidthWeight(label, MenuRowFont, gfx.WeightRegular) > labelWidth {
-		label = canvas.FitLine(label, MenuRowFont, gfx.WeightRegular, labelWidth)
+	x := row.X + MenuRowPadX
+	gap := MenuRunGap * float32(max(len(runs)-1, 0))
+	// `flex:none` 的段先量好，剩下的宽度才归可压缩的段（官方 `.optionName` 是唯一
+	// 会缩的那一段：`.option{min-width:0}` 里它 `min-width:0`，`.optionNote{flex:none}`）。
+	fixed := float32(0)
+	flexCount := 0
+	for _, run := range runs {
+		if run.Flex {
+			flexCount++
+			continue
+		}
+		fixed += canvas.TextWidthStyle(run.Text, runStyle(run, parts.Foreground))
 	}
-	canvas.Label(label, gfx.Rect{
-		X: row.X + MenuRowPadX, Y: lineY, Width: labelWidth, Height: MenuRowLine,
-	}, gfx.TextStyle{Size: MenuRowFont, Weight: gfx.WeightRegular, Color: parts.Foreground})
+	flexEach := float32(0)
+	if flexCount > 0 {
+		flexEach = max(avail-fixed-gap, 0) / float32(flexCount)
+	}
+	for _, run := range runs {
+		style := runStyle(run, parts.Foreground)
+		text := run.Text
+		natural := canvas.TextWidthStyle(text, style)
+		// 画的**盒子**：可压缩段占它分到的宽度（左对齐下盒子比字宽只影响省略号），
+		// `flex:none` 的段占自己的自然宽。前进量用**字**的宽度，所以下一段紧贴上一段
+		// 的字尾（官方 `.option{gap:8px}` 是字与字之间隔 8，不是盒子之间）。
+		box := natural
+		advance := natural
+		if run.Flex {
+			box = flexEach
+			if natural <= flexEach {
+				advance = natural
+			} else {
+				// 官方 `.optionName` 的 `text-overflow:ellipsis`：放不下才缩。
+				text = fitRun(canvas, text, style, flexEach)
+				advance = flexEach
+			}
+		}
+		if text != "" {
+			canvas.Label(text, gfx.Rect{X: x, Y: lineY, Width: box, Height: MenuRowLine}, style)
+		}
+		x += advance + MenuRunGap
+	}
 	if !chosen {
 		return
 	}
 	// 勾是官方素材，不是手画的：`IconCheckOutlineRegular` 的 path 原文在 dsassets。
 	// 渲染 14×14（`._check_70kcw_265`），viewBox 仍是 16。
+	checkY := lineY + max((MenuRowLine-MenuCheckSize)/2, 0)
 	if icon, ok := MenuCheckIcon(); ok {
 		canvas.DrawIcon(icon, gfx.Rect{
 			X: row.X + row.Width - MenuRowPadX - MenuCheckSize, Y: checkY,
 			Width: MenuCheckSize, Height: MenuCheckSize,
 		}, parts.Foreground)
 	}
+}
+
+// MenuSurfaceExtra 是菜单面宽里**行内容之外**的那一圈。
+//
+// Viva 算菜单宽（`viva@v0.6.12-ow/components/dropdown_menu.go:693-721` 的
+// `menuItemWidth`）是：行左内边距 8 + 行文字宽 + 行右内边距（单选/复选行 32，
+// 普通行 8）+ 2×菜单内边距 4。它只量**声明的标签**，不知道调用方在行里多画了几段。
+//
+// 多段行（forge 基准菜单的「名字 + 当前分支」）要自己抬 `MenuItems.WidthRange` 的
+// 下界，否则 Viva 会给一个只够画名字的宽度，名字被省略号截掉。这里给的是那份公式里
+// 与内容无关的那一段（8 + 32 + 2×4 = 48，按单选/复选行算，它与官方菜单一样最多只有
+// 一条选中行；多留的右列只会让行更宽松，不会截断内容）。
+const MenuSurfaceExtra float32 = 48
+
+// MenuRunsWidth 是这些段并排画出来需要的宽度（段之间隔 MenuRunGap）。
+//
+// 用来给 `MenuItems.WidthRange` 算下界，读数与 `PaintMenuItemRuns` 用的是同一份。
+func MenuRunsWidth(canvas *gfx.Canvas, runs []MenuRun) float32 {
+	if canvas == nil || len(runs) == 0 {
+		return 0
+	}
+	width := MenuRunGap * float32(len(runs)-1)
+	for _, run := range runs {
+		width += canvas.TextWidthStyle(run.Text, runStyle(run, gfx.Color{}))
+	}
+	return width
+}
+
+// runStyle 把一段的文字样式拼出来：段自己的字号/字体/墨色，缺省用行的那一档
+// （`fallback` 就是行的 `Foreground`；量宽度时不需要墨色，传零值即可）。
+func runStyle(run MenuRun, fallback gfx.Color) gfx.TextStyle {
+	size := run.Size
+	if size <= 0 {
+		size = MenuRowFont
+	}
+	color := run.Color
+	if color == (gfx.Color{}) {
+		color = fallback
+	}
+	return gfx.TextStyle{Size: size, Weight: gfx.WeightRegular, Color: color, Mono: run.Mono}
+}
+
+// fitRun 是 `gfx.FitLine` 的**样式版**：等宽面用 `TextWidthStyle` 量，二分找最长的
+// 能放下的前缀再加省略号。非等宽面直接走 `gfx.FitLine`，与既有行画笔逐像素一致。
+func fitRun(canvas *gfx.Canvas, text string, style gfx.TextStyle, width float32) string {
+	if width <= 0 {
+		return ""
+	}
+	if !style.Mono {
+		return canvas.FitLine(text, style.Size, style.Weight, width)
+	}
+	if canvas.TextWidthStyle(text, style) <= width {
+		return text
+	}
+	room := width - canvas.TextWidthStyle("…", style)
+	if room <= 0 {
+		return "…"
+	}
+	runes := []rune(text)
+	fits := 0
+	for low, high := 0, len(runes); low < high; {
+		middle := (low + high + 1) / 2
+		if canvas.TextWidthStyle(string(runes[:middle]), style) <= room {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+		fits = low
+	}
+	return string(runes[:fits]) + "…"
 }
 
 // MenuCheckIcon 是官方 `IconCheckOutlineRegular`（16 viewBox、1 描边）。

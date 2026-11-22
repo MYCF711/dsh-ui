@@ -31,13 +31,16 @@
 // 没有 follow 帧时（老宿主 / 测试）退回"checkout ready 才画"这条可证伪的弱判据，
 // 不拿零值当"宿主说不能建"。
 //
-// # 官方有、本仓没有的一样（登记在账本行）
+// # 基准分支菜单（已落地，见 hero_base_menu.go）
 //
-//  1. **基准分支下拉菜单**（官方 `.base` 是一次 `branches()` + 菜单）。本仓没有菜单
-//     浮层可用，所以勾选始终按官方的默认语义发 `request(当前分支)`——官方 unchecked →
-//     checked 走的就是 `request(option.current)`（`WorktreeToggle.tsx:134-137` 的
-//     `change()` + `:158` 的 onChange）。
-//     代价：选不到**别的**基准分支。
+// 勾上之后那枚芯片是官方 `.base`：一点开就是**基准分支菜单**（`branches()` + 选一行
+// 重发 `request(分支)`）。此前这里把它画成只读芯片、理由写的是"本仓没有菜单浮层可用"——
+// 那个判定已过期：`ui.Menu` + `dscore` 画笔在范围菜单/终端 shell 菜单上早就在用，
+// 所以这一份只是界面差事（账本 #64 ④ 的 hero 那一半）。
+//
+// 勾选本身的默认语义没变：官方 unchecked → checked 就是 `request(option.current)`
+// （`WorktreeToggle.tsx:134-137` 的 `change()` + `:158` 的 onChange），不点菜单不会
+// 多出任何一步。
 package dsforge
 
 import (
@@ -172,23 +175,13 @@ func (p *Plugin) drawWorktreeToggle(f ui.C, env *pluginapi.Env) {
 	}
 
 	ui.Row(f).Gap(worktreeRootGap).Items(ui.Center).Shrink(0).Children(func() {
-		// 分支芯片：官方这里是**按钮**（点开基准菜单）。本仓没有菜单浮层，
-		// 所以画成同一几何的只读芯片，不画成按钮（画成按钮却点不开更糟）。
-		ui.Row(f).Height(worktreeChipHeight).Shrink(0).MaxWidth(worktreeChipMaxW).
-			PadSides(0, worktreeChipPadX, 0, worktreeChipPadX).Gap(worktreeChipGap).
-			Items(ui.Center).
-			Children(func() {
-				// 官方 `.current` 里先画 `<IconBranchOutlineRegular size={14} />`、再画分支名
-				// （WorktreeToggle.tsx:146-147），两者之间是 `.toggle,.base,.current{gap:6px}`
-				// （WorktreeToggle.module.css:11-29）。墨色跟随这枚芯片自己的文字色：
-				// 本仓它是只读近似件（见上一条注释），不是官方的按钮。
-				if icon, ok := branchIcon(); ok {
-					ui.Icon(f, icon).Size(worktreeChipGlyphSize, worktreeChipGlyphSize).
-						Shrink(0).Color(t.LabelTertiary)
-				}
-				ui.Text(f, chipText).FontSize(worktreeFont).LineHeight(worktreeLine).
-					Weight(gfx.WeightMedium).Color(t.LabelTertiary).Ellipsis()
-			})
+		// 官方 :140-141：`requested && usable` 时芯片是**可点开的 `.base` 菜单**，
+		// 其余情形是只读的 `.current` 芯片（分支图标 + 文案，浮条说当前分支）。
+		if worktree.Requested && usable {
+			p.drawWorktreeBaseChip(f, env, view, worktree, held)
+		} else {
+			p.drawWorktreeCurrentChip(f, t, chipText)
+		}
 
 		// 勾选行：官方是 `<label>` 包 `<input type=checkbox>`，点标签同样生效。
 		// 悬停底色只在**没被禁用**时出现（`.toggle:hover:not([data-disabled])`，
@@ -224,6 +217,28 @@ func (p *Plugin) drawWorktreeToggle(f ui.C, env *pluginapi.Env) {
 			return
 		}
 	})
+}
+
+// drawWorktreeCurrentChip 画官方 `.current`：分支图标 + 文案的只读芯片
+// （`WorktreeToggle.tsx:143-150`）。
+//
+// 官方它是个 `<button>`，但那个按钮唯一的作用是挂 Tooltip（`openOnClick`），
+// 点它不改变任何状态；本仓把浮条挂在同一段几何的芯片上，所以这里不需要身份。
+func (p *Plugin) drawWorktreeCurrentChip(f ui.C, t *pluginapi.Theme, chipText string) {
+	ui.Row(f).Height(worktreeChipHeight).Shrink(0).MaxWidth(worktreeChipMaxW).
+		PadSides(0, worktreeChipPadX, 0, worktreeChipPadX).Gap(worktreeChipGap).
+		Items(ui.Center).
+		Children(func() {
+			// 官方 `.current` 里先画 `<IconBranchOutlineRegular size={14} />`、再画分支名
+			// （WorktreeToggle.tsx:146-147），两者之间是 `.toggle,.base,.current{gap:6px}`
+			// （WorktreeToggle.module.css:11-29）。
+			if icon, ok := branchIcon(); ok {
+				ui.Icon(f, icon).Size(worktreeChipGlyphSize, worktreeChipGlyphSize).
+					Shrink(0).Color(t.LabelTertiary)
+			}
+			ui.Text(f, chipText).FontSize(worktreeFont).LineHeight(worktreeLine).
+				Weight(gfx.WeightMedium).Color(t.LabelTertiary).Ellipsis()
+		})
 }
 
 // drawCheckbox 画一枚 14px 方框（勾上时填品牌色 + 官方对勾图标）。

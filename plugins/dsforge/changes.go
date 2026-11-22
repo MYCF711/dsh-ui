@@ -160,25 +160,32 @@ type changesOpen struct {
 	gaps     map[string]map[string]map[int]bool
 	gapWant  map[string]map[string]bool
 	gapScope map[string]string
+	// 以下是 #64 ④ hero 基准分支菜单的界面态（官方 `WorktreeToggle.tsx:41-95` 的
+	// `useState(false)` 与 `show()` 里的 `loading`）：heroBaseMenu 是展开态，
+	// heroBaseWant 是"点了、正在等分支清单"那个过渡态。
+	heroBaseMenu map[string]bool
+	heroBaseWant map[string]bool
 }
 
 func newChangesOpen() changesOpen {
 	return changesOpen{
-		local:     map[string]bool{},
-		files:     map[string]map[string]bool{},
-		viewed:    map[string]map[string]string{},
-		selected:  map[string]string{},
-		menu:      map[string]bool{},
-		progress:  map[string]bool{},
-		treeFolds: map[string]map[string]bool{},
-		treeWidth: map[string]*ui.SplitterState{},
-		split:     map[string]bool{},
-		wrap:      map[string]bool{},
-		scrolls:   map[diffScrollKey]*changesDiffScroll{},
-		layouts:   map[string]*changesDiffLayout{},
-		gaps:      map[string]map[string]map[int]bool{},
-		gapWant:   map[string]map[string]bool{},
-		gapScope:  map[string]string{},
+		local:        map[string]bool{},
+		files:        map[string]map[string]bool{},
+		viewed:       map[string]map[string]string{},
+		selected:     map[string]string{},
+		menu:         map[string]bool{},
+		progress:     map[string]bool{},
+		treeFolds:    map[string]map[string]bool{},
+		treeWidth:    map[string]*ui.SplitterState{},
+		split:        map[string]bool{},
+		wrap:         map[string]bool{},
+		scrolls:      map[diffScrollKey]*changesDiffScroll{},
+		layouts:      map[string]*changesDiffLayout{},
+		gaps:         map[string]map[string]map[int]bool{},
+		gapWant:      map[string]map[string]bool{},
+		gapScope:     map[string]string{},
+		heroBaseMenu: map[string]bool{},
+		heroBaseWant: map[string]bool{},
 	}
 }
 

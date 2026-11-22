@@ -623,6 +623,8 @@ func (v *OfficialTranscriptView) drawMarkdown(f ui.C, env *pluginapi.Env, text, 
 //
 // 字重：整块都是 `**…**` 时整块画 700（`spansAllBold` 的注释写了为什么只能按
 // 整块判）。混排段落仍是常规字重，与改动前逐像素一致。
+// 斜面同理：整块 `*…*` 画斜体、整块 `~~…~~` 画删除线（`spansAllItalic` /
+// `spansAllStrike`）；混排一律不生效。`***…***` 两位都带 ⇒ 又粗又斜。
 func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block,
 	allowPath bool, key string) {
 	t := v.Theme
@@ -631,9 +633,11 @@ func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *
 		return
 	}
 	bold := spansAllBold(spans)
+	italic := spansAllItalic(spans)
+	strike := spansAllStrike(spans)
 	v.drawQuoted(f, block.Quote, func() {
 		v.drawMarkdownInline(f, env, spans, allowPath, key, markdownInlineFont{
-			Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code, Bold: bold,
+			Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code, Bold: bold, Italic: italic,
 		}, func(text string, mono bool) ui.Box {
 			if text == "" {
 				return ui.Box{}
@@ -648,6 +652,12 @@ func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *
 			// （理由与判据见 spansAllBold）。
 			if bold {
 				box.Weight(gfx.WeightBold)
+			}
+			if italic {
+				box.Italic()
+			}
+			if strike {
+				box.Strike()
 			}
 			return box
 		})
@@ -687,6 +697,11 @@ func (v *OfficialTranscriptView) drawHeading(f ui.C, env *pluginapi.Env, doc *ma
 // 列表项里的图片（`#18` (b)）与段落同一条规则：**没有图片时走旧路径不动**
 // （一个 Wrap 吃掉剩余宽度）；有图片才把正文换成"按原文顺序切段"的列，
 // 标记槽仍然在左、每段都缩在标记后面。
+//
+// 样式（加粗 / 斜体 / 删除线）与段落同一套判据、同一个粒度：**整块才生效**。
+// 三条绘制路径都必须各自上样式 —— 无图一条、行内图那条的每个 textRun 一条
+// （`drawMarkdownInline` 的回调是"一段文字一个盒子"，漏一处就会混排着画）；
+// 量宽那边由 `markdownInlineFont.Italic` 与绘制同源。
 func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block,
 	allowPath bool, key string) {
 	t := v.Theme
@@ -695,6 +710,8 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *m
 		return
 	}
 	bold := spansAllBold(spans)
+	italic := spansAllItalic(spans)
+	strike := spansAllStrike(spans)
 	marker := MarkdownListBullet
 	if block.Number > 0 {
 		// 有序列表：官方 `Number` 是标记的**实际值**（不是序号），照抄不重排。
@@ -705,6 +722,8 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *m
 		row := ui.Row(f).FillWidth().PadSides(0, 0, 0, indent).Gap(MarkdownListMarkerGap)
 		row.Children(func() {
 			// 标记槽固定 18px 右对齐（derived；容得下 "99."），正文吃掉剩余宽度。
+			// 标记**不跟着正文上样式**：官方列表标记是 CSS 的 `::marker`，正文的
+			// `<strong>`/`<em>` 落在 `<li>` 内容里，够不到标记。
 			ui.Text(f, marker).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).
 				Color(t.LabelSecondary).Width(MarkdownListMarkerWidth).TextEnd()
 			if !markdownSpansHaveImage(spans) {
@@ -713,11 +732,18 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *m
 				if bold {
 					body.Weight(gfx.WeightBold)
 				}
+				if italic {
+					body.Italic()
+				}
+				if strike {
+					body.Strike()
+				}
 				return
 			}
 			ui.Column(f).FillWidth().Children(func() {
 				v.drawMarkdownInline(f, env, spans, allowPath, key, markdownInlineFont{
-					Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code, Bold: bold,
+					Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code,
+					Bold: bold, Italic: italic,
 				}, func(text string, mono bool) ui.Box {
 					if text == "" {
 						return ui.Box{}
@@ -728,6 +754,12 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *m
 					}
 					if bold {
 						box.Weight(gfx.WeightBold)
+					}
+					if italic {
+						box.Italic()
+					}
+					if strike {
+						box.Strike()
 					}
 					return box
 				})
@@ -1352,17 +1384,57 @@ func spansText(spans []markdown.Span) string {
 //
 // 判据与 `allMonoSpans` 逐字对齐：空串与换行分隔不算反对票。
 func spansAllBold(spans []markdown.Span) bool {
-	bold := false
+	return spansAllStyle(spans, markdown.Bold)
+}
+
+// spansAllItalic 报告这段 span 是不是**整块斜体**（官方 markdown 的 `*…*` 盖满整块）。
+//
+// 官方把 `*…*` 画成 `<em>`，`<em>` 与 `<strong>` 一样在 asar 的两份 markdown 样式里
+// **没有 CSS 规则**，浏览器按默认画斜体 —— 即"这一段文字换成斜体面"。
+//
+// 限制与 `spansAllBold` **完全相同**：viva 的盒级文字只有一个 `gfx.TextStyle`，
+// 一个 `Wrap` 只能一套斜面，没有行内 run 出口。所以 `*要点*：说明` 这种混排整段
+// 仍是直立（与改动前逐像素一致）—— 这是记录在案的能力边界，不是漏做。
+//
+// `***…***`（`emphasisStyle(3)` = `Bold|Italic`）同时带两位，两个判据都成立，
+// 于是整块又粗又斜 —— 与官方 `<strong><em>` 的叠加一致。
+func spansAllItalic(spans []markdown.Span) bool {
+	return spansAllStyle(spans, markdown.Italic)
+}
+
+// spansAllStrike 报告这段 span 是不是**整块删除线**（官方 markdown 的 `~~…~~`）。
+//
+// 官方把 `~~…~~` 画成 `<del>`（`markdown/inline.go` 的 `style|Strike`），浏览器
+// 在字中间画一条横线。viva 的盒级 `Box.Strike()` 是同一个东西：`base/paint.go`
+// 在每个行盒的**中线**上画 1px、颜色取文字色（`base/box.go` 的 `Strike` 注释）。
+//
+// 这条**不影响量宽**（viva 明说 "a Text keeps its own width and wrapping, so
+// nothing about the layout moves when a text is struck"），所以它不进
+// `markdownInlineTextStyle`，只上绘制。
+func spansAllStrike(spans []markdown.Span) bool {
+	return spansAllStyle(spans, markdown.Strike)
+}
+
+// spansAllStyle 报告这段 span 是不是**整块都带着某一个样式位**。
+//
+// 加粗 / 斜体 / 删除线三个判据逐字相同，共用一处是让它们**不会各自漂移**
+// （同一段文字对三种样式的"整块"定义必须一致，否则 `***…***` 这种叠加会一半
+// 生效一半不生效）。
+//
+// 判据与 `mdlite` 的 `allMonoSpans` 对齐：空串与换行分隔**不算反对票**；整段
+// 一个可画字符都没有时返回 false（没有东西可画，也就谈不上"整块某种样式"）。
+func spansAllStyle(spans []markdown.Span, bit markdown.Style) bool {
+	styled := false
 	for _, span := range spans {
 		if span.Text == "" || span.Text == markdown.Newline {
 			continue
 		}
-		if span.Style&markdown.Bold == 0 {
+		if span.Style&bit == 0 {
 			return false
 		}
-		bold = true
+		styled = true
 	}
-	return bold
+	return styled
 }
 
 // ── 审批卡（官方 ApprovalPanel，不是 transcript 节点）────────────────────

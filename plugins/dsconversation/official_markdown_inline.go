@@ -50,6 +50,15 @@ type markdownInlineFont struct {
 	// Bold 表示这一块整块加粗（官方 `**…**` 盖满整块）：量宽要用绘制时那一档字重，
 	// 否则图与文字的相对位置是拿常规字重算出来的（见 `spansAllBold`）。
 	Bold bool
+	// Italic 表示这一块整块斜体（官方 `*…*` 盖满整块）：量宽必须走绘制时那一档
+	// **斜体面**（viva `Canvas.TextWidthStyle` 在 `style.Italic` 时问
+	// `gfx.StyledTextEngine` 的斜体面宽），否则图与文字的位置是拿直立字面算的。
+	// 同 Bold 的理由，见 `spansAllItalic`。
+	//
+	// 删除线（`Strike`）**不在这里**：它只往文字上画一条线，viva 明说
+	// "a Text keeps its own width and wrapping, so nothing about the layout moves
+	// when a text is struck"（`base/box.go` 的 `Strike`），量宽与直立无差别。
+	Italic bool
 	// MonoSize 是行内代码的字号（`t.Fonts.Code`）；0 = 与 Size 相同。
 	MonoSize float32
 }
@@ -69,6 +78,15 @@ func markdownInlineTextStyle(font markdownInlineFont, mono bool) gfx.TextStyle {
 		// 量宽与绘制同源：加粗那一档的进宽比常规宽（`viva@internal/textmetrics`
 		// 按字重分表），只改绘制不改量宽会让行内图的位置跟着漂。
 		style.Weight = gfx.WeightBold
+	}
+	if font.Italic {
+		// 量宽与绘制同源：斜体面的进宽与直立面不是同一套（`Canvas.TextWidthStyle`
+		// 在 `style.Italic` 时问 `gfx.StyledTextEngine` 的斜体面宽），只改绘制不改
+		// 量宽同样会让行内图的位置漂。
+		//
+		// 等宽面不用另算：viva 的 `TextWidthStyle` 里 `Mono` 排在 `Italic` 前面
+		// （先走 `monoWidth` 的网格宽），这里只把标志带过去，量法与画法仍然一致。
+		style.Italic = true
 	}
 	if mono && font.MonoSize > 0 {
 		style.Size = font.MonoSize

@@ -2022,6 +2022,27 @@ type Actions struct {
 	// （不画假图，也不假装成功）。
 	AttachmentGet func(id string) (AttachmentBlob, bool)
 
+	// MarkdownImage 取 markdown **正文**里一张图片的原始字节（`#18` (b)）。
+	//
+	// 官方的等价物是浏览器 `<img src>`：绝对 http(s) 地址直出，路径经
+	// `fileImages.resolve` 换成宿主 `api/file?path=…`（`OFF:dsh-client-ui-chat`
+	// 的 `fileImages`，证据在 `internal/mdlite/image.go` 的文件头）。
+	// 本仓没有浏览器 URL 层，等价物是"壳取字节 → 插件解码 → `ui.Image(gfx.Bitmap)`"。
+	//
+	//	sessionID    会话身份：相对路径按它的工作区根解析（与 `workspaceFiles.*` 同源）
+	//	cwd          会话的当前工作目录：相对路径的基准
+	//	             （官方 `resolveWorkspacePath(cwd, path)`，`dsh-util-workspace-path`）
+	//	destination  正文里写的目的地**原文**（`![](…)` 括号里那一串，未改写）
+	//
+	// **同步阻塞**：调用方必须是插件起的 goroutine（正文渲染在绘制帧里不能等 HTTP）。
+	// 壳给的实现必须有上限：http(s) 走带超时的 GET 并卡字节上限，路径走宿主
+	// `workspaceFiles.readBytes`；任何失败按 ok=false 返回——界面据此画官方失败态
+	// （`图片无法预览 · alt||目的地`），不许把 0 字节当成"这张图本来就没有内容"。
+	//
+	// nil = 壳没接（老壳 / 无头 / 测试）→ 正文图片一律退成 alt 文本
+	// （官方 `src === undefined` 那一档），不画假图也不假装失败。
+	MarkdownImage func(sessionID, cwd, destination string) (MarkdownImageBytes, bool)
+
 	// FileReferences 列 `@` 之后的文件候选（宿主 `fileReferences.list`）。
 	//
 	// **同步返回壳缓存**：查询键是会话 + 原文 query；首次问会触发后台拉取，

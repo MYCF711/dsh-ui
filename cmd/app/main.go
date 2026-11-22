@@ -3294,6 +3294,10 @@ func main() {
 		// 消息区图片面的取数入口（`#18` ②③）：宿主 `attachment.get` 的真字节。
 		// **同步**，调用方（消息区）自己起 goroutine；见 attachment_bytes.go。
 		AttachmentGet: m.attachmentGetAction,
+		// markdown 正文图片的取数入口（`#18` (b)）：URL 自己发 GET、路径走宿主
+		// `workspaceFiles.readBytes`。**同步**，调用方（正文渲染）自己起 goroutine；
+		// 见 markdown_image.go。
+		MarkdownImage: m.markdownImageBytes,
 		// `@` / `/` 候选：同步读壳缓存，首次问触发后台拉取（见 reference_wiring.go）。
 		FileReferences:             m.fileReferences,
 		SessionReferenceCandidates: m.sessionReferenceCandidates,

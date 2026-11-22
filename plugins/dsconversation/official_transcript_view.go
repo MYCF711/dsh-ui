@@ -177,6 +177,16 @@ type OfficialTranscriptView struct {
 	OpenSession func(childID string)
 	// questionReplyCopied 是问题与回答气泡的复制反馈（QuestionReplyView.tsx:54-57）。
 	questionReplyCopied map[string]bool
+
+	// lightbox 是正文图「查看大图」灯箱的开合态（`#18` (a)）。
+	//
+	// nil = 关着。**唯一的写入口是用户点正文图**（`drawMarkdownImage` 的
+	// `Clicked()`）；另有一条自动关掉的判据（会话/cwd 变了），见
+	// `markdownLightboxVisible`。官方是 `{open && <Jb …/>}`：关着就没有这个组件。
+	//
+	// 为什么挂在视图上而不是投影里：开/关是用户意图，不是 journal 事实
+	// （与 `workflowDisclosures` 同一条理由）。
+	lightbox *markdownLightbox
 }
 
 // pendingCodeBlock 是一条「布局阶段占位、覆画阶段真画」的代码块。
@@ -581,11 +591,11 @@ func (v *OfficialTranscriptView) drawMarkdown(f ui.C, env *pluginapi.Env, text, 
 			case markdown.Table:
 				v.drawTableBlock(f, &doc, block)
 			case markdown.Heading:
-				v.drawHeading(f, env, &doc, block, allowPath)
+				v.drawHeading(f, env, &doc, block, allowPath, key+":"+strconv.Itoa(i))
 			case markdown.Item:
-				v.drawListItem(f, env, &doc, block, allowPath)
+				v.drawListItem(f, env, &doc, block, allowPath, key+":"+strconv.Itoa(i))
 			default: // markdown.Paragraph
-				v.drawParagraph(f, env, &doc, block, allowPath)
+				v.drawParagraph(f, env, &doc, block, allowPath, key+":"+strconv.Itoa(i))
 			}
 		}
 	})
@@ -596,14 +606,15 @@ func (v *OfficialTranscriptView) drawMarkdown(f ui.C, env *pluginapi.Env, text, 
 // 图片（`#18` (b)）：段落里的 `![alt](目的地)` 交给 `drawMarkdownInline` 出图。
 // **没有图片时与旧路径逐像素一致**（`SplitMarkdownInline` 只切出一段文字，
 // 且文本与旧的 `spansText` 逐字节相同）。
-func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block, allowPath bool) {
+func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block,
+	allowPath bool, key string) {
 	t := v.Theme
 	spans := doc.Spans(&block)
 	if !markdownSpansPaintable(spans) {
 		return
 	}
 	v.drawQuoted(f, block.Quote, func() {
-		v.drawMarkdownInline(f, env, spans, allowPath, func(text string, mono bool) {
+		v.drawMarkdownInline(f, env, spans, allowPath, key, func(text string, mono bool) {
 			if text == "" {
 				return
 			}
@@ -622,14 +633,15 @@ func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *
 // 字号/行高来自 `MarkdownHeadingFor`（derived 阶梯表）：级别越界按最近一级
 // 夹紧，调用方不必再判边界。字重取 semibold——h5/h6 与正文同字号，只靠字重
 // 区分（官方 primitives 未取证，这是实现选择）。
-func (v *OfficialTranscriptView) drawHeading(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block, allowPath bool) {
+func (v *OfficialTranscriptView) drawHeading(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block,
+	allowPath bool, key string) {
 	spans := doc.Spans(&block)
 	if !markdownSpansPaintable(spans) {
 		return
 	}
 	heading := MarkdownHeadingFor(block.Level)
 	v.drawQuoted(f, block.Quote, func() {
-		v.drawMarkdownInline(f, env, spans, allowPath, func(text string, _ bool) {
+		v.drawMarkdownInline(f, env, spans, allowPath, key, func(text string, _ bool) {
 			if text == "" {
 				return
 			}
@@ -647,7 +659,8 @@ func (v *OfficialTranscriptView) drawHeading(f ui.C, env *pluginapi.Env, doc *ma
 // 列表项里的图片（`#18` (b)）与段落同一条规则：**没有图片时走旧路径不动**
 // （一个 Wrap 吃掉剩余宽度）；有图片才把正文换成"按原文顺序切段"的列，
 // 标记槽仍然在左、每段都缩在标记后面。
-func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block, allowPath bool) {
+func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block,
+	allowPath bool, key string) {
 	t := v.Theme
 	spans := doc.Spans(&block)
 	if !markdownSpansPaintable(spans) {
@@ -670,7 +683,7 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *m
 				return
 			}
 			ui.Column(f).FillWidth().Children(func() {
-				v.drawMarkdownInline(f, env, spans, allowPath, func(text string, mono bool) {
+				v.drawMarkdownInline(f, env, spans, allowPath, key, func(text string, mono bool) {
 					if text == "" {
 						return
 					}

@@ -258,6 +258,20 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 			Draw:  p.drawFeedbackOverlay,
 		},
 		{
+			// 正文图灯箱（`#18` (a)）：官方 `Jb` 是 `createPortal(…, document.body)`，
+			// 本仓的 body 级等价物就是这一槽（与反馈弹窗同一个理由）。
+			//
+			// Order 110：压在全部面板/弹窗之上（设置 100/101、目录选择 102、
+			// 反馈 103、设置 toast 105），与官方 `._backdrop_19zw2_2{z-index:1000}`
+			// 是同一层的语义；900 的 `file-actions-act` 在本槽只取 Actions、不画像素。
+			//
+			// **它只在 `v.lightbox` 非 nil 时画**（用户点了正文图才会非 nil）。
+			ID:    "image-lightbox",
+			Slot:  pluginapi.SlotShellOverlay,
+			Order: 110,
+			Draw:  p.drawImageLightbox,
+		},
+		{
 			// 官方 `conversation.view` 槽（动态取名字面量，见 official_transcript_nodes.go
 			// 的 SlotConversationView：这三个名字是官方 slots.ts 的字面量，
 			// **不许改写成 main.body 之类的旧槽名**）。
@@ -975,6 +989,16 @@ func (p *Plugin) estimateMsgHeight(m apiclient.Message, width float32, key strin
 //	Ctrl+Shift+C   复制最后一条助手回复
 //	Ctrl+R         重发上一条用户消息
 func (p *Plugin) HandleKey(ev gfx.KeyEvent) bool {
+	// 正文图灯箱是**最上面**的模态：Esc 只关它（官方 `Jb` 的 capture 监听
+	// `stopPropagation`，下层的停止 turn / 拒绝审批都不许被这一下带起来）。
+	//
+	// 正常路径上这个键到不了这里：灯箱每帧在 overlay 里声明页面级
+	// `ui.Shortcut(f, 0, "escape")`，而壳的 `cfg.OnKey` 先把键送 `ui.Page`
+	// 再送 `kernel.HandleKey`。这一支是兜底（viva 自己的浮层握着键盘时
+	// 页面级 Shortcut 不生效，见 `viva/base/shortcut.go` 的 `pageWide`）。
+	if ev.Key == gfx.KeyEscape && ev.Modifiers == 0 && p.closeImageLightbox() {
+		return true
+	}
 	// 反馈弹窗是模态：Esc 只关它，不落到搜索/拒绝审批那些下层动作。
 	if p.feedbackDialog != nil && ev.Key == gfx.KeyEscape && ev.Modifiers == 0 {
 		p.dismissFeedbackDialog()

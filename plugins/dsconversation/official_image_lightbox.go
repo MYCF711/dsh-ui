@@ -1,4 +1,12 @@
-// official_image_lightbox.go —— 正文图片的「查看大图」灯箱（`#18` (a)）。
+// official_image_lightbox.go —— 图片的「查看大图」灯箱（`#18` (a)）。
+//
+// # 两个打开它的地方（同一个组件，官方的 `ImageLightbox` 也是被复用两处）
+//
+//	① 正文 markdown 图 `![alt](目的地)`  ← `OFF:dist/assets/index-Ciz7DZxv.js` byte 978669
+//	② 消息附件图 `MessageImage`           ← `OFF:dsh-client-ui-attachment/src/MessageImage.tsx:152`
+//	   两处都是官方 `@deepseek-ai/dsh-client-ui-primitives` 的同一个 `ImageLightbox`
+//	   （同文件 `:4` 的 import）。① 由 `#233` 接上；② 由本单接上——② 的触发点
+//	   与几何完全同源（同一个 `Jb`），所以这里**复用**同一份状态与画笔，不另写一套。
 //
 // # 官方形状（rc.5，逐条 file:line / 产物 byte 偏移）
 //
@@ -10,6 +18,14 @@
 //	  <img className={Lt.image} … />
 //	</button>
 //	{open && <Jb src={src} alt={alt} labels={labels} onClose={() => setOpen(false)} … />}
+//
+// 触发点（附件图 `MessageImage.tsx:135-145`，与上一处同一个 `Jb`）：
+//
+//	<button type="button" className={styles.frame} title={labels.open}
+//	        aria-label={labels.openNamed(label)} onClick={() => { if (src !== null) setOpen(true) }}>
+//	  …<DraggableImage fileDrag src alt={label} name={…} />
+//	</button>
+//	{open && src !== null && <Jb src={src} alt={label} labels={labels.lightbox} … />}
 //
 //	._imageButton_13jw0_471{display:inline-block;max-width:100%;padding:0;border:0;
 //	                        border-radius:var(--dsw-radius-sm);background:transparent;
@@ -185,15 +201,39 @@ func imageLightboxCloseBorderColor(t *pluginapi.Theme) ui.Color {
 	return ui.RGBA(0, 0, 0, 0.1)
 }
 
-// markdownLightbox 是灯箱的开合态（官方 `{open && <Jb …/>}`：关着就没有这个组件）。
-type markdownLightbox struct {
+// imageLightboxSource 是这一个灯箱由**哪一处**图片打开。
+//
+// 官方 `ImageLightbox` 是一个纯展示组件（`Jb`：只收 `src / alt / labels / onClose`），
+// 谁都能开它；rc.5 里开了它的有两处，本文件两处都接：
+//
+//	markdown   正文 `![alt](目的地)`  ← `#233` 已接（`official_markdown_image.go`）
+//	attachment 消息附件图 `MessageImage` ← 本单接（`official_message_image.go`）
+//
+// 为什么要记这一档：两处的 `aria-label` 来源不同（正文取 alt，附件取官方
+// `labels.openNamed(label)`），而 `#19` 的拖出源只认附件图那一个。留着这一档，
+// 判据与拖出来源都不必再猜。
+type imageLightboxSource int
+
+const (
+	// lightboxSourceMarkdown 是正文 markdown 图开的灯箱。
+	lightboxSourceMarkdown imageLightboxSource = iota
+	// lightboxSourceAttachment 是消息附件图（`MessageImage`）开的灯箱。
+	lightboxSourceAttachment
+)
+
+// imageLightboxState 是灯箱的开合态（官方 `{open && <Jb …/>}`：关着就没有这个组件）。
+type imageLightboxState struct {
+	// source 是打开它的那一处图片（见 `imageLightboxSource`）。
+	source imageLightboxSource
 	// session / cwd 是打开时那张图所在的位置：切会话/切目录之后官方那段 DOM
 	// 已经卸载，灯箱自然跟着消失，这里用同一条判据主动关掉。
 	session string
 	cwd     string
-	// destination 是作者写在正文里的目的地（官方 `src`）。
+	// destination 是作者写在正文里的目的地（官方 `src`）；附件图没有目的地。
 	destination string
-	// alt 是官方 `<img alt>`：灯箱图沿用正文那个 alt，不另取名。
+	// attachmentID 是附件图那条附件的 id（`attachment.get` 的身份）；正文图没有。
+	attachmentID string
+	// alt 是官方 `<img alt>`：灯箱图沿用正文那个 alt / 附件那个 label，不另取名。
 	alt string
 	// bitmap 是打开那一刻的位图（官方灯箱图用的是同一个 `src`，不重新取数）。
 	bitmap gfx.Bitmap
@@ -211,7 +251,8 @@ func (v *OfficialTranscriptView) openMarkdownLightbox(env *pluginapi.Env, destin
 	if image.Bitmap.Width <= 0 || image.Bitmap.Height <= 0 {
 		return
 	}
-	v.lightbox = &markdownLightbox{
+	v.lightbox = &imageLightboxState{
+		source:      lightboxSourceMarkdown,
 		session:     sessionIDOf(env),
 		cwd:         cwdOf(env),
 		destination: destination,
@@ -220,19 +261,53 @@ func (v *OfficialTranscriptView) openMarkdownLightbox(env *pluginapi.Env, destin
 	}
 }
 
-// closeMarkdownLightbox 关灯箱（三种官方关闭方式都走这一条）。
-func (v *OfficialTranscriptView) closeMarkdownLightbox() {
+// openAttachmentLightbox 记下要放大的那张**消息附件图**。
+//
+// 官方这一处（`OFF:dsh-client-ui-attachment/src/MessageImage.tsx:135-145`）是
+//
+//	<button className={styles.frame} onClick={() => { if (src !== null) setOpen(true) }}>
+//	  …{src === null ? loading : <DraggableImage …/>}
+//	</button>
+//	{open && src !== null && <ImageLightbox src={src} alt={label} labels={labels.lightbox} …/>}
+//
+// 两个条件都在这里照抄：① 只有 `src !== null`（= 本仓 `messageImageReady`）才给点，
+// loading / 失败态点了没反应；② 灯箱的 `alt` 就是缩略图上那个 `label`
+// （`image.label` 兜底名 / 附件名），不另取名。
+//
+// bitmap 取缓存里那份**解码好的整图**（不是 `singleFit` / 64×64 的裁切结果）——
+// 官方灯箱的 `src` 是原图 URL，与缩略图那个 `<img>` 同一个源，不存在"放大的是裁过的
+// 那一块"。这一条是 `#18` 灯箱判据的核心：`lightboxImageFit` 拿到的是原图尺寸。
+func (v *OfficialTranscriptView) openAttachmentLightbox(env *pluginapi.Env, attachmentID, label string,
+	entry messageImageEntry) {
+	if v == nil || env == nil || attachmentID == "" {
+		return
+	}
+	if entry.state != messageImageReady || entry.bitmap.Width <= 0 || entry.bitmap.Height <= 0 {
+		return
+	}
+	v.lightbox = &imageLightboxState{
+		source:       lightboxSourceAttachment,
+		session:      sessionIDOf(env),
+		cwd:          cwdOf(env),
+		attachmentID: attachmentID,
+		alt:          label,
+		bitmap:       entry.bitmap,
+	}
+}
+
+// dismissImageLightbox 关灯箱（三种官方关闭方式都走这一条）。
+func (v *OfficialTranscriptView) dismissImageLightbox() {
 	if v == nil {
 		return
 	}
 	v.lightbox = nil
 }
 
-// markdownLightboxVisible 报告这一帧要不要画灯箱，并顺手关掉"已经不属于这一帧"的。
+// imageLightboxVisible 报告这一帧要不要画灯箱，并顺手关掉"已经不属于这一帧"的。
 //
 // 判据只有一条：打开时的 (session, cwd) 还是当前这一帧的。官方的灯箱挂在
 // 那条消息的组件树上，会话一换组件就卸载——同一条语义，不用另一套判断。
-func (v *OfficialTranscriptView) markdownLightboxVisible(env *pluginapi.Env) bool {
+func (v *OfficialTranscriptView) imageLightboxVisible(env *pluginapi.Env) bool {
 	if v == nil || v.lightbox == nil {
 		return false
 	}
@@ -243,8 +318,8 @@ func (v *OfficialTranscriptView) markdownLightboxVisible(env *pluginapi.Env) boo
 	return true
 }
 
-// markdownLightboxOpen 报告灯箱此刻是否开着（`HandleKey` 与测试读它）。
-func (v *OfficialTranscriptView) markdownLightboxOpen() bool {
+// imageLightboxOpen 报告灯箱此刻是否开着（`HandleKey` 与测试读它）。
+func (v *OfficialTranscriptView) imageLightboxOpen() bool {
 	return v != nil && v.lightbox != nil
 }
 
@@ -279,12 +354,13 @@ func lightboxImageFit(bitmap gfx.Bitmap, bounds gfx.Rect) (float32, float32) {
 	return float32(math.Round(float64(width * scale))), float32(math.Round(float64(height * scale)))
 }
 
-// drawMarkdownLightbox 是 `shell.overlay` 上的灯箱（官方 portal 到 body 的那一段）。
+// drawImageLightboxOverlay 是 `shell.overlay` 上的灯箱（官方 portal 到 body 的那一段）。
 //
-// 一条硬规矩：**只有用户点了正文图才会走到这里**（`v.lightbox` 只由
-// `drawMarkdownImage` 的 `Clicked()` 写）。这里不读任何状态去"顺带弹一个"。
-func (v *OfficialTranscriptView) drawMarkdownLightbox(f ui.C, env *pluginapi.Env) {
-	if env == nil || !v.markdownLightboxVisible(env) {
+// 一条硬规矩：**只有用户点了已经上屏的图片才会走到这里**（`v.lightbox` 只有两个写点，
+// 都是 `Clicked()` 的后果：正文图的 `drawMarkdownImage`、附件图的 `drawMessageImage`）。
+// 这里不读任何状态去"顺带弹一个"——「不点图不许有灯箱」那条判据就是这个形状。
+func (v *OfficialTranscriptView) drawImageLightboxOverlay(f ui.C, env *pluginapi.Env) {
+	if env == nil || !v.imageLightboxVisible(env) {
 		return
 	}
 	t := v.Theme
@@ -326,7 +402,7 @@ func (v *OfficialTranscriptView) drawMarkdownLightbox(f ui.C, env *pluginapi.Env
 				Role: gfx.RoleGroup, SkipFocus: true, Backdrop: true,
 			})
 		if mask.Clicked() {
-			v.closeMarkdownLightbox()
+			v.dismissImageLightbox()
 			return
 		}
 
@@ -337,7 +413,7 @@ func (v *OfficialTranscriptView) drawMarkdownLightbox(f ui.C, env *pluginapi.Env
 		// 顺带把下层（停止当前 turn / 拒绝审批）的动作带出来——与官方
 		// stopPropagation 一致。
 		if ui.Shortcut(f, 0, "escape") {
-			v.closeMarkdownLightbox()
+			v.dismissImageLightbox()
 			return
 		}
 
@@ -387,7 +463,7 @@ func (v *OfficialTranscriptView) drawMarkdownLightbox(f ui.C, env *pluginapi.Env
 			}
 		})
 		if closeButton.Clicked() {
-			v.closeMarkdownLightbox()
+			v.dismissImageLightbox()
 		}
 	})
 }
@@ -401,7 +477,7 @@ func (p *Plugin) drawImageLightbox(f ui.C, env *pluginapi.Env) {
 	if p == nil || p.officialTranscript == nil || env == nil {
 		return
 	}
-	p.officialTranscript.drawMarkdownLightbox(f, env)
+	p.officialTranscript.drawImageLightboxOverlay(f, env)
 }
 
 // closeImageLightbox 关灯箱，返回"这一下有没有真的关掉一个"。
@@ -411,9 +487,9 @@ func (p *Plugin) drawImageLightbox(f ui.C, env *pluginapi.Env) {
 // 正常路径上 Esc 由页面级 `ui.Shortcut` 接（在 `kernel.HandleKey` 之前），
 // 这里只在页面没接住时兜底（例如某个 viva 浮层正握着键盘）。
 func (p *Plugin) closeImageLightbox() bool {
-	if p == nil || p.officialTranscript == nil || !p.officialTranscript.markdownLightboxOpen() {
+	if p == nil || p.officialTranscript == nil || !p.officialTranscript.imageLightboxOpen() {
 		return false
 	}
-	p.officialTranscript.closeMarkdownLightbox()
+	p.officialTranscript.dismissImageLightbox()
 	return true
 }

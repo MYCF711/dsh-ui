@@ -154,7 +154,7 @@ func TestImageLightboxNeedsAUserClick(t *testing.T) {
 	h := readyLightboxHarness(t, solidColorPNG(t, 300, 150, messageImageFixtureColor))
 
 	canvas := h.frame(gfx.ID{})
-	if h.view.markdownLightboxOpen() {
+	if h.view.imageLightboxOpen() {
 		t.Fatal("没人点图，灯箱却开着")
 	}
 	if images := canvas.Images(); len(images) != 1 {
@@ -183,7 +183,7 @@ func TestImageLightboxGeometry(t *testing.T) {
 	button := markdownImageButton(t, h.frame(gfx.ID{}), "示意图")
 
 	canvas := h.frame(button.ID)
-	if !h.view.markdownLightboxOpen() {
+	if !h.view.imageLightboxOpen() {
 		t.Fatal("点了正文图，灯箱没开")
 	}
 
@@ -289,7 +289,7 @@ func TestImageLightboxClosePaths(t *testing.T) {
 		h := readyLightboxHarness(t, solidColorPNG(t, 300, 150, messageImageFixtureColor))
 		button := markdownImageButton(t, h.frame(gfx.ID{}), "示意图")
 		h.frame(button.ID)
-		if !h.view.markdownLightboxOpen() {
+		if !h.view.imageLightboxOpen() {
 			t.Fatal("夹具没把灯箱打开")
 		}
 		return h, button
@@ -302,7 +302,7 @@ func TestImageLightboxClosePaths(t *testing.T) {
 			t.Fatal("没有遮罩命中区")
 		}
 		h.frame(backdrop.ID)
-		if h.view.markdownLightboxOpen() {
+		if h.view.imageLightboxOpen() {
 			t.Fatal("点了遮罩，灯箱还开着")
 		}
 		// 关掉之后那一帧回到"一张位图 + 没有灯箱命中区"。
@@ -324,7 +324,7 @@ func TestImageLightboxClosePaths(t *testing.T) {
 			t.Fatal("没有关闭按钮命中区")
 		}
 		h.frame(closeHit.ID)
-		if h.view.markdownLightboxOpen() {
+		if h.view.imageLightboxOpen() {
 			t.Fatal("点了关闭按钮，灯箱还开着")
 		}
 	})
@@ -337,7 +337,7 @@ func TestImageLightboxClosePaths(t *testing.T) {
 			t.Fatal("灯箱里那张图没有命中区")
 		}
 		h.frame(imageHit.ID)
-		if !h.view.markdownLightboxOpen() {
+		if !h.view.imageLightboxOpen() {
 			t.Fatal("点图把灯箱关掉了；官方点图不关（img 没有 handler）")
 		}
 	})
@@ -345,10 +345,10 @@ func TestImageLightboxClosePaths(t *testing.T) {
 	t.Run("切会话自动关", func(t *testing.T) {
 		h, _ := openLightbox(t)
 		h.env.Data.Cur = "another-session"
-		if h.view.markdownLightboxVisible(h.env) {
+		if h.view.imageLightboxVisible(h.env) {
 			t.Fatal("切了会话灯箱还可见；官方那时整段 DOM 已卸载")
 		}
-		if h.view.markdownLightboxOpen() {
+		if h.view.imageLightboxOpen() {
 			t.Fatal("切了会话灯箱状态还没清")
 		}
 	})
@@ -373,7 +373,7 @@ func TestImageLightboxEscapeOwnsTheKey(t *testing.T) {
 			result.Handled, result.Activate)
 	}
 	h.frame(result.Activate)
-	if h.view.markdownLightboxOpen() {
+	if h.view.imageLightboxOpen() {
 		t.Fatal("Esc 之后灯箱还开着")
 	}
 
@@ -388,14 +388,14 @@ func TestImageLightboxEscapeOwnsTheKey(t *testing.T) {
 
 	// 灯箱开着时兜底也必须只关灯箱，不许顺带拒审批。
 	h.frame(button.ID)
-	if !h.view.markdownLightboxOpen() {
+	if !h.view.imageLightboxOpen() {
 		t.Fatal("重新打开灯箱失败")
 	}
 	denied = 0
 	if !p.HandleKey(gfx.KeyEvent{Key: gfx.KeyEscape}) {
 		t.Fatal("灯箱开着，HandleKey 的 Esc 兜底没接住")
 	}
-	if h.view.markdownLightboxOpen() {
+	if h.view.imageLightboxOpen() {
 		t.Fatal("HandleKey 的 Esc 没关掉灯箱")
 	}
 	if denied != 0 {
@@ -432,7 +432,7 @@ func TestImageLightboxNeedsReadyImage(t *testing.T) {
 		if _, ok := hitByLabel(canvas, markdownImageOpenLabel("示意图")); ok {
 			t.Fatal("取失败还有「查看大图」按钮——官方的失败态是一行文案，没有 <img>")
 		}
-		if h.view.markdownLightboxOpen() {
+		if h.view.imageLightboxOpen() {
 			t.Fatal("失败态居然能打开灯箱")
 		}
 	})

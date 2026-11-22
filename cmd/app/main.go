@@ -2003,18 +2003,33 @@ func newWindowPage(theme *ui.Theme, tree *gfx.Tree) *ui.Page {
 	return ui.NewPage(ui.PageConfig{Tree: tree, Root: pageRoot, Theme: theme})
 }
 
-// filesOnPointer 把一次指针事件交给文件列表插件，返回它是否消费。
+// dragOnPointer 把一次指针事件交给"拖出源"插件，返回它是否消费。
 //
 // 拖出必须在窗口线程上、在页面绘制之外发起（`app.StartFileDrag` 会阻塞到用户
-// 松手），所以插件不认识窗口、壳不认识文件行：壳转发事件，插件按上一帧记下的
-// 行身份判"这是不是一次从文件行开始的拖拽"（见 plugins/dsfiles/drag_files.go）。
-func (m *model) filesOnPointer(ev gfx.PointerEvent) bool {
+// 松手），所以插件不认识窗口、壳不认识被拖的那一行/那一张图：壳转发事件，插件按
+// 上一帧记下的命中身份判"这是不是一次从自己那块开始的拖拽"。
+//
+// 两个源（顺序即优先级，两者认得的是互不相交的命中身份，所以顺序不影响行为）：
+//
+//	*dsfiles.Plugin        侧栏文件行 → 那个文件的绝对路径（`#19` 2026-11-20 接的）
+//	*dsconversation.Plugin 消息里的附件图 → 字节写成临时文件（`#19` ③，本单）
+//
+// 返回 false 就继续问下一个源；任一源认领（返回 true）就停——`StartFileDrag` 已经
+// 阻塞过一轮，不该再让下一个源对同一次手势做第二次判断。
+func (m *model) dragOnPointer(ev gfx.PointerEvent) bool {
 	if m == nil || m.kernel == nil {
 		return false
 	}
 	for _, pl := range m.kernel.Plugins() {
-		if f, ok := pl.(*dsfiles.Plugin); ok {
-			return f.OnPointer(ev)
+		switch source := pl.(type) {
+		case *dsfiles.Plugin:
+			if source.OnPointer(ev) {
+				return true
+			}
+		case *dsconversation.Plugin:
+			if source.OnPointer(ev) {
+				return true
+			}
 		}
 	}
 	return false
@@ -2426,7 +2441,7 @@ func newConfig(m *model) app.Config {
 	// `plugins/dsfiles/drag_files.go` 与 `viva@app/drag_files.go`。
 	// 排页面之前：页面自己不认文件行为拖源，而拖出抢占的是一次已经越过阈值的移动。
 	cfg.OnPointer = func(ev gfx.PointerEvent) gfx.EventResult {
-		if m.filesOnPointer(ev) {
+		if m.dragOnPointer(ev) {
 			m.inv.Invalidate()
 			return gfx.EventResult{Handled: true, Repaint: true}
 		}

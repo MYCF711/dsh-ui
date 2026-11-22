@@ -38,11 +38,20 @@
 // 画官方 loading 态、后台 goroutine 取字节、回来 `Invalidate()` 重画——与官方
 // `useEffect` 里 `load(attachment).then(setLoaded).catch(setError)` 的三态同构。
 //
-// # 一处如实登记的差异
+// # 成功态是可点的（灯箱），并可作为拖出源
 //
-// 官方点击图片会开**原图灯箱**（`ImageLightbox`，缩放/拖动/关闭）。本仓没有图片灯箱，
-// 所以成功态**不给点击**（不画 cursor:zoom-in 的假承诺），失败态的重试**照官方给**。
-// 灯箱属另一个部件，登记在 `docs/official-parity.md` #18 行。
+// 官方点图片开**原图灯箱**（`MessageImage.tsx:135-145` 的 `<button onClick>` +
+// `:152` 的 `ImageLightbox`）。本仓的灯箱实现在 `official_image_lightbox.go`（与正文
+// markdown 图共用同一个官方组件映射），这里只负责"成功态是按钮 + 点一下打开"。
+//
+// 同一张图还是 `#19` 的**拖出源**（官方 `:152` 的 `DraggableImage`）：`#19` 那道
+// `StartFileDrag` 的接线在 `official_message_image_drag.go`。灯箱与拖出是同一个
+// 命中区的两种手势——点一下是开灯箱，按下后越过 4px 是拖出，互不吞掉。
+//
+// # 失败态仍然只有重试
+//
+// 官方失败态整块换成 `.error` 按钮（点一下重试），**没有**灯箱可开、**没有**东西可拖：
+// 那时候连字节都没取到。本仓照抄这一条（`drawMessageImageError`）。
 package dsconversation
 
 import (
@@ -79,6 +88,9 @@ const (
 	MessageImageLoading = "图片加载中…"
 	// MessageImageLoadFailed 是 `image.loadFailed`（失败态的文案，也是重试按钮的名字）。
 	MessageImageLoadFailed = "图片加载失败，点击重试"
+	// imageDragFailedText 是官方 `file-drag.failed`（`OFF:dsh-client-ui-file-drag/src/client/locales.ts`
+	// 的 zh 段，逐字「拖放失败，请重试」）。拖出失败落状态栏时用它，原因接在冒号后。
+	imageDragFailedText = "拖放失败，请重试"
 )
 
 // messageImageAnchor 是 `object-position` 的三档里本仓用得到的两档 + 居中。
@@ -236,6 +248,18 @@ type messageImageEntry struct {
 	width  int
 	height int
 	crops  map[messageImageCropKey]gfx.Bitmap
+	// raw 是宿主给的**原始字节**（未解码）与它的 MIME / 文件名。
+	//
+	// 为什么缓存要留着它们：`#19` ③ 的拖出要把这张图写成临时文件再交给 OLE，
+	// 而拖出的时刻**不允许**再走一次 HTTP——`OnPointer` 跑在窗口线程上，
+	// 一次 8 MiB 的 `attachment.get` 能把界面卡住（同 `writeDraft` 那条规矩）。
+	// 所以字节在**加载那一趟**就留下来，拖出时直接落盘。
+	//
+	// 与官方对齐：官方浏览器通道拿的是同一个 `File`（`FileTransfers.active.file`），
+	// 桌面通道 `readSource` 也是从同一个 Blob 取字节——都不是拖出时重新取。
+	raw   []byte
+	mime  string
+	fname string
 }
 
 // messageImageCache 是附件图的内存缓存。
@@ -275,8 +299,11 @@ func (c *messageImageCache) lookup(id string, retry bool) (messageImageEntry, bo
 		entry.bitmap = gfx.Bitmap{}
 		entry.crops = nil
 	}
+	// 快照要**完整**：`raw` 那三个字段是拖出（`#19` ③）要的，漏拷就会变成
+	// "图在屏上、却被告知还没加载好"——`dragImageOut` 就是按 `raw` 判的。
 	snapshot := messageImageEntry{state: entry.state, bitmap: entry.bitmap,
-		width: entry.width, height: entry.height, crops: entry.crops}
+		width: entry.width, height: entry.height, crops: entry.crops,
+		raw: entry.raw, mime: entry.mime, fname: entry.fname}
 	if entry.state != messageImagePending || c.inflight[id] {
 		return snapshot, false
 	}
@@ -330,6 +357,7 @@ func (c *messageImageCache) loadMessageImage(id string, get func(string) (plugin
 	if get != nil {
 		if blob, ok := get(id); ok && len(blob.Bytes) > 0 {
 			entry.width, entry.height = blob.Width, blob.Height
+			entry.raw, entry.mime, entry.fname = blob.Bytes, blob.MIME, blob.Name
 			if bitmap, err := imgdecode.Decode(blob.Bytes); err == nil {
 				entry.state = messageImageReady
 				entry.bitmap = bitmap
@@ -350,7 +378,8 @@ func (c *messageImageCache) loadMessageImage(id string, get func(string) (plugin
 
 // messageImageLabels 是这一处图片面用到的官方文案（`MessageImageLabels` 的子集）。
 //
-// 官方的 `lightbox` 一组没有：本仓没有原图灯箱（见文件头"一处如实登记的差异"）。
+// 官方 `lightbox` 那一组（`image.dialog` / `image.close`）不在这里：它归灯箱自己的
+// 文案常量（见 `official_image_lightbox.go`，与正文图共用同一份）。
 type messageImageLabels struct {
 	image      string
 	open       string
@@ -382,9 +411,13 @@ func messageImageVariantFor(imageCount int, compact bool) string {
 
 // drawMessageImage 按官方三态画一张附件图。
 //
-// `hit` 是失败态重试按钮的交互 id；零值就不给点击（成功态官方给的是灯箱，
-// 本仓没有灯箱，所以成功态一律不给）。
-func (v *OfficialTranscriptView) drawMessageImage(f ui.C, env *pluginapi.Env, a TranscriptAttachment, variant string, hit gfx.ID) {
+// `retryHit` 是失败态重试按钮的交互 id，`openHit` 是成功态「点开灯箱」的交互 id；
+// 两者形状完全不同（官方失败态是 `.error` 按钮重新加载，成功态是 `.frame` 按钮开
+// `ImageLightbox`），所以是**两个** id，不许合并：一个 id 上的两次点击会打架。
+//
+// 零值 id 就那一档不给点击（官方同理：没有交互身份就没有按钮）。
+func (v *OfficialTranscriptView) drawMessageImage(f ui.C, env *pluginapi.Env, a TranscriptAttachment,
+	variant string, retryHit, openHit gfx.ID) {
 	t := v.Theme
 	labels := officialMessageImageLabels()
 
@@ -417,20 +450,38 @@ func (v *OfficialTranscriptView) drawMessageImage(f ui.C, env *pluginapi.Env, a 
 
 	switch entry.state {
 	case messageImageFailed:
-		v.drawMessageImageError(f, env, a, variant, boxW, boxH, labels, hit)
+		v.drawMessageImageError(f, env, a, variant, boxW, boxH, labels, retryHit)
 	case messageImageReady:
 		if crop, ok := v.messageImages.cropFor(a.ID, boxW, boxH, anchor); ok {
 			// `.frame`：描边 .5、radius xl、底 interactive-bg-hover、居中、裁掉溢出。
 			// `overflow:hidden` 由 `.Clip()` 表达：圆角框要把图裁在框里
 			// （官方 `.frame{...overflow:hidden}`，MessageImage.module.css:5-13）。
-			ui.Row(f).Size(boxW, boxH).Radius(t.Radii.XL).Border(0.5, t.BorderL2).
-				Background(t.Hover).Items(ui.Center).Justify(ui.Center).Clip().Children(func() {
+			label := messageImageDisplayLabel(a, labels)
+			frame := ui.Row(f).Size(boxW, boxH).Radius(t.Radii.XL).Border(0.5, t.BorderL2).
+				Background(t.Hover).Items(ui.Center).Justify(ui.Center).Clip()
+			// 成功态的可点性：官方 `.frame` 是 `<button onClick={()=>setOpen(true)}>`
+			// （MessageImage.tsx:135-145），`title = labels.open`（「查看原图」）、
+			// `aria-label = labels.openNamed(label)`。没有 id 时不给假承诺。
+			clickable := !openHit.IsZero()
+			if clickable {
+				frame = frame.HitWith(openHit, messageImageOpenLabel(label), gfx.HitOptions{
+					Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand,
+				})
+				// `#19` ③ 的拖出源：本帧这张图是**可拖出**的，壳的 OnPointer 用它把
+				// "按下 + 越过阈值"变成一次真 OS 拖拽（见 official_message_image_drag.go）。
+				v.noteImageDragSource(openHit, a.ID)
+			}
+			frame.Children(func() {
 				ui.Image(f, crop).Size(boxW, boxH)
 			})
+			if clickable && frame.Clicked() {
+				// 与 markdown 图同一条：只在位图真的在时才开（上面已判 Ready）。
+				v.openAttachmentLightbox(env, a.ID, label, entry)
+			}
 			return
 		}
 		// 位图在、裁切却失败（0×0）：按失败态画，不画一个空白框。
-		v.drawMessageImageError(f, env, a, variant, boxW, boxH, labels, hit)
+		v.drawMessageImageError(f, env, a, variant, boxW, boxH, labels, retryHit)
 	default:
 		// `.frame` + `.loading`：12/18、label-tertiary、居中。
 		ui.Row(f).Size(boxW, boxH).Radius(t.Radii.XL).Border(0.5, t.BorderL2).
@@ -439,6 +490,26 @@ func (v *OfficialTranscriptView) drawMessageImage(f ui.C, env *pluginapi.Env, a 
 				LineHeight(ImageStateLineHeight).Color(t.LabelTertiary).Ellipsis()
 		})
 	}
+}
+
+// messageImageDisplayLabel 是官方那个 `label`：
+//
+//	('attachment' in image ? image.label : undefined) ?? preview?.name
+//	  ?? attachment?.name ?? labels.image      （MessageImage.tsx:113-114）
+//
+// 本仓的消息附件只有"已登记的 attachment"这一档（没有 composer 的本地 preview），
+// 所以退化链就是 附件名 → `image.label`（「图片」）。
+func messageImageDisplayLabel(a TranscriptAttachment, labels messageImageLabels) string {
+	if a.Name != "" {
+		return a.Name
+	}
+	return labels.image
+}
+
+// messageImageOpenLabel 是官方 `labels.openNamed(label)`
+// = 模板 `image.openOriginalLabel`「{label}，点击查看原图」。
+func messageImageOpenLabel(label string) string {
+	return label + MessageImageOpenLabelSuffix
 }
 
 // drawMessageImageError 画官方失败态（`.error`，MessageImage.tsx:119-132）。

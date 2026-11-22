@@ -150,6 +150,10 @@ type Plugin struct {
 	// officialTranscript 是 rc.2 官方主区 transcript 渲染器（official_transcript_*.go）。
 	// 惰性初始化：只在真正画官方骨架时才建（旧路径不付这份内存）。
 	officialTranscript *OfficialTranscriptView
+	// imagePress / imageDragErr 是附件图拖出的一次按下状态与上一次失败原因
+	// （`#19` ③，见 official_message_image_drag.go）。零值 = 没在按。
+	imagePress   imageDragPress
+	imageDragErr string
 	// transcript 是**产品路径**的帧投影状态（official_transcript_wiring.go）：
 	// 原始 journal 帧增量并入，按 seq 去重、按 journalEpoch 重建基线。
 	//

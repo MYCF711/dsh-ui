@@ -132,6 +132,33 @@ type WorkflowRunChatData struct {
 }
 
 // MemberCount 是 run 的成员总数（= 各 phase 成员数之和，官方 `runFacts.activityCount`）。
+// cssWeight 把官方 CSS 的 `font-weight` 数值转成 viva `Box.Weight` 收的归一化值。
+//
+// **两套单位不一样，不能直接传。** 官方 CSS 读数是 400/500/510/600/700 这种数，
+// 而 viva 的 Weight 是 0..1 的归一化档位（gfx/theme.go）：
+//
+//	WeightRegular=0(400) · WeightMedium=0.15(500) · WeightSemibold=0.23(600) · WeightBold=0.40(700)
+//
+// 2026-11-22 修：原先把 CSS 数字直接喂给 Weight()，而 viva 的映射是「>=0.35 即 700」，
+// 于是 `font-weight:510` 与 `font-weight:500` 两处**实际都画成了 700 的粗体**，
+// 与官方读数不符。本函数把它们折回正确的档：
+//
+//	<=450 -> Regular · <=550 -> Medium · <=650 -> Semibold · 其余 -> Bold
+//
+// 边界取在档位中点，保证 400/500/600/700 各自落到本档，510 落到 Medium（离 500 更近）。
+func cssWeight(css float32) float32 {
+	switch {
+	case css <= 450:
+		return gfx.WeightRegular
+	case css <= 550:
+		return gfx.WeightMedium
+	case css <= 650:
+		return gfx.WeightSemibold
+	default:
+		return gfx.WeightBold
+	}
+}
+
 func (d *WorkflowRunChatData) MemberCount() int {
 	if d == nil {
 		return 0
@@ -807,7 +834,7 @@ func (p *WorkflowRunPanel) drawRunHeader(
 			// .runTitle：42% 上限的单行省略。
 			title := ui.Text(f, p.Data.Name).
 				FontSize(t.Fonts.Secondary).LineHeight(WorkflowRunRowLineHeight).
-				Weight(WorkflowRunTitleWeight).Color(t.LabelPrimary).
+				Weight(cssWeight(WorkflowRunTitleWeight)).Color(t.LabelPrimary).
 				MaxWidthPercent(WorkflowRunTitleMaxWidth).Ellipsis()
 			title.Shrink(0)
 			// 折叠态内容（官方 `keepContentWhenOpen` 为 true：**展开时也画**）。
@@ -827,7 +854,7 @@ func (p *WorkflowRunPanel) drawRunHeader(
 					ui.Text(f, WorkflowStatusText(p.Data.Status)).
 						FontSize(WorkflowRunStatusTailFontSize).
 						LineHeight(WorkflowRunStatusTailLineHeight).
-						Weight(WorkflowRunTitleWeight).
+						Weight(cssWeight(WorkflowRunTitleWeight)).
 						Color(t.LabelSecondary)
 				})
 			})
@@ -963,7 +990,7 @@ func (p *WorkflowRunPanel) drawMember(f ui.C, t *pluginapi.Theme, member Workflo
 			Radius(t.Radii.SM).Grow(1).MinWidth(0).Clip().Children(func() {
 			ui.Text(f, name).FontSize(t.Fonts.Body).
 				LineHeight(WorkflowRunMemberLabelWrapHeight).
-				Weight(WorkflowRunMemberLabelWeight).
+				Weight(cssWeight(WorkflowRunMemberLabelWeight)).
 				Color(t.LabelSecondary).Grow(1).MinWidth(0).Ellipsis()
 		})
 		ui.Text(f, WorkflowStatusText(member.Status)).

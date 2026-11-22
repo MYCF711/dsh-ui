@@ -26,8 +26,10 @@
 //
 // # 节奏
 //
-// 两条数据都是**低频轮询**（账号 30s、投影 10s + 切会话立刻拉一次）：
-// 宿主没有推送通道（`account.watch` 是流式，本波不引），所以只能问。
+// 账号状态走**推送**（官方 `account.watch`，见 wave3_account_watch.go）：
+// 帧到达即应用，不再每 30s 问一次 `account.getState`。30s 的那一格没有消失，
+// 它变成"资料/余额的续期"（接线前也是 30s 一次，节奏不变）。
+// 投影仍是**低频轮询**（10s + 切会话立刻拉一次）：`session.projections` 宿主没有流。
 // 拉取在后台 goroutine，绘制里**不做网络等待**（否则首帧会卡）。
 package main
 
@@ -56,10 +58,13 @@ const (
 )
 
 const (
-	// accountPollEvery 是账号状态的轮询间隔。
+	// accountPollEvery 是账号那一格的 30s 节奏。
 	//
-	// 账号态变化很慢（登录/登出/失败），30s 足够让通知入口跟上，
-	// 又不会把宿主问烦；官方 `account.watch` 是流，本波不引流。
+	// 接线推送（`account.watch`）之后它的含义**只剩资料/余额的续期**：状态的来源
+	// 是推送帧（到达即应用），已经不需要这里再去问 `account.getState`。
+	// 为什么不让它一起消失：官方只在帧与显式动作时重读详情（index.ts:69-98/146），
+	// 照抄就等于把"余额 30s 一次"变成"余额只在状态变化时"，那是**变慢**。
+	// 所以这一格保留，且推送在线时它**只**做详情续期（见 fetchAccount）。
 	accountPollEvery = 30 * time.Second
 	// projectionsPollEvery 是会话投影的轮询间隔（切会话会立刻拉一次）。
 	projectionsPollEvery = 10 * time.Second
@@ -100,6 +105,22 @@ type wave3Wiring struct {
 	accountBalanceFailed bool
 	accountLoginVisible  bool
 	accountLoginFailed   bool
+
+	// ── 账号状态的推送订阅（官方 account.watch；实现见 wave3_account_watch.go）──
+	//
+	// watchLive = 这一帧的账号状态由推送负责（refreshDue 据此不再问 getState）。
+	// 它只在这一代订阅**真的应用过一帧**之后才置 true：连上但一帧没给，轮询必须
+	// 继续兜底，否则界面会停在旧值上再也不刷新。
+	// watchGen 是订阅代次；旧代次的帧到达时一律丢掉（不许盖新值）。
+	watchCancel context.CancelFunc
+	watchGen    int
+	watchLive   bool
+	// watchUnusable = 宿主没有这条流（not_implemented 等）：不再重连，纯轮询。
+	watchUnusable bool
+	// watchRetry / watchFirstFrame 是重连间隔与首帧容忍的**运行值**
+	// （默认取 accountWatchRetry / accountWatchFirstFrame；测试把它们压到毫秒级）。
+	watchRetry      time.Duration
+	watchFirstFrame time.Duration
 
 	// ── 会话投影（session.projections 的缓存）──
 	projSession      string
@@ -142,7 +163,11 @@ type wave3Wiring struct {
 
 // newWave3Wiring 造一份接线状态（壳在装配前调用）。
 func newWave3Wiring() wave3Wiring {
-	return wave3Wiring{tier: uikernel.NewShellTier(), pins: entrypins.New()}
+	return wave3Wiring{
+		tier: uikernel.NewShellTier(), pins: entrypins.New(),
+		// 推送订阅的两个时长取默认值；测试可以覆写（见 wave3_account_watch.go）。
+		watchRetry: accountWatchRetry, watchFirstFrame: accountWatchFirstFrame,
+	}
 }
 
 // provide 在 `kernel.Load` **之前**把壳侧能力交给插件。
@@ -361,7 +386,12 @@ func (w *wave3Wiring) refreshDue(m *model, sessionID string) (account, projectio
 	return account, projections
 }
 
-// fetchAccount 拉 state，并在已登录时继续拉 profile/balance（后台 goroutine）。
+// fetchAccount 走 30s 那一格。
+//
+// 推送在线时（`watchLive`）**不问 `account.getState`**：状态由 watch 帧负责，
+// 已经比这一格更新；这里只做资料/余额的续期，节奏与接线前的 30s 一致。
+// 推送不在线时（老宿主 / 断线回落）就是接线前那条路：先问状态，已登录再拉详情。
+//
 // 三份数据共享一代状态；旧轮询与登录动作由 accountOpMu 串行，不会后盖新状态。
 func (w *wave3Wiring) fetchAccount(m *model) {
 	w.accountOpMu.Lock()
@@ -378,6 +408,21 @@ func (w *wave3Wiring) fetchAccount(m *model) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), wave3FetchTimeout)
 	defer cancel()
+
+	// 推送在线：状态已经有更快的来源，这一格只续详情（不重复问状态）。
+	// `accountKnown` 为假（订阅刚开、还没落第一帧）时仍走下面那条路，
+	// 让首帧之前的界面与接线前**一模一样**，不留空白等推送。
+	w.mu.Lock()
+	pushed := w.watchLive && w.accountKnown
+	signedIn := w.accountSignedIn
+	w.mu.Unlock()
+	if pushed {
+		if signedIn {
+			w.fetchAccountDetails(m, ctx)
+		}
+		return
+	}
+
 	view, err := m.cli.GetAccountState(ctx)
 	if err != nil {
 		w.mu.Lock()
@@ -399,7 +444,17 @@ func (w *wave3Wiring) fetchAccount(m *model) {
 	if view == nil || !view.SignedIn() {
 		return
 	}
+	w.fetchAccountDetails(m, ctx)
+}
 
+// fetchAccountDetails 拉已登录账号的资料与余额（调用方必须持 accountOpMu）。
+//
+// 单独抽出来是因为有**两个**触发点，而落库必须只有一处：
+//   - 30s 那一格（`fetchAccount`，接线前就有的节奏）；
+//   - 每一帧推送之后（官方 `index.ts:146` 的 `void refresh()`）。
+//
+// 两处都走这里，所以"同一串状态变化下资料/余额的落库值"与接线前逐帧同值。
+func (w *wave3Wiring) fetchAccountDetails(m *model, ctx context.Context) {
 	meta, metaErr := m.accountClientMetadata()
 	var profile *apiclient.AccountProfile
 	var balance *apiclient.AccountBalance

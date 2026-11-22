@@ -538,6 +538,14 @@
       "resp": true,
       "req_note": "官方结果是裸 boolean（宿主 handlers_account_official.go:940-953），用于登出前三态确认。"
     },
+    "account.watch": {
+      "batch": 30,
+      "req": {},
+      "resp": {
+        "stream": "{type:'snapshot'|'credentials-changed', state:AccountView} 首帧是当前状态，之后每次状态/凭据变化发一帧，无自然结束"
+      },
+      "req_note": "OFF:dsh-deepseek-account/lib/typert.host.js:640-657（mode:'stream'，无参数，取消走 signal）；帧的 type 只有官方 enum 两个值。宿主 HOST:internal/transport/handlers_account_official.go:968-1010 按 NDJSON 一行一帧写、开流即 flush 响应头，首帧必为当前状态（internal/account/account.go:951-991）。壳侧消费方 cmd/app/wave3_account_watch.go 与 account.getState 落同一份缓存（逐帧同值），流坏/宿主没这条流时回落 30s 轮询。"
+    },
     "session.projections": {
       "batch": 4,
       "req": {
@@ -2334,7 +2342,7 @@
     }
   },
   "counts": {
-    "total": 140,
+    "total": 141,
     "batch1": 15,
     "batch2": 10,
     "batch3": 9,
@@ -2362,7 +2370,8 @@
     "batch26": 1,
     "batch27": 1,
     "batch28": 7,
-    "batch29": 3
+    "batch29": 3,
+    "batch30": 1
   },
   "$schema": "dsh-ui/api-contract@1",
   "version": 2,

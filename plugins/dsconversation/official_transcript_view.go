@@ -139,6 +139,13 @@ type OfficialTranscriptView struct {
 	// 放进投影会让"重放同一批帧"的产物依赖网络，投影层最忌这个。
 	messageImages *messageImageCache
 
+	// markdownImages 是**正文里**图片的取数 + 解码缓存（`#18` (b)）。
+	//
+	// 与 messageImages 同一条理由挂在视图上（运行期资源，不进投影），
+	// 但**不是同一份缓存**：附件图的身份是宿主登记的附件 id，正文图的身份是
+	// 作者写在正文里的目的地（URL / 路径），两种键没有交集。
+	markdownImages *mdlite.MarkdownImageResolver
+
 	// codeBlocks 是本帧**布局阶段占位、覆画阶段才真画**的代码块。
 	//
 	// 为什么要两段：`mdlite.CodeBlock` 要的是**真实矩形**，而布局阶段
@@ -187,7 +194,9 @@ type pendingCodeBlock struct {
 
 // NewOfficialTranscriptView 造一个渲染器。
 func NewOfficialTranscriptView(theme *pluginapi.Theme, prims pluginapi.Primitives) *OfficialTranscriptView {
-	return &OfficialTranscriptView{Theme: theme, Prims: prims, messageImages: newMessageImageCache()}
+	return &OfficialTranscriptView{Theme: theme, Prims: prims,
+		messageImages:  newMessageImageCache(),
+		markdownImages: mdlite.NewMarkdownImageResolver()}
 }
 
 // Draw 画完整 transcript：容器链 + 逐条节点。
@@ -515,7 +524,7 @@ func (v *OfficialTranscriptView) drawAssistant(f ui.C, env *pluginapi.Env, e Tra
 			})
 		}
 		if e.Data.Text != "" {
-			v.drawMarkdown(f, env, e.Data.Text, e.Key)
+			v.drawMarkdown(f, env, e.Data.Text, e.Key, e.Streaming)
 		}
 		if e.Data.Status == "stopped" {
 			// 中断标记 .stopped：11px/18px，左对齐
@@ -550,7 +559,12 @@ func (v *OfficialTranscriptView) drawAssistant(f ui.C, env *pluginapi.Env, e Tra
 // 整段都是 Mono span 时走等宽字体（官方 `MarkdownText` 的 Mono span）；
 // 精确的行内背景色（`--dsw-alias-markdown-inline-code`）同样在 primitives 里，
 // 未取证——这里只换字体，不画背景。
-func (v *OfficialTranscriptView) drawMarkdown(f ui.C, env *pluginapi.Env, text, key string) {
+func (v *OfficialTranscriptView) drawMarkdown(f ui.C, env *pluginapi.Env, text, key string, streaming bool) {
+	// 正文图片的取数入口每帧重装一次：它必须拿当帧的 env（会话 / cwd / 重画回调）。
+	// 重复装同一份实现是幂等的（`MarkdownImageResolver.Use`）。
+	v.markdownImages.Use(markdownImageLoader(env), markdownImageRedraw(env))
+	// 流式期间官方不解析相对路径（`aK` 的 `streaming` 分支），这里照抄。
+	allowPath := !streaming
 	body := ui.Column(f).FillWidth().Gap(AssistantBlockGap)
 	body.Children(func() {
 		var doc markdown.Document
@@ -567,31 +581,39 @@ func (v *OfficialTranscriptView) drawMarkdown(f ui.C, env *pluginapi.Env, text, 
 			case markdown.Table:
 				v.drawTableBlock(f, &doc, block)
 			case markdown.Heading:
-				v.drawHeading(f, &doc, block)
+				v.drawHeading(f, env, &doc, block, allowPath)
 			case markdown.Item:
-				v.drawListItem(f, &doc, block)
+				v.drawListItem(f, env, &doc, block, allowPath)
 			default: // markdown.Paragraph
-				v.drawParagraph(f, &doc, block)
+				v.drawParagraph(f, env, &doc, block, allowPath)
 			}
 		}
 	})
 }
 
 // drawParagraph 画段落；引用块内的段落再套一层左边框。
-func (v *OfficialTranscriptView) drawParagraph(f ui.C, doc *markdown.Document, block markdown.Block) {
+//
+// 图片（`#18` (b)）：段落里的 `![alt](目的地)` 交给 `drawMarkdownInline` 出图。
+// **没有图片时与旧路径逐像素一致**（`SplitMarkdownInline` 只切出一段文字，
+// 且文本与旧的 `spansText` 逐字节相同）。
+func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block, allowPath bool) {
 	t := v.Theme
 	spans := doc.Spans(&block)
-	body := spansText(spans)
-	if body == "" {
+	if !markdownSpansPaintable(spans) {
 		return
 	}
 	v.drawQuoted(f, block.Quote, func() {
-		// Wrap 而不是 Text：官方正文会按列宽折行（`white-space` 默认 normal）。
-		// 用 Text 的话长段落会被右边缘硬切——真机上表现成"回答只显示一行"。
-		box := ui.Wrap(f, body).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
-		if allMono(spans) {
-			box.Mono().FontSize(t.Fonts.Code)
-		}
+		v.drawMarkdownInline(f, env, spans, allowPath, func(text string, mono bool) {
+			if text == "" {
+				return
+			}
+			// Wrap 而不是 Text：官方正文会按列宽折行（`white-space` 默认 normal）。
+			// 用 Text 的话长段落会被右边缘硬切——真机上表现成"回答只显示一行"。
+			box := ui.Wrap(f, text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+			if mono {
+				box.Mono().FontSize(t.Fonts.Code)
+			}
+		})
 	})
 }
 
@@ -600,15 +622,20 @@ func (v *OfficialTranscriptView) drawParagraph(f ui.C, doc *markdown.Document, b
 // 字号/行高来自 `MarkdownHeadingFor`（derived 阶梯表）：级别越界按最近一级
 // 夹紧，调用方不必再判边界。字重取 semibold——h5/h6 与正文同字号，只靠字重
 // 区分（官方 primitives 未取证，这是实现选择）。
-func (v *OfficialTranscriptView) drawHeading(f ui.C, doc *markdown.Document, block markdown.Block) {
-	body := spansText(doc.Spans(&block))
-	if body == "" {
+func (v *OfficialTranscriptView) drawHeading(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block, allowPath bool) {
+	spans := doc.Spans(&block)
+	if !markdownSpansPaintable(spans) {
 		return
 	}
 	heading := MarkdownHeadingFor(block.Level)
 	v.drawQuoted(f, block.Quote, func() {
-		ui.Wrap(f, body).FontSize(heading.Size).LineHeight(heading.Line).
-			Weight(gfx.WeightSemibold).Color(v.Theme.LabelPrimary)
+		v.drawMarkdownInline(f, env, spans, allowPath, func(text string, _ bool) {
+			if text == "" {
+				return
+			}
+			ui.Wrap(f, text).FontSize(heading.Size).LineHeight(heading.Line).
+				Weight(gfx.WeightSemibold).Color(v.Theme.LabelPrimary)
+		})
 	})
 }
 
@@ -616,10 +643,14 @@ func (v *OfficialTranscriptView) drawHeading(f ui.C, doc *markdown.Document, blo
 //
 // 缩进用 `level × MarkdownListIndentPerLevel`（derived）：Viva 没有
 // `padding-inline-start: 20px` 这种列表缩进，只能按嵌套深度自己算左内边距。
-func (v *OfficialTranscriptView) drawListItem(f ui.C, doc *markdown.Document, block markdown.Block) {
+//
+// 列表项里的图片（`#18` (b)）与段落同一条规则：**没有图片时走旧路径不动**
+// （一个 Wrap 吃掉剩余宽度）；有图片才把正文换成"按原文顺序切段"的列，
+// 标记槽仍然在左、每段都缩在标记后面。
+func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block, allowPath bool) {
 	t := v.Theme
-	body := spansText(doc.Spans(&block))
-	if body == "" {
+	spans := doc.Spans(&block)
+	if !markdownSpansPaintable(spans) {
 		return
 	}
 	marker := MarkdownListBullet
@@ -634,7 +665,21 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, doc *markdown.Document, bl
 			// 标记槽固定 18px 右对齐（derived；容得下 "99."），正文吃掉剩余宽度。
 			ui.Text(f, marker).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).
 				Color(t.LabelSecondary).Width(MarkdownListMarkerWidth).TextEnd()
-			ui.Wrap(f, body).FillWidth().FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+			if !markdownSpansHaveImage(spans) {
+				ui.Wrap(f, spansText(spans)).FillWidth().FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+				return
+			}
+			ui.Column(f).FillWidth().Children(func() {
+				v.drawMarkdownInline(f, env, spans, allowPath, func(text string, mono bool) {
+					if text == "" {
+						return
+					}
+					box := ui.Wrap(f, text).FillWidth().FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+					if mono {
+						box.Mono().FontSize(t.Fonts.Code)
+					}
+				})
+			})
 		})
 	})
 }
@@ -1232,24 +1277,6 @@ func spansText(spans []markdown.Span) string {
 		b.WriteString(span.Text)
 	}
 	return b.String()
-}
-
-// allMono 报告一段文本是不是**整段行内代码**（官方 MarkdownText 的 Mono span）。
-func allMono(spans []markdown.Span) bool {
-	if len(spans) == 0 {
-		return false
-	}
-	mono := false
-	for _, span := range spans {
-		if span.Text == "" || span.Text == markdown.Newline {
-			continue
-		}
-		if span.Style&markdown.Mono == 0 {
-			return false
-		}
-		mono = true
-	}
-	return mono
 }
 
 // ── 审批卡（官方 ApprovalPanel，不是 transcript 节点）────────────────────

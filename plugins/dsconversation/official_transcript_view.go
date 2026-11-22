@@ -178,15 +178,23 @@ type OfficialTranscriptView struct {
 	// questionReplyCopied 是问题与回答气泡的复制反馈（QuestionReplyView.tsx:54-57）。
 	questionReplyCopied map[string]bool
 
-	// lightbox 是正文图「查看大图」灯箱的开合态（`#18` (a)）。
+	// lightbox 是图片「查看大图」灯箱的开合态（`#18` (a)）。
 	//
-	// nil = 关着。**唯一的写入口是用户点正文图**（`drawMarkdownImage` 的
+	// nil = 关着。**只有两个写入口，都是用户点已经上屏的图片**：正文 markdown 图
+	// （`drawMarkdownImage` 的 `Clicked()`）与消息附件图（`drawMessageImage` 的
 	// `Clicked()`）；另有一条自动关掉的判据（会话/cwd 变了），见
-	// `markdownLightboxVisible`。官方是 `{open && <Jb …/>}`：关着就没有这个组件。
+	// `imageLightboxVisible`。官方是 `{open && <Jb …/>}`：关着就没有这个组件。
 	//
 	// 为什么挂在视图上而不是投影里：开/关是用户意图，不是 journal 事实
 	// （与 `workflowDisclosures` 同一条理由）。
-	lightbox *markdownLightbox
+	lightbox *imageLightboxState
+
+	// imageDragSources 是本帧「哪张附件图可以拖出」的表：交互 id → 附件 id。
+	//
+	// 每帧重写（消息重排、会话切换后 id 就变了），只由绘制的那个线程读写，
+	// 壳的 `OnPointer` 只读上一帧的这份快照——与 `plugins/dsfiles` 的
+	// `dragRows` 同一个形状、同一个理由（见 official_message_image_drag.go）。
+	imageDragSources map[gfx.ID]string
 }
 
 // pendingCodeBlock 是一条「布局阶段占位、覆画阶段真画」的代码块。
@@ -219,6 +227,9 @@ func (v *OfficialTranscriptView) Draw(f ui.C, env *pluginapi.Env, vp TranscriptV
 		t = env.Theme
 	}
 	v.Boxes = TranscriptBoxes{HostScroll: vp.HostScroll, SelfScrolls: !vp.HostScroll}
+	// 拖出源表每帧重建：上一帧那些交互 id 到这一帧可能已经属于别的图，留着就是错绑。
+	// 清理放这里（而不是各绘制分支里）是为了"这一帧没画就不再是拖出源"这条判据。
+	clear(v.imageDragSources)
 
 	// ── 代码块：本帧重新占位 ──────────────────────────────────────
 	//
@@ -396,12 +407,15 @@ func (v *OfficialTranscriptView) drawAttachment(f ui.C, env *pluginapi.Env, entr
 	t := v.Theme
 	if attachment.Image {
 		variant := messageImageVariantFor(1, compact)
-		hit := gfx.ID{}
+		retryHit, openHit := gfx.ID{}, gfx.ID{}
 		if env != nil && env.Tree != nil {
 			// 官方重试按钮的交互名字就是 `loadFailed` 那一句（MessageImage.tsx:124-126）。
-			hit = env.Tree.ID(env.Feat, "message-image-retry-"+entry.Key+"-"+itoa(index))
+			retryHit = env.Tree.ID(env.Feat, "message-image-retry-"+entry.Key+"-"+itoa(index))
+			// 成功态那个 `.frame` 按钮（点开 `ImageLightbox`）与它**不同一个 id**：
+			// 失败态的重试和成功态的开灯箱是两件事，共用一个 id 会互相误触发。
+			openHit = env.Tree.ID(env.Feat, "message-image-open-"+entry.Key+"-"+itoa(index))
 		}
-		v.drawMessageImage(f, env, attachment, variant, hit)
+		v.drawMessageImage(f, env, attachment, variant, retryHit, openHit)
 		return
 	}
 	card := ui.Row(f).Size(FileCardWidth, FileCardMinHeight).Gap(FileCardGap).Radius(t.Radii.LG).

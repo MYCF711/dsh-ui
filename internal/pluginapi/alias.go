@@ -141,6 +141,8 @@ type (
 	DraftInsertion = pub.DraftInsertion
 	// 消息区图片面的取数结果（Actions.AttachmentGet 的返回值，#18 ②③）。
 	AttachmentBlob = pub.AttachmentBlob
+	// markdown 正文图片的取数结果（Actions.MarkdownImage 的返回值，#18 (b)）。
+	MarkdownImageBytes = pub.MarkdownImageBytes
 )
 
 const (

@@ -18,11 +18,13 @@
 // # 本仓的边界（写清楚，不冒充）
 //
 // 已落地：入口卡名录投影、每卡 keyed 派发（带 owner props）、官方胶囊 fallback、
-// 官方列的几何（GuideBody.module.css 的 `.guide` / `.entryCell` / `.entry` 三块）。
+// 官方列的几何（GuideBody.module.css 的 `.guide` / `.entryCell` / `.entry` 三块）、
+// 以及 **More 卡**（`.moreAnchor` + 贴它的菜单面，见 view_guide_more.go）。
 //
 // 未落地（仍在 docs/official-parity.md 的 #53 行）：页首那枚 56px 罗盘（`.hero`，
-// `GuideBody.module.css:32-36`）、More 卡片（`.moreAnchor`，需要 `sidebar.right.tab.guide.actions`
-// 的行实现）、卡片的固定/取消固定（`dsh.entryPins`）。它们不是入口卡本身的一部分。
+// `GuideBody.module.css:32-36`）与卡片的固定/取消固定（`dsh.entryPins` 在向导页这一侧
+// 没有消费方——官方的 guide 固定态今天也没有可用入口点，见 view_guide_more.go 差异 1）。
+// 它们不是入口卡本身的一部分。
 package uikernel
 
 import (
@@ -121,8 +123,23 @@ func GuideEntries(k *Kernel) []GuideEntry {
 // 选中一张卡 = 打开它声明的类型（官方 GuideBody.tsx:138-141 的 `open(kind)`：
 // `tab.actions.openTab(kind, {replaceTab:true})` 然后 `tab.actions.close()`）。
 // 本仓的向导只在右栏没有 tab 时出现，所以只有「打开」这一半，没有要关掉的自身 tab。
+//
+// 这条入口不带 More 卡（`more` 为零值）；壳里那一帧走 `DrawRightGuideMore`。
 func DrawRightGuide(f ui.C, env *pluginapi.Env, entries []GuideEntry) {
-	if env == nil || env.Theme == nil || len(entries) == 0 {
+	DrawRightGuideMore(f, env, entries, GuideMoreOptions{})
+}
+
+// DrawRightGuideMore 画官方 `ShippedGuide` 的整列：入口卡列 + More 卡（`GuideMoreMenu`）。
+//
+// 官方的体是「visibleEntries 的卡片 + hasEntryActions 时的 More 卡」两段
+// （GuideBody.tsx:146-172）；没有卡也没有 More 时整列不占位。
+// More 卡的展开态与锚点由 `more.State` 跨帧携带，菜单面贴它开在同一个
+// `sidebar.right.tab.guide.actions` 座位上。
+func DrawRightGuideMore(f ui.C, env *pluginapi.Env, entries []GuideEntry, more GuideMoreOptions) {
+	if env == nil || env.Theme == nil {
+		return
+	}
+	if len(entries) == 0 && !more.HasActions {
 		return
 	}
 	t := env.Theme
@@ -148,7 +165,11 @@ func DrawRightGuide(f ui.C, env *pluginapi.Env, entries []GuideEntry) {
 				drawGuideFallbackEntry(f, env, t, entry)
 			})
 		}
+		// More 卡排在卡片之后（官方 `GuideBody.tsx:160-172` 的顺序），同一格宽度。
+		drawGuideMoreCard(f, env, more)
 	})
+	// 菜单面是浮层：画在整列之外（窗口坐标），贴在卡上。
+	drawGuideMoreMenu(f, env, entries, more)
 }
 
 // drawGuideFallbackEntry 画官方 `EntryBox` 那枚胶囊（GuideBody.tsx:64-92 + `.entry` 几何）。

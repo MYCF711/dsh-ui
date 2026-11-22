@@ -489,6 +489,10 @@ type model struct {
 	// 布尔 + `<input>`）。壳持有 `ui.Field` 与正在改名的 occurrence，见
 	// uikernel.RightTabRenameState 与 view_tabs.go 的 DrawRightTabsEditable。
 	rightTabRename uikernel.RightTabRenameState
+	// guideMore 是右栏向导页 More 卡的跨帧状态（官方 `GuideMoreMenu` 的 `useState`
+	// 加上"上一帧量到的"锚点/面高）。壳持有：画在向导页体里的那张卡不是插件，
+	// 见 uikernel.GuideMoreState 与 view_guide_more.go。
+	guideMore uikernel.GuideMoreState
 	// terminalShells 是每会话的 shell 目录缓存（官方 `webTerminals.launchShells` 的同步投影，
 	// 见 terminal_shells.go）；terminalShellPref 是官方 `selectShell` 记住的选择。
 	terminalShells    map[string]*terminalShellCache
@@ -2350,6 +2354,10 @@ func newConfig(m *model) app.Config {
 
 		// 布局已定：先恢复待恢复的滚动位置，再记本帧偏移，然后跑插件的 AfterDraw
 		// （插件负责 Markdown 这类"先布局后覆画"的东西，壳不再画内容）。
+		//
+		// 向导页 More 卡的锚点与菜单面高度也在这一时机量（壳自己的宿主，不是插件）：
+		// 与插件 AfterDraw 同一条理由——Draw 回调里 `Box.Rect()` 还是零值。
+		m.guideMore.AfterDraw()
 		//
 		// **顺序不能反**：recordScroll 会把本帧的 Offset 写进 m.scrollPos，
 		// 而切会话那一帧的新滚动区是从 0 布局的——先记再恢复就会把"切走前的位置"

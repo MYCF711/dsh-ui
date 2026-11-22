@@ -92,9 +92,12 @@ func newEntryFixture(t *testing.T, region string, entries []pluginapi.EntryMenuE
 			// 宿主派发座位时的形状：菜单面里挂上 owner props，派发完恢复。
 			f.env.EntryMenu = &f.props
 			ui.Column(cc).Width(288).FillHeight().Pad(4).Gap(0).Children(func() {
-				if region == pluginapi.EntryRegionSidebar {
+				switch region {
+				case pluginapi.EntryRegionSidebar:
 					f.p.drawSidebarRows(cc, f.env)
-				} else {
+				case pluginapi.EntryRegionRightbar:
+					f.p.drawRightGuideRows(cc, f.env)
+				default:
 					f.p.drawConversationRows(cc, f.env)
 				}
 			})
@@ -294,6 +297,7 @@ func TestCreatePluginRowStartsCordisDraftByRegion(t *testing.T) {
 	}{
 		{region: pluginapi.EntryRegionSidebar, prompt: zhCreatePromptSidebar},
 		{region: pluginapi.EntryRegionConversation, prompt: zhCreatePromptConversation},
+		{region: pluginapi.EntryRegionRightbar, prompt: zhCreatePromptRightbar},
 	} {
 		t.Run(tc.region, func(t *testing.T) {
 			f := newEntryFixture(t, tc.region, sidebarEntries(), &fakeNavigation{})
@@ -454,5 +458,81 @@ func TestSidebarLongLabelWrapsClearOfPin(t *testing.T) {
 	}
 	if row.Bounds.Height <= entryRowMinHeight {
 		t.Fatalf("长条目名换行了但行高没长（%v ≤ min-height %v）", row.Bounds.Height, entryRowMinHeight)
+	}
+}
+
+// TestRightbarMenuListsOnlyTheTwoFooterRows：右栏 guide 那层 More 菜单**不列条目**，
+// 只有末尾两行（官方 `region === 'rightbar'` 时 `moreEntries` 恒 `[]`，
+// EntryMenuContent.tsx:38 + :62-69）。
+//
+// 这一条同时是「不要照抄左栏」的负向判据：向导卡本身就是入口，菜单里再列一遍就是
+// 同一扇门画两次；官方那一侧明确是空表。
+func TestRightbarMenuListsOnlyTheTwoFooterRows(t *testing.T) {
+	entries := []pluginapi.EntryMenuEntry{
+		// 一条未固定、一条已固定：官方 rightbar 区域**两条都不列**（moreEntries 恒空）。
+		// 照抄左栏那一支的话，未固定的那条会被画出来，下面那条断言就会红。
+		{ID: "terminal:new", Label: "新建终端", Pinned: false},
+		{ID: "browser:new", Label: "浏览器", Pinned: true},
+	}
+	f := newEntryFixture(t, pluginapi.EntryRegionRightbar, entries, &fakeNavigation{})
+	defer f.close()
+
+	for _, label := range []string{"新建终端", "浏览器"} {
+		if f.session.HasText(label) {
+			t.Fatalf("右栏 More 菜单列了条目 %q：官方 rightbar 区域 moreEntries 恒空，向导卡不在菜单里重列", label)
+		}
+	}
+	// 末尾两行都在：浏览服务在册（browsable）+ Creator 恒在。
+	f.mustHit("entry-browse-plugins")
+	f.mustHit("entry-create-plugin")
+	if !f.session.HasText(zhInstall) || !f.session.HasText(zhCreate) {
+		t.Fatalf("右栏 More 菜单漏了末尾两行：%v", f.session.Texts())
+	}
+}
+
+// TestRightbarRowsFollowTheNavigationService：浏览那行仍归 `browsable` 管，
+// Creator 不受牵连（与左栏/会话头同一判据，官方三段共用一份组件）。
+func TestRightbarRowsFollowTheNavigationService(t *testing.T) {
+	f := newEntryFixture(t, pluginapi.EntryRegionRightbar, nil, nil)
+	defer f.close()
+
+	if _, ok := f.hit("entry-browse-plugins"); ok {
+		t.Fatal("面板导航不在册却给右栏挂了「浏览更多插件」的命中区")
+	}
+	f.mustHit("entry-create-plugin")
+}
+
+// TestRightbarRowsAreInertOutsideTheirMenu：这第三条座位也必须只在菜单里画行——
+// 壳外（`Env.EntryMenu == nil`）画出来就等于把菜单行直接摊在向导页上。
+func TestRightbarRowsAreInertOutsideTheirMenu(t *testing.T) {
+	theme := dscore.Dark()
+	tree := &gfx.Tree{}
+	feat := tree.Feature("entry-customization-rightbar-off")
+	p := &Plugin{theme: theme, nav: &fakeNavigation{}}
+	env := &pluginapi.Env{Theme: theme, Tree: tree, Feat: feat}
+	pageTheme := dscore.VivaTheme(theme)
+	view := ui.NewPage(ui.PageConfig{Theme: &pageTheme})
+	config := app.Config{Title: "entry-rightbar-off", Width: 288, Height: 200, Tree: tree, WindowMode: app.WindowFrameless}
+	config.Paint = func(canvas *gfx.Canvas, size ui.Size) {
+		bounds := gfx.Rect{Width: size.Width, Height: size.Height}
+		env.Canvas, env.Bounds = canvas, bounds
+		view.Draw(canvas, bounds, func(cc ui.C) { p.drawRightGuideRows(cc, env) })
+	}
+	config.OnKey = func(ev gfx.KeyEvent) gfx.EventResult { return gfx.EventResult{} }
+	session, err := headless.Open(config, nil, headless.Options{Scale: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if err := session.Driver().Pump(); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{zhInstall, zhCreate} {
+		if session.HasText(text) {
+			t.Fatalf("不在菜单里（Env.EntryMenu 为 nil）却画了 %q", text)
+		}
+	}
+	if len(session.Snapshot().Hits) != 0 {
+		t.Fatalf("不在菜单里却挂了 %d 个命中区", len(session.Snapshot().Hits))
 	}
 }

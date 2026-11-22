@@ -48,6 +48,20 @@ var crossRepoFields = []crossRepoField{
 		field:  "userCode",
 		reason: "宿主内部一直有该字段、注释写着「UI 需要」，但 wire 与投影都不带 —— 界面按它解 ⇒ 真宿主上登录码恒空。2026-11-22 修（#128）。",
 	},
+	{
+		name:   "账号状态流的帧包装 type",
+		host:   "internal/transport/handlers_account_official.go",
+		ui:     "internal/apiclient/account_watch.go",
+		field:  "type",
+		reason: "rc.1 的 `account.watch` 帧是**扁平** AccountView（status/links/attempt 直接在顶上），rc.2 起包了一层 {type,state}（OFF:dsh-deepseek-account/lib/typert.host.js:640-657）。一边退回扁平，登录进度与 credentials-changed 就再也分不开（客户端要靠 type 决定清不清通知态）。",
+	},
+	{
+		name:   "账号状态流的帧包装 state",
+		host:   "internal/transport/handlers_account_official.go",
+		ui:     "internal/apiclient/account_watch.go",
+		field:  "state",
+		reason: "同上：`state` 是 rc.2 的包装键。宿主 `OfficialAccountUpdate.state`（serveAccountWatch 逐帧写）与界面 `AccountUpdate.state` 必须同名，否则界面每帧都解成空 AccountView —— 账号状态会静默退回「未知」，比不接推送更糟。",
+	},
 }
 
 // findHostRepo 定位宿主仓：先看 DSH_GO_REPO，再看兄弟目录 ../DSH-GO。

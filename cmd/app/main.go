@@ -2934,6 +2934,9 @@ func main() {
 	}
 	// 装配完成：取回两个容器插件的服务、写死壳档位、接好"打开账号设置"。
 	m.wave3.attach(m)
+	// 账号状态的推送订阅（官方 `account.watch`）：状态到达即应用，断线自动回落 30s
+	// 轮询（见 wave3_account_watch.go）。cli 为 nil（无头/离线）时是空操作。
+	m.wave3.startAccountWatch(m)
 	m.theme = m.kernel.MustGet(pluginapi.KeyTheme).(*pluginapi.Theme)
 	m.prims = m.kernel.MustGet(pluginapi.KeyPrimitives).(pluginapi.Primitives)
 	theme = dscore.VivaTheme(m.theme)

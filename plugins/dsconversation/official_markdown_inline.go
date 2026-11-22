@@ -47,6 +47,9 @@ type markdownInlineFont struct {
 	Line float32
 	// Weight 是字重（0 = 不设，与 textRun 的 Box.Weight 一致）。
 	Weight float32
+	// Bold 表示这一块整块加粗（官方 `**…**` 盖满整块）：量宽要用绘制时那一档字重，
+	// 否则图与文字的相对位置是拿常规字重算出来的（见 `spansAllBold`）。
+	Bold bool
 	// MonoSize 是行内代码的字号（`t.Fonts.Code`）；0 = 与 Size 相同。
 	MonoSize float32
 }
@@ -62,6 +65,11 @@ type markdownInlineFont struct {
 // 否则图会被算到错的位置。
 func markdownInlineTextStyle(font markdownInlineFont, mono bool) gfx.TextStyle {
 	style := gfx.TextStyle{Size: font.Size, Weight: font.Weight}
+	if font.Bold {
+		// 量宽与绘制同源：加粗那一档的进宽比常规宽（`viva@internal/textmetrics`
+		// 按字重分表），只改绘制不改量宽会让行内图的位置跟着漂。
+		style.Weight = gfx.WeightBold
+	}
 	if mono && font.MonoSize > 0 {
 		style.Size = font.MonoSize
 		style.Mono = true

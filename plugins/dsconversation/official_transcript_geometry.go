@@ -358,6 +358,11 @@ func userStackMaxWidth(column float32) float32 {
 //	③ 取到 primitives `src/` 后逐行换锚（derived → aligned + 官方行号），
 //	   并把本段注释改掉。在此之前任何"官方代码块 banner 是 32px"的说法都是假的。
 //
+// 本节还有一条**行为规则**（不是像素读数）：行内图的 `vertical-align:middle`
+// 对齐（`MarkdownInlineImageXHeight`）。规则本身在 rc.5 的 dist CSS 里
+// （`._imageButton_13jw0_471`），**缺**的是字体 x-height 读数（viva 的 gfx 不导出），
+// 所以它的数值仍是 derived，锚点按本节纪律指向未取证条目、CSS 出处写进 Formula。
+//
 // 唯一能锚的两处（已取证，作推导基准）：正文 14/24（`AssistantMarkdown.module.css:9-15`
 // 的 `--dsh-content-font-size` + `calc(24px + delta)`）与块间距 16px
 // （`AssistantMarkdown.module.css:17-22` 的 `.body { gap: 16px }`）。
@@ -378,6 +383,19 @@ const (
 
 	// MarkdownRuleHeight 是分隔线粗细（derived；1 物理像素）。
 	MarkdownRuleHeight float32 = 1
+
+	// MarkdownInlineImageXHeight 是正文行内图 `vertical-align:middle` 里
+	// **半个 x-height 除以字号** 的比例（derived；0.5em ÷ 2 = 0.25）。
+	//
+	// 官方规则是 `._imageButton_13jw0_471{display:inline-block;vertical-align:middle}`
+	// （`OFF:dist/assets/index-CSAdOBx6.css`）：图片盒的竖直中点对齐
+	// 「父基线 + 半个 x-height」（CSS 2.1 §10.8.1）。x-height 随字体走，viva 的
+	// `gfx` 没有这条读数（只导出 `LabelBaseline` / `MonoBaseline`），所以按界面字体
+	// 的比例取 0.5em（Segoe UI 的 sxHeight/unitsPerEm = 1024/2048）。
+	//
+	// 它只影响"图那一行里文字基线相对图中心偏多少"：图是那一行最高的盒子时
+	// 图顶正好落在行顶，与这条比例无关。
+	MarkdownInlineImageXHeight float32 = 0.25
 
 	// CodeBlockBannerHeight 是代码块 banner 高度（derived；mdlite 默认同值）。
 	CodeBlockBannerHeight float32 = 32
@@ -888,6 +906,7 @@ var officialTranscriptGeometry = []uikernel.GeoRow{
 	{Node: "MarkdownText.ul/ol", Prop: "padding-inline-start", Official: MarkdownListIndentPerLevel, Impl: MarkdownListIndentPerLevel, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "每级 20px 累加（level × 20）；官方列表缩进未取证，**不得反推像素**"},
 	{Node: "MarkdownText.li", Prop: "marker-gap", Official: MarkdownListMarkerGap, Impl: MarkdownListMarkerGap, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "标记与正文间距 6px（与 DisclosureRow 的 leading-gap 6 同档），**不得反推像素**"},
 	{Node: "MarkdownText.li", Prop: "marker-width", Official: MarkdownListMarkerWidth, Impl: MarkdownListMarkerWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "标记槽 18px（容得下 \"99.\"），**不得反推像素**"},
+	{Node: "MarkdownText.imageButton", Prop: "vertical-align", Official: MarkdownInlineImageXHeight, Impl: MarkdownInlineImageXHeight, Unit: uikernel.UnitRatio, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "官方 `OFF:dist/assets/index-CSAdOBx6.css` 的 `._imageButton_13jw0_471{display:inline-block;vertical-align:middle}` + CSS 2.1 §10.8.1：图的竖直中点 = 父基线 + 半个 x-height；x-height 随字体走、viva 的 gfx 不导出这条读数（只有 LabelBaseline/MonoBaseline），故按界面字体 0.5em（Segoe UI sxHeight/unitsPerEm = 1024/2048）取，半个 = 0.25 × 字号；**不得反推像素**"},
 	{Node: "MarkdownText.blockquote", Prop: "border-inline-start-width", Official: MarkdownQuoteBorderWidth, Impl: MarkdownQuoteBorderWidth, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "左边框 2px（Viva 无 border-inline-start，用 Row 里的竖线盒表达），**不得反推像素**"},
 	{Node: "MarkdownText.blockquote", Prop: "padding-inline-start", Official: MarkdownQuotePadLeft, Impl: MarkdownQuotePadLeft, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "左内边距 12px，**不得反推像素**"},
 	{Node: "MarkdownText.hr", Prop: "height", Official: MarkdownRuleHeight, Impl: MarkdownRuleHeight, Unit: uikernel.UnitPx, Status: uikernel.GeoDerived, Anchor: markdownAnchor, Formula: "1 物理像素（与 flex.Frame.Divider 同值），**不得反推像素**"},

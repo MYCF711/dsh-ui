@@ -620,6 +620,9 @@ func (v *OfficialTranscriptView) drawMarkdown(f ui.C, env *pluginapi.Env, text, 
 // 图片（`#18` (b)）：段落里的 `![alt](目的地)` 交给 `drawMarkdownInline` 出图。
 // **没有图片时与旧路径逐像素一致**（`SplitMarkdownInline` 只切出一段文字，
 // 且文本与旧的 `spansText` 逐字节相同）。
+//
+// 字重：整块都是 `**…**` 时整块画 700（`spansAllBold` 的注释写了为什么只能按
+// 整块判）。混排段落仍是常规字重，与改动前逐像素一致。
 func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *markdown.Document, block markdown.Block,
 	allowPath bool, key string) {
 	t := v.Theme
@@ -627,9 +630,10 @@ func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *
 	if !markdownSpansPaintable(spans) {
 		return
 	}
+	bold := spansAllBold(spans)
 	v.drawQuoted(f, block.Quote, func() {
 		v.drawMarkdownInline(f, env, spans, allowPath, key, markdownInlineFont{
-			Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code,
+			Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code, Bold: bold,
 		}, func(text string, mono bool) ui.Box {
 			if text == "" {
 				return ui.Box{}
@@ -639,6 +643,11 @@ func (v *OfficialTranscriptView) drawParagraph(f ui.C, env *pluginapi.Env, doc *
 			box := ui.Wrap(f, text).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
 			if mono {
 				box.Mono().FontSize(t.Fonts.Code)
+			}
+			// 700：官方 `<strong>` 无 CSS 规则 → 浏览器默认 `bolder` 的 700 档
+			// （理由与判据见 spansAllBold）。
+			if bold {
+				box.Weight(gfx.WeightBold)
 			}
 			return box
 		})
@@ -685,6 +694,7 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *m
 	if !markdownSpansPaintable(spans) {
 		return
 	}
+	bold := spansAllBold(spans)
 	marker := MarkdownListBullet
 	if block.Number > 0 {
 		// 有序列表：官方 `Number` 是标记的**实际值**（不是序号），照抄不重排。
@@ -698,12 +708,16 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *m
 			ui.Text(f, marker).FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).
 				Color(t.LabelSecondary).Width(MarkdownListMarkerWidth).TextEnd()
 			if !markdownSpansHaveImage(spans) {
-				ui.Wrap(f, spansText(spans)).FillWidth().FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+				body := ui.Wrap(f, spansText(spans)).FillWidth().FontSize(t.Fonts.Body).
+					LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
+				if bold {
+					body.Weight(gfx.WeightBold)
+				}
 				return
 			}
 			ui.Column(f).FillWidth().Children(func() {
 				v.drawMarkdownInline(f, env, spans, allowPath, key, markdownInlineFont{
-					Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code,
+					Size: t.Fonts.Body, Line: t.Fonts.BodyLine, MonoSize: t.Fonts.Code, Bold: bold,
 				}, func(text string, mono bool) ui.Box {
 					if text == "" {
 						return ui.Box{}
@@ -711,6 +725,9 @@ func (v *OfficialTranscriptView) drawListItem(f ui.C, env *pluginapi.Env, doc *m
 					box := ui.Wrap(f, text).FillWidth().FontSize(t.Fonts.Body).LineHeight(t.Fonts.BodyLine).Color(t.LabelPrimary)
 					if mono {
 						box.Mono().FontSize(t.Fonts.Code)
+					}
+					if bold {
+						box.Weight(gfx.WeightBold)
 					}
 					return box
 				})
@@ -1312,6 +1329,40 @@ func spansText(spans []markdown.Span) string {
 		b.WriteString(span.Text)
 	}
 	return b.String()
+}
+
+// spansAllBold 报告这段 span 是不是**整块加粗**（官方 markdown 的 `**…**` 盖满整块）。
+//
+// # 为什么只能按"整块"判，而不是逐 span 判
+//
+// 官方把 `**…**` 画成 `<strong>`（`OFF:dist/assets/index-Ciz7DZxv.js` 的
+// `case"strong":return <strong>`），`<strong>` 在 asar 的两份 markdown 样式里
+// **没有任何 CSS 规则**（`021__AssistantMarkdown` / `110__MarkdownBody` 里没有
+// `strong{}`），浏览器按 `bolder` 画 700 —— 即"这一段文字字重变成 700"。
+//
+// 而 viva v0.6.12-ow 的**盒级**文字只有一个 `gfx.TextStyle`（`base/text_wrap.go`
+// 的 `Node.textStyle`），量宽（`Canvas.WrapLinesStyle`）与绘制（`base/paint.go`
+// 的 `paintText`）都按它走，**没有行内 run 出口**：一个 `Wrap` 只能一套字重。
+// 唯一带行内 run 的是 `components.MarkdownView`，但它自带另一套 markdown 几何，
+// 换过去会动 `official_transcript_geometry.go` 的官方读数——那是硬约束，不动。
+//
+// 所以这里与 `mdlite` 的 `allMonoSpans` 同一个粒度：**整块同一样式才生效**。
+// 混排段落（`**要点**：说明`）仍画常规字重，这是记录在案的能力边界，不是漏做；
+// 要覆盖行内混排，得先给 viva 的盒级文字加行内 run（见交付说明）。
+//
+// 判据与 `allMonoSpans` 逐字对齐：空串与换行分隔不算反对票。
+func spansAllBold(spans []markdown.Span) bool {
+	bold := false
+	for _, span := range spans {
+		if span.Text == "" || span.Text == markdown.Newline {
+			continue
+		}
+		if span.Style&markdown.Bold == 0 {
+			return false
+		}
+		bold = true
+	}
+	return bold
 }
 
 // ── 审批卡（官方 ApprovalPanel，不是 transcript 节点）────────────────────

@@ -41,7 +41,8 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
 | 左栏宿主 | `plugins/dssidebar/entry_menu.go` | More 行（`更多`）+ 菜单面 + 行尾取消固定按钮；可见行按固定态过滤 |
 | 会话头宿主 | `plugins/dstopbar/entry_menu.go` | `viewsMore` 按钮（22×22 / 13px）+ 菜单面；tab 行按官方 `preferred` + 宽度预算切 |
 | 图标 | `plugins/dssidebar/icons.go`（`pin-fill`）、`plugins/dstopbar/icons.go`（`ellipsis-outline`） | 按 rc.2 sprite 原文转写，见 `official-icon-sprite-register.md` |
-| **菜单行本体（#17）** | `plugins/dsentrycustom/entry_menu.go` | 两个座位各一份 painter：左栏 = 未固定条目行（行首面板图标 + 行尾「固定」按钮）+「浏览更多插件」；会话头 = 折起 view 行（active 带行尾对勾）+「浏览更多插件」。行几何取 rc.2 产物 CSS，见 §3.1 |
+| **菜单行本体（#17）** | `plugins/dsentrycustom/entry_menu.go` | 三个座位各一份 painter：左栏 = 未固定条目行（行首面板图标 + 行尾「固定」按钮）+「浏览更多插件」；会话头 = 折起 view 行（active 带行尾对勾）+「浏览更多插件」；右栏 guide = 只有末尾两行（官方 rightbar 的 `moreEntries` 恒空）。行几何取 rc.2 产物 CSS，见 §3.1 |
+| **向导页 More 卡 + 菜单面（#17 ②）** | `internal/uikernel/view_guide_more.go` | 官方 `GuideMoreMenu`：`.entry` 胶囊（380×56/14·20/gap14/layer-1/0.5 border-l3/xl）+ 26px 图标格里的 22px `GuideMoreIcon`（#A6B2C7 素材色）+ 展开态底色换 hover；菜单面复用 `DrawEntryMoreMenu`，宽度走 `minWidthFromAnchor` 那一档 |
 | **面板导航服务** | `plugins/dssidebar/panelapi`（`ui.pluginNavigation`，ds-sidebar 提供 `OpenList()`） | 官方 `pluginNavigation` 客户端服务（`dsh-client-ui-plugin-manager/src/client/index.ts:153-166`）的等价物；服务不在册 → 「浏览更多插件」整行不画（官方 `browsable`） |
 | **owner props 两格补充** | `pluginapi/entry_menu.go`（`EntryMenuEntry.Glyph`）、`plugins/dstopbar/entry_menu.go`（会话头 entries 的 `active`） | `Glyph` = 官方 `renderFactorySlot('sidebar.panel.icon')` 的投影（同一枚面板字形）；`active` = 官方 `active: viewTab.id === active?.id`（`ConversationSession.tsx:244-247`） |
 | **图标** | `plugins/dsentrycustom/icons.go`（`pin-outline` / `plugin-pinwheel-outline` / 复用 `check-outline`） | 按 rc.2 sprite 原文转写，见 `official-icon-sprite-register.md` |
@@ -93,9 +94,12 @@ entries: {id, label, pinned, active}[]   onOpen(id)   onPinnedChange(id, pinned)
    本仓是同一行里 `[行(flex:1)] [按钮 28×28]`，行内容窄 28px。
 4. **会话头 More 按钮与最后一个 tab 的间距 = `tabsGap`(20)**：官方 `.viewsMore` 与
    `.viewTabs` 是两个兄弟容器（间距由 `.tabs` 的 flex 排布决定，没有单一可引数值）。
-5. **右栏 guide 的 More 卡片没有宿主**：本仓还没有 guide 面（`sidebar.right.tab.guide`
-   无占用方，右栏是 dockkit tab 条 + 面板体），所以这一处 More **按 HIDE 登记**，
-   不自造一枚"更多工具"卡片挂在别处。
+5. ~~右栏 guide 的 More 卡片没有宿主~~ **已修（2026-11-22）**：本仓的 guide 面是骨架
+   自己的 fallback（`internal/uikernel/view_guide.go` 的 `DrawRightGuideMore`），More 卡与
+   贴它的菜单面已按官方 `GuideMoreMenu` 落地（`internal/uikernel/view_guide_more.go`：
+   `.entry` 胶囊 380×56 + 26px 图标格里的 22px `GuideMoreIcon` + `minWidthFromAnchor` 的
+   菜单面；文案 `t('tab.guide.more')` =「更多工具」）。旧判断「guide 没有宿主」当时成立、
+   现在不成立：骨架早就在画入口卡列，缺的只是这张卡与它的 `useState`。
 6. ~~左栏行的图标色用 `LabelDimmed`~~ **已修（2026-11-17）**：本仓**有**这一档令牌——`pluginapi.Theme.MenuIcon`（`pluginapi/theme.go:65`，注释即 `--dsw-alias-menu-icon`），`plugins/dscore` 明暗两套都给了值（`:184` / `:273`），`dscontextmenu` 早就在用。原「没有令牌」的判断不成立，三处菜单图标色已改为 `t.MenuIcon`。
 7. ~~左栏行尾的对勾不画、固定按钮不做「悬停才显形」~~ **已修（2026-11-17）**：官方那一块是 `@media (hover:hover)` 里的一对**反向**规则（`EntryMenu.module.css:20-31`），现在逐条实现且有绘制级断言：
 
@@ -140,10 +144,14 @@ Creator 已接（2026-11-17）：
   `TestStartSessionCreatesCordisAndAppendsDraftWithoutSending`、
   `TestStartSessionCreateFailureKeepsExistingDraft`。
 
-HIDE 两项（都不自造）：
+HIDE 两项 —— **两项都已落地**（保留编号以免历史引用错位，内容改成"已修"）：
 
-1. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 没有宿主
-   （guide 面未落地，账本 #53），注册了也没有派发方。
+1. ~~右栏 guide 的 More 卡片不注册~~ **已修（2026-11-22）**：宿主在向导页体本身
+   （`internal/uikernel/view_guide_more.go` 画 `.moreAnchor` 卡 + 贴它的菜单面，
+   菜单面复用 `DrawEntryMoreMenu` 并把宽度换成官方的 `minWidthFromAnchor` 那一档），
+   `plugins/dsentrycustom` 补了第三条注册与 rightbar 区域那两行（`drawRightGuideRows`：
+   官方 `region==='rightbar'` 时 `moreEntries` 恒空，只出「浏览更多插件」/「创建你的插件」）。
+   装配级判据 `cmd/app/entry_customization_assembly_test.go` 现在盯三个座位。
 2. **键盘模态那半边（`html[data-input-modality='keyboard'] … :focus-within`）不画**：
    它挂在同一串 CSS 里（`EntryMenu.module.css:29,31`），但①本仓没有"全局输入模态"这一位
    （官方是 `document.documentElement.dataset` 上的一个属性），②它是 `:focus-within`
@@ -161,3 +169,6 @@ HIDE 两项（都不自造）：
 | 内容行：不在菜单里不画 / 左栏只列未固定且行首有图标行尾有固定按钮 / 点行=onDismiss+onOpen / 点固定=onDismiss+onPinnedChange / 「浏览更多插件」服务在册才画且点了 openList / Creator 按区域启动 cordis append 草稿 / 会话头 active 多一枚对勾 / 四枚图标按 sprite 转写 | `plugins/dsentrycustom/entry_menu_test.go` |
 | 装配：Builtin 在册 + 两个座位都有占用方 + `ui.pluginNavigation` 可注入可调用 | `cmd/app/entry_customization_assembly_test.go` |
 | Creator：真实 `session.create{mode:'cordis'}` + 新段落 append + 不自动发送；失败保留原草稿 | `cmd/app/session_start_test.go` |
+| 右栏 More 卡：只在 `hasEntryActions` 时出现 / 胶囊几何 380×56 / 图标 22px 且墨色 `#A6B2C7` / 点开派发一次且带 rightbar owner props / 菜单宽 = 锚点宽 / 点外面关 / 选中打开声明的 kind / AfterDraw 量锚点且卡片离场归零 / 骨架向导页体真画出这张卡且没开菜单时不派发 | `internal/uikernel/view_guide_more_test.go` |
+| 右栏菜单行：不列条目（只两行）/ 浏览行按服务存在与否 / 不在菜单里不画 | `plugins/dsentrycustom/entry_menu_test.go` |
+| 装配：三个 More 座位都有占用方（含 `sidebar.right.tab.guide.actions`） | `cmd/app/entry_customization_assembly_test.go` |

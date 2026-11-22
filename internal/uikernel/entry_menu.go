@@ -61,11 +61,38 @@ const (
 // EntryMoreMenuWidthFor 是官方 `.moreMenu{width:288px;max-width:calc(100vw - 24px)}`
 // 的等价物：288 与"窗口宽减两侧 12"取小。<=0 表示窗口窄到放不下。
 func EntryMoreMenuWidthFor(boundsWidth float32) float32 {
-	width := boundsWidth - 2*EntryMoreMenuEdgeMargin
-	if width > EntryMoreMenuWidth {
-		width = EntryMoreMenuWidth
+	return entryMenuWidthFor(EntryMoreMenuWidth, boundsWidth)
+}
+
+// entryMenuWidthFor 是三个区域共用的宽度规则：`max-width:calc(100vw - 24px)`
+// 三处逐字相同（`SidebarRoot.module.css:726-729`；右栏 guide 那处
+// `GuideBody.module.css:128` 是 `.moreMenu{width:max-content;max-width:min(480px,calc(100vw - 24px))}`），
+// 所以先夹声明的上限再夹窗口——窗口窄到放不下时窗口优先，否则菜单会伸到窗口外。
+func entryMenuWidthFor(declared, boundsWidth float32) float32 {
+	cap := boundsWidth - 2*EntryMoreMenuEdgeMargin
+	if cap <= 0 {
+		return cap
 	}
-	return width
+	if declared > 0 && cap > declared {
+		return declared
+	}
+	return cap
+}
+
+// entryMenuAnchorWidth 是右栏 guide 那层菜单的实宽：官方 `width:max-content` +
+// `minWidthFromAnchor`（GuideBody.tsx:104）。
+//
+// 本仓那两行（「浏览更多插件」/「创建你的插件」）的 max-content 比锚点窄，所以
+// `minWidthFromAnchor` 那一半就是最终宽：**卡片多宽，菜单就多宽**（官方桌面档下
+// 380 宽）。Viva 这边没有"一段文字在菜单行里的固有宽"这个读口，所以不去近似
+// max-content，而是按官方在这一档的**实宽**取锚点宽；窄栏时锚点自己先被
+// `.entryCell{max-width:100%}` 收窄，菜单跟着窄，最后再被 `min(480, 100vw-24)` 夹住。
+func entryMenuAnchorWidth(declared, anchorWidth, boundsWidth float32) float32 {
+	cap := entryMenuWidthFor(declared, boundsWidth)
+	if anchorWidth > 0 && anchorWidth < cap {
+		return anchorWidth
+	}
+	return cap
 }
 
 // EntryMenuOptions 是画一层区域 More 菜单面需要的一帧输入。
@@ -91,6 +118,14 @@ type EntryMenuOptions struct {
 	Dismiss   func()
 	// Dispatch 是内核的 drawSlot（`Painter.Children` 拿到的那个）。
 	Dispatch func(pluginapi.Slot)
+	// MenuWidth 是这层菜单面的宽度上限（官方 `.moreMenu{max-width:…}`）。
+	//
+	// 0 = 跟档次走：`AnchorMinWidth` 为假时是左栏/会话头的 288，为真时是 guide 的 480。
+	// 两处都是官方声明值，调用方不必自己再写一遍。
+	MenuWidth float32
+	// AnchorMinWidth 让菜单宽跟锚点走（官方 guide 那层 Menu 的 `minWidthFromAnchor`，
+	// GuideBody.tsx:104；实宽见 `entryMenuAnchorWidth`）。只有 guide 那处为真。
+	AnchorMinWidth bool
 	// PanelHeight 是**上一帧量到的**菜单面高度（0 = 还没量过 → 按"放得下"处理）。
 	PanelHeight float32
 	// OnPanel 把这一帧声明的菜单面 Box 交给调用方，供它在 AfterDraw 里量高度。
@@ -115,7 +150,22 @@ func DrawEntryMoreMenu(f ui.C, env *pluginapi.Env, opts EntryMenuOptions) bool {
 	if t == nil {
 		return false
 	}
-	width := EntryMoreMenuWidthFor(opts.Bounds.Width)
+	var width float32
+	if opts.AnchorMinWidth {
+		// 右栏 guide：官方 `width:max-content;max-width:min(480px,…)` + `minWidthFromAnchor`
+		// ⇒ 这一档的实宽就是锚点宽（见 `entryMenuAnchorWidth`）。
+		declared := opts.MenuWidth
+		if declared <= 0 {
+			declared = GuideMoreMenuMax
+		}
+		width = entryMenuAnchorWidth(declared, opts.Anchor.Width, opts.Bounds.Width)
+	} else {
+		desired := opts.MenuWidth
+		if desired <= 0 {
+			desired = EntryMoreMenuWidth // 左栏/会话头两处仍是官方 288
+		}
+		width = entryMenuWidthFor(desired, opts.Bounds.Width)
+	}
 	if width <= 0 {
 		return false
 	}

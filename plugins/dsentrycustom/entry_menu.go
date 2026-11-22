@@ -3,11 +3,13 @@
 //
 // # 官方事实（rc.2 随包 src/**，逐行核对）
 //
-//	OFF:dsh-client-ui-entry-customization/src/client/index.ts:52-76
-//	  同一份内容注册进两个（本仓可用的）list 座位：
+//	OFF:dsh-client-ui-entry-customization/src/client/index.ts:54-65
+//	  同一份内容注册进**三个** list 座位（三处逐字段相同的 owner props）：
 //	    sidebar.panellist.actions                 左栏面板列表的 More
 //	    conversation.session.header.views.actions 会话头 view tab 行的 More
-//	  （第三处 `sidebar.right.tab.guide.actions` 本仓没有宿主，见文件尾 HIDE 段）
+//	    sidebar.right.tab.guide.actions           右栏 guide 的 More 卡
+//	  （第三处的宿主是**向导页体本身**：`internal/uikernel/view_guide_more.go` 画
+//	   `.moreAnchor` 那张卡并把这一座位派发进贴它的菜单面）
 //	OFF:dsh-client-ui-entry-customization/src/client/EntryMenuContent.tsx:35-70
 //	  moreEntries = region === 'sidebar' ? entries.filter(!pinned)
 //	              : region === 'conversation' ? entries : []
@@ -46,12 +48,11 @@
 //
 // # HIDE（登记在案，不是"以后再说"）
 //
-//  1. **右栏 guide 的 More 卡片不注册**：`sidebar.right.tab.guide.actions` 的派发点在
-//     `internal/uikernel/shell_skeleton.go:1193`，但那是一行**裸座位**——官方的形状是
-//     一张 380px 的 `.moreAnchor` 卡片 + 贴在它上面的 Menu 面（GuideBody.tsx:99-117、
-//     160-172，`.moreAnchor{width:380px}` / `.moreMenu`），而本仓 guide 面只画入口卡列
-//     （`internal/uikernel/view_guide.go:124-152`）。补它要新画卡片 + 新挂菜单宿主 +
-//     新资产（GuideMoreIcon），见 docs/official-parity.md #17 ② 的代价。
+//  1. ~~右栏 guide 的 More 卡片不注册~~ —— **2026-11-22 已落地**：宿主在向导页体本身
+//     （`internal/uikernel/view_guide_more.go`：`.moreAnchor` 那张胶囊 + 贴在它上面的
+//     菜单面，几何/文案/图标逐条取 `GuideBody.tsx:99-117` 与 `GuideBody.module.css:121-128`），
+//     本包补的是**第三条注册**与 rightbar 区域那两行（`drawRightGuideRows`）。
+//     旧判据「派发点只是一行裸座位」不再成立：裸座位已换成卡片 + 菜单面。
 //  2. ~~键盘模态那半边不画~~ —— **2026-11-21 已落地**：viva v0.6.12-ow 的
 //     `Canvas.FocusVisible()` 本身就是「键盘模态 ∧ 焦点在本身份」的合成（见
 //     `sidebarEntryKeyboardFocus`），所以 `:focus-within` 那一半不必新增 pluginapi 位，
@@ -97,9 +98,10 @@ const (
 	zhInstall = "浏览更多插件"
 	// zhCreate 是 'create'（locales.ts:17）。
 	zhCreate = "创建你的插件"
-	// 两个 Creator 提示词逐字来自 locales.ts:18-19；rightbar 没有区域宿主，仍按 HIDE。
+	// 三个 Creator 提示词逐字来自 locales.ts:18-20（sidebar / conversation / rightbar）。
 	zhCreatePromptSidebar      = "创建一个带左侧栏入口的 DSH 插件。"
 	zhCreatePromptConversation = "创建一个 DSH 会话视图插件。"
+	zhCreatePromptRightbar     = "创建一个带右侧栏入口的 DSH 插件。"
 )
 
 // 官方 primitives 菜单行的几何（出处见文件头；dist CSS 的 `_70kcw_` 模块）。
@@ -205,7 +207,7 @@ func (p *Plugin) Register(ctx pluginapi.Context) error {
 	return nil
 }
 
-// Panels 实现 pluginapi.Panels：两个座位各一份（右栏 guide 没有宿主，见包注释 HIDE 2）。
+// Panels 实现 pluginapi.Panels：三个座位各一份（与官方 index.ts:54-65 的三条注册一一对应）。
 func (p *Plugin) Panels() []pluginapi.Painter {
 	return []pluginapi.Painter{
 		// 左栏：未固定条目行（带面板图标 + 行尾固定按钮）+ 「浏览更多插件」。
@@ -213,7 +215,29 @@ func (p *Plugin) Panels() []pluginapi.Painter {
 		// 会话头：More 里折起来的 view 行（无图标、无固定按钮、active 带对勾）
 		// + 「浏览更多插件」。
 		{ID: "entry-menu-conversation", Slot: uikernel.OffSessionHeaderViewAction, Draw: p.drawConversationRows},
+		// 右栏 guide：More 卡里的行（官方 `region==='rightbar'` 时 `moreEntries` 恒空，
+		// 所以只有末尾两行：浏览更多插件 / 创建你的插件）。
+		{ID: "entry-menu-rightbar", Slot: uikernel.OffRightGuideActions, Draw: p.drawRightGuideRows},
 	}
+}
+
+// drawRightGuideRows 画右栏向导页 More 卡里那几行。
+//
+// 官方 `EntryMenuContent`（EntryMenuContent.tsx:38）：
+//
+//	moreEntries = region === 'sidebar'     ? entries.filter(entry => !entry.pinned)
+//	            : region === 'conversation'? entries
+//	            :                            []          ← rightbar
+//
+// 也就是说右栏这一侧**不列任何条目**（向导卡本身就是入口，不需要在菜单里再列一遍），
+// 菜单里只有末尾两行：`browsable` 时的「浏览更多插件」与恒在的「创建你的插件」。
+// 两个 separatorBefore 都恒假（`moreEntries.length === 0`，:62/:66）。
+func (p *Plugin) drawRightGuideRows(f ui.C, env *pluginapi.Env) {
+	props := env.EntryMenu
+	if props == nil || p.theme == nil {
+		return
+	}
+	p.drawFooterRows(f, env, props, 0)
 }
 
 // drawSidebarRows 画左栏 More 菜单里的行。
@@ -532,6 +556,8 @@ func (p *Plugin) drawCreateRow(f ui.C, env *pluginapi.Env, props *pluginapi.Entr
 		prompt = zhCreatePromptSidebar
 	case pluginapi.EntryRegionConversation:
 		prompt = zhCreatePromptConversation
+	case pluginapi.EntryRegionRightbar:
+		prompt = zhCreatePromptRightbar
 	default:
 		return
 	}

@@ -192,6 +192,9 @@ func shellOptionsFor(m *model, kernel *uikernel.Kernel, width, height float32, f
 		RightTabRename: &m.rightTabRename,
 		// 向导页入口卡来自**注册的类型**（不是布局 occurrence），见 view_guide.go。
 		GuideEntries: uikernel.GuideEntries(kernel),
+		// 向导页 More 卡的展开态与锚点：壳持有、跨帧保存，见 view_guide_more.go。
+		// 整帧画完（布局已定）后由 main 的 Draw 调一次 `AfterDraw()` 回填矩形。
+		GuideMore: &m.guideMore,
 	}
 	if runtime.GOOS == "windows" {
 		opts.CollapsedWidth = 0

@@ -39,8 +39,11 @@
 package dsconversation
 
 import (
+	"strconv"
+
 	"github.com/MYCF711/dsh-ui/internal/mdlite"
 	"github.com/MYCF711/dsh-ui/internal/pluginapi"
+	"github.com/vivaui/viva/gfx"
 	"github.com/vivaui/viva/markdown"
 	"github.com/vivaui/viva/ui"
 )
@@ -99,15 +102,24 @@ func markdownImageRedraw(env *pluginapi.Env) func() {
 // textRun 由调用方给（段落 / 标题 / 列表项的正文样式各不相同）。
 // 没有图片时它只会被调一次、且文本与旧的 `spansText` 逐字节相同——
 // 这条是既有正文渲染的唯一路径，不许因为"顺手支持图片"改动它的任何一个像素。
+//
+// key 是这一块的稳定渲染键（`drawMarkdown` 的 entry key + 块序号）：正文图那张
+// `<button>` 的交互 id 由它派生（官方每次重渲都拿同一个 `<button>`，id 变了
+// 焦点/悬停会在两帧之间丢）。
 func (v *OfficialTranscriptView) drawMarkdownInline(f ui.C, env *pluginapi.Env, spans []markdown.Span,
-	allowPath bool, textRun func(string, bool)) {
+	allowPath bool, key string, textRun func(string, bool)) {
 	runs := mdlite.SplitMarkdownInline(spans)
-	for _, run := range runs {
+	images := 0
+	for i := range runs {
+		run := runs[i]
 		if run.Image == "" {
 			textRun(run.Text, run.Mono)
 			continue
 		}
-		v.drawMarkdownImage(f, env, run.Image, run.Text, allowPath)
+		// 同一块里的第几张图：一张段落里可以有多张 `![…](…)`，各自是不同的按钮。
+		imageKey := key + ":img" + strconv.Itoa(images)
+		images++
+		v.drawMarkdownImage(f, env, run.Image, run.Text, allowPath, imageKey)
 	}
 }
 
@@ -116,7 +128,19 @@ func (v *OfficialTranscriptView) drawMarkdownInline(f ui.C, env *pluginapi.Env, 
 // allowPath=false 是**流式期间**：官方 `aK` 在 `streaming` 时根本不调
 // `fileImages.resolve`（只有绝对 http(s) 直接出），所以路径图先显示 alt、
 // 定稿后才出图。照抄它，避免流式期间为一个半成品路径起一堆取数请求。
-func (v *OfficialTranscriptView) drawMarkdownImage(f ui.C, env *pluginapi.Env, destination, alt string, allowPath bool) {
+//
+// key 是这张图的稳定渲染键（见 drawMarkdownInline）。
+//
+// # 「查看大图」（官方 `_imageButton_13jw0_471`）
+//
+// 官方把出好的图包在一枚 `<button cursor:zoom-in title=查看大图>` 里，
+// 点它才挂灯箱（`lK` 的 `onClick={() => setOpen(true)}`）。本仓在同一处加命中区：
+// **只有 Ready 态才有按钮**——字节没到/失败时官方连 `<img>` 都没有，那时正文
+// 画的是 alt 文本，不存在"点开一个空灯箱"的路径。
+//
+// 灯箱本体在 `official_image_lightbox.go`（`shell.overlay` 上的另一块画）。
+func (v *OfficialTranscriptView) drawMarkdownImage(f ui.C, env *pluginapi.Env, destination, alt string,
+	allowPath bool, key string) {
 	t := v.Theme
 	if t == nil && env != nil {
 		t = env.Theme
@@ -134,14 +158,45 @@ func (v *OfficialTranscriptView) drawMarkdownImage(f ui.C, env *pluginapi.Env, d
 		// 尺寸已经在 FitMarkdownImage 里按两条 max-* 算好（ui.Image 的缩放是
 		// object-fit:fill，直接交给它会把极端比例的图拉变形）。
 		row := ui.Row(f).Size(width, height).Radius(t.Radii.MD).Background(t.BgBase).Clip()
+		// 官方的 `cursor:zoom-in`（viva 的 PointerCursor 没有这一档，用可点手型，
+		// 见 official_image_lightbox.go 的差异 ①）。
+		if id := markdownImageHitID(env, key); !id.IsZero() {
+			row = row.HitWith(id, markdownImageOpenLabel(alt), gfx.HitOptions{
+				Role: gfx.RoleButton, Cursor: gfx.PointerCursorHand,
+			})
+		}
 		row.Children(func() {
 			ui.Image(f, image.Bitmap).Size(width, height)
 		})
+		if row.Clicked() {
+			v.openMarkdownLightbox(env, destination, alt, image)
+		}
 	case mdlite.MarkdownImageFailed:
 		drawMarkdownImageText(f, mdlite.MarkdownImageFailedText(alt, destination), t)
 	default: // Pending / Unresolved：官方这两档都只是 alt 文本
 		drawMarkdownImageText(f, mdlite.MarkdownImageAltText(alt, destination), t)
 	}
+}
+
+// markdownImageHitID 造正文图那枚"查看大图"按钮的交互 id。
+//
+// 名字里带 block key + 图序号：同一个会话两帧之间必须是**同一个** id，
+// 否则 viva 会把按钮当成新节点重挂（悬停/焦点每帧都丢）——这条与
+// `historyButtonID` 同一条理由。零值 = 没有交互树（老壳/测试），那句话就只是画。
+func markdownImageHitID(env *pluginapi.Env, key string) gfx.ID {
+	if env == nil || env.Tree == nil {
+		return gfx.ID{}
+	}
+	return env.Tree.ID(env.Feat, "transcript-image-"+key)
+}
+
+// markdownImageOpenLabel 是官方 `aria-label`：
+// `alt ? `${t('image.open')}: ${alt}` : t('image.open')`（`lK` 的 aria-label）。
+func markdownImageOpenLabel(alt string) string {
+	if alt == "" {
+		return ImageLightboxOpen
+	}
+	return ImageLightboxOpen + ": " + alt
 }
 
 // drawMarkdownImageText 画官方 `.imageAlt`：label-tertiary 的正文文本。

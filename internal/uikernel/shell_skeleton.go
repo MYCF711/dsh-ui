@@ -160,6 +160,12 @@ type ShellOptions struct {
 	// 它来自**注册的类型**而不是布局里的 occurrence：官方向导页列的是"能开什么"，
 	// 与"当前开着什么"无关（`GuideBody.tsx` 读的是 registry 的 guideEntries）。
 	GuideEntries []GuideEntry
+	// GuideMore 是向导页 More 卡的跨帧状态（官方 `GuideMoreMenu` 的 `useState`
+	// 加上"上一帧量到的"锚点与菜单面高度，见 view_guide_more.go）。
+	//
+	// 壳持有、跨帧保存；nil = 这一帧不画这张卡（最小装配/单测里没人持有它）。
+	// 画完一整帧后壳必须调一次 `GuideMore.AfterDraw()`（布局已定，`Box.Rect()` 才有值）。
+	GuideMore *GuideMoreState
 	// BridgeLegacy 打开旧插件兼容桥（见文件头）。
 	BridgeLegacy bool
 	// BridgeLegacyComposer 是**中栏 composer 那一段**的兼容桥开关。
@@ -1180,17 +1186,28 @@ func drawRightbarSkeleton(f ui.C, env *pluginapi.Env, layout ShellLayout, dispat
 				dispatch(OffRightGuide)
 				return
 			}
-			if env != nil && len(layout.Options.GuideEntries) > 0 && env.DrawKeyed != nil {
-				// 有名录：逐卡 keyed 派发（官方 `renderSlot(…, {entryKey: providerId})`）。
-				DrawRightGuide(f, env, layout.Options.GuideEntries)
+			// `sidebar.right.tab.guide.actions` 有占用方 = 官方 `hasEntryActions`：
+			// 向导页体里要多画那张 More 卡（`GuideBody.tsx:160`）。
+			hasGuideActions := env != nil && env.Has != nil && env.Has(OffRightGuideActions)
+			if env != nil && env.DrawKeyed != nil &&
+				(len(layout.Options.GuideEntries) > 0 || hasGuideActions) {
+				// 有名录：逐卡 keyed 派发（官方 `renderSlot(…, {entryKey: providerId})`），
+				// 其后是 More 卡 + 贴在它上面的菜单面（view_guide_more.go）。
+				DrawRightGuideMore(f, env, layout.Options.GuideEntries, GuideMoreOptions{
+					State:      layout.Options.GuideMore,
+					Dispatch:   dispatch,
+					HasActions: hasGuideActions,
+				})
 				return
 			}
 			// 没有名录（最小装配 / 第三方老插件）：退回不带 key 的两处派发——旧行为，
 			// 不因为新契约把既有注册点变成"挂上去也不会显示"。
 			dispatch(OffRightGuide)
 			dispatch(OffRightGuideEntry)
+			// More 卡没有宿主（无名录时向导页那一列根本不画）：座位照旧派发，
+			// 与旧行为一致——那几行的宿主是卡片，卡片不在就没有"菜单里"这个上下文。
+			dispatch(OffRightGuideActions)
 		})
-		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightGuideActions) })
 		ui.Row(f).FillWidth().Children(func() { dispatch(OffRightTabMenuItem) })
 	})
 }

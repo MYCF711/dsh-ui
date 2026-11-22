@@ -4,16 +4,17 @@ package main
 //
 // # 它守的是什么
 //
-// 本仓的两个 More 菜单座位（`sidebar.panellist.actions` /
-// `conversation.session.header.views.actions`）只有在**有占用方**时宿主才会画出入口
-// （官方 `hasEntryActions`）。所以"内容插件在不在 Builtin 里、装没装上、座位有没有
-// 占用方"这三件事只要断一环，界面上就一行都看不到——而且不报错。
+// 本仓的**三个** More 菜单座位（`sidebar.panellist.actions` /
+// `conversation.session.header.views.actions` / `sidebar.right.tab.guide.actions`）
+// 只有在**有占用方**时宿主才会画出入口（官方 `hasEntryActions`）。所以"内容插件在不在
+// Builtin 里、装没装上、座位有没有占用方"这三件事只要断一环，界面上就一行都看不到
+// ——而且不报错。
 //
 // 这里按 `main()` 的同一条路径装配（`uiplugins.Load` + `pluginapi.Builtin` +
 // `orderPlugins` + `uikernel.Load`），断言三件事：
 //
 //	① `ds-entry-customization` 真的在装配后的插件表里
-//	② 两个座位各有一份占用方（否则 More 入口根本不出现）
+//	② 三个座位各有一份占用方（否则 More 入口/向导页 More 卡根本不出现）
 //	③ 面板导航能力（`ui.pluginNavigation`）在装配里真的可注入，且能开插件列表
 //
 // 与 `file_actions_assembly_test.go` 同一套写法（keep 白名单 + 手动追加两个地基实例）。
@@ -31,7 +32,7 @@ import (
 	"github.com/MYCF711/dsh-ui/plugins/dssidebar/panelapi"
 )
 
-func TestEntryCustomizationOccupiesBothMoreSeatsInProductionAssembly(t *testing.T) {
+func TestEntryCustomizationOccupiesEveryMoreSeatInProductionAssembly(t *testing.T) {
 	keep := map[string]bool{
 		"ds-entry-customization": true,
 		"ds-sidebar":             true,
@@ -63,10 +64,11 @@ func TestEntryCustomizationOccupiesBothMoreSeatsInProductionAssembly(t *testing.
 		t.Fatalf("装配后的插件表里没有 ds-entry-customization：%v", kernel.Order())
 	}
 
-	// ② 两个座位各有一份占用方（宿主按这个判据画 More 入口）。
+	// ② 三个座位各有一份占用方（宿主按这个判据画 More 入口 / 向导页 More 卡）。
 	for _, slot := range []pluginapi.Slot{
 		uikernel.OffSidebarPanelActions,
 		uikernel.OffSessionHeaderViewAction,
+		uikernel.OffRightGuideActions,
 	} {
 		if painters := kernel.Painters(slot); len(painters) == 0 {
 			t.Errorf("座位 %q 没有占用方：官方 More 入口（hasEntryActions）不会出现", slot)

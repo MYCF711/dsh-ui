@@ -38,7 +38,7 @@ package pluginapi
 // 占用方读 `env.EntryMenu` 画自己的行；它不存在时说明本帧不在菜单里。
 //
 // 谁写：三个区域宿主（左栏 `plugins/dssidebar`、会话头 `plugins/dstopbar`、
-// 右栏 guide——右栏 guide 面本仓尚未落地，见 `docs/official-parity.md` #53 的缺口）。
+// 右栏 guide 的向导页体 `internal/uikernel/view_guide_more.go`）。
 // 谁读：贡献菜单行的插件（`dsh-client-ui-entry-customization` 的等价物，即 #17）。
 
 // 三个区域的 region 身份（官方 `EntryRegion`：`'sidebar' | 'conversation' | 'rightbar'`，
